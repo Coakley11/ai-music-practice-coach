@@ -1316,17 +1316,52 @@ def save_music_cloud_session(
     write_path: str,
     page: str = "",
     summary: str = "",
+    strict_egress_approval: dict[str, Any] | None = None,
 ) -> bool:
     """Write stamped music state to cloud and record v13 write-path diagnostics."""
     from suite_cloud_state import save_cloud_full_session
 
     ss = st.session_state
     ss["_music_cloud_write_path"] = write_path
+    approval = strict_egress_approval
+    if approval is None:
+        try:
+            from music_strict_egress_transaction import STRICT_EGRESS_APPROVAL_KEY
+
+            cached = ss.get(STRICT_EGRESS_APPROVAL_KEY)
+            if isinstance(cached, dict):
+                approval = cached
+        except ImportError:
+            approval = None
+
+    try:
+        from music_egress_config import music_cloud_write_allowed, music_egress_strict_enabled
+
+        allowed_inside = True
+        if music_egress_strict_enabled():
+            allowed_inside = music_cloud_write_allowed(
+                save_reason=str((approval or {}).get("reason") or (approval or {}).get("raw_reason") or ""),
+                st=st,
+                strict_egress_approval=approval,
+            )
+        ss["_music_cloud_write_allowed_inside_save"] = allowed_inside
+        if not allowed_inside:
+            ss["_music_last_cloud_write_error"] = "music_egress_strict"
+            return False
+    except ImportError:
+        pass
+
     cloud_error = ""
     saved_cloud = False
     cloud_result = None
     try:
-        cloud_result = save_cloud_full_session(APP_ID, state, page=page, summary=summary)
+        cloud_result = save_cloud_full_session(
+            APP_ID,
+            state,
+            page=page,
+            summary=summary,
+            strict_egress_approval=approval,
+        )
         saved_cloud = bool(cloud_result.success)
         if not saved_cloud:
             stage = str(getattr(cloud_result, "failure_stage", "") or "unknown")
@@ -3628,8 +3663,9 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
                 or saved_studio
                 or None
             ),
-            "last_save_cloud": bool(result.get("cloud_ok")),
+            "last_save_cloud": bool(result.get("cloud_ok")) or bool(ss.get("_suite_persist_last_save_cloud")),
             "force_save_reason": ss.get("_suite_persist_last_save_reason"),
+            "passive_autosave_cloud_skip": ss.get("_music_passive_autosave_cloud_skip_reason"),
             "final_studio_page": ss.get("studio_page"),
         }
         if ss.get("_suite_page_user_nav"):

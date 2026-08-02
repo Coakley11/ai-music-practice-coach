@@ -172,8 +172,15 @@ def skip_cloud_readback_after_write(app_id: str, *, st: Any | None = None) -> bo
     return get_music_egress_policy(st=st).skip_cloud_readback_after_save
 
 
-def music_cloud_write_allowed(*, save_reason: str, st: Any | None = None) -> bool:
+def music_cloud_write_allowed(
+    *,
+    save_reason: str,
+    st: Any | None = None,
+    strict_egress_approval: dict[str, Any] | None = None,
+) -> bool:
     """Whether a music persist path may call save_cloud_full_session."""
+    if isinstance(strict_egress_approval, dict) and strict_egress_approval.get("strict_egress_approved"):
+        return True
     policy = get_music_egress_policy(st=st)
     if not policy.strict:
         return True

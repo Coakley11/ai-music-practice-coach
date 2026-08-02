@@ -1559,7 +1559,11 @@ def collect_backing_persistence_trace(
         "cloud_payload_source": session.get("_backing_cloud_payload_source", ""),
         "force_save_reason": session.get("_suite_persist_last_save_reason", ""),
         "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
-        "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
+        "cloud_save_blocked_reason": (
+            ""
+            if session.get("_suite_persist_last_save_cloud")
+            else str(session.get("_suite_autosave_cloud_blocked_reason") or "")
+        ),
     }
     try:
         from music_workspace_cloud_save import collect_save_transaction_diagnostics
@@ -1586,7 +1590,8 @@ def collect_backing_persistence_trace(
             if key in tx and tx[key] is not None:
                 trace[key] = tx[key]
         if tx.get("force_save_block_reason") and not trace.get("cloud_save_blocked_reason"):
-            trace["cloud_save_blocked_reason"] = tx["force_save_block_reason"]
+            if not session.get("_suite_persist_last_save_cloud"):
+                trace["cloud_save_blocked_reason"] = tx["force_save_block_reason"]
         for key in (
             "save_cloud_full_session_failure_stage",
             "save_cloud_full_session_exception",

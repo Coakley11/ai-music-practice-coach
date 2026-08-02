@@ -1529,14 +1529,21 @@ def force_autosave(
         else:
             try:
                 from music_egress_config import music_cloud_write_allowed
+                from music_strict_egress_transaction import STRICT_EGRESS_APPROVAL_KEY
 
-                allow_cloud = music_cloud_write_allowed(save_reason=reason or "force_autosave", st=st)
+                approval = st.session_state.get(STRICT_EGRESS_APPROVAL_KEY)
+                allow_cloud = music_cloud_write_allowed(
+                    save_reason=reason or "force_autosave",
+                    st=st,
+                    strict_egress_approval=approval if isinstance(approval, dict) else None,
+                )
             except ImportError:
                 allow_cloud = True
             if allow_cloud:
                 saved_cloud = bool(save_cloud_full_session(app_id, state, page=page, summary=summary))
             else:
-                st.session_state["_suite_autosave_cloud_blocked_reason"] = "music_egress_strict"
+                if not st.session_state.get("_suite_persist_last_save_cloud"):
+                    st.session_state["_suite_autosave_cloud_blocked_reason"] = "music_egress_strict"
         if saved_disk or saved_cloud:
             st.session_state[f"_suite_autosave_fp::{app_id}"] = fp
             st.session_state[_restored_fp_key(app_id)] = fp
@@ -1641,7 +1648,7 @@ def autosave_if_changed(
                     saved_cloud = bool(
                         save_cloud_full_session(app_id, state, page=page, summary=summary)
                     )
-                else:
+                elif not st.session_state.get("_suite_persist_last_save_cloud"):
                     st.session_state["_suite_autosave_cloud_blocked_reason"] = "music_egress_strict"
                 if saved_cloud:
                     try:

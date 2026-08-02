@@ -570,9 +570,15 @@ def save_cloud_full_session(
     *,
     page: str = "",
     summary: str = "",
+    strict_egress_approval: dict[str, Any] | None = None,
 ) -> CloudSaveResult:
     """Persist full_session to Supabase. Returns structured result with failure stage."""
     ss = _streamlit_session()
+    if ss is not None and isinstance(strict_egress_approval, dict):
+        ss["_music_strict_egress_approval_at_cloud_save"] = dict(strict_egress_approval)
+        ss["_music_cloud_write_allowed_inside_save_cloud_full_session"] = bool(
+            strict_egress_approval.get("strict_egress_approved")
+        )
     ctx = _cloud_save_account_context()
     try:
         from workspace_revision import workspace_revision_from_blob

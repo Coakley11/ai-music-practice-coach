@@ -249,16 +249,18 @@ def force_music_workspace_save(
     fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
 
     egress_plan = None
+    egress_tx = None
     try:
-        from music_egress_strict_save import plan_strict_egress_cloud_write
+        from music_strict_egress_transaction import evaluate_strict_egress_transaction
 
-        egress_plan = plan_strict_egress_cloud_write(
+        egress_tx = evaluate_strict_egress_transaction(
             ss,
-            save_reason=r,
+            raw_save_reason=r,
             payload_fp=fp,
             bypass_defer=bypass_strict_defer,
+            st=st,
         )
-        record_save_transaction(ss, **egress_plan.diag())
+        record_save_transaction(ss, **egress_tx.diag())
         try:
             from music_egress_strict_save import collect_strict_pending_diagnostics
 
@@ -266,7 +268,18 @@ def force_music_workspace_save(
         except ImportError:
             pass
     except ImportError:
-        pass
+        try:
+            from music_egress_strict_save import plan_strict_egress_cloud_write
+
+            egress_plan = plan_strict_egress_cloud_write(
+                ss,
+                save_reason=r,
+                payload_fp=fp,
+                bypass_defer=bypass_strict_defer,
+            )
+            record_save_transaction(ss, **egress_plan.diag())
+        except ImportError:
+            pass
 
     saved_disk = bool(save_user_state(APP_ID, state))
     record_save_transaction(ss, disk_write_attempted=True, disk_write_succeeded=saved_disk)
@@ -278,24 +291,59 @@ def force_music_workspace_save(
     cloud_read_count = 0
     if cloud_required:
         try:
-            from music_egress_config import music_cloud_write_allowed
+            plan_action = ""
+            if egress_tx is not None:
+                plan_action = str(egress_tx.strict_egress_plan_action or "")
+            elif egress_plan is not None:
+                plan_action = "duplicate_skip" if egress_plan.duplicate_write_skipped else (
+                    "defer" if egress_plan.defer_cloud_write else (
+                        "immediate" if egress_plan.allow_cloud_write else "deny"
+                    )
+                )
 
-            if egress_plan is not None and egress_plan.duplicate_write_skipped:
+            if plan_action == "duplicate_skip" or (
+                egress_plan is not None and getattr(egress_plan, "duplicate_write_skipped", False)
+            ):
                 cloud_error = ""
                 record_save_transaction(ss, cloud_write_attempted=False, force_save_block_reason=None)
-            elif egress_plan is not None and egress_plan.defer_cloud_write:
+            elif plan_action == "defer" or (
+                egress_plan is not None and getattr(egress_plan, "defer_cloud_write", False)
+            ):
                 ss[_local_dirty_key(APP_ID)] = True
                 record_save_transaction(
                     ss,
                     cloud_write_attempted=False,
                     force_save_block_reason="strict_save_deferred",
                 )
-            elif not music_cloud_write_allowed(save_reason=r, st=st) or (
-                egress_plan is not None and not egress_plan.allow_cloud_write and not egress_plan.defer_cloud_write
-            ):
-                cloud_error = "music_egress_strict"
-                record_save_transaction(ss, force_save_block_reason=cloud_error)
-            else:
+            elif egress_tx is not None and egress_tx.strict_egress_approved:
+                from suite_cloud_state import session_page_summary
+                from music_persistent_state import save_music_cloud_session
+
+                page, summary = session_page_summary(APP_ID, state)
+                record_save_transaction(ss, cloud_write_attempted=True)
+                approval = egress_tx.approval_dict()
+                ss.pop("_suite_autosave_cloud_blocked_reason", None)
+                saved_cloud = bool(
+                    save_music_cloud_session(
+                        st,
+                        state,
+                        write_path="force_music_workspace_save",
+                        page=page,
+                        summary=summary,
+                        strict_egress_approval=approval,
+                    )
+                )
+                if saved_cloud:
+                    try:
+                        from music_egress_strict_save import bump_cloud_write_count
+
+                        cloud_write_count = bump_cloud_write_count(ss)
+                    except ImportError:
+                        cloud_write_count = 1
+                if not saved_cloud:
+                    cloud_error = str(ss.get("_music_last_cloud_write_error") or "cloud_write_failed")
+                record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
+            elif egress_plan is not None and egress_plan.allow_cloud_write and not egress_plan.defer_cloud_write:
                 from suite_cloud_state import session_page_summary
                 from music_persistent_state import save_music_cloud_session
 
@@ -320,6 +368,18 @@ def force_music_workspace_save(
                 if not saved_cloud:
                     cloud_error = str(ss.get("_music_last_cloud_write_error") or "cloud_write_failed")
                 record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
+            else:
+                block = "music_egress_strict"
+                if egress_tx is not None and egress_tx.final_cloud_write_block_reason:
+                    block = egress_tx.final_cloud_write_block_reason
+                cloud_error = block
+                record_save_transaction(
+                    ss,
+                    force_save_block_reason=cloud_error,
+                    strict_egress_denied_by_function=getattr(egress_tx, "strict_egress_denied_by_function", None),
+                    strict_egress_denied_by_file_line=getattr(egress_tx, "strict_egress_denied_by_file_line", None),
+                    final_cloud_write_block_reason=cloud_error,
+                )
         except Exception as exc:
             cloud_error = str(exc)
             record_save_transaction(ss, cloud_write_attempted=True, cloud_write_error=cloud_error)
@@ -331,8 +391,12 @@ def force_music_workspace_save(
     readback_ok = False
     authoritative_upsert = False
     revision_advanced = rev_after > rev_before or (rev_before == 0 and rev_after >= 1)
-    duplicate_skipped = bool(egress_plan is not None and egress_plan.duplicate_write_skipped)
-    deferred_cloud = bool(egress_plan is not None and egress_plan.defer_cloud_write)
+    duplicate_skipped = bool(
+        egress_tx is not None and egress_tx.strict_egress_plan_action == "duplicate_skip"
+    ) or bool(egress_plan is not None and getattr(egress_plan, "duplicate_write_skipped", False))
+    deferred_cloud = bool(
+        egress_tx is not None and egress_tx.strict_egress_plan_action == "defer"
+    ) or bool(egress_plan is not None and getattr(egress_plan, "defer_cloud_write", False))
 
     if duplicate_skipped and saved_disk:
         readback_ok = True
@@ -489,6 +553,8 @@ def force_music_workspace_save(
             record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
             return False
         ss["_suite_persist_last_save_cloud"] = True
+        ss.pop("_suite_autosave_cloud_blocked_reason", None)
+        ss.pop("_music_passive_autosave_cloud_skip_reason", None)
         ss[f"_suite_autosave_fp::{APP_ID}"] = fp
         ss[_restored_fp_key(APP_ID)] = fp
         try:
@@ -558,10 +624,11 @@ def music_autosave_if_changed(st: Any, *, build_state: Any) -> dict[str, Any]:
 
     try:
         from music_egress_config import music_cloud_write_allowed, music_egress_strict_enabled
+        from music_strict_egress_transaction import note_passive_autosave_cloud_skip
 
         if music_egress_strict_enabled() and not music_cloud_write_allowed(save_reason="autosave", st=st):
             result["skip_reason"] = "music_egress_strict"
-            record_save_transaction(ss, force_save_block_reason="music_egress_strict")
+            note_passive_autosave_cloud_skip(ss, reason="music_egress_strict")
             return result
     except ImportError:
         pass
