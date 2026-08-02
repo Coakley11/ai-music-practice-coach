@@ -67,6 +67,21 @@ def record_selected_payload_source(
         session["_music_cloud_payload_source"] = "none"
         if not session.get("_backing_cloud_payload_source"):
             session["_backing_cloud_payload_source"] = "none"
+    try:
+        from music_workspace_restore_mode import record_authoritative_payload_applied
+
+        payload = session.get("_suite_last_cloud_fetch_payload")
+        record_authoritative_payload_applied(
+            session,
+            source=source,
+            payload=payload if isinstance(payload, dict) else None,
+        )
+        if source in ("cloud", "disk") and isinstance(payload, dict):
+            from workspace_revision import workspace_revision_from_blob
+
+            session["_music_selected_payload_revision"] = workspace_revision_from_blob(payload)
+    except ImportError:
+        pass
 
 
 def collect_hydration_diagnostics(session: dict[str, Any]) -> dict[str, Any]:

@@ -224,6 +224,11 @@ def _workspace_comparison_players(state: dict[str, Any]) -> list[str]:
 def _mark_workspace_sync_skipped(st: Any, app_id: str, reason: str) -> None:
     """Block cloud autosave when startup workspace sync did not apply."""
     st.session_state["_suite_workspace_sync_skipped_no_apply"] = True
+    if str(app_id or "").strip().lower() == "music" and reason.startswith(
+        "local unsaved edits"
+    ):
+        st.session_state["_suite_autosave_block_reason"] = reason
+        return
     st.session_state[_autosave_block_key(app_id)] = True
     st.session_state["_suite_autosave_block_reason"] = reason
 
@@ -262,6 +267,13 @@ _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "music_coach_send",
     "song_edit",
     "practice_edit",
+    "backing_edit",
+    "practice_tool_select",
+    "practice_workspace_edit",
+    "practice_key_mode_change",
+    "display_key_change",
+    "capo_widget",
+    "cpl_draft_edit",
     "team_change",
     "nba_settings_change",
 })
@@ -280,6 +292,8 @@ def _cloud_autosave_blocked_reason(
         if st.session_state.get("_suite_workspace_sync_skipped_no_apply"):
             return None
     elif st.session_state.get("_suite_workspace_sync_skipped_no_apply"):
+        if str(app_id or "").strip().lower() == "music" and save_reason in _FORCE_SAVE_CLOUD_REASONS:
+            return None
         return "workspace_sync_not_applied"
     if app_id != "baseball":
         return None
@@ -651,6 +665,18 @@ def sync_workspace_protocol(
     dirty_key = _local_dirty_key(app_id)
     st.session_state.pop("_suite_workspace_sync_skipped_no_apply", None)
 
+    try:
+        if str(app_id or "").strip().lower() == "music":
+            from music_workspace_restore_mode import (
+                prepare_music_cold_start_restore,
+                record_account_workspace_identity,
+            )
+
+            record_account_workspace_identity(st.session_state, app_id)
+            prepare_music_cold_start_restore(st.session_state, app_id)
+    except ImportError:
+        pass
+
     cloud_state, cloud_ts = load_cloud_full_session(app_id)
     disk_state, disk_warn, disk_ts = _load_raw(app_id)
     if disk_warn:
@@ -936,6 +962,17 @@ def sync_workspace_protocol(
         should_apply=True, apply_reason=apply_reason, skip_reason=None, applied=True,
     )
     st.session_state.pop("_suite_persist_restore_skip_reason", None)
+    try:
+        if str(app_id or "").strip().lower() == "music":
+            from music_workspace_restore_mode import complete_workspace_restore_after_apply
+
+            complete_workspace_restore_after_apply(
+                st.session_state,
+                source=str(picked.source),
+                payload=picked.state if isinstance(picked.state, dict) else None,
+            )
+    except ImportError:
+        pass
     return True
 
 

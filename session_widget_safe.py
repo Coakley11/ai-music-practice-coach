@@ -31,6 +31,7 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "show_chart_in_instrument_key",
         "song_picker_active_source",
         "selected_transposing_instrument",
+        "practice_focus_section",
     }
 )
 

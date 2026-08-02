@@ -38,6 +38,13 @@ def is_studio_nav_locally_dirty(session: dict[str, Any]) -> bool:
 
 
 def mark_studio_nav_local_edit(session: dict[str, Any]) -> None:
+    try:
+        from music_workspace_restore_mode import should_record_user_local_dirty
+
+        if not should_record_user_local_dirty(session):
+            return
+    except ImportError:
+        pass
     session[STUDIO_NAV_DIRTY_KEY] = True
     session[STUDIO_NAV_LOCAL_EDIT_TS_KEY] = _utc_now_iso()
     session["_suite_page_user_nav"] = True

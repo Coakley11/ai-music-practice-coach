@@ -141,6 +141,13 @@ def is_practice_locally_dirty(session: dict[str, Any]) -> bool:
 
 def mark_practice_local_edit(session: dict[str, Any]) -> None:
 
+    try:
+        from music_workspace_restore_mode import should_record_user_local_dirty
+
+        if not should_record_user_local_dirty(session):
+            return
+    except ImportError:
+        pass
     session[PRACTICE_DIRTY_KEY] = True
 
     session[PRACTICE_LOCAL_EDIT_TS_KEY] = _utc_now_iso()
@@ -590,6 +597,12 @@ def coerce_practice_focus_for_widget(
     section_choices: list[str] | None = None,
 ) -> str:
     """Bind section-focus radio to canonical/blob before widget render."""
+    from session_widget_safe import safe_session_assign
+
+    def _set_focus(value: str) -> None:
+        if value:
+            safe_session_assign(session, "practice_focus_section", value)
+
     choices = [str(c) for c in (section_choices or []) if c]
     live = normalize_practice_focus_section(session.get("practice_focus_section"))
     if choices and live and not _section_focus_matches_choices(live, choices):
@@ -597,9 +610,9 @@ def coerce_practice_focus_for_widget(
 
     if is_practice_locally_dirty(session) or session.get(PRACTICE_PENDING_SYNC_KEY):
         if live:
-            session["practice_focus_section"] = live
+            _set_focus(live)
         elif choices:
-            session["practice_focus_section"] = choices[0]
+            _set_focus(choices[0])
         return str(session.get("practice_focus_section") or "")
 
     canonical = canonical_practice_filters(session) or {}
@@ -609,25 +622,31 @@ def coerce_practice_focus_for_widget(
         merged = dict(canonical)
         merged.update(gather_practice_filters(session))
         merged["practice_focus_section"] = live
+        try:
+            from music_workspace_restore_mode import should_record_user_local_dirty
+
+            local_edit = should_record_user_local_dirty(session)
+        except ImportError:
+            local_edit = True
         write_canonical_practice_state(
             session,
             merged,
             reason="session_section_wins",
-            local_edit=True,
+            local_edit=local_edit,
         )
         return live
 
     if canon_section and (not choices or _section_focus_matches_choices(canon_section, choices)):
-        session["practice_focus_section"] = canon_section
+        _set_focus(canon_section)
         return canon_section
 
     if live:
-        session["practice_focus_section"] = live
+        _set_focus(live)
         return live
 
     fallback = choices[0] if choices else ""
     if fallback:
-        session["practice_focus_section"] = fallback
+        _set_focus(fallback)
     return fallback
 
 

@@ -10596,8 +10596,14 @@ if _studio_page == "practice":
 
         coerce_practice_focus_for_widget(st.session_state, _section_choices or None)
     except ImportError:
-        if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
-            st.session_state["practice_focus_section"] = _section_choices[0]
+        try:
+            from session_widget_safe import safe_session_assign
+
+            if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
+                safe_session_assign(st.session_state, "practice_focus_section", _section_choices[0])
+        except ImportError:
+            if _section_choices and st.session_state.get("practice_focus_section") not in _section_choices:
+                st.session_state["practice_focus_section"] = _section_choices[0]
 
     _practice_display_label_map: dict[str, str] = dict(
         (song_data or {}).get("_beginner_display_labels") or {}

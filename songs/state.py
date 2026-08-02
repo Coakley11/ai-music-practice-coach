@@ -1074,6 +1074,16 @@ def apply_pick_key(
             pass
     if persist:
         try:
+            from music_workspace_restore_mode import (
+                queue_pending_user_edit,
+                user_edit_tracking_enabled,
+            )
+
+            if not user_edit_tracking_enabled(st.session_state):
+                queue_pending_user_edit(st.session_state, "active_catalog_pick_key", reason="song_pick")
+        except ImportError:
+            pass
+        try:
             from music_persistent_state import clear_music_ephemeral_default_song
 
             clear_music_ephemeral_default_song(st.session_state)

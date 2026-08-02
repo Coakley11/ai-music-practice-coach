@@ -82,6 +82,13 @@ def is_active_song_locally_dirty(session: dict[str, Any]) -> bool:
 
 
 def mark_active_song_local_edit(session: dict[str, Any]) -> None:
+    try:
+        from music_workspace_restore_mode import should_record_user_local_dirty
+
+        if not should_record_user_local_dirty(session):
+            return
+    except ImportError:
+        pass
     session[ACTIVE_SONG_DIRTY_KEY] = True
     session[ACTIVE_SONG_LOCAL_EDIT_TS_KEY] = _utc_now_iso()
 
@@ -1528,8 +1535,17 @@ def apply_cloud_active_song_state_if_allowed(
 ) -> bool:
     """Apply cloud/disk active song only when this device has no local song edits."""
     if is_active_song_locally_dirty(session):
-        session["_active_song_restore_skipped_reason"] = "local_dirty"
-        return False
+        try:
+            from music_workspace_restore_mode import workspace_restore_in_progress
+
+            if workspace_restore_in_progress(session):
+                clear_active_song_local_edit(session)
+            else:
+                session["_active_song_restore_skipped_reason"] = "local_dirty"
+                return False
+        except ImportError:
+            session["_active_song_restore_skipped_reason"] = "local_dirty"
+            return False
     try:
         from music_restore_phase import authoritative_restore_in_progress
 

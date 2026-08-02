@@ -319,8 +319,11 @@ def force_music_workspace_save(
         ss.pop("_music_workspace_save_pending_retry", None)
         ss["_music_force_save_ok"] = True
         ss.pop("_music_force_save_blocked_reason", None)
-        from suite_user_persistence import _utc_now_iso
+        from suite_user_persistence import _utc_now_iso, clear_workspace_autosave_block
 
+        ss.pop("_suite_workspace_sync_skipped_no_apply", None)
+        ss.pop("_suite_autosave_block_reason", None)
+        clear_workspace_autosave_block(st, APP_ID)
         ss["_suite_persist_last_save_at"] = _utc_now_iso()
         return True
 
@@ -332,8 +335,10 @@ def force_music_workspace_save(
         ss.pop("_music_workspace_save_pending_retry", None)
         ss["_music_force_save_ok"] = True
         ss.pop("_music_force_save_blocked_reason", None)
-        from suite_user_persistence import _utc_now_iso
+        from suite_user_persistence import _utc_now_iso, clear_workspace_autosave_block
 
+        ss.pop("_suite_autosave_block_reason", None)
+        clear_workspace_autosave_block(st, APP_ID)
         ss["_suite_persist_last_save_at"] = _utc_now_iso()
         return True
 

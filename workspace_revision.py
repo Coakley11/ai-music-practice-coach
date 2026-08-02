@@ -59,7 +59,13 @@ def collect_workspace_revision_diagnostics(session: dict[str, Any]) -> dict[str,
         "last_cloud_hydrate_timestamp": session.get("_suite_persist_last_restore_at"),
         "save_source_session": session.get("_suite_persist_last_save_source"),
         "cloud_state_newer_than_local": session.get("_suite_persist_content_resync_needed"),
-        "cloud_state_applied": bool(session.get("_suite_persist_restore_applied")),
+        "cloud_state_applied": bool(
+            session.get("_music_authoritative_payload_applied")
+            or (
+                session.get("_suite_persist_restore_applied")
+                and session.get("_music_selected_payload_revision") is not None
+            )
+        ),
         "conflict_detected": bool(session.get("_suite_workspace_conflict_detected")),
         "conflict_resolution_result": session.get("_suite_workspace_conflict_resolution"),
     }

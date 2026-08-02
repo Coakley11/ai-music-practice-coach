@@ -231,6 +231,16 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
     except Exception:
         workspace_id = str(session.get("_suite_persist_app_id") or APP_ID)
     account_hint = str(session.get("_suite_cloud_user_hint") or session.get("user_email") or "(unknown)")
+    restore_mode_diag: dict[str, Any] = {}
+    try:
+        from music_workspace_restore_mode import collect_restore_mode_diagnostics
+
+        restore_mode_diag = collect_restore_mode_diagnostics(session)
+        hint = str(restore_mode_diag.get("account_hint") or "").strip()
+        if hint and hint not in ("(unknown)", ""):
+            account_hint = hint
+    except ImportError:
+        pass
 
     time_pitch_saved = practice_audit.get("time_pitch_view_saved") or _saved_from_envelope(
         session, "music_workspace_state", "practice_workspace_state", "time_pitch_view"
@@ -274,9 +284,9 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         "autosave_enabled": not autosave_blocked,
         "autosave_block_reason": session.get("_suite_autosave_block_reason"),
         "local_dirty_flags": {
-            "active_song": bool(session.get("_active_song_local_dirty")),
-            "practice": bool(session.get("_practice_local_dirty")),
-            "studio_nav": bool(session.get("_studio_nav_local_dirty")),
+            "active_song": bool(session.get("active_song_state_dirty")),
+            "practice": bool(session.get("practice_state_dirty")),
+            "studio_nav": bool(session.get("studio_nav_state_dirty")),
             "mission": bool(session.get("_mission_workspace_local_dirty")),
         },
         "last_save_reason": session.get("_music_build_save_reason"),
@@ -362,6 +372,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         "family_spelling_final": family_spelling_final or "(none)",
         "loaded_workspace_revision": session.get("_suite_cloud_workspace_revision"),
         "applied_workspace_revision": session.get("_suite_applied_workspace_revision"),
+        **restore_mode_diag,
     }
 
 

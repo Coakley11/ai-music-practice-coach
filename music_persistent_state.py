@@ -3457,12 +3457,15 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         pre_save_owner = prior.get("pre_save_page_owner")
         save_tx: dict[str, Any] = {}
         hydration_diag: dict[str, Any] = {}
+        restore_mode_diag: dict[str, Any] = {}
         try:
             from music_workspace_cloud_save import collect_save_transaction_diagnostics
             from music_workspace_cloud_hydration import collect_hydration_diagnostics
+            from music_workspace_restore_mode import collect_restore_mode_diagnostics
 
             save_tx = collect_save_transaction_diagnostics(ss)
             hydration_diag = collect_hydration_diagnostics(ss)
+            restore_mode_diag = collect_restore_mode_diagnostics(ss)
             if save_tx.get("force_save_block_reason"):
                 backing_trace["force_save_block_reason"] = save_tx["force_save_block_reason"]
             if save_tx.get("cloud_write_error"):
@@ -3504,6 +3507,7 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             **backing_trace,
             **save_tx,
             **hydration_diag,
+            **restore_mode_diag,
         )
     except Exception:
         pass

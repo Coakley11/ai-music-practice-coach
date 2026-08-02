@@ -8722,14 +8722,20 @@ def render_section_jump_bar(
         return None
     try:
         from practice_state import normalize_practice_focus_section
+        from session_widget_safe import safe_session_assign
 
         current = normalize_practice_focus_section(session_state.get(state_key))
         if current:
-            session_state[state_key] = current
+            safe_session_assign(session_state, state_key, current)
     except ImportError:
         current = session_state.get(state_key)
     if current not in options:
-        session_state[state_key] = options[0]
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(session_state, state_key, options[0])
+        except ImportError:
+            session_state[state_key] = options[0]
         current = options[0]
 
     def _label(name: str) -> str:
