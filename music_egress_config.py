@@ -63,6 +63,8 @@ _STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
         "time_pitch_view_change",
         "multitrack_upload",
         "multitrack_layer_save",
+        "startup_migration",
+        "canonical_repair",
     }
 )
 

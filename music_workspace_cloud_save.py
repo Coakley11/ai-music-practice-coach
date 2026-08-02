@@ -38,6 +38,8 @@ _USER_FORCE_REASONS: frozenset[str] = frozenset(
         "multitrack_upload",
         "multitrack_layer_save",
         "force_autosave",
+        "startup_migration",
+        "canonical_repair",
     }
 )
 
@@ -186,6 +188,14 @@ def force_music_workspace_save(
 
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
+    try:
+        from music_startup_save_suppression import gate_music_workspace_save_at_startup
+
+        skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
+        if skip_save:
+            return False
+    except ImportError:
+        pass
     dirty_fields = _workspace_dirty_field_names(ss)
     dirty_before = bool(ss.get(_local_dirty_key(APP_ID))) or bool(dirty_fields)
     try:

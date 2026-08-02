@@ -385,6 +385,12 @@ def finalize_music_startup_restore(
         pass
 
     ss[MUSIC_STARTUP_RESTORE_FINALIZED_KEY] = True
+    try:
+        from music_startup_save_suppression import finalize_startup_canonical_alignment
+
+        finalize_startup_canonical_alignment(st)
+    except ImportError:
+        pass
     if (
         complete_music_restore_phase is not None
         and not music_restore_phase_complete(ss)
@@ -444,6 +450,14 @@ def _record_music_startup_restore_diag(
     except ImportError:
         pass
 
+    startup_suppress: dict[str, Any] = {}
+    try:
+        from music_startup_save_suppression import collect_startup_save_suppression_diagnostics
+
+        startup_suppress = collect_startup_save_suppression_diagnostics(ss)
+    except ImportError:
+        pass
+
     ss[MUSIC_STARTUP_RESTORE_DIAG_KEY] = {
         "restored_studio_page": restored_studio_page or blob_studio_page or None,
         "final_studio_page": str(ss.get("studio_page") or "").strip() or None,
@@ -458,6 +472,7 @@ def _record_music_startup_restore_diag(
         "skipped_due_to_size": mt_diag.get("skipped_due_to_size"),
         "restore_source": mt_diag.get("restore_source"),
         **workspace_diag,
+        **startup_suppress,
     }
 
 
@@ -2718,6 +2733,13 @@ def apply_music_disk_state(
         mark_workspace_blob_hydrated(ss)
     except ImportError:
         ss["_music_workspace_blob_hydrated"] = True
+    if authoritative_restore:
+        try:
+            from music_startup_save_suppression import record_hydrated_canonical_fingerprint
+
+            record_hydrated_canonical_fingerprint(ss, payload)
+        except ImportError:
+            pass
     try:
         from workspace_revision import stamp_applied_workspace_revision
 
@@ -3047,6 +3069,16 @@ def maybe_flush_pending_practice_edits(st: Any) -> None:
 
 def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> bool:
     """Canonical active-song flush + cross-device force save (Phase C)."""
+    ss = st.session_state
+    try:
+        from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
+
+        suppress, why = should_suppress_music_workspace_save(ss, reason)
+        if suppress:
+            record_startup_save_suppressed(ss, why)
+            return False
+    except ImportError:
+        pass
     try:
         from active_song_state import (
             ACTIVE_SONG_PENDING_SYNC_KEY,
@@ -3068,7 +3100,7 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         should_flush = reason not in ("cpl_draft_edit",) and (
             ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
             or is_active_song_locally_dirty(ss)
-            or reason in ("song_edit", "display_key_change", "capo_widget")
+            or reason in ("display_key_change", "capo_widget")
         )
         if should_flush:
             flush_active_song_edits(ss, reason=reason)
@@ -3083,6 +3115,11 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
 def maybe_flush_pending_active_song_edits(st: Any) -> None:
     try:
         from active_song_state import ACTIVE_SONG_PENDING_SYNC_KEY
+        from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
+
+        if should_suppress_music_workspace_save(st.session_state, "song_edit")[0]:
+            record_startup_save_suppressed(st.session_state, "pending_active_song_flush_suppressed")
+            return
 
         if st.session_state.get(ACTIVE_SONG_PENDING_SYNC_KEY):
             flush_active_song_edits_and_save(st, reason="song_edit")

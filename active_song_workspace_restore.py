@@ -353,9 +353,9 @@ def apply_canonical_active_song_from_workspace(
 
     if migration_result.startswith("migrated") and persist_migration:
         try:
-            from songs.state import persist_music_local_state
+            from music_persistent_state import force_save_music_state
 
-            persist_music_local_state(st)
+            force_save_music_state(st, reason="startup_migration")
             diag["active_song_migration_persisted"] = True
         except ImportError:
             pass

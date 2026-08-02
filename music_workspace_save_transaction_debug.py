@@ -313,6 +313,15 @@ def render_music_workspace_save_transaction_debug(st: Any) -> None:
                 continue
             st.text(f"{key}: {_display(summary.get(key))}")
 
+        try:
+            from music_startup_save_suppression import collect_startup_save_suppression_diagnostics
+
+            st.markdown("**Startup save suppression**")
+            for label, val in collect_startup_save_suppression_diagnostics(ss).items():
+                st.text(f"{label}: {_display(val)}")
+        except ImportError:
+            pass
+
         history = _history_for_current_run(ss)
         if history:
             st.markdown("**This rerun — transaction history**")
