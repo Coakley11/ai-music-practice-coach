@@ -246,19 +246,13 @@ def force_music_workspace_save(
         return False
 
     record_save_transaction(ss, envelope_built=True, envelope_revision_before=rev_before)
-    try:
-        from workspace_revision import workspace_revision_from_blob
 
-        rev_after_write = workspace_revision_from_blob(state)
-        record_save_transaction(ss, envelope_revision_after=rev_after_write)
-    except ImportError:
-        rev_after_write = rev_before
+    from music_workspace_canonical_fingerprint import workspace_canonical_content_fingerprint
+
+    canonical_fp = workspace_canonical_content_fingerprint(state)
 
     import hashlib
     import json
-
-    blob = json.dumps(state, sort_keys=True, default=str)
-    fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
 
     egress_plan = None
     egress_tx = None
@@ -268,7 +262,7 @@ def force_music_workspace_save(
         egress_tx = evaluate_strict_egress_transaction(
             ss,
             raw_save_reason=r,
-            payload_fp=fp,
+            payload_fp=canonical_fp,
             bypass_defer=bypass_strict_defer,
             st=st,
         )
@@ -286,12 +280,88 @@ def force_music_workspace_save(
             egress_plan = plan_strict_egress_cloud_write(
                 ss,
                 save_reason=r,
-                payload_fp=fp,
+                payload_fp=canonical_fp,
                 bypass_defer=bypass_strict_defer,
             )
             record_save_transaction(ss, **egress_plan.diag())
         except ImportError:
             pass
+
+    payload_changed = False
+    if egress_tx is not None:
+        payload_changed = bool(egress_tx.extra.get("payload_changed_since_last_confirmed_save"))
+    elif egress_plan is not None:
+        payload_changed = bool(egress_plan.payload_changed_since_last_confirmed_save)
+
+    plan_action = ""
+    if egress_tx is not None:
+        plan_action = str(egress_tx.strict_egress_plan_action or "")
+    elif egress_plan is not None:
+        plan_action = "duplicate_skip" if egress_plan.duplicate_write_skipped else (
+            "defer" if egress_plan.defer_cloud_write else (
+                "immediate" if egress_plan.allow_cloud_write else "deny"
+            )
+        )
+
+    duplicate_skipped = plan_action == "duplicate_skip" or bool(
+        egress_plan is not None and getattr(egress_plan, "duplicate_write_skipped", False)
+    )
+    deferred_cloud = plan_action == "defer" or bool(
+        egress_plan is not None and getattr(egress_plan, "defer_cloud_write", False)
+    )
+    strict_approved = bool(egress_tx is not None and egress_tx.strict_egress_approved) or bool(
+        egress_plan is not None and egress_plan.allow_cloud_write and not egress_plan.defer_cloud_write
+    )
+
+    if duplicate_skipped:
+        from music_egress_strict_save import last_confirmed_cloud_fingerprint
+
+        if last_confirmed_cloud_fingerprint(ss) == canonical_fp and ss.get("_suite_persist_last_save_cloud"):
+            saved_disk = bool(save_user_state(APP_ID, state))
+            record_save_transaction(
+                ss,
+                disk_write_attempted=True,
+                disk_write_succeeded=saved_disk,
+                cloud_write_attempted=False,
+                cloud_write_succeeded=True,
+                cloud_readback_matches=True,
+                cloud_confirmed=True,
+                revision_advanced=True,
+                duplicate_write_skipped=True,
+                canonical_content_fingerprint=canonical_fp,
+                suite_persist_last_save_cloud=True,
+                dirty_cleared_after_confirmed_save=True,
+            )
+            ss["_music_force_save_ok"] = True
+            ss.pop("_music_force_save_blocked_reason", None)
+            _snapshot_save_transaction_debug(st, ss, event="duplicate_skip_preserve_confirmed")
+            return True
+
+    if payload_changed and strict_approved and not duplicate_skipped and not deferred_cloud:
+        from workspace_revision import (
+            reserve_workspace_revision_for_canonical_fp,
+            stamp_workspace_revision_into_state,
+        )
+
+        next_rev = reserve_workspace_revision_for_canonical_fp(ss, state, canonical_fp)
+        state = stamp_workspace_revision_into_state(state, next_rev)
+        record_save_transaction(
+            ss,
+            envelope_revision_after=next_rev,
+            canonical_content_fingerprint=canonical_fp,
+            reserved_write_revision=next_rev,
+        )
+
+    try:
+        from workspace_revision import workspace_revision_from_blob
+
+        rev_after_write = workspace_revision_from_blob(state)
+        record_save_transaction(ss, envelope_revision_after=rev_after_write)
+    except ImportError:
+        rev_after_write = rev_before
+
+    blob = json.dumps(state, sort_keys=True, default=str)
+    fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
 
     saved_disk = bool(save_user_state(APP_ID, state))
     record_save_transaction(ss, disk_write_attempted=True, disk_write_succeeded=saved_disk)
@@ -303,24 +373,10 @@ def force_music_workspace_save(
     cloud_read_count = 0
     if cloud_required:
         try:
-            plan_action = ""
-            if egress_tx is not None:
-                plan_action = str(egress_tx.strict_egress_plan_action or "")
-            elif egress_plan is not None:
-                plan_action = "duplicate_skip" if egress_plan.duplicate_write_skipped else (
-                    "defer" if egress_plan.defer_cloud_write else (
-                        "immediate" if egress_plan.allow_cloud_write else "deny"
-                    )
-                )
-
-            if plan_action == "duplicate_skip" or (
-                egress_plan is not None and getattr(egress_plan, "duplicate_write_skipped", False)
-            ):
+            if duplicate_skipped:
                 cloud_error = ""
                 record_save_transaction(ss, cloud_write_attempted=False, force_save_block_reason=None)
-            elif plan_action == "defer" or (
-                egress_plan is not None and getattr(egress_plan, "defer_cloud_write", False)
-            ):
+            elif deferred_cloud:
                 ss[_local_dirty_key(APP_ID)] = True
                 record_save_transaction(
                     ss,
@@ -346,6 +402,7 @@ def force_music_workspace_save(
                     )
                 )
                 if saved_cloud:
+                    cloud_error = ""
                     try:
                         from music_egress_strict_save import bump_cloud_write_count
 
@@ -371,6 +428,7 @@ def force_music_workspace_save(
                     )
                 )
                 if saved_cloud:
+                    cloud_error = ""
                     try:
                         from music_egress_strict_save import bump_cloud_write_count
 
@@ -402,13 +460,22 @@ def force_music_workspace_save(
     rev_after = rev_after_write
     readback_ok = False
     authoritative_upsert = False
-    revision_advanced = rev_after > rev_before or (rev_before == 0 and rev_after >= 1)
-    duplicate_skipped = bool(
-        egress_tx is not None and egress_tx.strict_egress_plan_action == "duplicate_skip"
-    ) or bool(egress_plan is not None and getattr(egress_plan, "duplicate_write_skipped", False))
-    deferred_cloud = bool(
-        egress_tx is not None and egress_tx.strict_egress_plan_action == "defer"
-    ) or bool(egress_plan is not None and getattr(egress_plan, "defer_cloud_write", False))
+    try:
+        from workspace_revision import LAST_CONFIRMED_REVISION_KEY
+
+        last_confirmed_rev = int(ss.get(LAST_CONFIRMED_REVISION_KEY) or 0)
+    except (TypeError, ValueError):
+        last_confirmed_rev = 0
+    revision_advanced = (
+        rev_after > rev_before
+        or (rev_before == 0 and rev_after >= 1)
+        or (payload_changed and rev_after > last_confirmed_rev)
+    )
+    if duplicate_skipped:
+        from music_egress_strict_save import last_confirmed_cloud_fingerprint
+
+        if last_confirmed_cloud_fingerprint(ss) == canonical_fp:
+            revision_advanced = True
 
     if duplicate_skipped and saved_disk:
         readback_ok = True
@@ -439,7 +506,12 @@ def force_music_workspace_save(
                 bump_cloud_read_count = lambda _s: 1  # type: ignore[assignment,misc]
 
             if use_authoritative and upsert_ok:
-                readback_ok = revision_advanced and bool(state)
+                cloud_diag = _merge_cloud_save_diagnostics(ss)
+                try:
+                    written_rev = int(cloud_diag.get("cloud_payload_revision") or rev_after)
+                except (TypeError, ValueError):
+                    written_rev = rev_after
+                readback_ok = revision_advanced and written_rev == rev_after and bool(state)
                 authoritative_upsert = True
                 record_save_transaction(
                     ss,
@@ -518,8 +590,8 @@ def force_music_workspace_save(
         cloud_read_count_for_transaction=int(ss.get("_music_strict_tx_cloud_read_count") or cloud_read_count),
     )
 
+    prior_save_cloud = bool(ss.get("_suite_persist_last_save_cloud"))
     ss["_suite_persist_last_save_disk"] = saved_disk
-    ss["_suite_persist_last_save_cloud"] = False
     ss["_suite_persist_last_save_reason"] = r
     if cloud_error and not saved_cloud:
         ss["_suite_persist_last_cloud_error"] = cloud_error
@@ -552,6 +624,23 @@ def force_music_workspace_save(
 
     if cloud_required:
         if not cloud_confirmed:
+            if duplicate_skipped and prior_save_cloud:
+                from music_egress_strict_save import last_confirmed_cloud_fingerprint
+
+                if last_confirmed_cloud_fingerprint(ss) == canonical_fp:
+                    ss["_suite_persist_last_save_cloud"] = True
+                    ss["_music_force_save_ok"] = True
+                    ss.pop("_music_force_save_blocked_reason", None)
+                    record_save_transaction(
+                        ss,
+                        cloud_confirmed=True,
+                        suite_persist_last_save_cloud=True,
+                        dirty_cleared_after_confirmed_save=True,
+                        retry_required=False,
+                    )
+                    _snapshot_save_transaction_debug(st, ss, event="duplicate_skip_preserve_confirmed")
+                    return True
+            ss["_suite_persist_last_save_cloud"] = False
             ss[_local_dirty_key(APP_ID)] = True
             ss["_music_workspace_save_pending_retry"] = True
             ss["_music_force_save_ok"] = False
@@ -582,7 +671,13 @@ def force_music_workspace_save(
         try:
             from music_egress_strict_save import note_confirmed_cloud_fingerprint
 
-            note_confirmed_cloud_fingerprint(ss, fp)
+            note_confirmed_cloud_fingerprint(ss, canonical_fp)
+        except ImportError:
+            pass
+        try:
+            from workspace_revision import note_confirmed_workspace_revision
+
+            note_confirmed_workspace_revision(ss, state)
         except ImportError:
             pass
         ss[_local_dirty_key(APP_ID)] = False

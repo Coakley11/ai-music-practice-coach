@@ -83,8 +83,10 @@ def save_reason_uses_strict_debounce(save_reason: str) -> bool:
 
 
 def workspace_payload_fingerprint(state: dict[str, Any]) -> str:
-    blob = json.dumps(state, sort_keys=True, default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
+    """Canonical content fingerprint (revision/timestamps excluded)."""
+    from music_workspace_canonical_fingerprint import workspace_canonical_content_fingerprint
+
+    return workspace_canonical_content_fingerprint(state)
 
 
 def last_confirmed_cloud_fingerprint(session: dict[str, Any]) -> str:
