@@ -168,6 +168,17 @@ def _record_force_save_early_return(
         )
     except ImportError:
         pass
+    try:
+        from music_page_cloud_durability_trace import record_force_save_early_exit
+
+        record_force_save_early_exit(
+            ss,
+            save_reason=str(save_reason or ""),
+            exit_stage=stage,
+            exit_reason=str(reason or ""),
+        )
+    except ImportError:
+        pass
     _snapshot_save_transaction_debug(st, ss, event=f"force_save_early_return:{stage}")
 
 
@@ -250,6 +261,12 @@ def force_music_workspace_save(
 
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
+    try:
+        from music_page_cloud_durability_trace import record_force_save_durability_entry
+
+        record_force_save_durability_entry(ss, reason=r, stage="entry")
+    except ImportError:
+        pass
     try:
         from music_page_save_pipeline_trace import force_save_impl_marker, record_pipeline_event
 

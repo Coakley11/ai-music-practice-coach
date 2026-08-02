@@ -293,6 +293,17 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         )
     except ImportError:
         pass
+    try:
+        from music_page_cloud_durability_trace import begin_navigation_page_change_transaction
+
+        begin_navigation_page_change_transaction(
+            session_state,
+            clicked_page=page_id,
+            prior_page=current,
+            origin="user_navigation",
+        )
+    except Exception:
+        pass
     _nav_ss = session_state
 
     class _St:

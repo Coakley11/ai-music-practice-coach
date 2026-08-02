@@ -7,8 +7,9 @@ import uuid
 from typing import Any
 
 PAGE_CLOUD_DURABILITY_TRACE_KEY = "_music_page_cloud_durability_trace"
-PAGE_CLOUD_DURABILITY_IMPL_MARKER = "music_page_cloud_durability_trace:v1"
+PAGE_CLOUD_DURABILITY_IMPL_MARKER = "music_page_cloud_durability_trace:v2-tx-retention"
 PAGE_CLOUD_DURABILITY_UI_MARKER = "PAGE_CLOUD_DURABILITY_TRACE_IMPL: 3ff4251-v1"
+_MAX_PAGE_CHANGE_TRANSACTIONS = 5
 
 AUTHORITATIVE_CONFIRMED_KEY = "_music_page_change_authoritative_confirmed"
 AUTHORITATIVE_CONFIRMATION_DETAIL_KEY = "_music_page_change_authoritative_confirmation"
@@ -30,12 +31,17 @@ def durability_trace_enabled(session: dict[str, Any]) -> bool:
         return False
 
 
-def _bucket(session: dict[str, Any]) -> dict[str, Any]:
-    raw = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
-    if isinstance(raw, dict):
-        return raw
-    fresh: dict[str, Any] = {
+def _fresh_bucket(session: dict[str, Any], *, reset_stage: str) -> dict[str, Any]:
+    prev = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
+    reset_count = 0
+    if isinstance(prev, dict):
+        try:
+            reset_count = int(prev.get("journal_reset_count") or 0)
+        except (TypeError, ValueError):
+            reset_count = 0
+    return {
         "impl_marker": PAGE_CLOUD_DURABILITY_IMPL_MARKER,
+        "journal_storage": "session_state",
         "transactions": [],
         "active_transaction_id": None,
         "subsequent_writes": [],
@@ -43,9 +49,223 @@ def _bucket(session: dict[str, Any]) -> dict[str, Any]:
         "failure_class": None,
         "first_mismatch_stage": None,
         "violations": [],
+        "transaction_start_hook_called": False,
+        "journal_reset_count": reset_count + 1,
+        "last_journal_reset_stage": reset_stage,
+        "transaction_lost_across_rerun": False,
+        "recovered_transaction": False,
     }
-    session[PAGE_CLOUD_DURABILITY_TRACE_KEY] = fresh
-    return fresh
+
+
+def _ensure_bucket(session: dict[str, Any]) -> dict[str, Any]:
+    raw = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
+    if not isinstance(raw, dict):
+        fresh = _fresh_bucket(session, reset_stage="init_non_dict" if raw is not None else "init_missing")
+        session[PAGE_CLOUD_DURABILITY_TRACE_KEY] = fresh
+        return fresh
+    raw.setdefault("impl_marker", PAGE_CLOUD_DURABILITY_IMPL_MARKER)
+    raw.setdefault("journal_storage", "session_state")
+    if not isinstance(raw.get("transactions"), list):
+        raw["transactions"] = list(raw.get("transactions") or [])
+    raw.setdefault("active_transaction_id", None)
+    raw.setdefault("subsequent_writes", [])
+    raw.setdefault("violations", [])
+    raw.setdefault("transaction_start_hook_called", False)
+    raw.setdefault("journal_reset_count", 0)
+    raw.setdefault("last_journal_reset_stage", None)
+    raw.setdefault("transaction_lost_across_rerun", False)
+    raw.setdefault("recovered_transaction", False)
+    return raw
+
+
+def _bucket(session: dict[str, Any]) -> dict[str, Any]:
+    return _ensure_bucket(session)
+
+
+def _trim_transactions(bucket: dict[str, Any]) -> None:
+    txs = bucket.get("transactions")
+    if not isinstance(txs, list) or len(txs) <= _MAX_PAGE_CHANGE_TRANSACTIONS:
+        return
+    del txs[: len(txs) - _MAX_PAGE_CHANGE_TRANSACTIONS]
+
+
+def _phase1_genuine_user_page_write(session: dict[str, Any]) -> bool:
+    try:
+        from music_phase1_write_journal import PHASE1_WRITE_JOURNAL_KEY, USER_ORIGINS, phase1_journal_enabled
+    except ImportError:
+        return False
+    if not phase1_journal_enabled(session):
+        return False
+    j = session.get(PHASE1_WRITE_JOURNAL_KEY)
+    if not isinstance(j, dict):
+        return False
+    for row in j.get("page_writes") or []:
+        if not isinstance(row, dict):
+            continue
+        origin = str(row.get("origin") or row.get("reason") or "").strip()
+        if origin in USER_ORIGINS or origin == "user_navigation":
+            return True
+    summary = j.get("final_summary")
+    if isinstance(summary, dict):
+        clicked = str(summary.get("clicked_page") or "").strip()
+        origin = str(summary.get("page_change_origin") or "").strip()
+        if clicked and origin in USER_ORIGINS | {"user_navigation"}:
+            return True
+    prev = session.get("_phase1_prev_run_summary")
+    if isinstance(prev, dict):
+        clicked = str(prev.get("clicked_page") or "").strip()
+        origin = str(prev.get("page_change_origin") or "").strip()
+        if clicked and origin in USER_ORIGINS | {"user_navigation"}:
+            return True
+    if str(session.get("_music_user_navigated_page_this_run") or "").strip():
+        return True
+    return False
+
+
+def evaluate_durability_transaction_integrity(session: dict[str, Any]) -> dict[str, Any]:
+    bucket = _ensure_bucket(session)
+    txs = bucket.get("transactions") if isinstance(bucket.get("transactions"), list) else []
+    phase1_nav = _phase1_genuine_user_page_write(session)
+    lost = phase1_nav and not txs
+    if lost:
+        bucket["transaction_lost_across_rerun"] = True
+        prior = bucket.get("violations") if isinstance(bucket.get("violations"), list) else []
+        if not any(isinstance(v, dict) and v.get("code") == "PAGE_CLOUD_DURABILITY_TRANSACTION_LOST" for v in prior):
+            _record_violation(
+            session,
+            code="PAGE_CLOUD_DURABILITY_TRANSACTION_LOST",
+            detail={
+                "phase1_user_page_write": True,
+                "transaction_count": 0,
+                "run_seq": session.get("_script_run_seq"),
+            },
+        )
+    return {
+        "transaction_start_hook_called": bool(bucket.get("transaction_start_hook_called")),
+        "transaction_count": len(txs),
+        "journal_storage": bucket.get("journal_storage") or "session_state",
+        "journal_reset_count": bucket.get("journal_reset_count"),
+        "last_journal_reset_stage": bucket.get("last_journal_reset_stage"),
+        "transaction_lost_across_rerun": bool(bucket.get("transaction_lost_across_rerun") or lost),
+        "recovered_transaction": bool(bucket.get("recovered_transaction")),
+        "active_transaction_id": bucket.get("active_transaction_id"),
+    }
+
+
+def _set_active_transaction_status(session: dict[str, Any], status: str) -> None:
+    tx = _active_tx(session)
+    if tx:
+        tx["status"] = status
+
+
+def _complete_active_transaction(session: dict[str, Any], status: str) -> None:
+    _set_active_transaction_status(session, status)
+    bucket = _ensure_bucket(session)
+    bucket["active_transaction_id"] = None
+
+
+def begin_navigation_page_change_transaction(
+    session: dict[str, Any],
+    *,
+    clicked_page: str,
+    prior_page: str,
+    origin: str = "user_navigation",
+) -> str:
+    """Earliest page_change durability hook — must run before save suppression."""
+    if not durability_trace_enabled(session):
+        return ""
+    bucket = _ensure_bucket(session)
+    bucket["transaction_start_hook_called"] = True
+    run_seq = session.get("_script_run_seq")
+    tx_id = f"nav-{run_seq or 0}-{uuid.uuid4().hex[:8]}"
+    tx: dict[str, Any] = {
+        "transaction_id": tx_id,
+        "status": "navigation_recorded",
+        "save_reason": "page_change",
+        "run_seq": run_seq,
+        "clicked_page": str(clicked_page or "").strip().lower(),
+        "prior_page": str(prior_page or "").strip().lower(),
+        "origin": str(origin or "user_navigation").strip(),
+        "transaction_start_stage": "navigate_studio_page",
+        "transaction_sequence": session.get("_music_page_change_transaction_seq"),
+        "cloud_context": _cloud_context(session),
+        "revision": {},
+        "force_save_events": [],
+        "attempted_upsert": None,
+        "supabase_response": None,
+        "authoritative_refetch": None,
+        "confirmation": None,
+        "legacy_confirmed_revision": session.get("_music_last_confirmed_cloud_revision"),
+    }
+    bucket.setdefault("transactions", []).append(tx)
+    _trim_transactions(bucket)
+    bucket["active_transaction_id"] = tx_id
+    return tx_id
+
+
+def record_force_save_durability_entry(
+    session: dict[str, Any],
+    *,
+    reason: str,
+    stage: str = "entry",
+) -> None:
+    if not durability_trace_enabled(session):
+        return
+    r = str(reason or "").strip()
+    bucket = _ensure_bucket(session)
+    tx = _active_tx(session)
+    if not tx and r == "page_change":
+        begin_page_change_cloud_transaction(
+            session,
+            save_reason="page_change",
+            transaction_recovered_at_force_save=True,
+        )
+        bucket["recovered_transaction"] = True
+        tx = _active_tx(session)
+    if not tx:
+        return
+    event: dict[str, Any] = {
+        "stage": stage,
+        "force_save_entered": True,
+        "reason": r,
+        "run_seq": session.get("_script_run_seq"),
+        "pending_page": session.get("_suite_page_change_save_page"),
+        "current_page": session.get("studio_page"),
+        "user_nav_page_this_run": session.get("_music_user_navigated_page_this_run"),
+    }
+    try:
+        from music_startup_save_suppression import (
+            STARTUP_SUPPRESSION_ARMED_KEY,
+            STARTUP_SUPPRESSION_RELEASED_KEY,
+            collect_startup_save_suppression_diagnostics,
+        )
+
+        event["startup_suppression_armed"] = session.get(STARTUP_SUPPRESSION_ARMED_KEY)
+        event["startup_suppression_released"] = session.get(STARTUP_SUPPRESSION_RELEASED_KEY)
+        event["startup_suppression_diag"] = collect_startup_save_suppression_diagnostics(session)
+    except ImportError:
+        pass
+    tx.setdefault("force_save_events", []).append(event)
+    if tx.get("status") == "navigation_recorded" and r == "page_change":
+        tx["status"] = "save_entered"
+
+
+def record_force_save_early_exit(
+    session: dict[str, Any],
+    *,
+    save_reason: str,
+    exit_stage: str,
+    exit_reason: str,
+) -> None:
+    if not durability_trace_enabled(session):
+        return
+    if str(save_reason or "").strip() != "page_change":
+        return
+    record_force_save_durability_entry(session, reason="page_change", stage=f"early_return:{exit_stage}")
+    _set_active_transaction_status(session, "save_blocked_before_payload")
+    tx = _active_tx(session)
+    if tx:
+        tx["early_exit"] = {"stage": exit_stage, "reason": exit_reason}
 
 
 def page_fields_from_state(state: dict[str, Any] | None) -> dict[str, str]:
@@ -128,33 +348,48 @@ def begin_page_change_cloud_transaction(
     save_reason: str,
     run_seq: Any = None,
     transaction_sequence: Any = None,
+    transaction_recovered_at_force_save: bool = False,
 ) -> str:
     if not durability_trace_enabled(session):
         return ""
     if str(save_reason or "").strip() != "page_change":
         return ""
-    bucket = _bucket(session)
+    bucket = _ensure_bucket(session)
+    existing = _active_tx(session)
+    if existing:
+        existing["save_reason"] = "page_change"
+        if transaction_recovered_at_force_save:
+            existing["transaction_recovered_at_force_save"] = True
+        return str(existing.get("transaction_id") or "")
     tx_id = (
         f"pc-{run_seq or session.get('_script_run_seq')}-"
         f"{transaction_sequence or session.get('_music_page_change_transaction_seq')}-"
         f"{uuid.uuid4().hex[:8]}"
     )
+    stage = "force_music_workspace_save" if transaction_recovered_at_force_save else "page_change_save"
     tx: dict[str, Any] = {
         "transaction_id": tx_id,
+        "status": "navigation_recorded" if transaction_recovered_at_force_save else "save_entered",
         "save_reason": "page_change",
         "run_seq": run_seq if run_seq is not None else session.get("_script_run_seq"),
         "transaction_sequence": transaction_sequence
         if transaction_sequence is not None
         else session.get("_music_page_change_transaction_seq"),
+        "transaction_start_stage": stage,
+        "transaction_recovered_at_force_save": bool(transaction_recovered_at_force_save),
         "cloud_context": _cloud_context(session),
         "revision": {},
+        "force_save_events": [],
         "attempted_upsert": None,
         "supabase_response": None,
         "authoritative_refetch": None,
         "confirmation": None,
         "legacy_confirmed_revision": session.get("_music_last_confirmed_cloud_revision"),
     }
+    if transaction_recovered_at_force_save:
+        bucket["recovered_transaction"] = True
     bucket.setdefault("transactions", []).append(tx)
+    _trim_transactions(bucket)
     bucket["active_transaction_id"] = tx_id
     return tx_id
 
@@ -219,6 +454,7 @@ def record_attempted_upsert(
         "pages": page_fields_from_state(state),
         "revision": _revision_from_state(state),
     }
+    _set_active_transaction_status(session, "payload_built")
 
 
 def record_supabase_response(session: dict[str, Any], *, cloud_result_diag: dict[str, Any] | None) -> None:
@@ -237,6 +473,7 @@ def record_supabase_response(session: dict[str, Any], *, cloud_result_diag: dict
         "failure_stage": diag.get("save_cloud_full_session_failure_stage"),
         "exception": diag.get("save_cloud_full_session_exception"),
     }
+    _set_active_transaction_status(session, "upsert_attempted")
 
 
 def record_authoritative_refetch(
@@ -323,6 +560,9 @@ def evaluate_authoritative_page_change_confirmation(
         tx_obj = _active_tx(session)
         if tx_obj:
             tx_obj["confirmation"] = detail
+            _set_active_transaction_status(
+                session, "authoritative_confirmed" if confirmed else "authoritative_not_confirmed"
+            )
         session[AUTHORITATIVE_CONFIRMATION_DETAIL_KEY] = detail
         session[AUTHORITATIVE_CONFIRMED_KEY] = confirmed
         if not confirmed:
@@ -349,7 +589,7 @@ def record_subsequent_save_attempt(
     auth = session.get(AUTHORITATIVE_CONFIRMATION_DETAIL_KEY)
     if not isinstance(auth, dict) or not auth.get("confirmed"):
         return
-    bucket = _bucket(session)
+    bucket = _ensure_bucket(session)
     confirmed_rev = auth.get("refetch_revision") or auth.get("reserved_revision")
     entry: dict[str, Any] = {
         "seq": len(bucket.get("subsequent_writes") or []) + 1,
@@ -402,7 +642,7 @@ def record_fresh_hydration(
 ) -> None:
     if not durability_trace_enabled(session):
         return
-    bucket = _bucket(session)
+    bucket = _ensure_bucket(session)
     data = payload if isinstance(payload, dict) else {}
     bucket["fresh_hydration"] = {
         "fetch_source": fetch_source,
@@ -426,7 +666,7 @@ def record_cloud_fetch_event(
 ) -> None:
     if not durability_trace_enabled(session):
         return
-    bucket = _bucket(session)
+    bucket = _ensure_bucket(session)
     bucket["last_cloud_fetch"] = {
         "app_id": app_id,
         "force": force,
@@ -437,7 +677,7 @@ def record_cloud_fetch_event(
 
 def _record_violation(session: dict[str, Any], *, code: str, detail: dict[str, Any]) -> None:
     viol = {"code": code, "detail": detail}
-    bucket = _bucket(session)
+    bucket = _ensure_bucket(session)
     bucket.setdefault("violations", []).append(viol)
     prev = session.get(_VIOLATIONS_KEY)
     if not isinstance(prev, list):
@@ -450,9 +690,11 @@ def classify_failure(session: dict[str, Any]) -> str | None:
     bucket = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
     if not isinstance(bucket, dict):
         return None
-    tx = _active_tx(session) or {}
-    attempted = tx.get("attempted_upsert")
-    supa = tx.get("supabase_response")
+    evaluate_durability_transaction_integrity(session)
+    txs = bucket.get("transactions") if isinstance(bucket.get("transactions"), list) else []
+    tx = _active_tx(session) or (txs[-1] if txs else {})
+    attempted = tx.get("attempted_upsert") if isinstance(tx, dict) else None
+    supa = tx.get("supabase_response") if isinstance(tx, dict) else None
     conf = tx.get("confirmation") or session.get(AUTHORITATIVE_CONFIRMATION_DETAIL_KEY)
     hydrate = bucket.get("fresh_hydration")
     violations = bucket.get("violations") or []
@@ -466,10 +708,16 @@ def classify_failure(session: dict[str, Any]) -> str | None:
     ):
         failure = "5_authoritative_creative_then_backing_overwrite"
         first_mismatch = "subsequent_write"
+    elif not txs and _phase1_genuine_user_page_write(session):
+        failure = "diagnostic_transaction_missing"
+        first_mismatch = "durability_transaction_journal"
     elif isinstance(hydrate, dict):
         pages = hydrate.get("pages") if isinstance(hydrate.get("pages"), dict) else {}
         if any(str(v).strip().lower() == "backing" for v in pages.values() if v):
-            if hydrate.get("used_session_cache"):
+            if not txs and _phase1_genuine_user_page_write(session):
+                failure = "diagnostic_transaction_missing"
+                first_mismatch = "durability_transaction_journal"
+            elif hydrate.get("used_session_cache"):
                 failure = "6_cloud_creative_but_cache_backing"
                 first_mismatch = "fresh_hydration_cache"
             elif isinstance(conf, dict) and conf.get("confirmed"):
@@ -547,6 +795,11 @@ def finalize_page_change_cloud_durability_trace(session: dict[str, Any], *, save
         session.get("_music_user_navigated_page_this_run") or session.get("studio_page") or "creative"
     ).strip()
     evaluate_authoritative_page_change_confirmation(session, target_page=target or "creative")
+    detail = session.get(AUTHORITATIVE_CONFIRMATION_DETAIL_KEY)
+    if isinstance(detail, dict) and detail.get("confirmed"):
+        _complete_active_transaction(session, "authoritative_confirmed")
+    else:
+        _complete_active_transaction(session, "authoritative_not_confirmed")
 
 
 def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
@@ -556,6 +809,8 @@ def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
         "impl_marker": PAGE_CLOUD_DURABILITY_IMPL_MARKER,
         "module_import_ok": True,
     }
+    integrity = evaluate_durability_transaction_integrity(session)
+    base["diagnostic_integrity"] = integrity
     try:
         bucket = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
         has_tx = isinstance(bucket, dict) and bool(bucket.get("transactions"))
@@ -568,11 +823,16 @@ def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
             )
             base["legacy_suite_persist_last_save_cloud"] = session.get("_suite_persist_last_save_cloud")
             base["legacy_confirmed_revision"] = session.get("_music_last_confirmed_cloud_revision")
+            base["failure_class"] = (
+                bucket.get("failure_class") if isinstance(bucket, dict) else None
+            )
             return base
         parsed = json.loads(build_durability_copy_block(session))
         if isinstance(parsed, dict):
             parsed["ui_marker"] = PAGE_CLOUD_DURABILITY_UI_MARKER
             parsed["module_import_ok"] = True
+            parsed["diagnostic_integrity"] = integrity
+            parsed["status"] = "ok"
             return parsed
         base["status"] = "invalid_trace_payload"
         return base
@@ -589,8 +849,16 @@ def render_page_cloud_durability_trace_section(st: Any, session: dict[str, Any])
     """Always visible in dev journal expander."""
     st.markdown("**Page cloud durability trace**")
     payload = durability_journal_payload(session)
+    integrity = payload.get("diagnostic_integrity")
+    if isinstance(integrity, dict):
+        st.caption(
+            f"integrity: hook_called={integrity.get('transaction_start_hook_called')} "
+            f"tx_count={integrity.get('transaction_count')} "
+            f"storage={integrity.get('journal_storage')} "
+            f"resets={integrity.get('journal_reset_count')}"
+        )
     if payload.get("status") == "no_page_change_transaction_recorded":
-        st.json({"status": "no_page_change_transaction_recorded"})
+        st.json({"status": "no_page_change_transaction_recorded", "diagnostic_integrity": integrity})
     elif payload.get("status") == "durability_trace_build_error":
         st.error(f"Durability trace error: {payload.get('error')}")
         st.json({"status": "durability_trace_build_error", "error": payload.get("error")})
