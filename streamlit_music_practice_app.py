@@ -415,11 +415,9 @@ from groove_feel import (
 def _resolve_groove_override(groove_override: str | None) -> str:
     """Resolve a user-facing groove pick into a concrete profile label.
 
-    The Practice page passes the user's ``practice_groove_style`` selectbox
-    value here. Anything blank or ``"Auto"`` falls back to the song-data
-    inference that ``backing_audio.infer_groove_style`` provides, so this
-    helper is safe to use anywhere we previously hard-coded
-    ``infer_groove_style(globals().get("song_data", {}), "Auto")``.
+    The Practice page passes ``resolve_practice_groove_style`` output here.
+    Anything blank or ``"Auto"`` falls back to song-data inference via
+    ``backing_audio.infer_groove_style``.
     """
     return _groove_resolve(groove_override, globals().get("song_data") or {})
 
@@ -8625,7 +8623,7 @@ def _render_practice_setup_panel(
         resolve_practice_groove_style,
     )
 
-    resolve_practice_groove_style(st.session_state, default_groove=default_groove)
+    _resolved_groove = resolve_practice_groove_style(st.session_state, default_groove=default_groove)
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     with st.container(key="practice_control_panel", border=False):
@@ -8688,7 +8686,7 @@ def _render_practice_setup_panel(
             instrument=str(st.session_state.get("instrument", _instrument)),
             level=str(st.session_state.get("level", _level)),
             focus=str(st.session_state.get("focus", _focus)),
-            groove=str(st.session_state.get("practice_groove_style", _groove)),
+            groove=_resolved_groove,
             minutes=int(st.session_state.get("practice_minutes", _minutes)),
         )
         try:
