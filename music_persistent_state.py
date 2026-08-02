@@ -2652,6 +2652,17 @@ def apply_music_disk_state(
     except Exception:
         ss["_suite_last_cloud_fetch_payload"] = payload
     try:
+        from creative_selector_hydration_trace import record_raw_network_row
+
+        record_raw_network_row(
+            ss,
+            payload if isinstance(payload, dict) else {},
+            fetch_source=str(ss.get("_music_last_cloud_fetch_source") or ""),
+            workspace_key=str(ss.get("_suite_cloud_workspace_key") or ""),
+        )
+    except ImportError:
+        pass
+    try:
         from music_page_cloud_durability_trace import record_fresh_hydration
 
         record_fresh_hydration(
@@ -2686,6 +2697,17 @@ def apply_music_disk_state(
     for key in _WORKSPACE_KEYS:
         if key in payload:
             try:
+                if key == "creative_workspace_state" and isinstance(payload[key], dict):
+                    from creative_workspace_state_persistence import merge_incoming_creative_workspace_state
+
+                    merge_incoming_creative_workspace_state(
+                        ss,
+                        payload[key],
+                        source="apply_music_disk_state_payload",
+                    )
+                else:
+                    ss[key] = copy.deepcopy(payload[key])
+            except ImportError:
                 ss[key] = copy.deepcopy(payload[key])
             except Exception:
                 ss[key] = payload[key]

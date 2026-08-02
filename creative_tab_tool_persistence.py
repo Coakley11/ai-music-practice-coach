@@ -561,6 +561,17 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
     session[CREATIVE_SELECTOR_LAST_TX_KEY] = copy.deepcopy(tx_record)
     session.pop(CREATIVE_SELECTOR_PENDING_TX_KEY, None)
 
+    if tx_record.get("confirmation_status") == "confirmed":
+        try:
+            from creative_selector_hydration_trace import store_last_confirmed_selectors
+
+            field = str((session.get(CREATIVE_TAB_USER_EVENT_KEY) or {}).get("field") or "")
+            val = str((session.get(CREATIVE_TAB_USER_EVENT_KEY) or {}).get("value") or "")
+            if field and val:
+                store_last_confirmed_selectors(session, {field: val})
+        except ImportError:
+            pass
+
     d = _diag(session)
     d["startup_write_attempted"] = bool(session.get("_creative_tab_startup_write_flag"))
     d.update(
@@ -712,6 +723,21 @@ def audit_multiple_canonical_owners(session: dict[str, Any]) -> None:
 
 
 def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from creative_selector_hydration_trace import (
+            CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY,
+            audit_selector_hydration_after_restore,
+            collect_selector_hydration_trace,
+        )
+
+        if session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY):
+            snapshot_hydrated_creative_selectors(session, source="diag_refresh")
+        else:
+            audit_selector_hydration_after_restore(session)
+        hydration_trace = collect_selector_hydration_trace(session)
+    except ImportError:
+        hydration_trace = {}
+
     _refresh_selector_diag_display(session)
     d = dict(_diag(session))
     d.setdefault("hydrated_tool_tab_values", session.get(CREATIVE_TAB_HYDRATED_SNAPSHOT_KEY))
@@ -728,7 +754,16 @@ def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, 
     )
     d.setdefault("widget_values", {s["widget"]: session.get(s["widget"]) for s in _SELECTOR_SPECS})
     d.setdefault("startup_write_attempted", bool(session.get("_creative_tab_startup_write_flag")))
+    if hydration_trace:
+        d["selector_hydration_trace"] = hydration_trace
     audit_multiple_canonical_owners(session)
+    try:
+        from creative_selector_hydration_trace import audit_selector_hydration_after_restore
+
+        audit_selector_hydration_after_restore(session)
+    except ImportError:
+        pass
+    d["violations"] = (_diag(session).get("violations") or d.get("violations"))
     return d
 
 

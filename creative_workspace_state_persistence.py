@@ -63,15 +63,52 @@ def _field_slice(blob: dict[str, Any]) -> dict[str, Any]:
     return {k: copy.deepcopy(blob[k]) for k in CREATIVE_WORKSPACE_KEYS if k in blob}
 
 
+def _selector_value_empty(val: Any) -> bool:
+    if val is None:
+        return True
+    return isinstance(val, str) and not val.strip()
+
+
 def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str, Any]:
     base = session.get(CREATIVE_WORKSPACE_STATE_KEY)
     if not isinstance(base, dict):
         base = default_creative_workspace_state()
     else:
         base = upgrade_creative_workspace_blob(base)
+    preserved_selectors = {
+        k: copy.deepcopy(base[k])
+        for k in base
+        if k
+        in (
+            "improv_intelligence_tab",
+            "creative_improv_intelligence_tab",
+            "improv_entry_mode",
+            "creative_lab_analysis_mode",
+            "creative_lab_last_mode",
+        )
+        and not _selector_value_empty(base.get(k))
+    }
+    try:
+        from creative_selector_hydration_trace import (
+            CREATIVE_SELECTOR_LAST_CONFIRMED_KEY,
+            merge_selector_fields_into_blob,
+        )
+
+        last_conf = session.get(CREATIVE_SELECTOR_LAST_CONFIRMED_KEY)
+        if isinstance(last_conf, dict):
+            merge_selector_fields_into_blob(base, last_conf)
+    except ImportError:
+        pass
+
     for key in CREATIVE_WORKSPACE_KEYS:
         if key in session:
-            base[key] = copy.deepcopy(session[key])
+            val = session[key]
+            if key in preserved_selectors and _selector_value_empty(val):
+                continue
+            base[key] = copy.deepcopy(val)
+    for key, val in preserved_selectors.items():
+        if _selector_value_empty(base.get(key)):
+            base[key] = copy.deepcopy(val)
     cs = base.get(CREATIVE_SESSION_KEY)
     if isinstance(cs, dict):
         cs = copy.deepcopy(cs)
@@ -111,7 +148,31 @@ def write_canonical_creative_workspace(
     *,
     reason: str = "autosave",
 ) -> dict[str, Any]:
+    prior = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    prior_dict = prior if isinstance(prior, dict) else {}
     canonical = upgrade_creative_workspace_blob(blob)
+    try:
+        from creative_selector_hydration_trace import (
+            SELECTOR_CANONICAL_FIELDS,
+            record_selector_field_write,
+        )
+
+        for field in SELECTOR_CANONICAL_FIELDS:
+            old_v = prior_dict.get(field)
+            new_v = canonical.get(field)
+            if old_v != new_v:
+                record_selector_field_write(
+                    session,
+                    field,
+                    old_value=old_v,
+                    new_value=new_v,
+                    function="write_canonical_creative_workspace",
+                    reason=reason,
+                    authoritative_restore=bool(session.get("_cloud_workspace_restored_this_run")),
+                    default_initialization=reason in ("migration_local", "autosave", ""),
+                )
+    except ImportError:
+        pass
     session[CREATIVE_WORKSPACE_STATE_KEY] = copy.deepcopy(canonical)
     session[CREATIVE_WORKSPACE_LAST_SAVE_REASON_KEY] = reason
     clear_mission_workspace_local_edit(session)
@@ -151,6 +212,14 @@ def creative_workspace_for_envelope(session: dict[str, Any]) -> dict[str, Any]:
 def _creative_workspace_from_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
+    try:
+        from creative_selector_hydration_trace import extract_merged_creative_blob_from_payload
+
+        merged = extract_merged_creative_blob_from_payload(payload)
+        if _field_slice(merged):
+            return merged
+    except ImportError:
+        pass
     top = payload.get(CREATIVE_WORKSPACE_STATE_KEY)
     if isinstance(top, dict) and _field_slice(top):
         return copy.deepcopy(top)
@@ -205,6 +274,26 @@ def apply_creative_workspace_to_session(
     *,
     source: str = "cloud_restore",
 ) -> None:
+    try:
+        from creative_selector_hydration_trace import SELECTOR_CANONICAL_FIELDS, record_canonical_stage
+
+        prior = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+        prior_dict = prior if isinstance(prior, dict) else {}
+        for field in SELECTOR_CANONICAL_FIELDS:
+            record_canonical_stage(
+                session,
+                "apply_creative_workspace_to_session",
+                field,
+                canonical_before=prior_dict.get(field),
+                incoming_value=blob.get(field),
+                canonical_after=None,
+                widget_after=session.get(field),
+                function="apply_creative_workspace_to_session",
+                branch=source,
+                authoritative_restore=source.startswith("cloud"),
+            )
+    except ImportError:
+        pass
     canonical = upgrade_creative_workspace_blob(blob)
     write_canonical_creative_workspace(session, canonical, reason=source)
     session[CREATIVE_WORKSPACE_RESTORED_KEY] = True
@@ -221,6 +310,48 @@ def apply_creative_workspace_to_session(
     session.pop("_creative_restore_skipped_reason", None)
 
 
+def merge_incoming_creative_workspace_state(
+    session: dict[str, Any],
+    incoming: dict[str, Any],
+    *,
+    source: str = "payload",
+) -> None:
+    """Apply payload creative_workspace_state without empty selector overwrites."""
+    if not isinstance(incoming, dict):
+        return
+    existing = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    base = upgrade_creative_workspace_blob(existing if isinstance(existing, dict) else default_creative_workspace_state())
+    upgraded_in = upgrade_creative_workspace_blob(incoming)
+    for key, val in upgraded_in.items():
+        if key in (
+            "improv_intelligence_tab",
+            "creative_improv_intelligence_tab",
+            "improv_entry_mode",
+            "creative_lab_analysis_mode",
+            "creative_lab_last_mode",
+        ) and _selector_value_empty(val):
+            continue
+        base[key] = copy.deepcopy(val)
+    session[CREATIVE_WORKSPACE_STATE_KEY] = base
+    try:
+        from creative_selector_hydration_trace import record_canonical_stage, SELECTOR_CANONICAL_FIELDS
+
+        for field in SELECTOR_CANONICAL_FIELDS:
+            record_canonical_stage(
+                session,
+                "merge_incoming_creative_workspace_state",
+                field,
+                canonical_before=(existing or {}).get(field) if isinstance(existing, dict) else None,
+                incoming_value=incoming.get(field),
+                canonical_after=base.get(field),
+                widget_after=session.get(field),
+                function="merge_incoming_creative_workspace_state",
+                branch=source,
+            )
+    except ImportError:
+        pass
+
+
 def apply_creative_workspace_from_payload(
     session: dict[str, Any],
     payload: dict[str, Any],
@@ -232,6 +363,44 @@ def apply_creative_workspace_from_payload(
         session["_creative_restore_skipped_reason"] = "local_dirty"
         return False
     blob = _creative_workspace_from_payload(payload)
+    try:
+        from creative_selector_hydration_trace import (
+            SELECTOR_CANONICAL_FIELDS,
+            _LEGACY_SESSION_PATH,
+            _TOP_CWS_PATH,
+            record_envelope_extraction,
+        )
+
+        for field in SELECTOR_CANONICAL_FIELDS:
+            path = ""
+            val = None
+            status = "absent"
+            if isinstance(blob, dict) and field in blob and not _selector_value_empty(blob.get(field)):
+                path = "merged_envelope"
+                val = blob.get(field)
+                status = "valid"
+            else:
+                sess = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+                if isinstance(sess, dict) and field in sess and not _selector_value_empty(sess.get(field)):
+                    path = _LEGACY_SESSION_PATH
+                    val = sess.get(field)
+                    status = "valid"
+                top = payload.get(CREATIVE_WORKSPACE_STATE_KEY)
+                if status == "absent" and isinstance(top, dict) and field in top:
+                    path = _TOP_CWS_PATH
+                    val = top.get(field)
+                    status = "empty" if _selector_value_empty(val) else "valid"
+            record_envelope_extraction(
+                session,
+                field,
+                source_path=path or "none",
+                extracted_value=val,
+                status=status,
+                migration_source="apply_creative_workspace_from_payload",
+                migration_result=str(blob is not None),
+            )
+    except ImportError:
+        pass
     if not blob:
         migrated = migrate_legacy_creative_workspace_once(session, payload)
         if migrated:
@@ -244,6 +413,19 @@ def apply_creative_workspace_from_payload(
         blob,
         source="cloud_restore" if authoritative else "disk_restore",
     )
+    try:
+        from creative_selector_hydration_trace import SELECTOR_CANONICAL_FIELDS, merge_selector_fields_into_blob
+
+        canon = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+        if isinstance(canon, dict):
+            flat = {f: session.get(f) for f in SELECTOR_CANONICAL_FIELDS if session.get(f)}
+            merge_selector_fields_into_blob(canon, flat)
+            session[CREATIVE_WORKSPACE_STATE_KEY] = canon
+            for f in SELECTOR_CANONICAL_FIELDS:
+                if not _selector_value_empty(canon.get(f)):
+                    session[f] = canon[f]
+    except ImportError:
+        pass
     try:
         from creative_tab_tool_persistence import migrate_invalid_creative_selectors
 
@@ -281,6 +463,32 @@ def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
         migrate_invalid_creative_selectors(session, source="prepare")
         project_creative_selectors_from_canonical(session, overwrite=True)
         snapshot_hydrated_creative_selectors(session, source="prepare")
+        try:
+            from creative_selector_hydration_trace import (
+                SELECTOR_CANONICAL_FIELDS,
+                audit_selector_hydration_after_restore,
+                mark_selector_hydration_complete,
+                record_canonical_stage,
+            )
+
+            canon = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+            canon_dict = canon if isinstance(canon, dict) else {}
+            for field in SELECTOR_CANONICAL_FIELDS:
+                record_canonical_stage(
+                    session,
+                    "prepare_creative_workspace_for_render",
+                    field,
+                    canonical_before=canon_dict.get(field),
+                    incoming_value=canon_dict.get(field),
+                    canonical_after=canon_dict.get(field),
+                    widget_after=session.get(field),
+                    function="prepare_creative_workspace_for_render",
+                    branch="after_projection",
+                )
+            mark_selector_hydration_complete(session, source="prepare")
+            audit_selector_hydration_after_restore(session)
+        except ImportError:
+            pass
     except ImportError:
         pass
     session["_creative_workspace_restored_applied"] = True

@@ -104,6 +104,7 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             "startup_write_attempted",
             "migration_reason",
             "violations",
+            "selector_hydration_trace",
         ):
             val = tab_diag.get(key)
             if val is not None:
