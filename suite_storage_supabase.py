@@ -487,6 +487,12 @@ def save_current_state(
 ) -> None:
     logical_app = normalize_app_key(app)
     app_key = _scoped_storage_app(app)
+    try:
+        from suite_workspace import logical_storage_app_key
+
+        logical_app = logical_storage_app_key(app_key)
+    except ImportError:
+        pass
     if logical_app not in ACTIVE_APP_KEYS:
         return
     body: dict[str, Any] = {

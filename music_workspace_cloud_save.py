@@ -90,6 +90,45 @@ def _workspace_dirty_field_names(session: dict[str, Any]) -> list[str]:
     return fields
 
 
+def _merge_cloud_save_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
+    diag = session.get("_suite_last_cloud_save_result")
+    if isinstance(diag, dict):
+        return dict(diag)
+    diag2 = session.get("_music_last_cloud_save_diag")
+    return dict(diag2) if isinstance(diag2, dict) else {}
+
+
+def _mark_workspace_pending_cloud_retry(
+    session: dict[str, Any],
+    *,
+    reason: str,
+    fields: list[str],
+    revision: int,
+) -> None:
+    from suite_user_persistence import _local_dirty_key
+
+    session[_local_dirty_key(APP_ID)] = True
+    session["_music_workspace_save_pending_retry"] = True
+    session["_music_pending_save_revision"] = revision
+    session["_music_pending_save_fields"] = fields
+    session["_music_retry_required"] = True
+    try:
+        from active_song_state import mark_active_song_local_edit, mark_active_song_pending_sync
+        from practice_state import mark_practice_local_edit, mark_practice_pending_sync
+        from studio_nav_state import mark_studio_nav_local_edit
+
+        mark_active_song_pending_sync(session)
+        mark_practice_pending_sync(session)
+        if reason in ("song_edit", "page_change", "practice_edit", "display_key_change"):
+            mark_active_song_local_edit(session)
+        if reason in ("practice_edit", "practice_tool_select", "practice_workspace_edit"):
+            mark_practice_local_edit(session)
+        if reason == "page_change":
+            mark_studio_nav_local_edit(session)
+    except ImportError:
+        pass
+
+
 def music_workspace_save_allowed(session: dict[str, Any], *, reason: str) -> tuple[bool, str]:
     """Block saves that would overwrite cloud with bootstrap defaults."""
     r = str(reason or "autosave").strip() or "autosave"
@@ -138,12 +177,14 @@ def force_music_workspace_save(
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
     dirty_fields = _workspace_dirty_field_names(ss)
+    dirty_before = bool(ss.get(_local_dirty_key(APP_ID))) or bool(dirty_fields)
     record_save_transaction(
         ss,
         force_save_requested=True,
         force_save_reason=r,
-        workspace_dirty_before_save=bool(ss.get(_local_dirty_key(APP_ID))) or bool(dirty_fields),
+        workspace_dirty_before_save=dirty_before,
         workspace_dirty_fields=dirty_fields or None,
+        dirty_before_transaction=dirty_before,
     )
 
     allowed, block = music_workspace_save_allowed(ss, reason=r)
@@ -230,6 +271,7 @@ def force_music_workspace_save(
                 )
                 if not saved_cloud:
                     cloud_error = str(ss.get("_music_last_cloud_write_error") or "cloud_write_failed")
+                record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
         except Exception as exc:
             cloud_error = str(exc)
             record_save_transaction(ss, cloud_write_attempted=True, cloud_write_error=cloud_error)
@@ -310,6 +352,21 @@ def force_music_workspace_save(
             ss["_music_workspace_save_pending_retry"] = True
             ss["_music_force_save_ok"] = False
             ss["_music_force_save_blocked_reason"] = cloud_error or "cloud_save_unconfirmed"
+            _mark_workspace_pending_cloud_retry(
+                ss,
+                reason=r,
+                fields=dirty_fields or _workspace_dirty_field_names(ss),
+                revision=int(rev_after_write or 0),
+            )
+            record_save_transaction(
+                ss,
+                dirty_after_failed_cloud_save=True,
+                retry_required=True,
+                pending_save_revision=rev_after_write,
+                pending_save_fields=dirty_fields or None,
+                dirty_cleared_after_confirmed_save=False,
+            )
+            record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
             return False
         ss["_suite_persist_last_save_cloud"] = True
         ss[f"_suite_autosave_fp::{APP_ID}"] = fp

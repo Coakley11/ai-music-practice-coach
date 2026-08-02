@@ -940,6 +940,8 @@ def sync_workspace_protocol(
     st.session_state["_suite_persist_last_restore_at"] = _utc_now_iso()
     st.session_state["_suite_persist_last_restore_source"] = picked.source
     st.session_state["_suite_persist_last_restore_reason"] = picked.reason
+    if str(app_id or "").strip().lower() == "music" and picked.source in ("cloud", "disk"):
+        st.session_state["_music_cloud_payload_source"] = picked.source
 
     if picked.source == "cloud":
         st.session_state[applied_key] = cloud_ts or _utc_now_iso()

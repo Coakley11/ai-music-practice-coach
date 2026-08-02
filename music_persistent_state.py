@@ -1324,10 +1324,15 @@ def save_music_cloud_session(
     ss["_music_cloud_write_path"] = write_path
     cloud_error = ""
     saved_cloud = False
+    cloud_result = None
     try:
-        saved_cloud = bool(save_cloud_full_session(APP_ID, state, page=page, summary=summary))
+        cloud_result = save_cloud_full_session(APP_ID, state, page=page, summary=summary)
+        saved_cloud = bool(cloud_result.success)
         if not saved_cloud:
-            cloud_error = "save_cloud_full_session returned False"
+            stage = str(getattr(cloud_result, "failure_stage", "") or "unknown")
+            exc = str(getattr(cloud_result, "exception", "") or "").strip()
+            cloud_error = f"save_cloud_full_session:{stage}" + (f":{exc}" if exc else "")
+            ss["_music_last_cloud_save_diag"] = cloud_result.to_diag()
     except Exception as exc:
         cloud_error = str(exc)
     record_music_cloud_write_result(

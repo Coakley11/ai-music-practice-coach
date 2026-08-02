@@ -1587,6 +1587,15 @@ def collect_backing_persistence_trace(
                 trace[key] = tx[key]
         if tx.get("force_save_block_reason") and not trace.get("cloud_save_blocked_reason"):
             trace["cloud_save_blocked_reason"] = tx["force_save_block_reason"]
+        for key in (
+            "save_cloud_full_session_failure_stage",
+            "save_cloud_full_session_exception",
+            "supabase_response_status",
+            "cloud_upsert_attempted",
+            "cloud_upsert_succeeded",
+        ):
+            if key in tx and tx[key] not in (None, "", "(none)"):
+                trace[key] = tx[key]
     except ImportError:
         pass
     if st is not None:

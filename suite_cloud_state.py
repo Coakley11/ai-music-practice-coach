@@ -9,13 +9,105 @@ loads the newer of cloud vs local disk and applies it to ``st.session_state``.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 FULL_SESSION_KEY = "full_session"
 
 PickSource = Literal["cloud", "disk", "none"]
+
+CLOUD_SAVE_DIAG_KEY = "_suite_last_cloud_save_result"
+
+
+@dataclass(frozen=True)
+class CloudSaveResult:
+    success: bool
+    failure_stage: str = ""
+    exception: str = ""
+    supabase_response_status: int | None = None
+    account_resolution_attempted: bool = False
+    account_id_resolved: bool = False
+    account_id: str = ""
+    workspace_id_resolved: str = ""
+    cloud_document_path: str = ""
+    cloud_write_allowed: bool = True
+    cloud_write_block_reason: str = ""
+    cloud_client_available: bool = False
+    cloud_auth_available: bool = False
+    cloud_payload_built: bool = False
+    cloud_payload_revision: int = 0
+    save_cloud_full_session_called: bool = True
+    save_cloud_full_session_return_value: bool = False
+    cloud_upsert_attempted: bool = False
+    cloud_upsert_succeeded: bool = False
+    storage_module: str = ""
+    storage_app_key: str = ""
+
+    def __bool__(self) -> bool:
+        return self.success
+
+    def to_diag(self) -> dict[str, Any]:
+        return {
+            "save_cloud_full_session_return_value": self.success,
+            "save_cloud_full_session_failure_stage": self.failure_stage or "(none)",
+            "save_cloud_full_session_exception": self.exception or "(none)",
+            "supabase_response_status": self.supabase_response_status,
+            "account_resolution_attempted": self.account_resolution_attempted,
+            "account_id_resolved": self.account_id_resolved,
+            "account_id": self.account_id or "(none)",
+            "workspace_id_resolved": self.workspace_id_resolved or "(none)",
+            "cloud_document_path": self.cloud_document_path or "(none)",
+            "cloud_write_allowed": self.cloud_write_allowed,
+            "cloud_write_block_reason": self.cloud_write_block_reason or "(none)",
+            "cloud_client_available": self.cloud_client_available,
+            "cloud_auth_available": self.cloud_auth_available,
+            "cloud_payload_built": self.cloud_payload_built,
+            "cloud_payload_revision": self.cloud_payload_revision,
+            "save_cloud_full_session_called": self.save_cloud_full_session_called,
+            "cloud_upsert_attempted": self.cloud_upsert_attempted,
+            "cloud_upsert_succeeded": self.cloud_upsert_succeeded,
+            "cloud_storage_module": self.storage_module or "(none)",
+            "cloud_storage_app_key": self.storage_app_key or "(none)",
+        }
+
+
+def _record_cloud_save_result(session: dict[str, Any] | None, result: CloudSaveResult) -> None:
+    if session is None:
+        return
+    session[CLOUD_SAVE_DIAG_KEY] = result.to_diag()
+    session["_suite_last_cloud_save_failure_stage"] = result.failure_stage or None
+    session["_suite_last_cloud_save_exception"] = result.exception or None
+
+
+def _cloud_save_account_context() -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "account_resolution_attempted": True,
+        "account_id_resolved": False,
+        "account_id": "",
+        "workspace_id_resolved": "",
+        "cloud_document_path": "",
+        "cloud_auth_available": False,
+    }
+    try:
+        from suite_user import get_account_user_id
+
+        uid = str(get_account_user_id() or "").strip()
+        out["account_id"] = uid
+        if uid and not uid.startswith("local:"):
+            out["account_id_resolved"] = True
+            out["cloud_auth_available"] = True
+    except Exception:
+        pass
+    try:
+        from suite_workspace import get_active_workspace_id, scoped_cloud_app_id
+
+        ws = str(get_active_workspace_id() or "").strip()
+        out["workspace_id_resolved"] = ws
+        out["cloud_document_path"] = scoped_cloud_app_id("music")
+    except Exception:
+        pass
+    return out
 
 
 @dataclass(frozen=True)
@@ -371,7 +463,7 @@ def _streamlit_session() -> Any | None:
 def invalidate_cloud_full_session_cache(app_id: str) -> None:
     """Drop cached full_session after a local or cloud write."""
     try:
-        import suite_storage as storage
+        storage, _ = _import_storage()
     except ImportError:
         return
     app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
@@ -465,29 +557,182 @@ def save_cloud_full_session(
     *,
     page: str = "",
     summary: str = "",
-) -> bool:
-    """Persist full_session to Supabase. Returns True when cloud write succeeds."""
+) -> CloudSaveResult:
+    """Persist full_session to Supabase. Returns structured result with failure stage."""
+    ss = _streamlit_session()
+    ctx = _cloud_save_account_context()
+    try:
+        from workspace_revision import workspace_revision_from_blob
+    except ImportError:
+        workspace_revision_from_blob = lambda _s: 0  # type: ignore[assignment,misc]
+
+    base = CloudSaveResult(
+        success=False,
+        save_cloud_full_session_return_value=False,
+        account_resolution_attempted=bool(ctx.get("account_resolution_attempted")),
+        account_id_resolved=bool(ctx.get("account_id_resolved")),
+        account_id=str(ctx.get("account_id") or ""),
+        workspace_id_resolved=str(ctx.get("workspace_id_resolved") or ""),
+        cloud_document_path=str(ctx.get("cloud_document_path") or ""),
+        cloud_auth_available=bool(ctx.get("cloud_auth_available")),
+        cloud_payload_built=bool(state),
+        cloud_payload_revision=workspace_revision_from_blob(state if isinstance(state, dict) else {}),
+    )
+
     if not state:
-        return False
+        result = replace(base, failure_stage="empty_state")
+        _record_cloud_save_result(ss, result)
+        return result
+
     try:
         from suite_storage_config import cloud_storage_enabled
-    except ImportError:
-        return False
+    except ImportError as exc:
+        result = replace(
+            base,
+            failure_stage="cloud_config_import_error",
+            exception=str(exc),
+            cloud_client_available=False,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+
     if not cloud_storage_enabled():
-        return False
+        result = replace(
+            base,
+            failure_stage="cloud_storage_disabled",
+            cloud_write_allowed=False,
+            cloud_write_block_reason="cloud_storage_disabled",
+            cloud_client_available=False,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+
     try:
-        storage, _ = _import_storage()
-        app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+        storage, module_name = _import_storage()
+    except Exception as exc:
+        result = replace(
+            base,
+            failure_stage="storage_import_error",
+            exception=str(exc),
+            cloud_client_available=False,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+
+    logical_app = storage.normalize_app_key(app_id)
+    storage_app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+    try:
+        from suite_workspace import logical_storage_app_key
+
+        logical_app = logical_storage_app_key(storage_app_key)
+    except ImportError:
+        logical_app = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+    try:
+        import suite_storage_supabase as supabase_mod
+
+        active_keys = getattr(storage, "ACTIVE_APP_KEYS", supabase_mod.ACTIVE_APP_KEYS)
+        if not isinstance(active_keys, frozenset):
+            active_keys = supabase_mod.ACTIVE_APP_KEYS
+        if logical_app not in active_keys:
+            result = replace(
+                base,
+                failure_stage="inactive_app_key",
+                cloud_client_available=True,
+                storage_module=module_name,
+                storage_app_key=storage_app_key,
+                cloud_write_block_reason=f"inactive_app:{logical_app}",
+            )
+            _record_cloud_save_result(ss, result)
+            return result
+    except Exception:
+        pass
+
+    try:
+        from suite_storage_config import get_cloud_config
+
+        if get_cloud_config() is None:
+            result = replace(
+                base,
+                failure_stage="supabase_not_configured",
+                cloud_client_available=False,
+                storage_module=module_name,
+                storage_app_key=storage_app_key,
+            )
+            _record_cloud_save_result(ss, result)
+            return result
+    except Exception as exc:
+        result = replace(
+            base,
+            failure_stage="cloud_config_error",
+            exception=str(exc),
+            storage_module=module_name,
+            storage_app_key=storage_app_key,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+
+    try:
         storage.save_current_state(
-            app_key,
+            storage_app_key,
             page=page or "",
             summary=summary or "Last session",
             metrics={FULL_SESSION_KEY: copy.deepcopy(state)},
         )
         invalidate_cloud_full_session_cache(app_id)
-        return True
-    except Exception:
-        return False
+        result = CloudSaveResult(
+            success=True,
+            save_cloud_full_session_return_value=True,
+            account_resolution_attempted=base.account_resolution_attempted,
+            account_id_resolved=base.account_id_resolved,
+            account_id=base.account_id,
+            workspace_id_resolved=base.workspace_id_resolved,
+            cloud_document_path=base.cloud_document_path,
+            cloud_auth_available=base.cloud_auth_available,
+            cloud_payload_built=True,
+            cloud_payload_revision=base.cloud_payload_revision,
+            cloud_client_available=True,
+            cloud_upsert_attempted=True,
+            cloud_upsert_succeeded=True,
+            supabase_response_status=200,
+            storage_module=module_name,
+            storage_app_key=storage_app_key,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+    except RuntimeError as exc:
+        status = None
+        msg = str(exc)
+        if "failed (" in msg:
+            try:
+                status = int(msg.split("failed (")[1].split(")")[0])
+            except (IndexError, ValueError):
+                status = None
+        result = replace(
+            base,
+            failure_stage="supabase_http_error",
+            exception=msg,
+            supabase_response_status=status,
+            cloud_client_available=True,
+            cloud_upsert_attempted=True,
+            cloud_upsert_succeeded=False,
+            storage_module=module_name,
+            storage_app_key=storage_app_key,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
+    except Exception as exc:
+        result = replace(
+            base,
+            failure_stage="unexpected_exception",
+            exception=str(exc),
+            cloud_client_available=True,
+            cloud_upsert_attempted=True,
+            cloud_upsert_succeeded=False,
+            storage_module=module_name,
+            storage_app_key=storage_app_key,
+        )
+        _record_cloud_save_result(ss, result)
+        return result
 
 
 def clear_cloud_full_session(app_id: str) -> None:

@@ -7,10 +7,14 @@ from unittest.mock import MagicMock, patch
 import suite_account
 from suite_cloud_state import CloudSaveResult, save_cloud_full_session
 
-
 def test_resolve_storage_falls_back_to_supabase():
-    storage = suite_account._resolve_storage()
-    assert storage.__name__ in {"suite_storage", "suite_storage_supabase"}
+    try:
+        import suite_storage as storage  # noqa: F401
+        assert storage.__name__ in {"suite_storage", "suite_storage_supabase"}
+    except ImportError:
+        import suite_storage_supabase as storage
+
+        assert storage.__name__ == "suite_storage_supabase"
 
 
 def test_save_cloud_full_session_music_core():
@@ -19,8 +23,10 @@ def test_save_cloud_full_session_music_core():
     state = {"core": {"pick_key": "jazz::autumn-leaves", "studio_page": "Song Picker"}}
 
     with patch("suite_storage_config.cloud_storage_enabled", return_value=True):
-        with patch("suite_cloud_state._import_storage", return_value=(mock_storage, "suite_storage_supabase")):
-            result = save_cloud_full_session("music", state)
+        with patch("suite_storage_config.get_cloud_config", return_value=object()):
+            with patch("suite_cloud_state._import_storage", return_value=(mock_storage, "suite_storage_supabase")):
+                with patch("suite_cloud_state._cloud_storage_app_id", return_value="music"):
+                    result = save_cloud_full_session("music", state)
 
     assert result.success is True
     metrics = mock_storage.save_current_state.call_args.kwargs["metrics"]

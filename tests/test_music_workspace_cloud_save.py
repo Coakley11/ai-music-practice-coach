@@ -177,5 +177,15 @@ class ForceMusicWorkspaceSaveTests(unittest.TestCase):
         self.assertFalse(st.session_state.get("_suite_persist_last_save_cloud"))
 
 
+    def test_failed_cloud_save_marks_retry_dirty(self) -> None:
+        from suite_user_persistence import _local_dirty_key
+
+        ok, tx = self._run_force_save(cloud_write_ok=False, readback_state={})
+        self.assertFalse(ok)
+        self.assertTrue(tx.get("retry_required"))
+        self.assertTrue(tx.get("dirty_after_failed_cloud_save"))
+        self.assertFalse(tx.get("dirty_cleared_after_confirmed_save"))
+
+
 if __name__ == "__main__":
     unittest.main()
