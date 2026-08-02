@@ -35,8 +35,8 @@ _EPHEMERAL_SNAPSHOT_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Reasons that still upload full session to Supabase under strict mode.
-_STRICT_CLOUD_WRITE_REASONS: frozenset[str] = frozenset(
+# Intentional user actions — one bounded full-envelope cloud write under strict mode.
+_STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
     {
         "page_change",
         "force_autosave",
@@ -46,14 +46,28 @@ _STRICT_CLOUD_WRITE_REASONS: frozenset[str] = frozenset(
         "song_edit",
         "practice_edit",
         "backing_edit",
+        "creative_edit",
         "music_coach_send",
         "practice_tool_select",
         "practice_workspace_edit",
         "practice_key_mode_change",
         "display_key_change",
         "capo_widget",
+        "capo_change",
+        "instrument_change",
+        "level_change",
+        "focus_change",
+        "section_change",
+        "key_family_change",
+        "fixed_key_mode_change",
+        "time_pitch_view_change",
+        "multitrack_upload",
+        "multitrack_layer_save",
     }
 )
+
+# Back-compat alias used by older call sites/tests.
+_STRICT_CLOUD_WRITE_REASONS = _STRICT_INTENTIONAL_USER_SAVE_REASONS
 
 _CUSTOM_SONG_CLOUD_MERGED_KEY = "_music_custom_song_cloud_merged"
 
@@ -137,6 +151,21 @@ def saved_items_list_limit(*, default: int = 50, st: Any | None = None) -> int:
     return min(int(default), policy.saved_items_default_limit)
 
 
+def normalize_music_save_reason(save_reason: str) -> str:
+    reason = str(save_reason or "autosave").strip() or "autosave"
+    if reason == "capo_widget":
+        return "capo_change"
+    if reason == "practice_key_mode_change":
+        return "fixed_key_mode_change"
+    if reason in ("time_pitch_view", "tool_settings", "tone_target", "tuner_mode"):
+        return "time_pitch_view_change"
+    return reason
+
+
+def is_intentional_user_save_reason(save_reason: str) -> bool:
+    return normalize_music_save_reason(save_reason) in _STRICT_INTENTIONAL_USER_SAVE_REASONS
+
+
 def skip_cloud_readback_after_write(app_id: str, *, st: Any | None = None) -> bool:
     if str(app_id or "").strip().lower() != "music":
         return False
@@ -148,12 +177,12 @@ def music_cloud_write_allowed(*, save_reason: str, st: Any | None = None) -> boo
     policy = get_music_egress_policy(st=st)
     if not policy.strict:
         return True
-    reason = str(save_reason or "autosave").strip() or "autosave"
-    if reason in _STRICT_CLOUD_WRITE_REASONS:
+    reason = normalize_music_save_reason(save_reason)
+    if is_intentional_user_save_reason(reason):
         return True
     if policy.skip_autosave_cloud_upload and reason == "autosave":
         return False
-    return True
+    return False
 
 
 def should_merge_custom_songs_from_cloud(session_state: dict[str, Any], *, force: bool = False) -> bool:

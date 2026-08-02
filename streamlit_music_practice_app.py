@@ -14560,6 +14560,13 @@ if not pp.skip_background_persistence(st):
         maybe_flush_pending_active_song_edits(st)
         maybe_flush_pending_practice_edits(st)
         maybe_flush_pending_backing_edits(st)
+        try:
+            from music_egress_strict_save import maybe_flush_deferred_strict_cloud_save
+            from music_persistent_state import build_music_disk_state
+
+            maybe_flush_deferred_strict_cloud_save(st, build_state=build_music_disk_state)
+        except ImportError:
+            pass
         autosave_music_state(st)
         if st.session_state.pop("_suite_persist_insight_dirty", None):
             force_save_music_state(st, reason="insight_persist")

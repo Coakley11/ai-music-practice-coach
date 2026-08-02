@@ -33,6 +33,7 @@ class TestMusicEgressConfig(unittest.TestCase):
         self.assertTrue(policy.skip_cloud_readback_after_save)
         self.assertFalse(music_cloud_write_allowed(save_reason="autosave"))
         self.assertTrue(music_cloud_write_allowed(save_reason="page_change"))
+        self.assertFalse(music_cloud_write_allowed(save_reason="passive_rerun"))
 
     def test_saved_items_limit_reduced(self) -> None:
         os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"

@@ -160,6 +160,7 @@ def force_music_workspace_save(
     *,
     reason: str,
     build_state: Any,
+    bypass_strict_defer: bool = False,
 ) -> bool:
     """
     Build full stamped envelope, write disk, require cloud when enabled.
@@ -178,6 +179,12 @@ def force_music_workspace_save(
     r = str(reason or "force_autosave").strip() or "force_autosave"
     dirty_fields = _workspace_dirty_field_names(ss)
     dirty_before = bool(ss.get(_local_dirty_key(APP_ID))) or bool(dirty_fields)
+    try:
+        from music_egress_strict_save import reset_transaction_egress_counters
+
+        reset_transaction_egress_counters(ss)
+    except ImportError:
+        pass
     record_save_transaction(
         ss,
         force_save_requested=True,
@@ -241,17 +248,45 @@ def force_music_workspace_save(
     blob = json.dumps(state, sort_keys=True, default=str)
     fp = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
 
+    egress_plan = None
+    try:
+        from music_egress_strict_save import plan_strict_egress_cloud_write
+
+        egress_plan = plan_strict_egress_cloud_write(
+            ss,
+            save_reason=r,
+            payload_fp=fp,
+            bypass_defer=bypass_strict_defer,
+        )
+        record_save_transaction(ss, **egress_plan.diag())
+    except ImportError:
+        pass
+
     saved_disk = bool(save_user_state(APP_ID, state))
     record_save_transaction(ss, disk_write_attempted=True, disk_write_succeeded=saved_disk)
 
     cloud_required = _cloud_enabled()
     saved_cloud = False
     cloud_error = ""
+    cloud_write_count = 0
+    cloud_read_count = 0
     if cloud_required:
         try:
             from music_egress_config import music_cloud_write_allowed
 
-            if not music_cloud_write_allowed(save_reason=r, st=st):
+            if egress_plan is not None and egress_plan.duplicate_write_skipped:
+                cloud_error = ""
+                record_save_transaction(ss, cloud_write_attempted=False, force_save_block_reason=None)
+            elif egress_plan is not None and egress_plan.defer_cloud_write:
+                ss[_local_dirty_key(APP_ID)] = True
+                record_save_transaction(
+                    ss,
+                    cloud_write_attempted=False,
+                    force_save_block_reason="strict_save_deferred",
+                )
+            elif not music_cloud_write_allowed(save_reason=r, st=st) or (
+                egress_plan is not None and not egress_plan.allow_cloud_write and not egress_plan.defer_cloud_write
+            ):
                 cloud_error = "music_egress_strict"
                 record_save_transaction(ss, force_save_block_reason=cloud_error)
             else:
@@ -269,6 +304,13 @@ def force_music_workspace_save(
                         summary=summary,
                     )
                 )
+                if saved_cloud:
+                    try:
+                        from music_egress_strict_save import bump_cloud_write_count
+
+                        cloud_write_count = bump_cloud_write_count(ss)
+                    except ImportError:
+                        cloud_write_count = 1
                 if not saved_cloud:
                     cloud_error = str(ss.get("_music_last_cloud_write_error") or "cloud_write_failed")
                 record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
@@ -281,24 +323,54 @@ def force_music_workspace_save(
 
     rev_after = rev_after_write
     readback_ok = False
+    authoritative_upsert = False
     revision_advanced = rev_after > rev_before or (rev_before == 0 and rev_after >= 1)
+    duplicate_skipped = bool(egress_plan is not None and egress_plan.duplicate_write_skipped)
+    deferred_cloud = bool(egress_plan is not None and egress_plan.defer_cloud_write)
+
+    if duplicate_skipped and saved_disk:
+        readback_ok = True
+        authoritative_upsert = True
+
     if saved_cloud:
         try:
             from workspace_revision import stamp_applied_workspace_revision
 
             stamp_applied_workspace_revision(ss, state)
             record_save_transaction(ss, envelope_revision_after=rev_after)
+            cloud_diag = _merge_cloud_save_diagnostics(ss)
+            upsert_ok = bool(cloud_diag.get("cloud_upsert_succeeded"))
             try:
                 from music_egress_config import skip_cloud_readback_after_write
+                from music_egress_strict_save import (
+                    allow_single_strict_confirmation_read,
+                    bump_cloud_read_count,
+                    strict_post_save_confirmation_uses_authoritative_upsert,
+                )
 
-                do_readback = not skip_cloud_readback_after_write(APP_ID, st=st)
+                skip_routine_readback = skip_cloud_readback_after_write(APP_ID, st=st)
+                use_authoritative = strict_post_save_confirmation_uses_authoritative_upsert(save_reason=r)
             except ImportError:
-                do_readback = True
-            if do_readback:
+                skip_routine_readback = False
+                use_authoritative = False
+                allow_single_strict_confirmation_read = lambda _s: True  # type: ignore[assignment,misc]
+                bump_cloud_read_count = lambda _s: 1  # type: ignore[assignment,misc]
+
+            if use_authoritative and upsert_ok:
+                readback_ok = revision_advanced and bool(state)
+                authoritative_upsert = True
+                record_save_transaction(
+                    ss,
+                    cloud_readback_attempted=False,
+                    cloud_readback_matches=readback_ok,
+                    cloud_readback_authoritative=True,
+                )
+            elif not skip_routine_readback:
                 from suite_cloud_state import load_cloud_full_session
 
                 record_save_transaction(ss, cloud_readback_attempted=True)
                 readback, cloud_ts = load_cloud_full_session(APP_ID, force=True)
+                cloud_read_count = bump_cloud_read_count(ss)
                 readback_rev = workspace_revision_from_blob(readback if isinstance(readback, dict) else {})
                 readback_fp = hashlib.sha256(
                     json.dumps(readback if isinstance(readback, dict) else {}, sort_keys=True, default=str).encode(
@@ -318,6 +390,33 @@ def force_music_workspace_save(
                     cloud_error = cloud_error or "readback_not_confirmed"
                 if cloud_ts:
                     ss[_applied_cloud_ts_key(APP_ID)] = cloud_ts
+            elif allow_single_strict_confirmation_read(ss):
+                from suite_cloud_state import load_cloud_full_session
+
+                record_save_transaction(ss, cloud_readback_attempted=True)
+                readback, cloud_ts = load_cloud_full_session(APP_ID, force=True)
+                cloud_read_count = bump_cloud_read_count(ss)
+                readback_rev = workspace_revision_from_blob(readback if isinstance(readback, dict) else {})
+                readback_fp = hashlib.sha256(
+                    json.dumps(readback if isinstance(readback, dict) else {}, sort_keys=True, default=str).encode(
+                        "utf-8"
+                    )
+                ).hexdigest()[:20]
+                fp_matches = readback_fp == fp
+                rev_matches = readback_rev == rev_after and rev_after > 0
+                readback_ok = bool(readback) and rev_matches and revision_advanced and fp_matches
+                authoritative_upsert = readback_ok
+                record_save_transaction(
+                    ss,
+                    cloud_readback_revision=readback_rev,
+                    cloud_readback_matches=readback_ok,
+                    cloud_readback_fp_matches=fp_matches,
+                    cloud_readback_authoritative=readback_ok,
+                )
+                if not readback_ok:
+                    cloud_error = cloud_error or "readback_not_confirmed"
+                if cloud_ts:
+                    ss[_applied_cloud_ts_key(APP_ID)] = cloud_ts
             else:
                 readback_ok = False
                 cloud_error = cloud_error or "cloud_readback_skipped"
@@ -328,10 +427,13 @@ def force_music_workspace_save(
 
     record_save_transaction(
         ss,
-        cloud_write_succeeded=saved_cloud,
+        cloud_write_succeeded=saved_cloud or duplicate_skipped,
         cloud_write_error=cloud_error or None,
-        cloud_readback_matches=readback_ok if saved_cloud else None,
+        cloud_readback_matches=readback_ok if (saved_cloud or duplicate_skipped) else None,
+        cloud_readback_authoritative=authoritative_upsert or None,
         dirty_cleared_after_confirmed_save=False,
+        cloud_write_count_for_transaction=int(ss.get("_music_strict_tx_cloud_write_count") or cloud_write_count),
+        cloud_read_count_for_transaction=int(ss.get("_music_strict_tx_cloud_read_count") or cloud_read_count),
     )
 
     ss["_suite_persist_last_save_disk"] = saved_disk
@@ -341,11 +443,23 @@ def force_music_workspace_save(
         ss["_suite_persist_last_cloud_error"] = cloud_error
 
     cloud_confirmed = (
-        saved_cloud
+        (saved_cloud or duplicate_skipped)
         and readback_ok
         and revision_advanced
-        and (not cloud_required or readback_ok)
+        and (not cloud_required or readback_ok or duplicate_skipped)
     )
+    if deferred_cloud:
+        ss[_local_dirty_key(APP_ID)] = True
+        ss["_music_force_save_ok"] = False
+        ss["_music_force_save_blocked_reason"] = "strict_save_deferred"
+        record_save_transaction(
+            ss,
+            dirty_after_failed_cloud_save=False,
+            retry_required=False,
+            dirty_cleared_after_confirmed_save=False,
+        )
+        return False
+
     if cloud_required:
         if not cloud_confirmed:
             ss[_local_dirty_key(APP_ID)] = True
@@ -371,6 +485,12 @@ def force_music_workspace_save(
         ss["_suite_persist_last_save_cloud"] = True
         ss[f"_suite_autosave_fp::{APP_ID}"] = fp
         ss[_restored_fp_key(APP_ID)] = fp
+        try:
+            from music_egress_strict_save import note_confirmed_cloud_fingerprint
+
+            note_confirmed_cloud_fingerprint(ss, fp)
+        except ImportError:
+            pass
         ss[_local_dirty_key(APP_ID)] = False
         record_save_transaction(ss, dirty_cleared_after_confirmed_save=True)
         ss.pop("_music_workspace_save_pending_retry", None)
@@ -423,6 +543,16 @@ def music_autosave_if_changed(st: Any, *, build_state: Any) -> dict[str, Any]:
         result["skip_reason"] = block
         record_save_transaction(ss, force_save_block_reason=block)
         return result
+
+    try:
+        from music_egress_config import music_cloud_write_allowed, music_egress_strict_enabled
+
+        if music_egress_strict_enabled() and not music_cloud_write_allowed(save_reason="autosave", st=st):
+            result["skip_reason"] = "music_egress_strict"
+            record_save_transaction(ss, force_save_block_reason="music_egress_strict")
+            return result
+    except ImportError:
+        pass
 
     state = build_state(st)
     blob = json.dumps(state, sort_keys=True, default=str)
