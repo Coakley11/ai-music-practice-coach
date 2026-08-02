@@ -770,11 +770,16 @@ def _practice_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
 
 
 
-def apply_cloud_practice_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
+def apply_cloud_practice_state_if_allowed(
+    session: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    authoritative: bool = False,
+) -> bool:
 
     """Apply cloud/disk Practice filters when this device has no local Practice edits."""
 
-    if is_practice_locally_dirty(session):
+    if is_practice_locally_dirty(session) and not authoritative:
 
         session["_practice_restore_skipped_reason"] = "local_dirty"
 

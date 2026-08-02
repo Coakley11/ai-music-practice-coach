@@ -169,6 +169,17 @@ def init_creative_lab_state(session_state: dict) -> None:
 
 def init_practice_page_state(session_state: dict) -> None:
     try:
+        from music_workspace_hydration import workspace_blob_hydrated
+
+        if not workspace_blob_hydrated(session_state) and session_state.get(
+            "_music_workspace_hydration_started"
+        ):
+            return
+    except ImportError:
+        pass
+    if session_state.get("_music_authoritative_cloud_apply"):
+        return
+    try:
         from practice_workspace_persistence import practice_workspace_restored
 
         if practice_workspace_restored(session_state):

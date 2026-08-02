@@ -2478,10 +2478,18 @@ def apply_music_disk_state(
             clear_practice_local_edit,
             is_practice_locally_dirty,
         )
+        from practice_workspace_persistence import (
+            PRACTICE_WORKSPACE_DIRTY_KEY,
+            apply_practice_workspace_from_payload,
+        )
 
-        if is_practice_locally_dirty(ss):
+        if authoritative_restore:
+            clear_practice_local_edit(ss)
+            ss.pop(PRACTICE_WORKSPACE_DIRTY_KEY, None)
+
+        if is_practice_locally_dirty(ss) and not authoritative_restore:
             ss["_practice_restore_skipped_reason"] = "local_dirty"
-        elif apply_cloud_practice_state_if_allowed(ss, payload):
+        elif apply_cloud_practice_state_if_allowed(ss, payload, authoritative=authoritative_restore):
             clear_practice_local_edit(ss)
         try:
             from practice_state import prepare_practice_page
@@ -2490,8 +2498,6 @@ def apply_music_disk_state(
         except ImportError:
             pass
         try:
-            from practice_workspace_persistence import apply_practice_workspace_from_payload
-
             apply_practice_workspace_from_payload(
                 ss,
                 payload,
@@ -2659,6 +2665,9 @@ def apply_music_disk_state(
         "practice_key_mode_applied": str(ss.get("practice_key_mode") or "").strip(),
         "key_family_applied": str(ss.get("fixed_practice_key_family_id") or "").strip(),
         "display_key_applied": str((core or {}).get("display_key") or ss.get("display_key") or "").strip(),
+        "practice_tool_applied": str(ss.get("practice_active_tool") or "").strip(),
+        "time_pitch_view_applied": str(ss.get("practice_time_pitch_view") or "").strip(),
+        "family_spelling_applied": str(ss.get("fixed_practice_key_family_spelling") or "").strip(),
     }
     restore_trace.update(key_trace)
     ss["_music_workspace_restore_trace"] = restore_trace

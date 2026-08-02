@@ -727,6 +727,15 @@ def sync_workspace_protocol(
 
     synced_key = _workspace_synced_key(app_id)
     applied_key = _applied_cloud_ts_key(app_id)
+    try:
+        from music_workspace_hydration import workspace_blob_hydrated
+
+        cold_session = not workspace_blob_hydrated(st.session_state)
+    except ImportError:
+        cold_session = not bool(st.session_state.get("_music_workspace_blob_hydrated"))
+    if cold_session:
+        st.session_state.pop(synced_key, None)
+        st.session_state.pop(f"{_SESSION_RESTORED_PREFIX}{app_id}", None)
     applied_ts = st.session_state.get(applied_key)
     applied_epoch = parse_persist_timestamp(applied_ts)
     already_synced = bool(st.session_state.get(synced_key))
@@ -798,8 +807,11 @@ def sync_workspace_protocol(
             or comparison_mismatch_apply
             or content_resync
             or "workspace_revision_newer" in apply_reasons
+            or (cold_session and picked.source == "cloud")
         )
     )
+    if cold_session and picked.source == "cloud" and picked.state and "cold_start_hydrate" not in apply_reasons:
+        apply_reasons.append("cold_start_hydrate")
     apply_reason = ", ".join(apply_reasons) if apply_reasons else "none"
 
     if cloud_newer_than_disk and picked.source == "cloud":

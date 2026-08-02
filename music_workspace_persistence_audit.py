@@ -232,6 +232,13 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         workspace_id = str(session.get("_suite_persist_app_id") or APP_ID)
     account_hint = str(session.get("_suite_cloud_user_hint") or session.get("user_email") or "(unknown)")
 
+    time_pitch_saved = practice_audit.get("time_pitch_view_saved") or _saved_from_envelope(
+        session, "music_workspace_state", "practice_workspace_state", "time_pitch_view"
+    )
+    time_pitch_final = session.get("practice_time_pitch_view") or practice_audit.get("time_pitch_view_final")
+    family_spelling_saved = _saved_from_envelope(session, "session", "fixed_practice_key_family_spelling")
+    family_spelling_final = session.get("fixed_practice_key_family_spelling")
+
     autosave_blocked = bool(session.get("_suite_autosave_block_reason"))
     key_family_trace: dict[str, Any] = {}
     try:
@@ -349,6 +356,12 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         },
         "key_family_path": key_family_trace,
         "live_key_family_render": live_render,
+        "time_pitch_view_saved": time_pitch_saved or "(none)",
+        "time_pitch_view_final": time_pitch_final or "(none)",
+        "family_spelling_saved": family_spelling_saved or "(none)",
+        "family_spelling_final": family_spelling_final or "(none)",
+        "loaded_workspace_revision": session.get("_suite_cloud_workspace_revision"),
+        "applied_workspace_revision": session.get("_suite_applied_workspace_revision"),
     }
 
 

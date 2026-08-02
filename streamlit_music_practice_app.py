@@ -8629,11 +8629,18 @@ def _render_practice_setup_panel(
     try:
         from session_key_context import sync_effective_session_keys_before_render
 
-        sync_effective_session_keys_before_render(
-            st.session_state,
-            original_key=original_key or "C",
-            instrument=str(st.session_state.get("instrument") or "Piano"),
-        )
+        try:
+            from music_workspace_hydration import can_finalize_music_restore
+
+            _keys_ready = can_finalize_music_restore(st.session_state)
+        except ImportError:
+            _keys_ready = bool(st.session_state.get("_music_workspace_blob_hydrated"))
+        if _keys_ready:
+            sync_effective_session_keys_before_render(
+                st.session_state,
+                original_key=original_key or "C",
+                instrument=str(st.session_state.get("instrument") or "Piano"),
+            )
     except ImportError:
         pass
 
@@ -9578,11 +9585,18 @@ original_key, _song_identity = display_key_context(
 try:
     from session_key_context import sync_effective_session_keys_before_render
 
-    sync_effective_session_keys_before_render(
-        st.session_state,
-        original_key=original_key,
-        instrument=str(st.session_state.get("instrument") or "Piano"),
-    )
+    try:
+        from music_workspace_hydration import can_finalize_music_restore
+
+        _keys_ready = can_finalize_music_restore(st.session_state)
+    except ImportError:
+        _keys_ready = bool(st.session_state.get("_music_workspace_blob_hydrated"))
+    if _keys_ready:
+        sync_effective_session_keys_before_render(
+            st.session_state,
+            original_key=original_key,
+            instrument=str(st.session_state.get("instrument") or "Piano"),
+        )
 except ImportError:
     pass
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
