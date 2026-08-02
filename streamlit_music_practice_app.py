@@ -9736,6 +9736,22 @@ def _on_practice_filter_change() -> None:
     _sync_canonical_practice_after_edit()
 
 
+def _sync_global_control_after_edit(*, reason: str) -> None:
+    """Flush Instrument/Level/Focus into canonical active_song_state and save."""
+    try:
+        from music_persistent_state import flush_global_control_edits_and_save
+
+        flush_global_control_edits_and_save(st, reason=reason)
+    except Exception:
+        try:
+            from active_song_state import flush_global_control_edits
+
+            flush_global_control_edits(st.session_state, reason=reason)
+            persist_music_local_state(st)
+        except Exception:
+            persist_music_local_state(st)
+
+
 def _sync_canonical_active_song_after_edit() -> None:
     """Phase C: flush canonical active_song_state and force cloud save."""
     try:
@@ -9838,7 +9854,7 @@ def _on_global_instrument_change() -> None:
         log_instrument_changed(st, instrument=str(new_value), previous=str(previous or ""))
     except Exception:
         pass
-    _sync_canonical_active_song_after_edit()
+    _sync_global_control_after_edit(reason="instrument_change")
     try:
         from music_global_control_diagnostics import finalize_global_control_widget_diag
 
@@ -9873,7 +9889,7 @@ def _on_global_focus_change() -> None:
         pass
     mark_active_song_local_edit(st.session_state)
     set_active_focus(st.session_state, val, source="sidebar_on_change")
-    _sync_canonical_active_song_after_edit()
+    _sync_global_control_after_edit(reason="focus_change")
     try:
         from music_global_control_diagnostics import finalize_global_control_widget_diag
 
@@ -9908,7 +9924,7 @@ def _on_global_level_change() -> None:
         pass
     mark_active_song_local_edit(st.session_state)
     set_active_level(st.session_state, val, source="sidebar_on_change")
-    _sync_canonical_active_song_after_edit()
+    _sync_global_control_after_edit(reason="level_change")
     try:
         from music_global_control_diagnostics import finalize_global_control_widget_diag
 

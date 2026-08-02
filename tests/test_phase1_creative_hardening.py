@@ -67,6 +67,53 @@ class TestGlobalControlsCreativeIsolation(unittest.TestCase):
         self.assertEqual(ss.get("focus"), "Rhythm")
 
 
+class TestGlobalRestoreProjectionRevision(unittest.TestCase):
+    def test_projection_once_per_hydrated_revision(self) -> None:
+        from music_restore_phase import (
+            current_hydration_revision,
+            mark_global_controls_restore_projection_complete,
+            should_project_global_controls_from_canonical,
+        )
+        from workspace_revision import APPLIED_REVISION_KEY
+
+        ss: dict = {APPLIED_REVISION_KEY: 42, "_cloud_workspace_restored_this_run": True}
+        self.assertTrue(should_project_global_controls_from_canonical(ss))
+        mark_global_controls_restore_projection_complete(ss)
+        ss["_cloud_workspace_restored_this_run"] = True
+        ss.pop("_music_restore_phase_complete", None)
+        self.assertFalse(should_project_global_controls_from_canonical(ss))
+        self.assertEqual(current_hydration_revision(ss), 42)
+
+    def test_user_global_flush_keeps_piano(self) -> None:
+        from active_song_state import (
+            ACTIVE_SONG_STATE_KEY,
+            flush_global_control_edits,
+            prepare_active_song_context,
+        )
+        from music_restore_phase import mark_global_controls_restore_projection_complete
+        from workspace_revision import APPLIED_REVISION_KEY
+
+        ss: dict = {
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "Rhythm",
+            ACTIVE_SONG_STATE_KEY: {
+                "instrument": "Saxophone",
+                "level": "Advanced",
+                "focus": "Tone",
+                "pick_key": "pop::x",
+            },
+            APPLIED_REVISION_KEY: 7,
+        }
+        mark_global_controls_restore_projection_complete(ss)
+        flush_global_control_edits(ss, reason="instrument_change")
+        meta = ss.get(ACTIVE_SONG_STATE_KEY)
+        self.assertIsInstance(meta, dict)
+        self.assertEqual(meta.get("instrument"), "Piano")
+        prepare_active_song_context(ss)
+        self.assertEqual(ss.get("instrument"), "Piano")
+
+
 class TestCreativePageRefreshFromPayload(unittest.TestCase):
     def test_hydrated_creative_page_survives_prepare_studio_nav(self) -> None:
         ss: dict = {

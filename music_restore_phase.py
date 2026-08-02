@@ -19,6 +19,7 @@ STREAMLIT_WIDGETS_LOCKED_KEY = "_streamlit_widgets_locked_this_run"
 GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY = (
     "_music_global_controls_restore_projection_complete"
 )
+GLOBAL_CONTROLS_PROJECTED_REVISION_KEY = "_music_global_controls_projected_revision"
 STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY = "_music_studio_page_restore_projection_complete"
 
 
@@ -44,6 +45,7 @@ def begin_music_script_run(session_state: dict[str, Any]) -> None:
         session_state.pop("_studio_active_page_id", None)
         session_state.pop(MUSIC_RESTORE_PHASE_COMPLETE_KEY, None)
         session_state.pop(GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY, None)
+        session_state.pop(GLOBAL_CONTROLS_PROJECTED_REVISION_KEY, None)
         session_state.pop(STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY, None)
         session_state.pop("_improv_tab_user_touched", None)
         session_state.pop("_creative_mode_user_touched", None)
@@ -83,12 +85,37 @@ def global_controls_restore_projection_complete(session_state: dict[str, Any]) -
     return bool(session_state.get(GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY))
 
 
+def current_hydration_revision(session_state: dict[str, Any]) -> int:
+    try:
+        from workspace_revision import APPLIED_REVISION_KEY
+
+        return int(session_state.get(APPLIED_REVISION_KEY) or 0)
+    except (ImportError, TypeError, ValueError):
+        return 0
+
+
+def global_controls_projected_revision(session_state: dict[str, Any]) -> int:
+    try:
+        return int(session_state.get(GLOBAL_CONTROLS_PROJECTED_REVISION_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def mark_global_controls_restore_projection_complete(session_state: dict[str, Any]) -> None:
     session_state[GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY] = True
+    rev = current_hydration_revision(session_state)
+    if rev > 0:
+        session_state[GLOBAL_CONTROLS_PROJECTED_REVISION_KEY] = rev
 
 
 def should_project_global_controls_from_canonical(session_state: dict[str, Any]) -> bool:
-    """One-shot authoritative global control hydration — never on ordinary reruns."""
+    """One-shot global control hydration per hydrated workspace revision N."""
+    rev = current_hydration_revision(session_state)
+    projected = global_controls_projected_revision(session_state)
+    if rev > 0 and projected >= rev:
+        return False
+    if rev > 0 and projected < rev:
+        return True
     if global_controls_restore_projection_complete(session_state):
         return False
     return authoritative_restore_in_progress(session_state)

@@ -2219,6 +2219,30 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     if hasattr(st, "session_state"):
         if stamp_trace:
             ss["_music_save_payload_stamp_trace"] = stamp_trace
+        try:
+            from music_page_save_history import record_page_bearing_save
+
+            record_page_bearing_save(
+                ss,
+                reason=save_reason,
+                pages={
+                    "save_payload_core_page": (stamp_trace or {}).get("save_payload_core_page")
+                    or (stamp_trace or {}).get("post_stamp_core_page"),
+                    "save_payload_session_page": (stamp_trace or {}).get("save_payload_session_page")
+                    or (stamp_trace or {}).get("post_stamp_session_page"),
+                    "save_payload_workspace_page": (stamp_trace or {}).get("save_payload_workspace_page")
+                    or (stamp_trace or {}).get("post_stamp_workspace_page"),
+                    "save_payload_studio_nav_page": (stamp_trace or {}).get("save_payload_studio_nav_page")
+                    or (stamp_trace or {}).get("post_stamp_studio_nav_page"),
+                    "final_payload_studio_page": (stamp_trace or {}).get("final_payload_studio_page")
+                    or (stamp_trace or {}).get("cloud_write_studio_page"),
+                },
+                cloud_confirmed=ss.get("_suite_persist_last_save_cloud"),
+                confirmed_revision=ss.get("_music_last_confirmed_cloud_revision"),
+                writer="build_music_disk_state",
+            )
+        except ImportError:
+            pass
         ss["music_workspace_state"] = copy.deepcopy(state["music_workspace_state"])
         if isinstance(state.get("studio_nav_state"), dict):
             ss["studio_nav_state"] = copy.deepcopy(state["studio_nav_state"])
@@ -3017,6 +3041,21 @@ def after_studio_page_change(
     _release_user_page_ownership_after_save(st, page_id)
     ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
+    try:
+        from music_page_save_history import record_page_click_save_diagnostics
+
+        record_page_click_save_diagnostics(
+            ss,
+            clicked_page=page_id,
+            page_change_origin="user_navigation",
+            stamp_trace=ss.get("_music_save_payload_stamp_trace")
+            if isinstance(ss.get("_music_save_payload_stamp_trace"), dict)
+            else None,
+            cloud_confirmed=ss.get("_suite_persist_last_save_cloud"),
+            confirmed_revision=ss.get("_music_last_confirmed_cloud_revision"),
+        )
+    except ImportError:
+        pass
 
 
 def claim_studio_page_ownership(
@@ -3246,6 +3285,30 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         )
         if should_flush:
             flush_active_song_edits(ss, reason=reason)
+    except ImportError:
+        pass
+    ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
+    if ok:
+        _record_music_persist_trace(st, reason=reason)
+    return ok
+
+
+def flush_global_control_edits_and_save(st: Any, *, reason: str = "instrument_change") -> bool:
+    """Sidebar Instrument/Level/Focus → canonical blob + cloud save."""
+    ss = st.session_state
+    try:
+        from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
+
+        suppress, why = should_suppress_music_workspace_save(ss, reason)
+        if suppress:
+            record_startup_save_suppressed(ss, why)
+            return False
+    except ImportError:
+        pass
+    try:
+        from active_song_state import flush_global_control_edits
+
+        flush_global_control_edits(ss, reason=reason)
     except ImportError:
         pass
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)

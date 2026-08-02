@@ -21,7 +21,16 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             "clicked_page",
             "page_change_origin",
             "canonical_page_after_click",
-            "page_saved_in_payload",
+            "session_page_after_click",
+            "save_payload_core_page",
+            "save_payload_session_page",
+            "save_payload_workspace_page",
+            "save_payload_studio_nav_page",
+            "save_core_page",
+            "save_session_page",
+            "save_workspace_page",
+            "save_studio_nav_page",
+            "confirmed_revision",
             "page_change_cloud_confirmed",
             "hydrated_studio_page",
             "canonical_page_before_widget",
@@ -36,8 +45,15 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 st.caption(f"`{key}`: {val!r}")
 
         st.markdown("**Global controls**")
+        by_field = global_diag.get("by_field") if isinstance(global_diag.get("by_field"), dict) else {}
         for field in ("instrument", "level", "focus"):
-            st.caption(f"**{field}** session=`{session.get(field)!r}`")
+            row = by_field.get(field) if isinstance(by_field, dict) else {}
+            if not isinstance(row, dict):
+                row = {}
+            st.caption(
+                f"**{field}** widget=`{session.get(field)!r}` "
+                f"canonical=`{row.get('final_canonical_value') or global_diag.get(f'{field}_final_canonical_value')!r}`"
+            )
             for suffix in (
                 "attempted_widget_value",
                 "canonical_before",
@@ -47,11 +63,8 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 "overwrite_source",
                 "overwrite_function",
             ):
-                k = f"{field}_{suffix}" if suffix != "attempted_widget_value" else f"widget_attempted_value"
-                if suffix == "attempted_widget_value" and global_diag.get("widget_field") != field:
-                    continue
-                val = global_diag.get(k) if k in global_diag else global_diag.get(suffix)
-                if val is not None and (suffix != "attempted_widget_value" or global_diag.get("widget_field") == field):
+                val = row.get(suffix) or global_diag.get(f"{field}_{suffix}")
+                if val is not None:
                     st.caption(f"  `{suffix}`: {val!r}")
         for key in (
             "restore_projection_applied_this_run",

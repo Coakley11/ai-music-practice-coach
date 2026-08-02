@@ -544,6 +544,13 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
         st.json(j.get("global_writes") or [])
         st.markdown("**Page writes this rerun**")
         st.json(j.get("page_writes") or [])
+        try:
+            from music_page_save_history import PAGE_SAVE_HISTORY_KEY
+
+            st.markdown("**Page-bearing save history**")
+            st.json(session.get(PAGE_SAVE_HISTORY_KEY) or [])
+        except ImportError:
+            pass
         st.markdown("**Copyable journal**")
         st.code(format_journal_copy_block(session), language="json")
 

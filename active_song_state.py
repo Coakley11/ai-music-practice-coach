@@ -58,6 +58,7 @@ __all__ = (
     "commit_active_song_state_from_session",
     "finalize_transposing_receive_restore",
     "flush_active_song_edits",
+    "flush_global_control_edits",
     "gather_active_song_context",
     "is_active_song_locally_dirty",
     "mark_active_song_local_edit",
@@ -925,6 +926,18 @@ def _apply_context_to_session_keys(
     apply_global_controls: bool = True,
     global_control_source: str = "",
 ) -> None:
+    if apply_global_controls:
+        try:
+            from music_restore_phase import should_project_global_controls_from_canonical
+
+            allow_post_hydration = global_control_source in (
+                "user_pick_apply",
+                "catalog_pick_apply",
+            )
+            if not allow_post_hydration and not should_project_global_controls_from_canonical(session):
+                apply_global_controls = False
+        except ImportError:
+            pass
     try:
         from practice_setup_globals import record_global_control_change
     except ImportError:
@@ -1172,10 +1185,25 @@ def write_canonical_active_song_state(
     mutate_wk = True if mutate_written_key is None else mutate_written_key
     mutate_subtype = True if mutate_transposing_subtype is None else mutate_transposing_subtype
     if apply_global_controls_to_session is None:
-        apply_global_controls_to_session = reason not in (
-            "canonical_preserve",
-            "autosave",
-        )
+        if reason in ("canonical_preserve", "autosave"):
+            apply_global_controls_to_session = False
+        elif reason in (
+            "cloud_restore",
+            "cloud_restore_custom",
+            "core_restore",
+            "workspace_envelope_identity",
+            "reconcile_on_load",
+        ):
+            try:
+                from music_restore_phase import should_project_global_controls_from_canonical
+
+                apply_global_controls_to_session = should_project_global_controls_from_canonical(
+                    session
+                )
+            except ImportError:
+                apply_global_controls_to_session = False
+        else:
+            apply_global_controls_to_session = False
     _apply_context_to_session_keys(
         session,
         ctx,
@@ -1185,6 +1213,13 @@ def write_canonical_active_song_state(
         apply_global_controls=apply_global_controls_to_session,
         global_control_source=reason or "canonical_write",
     )
+    if apply_global_controls_to_session:
+        try:
+            from music_restore_phase import mark_global_controls_restore_projection_complete
+
+            mark_global_controls_restore_projection_complete(session)
+        except ImportError:
+            pass
     new_pick = str(ctx.get("pick_key") or "").strip()
     if old_pick and new_pick and old_pick != new_pick:
         try:
@@ -1457,12 +1492,31 @@ def commit_active_song_state_from_session(
 def flush_active_song_edits(session: dict[str, Any], *, reason: str = "song_edit") -> dict[str, Any]:
     """End-of-rerun flush after user changed song/instrument/key."""
     ctx = gather_active_song_context(session)
+    ctx = _merge_live_global_controls(session, ctx)
     return write_canonical_active_song_state(
         session,
         ctx,
         reason=reason,
         local_edit=True,
         mutate_display_key=False,
+        apply_global_controls_to_session=False,
+    )
+
+
+def flush_global_control_edits(session: dict[str, Any], *, reason: str = "instrument_change") -> dict[str, Any]:
+    """Persist sidebar Instrument/Level/Focus into canonical active_song_state (session wins)."""
+    mark_active_song_local_edit(session)
+    ctx = gather_active_song_context(session)
+    ctx = _merge_live_global_controls(session, ctx)
+    return write_canonical_active_song_state(
+        session,
+        ctx,
+        reason=reason,
+        local_edit=True,
+        mutate_display_key=False,
+        mutate_written_key=False,
+        mutate_transposing_subtype=False,
+        apply_global_controls_to_session=False,
     )
 
 
@@ -1611,6 +1665,28 @@ def apply_cloud_active_song_state_if_allowed(
     state: dict[str, Any],
 ) -> bool:
     """Apply cloud/disk active song only when this device has no local song edits."""
+    try:
+        from workspace_revision import APPLIED_REVISION_KEY, workspace_revision_from_blob
+
+        cloud_rev = workspace_revision_from_blob(state)
+        applied = int(session.get(APPLIED_REVISION_KEY) or 0)
+        if (
+            cloud_rev > 0
+            and applied >= cloud_rev
+            and not is_active_song_locally_dirty(session)
+        ):
+            try:
+                from music_restore_phase import global_controls_projected_revision
+
+                if global_controls_projected_revision(session) >= cloud_rev:
+                    session["_active_song_restore_skipped_reason"] = "revision_already_applied"
+                    return False
+            except ImportError:
+                if session.get("_music_global_controls_restore_projection_complete"):
+                    session["_active_song_restore_skipped_reason"] = "revision_already_applied"
+                    return False
+    except ImportError:
+        pass
     if is_active_song_locally_dirty(session):
         try:
             from music_workspace_restore_mode import workspace_restore_in_progress
