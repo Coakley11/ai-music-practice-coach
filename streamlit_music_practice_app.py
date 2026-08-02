@@ -96,6 +96,17 @@ try:
 except Exception:
     pass
 
+try:
+    from music_page_cloud_durability_deploy_probe import render_page_cloud_durability_deploy_sidebar
+
+    render_page_cloud_durability_deploy_sidebar(st)
+except Exception as _deploy_probe_exc:
+    if st.session_state.get("developer_mode"):
+        st.sidebar.error(
+            f"PAGE_CLOUD_DURABILITY deploy probe failed: "
+            f"{type(_deploy_probe_exc).__name__}: {_deploy_probe_exc}"
+        )
+
 
 def _developer_mode_enabled() -> bool:
     try:
@@ -10049,8 +10060,11 @@ if _developer_mode_enabled():
         from music_phase1_write_journal import render_phase1_write_journal_expander
 
         render_phase1_write_journal_expander(st, st.session_state)
-    except Exception:
-        pass
+    except Exception as _phase1_journal_exc:
+        st.sidebar.error(
+            f"Phase 1 write journal render failed: "
+            f"{type(_phase1_journal_exc).__name__}: {_phase1_journal_exc}"
+        )
 
     try:
         from music_phase1_dev_diagnostics import render_phase1_live_path_diagnostics
