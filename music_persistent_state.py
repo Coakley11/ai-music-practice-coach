@@ -2543,11 +2543,22 @@ def apply_music_disk_state(
             active_studio = pre_restore_studio_page
 
     ss["_suite_page_overwrite_source"] = overwrite_source
+    ss["_page_restore_overwrite_source"] = overwrite_source
     if active_studio:
         try:
             from music_startup_save_suppression import set_page_change_origin
 
             set_page_change_origin(ss, "cloud_restore")
+        except ImportError:
+            pass
+        try:
+            from music_studio_page_diagnostics import record_studio_page_diag
+
+            record_studio_page_diag(
+                ss,
+                hydrated_studio_page=active_studio,
+                page_restore_overwrite_source=overwrite_source,
+            )
         except ImportError:
             pass
         ss["studio_page"] = active_studio

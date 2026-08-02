@@ -10,7 +10,7 @@ from creative_workspace_state_persistence import (
     CREATIVE_WORKSPACE_STATE_KEY,
     apply_creative_workspace_from_payload,
     default_creative_workspace_state,
-    project_creative_workspace_to_session,
+    prepare_creative_workspace_for_render,
     sync_creative_workspace_state_before_persist,
 )
 from music_persistent_state import apply_music_disk_state, build_music_disk_state
@@ -39,8 +39,9 @@ class TestCreativeWorkspaceStatePersistence(unittest.TestCase):
             song_library={},
             authoritative_restore=True,
         )
+        prepare_creative_workspace_for_render(fresh.session_state)
         self.assertEqual(fresh.session_state.get("improv_intelligence_tab"), "Missions")
-        self.assertTrue(fresh.session_state.get(CREATIVE_WORKSPACE_RESTORED_KEY))
+        self.assertTrue(fresh.session_state.get("_creative_workspace_restored_applied"))
 
     def test_legacy_session_keys_migrate_to_canonical(self) -> None:
         payload = {
@@ -52,6 +53,7 @@ class TestCreativeWorkspaceStatePersistence(unittest.TestCase):
         }
         ss: dict = {"studio_page": "creative"}
         self.assertTrue(apply_creative_workspace_from_payload(ss, payload, authoritative=True))
+        prepare_creative_workspace_for_render(ss)
         self.assertEqual(ss.get("improv_intelligence_tab"), "Entry & Jam")
         self.assertIsInstance(ss.get(CREATIVE_WORKSPACE_STATE_KEY), dict)
 
@@ -64,7 +66,7 @@ class TestCreativeWorkspaceStatePersistence(unittest.TestCase):
             CREATIVE_WORKSPACE_RESTORED_KEY: True,
             "harmony_map_chord": "Cmaj7",
         }
-        project_creative_workspace_to_session(ss, overwrite=True)
+        prepare_creative_workspace_for_render(ss)
         self.assertEqual(ss["harmony_map_chord"], "Dm7")
 
 

@@ -602,8 +602,7 @@ def apply_creative_session_to_session(
         session["display_key"] = display
         session["_pending_display_key"] = display
 
-    if sess.instrument:
-        _set("instrument", sess.instrument)
+    # Instrument / level / focus are global session controls — never overwrite from Creative snapshot.
 
     if sess.tool_type == "mission":
         session["improv_active_mission"] = sess.mission_id

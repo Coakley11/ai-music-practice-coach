@@ -16,6 +16,21 @@ from improvisation_mission_persistence import (
     mark_mission_workspace_dirty,
 )
 
+# Global musician context — owned by active_song_state / session bar, not Creative workspace.
+_GLOBAL_CONTEXT_SESSION_KEYS: frozenset[str] = frozenset(
+    {
+        "instrument",
+        "level",
+        "focus",
+        "display_key",
+        "concert_key",
+        "practice_concert_key",
+        "chart_key",
+        "written_key",
+    }
+)
+
+CREATIVE_SESSION_KEY = "creative_session"
 CREATIVE_WORKSPACE_STATE_KEY = "creative_workspace_state"
 CREATIVE_WORKSPACE_RESTORED_KEY = "_creative_workspace_state_restored"
 CREATIVE_WORKSPACE_MIGRATED_KEY = "_creative_workspace_state_legacy_migrated"
@@ -57,8 +72,37 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
     for key in CREATIVE_WORKSPACE_KEYS:
         if key in session:
             base[key] = copy.deepcopy(session[key])
+    cs = base.get(CREATIVE_SESSION_KEY)
+    if isinstance(cs, dict):
+        cs = copy.deepcopy(cs)
+        live_inst = str(session.get("instrument") or "").strip()
+        if live_inst:
+            cs["instrument"] = live_inst
+        base[CREATIVE_SESSION_KEY] = cs
     base["updated_at"] = _utc_now_iso()
     return base
+
+
+def _sanitize_creative_session_for_projection(blob: dict[str, Any]) -> dict[str, Any]:
+    out = copy.deepcopy(blob)
+    out.pop("instrument", None)
+    return out
+
+
+def project_creative_workspace_to_session(session: dict[str, Any], *, overwrite: bool = False) -> None:
+    meta = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    if not isinstance(meta, dict):
+        return
+    for key in CREATIVE_WORKSPACE_KEYS:
+        if key in _GLOBAL_CONTEXT_SESSION_KEYS:
+            continue
+        if key not in meta:
+            continue
+        val = meta[key]
+        if key == CREATIVE_SESSION_KEY and isinstance(val, dict):
+            val = _sanitize_creative_session_for_projection(val)
+        if overwrite or key not in session:
+            session[key] = copy.deepcopy(val)
 
 
 def write_canonical_creative_workspace(
@@ -149,17 +193,6 @@ def migrate_legacy_creative_workspace_once(
     return blob
 
 
-def project_creative_workspace_to_session(session: dict[str, Any], *, overwrite: bool = False) -> None:
-    meta = session.get(CREATIVE_WORKSPACE_STATE_KEY)
-    if not isinstance(meta, dict):
-        return
-    for key in CREATIVE_WORKSPACE_KEYS:
-        if key not in meta:
-            continue
-        if overwrite or key not in session:
-            session[key] = copy.deepcopy(meta[key])
-
-
 def apply_creative_workspace_to_session(
     session: dict[str, Any],
     blob: dict[str, Any],
@@ -168,7 +201,6 @@ def apply_creative_workspace_to_session(
 ) -> None:
     canonical = upgrade_creative_workspace_blob(blob)
     write_canonical_creative_workspace(session, canonical, reason=source)
-    project_creative_workspace_to_session(session, overwrite=True)
     session[CREATIVE_WORKSPACE_RESTORED_KEY] = True
     session.pop(CREATIVE_WORKSPACE_LAST_SKIP_KEY, None)
     try:
@@ -211,11 +243,21 @@ def apply_creative_workspace_from_payload(
 
 
 def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
-    if isinstance(session.get(CREATIVE_WORKSPACE_STATE_KEY), dict):
-        project_creative_workspace_to_session(
+    """One-shot projection after cloud restore — never clobber live global controls on reruns."""
+    if not session.pop(CREATIVE_WORKSPACE_RESTORED_KEY, None):
+        return
+    project_creative_workspace_to_session(session, overwrite=True)
+    session["_creative_workspace_restored_applied"] = True
+    try:
+        from music_global_control_diagnostics import record_global_control_diag
+
+        record_global_control_diag(
             session,
-            overwrite=creative_workspace_state_restored(session),
+            creative_workspace_restore_applied=True,
+            overwrite_source="creative_workspace_state_persistence.prepare",
         )
+    except ImportError:
+        pass
 
 
 def _cloud_creative_workspace_blob(cloud_state: dict[str, Any]) -> dict[str, Any]:

@@ -66,7 +66,7 @@ _FLAT_SIDE_MAJOR: frozenset[str] = frozenset(
     normalize_root(k) for k in ("F", "Bb", "Eb", "Ab", "Db", "Gb")
 )
 _SHARP_SIDE_MINOR: frozenset[str] = frozenset(
-    normalize_root(k.rstrip("m")) for k in ("Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m")
+    normalize_root(k.rstrip("m")) for k in ("Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m", "Am")
 )
 _FLAT_SIDE_MINOR: frozenset[str] = frozenset(
     normalize_root(k.rstrip("m")) for k in ("Dm", "Gm", "Cm", "Fm", "Bbm", "Ebm", "Abm")
@@ -280,6 +280,96 @@ def respell_note_for_key(note_name: str, reference_key: str) -> str:
 
 def respell_notes_for_key(notes: list[str], reference_key: str) -> list[str]:
     return [respell_note_for_key(n, reference_key) for n in notes]
+
+
+_DIATONIC_LETTERS = "CDEFGAB"
+_NATURAL_LETTER_PC: dict[str, int] = {
+    "C": 0,
+    "D": 2,
+    "E": 4,
+    "F": 5,
+    "G": 7,
+    "A": 9,
+    "B": 11,
+}
+
+
+def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
+    """Diatonic letter steps from root (0,2,4,6) and semitone offsets from root."""
+    low = str(suffix or "").lower()
+    if "m7b5" in low:
+        return [(0, 0), (2, 3), (4, 6), (6, 10)]
+    if "dim" in low:
+        if "dim7" in low or "°7" in low:
+            return [(0, 0), (2, 3), (4, 6), (6, 9)]
+        return [(0, 0), (2, 3), (4, 6)]
+    if "aug" in low or "+" in str(suffix or ""):
+        return [(0, 0), (2, 4), (4, 8)]
+    if "sus" in low:
+        return [(0, 0), (1, 2), (4, 7)] if "sus2" in low else [(0, 0), (3, 5), (4, 7)]
+    if "maj7" in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 11)]
+    if "m7" in low and "maj" not in low:
+        return [(0, 0), (2, 3), (4, 7), (6, 10)]
+    if re.search(r"(?<![a-z])7", low) and "maj" not in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 10)]
+    if "m" in low and "maj" not in low:
+        return [(0, 0), (2, 3), (4, 7)]
+    return [(0, 0), (2, 4), (4, 7)]
+
+
+def _spell_letter_to_pitch_class(letter: str, target_pc: int) -> str:
+    """Pick accidental so ``letter`` matches ``target_pc`` (0–11)."""
+    base = _NATURAL_LETTER_PC.get(letter.upper(), 0)
+    diff = (int(target_pc) - base) % 12
+    if diff == 0:
+        return letter.upper()
+    if diff == 1:
+        return f"{letter.upper()}#"
+    if diff == 11:
+        return f"{letter.upper()}b"
+    if diff == 2:
+        return f"{letter.upper()}#"
+    if diff == 10:
+        return f"{letter.upper()}b"
+    if diff == 3:
+        return f"{letter.upper()}#"
+    if diff == 9:
+        return f"{letter.upper()}b"
+    return spell_pitch_class(int(target_pc) % 12, mode="sharp")
+
+
+def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
+    """
+    Chord tones with correct diatonic letter names (root, third, fifth, seventh).
+
+    Uses chord structure for letter names; ``reference_key`` only breaks ties when needed.
+    """
+    _ = reference_key
+    head = normalize_chord_for_theory(chord).split("/", 1)[0].strip()
+    if not head:
+        head = str(chord or "").split("/", 1)[0].strip()
+    root_raw, suffix = split_chord(head)
+    root_spelled = str(root_raw or "C").strip() or "C"
+    root_letter = root_spelled[0].upper()
+    if root_letter not in _DIATONIC_LETTERS:
+        root_letter = "C"
+    root_pc = NOTE_TO_MIDI.get(normalize_root(root_spelled), 60) % 12
+    root_li = _DIATONIC_LETTERS.index(root_letter)
+    spec = _chord_letter_interval_spec(suffix)
+    tones: list[str] = []
+    for letter_step, semi in spec:
+        li = (root_li + int(letter_step)) % 7
+        letter = _DIATONIC_LETTERS[li]
+        target_pc = (root_pc + int(semi)) % 12
+        tones.append(_spell_letter_to_pitch_class(letter, target_pc))
+    ref = str(reference_key or "").strip()
+    if ref and reference_spelling_mode(ref) == "flat":
+        root_tone = tones[0] if tones else ""
+        tones = [respell_note_for_key(t, ref) for t in tones]
+        if root_spelled and tones:
+            tones[0] = respell_note_for_key(root_spelled, ref) if root_spelled[0].upper() in _DIATONIC_LETTERS else tones[0]
+    return tones[:4]
 
 
 def _practice_key_for_pitch_class(key: str, mode: str) -> str:

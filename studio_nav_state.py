@@ -97,6 +97,16 @@ def write_canonical_studio_nav_state(
 
 def prepare_studio_nav(session: dict[str, Any]) -> str:
     """Reconcile ``studio_page`` with canonical nav state before widgets render."""
+    try:
+        from music_studio_page_diagnostics import record_studio_page_diag
+
+        record_studio_page_diag(
+            session,
+            canonical_studio_page_before_widgets=canonical_studio_page(session),
+            navigation_widget_value_before_render=str(session.get("studio_page") or "").strip() or None,
+        )
+    except ImportError:
+        pass
     if is_studio_nav_locally_dirty(session):
         page = _normalize_page(session.get("studio_page")) or "practice"
         return write_canonical_studio_nav_state(
@@ -110,13 +120,26 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     live_raw = session.get("studio_page")
     live = _normalize_page(live_raw) if live_raw is not None else ""
     if canonical and live and canonical != live:
-        # Quick-nav set ``studio_page`` on the prior rerun; stale canonical still says picker/songs.
-        return write_canonical_studio_nav_state(
-            session,
-            live,
-            reason="session_page_wins",
-            local_edit=True,
-        )
+        user_nav = bool(session.get("_suite_page_user_nav")) or is_studio_nav_locally_dirty(session)
+        restore_source = str(session.get("_suite_page_overwrite_source") or "").strip()
+        if user_nav:
+            return write_canonical_studio_nav_state(
+                session,
+                live,
+                reason="session_page_wins",
+                local_edit=True,
+            )
+        if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
+            return write_canonical_studio_nav_state(session, canonical, reason="canonical_after_restore")
+        try:
+            from music_startup_save_suppression import get_page_change_origin
+
+            if get_page_change_origin(session) == "cloud_restore":
+                return write_canonical_studio_nav_state(session, canonical, reason="canonical_after_cloud_restore")
+        except ImportError:
+            pass
+        if not user_nav:
+            return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve_over_stale_live")
     if canonical:
         return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve")
 
@@ -142,6 +165,12 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
 
 def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "autosave") -> str:
     page = _normalize_page(session.get("studio_page")) or "practice"
+    try:
+        from music_studio_page_diagnostics import record_studio_page_diag
+
+        record_studio_page_diag(session, final_rendered_page=page)
+    except ImportError:
+        pass
     return write_canonical_studio_nav_state(session, page, reason=reason, local_edit=False)
 
 
