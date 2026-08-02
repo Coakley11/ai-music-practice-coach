@@ -124,11 +124,41 @@ def safe_session_assign(
 ) -> None:
     """Write session value without touching locked widget keys when ``widget_safe``."""
     if not widget_safe:
+        old = session.get(key)
         session[key] = value
+        try:
+            from music_phase1_write_journal import record_phase1_session_key_write
+
+            record_phase1_session_key_write(
+                session,
+                key,
+                value,
+                module="session_widget_safe",
+                function="safe_session_assign",
+                reason="safe_session_assign",
+                origin="widget_safe_off",
+            )
+        except ImportError:
+            pass
         return
     locked = widgets_likely_instantiated(session)
     if not locked:
+        old = session.get(key)
         session[key] = value
+        try:
+            from music_phase1_write_journal import record_phase1_session_key_write
+
+            record_phase1_session_key_write(
+                session,
+                key,
+                value,
+                module="session_widget_safe",
+                function="safe_session_assign",
+                reason="safe_session_assign",
+                origin="pre_widget",
+            )
+        except ImportError:
+            pass
         return
     pending_key = _PENDING_FOR_WIDGET_KEY.get(key) or _generic_pending_key(key)
     session[pending_key] = value

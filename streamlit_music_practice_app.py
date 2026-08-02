@@ -38,6 +38,13 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
+    from music_phase1_write_journal import begin_phase1_write_journal_run
+
+    begin_phase1_write_journal_run(st.session_state)
+except Exception:
+    pass
+
+try:
     from music_restore_phase import begin_music_script_run
 
     begin_music_script_run(st.session_state)
@@ -9800,6 +9807,14 @@ def _on_global_instrument_change() -> None:
 
     new_value = st.session_state.get("instrument", "Piano")
     try:
+        from music_phase1_write_journal import note_phase1_user_widget_event
+
+        note_phase1_user_widget_event(
+            st.session_state, field="instrument", value=str(new_value), source="sidebar_on_change"
+        )
+    except ImportError:
+        pass
+    try:
         from music_global_control_diagnostics import (
             finalize_global_control_widget_diag,
             note_global_control_widget_attempt,
@@ -9838,6 +9853,14 @@ def _on_global_focus_change() -> None:
 
     val = st.session_state.get("focus")
     try:
+        from music_phase1_write_journal import note_phase1_user_widget_event
+
+        note_phase1_user_widget_event(
+            st.session_state, field="focus", value=str(val or ""), source="sidebar_on_change"
+        )
+    except ImportError:
+        pass
+    try:
         from music_global_control_diagnostics import (
             finalize_global_control_widget_diag,
             note_global_control_widget_attempt,
@@ -9864,6 +9887,14 @@ def _on_global_level_change() -> None:
     from practice_setup_globals import set_active_level
 
     val = st.session_state.get("level")
+    try:
+        from music_phase1_write_journal import note_phase1_user_widget_event
+
+        note_phase1_user_widget_event(
+            st.session_state, field="level", value=str(val or ""), source="sidebar_on_change"
+        )
+    except ImportError:
+        pass
     try:
         from music_global_control_diagnostics import (
             finalize_global_control_widget_diag,
@@ -9995,6 +10026,13 @@ if _developer_mode_enabled():
         from app_ui import render_quick_nav_dev_diagnostics
 
         render_quick_nav_dev_diagnostics(st)
+    except Exception:
+        pass
+
+    try:
+        from music_phase1_write_journal import render_phase1_write_journal_expander
+
+        render_phase1_write_journal_expander(st, st.session_state)
     except Exception:
         pass
 

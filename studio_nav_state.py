@@ -78,6 +78,34 @@ def write_canonical_studio_nav_state(
 ) -> str:
     """Single write path for ``studio_page``."""
     normalized = _normalize_page(page) or _normalize_page(session.get("studio_page")) or "practice"
+    old_page = session.get("studio_page")
+    old_nav = session.get(STUDIO_NAV_STATE_KEY)
+    old_nav_page = old_nav.get("studio_page") if isinstance(old_nav, dict) else None
+    try:
+        from music_phase1_write_journal import record_phase1_page_write
+
+        record_phase1_page_write(
+            session,
+            key="studio_page",
+            old_page=old_page,
+            new_page=normalized,
+            module="studio_nav_state",
+            function="write_canonical_studio_nav_state",
+            reason=reason or "",
+            origin=reason or "canonical",
+        )
+        record_phase1_page_write(
+            session,
+            key="studio_nav_state.studio_page",
+            old_page=old_nav_page,
+            new_page=normalized,
+            module="studio_nav_state",
+            function="write_canonical_studio_nav_state",
+            reason=reason or "",
+            origin=reason or "canonical",
+        )
+    except ImportError:
+        pass
     session[STUDIO_NAV_STATE_KEY] = {
         "studio_page": normalized,
         "page": normalized,

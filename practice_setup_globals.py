@@ -192,12 +192,42 @@ def set_active_instrument(session_state: Any, value: Any, *, source: str = "sett
         # "Other" or instrument variants. Don't drop the value; just
         # keep it as-is.
         pass
+    try:
+        from music_phase1_write_journal import record_phase1_global_write
+
+        record_phase1_global_write(
+            session_state,
+            key=GLOBAL_INSTRUMENT_KEY,
+            old_value=session_state.get(GLOBAL_INSTRUMENT_KEY),
+            new_value=instrument,
+            module="practice_setup_globals",
+            function="set_active_instrument",
+            reason=source,
+            origin=source,
+        )
+    except ImportError:
+        pass
     session_state[GLOBAL_INSTRUMENT_KEY] = instrument
     record_global_control_change(session_state, GLOBAL_INSTRUMENT_KEY, source)
     # Re-align focus against the new instrument's option list.
     opts = focus_options_for_instrument(instrument)
     current_focus = _as_str(session_state.get(GLOBAL_FOCUS_KEY), "")
     if opts and current_focus not in opts:
+        try:
+            from music_phase1_write_journal import record_phase1_global_write
+
+            record_phase1_global_write(
+                session_state,
+                key=GLOBAL_FOCUS_KEY,
+                old_value=session_state.get(GLOBAL_FOCUS_KEY),
+                new_value=opts[0],
+                module="practice_setup_globals",
+                function="set_active_instrument",
+                reason=f"{source}:focus_clamp",
+                origin=source,
+            )
+        except ImportError:
+            pass
         session_state[GLOBAL_FOCUS_KEY] = opts[0]
         record_global_control_change(session_state, GLOBAL_FOCUS_KEY, f"{source}:focus_clamp")
     return instrument
@@ -207,6 +237,21 @@ def set_active_level(session_state: Any, value: Any, *, source: str = "setter") 
     level = _as_str(value, DEFAULT_LEVEL)
     if level not in LEVEL_OPTIONS:
         level = DEFAULT_LEVEL
+    try:
+        from music_phase1_write_journal import record_phase1_global_write
+
+        record_phase1_global_write(
+            session_state,
+            key=GLOBAL_LEVEL_KEY,
+            old_value=session_state.get(GLOBAL_LEVEL_KEY),
+            new_value=level,
+            module="practice_setup_globals",
+            function="set_active_level",
+            reason=source,
+            origin=source,
+        )
+    except ImportError:
+        pass
     session_state[GLOBAL_LEVEL_KEY] = level
     record_global_control_change(session_state, GLOBAL_LEVEL_KEY, source)
     return level
@@ -219,6 +264,21 @@ def set_active_focus(session_state: Any, value: Any, *, source: str = "setter") 
     focus = _as_str(value, opts[0] if opts else "")
     if opts and focus not in opts:
         focus = opts[0]
+    try:
+        from music_phase1_write_journal import record_phase1_global_write
+
+        record_phase1_global_write(
+            session_state,
+            key=GLOBAL_FOCUS_KEY,
+            old_value=session_state.get(GLOBAL_FOCUS_KEY),
+            new_value=focus,
+            module="practice_setup_globals",
+            function="set_active_focus",
+            reason=source,
+            origin=source,
+        )
+    except ImportError:
+        pass
     session_state[GLOBAL_FOCUS_KEY] = focus
     record_global_control_change(session_state, GLOBAL_FOCUS_KEY, source)
     return focus

@@ -330,6 +330,26 @@ def apply_canonical_active_song_from_workspace(
             if identity.get(key):
                 ctx[key] = identity[key]
         try:
+            from music_phase1_write_journal import record_phase1_global_write
+
+            for gkey in ("instrument", "level", "focus"):
+                if identity.get(gkey):
+                    record_phase1_global_write(
+                        ss,
+                        key=f"music_workspace_envelope.{gkey}",
+                        old_value=(ss.get("active_song_state") or {}).get(gkey)
+                        if isinstance(ss.get("active_song_state"), dict)
+                        else ss.get(gkey),
+                        new_value=identity[gkey],
+                        module="active_song_workspace_restore",
+                        function="apply_canonical_active_song_from_workspace",
+                        reason="workspace_envelope_identity",
+                        origin="cloud_restore",
+                        target="workspace_envelope",
+                    )
+        except ImportError:
+            pass
+        try:
             from music_restore_phase import should_project_global_controls_from_canonical
 
             apply_globals = should_project_global_controls_from_canonical(ss)

@@ -122,8 +122,39 @@ def guarded_session_set(
             value=value,
             blocked=True,
         )
+        try:
+            from music_phase1_write_journal import record_phase1_global_write
+
+            record_phase1_global_write(
+                session,
+                key=key,
+                old_value=session.get(key),
+                new_value=value,
+                module="music_state_writes",
+                function="guarded_session_set",
+                reason=writer,
+                origin=str(origin),
+                blocked=True,
+            )
+        except ImportError:
+            pass
         return False
+    old = session.get(key)
     session[key] = value
+    try:
+        from music_phase1_write_journal import record_phase1_session_key_write
+
+        record_phase1_session_key_write(
+            session,
+            key,
+            value,
+            module="music_state_writes",
+            function="guarded_session_set",
+            reason=writer,
+            origin=str(origin),
+        )
+    except ImportError:
+        pass
     record_state_write_trace(
         session,
         key=key,

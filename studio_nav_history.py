@@ -272,6 +272,21 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
                 back.append(entry)
         session_state[NAV_FORWARD_STACK] = []
     session_state["studio_page"] = page_id
+    try:
+        from music_phase1_write_journal import record_phase1_page_write
+
+        record_phase1_page_write(
+            session_state,
+            key="studio_page",
+            old_page=current,
+            new_page=page_id,
+            module="studio_nav_history",
+            function="navigate_studio_page",
+            reason="user_navigation",
+            origin="user_navigation",
+        )
+    except ImportError:
+        pass
     _nav_ss = session_state
 
     class _St:

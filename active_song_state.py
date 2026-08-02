@@ -1007,7 +1007,23 @@ def _apply_context_to_session_keys(
                 except ImportError:
                     pass
                 try:
+                    old_v = session.get(key)
                     session[key] = val
+                    try:
+                        from music_phase1_write_journal import record_phase1_global_write
+
+                        record_phase1_global_write(
+                            session,
+                            key=key,
+                            old_value=old_v,
+                            new_value=val,
+                            module="active_song_state",
+                            function="_apply_context_to_session_keys",
+                            reason=global_control_source or "canonical_apply",
+                            origin="canonical",
+                        )
+                    except ImportError:
+                        pass
                 except Exception as exc:
                     _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
                     raise
@@ -1105,6 +1121,19 @@ def write_canonical_active_song_blob_only(
     post-render paths instead of ``write_canonical_active_song_state``.
     """
     ctx = _normalize_context(context)
+    try:
+        from music_phase1_write_journal import record_phase1_active_song_blob_globals
+
+        record_phase1_active_song_blob_globals(
+            session,
+            ctx,
+            module="active_song_state",
+            function="write_canonical_active_song_blob_only",
+            reason=reason or "blob_only",
+            origin=reason or "canonical",
+        )
+    except ImportError:
+        pass
     session[ACTIVE_SONG_STATE_KEY] = {
         **ctx,
         "last_write_reason": reason or None,

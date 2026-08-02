@@ -2561,6 +2561,32 @@ def apply_music_disk_state(
             )
         except ImportError:
             pass
+        old_hydrated = ss.get("_music_hydrated_studio_page")
+        try:
+            from music_phase1_write_journal import record_phase1_page_write
+
+            record_phase1_page_write(
+                ss,
+                key="_music_hydrated_studio_page",
+                old_page=old_hydrated,
+                new_page=active_studio,
+                module="music_persistent_state",
+                function="apply_music_disk_state",
+                reason="workspace_restore",
+                origin="cloud_restore",
+            )
+            record_phase1_page_write(
+                ss,
+                key="studio_page",
+                old_page=pre_restore_studio_page,
+                new_page=active_studio,
+                module="music_persistent_state",
+                function="apply_music_disk_state",
+                reason=overwrite_source or "workspace_restore",
+                origin="cloud_restore",
+            )
+        except ImportError:
+            pass
         ss["studio_page"] = active_studio
         ss["_music_hydrated_studio_page"] = active_studio
         try:
