@@ -109,6 +109,68 @@ def _merge_cloud_save_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
     return dict(diag2) if isinstance(diag2, dict) else {}
 
 
+def _record_force_save_early_return(
+    st: Any,
+    ss: dict[str, Any],
+    *,
+    stage: str,
+    reason: str,
+    save_reason: str = "",
+    flushed: bool = False,
+) -> None:
+    try:
+        from music_startup_save_suppression import (
+            STARTUP_SUPPRESSION_ARMED_KEY,
+            STARTUP_SUPPRESSION_RELEASED_KEY,
+            collect_startup_save_suppression_diagnostics,
+            queued_user_page_change_target,
+        )
+    except ImportError:
+        STARTUP_SUPPRESSION_ARMED_KEY = "startup_suppression_armed"
+        STARTUP_SUPPRESSION_RELEASED_KEY = "startup_suppression_released"
+
+        def queued_user_page_change_target(_s: dict[str, Any]) -> str:
+            return str(_s.get("_music_user_navigated_page_this_run") or "").strip()
+
+        def collect_startup_save_suppression_diagnostics(_s: dict[str, Any]) -> dict[str, Any]:
+            return {}
+
+    queued = ""
+    try:
+        queued = queued_user_page_change_target(ss)
+    except Exception:
+        queued = str(ss.get("_music_user_navigated_page_this_run") or "").strip()
+
+    fields: dict[str, Any] = {
+        "force_save_exit_stage": stage,
+        "force_save_early_return_reason": reason or None,
+        "startup_suppression_armed": ss.get(STARTUP_SUPPRESSION_ARMED_KEY),
+        "startup_suppression_released": ss.get(STARTUP_SUPPRESSION_RELEASED_KEY),
+        "queued_page_change": queued or None,
+        "queued_page_change_preserved": ss.get("queued_page_change_preserved"),
+        "queued_page_change_flushed": bool(flushed or ss.get("queued_page_change_flushed")),
+        "current_page_change_payload_built": bool(ss.get("_music_page_change_payload_built")),
+    }
+    try:
+        fields["startup_suppression_diag"] = collect_startup_save_suppression_diagnostics(ss)
+    except Exception:
+        pass
+    record_save_transaction(ss, **fields)
+    try:
+        from music_page_save_pipeline_trace import record_pipeline_event
+
+        record_pipeline_event(
+            ss,
+            function="force_music_workspace_save",
+            phase="early_return",
+            branch=stage,
+            extra={"force_save_early_return": fields, "save_reason": save_reason},
+        )
+    except ImportError:
+        pass
+    _snapshot_save_transaction_debug(st, ss, event=f"force_save_early_return:{stage}")
+
+
 def _mark_workspace_pending_cloud_retry(
     session: dict[str, Any],
     *,
@@ -200,11 +262,43 @@ def force_music_workspace_save(
     except ImportError:
         pass
     try:
-        from music_startup_save_suppression import gate_music_workspace_save_at_startup
+        from music_startup_save_suppression import (
+            attempt_release_startup_for_queued_page_change,
+            gate_music_workspace_save_at_startup,
+        )
 
         skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
         if skip_save:
-            return False
+            flushed = False
+            if r == "page_change":
+                flushed = attempt_release_startup_for_queued_page_change(
+                    st,
+                    suppress_reason=str(_suppress_reason or ""),
+                )
+            if not flushed:
+                _record_force_save_early_return(
+                    st,
+                    ss,
+                    stage="before_payload_build",
+                    reason=str(_suppress_reason or "startup_suppressed"),
+                    save_reason=r,
+                )
+                ss["_music_force_save_ok"] = False
+                ss["_music_force_save_blocked_reason"] = str(_suppress_reason or "startup_suppressed")
+                return False
+            skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
+            if skip_save:
+                _record_force_save_early_return(
+                    st,
+                    ss,
+                    stage="before_payload_build",
+                    reason=str(_suppress_reason or "startup_suppressed_after_release"),
+                    save_reason=r,
+                    flushed=True,
+                )
+                ss["_music_force_save_ok"] = False
+                ss["_music_force_save_blocked_reason"] = str(_suppress_reason or "startup_suppressed")
+                return False
     except ImportError:
         pass
     dirty_fields = _workspace_dirty_field_names(ss)
@@ -229,6 +323,13 @@ def force_music_workspace_save(
     if not allowed:
         ss["_music_force_save_ok"] = False
         ss["_music_force_save_blocked_reason"] = block
+        _record_force_save_early_return(
+            st,
+            ss,
+            stage="before_payload_build",
+            reason=str(block or "force_save_not_allowed"),
+            save_reason=r,
+        )
         _snapshot_save_transaction_debug(st, ss, event="force_save_blocked")
         return False
 
@@ -238,6 +339,13 @@ def force_music_workspace_save(
         br = str(ss.get("_suite_autosave_block_reason") or "post-restore cooldown")
         record_save_transaction(ss, force_save_allowed=False, force_save_block_reason=br)
         ss["_suite_autosave_blocked_after_restore"] = True
+        _record_force_save_early_return(
+            st,
+            ss,
+            stage="before_payload_build",
+            reason=str(br or "autosave_cooldown"),
+            save_reason=r,
+        )
         _snapshot_save_transaction_debug(st, ss, event="autosave_cooldown_blocked")
         return False
 

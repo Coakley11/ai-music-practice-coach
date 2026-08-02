@@ -67,6 +67,8 @@ _DROP_NESTED_KEYS: frozenset[str] = frozenset(
         "last_write_reason",
         "backing_transport_status",
         "label",
+        "display_key_owner_identity",
+        "improv_mission_workspace_updated_at",
     }
 )
 
@@ -149,6 +151,7 @@ def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) 
         if not capo_active:
             for key in _GUITAR_CAPO_KEYS:
                 ass.pop(key, None)
+        ass.pop("display_key_owner_identity", None)
         sel = ass.get("selected_song")
         if isinstance(sel, dict):
             sel.pop("label", None)
@@ -174,12 +177,17 @@ def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) 
     cws = canonical.get("creative_workspace_state")
     if isinstance(cws, dict):
         cws.pop("updated_at", None)
+        cws.pop("improv_mission_workspace_updated_at", None)
 
     mws = canonical.get("music_workspace_state")
     if isinstance(mws, dict):
         active = mws.get("active_song")
         if isinstance(active, dict):
             _normalize_source_aliases(active)
+        nested_cws = mws.get("creative_workspace_state")
+        if isinstance(nested_cws, dict):
+            nested_cws.pop("updated_at", None)
+            nested_cws.pop("improv_mission_workspace_updated_at", None)
         for filt_key in ("backing_filters", "practice_filters"):
             filt = mws.get(filt_key)
             if isinstance(filt, dict):

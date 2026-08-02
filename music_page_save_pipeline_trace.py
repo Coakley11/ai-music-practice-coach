@@ -298,13 +298,33 @@ def infer_failure_class(session: dict[str, Any]) -> list[str]:
                 hints.append("4_payload_stale_without_sync_checkpoint")
 
     if isinstance(d, dict) and isinstance(e, dict) and clicked:
-        d_pages = d.get("payload_pages") or {}
-        e_pages = e.get("payload_pages") or {}
+        d_pages = d.get("payload_pages") or (d.get("extra") or {}).get("payload_pages") or {}
+        e_pages = e.get("payload_pages") or (e.get("extra") or {}).get("payload_pages") or {}
         if isinstance(d_pages, dict) and isinstance(e_pages, dict):
             if all(d_pages.get(k) == clicked for k in d_pages if d_pages.get(k)) and any(
                 e_pages.get(k) and e_pages.get(k) != clicked for k in e_pages
             ):
                 hints.append("5_later_save_overwrites_creative_payload")
+
+    force_early = [
+        e
+        for e in (bucket.get("events") or [])
+        if isinstance(e, dict)
+        and e.get("function") == "force_music_workspace_save"
+        and e.get("phase") == "early_return"
+    ]
+    if clicked and force_early and not any(
+        ev.get("function") == "build_music_disk_state" for ev in (bucket.get("events") or [])
+    ):
+        hints.append("8_page_change_payload_never_built_force_save_early_return")
+    elif clicked:
+        d_extra = (d or {}).get("extra") or {}
+        if d_extra.get("belongs_to_current_page_click") is False:
+            hints.append("7_stale_checkpoint_d_not_current_page_click")
+        if d and not d_extra.get("belongs_to_current_page_click", True):
+            if "4_payload_stale_after_sync_or_rebuilt_later" in hints:
+                hints.remove("4_payload_stale_after_sync_or_rebuilt_later")
+            hints.append("8_page_change_payload_never_built_for_current_click")
 
     prep_events = [
         e

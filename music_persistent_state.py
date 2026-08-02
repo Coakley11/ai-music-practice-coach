@@ -1645,6 +1645,12 @@ def save_music_cloud_session(
                 "write_path": write_path,
                 "payload_pages": payload_pages_from_state(state),
                 "page_arg": page,
+                "run_seq": ss.get("_script_run_seq"),
+                "transaction_sequence": ss.get("_music_page_change_transaction_seq"),
+                "save_reason": ss.get("_music_build_save_reason") or ss.get("_suite_pending_save_reason"),
+                "belongs_to_current_page_click": ss.get("_music_page_change_click_run_seq")
+                == ss.get("_script_run_seq"),
+                "current_page_change_payload_built": bool(ss.get("_music_page_change_payload_built")),
             },
         )
     except ImportError:
@@ -2578,11 +2584,25 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             extra={
                 "build_disk_impl_marker": build_disk_impl_marker,
                 "save_reason": save_reason,
+                "run_seq": ss.get("_script_run_seq"),
+                "page_change_click_run_seq": ss.get("_music_page_change_click_run_seq"),
+                "transaction_sequence": ss.get("_music_page_change_transaction_seq"),
+                "belongs_to_current_page_click": (
+                    save_reason == "page_change"
+                    and ss.get("_music_page_change_click_run_seq") == ss.get("_script_run_seq")
+                ),
                 "page_change_target": page_change_target or None,
                 "page_change_source": page_change_source or None,
                 "payload_pages": payload_pages_from_state(state),
             },
         )
+        if save_reason == "page_change" and ss.get("_music_page_change_click_run_seq") == ss.get(
+            "_script_run_seq"
+        ):
+            ss["_music_page_change_payload_built"] = True
+            ss["_music_last_build_checkpoint_run_seq"] = ss.get("_script_run_seq")
+            ss["_music_last_build_checkpoint_save_reason"] = save_reason
+            ss["_music_last_build_checkpoint_payload_pages"] = payload_pages_from_state(state)
     except ImportError:
         pass
     return state
@@ -3374,6 +3394,9 @@ def after_studio_page_change(
         return
     ss.pop("_suite_deferred_page_change_save", None)
     _mark_page_change_write_pending(ss, page_id)
+    ss["_music_page_change_click_run_seq"] = ss.get("_script_run_seq")
+    ss["_music_page_change_payload_built"] = False
+    ss["_music_page_change_transaction_seq"] = int(ss.get("_music_page_change_transaction_seq") or 0) + 1
     build_ss = getattr(st, "session_state", ss)
     _mirror_page_change_save_session(st, ss, page_id)
     if build_ss is not ss:

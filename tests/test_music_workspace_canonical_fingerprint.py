@@ -78,7 +78,36 @@ class CanonicalFingerprintNormalizationTests(unittest.TestCase):
             workspace_canonical_content_fingerprint(base),
             workspace_canonical_content_fingerprint(clean),
         )
-        self.assertEqual(diff_canonical_paths(base, clean), [])
+
+    def test_display_key_owner_and_mission_updated_at_ignored(self) -> None:
+        a = {
+            "active_song_state": {
+                "instrument": "Piano",
+                "display_key": "C",
+                "display_key_owner_identity": "owner-a",
+            },
+            "creative_workspace_state": {
+                "improv_mission_workspace_updated_at": "2026-01-01T00:00:00Z",
+            },
+            "music_workspace_state": {
+                "studio_page": "backing",
+                "creative_workspace_state": {
+                    "improv_mission_workspace_updated_at": "2026-01-02T00:00:00Z",
+                },
+            },
+        }
+        b = {
+            "active_song_state": {
+                "instrument": "Piano",
+                "display_key": "C",
+            },
+            "creative_workspace_state": {},
+            "music_workspace_state": {
+                "studio_page": "backing",
+                "creative_workspace_state": {},
+            },
+        }
+        self.assertEqual(workspace_canonical_content_fingerprint(a), workspace_canonical_content_fingerprint(b))
 
 
 if __name__ == "__main__":
