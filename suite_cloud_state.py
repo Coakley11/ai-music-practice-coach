@@ -413,7 +413,7 @@ def probe_cloud_restore_diagnostics(st: Any, app_id: str) -> dict[str, Any]:
 
     try:
         storage, diag["storage_module"] = _import_storage()
-        app_key = storage.normalize_app_key(app_id)
+        app_key = _normalize_storage_app_key(app_id)
         meta_fn = getattr(storage, "load_current_state_meta_for_app", None)
         row_fn = getattr(storage, "load_current_state_for_app", None)
         if meta_fn and row_fn:
@@ -447,6 +447,23 @@ def _cloud_storage_app_id(app_id: str) -> str:
         return str(app_id or "").strip()
 
 
+def _normalize_storage_app_key(app: str) -> str:
+    """Canonical app key normalization (``suite_storage`` shim does not re-export this)."""
+    from suite_storage_supabase import normalize_app_key
+
+    return normalize_app_key(app)
+
+
+def _scoped_storage_app_key(app_id: str) -> str:
+    return _normalize_storage_app_key(_cloud_storage_app_id(app_id))
+
+
+def _logical_app_key_for_cloud(app_id: str) -> str:
+    from suite_workspace import logical_storage_app_key
+
+    return logical_storage_app_key(_scoped_storage_app_key(app_id))
+
+
 def _full_session_cache_keys(app_key: str) -> tuple[str, str]:
     return f"_suite_full_session_ts_{app_key}", f"_suite_full_session_blob_{app_key}"
 
@@ -462,11 +479,7 @@ def _streamlit_session() -> Any | None:
 
 def invalidate_cloud_full_session_cache(app_id: str) -> None:
     """Drop cached full_session after a local or cloud write."""
-    try:
-        storage, _ = _import_storage()
-    except ImportError:
-        return
-    app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+    app_key = _scoped_storage_app_key(app_id)
     ss = _streamlit_session()
     if ss is None:
         return
@@ -495,7 +508,7 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
     try:
         storage, _ = _import_storage()
 
-        app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+        app_key = _scoped_storage_app_key(app_id)
         meta_fn = getattr(storage, "load_current_state_meta_for_app", None)
         row_fn = getattr(storage, "load_current_state_for_app", None)
         ts_key, blob_key = _full_session_cache_keys(app_key)
@@ -619,14 +632,8 @@ def save_cloud_full_session(
         _record_cloud_save_result(ss, result)
         return result
 
-    logical_app = storage.normalize_app_key(app_id)
-    storage_app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
-    try:
-        from suite_workspace import logical_storage_app_key
-
-        logical_app = logical_storage_app_key(storage_app_key)
-    except ImportError:
-        logical_app = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+    storage_app_key = _scoped_storage_app_key(app_id)
+    logical_app = _logical_app_key_for_cloud(app_id)
     try:
         import suite_storage_supabase as supabase_mod
 
@@ -745,7 +752,7 @@ def clear_cloud_full_session(app_id: str) -> None:
         return
     try:
         storage, _ = _import_storage()
-        app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
+        app_key = _scoped_storage_app_key(app_id)
         storage.save_current_state(
             app_key,
             page="",
