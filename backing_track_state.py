@@ -1299,9 +1299,15 @@ def classify_backing_sync_failure_class(trace: dict[str, Any]) -> str:
         return "dell_payload_cloud_mismatch"
 
     if pending and force_reason != "backing_edit":
+        block = str(trace.get("force_save_block_reason") or trace.get("cloud_write_error") or "")
+        if block:
+            return f"flush_save_not_triggered:{block}"
         return "flush_save_not_triggered"
 
     if widget_bpm != "" and not last_save_cloud and force_reason != "backing_edit":
+        block = str(trace.get("force_save_block_reason") or trace.get("cloud_write_error") or "")
+        if block:
+            return f"flush_save_not_triggered:{block}"
         return "flush_save_not_triggered"
 
     if (
@@ -1555,6 +1561,34 @@ def collect_backing_persistence_trace(
         "last_save_cloud": bool(session.get("_suite_persist_last_save_cloud")),
         "cloud_save_blocked_reason": session.get("_suite_autosave_cloud_blocked_reason", ""),
     }
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        tx = collect_save_transaction_diagnostics(session)
+        for key in (
+            "force_save_requested",
+            "force_save_reason",
+            "force_save_allowed",
+            "force_save_block_reason",
+            "workspace_dirty_before_save",
+            "workspace_dirty_fields",
+            "envelope_built",
+            "envelope_revision_before",
+            "envelope_revision_after",
+            "cloud_write_attempted",
+            "cloud_write_succeeded",
+            "cloud_write_error",
+            "cloud_readback_attempted",
+            "cloud_readback_revision",
+            "cloud_readback_matches",
+            "dirty_cleared_after_confirmed_save",
+        ):
+            if key in tx and tx[key] is not None:
+                trace[key] = tx[key]
+        if tx.get("force_save_block_reason") and not trace.get("cloud_save_blocked_reason"):
+            trace["cloud_save_blocked_reason"] = tx["force_save_block_reason"]
+    except ImportError:
+        pass
     if st is not None:
         trace.update(collect_backing_device_context(st, session))
     trace["backing_stale_cloud_hint"] = classify_backing_stale_cloud_hint(trace)

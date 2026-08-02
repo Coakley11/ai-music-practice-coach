@@ -47,6 +47,11 @@ _STRICT_CLOUD_WRITE_REASONS: frozenset[str] = frozenset(
         "practice_edit",
         "backing_edit",
         "music_coach_send",
+        "practice_tool_select",
+        "practice_workspace_edit",
+        "practice_key_mode_change",
+        "display_key_change",
+        "capo_widget",
     }
 )
 

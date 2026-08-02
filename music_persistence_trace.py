@@ -1161,6 +1161,38 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             ("force_save_reason", trace.get("force_save_reason") or ss.get("_suite_persist_last_save_reason")),
 
+            ("force_save_requested", trace.get("force_save_requested")),
+
+            ("force_save_allowed", trace.get("force_save_allowed")),
+
+            ("force_save_block_reason", trace.get("force_save_block_reason")),
+
+            ("workspace_dirty_before_save", trace.get("workspace_dirty_before_save")),
+
+            ("workspace_dirty_fields", trace.get("workspace_dirty_fields")),
+
+            ("envelope_built", trace.get("envelope_built")),
+
+            ("cloud_write_attempted", trace.get("cloud_write_attempted")),
+
+            ("cloud_write_succeeded", trace.get("cloud_write_succeeded")),
+
+            ("cloud_write_error", trace.get("cloud_write_error")),
+
+            ("cloud_readback_matches", trace.get("cloud_readback_matches")),
+
+            ("dirty_cleared_after_confirmed_save", trace.get("dirty_cleared_after_confirmed_save")),
+
+            ("cloud_fetch_attempted", trace.get("cloud_fetch_attempted")),
+
+            ("cloud_fetch_succeeded", trace.get("cloud_fetch_succeeded")),
+
+            ("cloud_document_found", trace.get("cloud_document_found")),
+
+            ("selected_payload_source", trace.get("selected_payload_source")),
+
+            ("no_payload_reason", trace.get("no_payload_reason")),
+
             ("pre_save_studio_page", trace.get("pre_save_studio_page")),
 
             ("pre_save_nav_page", trace.get("pre_save_nav_page")),

@@ -385,11 +385,20 @@ def invalidate_cloud_full_session_cache(app_id: str) -> None:
 
 def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[str, Any], str | None]:
     """Return ``(session_dict, updated_at_iso)`` from cloud, or empty dict."""
+    ss = _streamlit_session()
+    if ss is not None:
+        ss["_cloud_fetch_attempted"] = True
     try:
         from suite_storage_config import cloud_storage_enabled
     except ImportError:
+        if ss is not None:
+            ss["_cloud_fetch_error"] = "cloud_storage_config_missing"
         return {}, None
     if not cloud_storage_enabled():
+        if ss is not None:
+            ss["_cloud_fetch_error"] = "cloud_storage_disabled"
+            ss["_cloud_fetch_succeeded"] = False
+            ss["_cloud_document_found"] = False
         return {}, None
     try:
         storage, _ = _import_storage()
@@ -397,7 +406,6 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         app_key = storage.normalize_app_key(_cloud_storage_app_id(app_id))
         meta_fn = getattr(storage, "load_current_state_meta_for_app", None)
         row_fn = getattr(storage, "load_current_state_for_app", None)
-        ss = _streamlit_session()
         ts_key, blob_key = _full_session_cache_keys(app_key)
 
         updated_at: str | None = None
@@ -407,6 +415,9 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
             if not force and ss is not None and ss.get(ts_key) == updated_at:
                 cached = ss.get(blob_key)
                 if isinstance(cached, dict):
+                    if ss is not None:
+                        ss["_cloud_fetch_succeeded"] = True
+                        ss["_cloud_document_found"] = bool(cached)
                     return copy.deepcopy(cached), updated_at
 
         if row_fn:
@@ -414,6 +425,10 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         else:
             row = storage.load_current_states(include_metrics=True).get(app_key) or {}
         if not isinstance(row, dict):
+            if ss is not None:
+                ss["_cloud_fetch_succeeded"] = False
+                ss["_cloud_document_found"] = False
+                ss["_cloud_fetch_error"] = "invalid_cloud_row"
             return {}, None
         updated_at = str(row.get("updated_at") or "") or updated_at
         metrics = row.get("metrics")
@@ -426,8 +441,21 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         if ss is not None:
             ss[blob_key] = copy.deepcopy(session_out)
             ss[ts_key] = updated_at
+            ss["_cloud_fetch_succeeded"] = True
+            ss["_cloud_document_found"] = bool(session_out)
+            ss.pop("_cloud_fetch_error", None)
+            try:
+                from workspace_revision import workspace_revision_from_blob
+
+                ss["_cloud_loaded_revision"] = workspace_revision_from_blob(session_out)
+            except ImportError:
+                pass
         return session_out, updated_at
-    except Exception:
+    except Exception as exc:
+        if ss is not None:
+            ss["_cloud_fetch_succeeded"] = False
+            ss["_cloud_document_found"] = False
+            ss["_cloud_fetch_error"] = str(exc)
         return {}, None
 
 

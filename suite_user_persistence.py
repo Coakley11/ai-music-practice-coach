@@ -655,6 +655,21 @@ def sync_workspace_protocol(
     disk_state, disk_warn, disk_ts = _load_raw(app_id)
     if disk_warn:
         st.session_state[_SESSION_INVALID_WARN_KEY] = disk_warn
+    try:
+        if str(app_id or "").strip().lower() == "music":
+            from music_workspace_cloud_hydration import record_cloud_fetch_result
+
+            record_cloud_fetch_result(
+                st.session_state,
+                app_id=app_id,
+                cloud_state=cloud_state,
+                cloud_ts=cloud_ts,
+                disk_state=disk_state,
+                disk_ts=disk_ts,
+                error=str(st.session_state.get("_cloud_fetch_error") or ""),
+            )
+    except ImportError:
+        pass
 
     cloud_epoch = parse_persist_timestamp(cloud_ts)
     disk_epoch = parse_persist_timestamp(disk_ts)
@@ -664,6 +679,15 @@ def sync_workspace_protocol(
         reason = "local unsaved edits — workspace sync skipped"
         st.session_state["_suite_persist_restore_skip_reason"] = reason
         _mark_workspace_sync_skipped(st, app_id, reason)
+        try:
+            if str(app_id or "").strip().lower() == "music":
+                from music_workspace_cloud_hydration import record_selected_payload_source
+
+                record_selected_payload_source(
+                    st.session_state, source="none", reason=reason
+                )
+        except ImportError:
+            pass
         _record_startup_restore_diagnostics(
             st, app_id,
             cloud_state=cloud_state, cloud_ts=cloud_ts,
@@ -686,7 +710,11 @@ def sync_workspace_protocol(
         return False
 
     if not cloud_state and not disk_state:
-        reason = "no workspace blob"
+        fetch_err = str(st.session_state.get("_cloud_fetch_error") or "").strip()
+        if fetch_err and fetch_err not in ("cloud_storage_disabled",):
+            reason = f"cloud_fetch_failed:{fetch_err}"
+        else:
+            reason = "no workspace blob"
         _record_workspace_sync_trace(
             st, app_id, cloud_state={}, cloud_ts=cloud_ts, disk_state={}, disk_ts=disk_ts,
             winner="none", reason="empty", applied=False,
@@ -709,6 +737,17 @@ def sync_workspace_protocol(
         local_dirty=False,
         cloud_first=cloud_first,
     )
+    try:
+        if str(app_id or "").strip().lower() == "music":
+            from music_workspace_cloud_hydration import record_selected_payload_source
+
+            record_selected_payload_source(
+                st.session_state,
+                source=picked.source,
+                reason=picked.reason if not picked.state else "",
+            )
+    except ImportError:
+        pass
     if not picked.state:
         _record_workspace_sync_trace(
             st, app_id, cloud_state=cloud_state, cloud_ts=cloud_ts,
@@ -1381,6 +1420,22 @@ def force_autosave(
     reason: str = "",
 ) -> bool:
     """Persist workspace immediately (e.g. after meaningful user action)."""
+    if str(app_id or "").strip().lower() == "music":
+        try:
+            from music_workspace_cloud_save import force_music_workspace_save
+
+            ok = force_music_workspace_save(st, reason=reason or "force_autosave", build_state=build_state)
+            try:
+                from music_persistent_state import _clear_canonical_dirty_after_save, _record_music_persist_trace
+
+                if ok:
+                    _clear_canonical_dirty_after_save(st.session_state, reason=reason or "force_autosave")
+                _record_music_persist_trace(st, reason=reason or "force_autosave")
+            except ImportError:
+                pass
+            return ok
+        except ImportError:
+            pass
     try:
         import hashlib
         import json

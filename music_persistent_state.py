@@ -2991,7 +2991,6 @@ def flush_practice_edits_and_save(st: Any, *, reason: str = "practice_edit") -> 
         pass
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
     if ok:
-        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
         _record_music_persist_trace(st, reason=reason)
     return ok
 
@@ -3016,6 +3015,16 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         )
 
         ss = st.session_state
+        if reason in ("song_edit", "display_key_change", "capo_widget"):
+            try:
+                from music_persistent_state import clear_music_ephemeral_default_song
+
+                pk = str(ss.get("active_catalog_pick_key") or "").strip()
+                sel = ss.get("selected_song")
+                if pk or (isinstance(sel, dict) and str(sel.get("pick_key") or "").strip()):
+                    clear_music_ephemeral_default_song(ss)
+            except ImportError:
+                pass
         should_flush = reason not in ("cpl_draft_edit",) and (
             ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
             or is_active_song_locally_dirty(ss)
@@ -3027,7 +3036,6 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         pass
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
     if ok:
-        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
         _record_music_persist_trace(st, reason=reason)
     return ok
 
@@ -3057,8 +3065,6 @@ def flush_backing_edits_and_save(st: Any, *, reason: str = "backing_edit") -> bo
     except ImportError:
         pass
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
-    if ok:
-        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
     _record_music_persist_trace(st, reason=reason)
     try:
         from backing_track_state import snapshot_backing_path_trace
@@ -3449,6 +3455,22 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
         pre_save_studio = prior.get("pre_save_studio_page")
         pre_save_nav = prior.get("pre_save_nav_page")
         pre_save_owner = prior.get("pre_save_page_owner")
+        save_tx: dict[str, Any] = {}
+        hydration_diag: dict[str, Any] = {}
+        try:
+            from music_workspace_cloud_save import collect_save_transaction_diagnostics
+            from music_workspace_cloud_hydration import collect_hydration_diagnostics
+
+            save_tx = collect_save_transaction_diagnostics(ss)
+            hydration_diag = collect_hydration_diagnostics(ss)
+            if save_tx.get("force_save_block_reason"):
+                backing_trace["force_save_block_reason"] = save_tx["force_save_block_reason"]
+            if save_tx.get("cloud_write_error"):
+                backing_trace["cloud_write_error"] = save_tx["cloud_write_error"]
+        except ImportError:
+            pass
+        if hydration_diag.get("selected_payload_source"):
+            cloud_payload_source = str(hydration_diag["selected_payload_source"])
         update_trace(
             st,
             studio_page_raw=saved_studio or None,
@@ -3480,6 +3502,8 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
             **save_payload_trace,
             **practice_trace,
             **backing_trace,
+            **save_tx,
+            **hydration_diag,
         )
     except Exception:
         pass
@@ -3488,13 +3512,18 @@ def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
 def force_save_music_state(st: Any, *, reason: str = "") -> bool:
     ss = st.session_state
     if ss.get("_music_default_song_ephemeral") and reason in (
-        "song_edit",
         "autosave",
         "force_autosave",
         "",
     ):
         ss["_music_force_save_ok"] = False
         ss["_music_force_save_blocked_reason"] = "ephemeral_default_song"
+        try:
+            from music_workspace_cloud_save import record_save_transaction
+
+            record_save_transaction(ss, force_save_block_reason="ephemeral_default_song")
+        except ImportError:
+            pass
         return False
     ok = force_autosave(st, APP_ID, build_state=build_music_disk_state, reason=reason)
     cloud_ok = bool(st.session_state.get("_suite_persist_last_save_cloud"))
@@ -3517,10 +3546,6 @@ def force_save_music_state(st: Any, *, reason: str = "") -> bool:
             )
         except ImportError:
             pass
-    if ok:
-        _clear_canonical_dirty_after_save(st.session_state, reason=reason)
-    if ok or reason == "page_change":
-        _record_music_persist_trace(st, reason=reason)
     return ok
 
 
@@ -3543,7 +3568,22 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
             pass
         return result
     try:
-        result = autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
+        from music_workspace_cloud_save import music_autosave_if_changed
+
+        result = music_autosave_if_changed(st, build_state=build_music_disk_state)
+    except ImportError:
+        try:
+            result = autosave_if_changed(st, APP_ID, build_state=build_music_disk_state)
+            if result is None:
+                result = {
+                    "skipped": True,
+                    "disk_ok": False,
+                    "cloud_attempted": False,
+                    "cloud_ok": False,
+                    "cloud_error": None,
+                }
+        except Exception as exc:
+            result = {"error": str(exc), "skipped": True}
     except Exception as exc:
         result["error"] = str(exc)
     try:
@@ -3660,8 +3700,21 @@ def autosave_music_state(st: Any) -> dict[str, Any]:
             )
         except ImportError:
             pass
+        try:
+            from music_workspace_cloud_save import collect_save_transaction_diagnostics
+            from music_workspace_cloud_hydration import collect_hydration_diagnostics
+
+            trace_fields.update(collect_save_transaction_diagnostics(ss))
+            trace_fields.update(collect_hydration_diagnostics(ss))
+            tx = collect_save_transaction_diagnostics(ss)
+            if tx.get("force_save_block_reason"):
+                trace_fields["force_save_block_reason"] = tx["force_save_block_reason"]
+            if tx.get("cloud_write_error"):
+                trace_fields["cloud_write_error"] = tx["cloud_write_error"]
+        except ImportError:
+            pass
         update_trace(st, **trace_fields)
-        if result.get("cloud_ok") or result.get("disk_ok"):
+        if result.get("cloud_ok"):
             _clear_canonical_dirty_after_save(ss)
         try:
             from suite_cloud_state import load_cloud_full_session
