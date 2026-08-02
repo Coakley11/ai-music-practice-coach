@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import uuid
 from typing import Any, Callable
 
 from creative_workspace_state_persistence import (
@@ -16,6 +17,8 @@ CREATIVE_TAB_TOOL_DIAG_KEY = "_creative_tab_tool_diag"
 CREATIVE_TAB_HYDRATED_SNAPSHOT_KEY = "_creative_tab_tool_hydrated_snapshot"
 CREATIVE_TAB_MIGRATION_DONE_KEY = "_creative_tab_tool_migration_applied"
 CREATIVE_TAB_USER_EVENT_KEY = "_creative_tab_tool_last_user_event"
+CREATIVE_SELECTOR_LAST_TX_KEY = "_creative_selector_last_transaction"
+CREATIVE_SELECTOR_PENDING_TX_KEY = "_creative_selector_pending_transaction"
 
 SAVE_REASON_TAB = "creative_tab_change"
 SAVE_REASON_TOOL = "creative_tool_change"
@@ -80,6 +83,231 @@ def record_creative_tab_violation(session: dict[str, Any], code: str, *, detail:
     entry = {"code": code, "detail": detail or None}
     if entry not in violations:
         violations.append(entry)
+
+
+def _current_run_seq(session: dict[str, Any]) -> int:
+    try:
+        return int(session.get("_script_run_seq") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _selector_value_from_envelope(state: dict[str, Any], field: str) -> str:
+    if not isinstance(state, dict):
+        return ""
+    blocks: list[dict[str, Any]] = [state]
+    nested = state.get("music_workspace_state")
+    if isinstance(nested, dict):
+        blocks.append(nested)
+    for block in blocks:
+        cws = block.get("creative_workspace_state")
+        if isinstance(cws, dict) and field in cws:
+            return str(cws.get(field) or "").strip()
+    session_extra = state.get("session")
+    if isinstance(session_extra, dict) and field in session_extra:
+        return str(session_extra.get(field) or "").strip()
+    return ""
+
+
+def _workspace_save_tx(session: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        tx = collect_save_transaction_diagnostics(session)
+        return tx if isinstance(tx, dict) else {}
+    except ImportError:
+        tx = session.get("_music_workspace_save_transaction")
+        return dict(tx) if isinstance(tx, dict) else {}
+
+
+def _cloud_save_diag(session: dict[str, Any]) -> dict[str, Any]:
+    raw = session.get("_suite_last_cloud_save_result")
+    if isinstance(raw, dict):
+        return dict(raw)
+    raw2 = session.get("_music_last_cloud_save_diag")
+    return dict(raw2) if isinstance(raw2, dict) else {}
+
+
+def _cloud_workspace_key(session: dict[str, Any]) -> str:
+    for key in (
+        "_suite_cloud_workspace_key",
+        "_music_cloud_workspace_key",
+        "music_cloud_workspace_key",
+    ):
+        val = str(session.get(key) or "").strip()
+        if val:
+            return val
+    return ""
+
+
+def evaluate_selector_save_confirmation(
+    session: dict[str, Any],
+    *,
+    field: str,
+    new_value: str,
+    save_reason: str,
+    save_ok: bool,
+) -> dict[str, Any]:
+    """Selector-specific confirmation — never uses Studio page_change confirmation."""
+    workspace_tx = _workspace_save_tx(session)
+    cloud_diag = _cloud_save_diag(session)
+    pending = session.get(CREATIVE_SELECTOR_PENDING_TX_KEY)
+    pending_dict = pending if isinstance(pending, dict) else {}
+
+    reserved_raw = workspace_tx.get("reserved_write_revision") or workspace_tx.get("envelope_revision_after")
+    try:
+        reserved_revision = int(reserved_raw) if reserved_raw is not None else None
+    except (TypeError, ValueError):
+        reserved_revision = None
+
+    upsert_raw = cloud_diag.get("cloud_payload_revision") or workspace_tx.get("envelope_revision_after")
+    try:
+        revision_in_upsert_payload = int(upsert_raw) if upsert_raw is not None else None
+    except (TypeError, ValueError):
+        revision_in_upsert_payload = None
+
+    refetch_raw = workspace_tx.get("cloud_readback_revision")
+    try:
+        authoritative_refetch_revision = int(refetch_raw) if refetch_raw is not None else None
+    except (TypeError, ValueError):
+        authoritative_refetch_revision = None
+
+    fetch_source = str(session.get("_music_last_cloud_fetch_source") or "").strip()
+    cache_bypassed = fetch_source == "network" or bool(workspace_tx.get("cloud_readback_attempted"))
+    if authoritative_refetch_revision is None and revision_in_upsert_payload is not None:
+        authoritative_refetch_revision = revision_in_upsert_payload
+
+    authoritative_refetched_value = _selector_value_from_envelope(
+        session.get("_music_last_authoritative_cloud_state") or {},
+        field,
+    )
+    if not authoritative_refetched_value:
+        authoritative_refetched_value = canonical_creative_selector_value(session, field)
+
+    cloud_key = _cloud_workspace_key(session)
+    account_ok = bool(cloud_key) or bool(session.get("_suite_active_workspace"))
+
+    checks = {
+        "save_ok": bool(save_ok),
+        "cloud_upsert_succeeded": bool(
+            cloud_diag.get("cloud_upsert_succeeded") or workspace_tx.get("cloud_write_succeeded")
+        ),
+        "cache_bypassed_for_refetch": cache_bypassed,
+        "refetch_revision_equals_reserved": (
+            reserved_revision is not None
+            and authoritative_refetch_revision is not None
+            and int(authoritative_refetch_revision) == int(reserved_revision)
+        ),
+        "revision_in_upsert_equals_reserved": (
+            reserved_revision is not None
+            and revision_in_upsert_payload is not None
+            and int(revision_in_upsert_payload) == int(reserved_revision)
+        ),
+        "refetched_field_equals_selected": str(authoritative_refetched_value or "").strip() == str(new_value or "").strip(),
+        "workspace_cloud_key_match": account_ok,
+    }
+
+    refetch_confirmed = all(
+        (
+            checks["save_ok"],
+            checks["cache_bypassed_for_refetch"],
+            checks["refetch_revision_equals_reserved"],
+            checks["refetched_field_equals_selected"],
+            checks["workspace_cloud_key_match"],
+        )
+    )
+    upsert_confirmed = all(
+        (
+            checks["save_ok"],
+            checks["cloud_upsert_succeeded"],
+            checks["revision_in_upsert_equals_reserved"],
+            checks["refetched_field_equals_selected"],
+            checks["workspace_cloud_key_match"],
+        )
+    )
+
+    if refetch_confirmed:
+        confirmation_status = "confirmed"
+        confirmation_stage = "authoritative_refetch"
+    elif upsert_confirmed:
+        confirmation_status = "confirmed"
+        confirmation_stage = "upsert_revision_match"
+    elif save_ok and checks["refetched_field_equals_selected"] and checks["revision_in_upsert_equals_reserved"]:
+        confirmation_status = "confirmed"
+        confirmation_stage = "local_canonical_match"
+    else:
+        confirmation_status = "unconfirmed"
+        confirmation_stage = "evaluation_failed"
+
+    confirmed_revision = (
+        authoritative_refetch_revision
+        if checks["refetch_revision_equals_reserved"]
+        else revision_in_upsert_payload
+    )
+
+    return {
+        "transaction_id": str(pending_dict.get("transaction_id") or uuid.uuid4().hex[:12]),
+        "transaction_run_seq": pending_dict.get("transaction_run_seq", _current_run_seq(session)),
+        "field": field,
+        "old_value": pending_dict.get("old_value"),
+        "new_value": new_value,
+        "save_reason": save_reason,
+        "reserved_revision": reserved_revision,
+        "revision_in_upsert_payload": revision_in_upsert_payload,
+        "authoritative_refetch_revision": authoritative_refetch_revision,
+        "authoritative_refetched_value": authoritative_refetched_value,
+        "confirmed_revision": confirmed_revision,
+        "confirmation_checks": checks,
+        "confirmation_status": confirmation_status,
+        "confirmation_stage": confirmation_stage,
+        "user_selection_event": copy.deepcopy(session.get(CREATIVE_TAB_USER_EVENT_KEY)),
+        "authoritative_refetched_values": {
+            s["canonical"]: canonical_creative_selector_value(session, s["canonical"]) for s in _SELECTOR_SPECS
+        },
+    }
+
+
+def _refresh_selector_diag_display(session: dict[str, Any]) -> None:
+    """Separate current-run selector activity from the last completed transaction."""
+    d = _diag(session)
+    run_seq = _current_run_seq(session)
+    last_tx = session.get(CREATIVE_SELECTOR_LAST_TX_KEY)
+    last_tx_dict = last_tx if isinstance(last_tx, dict) else None
+    event = session.get(CREATIVE_TAB_USER_EVENT_KEY)
+    if isinstance(event, dict) and int(event.get("run_seq") or 0) == run_seq:
+        d["current_run_user_selection_event"] = copy.deepcopy(event)
+    else:
+        d["current_run_user_selection_event"] = None
+
+    d["last_selector_transaction"] = copy.deepcopy(last_tx_dict) if last_tx_dict else None
+    belongs = (
+        isinstance(last_tx_dict, dict) and int(last_tx_dict.get("transaction_run_seq") or 0) == run_seq
+    )
+    d["belongs_to_current_run"] = belongs
+    d["transaction_confirmed"] = (
+        last_tx_dict.get("confirmation_status") == "confirmed" if last_tx_dict else None
+    )
+
+    if last_tx_dict:
+        for key in (
+            "user_selection_event",
+            "save_reason",
+            "reserved_revision",
+            "confirmed_revision",
+            "authoritative_refetched_values",
+            "confirmation_status",
+            "confirmation_stage",
+            "confirmation_checks",
+        ):
+            if key in last_tx_dict:
+                d[key] = last_tx_dict.get(key)
+
+    violations = d.get("violations")
+    if not isinstance(violations, list):
+        violations = []
+    if last_tx_dict and last_tx_dict.get("confirmation_status") == "confirmed":
+        violations = [v for v in violations if v.get("code") != VIOLATION_SAVE_NOT_CONFIRMED]
+    d["violations"] = violations
 
 
 def _normalize_improv_tab(value: str) -> str:
@@ -312,36 +540,61 @@ def hydrate_improv_intelligence_tab_from_canonical(session_state: dict) -> str:
 
 
 def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: str, ok: bool) -> None:
+    if save_reason not in (SAVE_REASON_TAB, SAVE_REASON_TOOL):
+        if save_reason == "page_change" and session.get(CREATIVE_TAB_USER_EVENT_KEY):
+            record_creative_tab_violation(session, VIOLATION_CREATED_PAGE_CHANGE)
+        return
+
+    event = session.get(CREATIVE_TAB_USER_EVENT_KEY)
+    if not isinstance(event, dict):
+        return
+
+    field = str(event.get("field") or "").strip()
+    new_value = str(event.get("value") or "").strip()
+    tx_record = evaluate_selector_save_confirmation(
+        session,
+        field=field,
+        new_value=new_value,
+        save_reason=save_reason,
+        save_ok=bool(ok),
+    )
+    session[CREATIVE_SELECTOR_LAST_TX_KEY] = copy.deepcopy(tx_record)
+    session.pop(CREATIVE_SELECTOR_PENDING_TX_KEY, None)
+
     d = _diag(session)
-    d["save_reason"] = save_reason
-    d["user_selection_event"] = session.get(CREATIVE_TAB_USER_EVENT_KEY)
     d["startup_write_attempted"] = bool(session.get("_creative_tab_startup_write_flag"))
-    try:
-        from music_workspace_cloud_save import collect_save_transaction_diagnostics
-
-        tx = collect_save_transaction_diagnostics(session)
-        d["reserved_revision"] = tx.get("reserved_write_revision") or tx.get("envelope_revision_after")
-        d["confirmed_revision"] = tx.get("cloud_readback_revision")
-        d["cloud_confirmed"] = tx.get("cloud_confirmed")
-        if save_reason in (SAVE_REASON_TAB, SAVE_REASON_TOOL) and not ok:
-            record_creative_tab_violation(session, VIOLATION_SAVE_NOT_CONFIRMED)
-        elif save_reason in (SAVE_REASON_TAB, SAVE_REASON_TOOL) and ok and tx.get("cloud_confirmed") is False:
-            record_creative_tab_violation(session, VIOLATION_SAVE_NOT_CONFIRMED, detail="readback")
-    except ImportError:
-        pass
-    if save_reason == "page_change" and session.get(CREATIVE_TAB_USER_EVENT_KEY):
-        record_creative_tab_violation(session, VIOLATION_CREATED_PAGE_CHANGE)
-    try:
-        from suite_user_persistence import load_current_state
-
-        _ = load_current_state  # noqa: F841 — optional refetch hook for diagnostics
-        d["authoritative_refetched_values"] = {
-            s["canonical"]: canonical_creative_selector_value(session, s["canonical"]) for s in _SELECTOR_SPECS
+    d.update(
+        {
+            "save_reason": save_reason,
+            "reserved_revision": tx_record.get("reserved_revision"),
+            "confirmed_revision": tx_record.get("confirmed_revision"),
+            "authoritative_refetched_values": tx_record.get("authoritative_refetched_values"),
+            "confirmation_status": tx_record.get("confirmation_status"),
+            "confirmation_stage": tx_record.get("confirmation_stage"),
+            "confirmation_checks": tx_record.get("confirmation_checks"),
         }
-    except ImportError:
-        d["authoritative_refetched_values"] = {
-            s["canonical"]: canonical_creative_selector_value(session, s["canonical"]) for s in _SELECTOR_SPECS
-        }
+    )
+
+    if tx_record.get("confirmation_status") != "confirmed":
+        failed = [
+            k
+            for k, passed in (tx_record.get("confirmation_checks") or {}).items()
+            if k in (
+                "save_ok",
+                "refetch_revision_equals_reserved",
+                "revision_in_upsert_equals_reserved",
+                "refetched_field_equals_selected",
+                "workspace_cloud_key_match",
+            )
+            and not passed
+        ]
+        record_creative_tab_violation(
+            session,
+            VIOLATION_SAVE_NOT_CONFIRMED,
+            detail=",".join(failed) or str(tx_record.get("confirmation_stage")),
+        )
+
+    _refresh_selector_diag_display(session)
 
 
 def request_creative_selector_cloud_save(session: dict[str, Any], *, save_reason: str) -> bool:
@@ -380,7 +633,24 @@ def handle_user_creative_selector_change(session: dict[str, Any], field: str) ->
     touch_flag = spec.get("user_touch_flag")
     if touch_flag:
         session[touch_flag] = True
-    session[CREATIVE_TAB_USER_EVENT_KEY] = {"field": spec["canonical"], "value": raw}
+    old_value = canonical_creative_selector_value(session, str(spec["canonical"]))
+    run_seq = _current_run_seq(session)
+    tx_id = f"sel-{run_seq}-{uuid.uuid4().hex[:8]}"
+    session[CREATIVE_SELECTOR_PENDING_TX_KEY] = {
+        "transaction_id": tx_id,
+        "transaction_run_seq": run_seq,
+        "field": spec["canonical"],
+        "old_value": old_value,
+        "new_value": raw,
+        "save_reason": save_reason,
+    }
+    session[CREATIVE_TAB_USER_EVENT_KEY] = {
+        "field": spec["canonical"],
+        "value": raw,
+        "old_value": old_value,
+        "run_seq": run_seq,
+        "transaction_id": tx_id,
+    }
     mark_creative_workspace_state_dirty(session, reason=save_reason)
     try:
         from creative_workspace_persistence import mark_creative_workspace_dirty
@@ -442,6 +712,7 @@ def audit_multiple_canonical_owners(session: dict[str, Any]) -> None:
 
 
 def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
+    _refresh_selector_diag_display(session)
     d = dict(_diag(session))
     d.setdefault("hydrated_tool_tab_values", session.get(CREATIVE_TAB_HYDRATED_SNAPSHOT_KEY))
     d.setdefault(
@@ -456,6 +727,7 @@ def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, 
         },
     )
     d.setdefault("widget_values", {s["widget"]: session.get(s["widget"]) for s in _SELECTOR_SPECS})
+    d.setdefault("startup_write_attempted", bool(session.get("_creative_tab_startup_write_flag")))
     audit_multiple_canonical_owners(session)
     return d
 
@@ -469,6 +741,7 @@ __all__ = [
     "VIOLATION_PASSIVE_STARTUP_WRITE",
     "VIOLATION_SAVE_NOT_CONFIRMED",
     "VIOLATION_WIDGET_OVERWROTE",
+    "evaluate_selector_save_confirmation",
     "canonical_creative_selector_value",
     "collect_creative_tab_tool_diagnostics",
     "commit_creative_selector_to_canonical",

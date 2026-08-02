@@ -7,16 +7,22 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from creative_tab_tool_persistence import (
+    CREATIVE_SELECTOR_LAST_TX_KEY,
+    CREATIVE_SELECTOR_PENDING_TX_KEY,
     CREATIVE_TAB_HYDRATED_SNAPSHOT_KEY,
     CREATIVE_TAB_MIGRATION_DONE_KEY,
+    CREATIVE_TAB_USER_EVENT_KEY,
     SAVE_REASON_TAB,
     VIOLATION_PASSIVE_STARTUP_WRITE,
+    VIOLATION_SAVE_NOT_CONFIRMED,
     canonical_creative_selector_value,
+    collect_creative_tab_tool_diagnostics,
     commit_creative_selector_to_canonical,
+    evaluate_selector_save_confirmation,
     handle_user_creative_selector_change,
     migrate_invalid_creative_selectors,
     note_passive_creative_tab_persist,
-    record_creative_tab_violation,
+    record_creative_tab_save_outcome,
     snapshot_hydrated_creative_selectors,
 )
 from creative_workspace_state_persistence import (
@@ -191,6 +197,122 @@ class TestCreativeTabRestoreGate(unittest.TestCase):
         snap = ss.get(CREATIVE_TAB_HYDRATED_SNAPSHOT_KEY)
         self.assertIsInstance(snap, dict)
         self.assertEqual(snap.get("improv_intelligence_tab"), "Missions")
+
+
+class TestCreativeTabConfirmationDiagnostics(unittest.TestCase):
+    def test_run_n_selector_save_records_confirmed_transaction(self) -> None:
+        ss: dict = {
+            "_script_run_seq": 10,
+            "_suite_active_workspace": "daniel",
+            "_suite_cloud_workspace_key": "workspaces/daniel",
+            "_music_workspace_save_transaction": {
+                "reserved_write_revision": 199,
+                "envelope_revision_after": 199,
+                "cloud_write_succeeded": True,
+            },
+            "_suite_last_cloud_save_result": {
+                "cloud_upsert_succeeded": True,
+                "cloud_payload_revision": 199,
+            },
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_intelligence_tab": "Missions",
+            },
+            CREATIVE_TAB_USER_EVENT_KEY: {
+                "field": "improv_intelligence_tab",
+                "value": "Missions",
+                "old_value": "Entry & Jam",
+                "run_seq": 10,
+            },
+            CREATIVE_SELECTOR_PENDING_TX_KEY: {
+                "transaction_id": "sel-10-abc",
+                "transaction_run_seq": 10,
+                "field": "improv_intelligence_tab",
+                "old_value": "Entry & Jam",
+                "new_value": "Missions",
+            },
+        }
+        record_creative_tab_save_outcome(ss, save_reason=SAVE_REASON_TAB, ok=True)
+        last = ss.get(CREATIVE_SELECTOR_LAST_TX_KEY)
+        self.assertIsInstance(last, dict)
+        self.assertEqual(last.get("confirmation_status"), "confirmed")
+        self.assertEqual(last.get("reserved_revision"), 199)
+        self.assertEqual(last.get("confirmed_revision"), 199)
+        self.assertEqual(last.get("authoritative_refetched_value"), "Missions")
+        violations = (ss.get("_creative_tab_tool_diag") or {}).get("violations") or []
+        codes = [v.get("code") for v in violations]
+        self.assertNotIn(VIOLATION_SAVE_NOT_CONFIRMED, codes)
+
+    def test_run_n_plus_one_cloud_restore_shows_confirmed_without_false_violation(self) -> None:
+        ss: dict = {
+            "_script_run_seq": 11,
+            "studio_page": "creative",
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_intelligence_tab": "Missions",
+            },
+            "improv_intelligence_tab": "Missions",
+            CREATIVE_TAB_USER_EVENT_KEY: {
+                "field": "improv_intelligence_tab",
+                "value": "Missions",
+                "run_seq": 10,
+            },
+            CREATIVE_SELECTOR_LAST_TX_KEY: {
+                "transaction_id": "sel-10-abc",
+                "transaction_run_seq": 10,
+                "field": "improv_intelligence_tab",
+                "new_value": "Missions",
+                "save_reason": SAVE_REASON_TAB,
+                "reserved_revision": 199,
+                "confirmed_revision": 199,
+                "confirmation_status": "confirmed",
+                "confirmation_stage": "upsert_revision_match",
+                "user_selection_event": {"field": "improv_intelligence_tab", "value": "Missions", "run_seq": 10},
+                "authoritative_refetched_values": {"improv_intelligence_tab": "Missions"},
+            },
+            "_creative_tab_tool_diag": {
+                "violations": [{"code": VIOLATION_SAVE_NOT_CONFIRMED, "detail": "readback"}],
+            },
+        }
+        snapshot_hydrated_creative_selectors(ss, source="cloud_restore")
+        diag = collect_creative_tab_tool_diagnostics(ss)
+        self.assertFalse(diag.get("belongs_to_current_run"))
+        self.assertTrue(diag.get("transaction_confirmed"))
+        self.assertIsNone(diag.get("current_run_user_selection_event"))
+        self.assertEqual(
+            (diag.get("last_selector_transaction") or {}).get("reserved_revision"),
+            199,
+        )
+        codes = [v.get("code") for v in (diag.get("violations") or [])]
+        self.assertNotIn(VIOLATION_SAVE_NOT_CONFIRMED, codes)
+
+    def test_evaluate_confirmation_does_not_use_page_change_cloud_confirmed(self) -> None:
+        ss: dict = {
+            "_music_workspace_save_transaction": {
+                "cloud_confirmed": False,
+                "reserved_write_revision": 199,
+                "envelope_revision_after": 199,
+                "cloud_write_succeeded": True,
+            },
+            "_suite_last_cloud_save_result": {
+                "cloud_upsert_succeeded": True,
+                "cloud_payload_revision": 199,
+            },
+            "_suite_active_workspace": "daniel",
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_intelligence_tab": "Missions",
+            },
+        }
+        result = evaluate_selector_save_confirmation(
+            ss,
+            field="improv_intelligence_tab",
+            new_value="Missions",
+            save_reason=SAVE_REASON_TAB,
+            save_ok=True,
+        )
+        self.assertEqual(result.get("confirmation_status"), "confirmed")
+        self.assertNotIn("page_change_cloud_confirmed", result.get("confirmation_checks") or {})
 
 
 if __name__ == "__main__":
