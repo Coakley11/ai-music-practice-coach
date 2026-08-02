@@ -9,7 +9,7 @@ import importlib
 from typing import Any
 
 # Bump suffix `-v1` when probe UI changes; bump commit segment when shipping visibility fixes.
-PAGE_CLOUD_DURABILITY_DEPLOY_MARKER = "PAGE_CLOUD_DURABILITY_DEPLOY: e199c14-v1"
+PAGE_CLOUD_DURABILITY_DEPLOY_MARKER = "PAGE_CLOUD_DURABILITY_DEPLOY: 1ff40c9-v1"
 
 
 def _dev_enabled(st: Any) -> bool:
@@ -55,7 +55,9 @@ def build_deploy_probe_payload() -> dict[str, Any]:
         tail = PAGE_CLOUD_DURABILITY_DEPLOY_MARKER.split(":", 1)[1].strip()
         marker_commit = tail.split("-", 1)[0].strip()
     commit_matches_marker = bool(
-        marker_commit and commit not in ("unknown", "") and marker_commit == commit
+        marker_commit
+        and commit not in ("unknown", "")
+        and (marker_commit == commit or commit.startswith(marker_commit) or marker_commit.startswith(commit))
     )
     return {
         "deploy_marker": PAGE_CLOUD_DURABILITY_DEPLOY_MARKER,
