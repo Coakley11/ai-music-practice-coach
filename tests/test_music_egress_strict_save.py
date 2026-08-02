@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import time
 import unittest
+from contextlib import ExitStack, contextmanager
 from unittest.mock import MagicMock, patch
 
 import suite_storage
@@ -12,7 +14,14 @@ from music_egress_config import (
     is_intentional_user_save_reason,
     music_cloud_write_allowed,
 )
-from music_egress_strict_save import plan_strict_egress_cloud_write
+from music_egress_strict_save import (
+    flush_strict_pending_save_if_due,
+    plan_strict_egress_cloud_write,
+    queue_strict_deferred_save,
+    save_reason_uses_strict_debounce,
+    strict_save_pending,
+    workspace_payload_fingerprint,
+)
 from suite_user_persistence import _local_dirty_key
 
 
@@ -29,6 +38,13 @@ class StrictEgressPolicyTests(unittest.TestCase):
 
     def test_capo_widget_normalizes_to_intentional(self) -> None:
         self.assertTrue(is_intentional_user_save_reason("capo_widget"))
+
+    def test_page_change_not_debounced(self) -> None:
+        os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
+        self.assertFalse(save_reason_uses_strict_debounce("page_change"))
+        plan = plan_strict_egress_cloud_write({}, save_reason="page_change", payload_fp="abc123")
+        self.assertTrue(plan.allow_cloud_write)
+        self.assertFalse(plan.defer_cloud_write)
 
 
 class HevenuStrictSaveRegressionTests(unittest.TestCase):
@@ -51,7 +67,25 @@ class HevenuStrictSaveRegressionTests(unittest.TestCase):
             "workspace_revision": rev,
         }
 
-    def test_coalesced_edits_one_cloud_write_with_authoritative_confirmation(self) -> None:
+    @contextmanager
+    def _save_patches(self, ss: dict, stamp):
+        with ExitStack() as stack:
+            for ctx in (
+                patch("music_workspace_cloud_save._cloud_enabled", return_value=True),
+                patch("suite_user_persistence.save_user_state", return_value=True),
+                patch("music_persistent_state.stamp_music_payload_for_write", side_effect=stamp),
+                patch("suite_storage_config.cloud_storage_enabled", return_value=True),
+                patch("suite_storage_config.get_cloud_config", return_value=object()),
+                patch("suite_cloud_state._import_storage", return_value=(suite_storage, "suite_storage")),
+                patch("suite_cloud_state._cloud_storage_app_id", return_value="music"),
+                patch.object(suite_storage, "save_current_state"),
+                patch("suite_cloud_state._streamlit_session", return_value=ss),
+                patch("suite_cloud_state.session_page_summary", return_value=("Creative", "Hevenu")),
+            ):
+                stack.enter_context(ctx)
+            yield
+
+    def test_song_edit_writes_cloud_immediately(self) -> None:
         os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
         from music_workspace_cloud_save import force_music_workspace_save
 
@@ -71,44 +105,86 @@ class HevenuStrictSaveRegressionTests(unittest.TestCase):
             out["workspace_revision"] = rev + 1
             return out
 
-        plan1 = plan_strict_egress_cloud_write(ss, save_reason="song_edit", payload_fp="aaa")
-        self.assertTrue(plan1.defer_cloud_write)
-        self.assertTrue(plan1.strict_egress_user_write_allowed)
+        plan = plan_strict_egress_cloud_write(ss, save_reason="song_edit", payload_fp="aaa")
+        self.assertFalse(plan.defer_cloud_write)
+        self.assertTrue(plan.allow_cloud_write)
 
-        with patch("music_workspace_cloud_save._cloud_enabled", return_value=True), patch(
-            "suite_user_persistence.save_user_state", return_value=True
-        ), patch("music_persistent_state.stamp_music_payload_for_write", side_effect=stamp), patch(
-            "suite_storage_config.cloud_storage_enabled", return_value=True
-        ), patch("suite_storage_config.get_cloud_config", return_value=object()), patch(
-            "suite_cloud_state._import_storage", return_value=(suite_storage, "suite_storage")
-        ), patch("suite_cloud_state._cloud_storage_app_id", return_value="music"), patch.object(
-            suite_storage, "save_current_state"
-        ), patch("suite_cloud_state._streamlit_session", return_value=ss), patch(
-            "suite_cloud_state.session_page_summary", return_value=("Creative", "Hevenu")
-        ):
-            ok_defer = force_music_workspace_save(st, reason="song_edit", build_state=build_state)
-            ok_final = force_music_workspace_save(
-                st,
-                reason="song_edit",
-                build_state=build_state,
-                bypass_strict_defer=True,
-            )
+        with self._save_patches(ss, stamp):
+            ok = force_music_workspace_save(st, reason="song_edit", build_state=build_state)
 
-        self.assertFalse(ok_defer)
-        self.assertTrue(ok_final)
-        tx = ss.get("_music_workspace_save_transaction", {})
-        self.assertTrue(tx.get("strict_egress_user_write_allowed"))
-        self.assertTrue(tx.get("cloud_write_succeeded"))
-        self.assertTrue(tx.get("cloud_readback_matches"))
-        self.assertTrue(tx.get("cloud_readback_authoritative"))
-        self.assertTrue(tx.get("dirty_cleared_after_confirmed_save"))
-        self.assertEqual(tx.get("cloud_write_count_for_transaction"), 1)
+        self.assertTrue(ok)
+        self.assertFalse(strict_save_pending(ss))
         self.assertTrue(ss.get("_suite_persist_last_save_cloud"))
+
+    def test_page_change_writes_without_defer(self) -> None:
+        os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
+        from music_workspace_cloud_save import force_music_workspace_save
+
+        ss = {"_music_workspace_blob_hydrated": True, _local_dirty_key("music"): True}
+        st = MagicMock()
+        st.session_state = ss
+
+        def build_state(_st: object) -> dict:
+            return self._hevenu_state(1)
+
+        def stamp(_s: object, state: dict, **_kw: object) -> dict:
+            out = dict(state)
+            out["workspace_revision"] = 2
+            return out
+
+        with self._save_patches(ss, stamp):
+            ok = force_music_workspace_save(st, reason="page_change", build_state=build_state)
+
+        self.assertTrue(ok)
+        tx = ss.get("_music_workspace_save_transaction", {})
+        self.assertNotEqual(tx.get("force_save_block_reason"), "strict_save_deferred")
+        self.assertTrue(ss.get("_suite_persist_last_save_cloud"))
+
+    def test_debounced_backing_wakeup_flush_without_user_click(self) -> None:
+        os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
+        from music_workspace_cloud_save import force_music_workspace_save
+
+        ss = {"_music_workspace_blob_hydrated": True, _local_dirty_key("music"): True}
+        st = MagicMock()
+        st.session_state = ss
+        t0 = 1_000_000.0
+
+        def build_state(_st: object) -> dict:
+            return self._hevenu_state(1)
+
+        def stamp(_s: object, state: dict, **_kw: object) -> dict:
+            out = dict(state)
+            out["workspace_revision"] = 2
+            return out
+
+        with self._save_patches(ss, stamp):
+            with patch("music_egress_strict_save.time.time", return_value=t0):
+                ok_defer = force_music_workspace_save(st, reason="backing_edit", build_state=build_state)
+            self.assertFalse(ok_defer)
+            self.assertTrue(strict_save_pending(ss))
+
+            with patch("music_egress_strict_save.time.time", return_value=t0 + 2.5):
+                ok_flush = flush_strict_pending_save_if_due(st, build_state=build_state)
+
+        self.assertTrue(ok_flush)
+        self.assertFalse(strict_save_pending(ss))
+        self.assertTrue(ss.get("_suite_persist_last_save_cloud"))
+        self.assertTrue(ss.get("_music_strict_save_flush_attempted"))
+
+    def test_rapid_backing_edits_coalesce_to_one_write(self) -> None:
+        os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
+        ss: dict = {}
+        t0 = 2_000_000.0
+        queue_strict_deferred_save(ss, save_reason="backing_edit", payload_fp="fp1", now=t0)
+        queue_strict_deferred_save(ss, save_reason="backing_edit", payload_fp="fp2", now=t0 + 0.3)
+        self.assertTrue(strict_save_pending(ss))
+        self.assertEqual(int(ss.get("_music_strict_edits_coalesced_count") or 0), 1)
+        due = float(ss["_music_strict_save_due_at"])
+        self.assertAlmostEqual(due, t0 + 0.3 + 2.0, places=3)
+        self.assertTrue(ss.get("_music_strict_save_deadline_extended_by_new_edit"))
 
     def test_unchanged_rerun_skips_cloud_write(self) -> None:
         os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
-        from music_egress_strict_save import workspace_payload_fingerprint
-
         ss: dict = {}
         state = self._hevenu_state(2)
         fp = workspace_payload_fingerprint(state)

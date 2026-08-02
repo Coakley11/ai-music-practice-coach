@@ -259,6 +259,12 @@ def force_music_workspace_save(
             bypass_defer=bypass_strict_defer,
         )
         record_save_transaction(ss, **egress_plan.diag())
+        try:
+            from music_egress_strict_save import collect_strict_pending_diagnostics
+
+            record_save_transaction(ss, **collect_strict_pending_diagnostics(ss))
+        except ImportError:
+            pass
     except ImportError:
         pass
 
@@ -502,6 +508,12 @@ def force_music_workspace_save(
         ss.pop("_suite_autosave_block_reason", None)
         clear_workspace_autosave_block(st, APP_ID)
         ss["_suite_persist_last_save_at"] = _utc_now_iso()
+        try:
+            from music_egress_strict_save import clear_strict_pending_save
+
+            clear_strict_pending_save(ss, flush_result="confirmed_inline")
+        except ImportError:
+            pass
         return True
 
     if saved_disk or saved_cloud:

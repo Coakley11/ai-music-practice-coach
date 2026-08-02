@@ -14548,6 +14548,13 @@ except Exception:
 
 if not pp.skip_background_persistence(st):
     try:
+        from music_strict_save_flusher import mount_strict_save_wakeup_flusher
+        from music_persistent_state import build_music_disk_state
+
+        mount_strict_save_wakeup_flusher(st, build_state=build_music_disk_state)
+    except ImportError:
+        pass
+    try:
         from music_persistent_state import (
             autosave_music_state,
             clear_music_workspace_autosave_block,
