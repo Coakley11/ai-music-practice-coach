@@ -1656,6 +1656,12 @@ def save_music_cloud_session(
     except ImportError:
         pass
     try:
+        from music_page_cloud_durability_trace import record_attempted_upsert
+
+        record_attempted_upsert(ss, state, page_arg=page, write_path=write_path)
+    except ImportError:
+        pass
+    try:
         cloud_result = save_cloud_full_session(
             APP_ID,
             state,
@@ -1671,6 +1677,14 @@ def save_music_cloud_session(
             ss["_music_last_cloud_save_diag"] = cloud_result.to_diag()
     except Exception as exc:
         cloud_error = str(exc)
+    try:
+        from music_page_cloud_durability_trace import record_supabase_response
+
+        diag = cloud_result.to_diag() if cloud_result is not None else ss.get("_music_last_cloud_save_diag")
+        if isinstance(diag, dict):
+            record_supabase_response(ss, cloud_result_diag=diag)
+    except ImportError:
+        pass
     record_music_cloud_write_result(
         st,
         state,
@@ -2634,6 +2648,19 @@ def apply_music_disk_state(
         ss["_suite_last_cloud_fetch_payload"] = copy.deepcopy(payload)
     except Exception:
         ss["_suite_last_cloud_fetch_payload"] = payload
+    try:
+        from music_page_cloud_durability_trace import record_fresh_hydration
+
+        record_fresh_hydration(
+            ss,
+            payload,
+            fetch_source=str(ss.get("_music_last_cloud_fetch_source") or "apply_music_disk_state"),
+            used_cache=str(ss.get("_music_last_cloud_fetch_source") or "") == "session_cache",
+            selected_page=str(ss.get("studio_page") or "").strip() or None,
+            selection_reason="pre_apply_music_disk_state",
+        )
+    except ImportError:
+        pass
     pre_restore_studio_page = str(ss.get("studio_page") or "").strip()
     pre_restore_user_nav = bool(ss.get("_suite_page_user_nav"))
     pre_restore_coach_page = str(ss.get("_music_coach_workspace_page") or "").strip()

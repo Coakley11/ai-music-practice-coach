@@ -320,6 +320,23 @@ def force_music_workspace_save(
 
     allowed, block = music_workspace_save_allowed(ss, reason=r)
     record_save_transaction(ss, force_save_allowed=allowed, force_save_block_reason=block or None)
+    try:
+        from music_page_cloud_durability_trace import (
+            authoritative_page_change_cloud_confirmed,
+            record_subsequent_save_attempt,
+        )
+
+        if authoritative_page_change_cloud_confirmed(ss):
+            record_subsequent_save_attempt(
+                ss,
+                reason=r,
+                allowed=allowed,
+                blocked_reason=str(block or ""),
+                state=None,
+                transaction_sequence=ss.get("_music_page_change_transaction_seq"),
+            )
+    except ImportError:
+        pass
     if not allowed:
         ss["_music_force_save_ok"] = False
         ss["_music_force_save_blocked_reason"] = block
@@ -351,6 +368,13 @@ def force_music_workspace_save(
 
     if r:
         ss["_suite_pending_save_reason"] = r
+
+    try:
+        from music_page_cloud_durability_trace import begin_page_change_cloud_transaction
+
+        begin_page_change_cloud_transaction(ss, save_reason=r)
+    except ImportError:
+        pass
 
     try:
         state = build_state(st)
@@ -500,12 +524,35 @@ def force_music_workspace_save(
             canonical_content_fingerprint=canonical_fp,
             reserved_write_revision=next_rev,
         )
+        try:
+            from music_page_cloud_durability_trace import record_revision_stages
+
+            record_revision_stages(
+                ss,
+                canonical_revision_before=int(rev_before) if rev_before is not None else None,
+                reserved_revision=int(next_rev),
+                revision_in_upsert_payload=None,
+            )
+        except ImportError:
+            pass
 
     try:
         from workspace_revision import workspace_revision_from_blob
 
         rev_after_write = workspace_revision_from_blob(state)
         record_save_transaction(ss, envelope_revision_after=rev_after_write)
+        try:
+            from music_page_cloud_durability_trace import record_revision_stages
+
+            tx_rev = ss.get("_music_workspace_save_transaction") or {}
+            record_revision_stages(
+                ss,
+                canonical_revision_before=int(rev_before) if rev_before is not None else None,
+                reserved_revision=tx_rev.get("reserved_write_revision"),
+                revision_in_upsert_payload=int(rev_after_write) if rev_after_write is not None else None,
+            )
+        except ImportError:
+            pass
     except ImportError:
         rev_after_write = rev_before
 
@@ -727,6 +774,14 @@ def force_music_workspace_save(
         except Exception as exc:
             cloud_error = cloud_error or str(exc)
             readback_ok = False
+
+    if str(r) == "page_change":
+        try:
+            from music_page_cloud_durability_trace import finalize_page_change_cloud_durability_trace
+
+            finalize_page_change_cloud_durability_trace(ss, save_reason=r)
+        except ImportError:
+            pass
 
     record_save_transaction(
         ss,

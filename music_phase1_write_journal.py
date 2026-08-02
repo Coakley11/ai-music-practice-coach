@@ -493,6 +493,17 @@ def _short_val(value: Any, *, max_len: int = 160) -> str | None:
     return text or None
 
 
+def _page_change_cloud_confirmed_for_journal(session: dict[str, Any]) -> bool:
+    try:
+        from music_page_cloud_durability_trace import authoritative_page_change_cloud_confirmed
+
+        if session.get("_music_page_change_authoritative_confirmation") is not None:
+            return authoritative_page_change_cloud_confirmed(session)
+    except ImportError:
+        pass
+    return bool(session.get("_suite_persist_last_save_cloud"))
+
+
 def format_journal_copy_block(session: dict[str, Any]) -> str:
     j = session.get(PHASE1_WRITE_JOURNAL_KEY)
     if not isinstance(j, dict):
@@ -508,13 +519,21 @@ def format_journal_copy_block(session: dict[str, Any]) -> str:
         "final_summary": j.get("final_summary"),
         "prev_run_summary": j.get("prev_run_summary"),
         "save_trace": session.get("_music_save_payload_stamp_trace"),
-        "page_change_cloud_confirmed": session.get("_suite_persist_last_save_cloud"),
+        "page_change_cloud_confirmed": _page_change_cloud_confirmed_for_journal(session),
+        "page_change_cloud_confirmed_legacy": session.get("_suite_persist_last_save_cloud"),
+        "authoritative_page_change_cloud_confirmed": _page_change_cloud_confirmed_for_journal(session),
         "last_cloud_payload_page": _page_from_cloud_payload(session.get("_suite_last_cloud_fetch_payload")),
     }
     try:
         from music_page_save_pipeline_trace import build_pipeline_trace_copy_block
 
         payload["page_save_pipeline_trace_json"] = json.loads(build_pipeline_trace_copy_block(session))
+    except Exception:
+        pass
+    try:
+        from music_page_cloud_durability_trace import build_durability_copy_block
+
+        payload["page_cloud_durability_trace_json"] = json.loads(build_durability_copy_block(session))
     except Exception:
         pass
     return json.dumps(payload, indent=2, default=str)
@@ -572,6 +591,20 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
             if hints:
                 st.warning("Likely failure classes: " + ", ".join(hints))
             st.code(build_pipeline_trace_copy_block(session), language="json")
+        except ImportError:
+            pass
+        try:
+            from music_page_cloud_durability_trace import build_durability_copy_block, classify_failure
+
+            st.markdown("**Page cloud durability trace**")
+            failure = classify_failure(session)
+            if failure:
+                st.warning(f"Cloud durability failure class: {failure}")
+            viols = (session.get("_music_page_cloud_durability_trace") or {}).get("violations") or []
+            for viol in viols:
+                if isinstance(viol, dict):
+                    st.error(f"{viol.get('code')}: {viol.get('detail')}")
+            st.code(build_durability_copy_block(session), language="json")
         except ImportError:
             pass
         st.markdown("**Copyable journal**")

@@ -523,6 +523,19 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
                     if ss is not None:
                         ss["_cloud_fetch_succeeded"] = True
                         ss["_cloud_document_found"] = bool(cached)
+                        ss["_music_last_cloud_fetch_source"] = "session_cache"
+                    try:
+                        from music_page_cloud_durability_trace import record_cloud_fetch_event
+
+                        record_cloud_fetch_event(
+                            ss,
+                            app_id=app_id,
+                            force=force,
+                            from_session_cache=True,
+                            fetch_source="session_cache",
+                        )
+                    except ImportError:
+                        pass
                     return copy.deepcopy(cached), updated_at
 
         if row_fn:
@@ -548,7 +561,20 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
             ss[ts_key] = updated_at
             ss["_cloud_fetch_succeeded"] = True
             ss["_cloud_document_found"] = bool(session_out)
+            ss["_music_last_cloud_fetch_source"] = "network"
             ss.pop("_cloud_fetch_error", None)
+            try:
+                from music_page_cloud_durability_trace import record_cloud_fetch_event
+
+                record_cloud_fetch_event(
+                    ss,
+                    app_id=app_id,
+                    force=force,
+                    from_session_cache=False,
+                    fetch_source="network",
+                )
+            except ImportError:
+                pass
             try:
                 from workspace_revision import workspace_revision_from_blob
 
