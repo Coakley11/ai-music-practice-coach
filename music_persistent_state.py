@@ -699,6 +699,7 @@ _WORKSPACE_KEYS: tuple[str, ...] = (
     "studio_nav_state",
     "practice_state",
     "practice_workspace_state",
+    "creative_workspace_state",
     "backing_track_state",
 )
 
@@ -1939,6 +1940,11 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             if isinstance(state.get("practice_workspace_state"), dict)
             else {}
         ),
+        "creative_workspace_state": (
+            state.get("creative_workspace_state")
+            if isinstance(state.get("creative_workspace_state"), dict)
+            else {}
+        ),
     }
 
 
@@ -2012,6 +2018,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         )
 
         sync_practice_workspace_before_persist(ss, reason=save_reason)
+    except ImportError:
+        pass
+    try:
+        from creative_workspace_state_persistence import sync_creative_workspace_state_before_persist
+
+        sync_creative_workspace_state_before_persist(ss, reason=save_reason)
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -2142,6 +2154,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         from practice_workspace_persistence import practice_workspace_for_envelope
 
         state["practice_workspace_state"] = practice_workspace_for_envelope(ss)
+    except ImportError:
+        pass
+    try:
+        from creative_workspace_state_persistence import creative_workspace_for_envelope
+
+        state["creative_workspace_state"] = creative_workspace_for_envelope(ss)
     except ImportError:
         pass
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
@@ -2618,6 +2636,20 @@ def apply_music_disk_state(
         pass
 
     try:
+        from creative_workspace_state_persistence import apply_creative_workspace_from_payload
+        from improvisation_mission_persistence import clear_mission_workspace_local_edit
+
+        if authoritative_restore:
+            clear_mission_workspace_local_edit(ss)
+        apply_creative_workspace_from_payload(
+            ss,
+            payload,
+            authoritative=authoritative_restore,
+        )
+    except ImportError:
+        pass
+
+    try:
         from backing_track_state import (
             apply_cloud_backing_state_if_allowed,
             clear_backing_local_edit,
@@ -3034,6 +3066,12 @@ def prepare_canonical_music_page_state(
         prepare_active_song_context(session)
         prepare_practice_page(session)
         prepare_backing_page(session)
+        try:
+            from creative_workspace_state_persistence import prepare_creative_workspace_for_render
+
+            prepare_creative_workspace_for_render(session)
+        except ImportError:
+            pass
         try:
             from creative_key_sync import is_creative_catalog_pick_frozen
             from music_source_ownership import reconcile_source_ownership

@@ -148,6 +148,13 @@ def hydrate_creative_workspace_after_restore(session: dict[str, Any]) -> None:
 
 
 def apply_cloud_creative_state_if_allowed(session: dict[str, Any], state: dict[str, Any]) -> bool:
+    try:
+        from creative_workspace_state_persistence import apply_creative_workspace_from_payload
+
+        if apply_creative_workspace_from_payload(session, state, authoritative=False):
+            return True
+    except ImportError:
+        pass
     if is_mission_workspace_locally_dirty(session):
         session["_creative_restore_skipped_reason"] = "local_dirty"
         return False
@@ -177,6 +184,14 @@ def music_creative_cloud_drift(
     cloud_state: dict[str, Any],
     cloud_ts: str | None,
 ) -> tuple[bool, str]:
+    try:
+        from creative_workspace_state_persistence import music_creative_workspace_state_cloud_drift
+
+        drift, detail = music_creative_workspace_state_cloud_drift(st, cloud_state, cloud_ts)
+        if drift:
+            return drift, detail
+    except ImportError:
+        pass
     _ = cloud_ts
     ss = getattr(st, "session_state", st)
     if not isinstance(ss, dict):

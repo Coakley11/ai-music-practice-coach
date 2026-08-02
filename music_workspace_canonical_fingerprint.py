@@ -57,6 +57,7 @@ _PERSIST_CANONICAL_TOP_KEYS: frozenset[str] = frozenset(
         "practice_state",
         "backing_track_state",
         "practice_workspace_state",
+        "creative_workspace_state",
         "music_workspace_state",
     }
 )
@@ -169,6 +170,10 @@ def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) 
     pws = canonical.get("practice_workspace_state")
     if isinstance(pws, dict):
         pws.pop("updated_at", None)
+
+    cws = canonical.get("creative_workspace_state")
+    if isinstance(cws, dict):
+        cws.pop("updated_at", None)
 
     mws = canonical.get("music_workspace_state")
     if isinstance(mws, dict):
