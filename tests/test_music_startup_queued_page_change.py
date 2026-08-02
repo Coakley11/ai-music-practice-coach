@@ -101,8 +101,8 @@ class StartupQueuedPageChangeTests(unittest.TestCase):
             stack.enter_context(ctx)
         return stack
 
-    def _armed_backing_session(self) -> _FakeSessionState:
-        payload = _backing_payload()
+    def _armed_backing_session(self, *, rev: int = 7) -> _FakeSessionState:
+        payload = _backing_payload(rev=rev)
         ss = _FakeSessionState(
             {
                 "developer_mode": True,
@@ -122,8 +122,37 @@ class StartupQueuedPageChangeTests(unittest.TestCase):
             }
         )
         record_hydrated_canonical_fingerprint(ss, payload, stage="test:armed_backing")
+        fp = ss.get("hydrated_canonical_fingerprint")
+        if fp:
+            ss["post_restore_canonical_fingerprint"] = fp
+            ss["startup_fingerprint_matches"] = True
         set_page_change_origin(ss, "user_navigation")
         return ss
+
+    def test_pre_aligned_rev191_creative_flushes_real_release(self) -> None:
+        """Live-shaped: matched fingerprints @191, armed suppression, Creative nav → upsert @192."""
+        os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
+        ss = self._armed_backing_session(rev=191)
+        self.assertEqual(ss.get("startup_revision_loaded"), 191)
+        cloud_writes: list[dict[str, Any]] = []
+        st = MagicMock()
+        st.session_state = ss
+
+        with self._cloud_patches(ss, cloud_writes):
+            self.assertTrue(navigate_studio_page(ss, "creative"))
+
+        self.assertTrue(ss.get("startup_suppression_released"))
+        self.assertEqual(ss.get("startup_revision_final"), 191)
+        self.assertTrue(ss.get("queued_page_change_flushed"))
+        self.assertTrue(ss.get("_music_page_change_payload_built"))
+        self.assertGreaterEqual(len(cloud_writes), 1)
+        written = cloud_writes[-1]
+        rev_written = int(written.get("workspace_revision") or 0)
+        self.assertGreater(rev_written, int(ss.get("startup_revision_loaded") or 0))
+        pages = payload_pages_from_state(written)
+        for val in pages.values():
+            if val:
+                self.assertEqual(val, "creative")
 
     def test_creative_click_flushes_after_suppression_release(self) -> None:
         os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
@@ -169,6 +198,28 @@ class StartupQueuedPageChangeTests(unittest.TestCase):
         )
         self.assertEqual(prepare_studio_nav(ss2), "creative")
 
+    def test_page_only_diff_is_queued_navigation_not_mismatch(self) -> None:
+        from music_startup_save_suppression import (
+            _differing_only_queued_page_navigation,
+            _metadata_only_canonical_diff,
+        )
+
+        differing = [
+            "core.page",
+            "core.studio_page",
+            "music_workspace_state.studio_page",
+            "practice_workspace_state.page",
+            "practice_workspace_state.studio_page",
+            "studio_nav_state.page",
+            "studio_nav_state.studio_page",
+        ]
+        self.assertTrue(
+            _differing_only_queued_page_navigation(
+                differing, hydrated_page="backing", queued_page="creative"
+            )
+        )
+        self.assertFalse(_metadata_only_canonical_diff(["core.studio_page"]))
+
     def test_metadata_only_diff_allows_fingerprint_match(self) -> None:
         from music_startup_save_suppression import _metadata_only_canonical_diff
 
@@ -178,7 +229,6 @@ class StartupQueuedPageChangeTests(unittest.TestCase):
             "music_workspace_state.creative_workspace_state.improv_mission_workspace_updated_at",
         ]
         self.assertTrue(_metadata_only_canonical_diff(differing))
-        self.assertFalse(_metadata_only_canonical_diff(["core.studio_page"]))
 
 
 if __name__ == "__main__":

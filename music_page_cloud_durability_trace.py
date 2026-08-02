@@ -266,6 +266,65 @@ def record_force_save_early_exit(
     tx = _active_tx(session)
     if tx:
         tx["early_exit"] = {"stage": exit_stage, "reason": exit_reason}
+    if "startup_suppression" in str(exit_reason or "") or exit_reason == "startup_suppression_armed_page_change":
+        bucket = _ensure_bucket(session)
+        bucket["startup_release_failure_hint"] = "8_page_change_blocked_by_false_startup_page_mismatch"
+    record_startup_release_revision_violation(session)
+
+
+def record_startup_release_revision_violation(session: dict[str, Any]) -> None:
+    if not durability_trace_enabled(session):
+        return
+    loaded = int(session.get("startup_revision_loaded") or 0)
+    final = int(session.get("startup_revision_final") or 0)
+    if final == loaded:
+        return
+    if session.get("_music_page_change_payload_built"):
+        return
+    _record_violation(
+        session,
+        code="STARTUP_RELEASE_ADVANCED_REVISION_WITHOUT_CLOUD_WRITE",
+        detail={
+            "startup_revision_loaded": loaded,
+            "startup_revision_final": final,
+            "current_page_change_payload_built": session.get("_music_page_change_payload_built"),
+        },
+    )
+
+
+def record_startup_release_blocked(
+    session: dict[str, Any],
+    *,
+    differing_paths: list[str],
+    suppress_reason: str = "",
+) -> None:
+    if not durability_trace_enabled(session):
+        return
+    bucket = _ensure_bucket(session)
+    bucket["startup_release_failure_hint"] = (
+        "startup_release_included_queued_user_page_in_fingerprint"
+        if _page_diffs_only(differing_paths)
+        else "8_page_change_blocked_by_false_startup_page_mismatch"
+    )
+    _record_violation(
+        session,
+        code="PAGE_CHANGE_STARTUP_RELEASE_BLOCKED",
+        detail={
+            "differing_canonical_paths": differing_paths,
+            "suppress_reason": suppress_reason or None,
+        },
+    )
+
+
+def _page_diffs_only(differing_paths: list[str]) -> bool:
+    if not differing_paths:
+        return False
+    try:
+        from music_startup_save_suppression import _is_page_bearing_canonical_path
+
+        return all(_is_page_bearing_canonical_path(str(p)) for p in differing_paths)
+    except ImportError:
+        return False
 
 
 def page_fields_from_state(state: dict[str, Any] | None) -> dict[str, str]:
@@ -702,16 +761,32 @@ def classify_failure(session: dict[str, Any]) -> str | None:
     failure: str | None = None
     first_mismatch: str | None = None
 
-    if isinstance(violations, list) and any(
+    tx = _active_tx(session)
+    if tx and tx.get("early_exit"):
+        exit_reason = str((tx.get("early_exit") or {}).get("reason") or "")
+        if "startup_suppression" in exit_reason:
+            failure = bucket.get("startup_release_failure_hint") or (
+                "8_page_change_blocked_by_false_startup_page_mismatch"
+            )
+            first_mismatch = "startup_release_queued_page"
+    if failure is None and isinstance(violations, list) and any(
         isinstance(v, dict) and v.get("code") == "PHASE1_CREATIVE_OVERWRITTEN_AFTER_CONFIRMATION"
         for v in violations
     ):
         failure = "5_authoritative_creative_then_backing_overwrite"
         first_mismatch = "subsequent_write"
-    elif not txs and _phase1_genuine_user_page_write(session):
+    elif failure is None and not txs and _phase1_genuine_user_page_write(session):
         failure = "diagnostic_transaction_missing"
         first_mismatch = "durability_transaction_journal"
-    elif isinstance(hydrate, dict):
+    elif failure is None and isinstance(hydrate, dict) and not txs:
+        hint = bucket.get("startup_release_failure_hint")
+        if hint:
+            failure = str(hint)
+            first_mismatch = "startup_release_queued_page"
+        elif _phase1_genuine_user_page_write(session):
+            failure = "diagnostic_transaction_missing"
+            first_mismatch = "durability_transaction_journal"
+    elif failure is None and isinstance(hydrate, dict):
         pages = hydrate.get("pages") if isinstance(hydrate.get("pages"), dict) else {}
         if any(str(v).strip().lower() == "backing" for v in pages.values() if v):
             if not txs and _phase1_genuine_user_page_write(session):

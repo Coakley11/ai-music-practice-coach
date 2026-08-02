@@ -61,6 +61,30 @@ def _canonical_fp(state: dict[str, Any] | None) -> str:
     return workspace_canonical_content_fingerprint(state if isinstance(state, dict) else {})
 
 
+def _is_page_bearing_canonical_path(path: str) -> bool:
+    p = str(path or "").strip()
+    if not p:
+        return False
+    if p.endswith(".studio_page") or p.endswith(".page"):
+        return True
+    return p in {"core.studio_page", "core.page"}
+
+
+def _differing_only_queued_page_navigation(
+    differing: list[str],
+    *,
+    hydrated_page: str,
+    queued_page: str,
+) -> bool:
+    if not differing:
+        return True
+    hp = _normalize_page_id(hydrated_page)
+    qp = _normalize_page_id(queued_page)
+    if not qp or not hp or hp == qp:
+        return False
+    return all(_is_page_bearing_canonical_path(str(p)) for p in differing)
+
+
 def _metadata_only_canonical_diff(differing: list[str]) -> bool:
     """True when path diffs are only noncanonical ownership/timestamp metadata."""
     if not differing:
@@ -177,20 +201,43 @@ def _stamp_page_into_canonical_tree(canonical: dict[str, Any], page: str) -> Non
         pws["page"] = page
 
 
+def _hydrated_page_id(session: dict[str, Any]) -> str:
+    snap = session.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
+    if not isinstance(snap, dict):
+        snap = session.get("_suite_last_cloud_fetch_payload")
+    if not isinstance(snap, dict):
+        return ""
+    core = snap.get("core") if isinstance(snap.get("core"), dict) else snap
+    if not isinstance(core, dict):
+        return ""
+    return _normalize_page_id(core.get("studio_page") or core.get("page"))
+
+
+def _pre_navigation_startup_alignment_satisfied(session: dict[str, Any]) -> bool:
+    hydrated_fp = str(session.get(HYDRATED_CANONICAL_FP_KEY) or "").strip()
+    post_fp = str(session.get(POST_RESTORE_CANONICAL_FP_KEY) or "").strip()
+    if hydrated_fp and post_fp and hydrated_fp == post_fp:
+        return True
+    if session.get(STARTUP_FINGERPRINT_MATCHES_KEY) and hydrated_fp and post_fp and hydrated_fp == post_fp:
+        return True
+    return False
+
+
 def _canonical_fp_for_startup_release(
     session: dict[str, Any],
     state: dict[str, Any] | None,
     *,
-    queued_page: str = "",
+    normalize_page: str = "",
 ) -> str:
+    """Alignment fingerprint with page-bearing paths normalized (queued nav masked for compare)."""
     import hashlib
     import json
 
     from music_workspace_canonical_fingerprint import canonical_workspace_state_for_fingerprint
 
     canonical = canonical_workspace_state_for_fingerprint(state if isinstance(state, dict) else {})
-    page = _normalize_page_id(queued_page) or queued_user_page_change_target(session)
-    if page and get_page_change_origin(session) == "user_navigation":
+    page = _normalize_page_id(normalize_page) or _hydrated_page_id(session)
+    if page:
         _stamp_page_into_canonical_tree(canonical, page)
     blob = json.dumps(canonical, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
@@ -292,6 +339,142 @@ def _discard_startup_pending_edits(session: dict[str, Any]) -> None:
         pass
 
 
+def _apply_queued_page_startup_release(
+    session: dict[str, Any],
+    *,
+    rev_loaded: int,
+    stage: str,
+) -> None:
+    """Release suppression for queued user page_change without discarding the navigation edit."""
+    hydrated_fp = str(session.get(HYDRATED_CANONICAL_FP_KEY) or "").strip()
+    post_fp = str(session.get(POST_RESTORE_CANONICAL_FP_KEY) or "").strip() or hydrated_fp
+    try:
+        from music_egress_strict_save import note_confirmed_cloud_fingerprint
+
+        note_confirmed_cloud_fingerprint(session, post_fp or hydrated_fp)
+    except ImportError:
+        session["_music_last_confirmed_cloud_fp"] = post_fp or hydrated_fp
+    try:
+        from workspace_revision import (
+            APPLIED_REVISION_KEY,
+            CLOUD_REVISION_KEY,
+            LAST_CONFIRMED_REVISION_KEY,
+            LOCAL_REVISION_KEY,
+        )
+
+        session[LAST_CONFIRMED_REVISION_KEY] = rev_loaded
+        session[CLOUD_REVISION_KEY] = rev_loaded
+        session[APPLIED_REVISION_KEY] = rev_loaded
+        session[LOCAL_REVISION_KEY] = rev_loaded
+    except ImportError:
+        pass
+    session.pop("_music_pending_canonical_content_fp", None)
+    session[STARTUP_SUPPRESSION_RELEASED_KEY] = True
+    session[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
+    session[STARTUP_FINGERPRINT_MATCHES_KEY] = True
+    session[STARTUP_REVISION_FINAL_KEY] = int(rev_loaded or 0)
+    session[STARTUP_WRITE_ALLOWED_REASON_KEY] = "queued_page_change_after_alignment"
+    session[RESTORE_FINALIZED_STAGE_KEY] = stage
+    session[DIFFERING_CANONICAL_PATHS_KEY] = None
+    session.pop(STARTUP_WRITE_SUPPRESSED_KEY, None)
+    session.pop(STARTUP_SAVE_SUPPRESSED_KEY, None)
+    session.pop(STARTUP_SAVE_SUPPRESSION_REASON_KEY, None)
+    session["queued_page_change_preserved"] = True
+    try:
+        from suite_user_persistence import _local_dirty_key
+
+        session[_local_dirty_key("music")] = True
+    except ImportError:
+        pass
+
+
+def _record_startup_revision_invariant_violation(session: dict[str, Any]) -> None:
+    loaded = int(session.get(STARTUP_REVISION_LOADED_KEY) or 0)
+    final = int(session.get(STARTUP_REVISION_FINAL_KEY) or 0)
+    if final == loaded:
+        return
+    if session.get("_music_page_change_payload_built"):
+        return
+    session["_startup_release_revision_invariant_violation"] = True
+    try:
+        from music_page_cloud_durability_trace import record_startup_release_revision_violation
+
+        record_startup_release_revision_violation(session)
+    except ImportError:
+        pass
+
+
+def _release_startup_for_queued_page_change(
+    st: Any,
+    *,
+    queued: str,
+    suppress_reason: str = "",
+) -> bool:
+    """Confirm pre-hydration alignment (page-normalized) and release suppression."""
+    ss = st.session_state
+    rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
+    hydrated_page = _hydrated_page_id(ss)
+
+    if _pre_navigation_startup_alignment_satisfied(ss):
+        _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage="page_change_release_pre_aligned")
+        return True
+
+    snapshot = ss.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
+    hydrated_side = snapshot if isinstance(snapshot, dict) else ss.get("_suite_last_cloud_fetch_payload")
+    hydrated_side = hydrated_side if isinstance(hydrated_side, dict) else {}
+
+    post_state: dict[str, Any] | None = None
+    try:
+        from music_persistent_state import build_music_disk_state
+
+        post_state = build_music_disk_state(st)
+    except Exception:
+        post_state = {}
+
+    normalize_page = hydrated_page or "backing"
+    release_hydrated_fp = _canonical_fp_for_startup_release(
+        ss, hydrated_side, normalize_page=normalize_page
+    )
+    release_post_fp = _canonical_fp_for_startup_release(
+        ss, post_state if isinstance(post_state, dict) else {}, normalize_page=normalize_page
+    )
+    try:
+        from music_workspace_canonical_fingerprint import diff_canonical_paths
+
+        differing = diff_canonical_paths(hydrated_side, post_state if isinstance(post_state, dict) else {})
+    except ImportError:
+        differing = []
+
+    matches = bool(release_hydrated_fp and release_post_fp and release_hydrated_fp == release_post_fp)
+    if not matches and _differing_only_queued_page_navigation(
+        differing, hydrated_page=normalize_page, queued_page=queued
+    ):
+        matches = True
+    if not matches and _metadata_only_canonical_diff(differing):
+        matches = True
+
+    ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
+    if not matches:
+        ss[STARTUP_FINGERPRINT_MATCHES_KEY] = False
+        ss[DIFFERING_CANONICAL_PATHS_KEY] = differing or None
+        ss["queued_page_change_release_blocked_reason"] = suppress_reason or "startup_page_mismatch"
+        try:
+            from music_page_cloud_durability_trace import record_startup_release_blocked
+
+            record_startup_release_blocked(
+                ss,
+                differing_paths=differing,
+                suppress_reason=suppress_reason,
+            )
+        except ImportError:
+            pass
+        _record_startup_revision_invariant_violation(ss)
+        return False
+
+    _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage="page_change_release")
+    return True
+
+
 def _apply_confirmed_startup_alignment(
     session: dict[str, Any],
     *,
@@ -373,8 +556,13 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
     post_fp = _canonical_fp(post_state)
     hydrated_fp = _canonical_fp(hydrated_side)
     queued_page = queued_user_page_change_target(ss)
-    release_hydrated_fp = _canonical_fp_for_startup_release(ss, hydrated_side, queued_page=queued_page)
-    release_post_fp = _canonical_fp_for_startup_release(ss, post_state if isinstance(post_state, dict) else {}, queued_page=queued_page)
+    hydrated_page = _hydrated_page_id(ss)
+    release_hydrated_fp = _canonical_fp_for_startup_release(
+        ss, hydrated_side, normalize_page=hydrated_page
+    )
+    release_post_fp = _canonical_fp_for_startup_release(
+        ss, post_state if isinstance(post_state, dict) else {}, normalize_page=hydrated_page
+    )
     try:
         from music_workspace_canonical_fingerprint import diff_canonical_paths
 
@@ -394,7 +582,13 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
             hydrated_fp = release_hydrated_fp
 
     if not matches and queued_page and get_page_change_origin(ss) == "user_navigation":
-        if _metadata_only_canonical_diff(differing):
+        if _differing_only_queued_page_navigation(
+            differing, hydrated_page=hydrated_page or "backing", queued_page=queued_page
+        ):
+            matches = True
+            post_fp = release_post_fp or post_fp
+            hydrated_fp = release_hydrated_fp or hydrated_fp
+        elif _metadata_only_canonical_diff(differing):
             matches = True
             post_fp = release_post_fp or post_fp
             hydrated_fp = release_hydrated_fp or hydrated_fp
@@ -411,6 +605,8 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
             rev_loaded = workspace_revision_from_blob(payload)
         if matches:
             rev_final = rev_loaded
+        elif queued_page and get_page_change_origin(ss) == "user_navigation":
+            rev_final = rev_loaded
         else:
             rev_final = workspace_revision_from_blob(post_state if isinstance(post_state, dict) else payload)
         ss[STARTUP_REVISION_LOADED_KEY] = rev_loaded
@@ -426,14 +622,19 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         differing_paths=differing,
         stage=stage,
     )
+    if not matches and queued_page and get_page_change_origin(ss) == "user_navigation":
+        _record_startup_revision_invariant_violation(ss)
 
     if matches:
-        _apply_confirmed_startup_alignment(
-            ss,
-            hydrated_fp=hydrated_fp,
-            post_fp=post_fp,
-            rev_loaded=rev_loaded,
-        )
+        if queued_page and get_page_change_origin(ss) == "user_navigation":
+            _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage=stage)
+        else:
+            _apply_confirmed_startup_alignment(
+                ss,
+                hydrated_fp=hydrated_fp,
+                post_fp=post_fp,
+                rev_loaded=rev_loaded,
+            )
         ss[STARTUP_SUPPRESSION_RELEASED_KEY] = True
         ss[STARTUP_WRITE_ALLOWED_REASON_KEY] = "canonical_match_after_restore"
         ss[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
@@ -459,8 +660,11 @@ def attempt_release_startup_for_queued_page_change(st: Any, *, suppress_reason: 
     ss["queued_page_change_preserved"] = True
 
     armed = bool(ss.get(STARTUP_SUPPRESSION_ARMED_KEY)) and not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY)
+    released = bool(ss.get(STARTUP_SUPPRESSION_RELEASED_KEY))
     if armed or ss.get(STARTUP_RESTORE_IN_PROGRESS_KEY):
-        finalize_startup_canonical_alignment(st, stage="page_change_release")
+        released = _release_startup_for_queued_page_change(
+            st, queued=queued, suppress_reason=suppress_reason
+        )
 
     restore_queued_page_change(ss, snap)
     try:
@@ -470,7 +674,7 @@ def attempt_release_startup_for_queued_page_change(st: Any, *, suppress_reason: 
     except ImportError:
         pass
 
-    if not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY):
+    if not released or not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY):
         ss["queued_page_change_flushed"] = False
         return False
 
