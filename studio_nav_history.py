@@ -305,6 +305,12 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         set_page_change_origin(session_state, "user_navigation")
         prepare_page_change_save_state(session_state, page_id, st=_St(), origin="user_navigation")
         try:
+            from music_page_save_pipeline_trace import record_checkpoint
+
+            record_checkpoint(session_state, "A_post_navigate_studio_page")
+        except ImportError:
+            pass
+        try:
             from music_studio_page_diagnostics import record_studio_page_diag
 
             record_studio_page_diag(
@@ -335,6 +341,30 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             claim_studio_page_ownership(_St(), page_id, session_state=session_state)
         except Exception:
             pass
+    try:
+        from music_page_save_pipeline_trace import (
+            navigate_impl_marker,
+            record_checkpoint,
+            record_pipeline_event,
+        )
+
+        record_pipeline_event(
+            session_state,
+            function="navigate_studio_page",
+            phase="exit",
+            selected_target=page_id,
+            branch="user_navigation",
+            extra={"navigate_impl_marker": navigate_impl_marker},
+        )
+        record_checkpoint(
+            session_state,
+            "A_post_navigate_studio_page_complete",
+            extra={
+                "note": "after after_studio_page_change",
+            },
+        )
+    except ImportError:
+        pass
     return True
 
 

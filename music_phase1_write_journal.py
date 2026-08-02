@@ -511,6 +511,12 @@ def format_journal_copy_block(session: dict[str, Any]) -> str:
         "page_change_cloud_confirmed": session.get("_suite_persist_last_save_cloud"),
         "last_cloud_payload_page": _page_from_cloud_payload(session.get("_suite_last_cloud_fetch_payload")),
     }
+    try:
+        from music_page_save_pipeline_trace import build_pipeline_trace_copy_block
+
+        payload["page_save_pipeline_trace_json"] = json.loads(build_pipeline_trace_copy_block(session))
+    except Exception:
+        pass
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -555,6 +561,17 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
 
             st.markdown("**Page-bearing save history**")
             st.json(session.get(PAGE_SAVE_HISTORY_KEY) or [])
+        except ImportError:
+            pass
+        try:
+            from music_page_save_pipeline_trace import build_pipeline_trace_copy_block, infer_failure_class
+
+            st.markdown("**Page save pipeline trace**")
+            infer_failure_class(session)
+            hints = (session.get("_music_page_save_pipeline_trace") or {}).get("failure_class_hints") or []
+            if hints:
+                st.warning("Likely failure classes: " + ", ".join(hints))
+            st.code(build_pipeline_trace_copy_block(session), language="json")
         except ImportError:
             pass
         st.markdown("**Copyable journal**")

@@ -784,6 +784,23 @@ def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "
 
 def synchronize_page_bearing_state_for_save(session: dict[str, Any], page: str) -> None:
     """Stamp authoritative page into session + workspace blobs before payload build."""
+    try:
+        from music_page_save_pipeline_trace import (
+            page_sync_impl_marker,
+            record_checkpoint,
+            record_pipeline_event,
+        )
+
+        record_pipeline_event(
+            session,
+            function="synchronize_page_bearing_state_for_save",
+            phase="entry",
+            selected_target=_normalize_studio_page_for_save(page),
+            extra={"page_sync_impl_marker": page_sync_impl_marker},
+        )
+        record_checkpoint(session, "B_sync_page_bearing_entry")
+    except ImportError:
+        pass
     normalized = _normalize_studio_page_for_save(page)
     if not normalized:
         return
@@ -794,6 +811,23 @@ def synchronize_page_bearing_state_for_save(session: dict[str, Any], page: str) 
         pws["studio_page"] = normalized
         pws["page"] = normalized
         session["practice_workspace_state"] = pws
+    try:
+        from music_page_save_pipeline_trace import (
+            page_sync_impl_marker,
+            record_checkpoint,
+            record_pipeline_event,
+        )
+
+        record_pipeline_event(
+            session,
+            function="synchronize_page_bearing_state_for_save",
+            phase="exit",
+            selected_target=normalized,
+            extra={"page_sync_impl_marker": page_sync_impl_marker},
+        )
+        record_checkpoint(session, "B_sync_page_bearing_exit")
+    except ImportError:
+        pass
 
 
 def _assert_page_change_payload_not_stale(
@@ -918,34 +952,162 @@ def _maybe_clear_page_change_write_pending(
 
 def _page_change_write_target(ss: dict[str, Any]) -> tuple[str, str]:
     """Resolve the page id that must be written for page_change (session/workspace/nav)."""
+    try:
+        from music_page_save_pipeline_trace import page_target_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            ss,
+            function="_page_change_write_target",
+            phase="entry",
+            extra={"page_target_impl_marker": page_target_impl_marker},
+        )
+    except ImportError:
+        pass
+    candidates: list[dict[str, Any]] = []
+
+    def _cand(key: str, page: str, *, eligible: bool, note: str = "") -> None:
+        candidates.append(
+            {
+                "key": key,
+                "page": _normalize_studio_page_for_save(page),
+                "eligible": eligible,
+                "note": note or None,
+            }
+        )
+
     user_run = _normalize_studio_page_for_save(ss.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+    _cand(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, user_run, eligible=bool(user_run), note="highest_precedence")
     if user_run:
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=user_run,
+                selected_source=MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY,
+                branch="user_run_wins",
+            )
+        except ImportError:
+            pass
         return user_run, MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY
 
     live, live_source = _normalized_session_studio_page_for_save(ss)
     user_nav = bool(ss.get("_suite_page_user_nav"))
+    _cand("normalized_session", live, eligible=bool(user_nav and live), note=f"source={live_source}")
 
     if user_nav and live:
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=live,
+                selected_source=live_source,
+                branch="user_nav_and_live_session",
+            )
+        except ImportError:
+            pass
         return live, live_source
 
     write_pending = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_WRITE_PENDING_KEY))
+    _cand(_PAGE_CHANGE_WRITE_PENDING_KEY, write_pending, eligible=bool(write_pending))
     if write_pending:
         if live and live != write_pending:
+            _cand("live_over_pending", live, eligible=True, note="live != pending")
+            try:
+                from music_page_save_pipeline_trace import record_page_target_resolution
+
+                record_page_target_resolution(
+                    ss,
+                    candidates=candidates,
+                    selected_page=live,
+                    selected_source=live_source,
+                    branch="live_session_over_stale_pending",
+                )
+            except ImportError:
+                pass
             return live, live_source
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=write_pending,
+                selected_source=_PAGE_CHANGE_WRITE_PENDING_KEY,
+                branch="write_pending",
+            )
+        except ImportError:
+            pass
         return write_pending, _PAGE_CHANGE_WRITE_PENDING_KEY
 
+    _cand("normalized_session_fallback", live, eligible=bool(live))
     if live:
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=live,
+                selected_source=live_source,
+                branch="live_session_fallback",
+            )
+        except ImportError:
+            pass
         return live, live_source
 
     nav = _studio_nav_page_from_session(ss)
+    _cand("studio_nav_state", nav, eligible=bool(nav))
     if nav:
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=nav,
+                selected_source="studio_nav_state",
+                branch="studio_nav_state",
+            )
+        except ImportError:
+            pass
         return nav, "studio_nav_state"
 
     stamp = _normalize_studio_page_for_save(ss.get(_PAGE_CHANGE_STAMP_TARGET_KEY))
+    _cand(_PAGE_CHANGE_STAMP_TARGET_KEY, stamp, eligible=bool(stamp))
     if stamp:
+        try:
+            from music_page_save_pipeline_trace import record_page_target_resolution
+
+            record_page_target_resolution(
+                ss,
+                candidates=candidates,
+                selected_page=stamp,
+                selected_source=_PAGE_CHANGE_STAMP_TARGET_KEY,
+                branch="stamp_target",
+            )
+        except ImportError:
+            pass
         return stamp, _PAGE_CHANGE_STAMP_TARGET_KEY
 
-    return _resolve_page_change_stamp_target(ss)
+    resolved, resolved_source = _resolve_page_change_stamp_target(ss)
+    _cand("resolve_stamp_target", resolved, eligible=bool(resolved))
+    try:
+        from music_page_save_pipeline_trace import record_page_target_resolution
+
+        record_page_target_resolution(
+            ss,
+            candidates=candidates,
+            selected_page=resolved,
+            selected_source=resolved_source,
+            branch="resolve_page_change_stamp_target",
+        )
+    except ImportError:
+        pass
+    return resolved, resolved_source
 
 
 def _resolve_page_change_stamp_target(ss: dict[str, Any]) -> tuple[str, str]:
@@ -1046,6 +1208,18 @@ def finalize_music_page_change_cloud_payload(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Last-chance stamp immediately before disk/cloud write (phone page_change)."""
     ss = st.session_state
+    try:
+        from music_page_save_pipeline_trace import finalize_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            ss,
+            function="finalize_music_page_change_cloud_payload",
+            phase="entry",
+            extra={"finalize_impl_marker": finalize_impl_marker, "save_reason": save_reason},
+            payload=state,
+        )
+    except ImportError:
+        pass
     target, source = _page_change_write_target(ss)
     if not target:
         return state, _finalize_trace_shell(
@@ -1088,6 +1262,19 @@ def finalize_music_page_change_cloud_payload(
             }
         )
         _assert_page_change_payload_not_stale(ss, target=target, trace=trace)
+        try:
+            from music_page_save_pipeline_trace import payload_pages_from_state, record_pipeline_event
+
+            record_pipeline_event(
+                ss,
+                function="finalize_music_page_change_cloud_payload",
+                phase="exit",
+                selected_target=target,
+                target_source=source,
+                extra={"payload_pages": payload_pages_from_state(state)},
+            )
+        except ImportError:
+            pass
         return state, trace
     except Exception as exc:
         return state, _finalize_trace_shell(
@@ -1443,6 +1630,26 @@ def save_music_cloud_session(
     saved_cloud = False
     cloud_result = None
     try:
+        from music_page_save_pipeline_trace import (
+            payload_pages_from_state,
+            record_checkpoint,
+            upsert_impl_marker,
+        )
+
+        record_checkpoint(
+            ss,
+            "E_pre_supabase_upsert",
+            payload=state,
+            extra={
+                "upsert_impl_marker": upsert_impl_marker,
+                "write_path": write_path,
+                "payload_pages": payload_pages_from_state(state),
+                "page_arg": page,
+            },
+        )
+    except ImportError:
+        pass
+    try:
         cloud_result = save_cloud_full_session(
             APP_ID,
             state,
@@ -1659,6 +1866,18 @@ def prepare_page_change_save_state(
 ) -> str:
     """Stamp live nav/workspace/ownership before page_change cloud save."""
     try:
+        from music_page_save_pipeline_trace import prepare_save_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            session,
+            function="prepare_page_change_save_state",
+            phase="entry",
+            selected_target=_normalize_studio_page_for_save(target_page),
+            extra={"prepare_save_impl_marker": prepare_save_impl_marker, "origin_arg": origin},
+        )
+    except ImportError:
+        pass
+    try:
         from music_startup_save_suppression import get_page_change_origin, set_page_change_origin
 
         nav_origin = str(origin or get_page_change_origin(session) or "unknown").strip()
@@ -1739,6 +1958,18 @@ def prepare_page_change_save_state(
 
         sync_music_coach_workspace_page(session)
     except Exception:
+        pass
+    try:
+        from music_page_save_pipeline_trace import record_pipeline_event
+
+        record_pipeline_event(
+            session,
+            function="prepare_page_change_save_state",
+            phase="exit",
+            selected_target=page,
+            branch="user_nav" if user_nav else nav_origin,
+        )
+    except ImportError:
         pass
     return page
 
@@ -2046,6 +2277,17 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
     try:
+        from music_page_save_pipeline_trace import build_disk_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            ss,
+            function="build_music_disk_state",
+            phase="entry",
+            extra={"build_disk_impl_marker": build_disk_impl_marker},
+        )
+    except ImportError:
+        pass
+    try:
         from studio_page_persistence import flush_current_page_snapshot
 
         flush_current_page_snapshot(ss)
@@ -2322,6 +2564,27 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             ss["studio_nav_state"] = copy.deepcopy(state["studio_nav_state"])
         if isinstance(state.get("backing_track_state"), dict):
             ss["backing_track_state"] = copy.deepcopy(state["backing_track_state"])
+    try:
+        from music_page_save_pipeline_trace import (
+            build_disk_impl_marker,
+            payload_pages_from_state,
+            record_checkpoint,
+        )
+
+        record_checkpoint(
+            ss,
+            "D_build_music_disk_state_return",
+            payload=state,
+            extra={
+                "build_disk_impl_marker": build_disk_impl_marker,
+                "save_reason": save_reason,
+                "page_change_target": page_change_target or None,
+                "page_change_source": page_change_source or None,
+                "payload_pages": payload_pages_from_state(state),
+            },
+        )
+    except ImportError:
+        pass
     return state
 
 

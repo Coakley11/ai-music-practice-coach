@@ -189,6 +189,17 @@ def force_music_workspace_save(
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
     try:
+        from music_page_save_pipeline_trace import force_save_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            ss,
+            function="force_music_workspace_save",
+            phase="entry",
+            extra={"force_save_impl_marker": force_save_impl_marker, "reason": r},
+        )
+    except ImportError:
+        pass
+    try:
         from music_startup_save_suppression import gate_music_workspace_save_at_startup
 
         skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
@@ -249,6 +260,26 @@ def force_music_workspace_save(
             explicit_reason=r,
             write_path="force_music_workspace_save",
         )
+        try:
+            from music_page_save_pipeline_trace import (
+                force_save_impl_marker,
+                payload_pages_from_state,
+                record_pipeline_event,
+            )
+
+            record_pipeline_event(
+                ss,
+                function="force_music_workspace_save",
+                phase="post_stamp",
+                extra={
+                    "force_save_impl_marker": force_save_impl_marker,
+                    "reason": r,
+                    "payload_pages": payload_pages_from_state(state),
+                },
+                payload=state,
+            )
+        except ImportError:
+            pass
     except Exception as exc:
         record_save_transaction(ss, envelope_built=False, cloud_write_error=str(exc))
         ss["_music_commit_error"] = str(exc)

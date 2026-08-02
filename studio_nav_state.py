@@ -126,6 +126,50 @@ def write_canonical_studio_nav_state(
 def prepare_studio_nav(session: dict[str, Any]) -> str:
     """Reconcile ``studio_page`` with canonical nav state before widgets render."""
     try:
+        from music_page_save_pipeline_trace import prepare_studio_nav_impl_marker, record_pipeline_event
+
+        record_pipeline_event(
+            session,
+            function="prepare_studio_nav",
+            phase="entry",
+            extra={"prepare_studio_nav_impl_marker": prepare_studio_nav_impl_marker},
+        )
+    except ImportError:
+        pass
+
+    def _finish(
+        branch: str,
+        page: str,
+        *,
+        reason: str,
+        local_edit: bool = False,
+        allow_detail: dict[str, Any] | None = None,
+    ) -> str:
+        try:
+            from music_page_save_pipeline_trace import (
+                prepare_studio_nav_impl_marker,
+                record_pipeline_event,
+            )
+
+            extra: dict[str, Any] = {
+                "prepare_studio_nav_impl_marker": prepare_studio_nav_impl_marker,
+                "write_reason": reason,
+            }
+            if allow_detail:
+                extra["branch_allow_detail"] = allow_detail
+            record_pipeline_event(
+                session,
+                function="prepare_studio_nav",
+                phase="exit",
+                branch=branch,
+                selected_target=page,
+                extra=extra,
+            )
+        except ImportError:
+            pass
+        return write_canonical_studio_nav_state(session, page, reason=reason, local_edit=local_edit)
+
+    try:
         from music_studio_page_diagnostics import record_studio_page_diag
 
         record_studio_page_diag(
@@ -140,20 +184,15 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
 
     user_run = _normalize_page(session.get("_music_user_navigated_page_this_run"))
     if user_run:
-        return write_canonical_studio_nav_state(
-            session,
-            user_run,
-            reason="user_nav_this_run",
-            local_edit=True,
-        )
+        return _finish("user_nav_this_run", user_run, reason="user_nav_this_run", local_edit=True)
     try:
         from music_startup_save_suppression import get_page_change_origin
 
         if get_page_change_origin(session) == "user_navigation":
             live_nav = _normalize_page(session.get("studio_page"))
             if live_nav:
-                return write_canonical_studio_nav_state(
-                    session,
+                return _finish(
+                    "user_navigation_preserve",
                     live_nav,
                     reason="user_navigation_preserve",
                     local_edit=True,
@@ -169,12 +208,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             record_studio_page_diag(session, final_rendered_page=page)
         except ImportError:
             pass
-        return write_canonical_studio_nav_state(
-            session,
-            page,
-            reason="local_nav_preserve",
-            local_edit=True,
-        )
+        return _finish("local_nav_preserve", page, reason="local_nav_preserve", local_edit=True)
 
     try:
         from music_restore_phase import studio_page_restore_projection_complete
@@ -184,7 +218,15 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         ):
             canonical = canonical_studio_page(session)
             if canonical:
-                return write_canonical_studio_nav_state(session, canonical, reason="canonical_post_restore")
+                return _finish(
+                    "canonical_post_restore",
+                    canonical,
+                    reason="canonical_post_restore",
+                    allow_detail={
+                        "user_run_marker": session.get("_music_user_navigated_page_this_run"),
+                        "restore_projection_complete": True,
+                    },
+                )
     except ImportError:
         pass
 
@@ -195,36 +237,59 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         user_nav = bool(session.get("_suite_page_user_nav")) or is_studio_nav_locally_dirty(session)
         restore_source = str(session.get("_suite_page_overwrite_source") or "").strip()
         if user_nav:
-            return write_canonical_studio_nav_state(
-                session,
+            return _finish(
+                "session_page_wins",
                 live,
                 reason="session_page_wins",
                 local_edit=True,
+                allow_detail={"restore_source": restore_source, "canonical": canonical, "live": live},
             )
         if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
             if session.get("_music_user_navigated_page_this_run") or user_nav:
-                return write_canonical_studio_nav_state(
-                    session,
+                return _finish(
+                    "user_nav_over_stale_blob",
                     live,
                     reason="user_nav_over_stale_blob",
                     local_edit=True,
+                    allow_detail={"restore_source": restore_source},
                 )
-            return write_canonical_studio_nav_state(session, canonical, reason="canonical_after_restore")
+            return _finish(
+                "canonical_after_restore",
+                canonical,
+                reason="canonical_after_restore",
+                allow_detail={
+                    "restore_source": restore_source,
+                    "why_blob_applied": "no user_run marker and not user_nav",
+                    "canonical": canonical,
+                    "live_session": live,
+                    "user_run": session.get("_music_user_navigated_page_this_run"),
+                    "_suite_page_user_nav": bool(session.get("_suite_page_user_nav")),
+                },
+            )
         try:
             from music_startup_save_suppression import get_page_change_origin
 
             if get_page_change_origin(session) == "cloud_restore":
-                return write_canonical_studio_nav_state(session, canonical, reason="canonical_after_cloud_restore")
+                return _finish(
+                    "canonical_after_cloud_restore",
+                    canonical,
+                    reason="canonical_after_cloud_restore",
+                )
         except ImportError:
             pass
         if not user_nav:
-            return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve_over_stale_live")
+            return _finish(
+                "canonical_preserve_over_stale_live",
+                canonical,
+                reason="canonical_preserve_over_stale_live",
+                allow_detail={"live": live, "canonical": canonical},
+            )
     if canonical:
-        return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve")
+        return _finish("canonical_preserve", canonical, reason="canonical_preserve")
 
     page = _normalize_page(live_raw)
     if page:
-        return write_canonical_studio_nav_state(session, page, reason="reconcile_on_load")
+        return _finish("reconcile_on_load", page, reason="reconcile_on_load")
 
     try:
         from music_workspace_hydration import workspace_empty_confirmed
@@ -233,19 +298,41 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         if isinstance(payload, dict):
             blob_page = _studio_page_from_blob(payload)
             if blob_page:
-                return write_canonical_studio_nav_state(session, blob_page, reason="blob_before_default")
+                return _finish(
+                    "blob_before_default",
+                    blob_page,
+                    reason="blob_before_default",
+                    allow_detail={"blob_page": blob_page},
+                )
         hydrated = str(session.get("_music_hydrated_studio_page") or "").strip()
         if _normalize_page(hydrated):
-            return write_canonical_studio_nav_state(session, hydrated, reason="hydrated_page_before_default")
+            return _finish(
+                "hydrated_page_before_default",
+                hydrated,
+                reason="hydrated_page_before_default",
+                allow_detail={"hydrated": hydrated},
+            )
         if not workspace_empty_confirmed(session):
             canonical = canonical_studio_page(session)
             if canonical:
-                return write_canonical_studio_nav_state(session, canonical, reason="canonical_before_default")
+                return _finish("canonical_before_default", canonical, reason="canonical_before_default")
+            try:
+                from music_page_save_pipeline_trace import record_pipeline_event
+
+                record_pipeline_event(
+                    session,
+                    function="prepare_studio_nav",
+                    phase="exit",
+                    branch="return_live_without_write",
+                    selected_target=str(session.get("studio_page") or ""),
+                )
+            except ImportError:
+                pass
             return str(session.get("studio_page") or "")
     except ImportError:
         pass
 
-    return write_canonical_studio_nav_state(session, "practice", reason="empty_workspace_default")
+    return _finish("empty_workspace_default", "practice", reason="empty_workspace_default")
 
 
 def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "autosave") -> str:
