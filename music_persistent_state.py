@@ -388,7 +388,7 @@ def finalize_music_startup_restore(
     try:
         from music_startup_save_suppression import finalize_startup_canonical_alignment
 
-        finalize_startup_canonical_alignment(st)
+        finalize_startup_canonical_alignment(st, stage="early_finalize")
     except ImportError:
         pass
     if (
@@ -2737,7 +2737,7 @@ def apply_music_disk_state(
         try:
             from music_startup_save_suppression import record_hydrated_canonical_fingerprint
 
-            record_hydrated_canonical_fingerprint(ss, payload)
+            record_hydrated_canonical_fingerprint(ss, payload, stage="apply_music_disk_state")
         except ImportError:
             pass
     try:

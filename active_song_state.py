@@ -100,6 +100,13 @@ def clear_active_song_local_edit(session: dict[str, Any]) -> None:
 
 
 def mark_active_song_pending_sync(session: dict[str, Any]) -> None:
+    try:
+        from music_startup_save_suppression import note_startup_pending_edit
+
+        if note_startup_pending_edit(session, "active_song_pending_sync"):
+            return
+    except ImportError:
+        pass
     session[ACTIVE_SONG_PENDING_SYNC_KEY] = True
 
 

@@ -9732,6 +9732,15 @@ def _on_practice_filter_change() -> None:
 def _sync_canonical_active_song_after_edit() -> None:
     """Phase C: flush canonical active_song_state and force cloud save."""
     try:
+        from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
+
+        suppress, why = should_suppress_music_workspace_save(st.session_state, "song_edit")
+        if suppress:
+            record_startup_save_suppressed(st.session_state, why)
+            return
+    except ImportError:
+        pass
+    try:
         from music_persistent_state import flush_active_song_edits_and_save
 
         flush_active_song_edits_and_save(st, reason="song_edit")
@@ -14563,6 +14572,13 @@ if not pp.skip_background_persistence(st):
             maybe_flush_pending_backing_edits,
             maybe_flush_pending_practice_edits,
         )
+
+        try:
+            from music_startup_save_suppression import run_late_startup_restore_guard
+
+            run_late_startup_restore_guard(st)
+        except ImportError:
+            pass
 
         maybe_flush_pending_active_song_edits(st)
         maybe_flush_pending_practice_edits(st)

@@ -916,6 +916,17 @@ def sync_workspace_protocol(
     try:
         if cloud_newer_than_applied or first_sync or content_resync:
             st.session_state["_music_authoritative_cloud_apply"] = True
+        if str(app_id or "").strip().lower() == "music" and isinstance(picked.state, dict):
+            try:
+                from music_startup_save_suppression import record_hydrated_canonical_fingerprint
+
+                record_hydrated_canonical_fingerprint(
+                    st.session_state,
+                    picked.state,
+                    stage="sync_workspace_protocol:before_apply",
+                )
+            except ImportError:
+                pass
         apply_state(st, picked.state)
     except Exception as exc:
         reason = f"apply_state failed: {exc}"

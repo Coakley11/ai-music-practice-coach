@@ -233,6 +233,15 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
+    try:
+        from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
+
+        suppress, why = should_suppress_music_workspace_save(st.session_state, "song_edit")
+        if suppress:
+            record_startup_save_suppressed(st.session_state, why)
+            return
+    except ImportError:
+        pass
     if extra:
         for key, value in extra.items():
             if value:
