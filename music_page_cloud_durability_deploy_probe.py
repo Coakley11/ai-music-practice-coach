@@ -9,7 +9,7 @@ import importlib
 from typing import Any
 
 # Bump suffix `-v1` when probe UI changes; bump commit segment when shipping visibility fixes.
-PAGE_CLOUD_DURABILITY_DEPLOY_MARKER = "PAGE_CLOUD_DURABILITY_DEPLOY: 1ff40c9-v1"
+PAGE_CLOUD_DURABILITY_DEPLOY_MARKER = "PAGE_CLOUD_DURABILITY_DEPLOY: 52290f7-v1"
 
 
 def _dev_enabled(st: Any) -> bool:
