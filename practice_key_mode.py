@@ -18,6 +18,7 @@ from music_theory import (
 PRACTICE_KEY_MODE_KEY = "practice_key_mode"
 FIXED_PRACTICE_KEY = "fixed_practice_key"
 FIXED_PRACTICE_KEY_FAMILY_ID = "fixed_practice_key_family_id"
+FIXED_PRACTICE_KEY_FAMILY_SPELLING = "fixed_practice_key_family_spelling"
 PRACTICE_KEY_MODE_WIDGET_KEY = "practice_panel_practice_key_mode"
 FIXED_PRACTICE_KEY_WIDGET_KEY = "practice_panel_fixed_practice_key"
 
@@ -143,8 +144,12 @@ def resolve_family_option_id(session: dict[str, Any]) -> str:
     if normalized_stored in fixed_key_family_options():
         return normalized_stored
     canonical = get_fixed_practice_key(session)
+    spelling = str(session.get(FIXED_PRACTICE_KEY_FAMILY_SPELLING) or "").strip()
+    prefer = canonical
+    if spelling == "flat" and canonical:
+        prefer = canonical if "b" in canonical else prefer
     if canonical and not stored and not widget:
-        return _family_option_id_for_major(canonical, prefer=canonical)
+        return _family_option_id_for_major(canonical, prefer=prefer or canonical)
     return _default_family_option_id()
 
 
@@ -198,10 +203,10 @@ def set_fixed_practice_key_family(session: dict[str, Any], option_id: str) -> No
     option = str(option_id or "").strip()
     if option not in fixed_key_family_options():
         option = _family_option_id_for_major(option, prefer=option)
-    major, _minor_root = parse_family_option_id(option)
-    anchor = _major_family_anchor(major)
+    major, minor_root = parse_family_option_id(option)
     session[FIXED_PRACTICE_KEY_FAMILY_ID] = option
-    session[FIXED_PRACTICE_KEY] = anchor
+    session[FIXED_PRACTICE_KEY] = major
+    session[FIXED_PRACTICE_KEY_FAMILY_SPELLING] = family_spelling_preference(option)
     session[FIXED_PRACTICE_KEY_WIDGET_KEY] = option
 
 
@@ -245,6 +250,9 @@ def prepare_practice_key_mode_widgets(
                 if fam:
                     session[FIXED_PRACTICE_KEY_FAMILY_ID] = fam
                     session[FIXED_PRACTICE_KEY_WIDGET_KEY] = fam
+                    major, _ = parse_family_option_id(fam)
+                    session[FIXED_PRACTICE_KEY] = major
+                    session[FIXED_PRACTICE_KEY_FAMILY_SPELLING] = family_spelling_preference(fam)
             return
     ensure_practice_key_mode_defaults(session)
     session[PRACTICE_KEY_MODE_WIDGET_KEY] = get_practice_key_mode(session)
@@ -254,7 +262,8 @@ def prepare_practice_key_mode_widgets(
             major, _ = parse_family_option_id(fam)
             session[FIXED_PRACTICE_KEY_FAMILY_ID] = fam
             session[FIXED_PRACTICE_KEY_WIDGET_KEY] = fam
-            session[FIXED_PRACTICE_KEY] = _major_family_anchor(major)
+            session[FIXED_PRACTICE_KEY] = major
+            session[FIXED_PRACTICE_KEY_FAMILY_SPELLING] = family_spelling_preference(fam)
 
 
 def commit_practice_key_mode_widgets(session: dict[str, Any]) -> None:
@@ -311,6 +320,30 @@ def resolve_fixed_practice_concert_key_for_family(
     return resolve_session_key_from_family(option_id, key_mode(song_original_key))
 
 
+def family_spelling_preference(option_id: str) -> str:
+    """flat | sharp | natural — from the user-selected family row."""
+    major, _ = parse_family_option_id(str(option_id or ""))
+    if "b" in major or "♭" in major:
+        return "flat"
+    if "#" in major or "♯" in major:
+        return "sharp"
+    return "natural"
+
+
+def family_metadata(option_id: str) -> dict[str, str]:
+    """Canonical spelling + labels for one fixed key family option."""
+    major, minor_root = parse_family_option_id(str(option_id or ""))
+    pref = family_spelling_preference(option_id)
+    return {
+        "family_id": str(option_id or "").strip(),
+        "major_key": major,
+        "minor_key": f"{minor_root}m",
+        "major_label": f"{major} major",
+        "minor_label": f"{minor_root} minor",
+        "spelling_preference": pref,
+    }
+
+
 def resolve_session_key_from_family(key_family: str, musical_mode: str) -> str:
     """
     Canonical session tonal key from a fixed family + active object mode.
@@ -320,7 +353,9 @@ def resolve_session_key_from_family(key_family: str, musical_mode: str) -> str:
     """
     option_id = str(key_family or "").strip()
     if FAMILY_OPTION_SEP not in option_id:
-        option_id = _family_option_id_for_major(option_id, prefer=option_id)
+        option_id = normalize_stored_family_option_id(option_id) or _family_option_id_for_major(
+            option_id, prefer=option_id
+        )
     major, minor_root = parse_family_option_id(option_id)
     mode = str(musical_mode or "major").strip().lower()
     if mode == "minor":
@@ -533,6 +568,7 @@ def disable_fixed_practice_key_mode(
 __all__ = [
     "FIXED_PRACTICE_KEY",
     "FIXED_PRACTICE_KEY_FAMILY_ID",
+    "FIXED_PRACTICE_KEY_FAMILY_SPELLING",
     "FIXED_PRACTICE_KEY_WIDGET_KEY",
     "KEY_FAMILY_CHOICES",
     "PRACTICE_KEY_BEHAVIOR_LABEL",
@@ -544,7 +580,9 @@ __all__ = [
     "commit_practice_key_mode_widgets",
     "disable_fixed_practice_key_mode",
     "ensure_practice_key_mode_defaults",
+    "family_metadata",
     "family_option_id",
+    "family_spelling_preference",
     "normalize_stored_family_option_id",
     "fixed_key_family_anchor_from_label",
     "fixed_key_family_label",

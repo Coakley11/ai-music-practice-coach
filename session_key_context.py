@@ -208,6 +208,12 @@ def resolve_effective_session_key_context(
     fixed = is_fixed_practice_key_mode(session)
     family_raw = _str(session.get("fixed_practice_key_family_id") or session.get("practice_panel_fixed_practice_key"))
     family_norm = normalize_stored_family_option_id(family_raw or resolve_family_option_id(session))
+    try:
+        from practice_key_mode import family_metadata
+
+        family_meta = family_metadata(family_norm) if family_norm else {}
+    except ImportError:
+        family_meta = {}
     object_mode = resolve_active_object_mode(session, original_key=orig)
     object_source = resolve_active_object_source(session)
     object_title = resolve_active_object_title(session)
@@ -309,7 +315,7 @@ def resolve_effective_session_key_context(
         capo_mode_enabled=bool(session.get("guitar_capo_enabled")),
         shape_key=_str(session.get("guitar_capo_shape_key")),
     )
-    session[LIVE_KEY_FAMILY_RENDER_TRACE_KEY] = ctx.as_dict()
+    session[LIVE_KEY_FAMILY_RENDER_TRACE_KEY] = {**ctx.as_dict(), **family_meta}
     return ctx
 
 

@@ -655,6 +655,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "practice_key_mode",
     "fixed_practice_key",
     "fixed_practice_key_family_id",
+    "fixed_practice_key_family_spelling",
     "sbi_preview_source",
     "catalog_session",
     "custom_session",
