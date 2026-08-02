@@ -1904,7 +1904,10 @@ def prepare_page_change_save_state(
         if origin:
             set_page_change_origin(session, nav_origin)
         elif session.get("startup_suppression_armed") and not session.get("startup_suppression_released"):
-            nav_origin = "reconciliation"
+            if session.get("_music_user_navigated_page_this_run") or session.get("_suite_page_user_nav"):
+                nav_origin = "user_navigation"
+            else:
+                nav_origin = "reconciliation"
             set_page_change_origin(session, nav_origin)
         elif nav_origin == "unknown" and not session.get("startup_suppression_released"):
             nav_origin = "reconciliation"

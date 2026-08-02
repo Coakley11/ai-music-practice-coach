@@ -285,6 +285,13 @@ def force_music_workspace_save(
         )
 
         skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
+        if r == "page_change":
+            try:
+                from music_queued_page_startup_release_trace import record_force_save_page_change_entry
+
+                record_force_save_page_change_entry(ss)
+            except ImportError:
+                pass
         if skip_save:
             flushed = False
             if r == "page_change":

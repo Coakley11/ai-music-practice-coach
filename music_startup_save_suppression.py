@@ -26,6 +26,8 @@ STARTUP_REVISION_FINAL_KEY = "startup_revision_final"
 HYDRATED_PAYLOAD_SNAPSHOT_KEY = "_music_hydrated_payload_canonical_snapshot"
 PAGE_CHANGE_ORIGIN_KEY = "music_page_change_origin"
 
+QUEUED_PAGE_STARTUP_RELEASE_IMPL = "QUEUED_PAGE_STARTUP_RELEASE_IMPL: 38664fc-v2"
+
 _PAGE_CHANGE_ORIGINS: frozenset[str] = frozenset(
     {
         "user_navigation",
@@ -140,15 +142,32 @@ def queued_user_page_change_target(session: dict[str, Any]) -> str:
         if page:
             return page
     live = _normalize_page_id(session.get("studio_page"))
-    if live and get_page_change_origin(session) == "user_navigation":
+    if live and _genuine_queued_user_navigation(session):
         return live
     return ""
 
 
 def has_queued_user_page_change(session: dict[str, Any]) -> bool:
-    if get_page_change_origin(session) != "user_navigation":
+    if not queued_user_page_change_target(session):
         return False
-    return bool(queued_user_page_change_target(session))
+    return _genuine_queued_user_navigation(session)
+
+
+def _genuine_queued_user_navigation(session: dict[str, Any]) -> bool:
+    if get_page_change_origin(session) == "user_navigation":
+        return True
+    if str(session.get("_music_user_navigated_page_this_run") or "").strip():
+        return True
+    if session.get("_suite_page_user_nav"):
+        return True
+    return False
+
+
+def _defer_finalize_for_pending_queued_page_change(session: dict[str, Any]) -> bool:
+    """Queued user nav must release via force_save — not late finalize with Creative stamped."""
+    if not queued_user_page_change_target(session):
+        return False
+    return _genuine_queued_user_navigation(session)
 
 
 def snapshot_queued_page_change(session: dict[str, Any]) -> dict[str, Any]:
@@ -414,9 +433,52 @@ def _release_startup_for_queued_page_change(
     ss = st.session_state
     rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
     hydrated_page = _hydrated_page_id(ss)
+    hydrated_fp = str(ss.get(HYDRATED_CANONICAL_FP_KEY) or "").strip()
+    post_fp = str(ss.get(POST_RESTORE_CANONICAL_FP_KEY) or "").strip()
+    pre_aligned = _pre_navigation_startup_alignment_satisfied(ss)
 
-    if _pre_navigation_startup_alignment_satisfied(ss):
+    try:
+        from music_queued_page_startup_release_trace import record_release_function_body
+
+        record_release_function_body(
+            ss,
+            phase="entry",
+            detail={
+                "queued_release_function_called": True,
+                "queued_release_pre_aligned_detected": pre_aligned,
+                "queued_release_pre_aligned_hydrated_fp": hydrated_fp,
+                "queued_release_pre_aligned_post_fp": post_fp,
+                "queued_release_queued_target": queued,
+            },
+        )
+    except ImportError:
+        pass
+
+    if pre_aligned:
+        try:
+            from music_queued_page_startup_release_trace import record_release_function_body
+
+            record_release_function_body(
+                ss,
+                phase="pre_aligned_shortcut",
+                detail={
+                    "queued_release_branch_selected": "pre_aligned_shortcut",
+                    "queued_release_apply_queued_release_called": True,
+                },
+            )
+        except ImportError:
+            pass
         _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage="page_change_release_pre_aligned")
+        try:
+            from music_queued_page_startup_release_trace import record_release_function_body
+
+            record_release_function_body(
+                ss,
+                phase="pre_aligned_done",
+                detail={"queued_release_result": True},
+            )
+        except ImportError:
+            pass
         return True
 
     snapshot = ss.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
@@ -445,13 +507,32 @@ def _release_startup_for_queued_page_change(
     except ImportError:
         differing = []
 
-    matches = bool(release_hydrated_fp and release_post_fp and release_hydrated_fp == release_post_fp)
-    if not matches and _differing_only_queued_page_navigation(
+    page_only = _differing_only_queued_page_navigation(
         differing, hydrated_page=normalize_page, queued_page=queued
-    ):
+    )
+    matches = bool(release_hydrated_fp and release_post_fp and release_hydrated_fp == release_post_fp)
+    if not matches and page_only:
         matches = True
     if not matches and _metadata_only_canonical_diff(differing):
         matches = True
+
+    try:
+        from music_queued_page_startup_release_trace import record_release_function_body
+
+        record_release_function_body(
+            ss,
+            phase="normalized_compare",
+            detail={
+                "queued_release_branch_selected": "normalized_fingerprint_compare",
+                "queued_release_normalized_hydrated_fp": release_hydrated_fp,
+                "queued_release_normalized_post_fp": release_post_fp,
+                "queued_release_differing_paths_after_mask": differing,
+                "queued_release_page_only_diff": page_only,
+                "queued_release_matches": matches,
+            },
+        )
+    except ImportError:
+        pass
 
     ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
     if not matches:
@@ -472,6 +553,19 @@ def _release_startup_for_queued_page_change(
         return False
 
     _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage="page_change_release")
+    try:
+        from music_queued_page_startup_release_trace import record_release_function_body
+
+        record_release_function_body(
+            ss,
+            phase="normalized_release_done",
+            detail={
+                "queued_release_apply_queued_release_called": True,
+                "queued_release_result": True,
+            },
+        )
+    except ImportError:
+        pass
     return True
 
 
@@ -530,6 +624,20 @@ def _record_alignment_diagnostics(
 def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finalize") -> bool:
     """Compare hydrated vs built state; release suppression when canonical content matches."""
     ss = st.session_state
+    if _defer_finalize_for_pending_queued_page_change(ss):
+        try:
+            from music_queued_page_startup_release_trace import record_finalize_fallback_blocked
+
+            record_finalize_fallback_blocked(ss, stage=stage)
+        except ImportError:
+            pass
+        rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
+        ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
+        if _pre_navigation_startup_alignment_satisfied(ss):
+            ss[STARTUP_FINGERPRINT_MATCHES_KEY] = True
+        return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
+
+    _maybe_record_finalize_after_dedicated_release(ss, stage=stage)
     snapshot = ss.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
     payload = snapshot if isinstance(snapshot, dict) else ss.get("_suite_last_cloud_fetch_payload")
     hydrated_side = payload if isinstance(payload, dict) else {}
@@ -651,20 +759,58 @@ def attempt_release_startup_for_queued_page_change(st: Any, *, suppress_reason: 
     """
     ss = st.session_state
     queued = queued_user_page_change_target(ss)
-    if not queued or get_page_change_origin(ss) != "user_navigation":
+    if not queued or not _genuine_queued_user_navigation(ss):
         ss["queued_page_change_preserved"] = False
         ss["queued_page_change_flushed"] = False
+        try:
+            from music_queued_page_startup_release_trace import record_attempt_release_result
+
+            record_attempt_release_result(
+                ss,
+                return_value=False,
+                branch_selected="abort_not_genuine_user_nav",
+                next_function="none",
+            )
+        except ImportError:
+            pass
+        _maybe_record_hotfix_not_executed(ss, queued=queued)
         return False
+
+    if get_page_change_origin(ss) != "user_navigation" and _genuine_queued_user_navigation(ss):
+        set_page_change_origin(ss, "user_navigation")
+
+    try:
+        from music_queued_page_startup_release_trace import (
+            record_attempt_release_dispatch,
+        )
+
+        record_attempt_release_dispatch(
+            ss,
+            attempt_fn=attempt_release_startup_for_queued_page_change,
+            release_fn=_release_startup_for_queued_page_change,
+        )
+    except ImportError:
+        pass
 
     snap = snapshot_queued_page_change(ss)
     ss["queued_page_change_preserved"] = True
 
     armed = bool(ss.get(STARTUP_SUPPRESSION_ARMED_KEY)) and not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY)
     released = bool(ss.get(STARTUP_SUPPRESSION_RELEASED_KEY))
+    branch = "already_released"
     if armed or ss.get(STARTUP_RESTORE_IN_PROGRESS_KEY):
         released = _release_startup_for_queued_page_change(
             st, queued=queued, suppress_reason=suppress_reason
         )
+        branch = "dedicated_release_function"
+    elif _pre_navigation_startup_alignment_satisfied(ss):
+        _apply_queued_page_startup_release(
+            ss,
+            rev_loaded=int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0),
+            stage="page_change_release_pre_aligned_no_arm",
+        )
+        released = True
+        branch = "pre_aligned_no_arm"
 
     restore_queued_page_change(ss, snap)
     try:
@@ -676,23 +822,108 @@ def attempt_release_startup_for_queued_page_change(st: Any, *, suppress_reason: 
 
     if not released or not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY):
         ss["queued_page_change_flushed"] = False
+        try:
+            from music_queued_page_startup_release_trace import record_attempt_release_result
+
+            record_attempt_release_result(
+                ss,
+                return_value=False,
+                branch_selected=branch,
+                next_function="force_save_early_return",
+            )
+        except ImportError:
+            pass
+        _maybe_record_hotfix_not_executed(ss, queued=queued)
         return False
 
     suppress, _why = should_suppress_music_workspace_save(ss, "page_change")
     if suppress:
         ss["queued_page_change_flushed"] = False
+        try:
+            from music_queued_page_startup_release_trace import record_attempt_release_result
+
+            record_attempt_release_result(
+                ss,
+                return_value=False,
+                branch_selected=f"{branch}:post_release_still_suppressed",
+                next_function="force_save_early_return",
+            )
+        except ImportError:
+            pass
         return False
 
     ss["queued_page_change_flushed"] = True
     ss[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
+    try:
+        from music_queued_page_startup_release_trace import record_attempt_release_result
+
+        record_attempt_release_result(
+            ss,
+            return_value=True,
+            branch_selected=branch,
+            next_function="force_music_workspace_save_payload_build",
+        )
+    except ImportError:
+        pass
     return True
+
+
+def _maybe_record_hotfix_not_executed(session: dict[str, Any], *, queued: str) -> None:
+    if not queued:
+        return
+    if not _pre_navigation_startup_alignment_satisfied(session):
+        return
+    if session.get(STARTUP_SUPPRESSION_RELEASED_KEY):
+        return
+    try:
+        from music_page_cloud_durability_trace import record_queued_page_release_hotfix_violation
+
+        record_queued_page_release_hotfix_violation(
+            session,
+            code="QUEUED_PAGE_RELEASE_HOTFIX_NOT_EXECUTED",
+            detail={
+                "queued": queued,
+                "startup_fingerprint_matches": session.get(STARTUP_FINGERPRINT_MATCHES_KEY),
+            },
+        )
+    except ImportError:
+        pass
 
 
 def run_late_startup_restore_guard(st: Any) -> bool:
     ss = st.session_state
+    if _defer_finalize_for_pending_queued_page_change(ss):
+        try:
+            from music_queued_page_startup_release_trace import record_finalize_fallback_blocked
+
+            record_finalize_fallback_blocked(ss, stage="late_end_of_run")
+        except ImportError:
+            pass
+        rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
+        ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
+        return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
     if not ss.get(STARTUP_SUPPRESSION_ARMED_KEY):
         return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
+    _maybe_record_finalize_after_dedicated_release(ss, stage="late_end_of_run")
     return finalize_startup_canonical_alignment(st, stage="late_end_of_run")
+
+
+def _maybe_record_finalize_after_dedicated_release(session: dict[str, Any], *, stage: str) -> None:
+    trace = session.get("_music_queued_page_release_trace")
+    if not isinstance(trace, dict):
+        return
+    if not trace.get("queued_release_return_value"):
+        return
+    try:
+        from music_page_cloud_durability_trace import record_queued_page_release_hotfix_violation
+
+        record_queued_page_release_hotfix_violation(
+            session,
+            code="QUEUED_PAGE_RELEASE_FELL_BACK_TO_OLD_FINALIZE",
+            detail={"stage": stage, "trace": trace},
+        )
+    except ImportError:
+        pass
 
 
 def record_startup_save_suppressed(session: dict[str, Any], reason: str) -> None:

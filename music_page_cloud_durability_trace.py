@@ -292,6 +292,30 @@ def record_startup_release_revision_violation(session: dict[str, Any]) -> None:
     )
 
 
+def record_queued_page_release_hotfix_violation(
+    session: dict[str, Any],
+    *,
+    code: str,
+    detail: dict[str, Any],
+) -> None:
+    if not durability_trace_enabled(session):
+        return
+    _record_violation(session, code=code, detail=detail)
+
+
+def merge_queued_release_trace_into_payload(payload: dict[str, Any], session: dict[str, Any]) -> None:
+    try:
+        from music_queued_page_startup_release_trace import (
+            QUEUED_PAGE_STARTUP_RELEASE_IMPL,
+            build_queued_release_trace_copy,
+        )
+
+        payload["queued_page_startup_release_impl"] = QUEUED_PAGE_STARTUP_RELEASE_IMPL
+        payload["queued_page_release_trace"] = build_queued_release_trace_copy(session)
+    except ImportError:
+        payload["queued_page_startup_release_impl"] = "import_failed"
+
+
 def record_startup_release_blocked(
     session: dict[str, Any],
     *,
@@ -886,6 +910,7 @@ def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
     }
     integrity = evaluate_durability_transaction_integrity(session)
     base["diagnostic_integrity"] = integrity
+    merge_queued_release_trace_into_payload(base, session)
     try:
         bucket = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
         has_tx = isinstance(bucket, dict) and bool(bucket.get("transactions"))
@@ -908,6 +933,7 @@ def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
             parsed["module_import_ok"] = True
             parsed["diagnostic_integrity"] = integrity
             parsed["status"] = "ok"
+            merge_queued_release_trace_into_payload(parsed, session)
             return parsed
         base["status"] = "invalid_trace_payload"
         return base
