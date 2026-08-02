@@ -949,6 +949,13 @@ def persist_creative_analysis_mode(session_state: dict[str, Any]) -> str:
 def on_creative_analysis_mode_change() -> None:
     import streamlit as st
 
+    try:
+        from creative_tab_tool_persistence import handle_user_creative_selector_change
+
+        handle_user_creative_selector_change(st.session_state, "creative_lab_analysis_mode")
+        return
+    except ImportError:
+        pass
     mode = str(st.session_state.get("creative_lab_analysis_mode") or "").strip()
     if mode:
         st.session_state["creative_lab_last_mode"] = mode

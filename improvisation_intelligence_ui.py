@@ -299,13 +299,25 @@ def _tab_entry_modes(
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
-        mark_improv_tab_user_touched(session_state)
         try:
-            from creative_session_state import sync_creative_session_before_persist
+            from creative_tab_tool_persistence import handle_user_creative_selector_change
 
-            sync_creative_session_before_persist(session_state)
+            handle_user_creative_selector_change(session_state, "improv_entry_mode")
         except ImportError:
-            pass
+            mark_improv_tab_user_touched(session_state)
+            try:
+                from creative_session_state import sync_creative_session_before_persist
+
+                sync_creative_session_before_persist(session_state)
+            except ImportError:
+                pass
+        else:
+            try:
+                from creative_session_state import sync_creative_session_before_persist
+
+                sync_creative_session_before_persist(session_state)
+            except ImportError:
+                pass
 
     ensure_improv_entry_mode_restored(session_state)
     entry = st.radio(

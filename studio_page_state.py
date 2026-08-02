@@ -326,6 +326,14 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    try:
+        from creative_tab_tool_persistence import hydrate_improv_intelligence_tab_from_canonical
+
+        canon_tab = hydrate_improv_intelligence_tab_from_canonical(session_state)
+        if canon_tab:
+            return canon_tab
+    except ImportError:
+        pass
     if session_state.get("_improv_tab_user_touched"):
         current = str(session_state.get("improv_intelligence_tab") or "").strip()
         if current in IMPROV_TAB_NAMES:

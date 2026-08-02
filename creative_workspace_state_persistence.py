@@ -134,6 +134,12 @@ def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, rea
         sync_creative_workspace_before_persist(session)
     except ImportError:
         pass
+    try:
+        from creative_tab_tool_persistence import note_passive_creative_tab_persist
+
+        note_passive_creative_tab_persist(session, reason=reason)
+    except ImportError:
+        pass
     gathered = gather_creative_workspace_from_session(session)
     write_canonical_creative_workspace(session, gathered, reason=reason)
 
@@ -238,6 +244,12 @@ def apply_creative_workspace_from_payload(
         blob,
         source="cloud_restore" if authoritative else "disk_restore",
     )
+    try:
+        from creative_tab_tool_persistence import migrate_invalid_creative_selectors
+
+        migrate_invalid_creative_selectors(session, source="cloud_apply" if authoritative else "disk_apply")
+    except ImportError:
+        pass
     session[CREATIVE_WORKSPACE_MIGRATED_KEY] = True
     return True
 
@@ -259,6 +271,18 @@ def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
     if not session.pop(CREATIVE_WORKSPACE_RESTORED_KEY, None):
         return
     project_creative_workspace_to_session(session, overwrite=True)
+    try:
+        from creative_tab_tool_persistence import (
+            migrate_invalid_creative_selectors,
+            project_creative_selectors_from_canonical,
+            snapshot_hydrated_creative_selectors,
+        )
+
+        migrate_invalid_creative_selectors(session, source="prepare")
+        project_creative_selectors_from_canonical(session, overwrite=True)
+        snapshot_hydrated_creative_selectors(session, source="prepare")
+    except ImportError:
+        pass
     session["_creative_workspace_restored_applied"] = True
     try:
         from music_global_control_diagnostics import record_global_control_diag

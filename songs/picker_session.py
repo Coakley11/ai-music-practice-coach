@@ -66,7 +66,14 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
 
 
 def mark_improv_tab_user_touched(session_state: MutableMapping[str, object]) -> None:
-    """Record sub-tab selection and persist for refresh/cloud restore."""
+    """Record Improvisation Intelligence sub-tab — canonical blob + discrete cloud save."""
+    try:
+        from creative_tab_tool_persistence import handle_user_creative_selector_change
+
+        handle_user_creative_selector_change(session_state, "improv_intelligence_tab")
+        return
+    except ImportError:
+        pass
     tab = str(session_state.get("improv_intelligence_tab") or "").strip()
     if tab:
         session_state["creative_improv_intelligence_tab"] = tab

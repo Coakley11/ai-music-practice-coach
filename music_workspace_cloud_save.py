@@ -30,6 +30,8 @@ _USER_FORCE_REASONS: frozenset[str] = frozenset(
         "song_edit",
         "practice_edit",
         "backing_edit",
+        "creative_tab_change",
+        "creative_tool_change",
         "practice_tool_select",
         "practice_workspace_edit",
         "practice_key_mode_change",

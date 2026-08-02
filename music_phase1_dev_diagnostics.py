@@ -75,5 +75,32 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             if val is not None:
                 st.caption(f"`{key}`: {val!r}")
 
+        try:
+            from creative_tab_tool_persistence import collect_creative_tab_tool_diagnostics
+
+            tab_diag = collect_creative_tab_tool_diagnostics(session)
+        except ImportError:
+            tab_diag = {}
+
+        st.markdown("**Creative tool/tab persistence**")
+        for key in (
+            "hydrated_tool_tab_values",
+            "canonical_values",
+            "widget_values",
+            "user_selection_event",
+            "save_reason",
+            "reserved_revision",
+            "confirmed_revision",
+            "authoritative_refetched_values",
+            "projection_source",
+            "overwrite_source",
+            "startup_write_attempted",
+            "migration_reason",
+            "violations",
+        ):
+            val = tab_diag.get(key)
+            if val is not None:
+                st.caption(f"`{key}`: {val!r}")
+
 
 __all__ = ["render_phase1_live_path_diagnostics"]
