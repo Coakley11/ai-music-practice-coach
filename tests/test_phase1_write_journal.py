@@ -64,6 +64,14 @@ class TestPhase1WriteJournal(unittest.TestCase):
         self.session["studio_page"] = "creative"
         text = format_journal_copy_block(self.session)
         self.assertIn("creative", text)
+        import json
+
+        block = json.loads(text)
+        self.assertIn("page_cloud_durability_trace_json", block)
+        self.assertEqual(
+            block["page_cloud_durability_trace_json"].get("ui_marker"),
+            "PAGE_CLOUD_DURABILITY_TRACE_IMPL: 3ff4251-v1",
+        )
         self.assertTrue(phase1_journal_enabled(self.session))
 
 

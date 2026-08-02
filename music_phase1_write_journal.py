@@ -507,7 +507,11 @@ def _page_change_cloud_confirmed_for_journal(session: dict[str, Any]) -> bool:
 def format_journal_copy_block(session: dict[str, Any]) -> str:
     j = session.get(PHASE1_WRITE_JOURNAL_KEY)
     if not isinstance(j, dict):
-        return "(no journal — enable ?dev=1)"
+        payload = {
+            "error": "no journal — enable ?dev=1",
+            "page_cloud_durability_trace_json": _durability_trace_json_for_journal(session),
+        }
+        return json.dumps(payload, indent=2, default=str)
     payload = {
         "run_seq": j.get("run_seq"),
         "user_widget_events": j.get("user_widget_events"),
@@ -529,14 +533,22 @@ def format_journal_copy_block(session: dict[str, Any]) -> str:
 
         payload["page_save_pipeline_trace_json"] = json.loads(build_pipeline_trace_copy_block(session))
     except Exception:
-        pass
-    try:
-        from music_page_cloud_durability_trace import build_durability_copy_block
-
-        payload["page_cloud_durability_trace_json"] = json.loads(build_durability_copy_block(session))
-    except Exception:
-        pass
+        payload["page_save_pipeline_trace_json"] = {"status": "pipeline_trace_unavailable"}
+    payload["page_cloud_durability_trace_json"] = _durability_trace_json_for_journal(session)
     return json.dumps(payload, indent=2, default=str)
+
+
+def _durability_trace_json_for_journal(session: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from music_page_cloud_durability_trace import durability_journal_payload
+
+        return durability_journal_payload(session)
+    except Exception as exc:
+        return {
+            "ui_marker": "PAGE_CLOUD_DURABILITY_TRACE_IMPL: 3ff4251-v1",
+            "status": "durability_module_import_failed",
+            "error": str(exc),
+        }
 
 
 def _page_from_cloud_payload(payload: Any) -> str | None:
@@ -557,6 +569,16 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
     summary = finalize_phase1_write_journal(session)
     j = session.get(PHASE1_WRITE_JOURNAL_KEY) or {}
     with st.sidebar.expander("Phase 1 runtime write journal", expanded=True):
+        try:
+            from music_page_cloud_durability_trace import (
+                PAGE_CLOUD_DURABILITY_UI_MARKER,
+                render_page_cloud_durability_trace_section,
+            )
+
+            st.markdown(f"`{PAGE_CLOUD_DURABILITY_UI_MARKER}`")
+        except Exception as exc:
+            st.markdown("`PAGE_CLOUD_DURABILITY_TRACE_IMPL: 3ff4251-v1 (import failed)`")
+            st.caption(str(exc))
         if j.get("violations"):
             for viol in j["violations"]:
                 st.error(
@@ -594,19 +616,13 @@ def render_phase1_write_journal_expander(st: Any, session: dict[str, Any]) -> No
         except ImportError:
             pass
         try:
-            from music_page_cloud_durability_trace import build_durability_copy_block, classify_failure
+            from music_page_cloud_durability_trace import render_page_cloud_durability_trace_section
 
+            render_page_cloud_durability_trace_section(st, session)
+        except Exception as exc:
             st.markdown("**Page cloud durability trace**")
-            failure = classify_failure(session)
-            if failure:
-                st.warning(f"Cloud durability failure class: {failure}")
-            viols = (session.get("_music_page_cloud_durability_trace") or {}).get("violations") or []
-            for viol in viols:
-                if isinstance(viol, dict):
-                    st.error(f"{viol.get('code')}: {viol.get('detail')}")
-            st.code(build_durability_copy_block(session), language="json")
-        except ImportError:
-            pass
+            st.error(f"Durability trace render failed: {exc}")
+            st.json({"status": "durability_trace_render_failed", "error": str(exc)})
         st.markdown("**Copyable journal**")
         st.code(format_journal_copy_block(session), language="json")
 

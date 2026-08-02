@@ -8,6 +8,7 @@ from typing import Any
 
 PAGE_CLOUD_DURABILITY_TRACE_KEY = "_music_page_cloud_durability_trace"
 PAGE_CLOUD_DURABILITY_IMPL_MARKER = "music_page_cloud_durability_trace:v1"
+PAGE_CLOUD_DURABILITY_UI_MARKER = "PAGE_CLOUD_DURABILITY_TRACE_IMPL: 3ff4251-v1"
 
 AUTHORITATIVE_CONFIRMED_KEY = "_music_page_change_authoritative_confirmed"
 AUTHORITATIVE_CONFIRMATION_DETAIL_KEY = "_music_page_change_authoritative_confirmation"
@@ -22,9 +23,9 @@ def durability_trace_enabled(session: dict[str, Any]) -> bool:
     if session.get("developer_mode"):
         return True
     try:
-        from music_phase1_write_journal import phase1_journal_enabled
+        from suite_workspace import is_developer_mode_enabled
 
-        return bool(phase1_journal_enabled(session))
+        return bool(is_developer_mode_enabled())
     except ImportError:
         return False
 
@@ -546,3 +547,65 @@ def finalize_page_change_cloud_durability_trace(session: dict[str, Any], *, save
         session.get("_music_user_navigated_page_this_run") or session.get("studio_page") or "creative"
     ).strip()
     evaluate_authoritative_page_change_confirmation(session, target_page=target or "creative")
+
+
+def durability_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
+    """JSON-safe payload for sidebar + copyable journal; never omits the key."""
+    base: dict[str, Any] = {
+        "ui_marker": PAGE_CLOUD_DURABILITY_UI_MARKER,
+        "impl_marker": PAGE_CLOUD_DURABILITY_IMPL_MARKER,
+        "module_import_ok": True,
+    }
+    try:
+        bucket = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
+        has_tx = isinstance(bucket, dict) and bool(bucket.get("transactions"))
+        if not has_tx:
+            classify_failure(session)
+            base["status"] = "no_page_change_transaction_recorded"
+            base["page_cloud_durability_trace"] = bucket if isinstance(bucket, dict) else {}
+            base["authoritative_page_change_cloud_confirmed"] = authoritative_page_change_cloud_confirmed(
+                session
+            )
+            base["legacy_suite_persist_last_save_cloud"] = session.get("_suite_persist_last_save_cloud")
+            base["legacy_confirmed_revision"] = session.get("_music_last_confirmed_cloud_revision")
+            return base
+        parsed = json.loads(build_durability_copy_block(session))
+        if isinstance(parsed, dict):
+            parsed["ui_marker"] = PAGE_CLOUD_DURABILITY_UI_MARKER
+            parsed["module_import_ok"] = True
+            return parsed
+        base["status"] = "invalid_trace_payload"
+        return base
+    except Exception as exc:
+        return {
+            **base,
+            "status": "durability_trace_build_error",
+            "error": str(exc),
+            "page_cloud_durability_trace": session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY),
+        }
+
+
+def render_page_cloud_durability_trace_section(st: Any, session: dict[str, Any]) -> None:
+    """Always visible in dev journal expander."""
+    st.markdown("**Page cloud durability trace**")
+    payload = durability_journal_payload(session)
+    if payload.get("status") == "no_page_change_transaction_recorded":
+        st.json({"status": "no_page_change_transaction_recorded"})
+    elif payload.get("status") == "durability_trace_build_error":
+        st.error(f"Durability trace error: {payload.get('error')}")
+        st.json({"status": "durability_trace_build_error", "error": payload.get("error")})
+    failure = payload.get("failure_class") or (
+        (session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY) or {}).get("failure_class")
+        if isinstance(session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY), dict)
+        else None
+    )
+    if failure:
+        st.warning(f"Cloud durability failure class: {failure}")
+    viols = payload.get("violations")
+    if not isinstance(viols, list):
+        trace = session.get(PAGE_CLOUD_DURABILITY_TRACE_KEY)
+        viols = trace.get("violations") if isinstance(trace, dict) else []
+    for viol in viols or []:
+        if isinstance(viol, dict):
+            st.error(f"{viol.get('code')}: {viol.get('detail')}")
+    st.code(json.dumps(payload, indent=2, default=str), language="json")
