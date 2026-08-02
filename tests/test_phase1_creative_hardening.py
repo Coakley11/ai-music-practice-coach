@@ -44,6 +44,44 @@ class TestGlobalControlsCreativeIsolation(unittest.TestCase):
         self.assertEqual(ss.get("improv_intelligence_tab"), "Missions")
         self.assertFalse(ss.get(CREATIVE_WORKSPACE_RESTORED_KEY))
 
+    def test_prepare_active_song_does_not_reproject_globals_after_restore_gate(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, prepare_active_song_context
+        from music_restore_phase import mark_global_controls_restore_projection_complete
+
+        ss: dict = {
+            "instrument": "Piano",
+            "level": "Intermediate",
+            "focus": "Rhythm",
+            ACTIVE_SONG_STATE_KEY: {
+                "instrument": "Saxophone",
+                "level": "Advanced",
+                "focus": "Tone",
+                "pick_key": "pop::test",
+            },
+            "_cloud_workspace_restored_this_run": True,
+        }
+        mark_global_controls_restore_projection_complete(ss)
+        prepare_active_song_context(ss)
+        self.assertEqual(ss.get("instrument"), "Piano")
+        self.assertEqual(ss.get("level"), "Intermediate")
+        self.assertEqual(ss.get("focus"), "Rhythm")
+
+
+class TestCreativePageRefreshFromPayload(unittest.TestCase):
+    def test_hydrated_creative_page_survives_prepare_studio_nav(self) -> None:
+        ss: dict = {
+            "studio_page": "practice",
+            "_music_hydrated_studio_page": "creative",
+            "studio_nav_state": {"studio_page": "creative", "page": "creative"},
+            "_suite_page_overwrite_source": "workspace_blob",
+        }
+        from music_restore_phase import mark_studio_page_restore_projection_complete
+
+        mark_studio_page_restore_projection_complete(ss)
+        page = prepare_studio_nav(ss)
+        self.assertEqual(page, "creative")
+        self.assertEqual(ss.get("studio_page"), "creative")
+
 
 class TestChordSpelling(unittest.TestCase):
     def test_e_major_in_a_minor(self) -> None:

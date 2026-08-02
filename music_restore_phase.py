@@ -16,6 +16,10 @@ MUSIC_ACTIVE_PICK_KEY_RECONCILED_KEY = "_music_active_pick_key_reconciled"
 MUSIC_PAGE_SNAPSHOT_HYDRATED_PREFIX = "_music_page_snapshot_hydrated::"
 MUSIC_SCRIPT_SESSION_KEY = "_music_script_browser_session_id"
 STREAMLIT_WIDGETS_LOCKED_KEY = "_streamlit_widgets_locked_this_run"
+GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY = (
+    "_music_global_controls_restore_projection_complete"
+)
+STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY = "_music_studio_page_restore_projection_complete"
 
 
 def begin_music_script_run(session_state: dict[str, Any]) -> None:
@@ -39,6 +43,8 @@ def begin_music_script_run(session_state: dict[str, Any]) -> None:
         session_state[MUSIC_SCRIPT_SESSION_KEY] = run_seq
         session_state.pop("_studio_active_page_id", None)
         session_state.pop(MUSIC_RESTORE_PHASE_COMPLETE_KEY, None)
+        session_state.pop(GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY, None)
+        session_state.pop(STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY, None)
         session_state.pop("_improv_tab_user_touched", None)
         session_state.pop("_creative_mode_user_touched", None)
         for key in list(session_state.keys()):
@@ -69,6 +75,31 @@ def complete_music_restore_phase(session_state: dict[str, Any]) -> None:
         ):
             return
     session_state[MUSIC_RESTORE_PHASE_COMPLETE_KEY] = True
+    mark_global_controls_restore_projection_complete(session_state)
+    mark_studio_page_restore_projection_complete(session_state)
+
+
+def global_controls_restore_projection_complete(session_state: dict[str, Any]) -> bool:
+    return bool(session_state.get(GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY))
+
+
+def mark_global_controls_restore_projection_complete(session_state: dict[str, Any]) -> None:
+    session_state[GLOBAL_CONTROLS_RESTORE_PROJECTION_COMPLETE_KEY] = True
+
+
+def should_project_global_controls_from_canonical(session_state: dict[str, Any]) -> bool:
+    """One-shot authoritative global control hydration — never on ordinary reruns."""
+    if global_controls_restore_projection_complete(session_state):
+        return False
+    return authoritative_restore_in_progress(session_state)
+
+
+def studio_page_restore_projection_complete(session_state: dict[str, Any]) -> bool:
+    return bool(session_state.get(STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY))
+
+
+def mark_studio_page_restore_projection_complete(session_state: dict[str, Any]) -> None:
+    session_state[STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY] = True
 
 
 def music_restore_phase_complete(session_state: dict[str, Any]) -> bool:

@@ -102,19 +102,37 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
 
         record_studio_page_diag(
             session,
+            canonical_page_before_widget=canonical_studio_page(session),
             canonical_studio_page_before_widgets=canonical_studio_page(session),
             navigation_widget_value_before_render=str(session.get("studio_page") or "").strip() or None,
+            page_restore_overwrite_function="studio_nav_state.prepare_studio_nav",
         )
     except ImportError:
         pass
     if is_studio_nav_locally_dirty(session):
         page = _normalize_page(session.get("studio_page")) or "practice"
+        try:
+            from music_studio_page_diagnostics import record_studio_page_diag
+
+            record_studio_page_diag(session, final_rendered_page=page)
+        except ImportError:
+            pass
         return write_canonical_studio_nav_state(
             session,
             page,
             reason="local_nav_preserve",
             local_edit=True,
         )
+
+    try:
+        from music_restore_phase import studio_page_restore_projection_complete
+
+        if studio_page_restore_projection_complete(session):
+            canonical = canonical_studio_page(session)
+            if canonical:
+                return write_canonical_studio_nav_state(session, canonical, reason="canonical_post_restore")
+    except ImportError:
+        pass
 
     canonical = canonical_studio_page(session)
     live_raw = session.get("studio_page")
@@ -155,7 +173,13 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             blob_page = _studio_page_from_blob(payload)
             if blob_page:
                 return write_canonical_studio_nav_state(session, blob_page, reason="blob_before_default")
+        hydrated = str(session.get("_music_hydrated_studio_page") or "").strip()
+        if _normalize_page(hydrated):
+            return write_canonical_studio_nav_state(session, hydrated, reason="hydrated_page_before_default")
         if not workspace_empty_confirmed(session):
+            canonical = canonical_studio_page(session)
+            if canonical:
+                return write_canonical_studio_nav_state(session, canonical, reason="canonical_before_default")
             return str(session.get("studio_page") or "")
     except ImportError:
         pass
@@ -256,6 +280,11 @@ def bootstrap_studio_page_session(session: dict[str, Any], *, default: str = "pr
     if canonical:
         session["studio_page"] = canonical
         return canonical
+
+    hydrated = str(session.get("_music_hydrated_studio_page") or "").strip()
+    if _normalize_page(hydrated):
+        session["studio_page"] = hydrated
+        return hydrated
 
     payload = session.get("_suite_last_cloud_fetch_payload")
     if isinstance(payload, dict):

@@ -2562,10 +2562,17 @@ def apply_music_disk_state(
         except ImportError:
             pass
         ss["studio_page"] = active_studio
+        ss["_music_hydrated_studio_page"] = active_studio
         try:
             from studio_nav_state import write_canonical_studio_nav_state
 
             write_canonical_studio_nav_state(ss, active_studio, reason="workspace_restore")
+        except ImportError:
+            pass
+        try:
+            from music_restore_phase import mark_studio_page_restore_projection_complete
+
+            mark_studio_page_restore_projection_complete(ss)
         except ImportError:
             pass
 

@@ -284,6 +284,17 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         set_page_change_origin(session_state, "user_navigation")
         prepare_page_change_save_state(session_state, page_id, st=_St(), origin="user_navigation")
         try:
+            from music_studio_page_diagnostics import record_studio_page_diag
+
+            record_studio_page_diag(
+                session_state,
+                clicked_page=page_id,
+                page_change_origin="user_navigation",
+                canonical_page_after_click=page_id,
+            )
+        except ImportError:
+            pass
+        try:
             from local_nav_trace import record_local_nav_checkpoint
 
             record_local_nav_checkpoint(

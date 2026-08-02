@@ -9798,11 +9798,22 @@ def _on_global_instrument_change() -> None:
     from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_instrument
 
+    new_value = st.session_state.get("instrument", "Piano")
+    try:
+        from music_global_control_diagnostics import (
+            finalize_global_control_widget_diag,
+            note_global_control_widget_attempt,
+        )
+
+        note_global_control_widget_attempt(
+            st.session_state, field="instrument", attempted_value=str(new_value)
+        )
+    except ImportError:
+        pass
     mark_active_song_local_edit(st.session_state)
     previous = st.session_state.get("_activity_last_logged_instrument") or st.session_state.get(
         "instrument"
     )
-    new_value = st.session_state.get("instrument", "Piano")
     set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
@@ -9813,24 +9824,66 @@ def _on_global_instrument_change() -> None:
     except Exception:
         pass
     _sync_canonical_active_song_after_edit()
+    try:
+        from music_global_control_diagnostics import finalize_global_control_widget_diag
+
+        finalize_global_control_widget_diag(st.session_state, field="instrument")
+    except ImportError:
+        pass
 
 
 def _on_global_focus_change() -> None:
     from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_focus
 
+    val = st.session_state.get("focus")
+    try:
+        from music_global_control_diagnostics import (
+            finalize_global_control_widget_diag,
+            note_global_control_widget_attempt,
+        )
+
+        note_global_control_widget_attempt(
+            st.session_state, field="focus", attempted_value=str(val or "")
+        )
+    except ImportError:
+        pass
     mark_active_song_local_edit(st.session_state)
-    set_active_focus(st.session_state, st.session_state.get("focus"), source="sidebar_on_change")
+    set_active_focus(st.session_state, val, source="sidebar_on_change")
     _sync_canonical_active_song_after_edit()
+    try:
+        from music_global_control_diagnostics import finalize_global_control_widget_diag
+
+        finalize_global_control_widget_diag(st.session_state, field="focus")
+    except ImportError:
+        pass
 
 
 def _on_global_level_change() -> None:
     from active_song_state import mark_active_song_local_edit
     from practice_setup_globals import set_active_level
 
+    val = st.session_state.get("level")
+    try:
+        from music_global_control_diagnostics import (
+            finalize_global_control_widget_diag,
+            note_global_control_widget_attempt,
+        )
+
+        note_global_control_widget_attempt(
+            st.session_state, field="level", attempted_value=str(val or "")
+        )
+    except ImportError:
+        pass
     mark_active_song_local_edit(st.session_state)
-    set_active_level(st.session_state, st.session_state.get("level"), source="sidebar_on_change")
+    set_active_level(st.session_state, val, source="sidebar_on_change")
     _sync_canonical_active_song_after_edit()
+    try:
+        from music_global_control_diagnostics import finalize_global_control_widget_diag
+
+        finalize_global_control_widget_diag(st.session_state, field="level")
+    except ImportError:
+        pass
 
 
 sidebar_section("Your practice setup", icon="🎸", tone="session")
@@ -9942,6 +9995,13 @@ if _developer_mode_enabled():
         from app_ui import render_quick_nav_dev_diagnostics
 
         render_quick_nav_dev_diagnostics(st)
+    except Exception:
+        pass
+
+    try:
+        from music_phase1_dev_diagnostics import render_phase1_live_path_diagnostics
+
+        render_phase1_live_path_diagnostics(st, st.session_state)
     except Exception:
         pass
 

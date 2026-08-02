@@ -329,7 +329,25 @@ def apply_canonical_active_song_from_workspace(
         for key in ("display_key", "instrument", "level", "focus"):
             if identity.get(key):
                 ctx[key] = identity[key]
-        write_canonical_active_song_state(ss, ctx, reason="workspace_envelope_identity")
+        try:
+            from music_restore_phase import should_project_global_controls_from_canonical
+
+            apply_globals = should_project_global_controls_from_canonical(ss)
+        except ImportError:
+            apply_globals = True
+        write_canonical_active_song_state(
+            ss,
+            ctx,
+            reason="workspace_envelope_identity",
+            apply_global_controls_to_session=apply_globals,
+        )
+        if apply_globals:
+            try:
+                from music_restore_phase import mark_global_controls_restore_projection_complete
+
+                mark_global_controls_restore_projection_complete(ss)
+            except ImportError:
+                pass
     except ImportError:
         pass
 

@@ -244,6 +244,18 @@ def apply_creative_workspace_from_payload(
 
 def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
     """One-shot projection after cloud restore — never clobber live global controls on reruns."""
+    try:
+        from music_global_control_diagnostics import record_global_control_diag
+
+        if session.get(CREATIVE_WORKSPACE_RESTORED_KEY):
+            record_global_control_diag(session, creative_projection_attempted=True)
+        else:
+            record_global_control_diag(
+                session,
+                creative_projection_blocked_as_non_authoritative=True,
+            )
+    except ImportError:
+        pass
     if not session.pop(CREATIVE_WORKSPACE_RESTORED_KEY, None):
         return
     project_creative_workspace_to_session(session, overwrite=True)

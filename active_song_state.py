@@ -969,6 +969,18 @@ def _apply_context_to_session_keys(
     for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
         if val and apply_global_controls:
+            try:
+                from music_global_control_diagnostics import record_global_control_diag
+
+                record_global_control_diag(
+                    session,
+                    overwrite_source=global_control_source or "canonical_apply",
+                    overwrite_function="_apply_context_to_session_keys",
+                    final_canonical_value=val,
+                    restore_projection_applied_this_run=True,
+                )
+            except ImportError:
+                pass
             if record_global_control_change is not None:
                 record_global_control_change(
                     session,
@@ -1236,16 +1248,21 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         ctx = dict(canonical)
         has_live = _session_has_live_global_controls(session)
         try:
-            from music_restore_phase import music_restore_phase_complete
+            from music_restore_phase import should_project_global_controls_from_canonical
 
-            phase_done = music_restore_phase_complete(session)
+            apply_globals = should_project_global_controls_from_canonical(session)
         except ImportError:
-            phase_done = False
-        apply_globals = (
-            not is_active_song_locally_dirty(session)
-            and not (phase_done and has_live)
-            and (restore_applying or not has_live)
-        )
+            try:
+                from music_restore_phase import music_restore_phase_complete
+
+                phase_done = music_restore_phase_complete(session)
+            except ImportError:
+                phase_done = False
+            apply_globals = (
+                not is_active_song_locally_dirty(session)
+                and not (phase_done and has_live)
+                and (restore_applying or not has_live)
+            )
         try:
             from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
 
@@ -1332,6 +1349,23 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             reason="canonical_preserve",
             apply_global_controls_to_session=apply_globals,
         )
+        if apply_globals:
+            try:
+                from music_restore_phase import mark_global_controls_restore_projection_complete
+
+                mark_global_controls_restore_projection_complete(session)
+            except ImportError:
+                pass
+            try:
+                from music_global_control_diagnostics import record_global_control_diag
+
+                record_global_control_diag(
+                    session,
+                    restore_projection_applied_this_run=True,
+                    overwrite_function="active_song_state.prepare_active_song_context",
+                )
+            except ImportError:
+                pass
         _record_transposing_restore_trace(session, ctx, source="canonical_prepare")
         rehydrate_transposing_sidebar_from_canonical(session)
         rehydrate_capo_from_canonical(session)
@@ -1341,10 +1375,17 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
 
     gathered = gather_active_song_context(session)
     if gathered.get("pick_key") or gathered.get("instrument") or gathered.get("display_key"):
+        try:
+            from music_restore_phase import should_project_global_controls_from_canonical
+
+            apply_globals = should_project_global_controls_from_canonical(session)
+        except ImportError:
+            apply_globals = False
         ctx = write_canonical_active_song_state(
             session,
             gathered,
             reason="reconcile_on_load",
+            apply_global_controls_to_session=apply_globals,
         )
         rehydrate_transposing_sidebar_from_canonical(session)
         rehydrate_capo_from_canonical(session)

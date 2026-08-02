@@ -8018,11 +8018,15 @@ def _resolve_nav_page_ids(
 
 def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
     try:
-        from studio_nav_state import bootstrap_studio_page_session
+        from studio_nav_state import bootstrap_studio_page_session, canonical_studio_page
 
         page = bootstrap_studio_page_session(session_state, default=default)
         if page:
             return page
+        canonical = canonical_studio_page(session_state)
+        if canonical:
+            session_state["studio_page"] = canonical
+            return canonical
     except ImportError:
         pass
     return str(session_state.setdefault("studio_page", default))
