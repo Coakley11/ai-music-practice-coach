@@ -18,13 +18,14 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 **Delivery commits (in order):**
 
 1. [x] Audit panel + mission fail-closed + capo init guard + `resolve_session_key_from_family` (`c412d7c`)
-2. [ ] Canonical `practice_workspace_state` save/apply (**next — this commit**)
-3. [ ] Navigation + Creative restore order; block post-hydrate overwrites
-4. [ ] Key-family wiring + capo regression suite
-5. [ ] Mission spec validation + structured results + 20× strict tests
-6. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
-7. [ ] Cross-device workspace revision / conflict hardening
-8. [ ] Integration verification matrix
+2. [x] Canonical `creative_workspace_state` save/apply + envelope (`824c961` Phase 0; Phase 1 creative blob on `dev`)
+3. [x] Canonical `practice_workspace_state` save/apply (prior)
+4. [ ] Navigation + Creative restore order; block post-hydrate overwrites
+5. [ ] Key-family wiring + capo regression suite
+6. [ ] Mission spec validation + structured results + 20× strict tests
+7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
+8. [ ] Cross-device workspace revision / conflict hardening
+9. [ ] Integration verification matrix
 
 ### P0 — Composition Studio → `motif_engine` integration (queued)
 
