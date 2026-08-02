@@ -233,9 +233,18 @@ def record_selector_field_write(
 
 
 def mark_selector_hydration_complete(session: dict[str, Any], *, source: str = "") -> None:
-    session[CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY] = True
     t = _trace(session)
+    payload = session.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict) and not payload_has_selector_data(payload):
+        session[CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY] = False
+        t["hydration_complete"] = False
+        t["hydration_status"] = "no_selector_state_in_authoritative_cloud_row"
+        t["hydration_complete_source"] = source or None
+        record_violation(session, VIOLATION_ALL_EMPTY_AFTER_RESTORE, detail="cloud_row_has_no_selector_fields")
+        return
+    session[CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY] = True
     t["hydration_complete"] = True
+    t["hydration_status"] = "selectors_present_or_local_only"
     t["hydration_complete_source"] = source or None
 
 
@@ -338,24 +347,31 @@ def audit_selector_hydration_after_restore(session: dict[str, Any]) -> None:
     if not all_empty:
         return
 
-    if not session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY):
+    t = _trace(session)
+    hydration_status = str(t.get("hydration_status") or "")
+    hydration_done = bool(session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY))
+    if not hydration_done:
+        if (
+            hydration_status == "no_selector_state_in_authoritative_cloud_row"
+            and is_cloud_restore
+            and all_empty
+        ):
+            return
         record_violation(session, VIOLATION_DIAG_RAN_BEFORE_HYDRATION)
+        t["hydration_status"] = "diagnostics_before_hydration_complete"
         return
 
     if not is_cloud_restore:
         return
 
     payload = session.get("_suite_last_cloud_fetch_payload")
-    had_confirmed = session.get(CREATIVE_SELECTOR_LAST_CONFIRMED_KEY)
-    if isinstance(had_confirmed, dict) and any(not _field_empty(v) for v in had_confirmed.values()):
-        if isinstance(payload, dict) and not payload_has_selector_data(payload):
-            record_violation(session, VIOLATION_CONFIRMED_MISSING_FROM_CLOUD, detail=str(had_confirmed))
-        else:
-            record_violation(session, VIOLATION_HYDRATED_VALUE_CLEARED)
-    elif isinstance(payload, dict) and not payload_has_selector_data(payload):
+    t = _trace(session)
+    if isinstance(payload, dict) and not payload_has_selector_data(payload):
+        session[CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY] = False
+        t["hydration_complete"] = False
+        t["hydration_status"] = "no_selector_state_in_authoritative_cloud_row"
         record_violation(session, VIOLATION_ALL_EMPTY_AFTER_RESTORE, detail="no_selector_data_in_cloud_row")
-    else:
-        record_violation(session, VIOLATION_ALL_EMPTY_AFTER_RESTORE, detail="extraction_or_projection_failed")
+        return
 
     _ = (IMPROV_TAB_NAMES, IMPROV_ENTRY_MODES, CREATIVE_MAJOR_KEY_OPTIONS)
 
@@ -363,7 +379,10 @@ def audit_selector_hydration_after_restore(session: dict[str, Any]) -> None:
 def collect_selector_hydration_trace(session: dict[str, Any]) -> dict[str, Any]:
     t = dict(_trace(session))
     t["overwrite_journal"] = list(_journal(session))
-    t["hydration_complete"] = bool(session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY))
+    complete = bool(session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY))
+    t["hydration_complete"] = complete
+    if not complete and not t.get("hydration_status"):
+        t["hydration_status"] = "pending_or_no_selector_state_in_cloud_row"
     t["last_confirmed_selectors"] = session.get(CREATIVE_SELECTOR_LAST_CONFIRMED_KEY)
     return t
 

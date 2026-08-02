@@ -140,19 +140,22 @@ class TestCreativeSelectorCloudRestorePath(unittest.TestCase):
 
 
 class TestCreativeSelectorHydrationViolations(unittest.TestCase):
-    def test_empty_after_restore_with_cloud_data_raises_violation(self) -> None:
+    def test_empty_after_restore_with_no_cloud_selectors_raises_violation(self) -> None:
+        from creative_selector_hydration_trace import mark_selector_hydration_complete
         from creative_tab_tool_persistence import collect_creative_tab_tool_diagnostics
 
         ss: dict = {
             "_cloud_workspace_restored_this_run": True,
-            CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY: True,
-            "_suite_last_cloud_fetch_payload": {
-                "session": {"improv_intelligence_tab": "Missions"},
-            },
+            "_music_page_change_origin": "cloud_restore",
+            "_suite_last_cloud_fetch_payload": {"workspace_revision": 193},
         }
+        mark_selector_hydration_complete(ss, source="cloud_restore")
         diag = collect_creative_tab_tool_diagnostics(ss)
         codes = [v.get("code") for v in (diag.get("violations") or [])]
         self.assertIn(VIOLATION_ALL_EMPTY_AFTER_RESTORE, codes)
+        trace = diag.get("selector_hydration_trace") or {}
+        self.assertFalse(trace.get("hydration_complete"))
+        self.assertEqual(trace.get("hydration_status"), "no_selector_state_in_authoritative_cloud_row")
 
 
 if __name__ == "__main__":

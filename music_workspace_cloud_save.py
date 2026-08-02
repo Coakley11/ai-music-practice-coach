@@ -159,6 +159,24 @@ def _record_force_save_early_return(
         pass
     record_save_transaction(ss, **fields)
     try:
+        from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
+
+        sr = str(save_reason or fields.get("force_save_reason") or "")
+        if is_selector_save_reason(sr):
+            record_force_save_path(
+                ss,
+                save_reason=sr,
+                force_save_entered=True,
+                allowed=fields.get("force_save_allowed"),
+                block_reason=str(fields.get("force_save_block_reason") or reason or ""),
+                early_return_stage=stage,
+                early_return_reason=str(reason or ""),
+                startup_suppression_armed=fields.get("startup_suppression_armed"),
+                startup_suppression_released=fields.get("startup_suppression_released"),
+            )
+    except ImportError:
+        pass
+    try:
         from music_page_save_pipeline_trace import record_pipeline_event
 
         record_pipeline_event(
@@ -264,6 +282,13 @@ def force_music_workspace_save(
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
     try:
+        from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
+
+        if is_selector_save_reason(r):
+            record_force_save_path(ss, save_reason=r, force_save_entered=True)
+    except ImportError:
+        pass
+    try:
         from music_page_cloud_durability_trace import record_force_save_durability_entry
 
         record_force_save_durability_entry(ss, reason=r, stage="entry")
@@ -347,6 +372,20 @@ def force_music_workspace_save(
     allowed, block = music_workspace_save_allowed(ss, reason=r)
     record_save_transaction(ss, force_save_allowed=allowed, force_save_block_reason=block or None)
     try:
+        from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
+
+        if is_selector_save_reason(r):
+            record_force_save_path(
+                ss,
+                save_reason=r,
+                force_save_entered=True,
+                allowed=allowed,
+                block_reason=str(block or ""),
+                transaction_sequence=ss.get("_music_page_change_transaction_seq"),
+            )
+    except ImportError:
+        pass
+    try:
         from music_page_cloud_durability_trace import (
             authoritative_page_change_cloud_confirmed,
             record_subsequent_save_attempt,
@@ -418,6 +457,12 @@ def force_music_workspace_save(
             explicit_reason=r,
             write_path="force_music_workspace_save",
         )
+        try:
+            from creative_selector_save_durability_trace import ensure_selector_field_in_upsert_payload
+
+            ensure_selector_field_in_upsert_payload(ss, state)
+        except ImportError:
+            pass
         try:
             from music_page_save_pipeline_trace import (
                 force_save_impl_marker,
@@ -511,6 +556,19 @@ def force_music_workspace_save(
     strict_approved = bool(egress_tx is not None and egress_tx.strict_egress_approved) or bool(
         egress_plan is not None and egress_plan.allow_cloud_write and not egress_plan.defer_cloud_write
     )
+    try:
+        from creative_selector_save_durability_trace import (
+            CREATIVE_SELECTOR_SAVE_ACTIVE_KEY,
+            is_selector_save_reason,
+        )
+
+        if is_selector_save_reason(r) and ss.get(CREATIVE_SELECTOR_SAVE_ACTIVE_KEY):
+            duplicate_skipped = False
+            deferred_cloud = False
+            payload_changed = True
+            strict_approved = True
+    except ImportError:
+        pass
 
     if duplicate_skipped:
         from music_egress_strict_save import last_confirmed_cloud_fingerprint
@@ -550,6 +608,20 @@ def force_music_workspace_save(
             canonical_content_fingerprint=canonical_fp,
             reserved_write_revision=next_rev,
         )
+        try:
+            from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
+
+            if is_selector_save_reason(r):
+                record_force_save_path(
+                    ss,
+                    save_reason=r,
+                    force_save_entered=True,
+                    transaction_sequence=ss.get("_music_page_change_transaction_seq"),
+                    canonical_revision_before=int(rev_before) if rev_before is not None else None,
+                    reserved_revision=int(next_rev),
+                )
+        except ImportError:
+            pass
         try:
             from music_page_cloud_durability_trace import record_revision_stages
 

@@ -1598,6 +1598,17 @@ def save_music_cloud_session(
 
     ss = st.session_state
     ss["_music_cloud_write_path"] = write_path
+    try:
+        from creative_selector_save_durability_trace import (
+            ensure_selector_field_in_upsert_payload,
+            record_payload_before_upsert,
+            record_supabase_result,
+        )
+
+        ensure_selector_field_in_upsert_payload(ss, state)
+        record_payload_before_upsert(ss, state, write_path=write_path)
+    except ImportError:
+        pass
     approval = strict_egress_approval
     if approval is None:
         try:
@@ -1692,6 +1703,13 @@ def save_music_cloud_session(
         saved_cloud=saved_cloud,
         cloud_error=cloud_error,
     )
+    try:
+        from creative_selector_save_durability_trace import record_supabase_result
+
+        diag = cloud_result.to_diag() if cloud_result is not None else ss.get("_music_last_cloud_save_diag")
+        record_supabase_result(ss, diag=diag if isinstance(diag, dict) else {}, saved=saved_cloud)
+    except ImportError:
+        pass
     if saved_cloud:
         readback: dict[str, Any] = {}
         try:

@@ -173,16 +173,12 @@ def evaluate_selector_save_confirmation(
         authoritative_refetch_revision = None
 
     fetch_source = str(session.get("_music_last_cloud_fetch_source") or "").strip()
-    cache_bypassed = fetch_source == "network" or bool(workspace_tx.get("cloud_readback_attempted"))
-    if authoritative_refetch_revision is None and revision_in_upsert_payload is not None:
-        authoritative_refetch_revision = revision_in_upsert_payload
+    cache_bypassed = fetch_source == "network" and bool(workspace_tx.get("cloud_readback_attempted"))
 
     authoritative_refetched_value = _selector_value_from_envelope(
         session.get("_music_last_authoritative_cloud_state") or {},
         field,
     )
-    if not authoritative_refetched_value:
-        authoritative_refetched_value = canonical_creative_selector_value(session, field)
 
     cloud_key = _cloud_workspace_key(session)
     account_ok = bool(cloud_key) or bool(session.get("_suite_active_workspace"))
@@ -198,11 +194,6 @@ def evaluate_selector_save_confirmation(
             and authoritative_refetch_revision is not None
             and int(authoritative_refetch_revision) == int(reserved_revision)
         ),
-        "revision_in_upsert_equals_reserved": (
-            reserved_revision is not None
-            and revision_in_upsert_payload is not None
-            and int(revision_in_upsert_payload) == int(reserved_revision)
-        ),
         "refetched_field_equals_selected": str(authoritative_refetched_value or "").strip() == str(new_value or "").strip(),
         "workspace_cloud_key_match": account_ok,
     }
@@ -210,17 +201,9 @@ def evaluate_selector_save_confirmation(
     refetch_confirmed = all(
         (
             checks["save_ok"],
+            checks["cloud_upsert_succeeded"],
             checks["cache_bypassed_for_refetch"],
             checks["refetch_revision_equals_reserved"],
-            checks["refetched_field_equals_selected"],
-            checks["workspace_cloud_key_match"],
-        )
-    )
-    upsert_confirmed = all(
-        (
-            checks["save_ok"],
-            checks["cloud_upsert_succeeded"],
-            checks["revision_in_upsert_equals_reserved"],
             checks["refetched_field_equals_selected"],
             checks["workspace_cloud_key_match"],
         )
@@ -229,21 +212,11 @@ def evaluate_selector_save_confirmation(
     if refetch_confirmed:
         confirmation_status = "confirmed"
         confirmation_stage = "authoritative_refetch"
-    elif upsert_confirmed:
-        confirmation_status = "confirmed"
-        confirmation_stage = "upsert_revision_match"
-    elif save_ok and checks["refetched_field_equals_selected"] and checks["revision_in_upsert_equals_reserved"]:
-        confirmation_status = "confirmed"
-        confirmation_stage = "local_canonical_match"
     else:
         confirmation_status = "unconfirmed"
         confirmation_stage = "evaluation_failed"
 
-    confirmed_revision = (
-        authoritative_refetch_revision
-        if checks["refetch_revision_equals_reserved"]
-        else revision_in_upsert_payload
-    )
+    confirmed_revision = authoritative_refetch_revision if checks["refetch_revision_equals_reserved"] else None
 
     return {
         "transaction_id": str(pending_dict.get("transaction_id") or uuid.uuid4().hex[:12]),
@@ -551,13 +524,30 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
 
     field = str(event.get("field") or "").strip()
     new_value = str(event.get("value") or "").strip()
-    tx_record = evaluate_selector_save_confirmation(
-        session,
-        field=field,
-        new_value=new_value,
-        save_reason=save_reason,
-        save_ok=bool(ok),
-    )
+    tx_record: dict[str, Any]
+    try:
+        from creative_selector_save_durability_trace import (
+            finalize_selector_save_confirmation,
+            perform_authoritative_selector_refetch,
+        )
+
+        perform_authoritative_selector_refetch(session)
+        tx_record = finalize_selector_save_confirmation(session, force_save_ok=bool(ok))
+        tx_record["authoritative_refetched_values"] = {
+            s["canonical"]: _selector_value_from_envelope(
+                session.get("_creative_selector_authoritative_refetch_payload") or {},
+                s["canonical"],
+            )
+            for s in _SELECTOR_SPECS
+        }
+    except ImportError:
+        tx_record = {
+            "confirmation_status": "unconfirmed",
+            "confirmation_stage": "durability_trace_unavailable",
+            "field": field,
+            "new_value": new_value,
+            "save_reason": save_reason,
+        }
     session[CREATIVE_SELECTOR_LAST_TX_KEY] = copy.deepcopy(tx_record)
     session.pop(CREATIVE_SELECTOR_PENDING_TX_KEY, None)
 
@@ -583,21 +573,13 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
             "confirmation_status": tx_record.get("confirmation_status"),
             "confirmation_stage": tx_record.get("confirmation_stage"),
             "confirmation_checks": tx_record.get("confirmation_checks"),
+            "selector_save_durability": tx_record.get("durability_trace"),
         }
     )
 
     if tx_record.get("confirmation_status") != "confirmed":
         failed = [
-            k
-            for k, passed in (tx_record.get("confirmation_checks") or {}).items()
-            if k in (
-                "save_ok",
-                "refetch_revision_equals_reserved",
-                "revision_in_upsert_equals_reserved",
-                "refetched_field_equals_selected",
-                "workspace_cloud_key_match",
-            )
-            and not passed
+            k for k, passed in (tx_record.get("confirmation_checks") or {}).items() if not passed
         ]
         record_creative_tab_violation(
             session,
@@ -682,6 +664,20 @@ def handle_user_creative_selector_change(session: dict[str, Any], field: str) ->
         save_page_snapshot(session, "creative")
     except ImportError:
         pass
+    try:
+        from creative_selector_save_durability_trace import begin_selector_save_durability
+
+        begin_selector_save_durability(
+            session,
+            field=str(spec["canonical"]),
+            old_value=old_value,
+            selected_value=raw,
+            widget_key=widget,
+            save_reason=save_reason,
+            transaction_id=tx_id,
+        )
+    except ImportError:
+        pass
     request_creative_selector_cloud_save(session, save_reason=save_reason)
 
 
@@ -756,6 +752,12 @@ def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, 
     d.setdefault("startup_write_attempted", bool(session.get("_creative_tab_startup_write_flag")))
     if hydration_trace:
         d["selector_hydration_trace"] = hydration_trace
+    try:
+        from creative_selector_save_durability_trace import collect_selector_save_durability_trace
+
+        d["selector_save_durability_trace"] = collect_selector_save_durability_trace(session)
+    except ImportError:
+        pass
     audit_multiple_canonical_owners(session)
     try:
         from creative_selector_hydration_trace import audit_selector_hydration_after_restore

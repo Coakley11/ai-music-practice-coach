@@ -200,20 +200,13 @@ class TestCreativeTabRestoreGate(unittest.TestCase):
 
 
 class TestCreativeTabConfirmationDiagnostics(unittest.TestCase):
-    def test_run_n_selector_save_records_confirmed_transaction(self) -> None:
+    def _setup_durability_confirmed_session(self) -> dict:
         ss: dict = {
             "_script_run_seq": 10,
             "_suite_active_workspace": "daniel",
             "_suite_cloud_workspace_key": "workspaces/daniel",
-            "_music_workspace_save_transaction": {
-                "reserved_write_revision": 199,
-                "envelope_revision_after": 199,
-                "cloud_write_succeeded": True,
-            },
-            "_suite_last_cloud_save_result": {
-                "cloud_upsert_succeeded": True,
-                "cloud_payload_revision": 199,
-            },
+            "_suite_applied_workspace_revision": 193,
+            "_music_last_cloud_fetch_source": "network",
             CREATIVE_WORKSPACE_STATE_KEY: {
                 **default_creative_workspace_state(),
                 "improv_intelligence_tab": "Missions",
@@ -224,20 +217,59 @@ class TestCreativeTabConfirmationDiagnostics(unittest.TestCase):
                 "old_value": "Entry & Jam",
                 "run_seq": 10,
             },
-            CREATIVE_SELECTOR_PENDING_TX_KEY: {
-                "transaction_id": "sel-10-abc",
-                "transaction_run_seq": 10,
-                "field": "improv_intelligence_tab",
-                "old_value": "Entry & Jam",
-                "new_value": "Missions",
-            },
         }
-        record_creative_tab_save_outcome(ss, save_reason=SAVE_REASON_TAB, ok=True)
+        from creative_selector_save_durability_trace import (
+            begin_selector_save_durability,
+            record_force_save_path,
+            record_payload_before_upsert,
+            record_supabase_result,
+        )
+
+        cws = {**default_creative_workspace_state(), "improv_intelligence_tab": "Missions"}
+        payload = {
+            "workspace_revision": 194,
+            "creative_workspace_state": cws,
+            "session": {"improv_intelligence_tab": "Missions"},
+            "music_workspace_state": {"workspace_revision": 194, "creative_workspace_state": cws},
+        }
+        begin_selector_save_durability(
+            ss,
+            field="improv_intelligence_tab",
+            old_value="Entry & Jam",
+            selected_value="Missions",
+            widget_key="improv_intelligence_tab",
+            save_reason=SAVE_REASON_TAB,
+        )
+        record_force_save_path(
+            ss,
+            save_reason=SAVE_REASON_TAB,
+            force_save_entered=True,
+            reserved_revision=194,
+        )
+        record_payload_before_upsert(ss, payload)
+        record_supabase_result(
+            ss,
+            diag={
+                "cloud_upsert_attempted": True,
+                "cloud_upsert_succeeded": True,
+                "cloud_payload_revision": 194,
+            },
+            saved=True,
+        )
+        return ss, payload
+
+    def test_run_n_selector_save_records_confirmed_transaction(self) -> None:
+        ss, payload = self._setup_durability_confirmed_session()
+        with patch(
+            "suite_cloud_state.load_cloud_full_session",
+            return_value=(payload, 0.0),
+        ):
+            record_creative_tab_save_outcome(ss, save_reason=SAVE_REASON_TAB, ok=True)
         last = ss.get(CREATIVE_SELECTOR_LAST_TX_KEY)
         self.assertIsInstance(last, dict)
         self.assertEqual(last.get("confirmation_status"), "confirmed")
-        self.assertEqual(last.get("reserved_revision"), 199)
-        self.assertEqual(last.get("confirmed_revision"), 199)
+        self.assertEqual(last.get("reserved_revision"), 194)
+        self.assertEqual(last.get("confirmed_revision"), 194)
         self.assertEqual(last.get("authoritative_refetched_value"), "Missions")
         violations = (ss.get("_creative_tab_tool_diag") or {}).get("violations") or []
         codes = [v.get("code") for v in violations]
@@ -286,7 +318,8 @@ class TestCreativeTabConfirmationDiagnostics(unittest.TestCase):
         codes = [v.get("code") for v in (diag.get("violations") or [])]
         self.assertNotIn(VIOLATION_SAVE_NOT_CONFIRMED, codes)
 
-    def test_evaluate_confirmation_does_not_use_page_change_cloud_confirmed(self) -> None:
+    def test_legacy_evaluate_confirmation_not_authoritative_without_cloud_refetch(self) -> None:
+        """Legacy helper must not treat upsert revision alone as authoritative cloud proof."""
         ss: dict = {
             "_music_workspace_save_transaction": {
                 "cloud_confirmed": False,
@@ -311,7 +344,7 @@ class TestCreativeTabConfirmationDiagnostics(unittest.TestCase):
             save_reason=SAVE_REASON_TAB,
             save_ok=True,
         )
-        self.assertEqual(result.get("confirmation_status"), "confirmed")
+        self.assertNotEqual(result.get("confirmation_status"), "confirmed")
         self.assertNotIn("page_change_cloud_confirmed", result.get("confirmation_checks") or {})
 
 
