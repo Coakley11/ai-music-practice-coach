@@ -24,6 +24,17 @@ DIFFERING_CANONICAL_PATHS_KEY = "differing_canonical_paths"
 STARTUP_REVISION_LOADED_KEY = "startup_revision_loaded"
 STARTUP_REVISION_FINAL_KEY = "startup_revision_final"
 HYDRATED_PAYLOAD_SNAPSHOT_KEY = "_music_hydrated_payload_canonical_snapshot"
+PAGE_CHANGE_ORIGIN_KEY = "music_page_change_origin"
+
+_PAGE_CHANGE_ORIGINS: frozenset[str] = frozenset(
+    {
+        "user_navigation",
+        "cloud_restore",
+        "startup_default",
+        "reconciliation",
+        "unknown",
+    }
+)
 
 _RESTORE_BLOCKED_SAVE_REASONS: frozenset[str] = frozenset(
     {
@@ -40,7 +51,6 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
         "startup_migration",
         "canonical_repair",
         "creative_schema_migration",
-        "page_change",
     }
 )
 
@@ -49,6 +59,25 @@ def _canonical_fp(state: dict[str, Any] | None) -> str:
     from music_workspace_canonical_fingerprint import workspace_canonical_content_fingerprint
 
     return workspace_canonical_content_fingerprint(state if isinstance(state, dict) else {})
+
+
+def set_page_change_origin(session: dict[str, Any], origin: str) -> None:
+    text = str(origin or "unknown").strip()
+    if text not in _PAGE_CHANGE_ORIGINS:
+        text = "unknown"
+    session[PAGE_CHANGE_ORIGIN_KEY] = text
+
+
+def get_page_change_origin(session: dict[str, Any]) -> str:
+    return str(session.get(PAGE_CHANGE_ORIGIN_KEY) or "unknown").strip()
+
+
+def clear_startup_deferred_page_change_saves(session: dict[str, Any]) -> None:
+    session.pop("_suite_deferred_page_change_save", None)
+    session.pop("_suite_page_change_save_page", None)
+    session.pop("_suite_page_change_stamp_target", None)
+    session.pop("_page_change_write_pending", None)
+    session.pop("_music_build_page_change_target", None)
 
 
 def arm_startup_suppression(session: dict[str, Any], stage: str) -> None:
@@ -166,6 +195,7 @@ def _apply_confirmed_startup_alignment(
     session.pop("_music_reserved_write_revision", None)
     session.pop("_music_pending_save_revision", None)
     _discard_startup_pending_edits(session)
+    clear_startup_deferred_page_change_saves(session)
 
 
 def _record_alignment_diagnostics(
@@ -191,10 +221,18 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
     ss = st.session_state
     snapshot = ss.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
     payload = snapshot if isinstance(snapshot, dict) else ss.get("_suite_last_cloud_fetch_payload")
+    hydrated_side = payload if isinstance(payload, dict) else {}
     hydrated_fp = str(ss.get(HYDRATED_CANONICAL_FP_KEY) or "").strip()
     if not hydrated_fp or hydrated_fp == "(none)":
-        hydrated_fp = _canonical_fp(payload if isinstance(payload, dict) else {})
+        hydrated_fp = _canonical_fp(hydrated_side)
         ss[HYDRATED_CANONICAL_FP_KEY] = hydrated_fp or "(none)"
+
+    try:
+        from music_startup_canonical_align import align_authoritative_canonical_from_hydrated
+
+        align_authoritative_canonical_from_hydrated(ss, hydrated_side or payload)
+    except ImportError:
+        pass
 
     post_state: dict[str, Any] | None = None
     try:
@@ -205,7 +243,7 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         post_state = None
 
     post_fp = _canonical_fp(post_state)
-    hydrated_side = payload if isinstance(payload, dict) else {}
+    hydrated_fp = _canonical_fp(hydrated_side)
     try:
         from music_workspace_canonical_fingerprint import diff_canonical_paths
 
@@ -222,7 +260,10 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
 
         if isinstance(payload, dict):
             rev_loaded = workspace_revision_from_blob(payload)
-        rev_final = workspace_revision_from_blob(post_state if isinstance(post_state, dict) else payload)
+        if matches:
+            rev_final = rev_loaded
+        else:
+            rev_final = workspace_revision_from_blob(post_state if isinstance(post_state, dict) else payload)
         ss[STARTUP_REVISION_LOADED_KEY] = rev_loaded
     except ImportError:
         pass
@@ -272,6 +313,20 @@ def should_suppress_music_workspace_save(session: dict[str, Any], save_reason: s
         session[STARTUP_WRITE_ALLOWED_REASON_KEY] = reason
         return False, ""
 
+    if reason == "page_change":
+        armed = bool(session.get(STARTUP_SUPPRESSION_ARMED_KEY)) and not session.get(
+            STARTUP_SUPPRESSION_RELEASED_KEY
+        )
+        if armed:
+            return True, "startup_suppression_armed_page_change"
+        if session.get(STARTUP_RESTORE_IN_PROGRESS_KEY):
+            return True, "startup_restore_in_progress_page_change"
+        origin = get_page_change_origin(session)
+        if origin != "user_navigation":
+            return True, f"page_change_origin:{origin}"
+        if not session.get(STARTUP_SUPPRESSION_RELEASED_KEY):
+            return True, "startup_suppression_not_released"
+
     if reason in ("song_edit", *tuple(_RESTORE_BLOCKED_SAVE_REASONS)):
         note_first_song_edit_request(session, f"save_requested:{reason}")
 
@@ -317,6 +372,7 @@ def collect_startup_save_suppression_diagnostics(session: dict[str, Any]) -> dic
         "startup_save_suppression_reason": session.get(STARTUP_SAVE_SUPPRESSION_REASON_KEY),
         "startup_revision_loaded": session.get(STARTUP_REVISION_LOADED_KEY),
         "startup_revision_final": session.get(STARTUP_REVISION_FINAL_KEY),
+        "music_page_change_origin": session.get(PAGE_CHANGE_ORIGIN_KEY),
     }
 
 
@@ -332,4 +388,8 @@ __all__ = [
     "record_hydrated_canonical_fingerprint",
     "record_startup_save_suppressed",
     "should_suppress_music_workspace_save",
+    "set_page_change_origin",
+    "get_page_change_origin",
+    "clear_startup_deferred_page_change_saves",
+    "PAGE_CHANGE_ORIGIN_KEY",
 ]

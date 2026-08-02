@@ -61,6 +61,23 @@ _PERSIST_CANONICAL_TOP_KEYS: frozenset[str] = frozenset(
     }
 )
 
+_DROP_NESTED_KEYS: frozenset[str] = frozenset(
+    {
+        "last_write_reason",
+        "backing_transport_status",
+        "label",
+    }
+)
+
+_GUITAR_CAPO_KEYS: frozenset[str] = frozenset(
+    {
+        "guitar_capo_enabled",
+        "guitar_capo_sounding_key",
+        "guitar_capo_shape_key",
+        "guitar_capo_last_concert_key",
+    }
+)
+
 
 def _is_volatile_key(key: str) -> bool:
     if key in _VOLATILE_EXACT_KEYS:
@@ -76,7 +93,7 @@ def _is_volatile_key(key: str) -> bool:
 def _strip_volatile_mapping(data: dict[str, Any], *, drop_keys: frozenset[str]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, val in data.items():
-        if key in drop_keys or _is_volatile_key(key):
+        if key in drop_keys or key in _DROP_NESTED_KEYS or _is_volatile_key(key):
             continue
         if isinstance(val, dict):
             out[key] = _strip_volatile_mapping(val, drop_keys=drop_keys)
@@ -85,6 +102,84 @@ def _strip_volatile_mapping(data: dict[str, Any], *, drop_keys: frozenset[str]) 
         else:
             out[key] = val
     return out
+
+
+def _instrument_from_root(state: dict[str, Any]) -> str:
+    for blob in (
+        state.get("active_song_state"),
+        state.get("core"),
+        state,
+    ):
+        if isinstance(blob, dict):
+            inst = str(blob.get("instrument") or "").strip()
+            if inst:
+                return inst
+    return ""
+
+
+def _guitar_capo_active(state: dict[str, Any]) -> bool:
+    if _instrument_from_root(state) != "Guitar":
+        return False
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY
+
+        return bool(state.get(CAPO_ENABLED_KEY))
+    except ImportError:
+        ass = state.get("active_song_state")
+        if isinstance(ass, dict):
+            return bool(ass.get("guitar_capo_enabled"))
+        return False
+
+
+def _normalize_source_aliases(data: dict[str, Any]) -> None:
+    if not isinstance(data, dict):
+        return
+    src = str(data.get("music_source") or data.get("source_type") or "").strip()
+    if src:
+        data["music_source"] = src
+    data.pop("source_type", None)
+
+
+def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) -> None:
+    capo_active = _guitar_capo_active(state)
+
+    ass = canonical.get("active_song_state")
+    if isinstance(ass, dict):
+        if not capo_active:
+            for key in _GUITAR_CAPO_KEYS:
+                ass.pop(key, None)
+        sel = ass.get("selected_song")
+        if isinstance(sel, dict):
+            sel.pop("label", None)
+        _normalize_source_aliases(ass)
+
+    bts = canonical.get("backing_track_state")
+    if isinstance(bts, dict):
+        bts.pop("backing_transport_status", None)
+        bts.pop("last_write_reason", None)
+
+    ps = canonical.get("practice_state")
+    if isinstance(ps, dict):
+        ps.pop("last_write_reason", None)
+
+    nav = canonical.get("studio_nav_state")
+    if isinstance(nav, dict):
+        nav.pop("last_write_reason", None)
+
+    pws = canonical.get("practice_workspace_state")
+    if isinstance(pws, dict):
+        pws.pop("updated_at", None)
+
+    mws = canonical.get("music_workspace_state")
+    if isinstance(mws, dict):
+        active = mws.get("active_song")
+        if isinstance(active, dict):
+            _normalize_source_aliases(active)
+        for filt_key in ("backing_filters", "practice_filters"):
+            filt = mws.get(filt_key)
+            if isinstance(filt, dict):
+                filt.pop("backing_transport_status", None)
+                filt.pop("last_write_reason", None)
 
 
 def canonical_workspace_state_for_fingerprint(state: dict[str, Any] | None) -> dict[str, Any]:
@@ -101,6 +196,7 @@ def canonical_workspace_state_for_fingerprint(state: dict[str, Any] | None) -> d
             base[key] = _strip_volatile_mapping(copy.deepcopy(val), drop_keys=_VOLATILE_ENVELOPE_KEYS)
         else:
             base[key] = _strip_volatile_mapping(copy.deepcopy(val), drop_keys=frozenset())
+    _normalize_canonical_tree(state, base)
     return base
 
 

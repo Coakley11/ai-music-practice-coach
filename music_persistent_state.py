@@ -1582,8 +1582,24 @@ def prepare_page_change_save_state(
     target_page: str,
     *,
     st: Any | None = None,
+    origin: str | None = None,
 ) -> str:
     """Stamp live nav/workspace/ownership before page_change cloud save."""
+    try:
+        from music_startup_save_suppression import get_page_change_origin, set_page_change_origin
+
+        nav_origin = str(origin or get_page_change_origin(session) or "unknown").strip()
+        if origin:
+            set_page_change_origin(session, nav_origin)
+        elif session.get("startup_suppression_armed") and not session.get("startup_suppression_released"):
+            nav_origin = "reconciliation"
+            set_page_change_origin(session, nav_origin)
+        elif nav_origin == "unknown" and not session.get("startup_suppression_released"):
+            nav_origin = "reconciliation"
+            set_page_change_origin(session, nav_origin)
+    except ImportError:
+        nav_origin = str(origin or "user_navigation")
+    user_nav = nav_origin == "user_navigation"
     page = _normalize_studio_page_for_save(target_page) or _normalize_studio_page_for_save(
         session.get("studio_page")
     )
@@ -1593,32 +1609,43 @@ def prepare_page_change_save_state(
     try:
         from studio_nav_state import write_canonical_studio_nav_state
 
-        write_canonical_studio_nav_state(session, page, reason="page_change", local_edit=True)
+        write_canonical_studio_nav_state(
+            session,
+            page,
+            reason="page_change" if user_nav else "workspace_restore",
+            local_edit=user_nav,
+        )
     except ImportError:
         session["studio_nav_state"] = {
             "studio_page": page,
             "page": page,
-            "last_write_reason": "page_change",
+            "last_write_reason": "page_change" if user_nav else "workspace_restore",
         }
+        if user_nav:
+            session["_suite_page_user_nav"] = True
+
+    if user_nav:
         session["_suite_page_user_nav"] = True
-
-    session["_suite_page_user_nav"] = True
-    session["active_page_source"] = "user_sidebar"
+        session["active_page_source"] = "user_sidebar"
+    else:
+        session.pop("_suite_page_user_nav", None)
+        session["active_page_source"] = nav_origin if nav_origin != "unknown" else "cloud_restore"
     session["requested_page"] = page
-    try:
-        from suite_user_persistence import SESSION_USER_OWNED_PAGE_KEY
-
-        session[SESSION_USER_OWNED_PAGE_KEY] = page
-    except ImportError:
-        session["_suite_user_owned_page"] = page
-
-    if st is not None:
+    if user_nav:
         try:
-            from suite_user_persistence import claim_user_page_ownership
+            from suite_user_persistence import SESSION_USER_OWNED_PAGE_KEY
 
-            claim_user_page_ownership(st, APP_ID, page)
-        except Exception:
-            pass
+            session[SESSION_USER_OWNED_PAGE_KEY] = page
+        except ImportError:
+            session["_suite_user_owned_page"] = page
+
+        if st is not None:
+            try:
+                from suite_user_persistence import claim_user_page_ownership
+
+                claim_user_page_ownership(st, APP_ID, page)
+            except Exception:
+                pass
 
     ws = session.get("music_workspace_state")
     if isinstance(ws, dict):
@@ -1645,10 +1672,31 @@ def prepare_page_change_save_state(
 def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     """Run a deferred page_change save after canonical nav catches up (next rerun)."""
     ss = st.session_state
+    try:
+        from music_startup_save_suppression import (
+            clear_startup_deferred_page_change_saves,
+            record_startup_save_suppressed,
+            should_suppress_music_workspace_save,
+        )
+
+        suppress, why = should_suppress_music_workspace_save(ss, "page_change")
+        if suppress:
+            record_startup_save_suppressed(ss, why)
+            clear_startup_deferred_page_change_saves(ss)
+            _clear_page_change_write_pending(ss)
+            return False
+    except ImportError:
+        pass
     deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
     if not deferred:
         return False
-    prepare_page_change_save_state(ss, deferred, st=st)
+    try:
+        from music_startup_save_suppression import set_page_change_origin
+
+        set_page_change_origin(ss, "reconciliation")
+    except ImportError:
+        pass
+    prepare_page_change_save_state(ss, deferred, st=st, origin="reconciliation")
     if not _page_change_save_ready(ss, deferred):
         return False
     ss.pop("_suite_deferred_page_change_save", None)
@@ -2478,6 +2526,12 @@ def apply_music_disk_state(
 
     ss["_suite_page_overwrite_source"] = overwrite_source
     if active_studio:
+        try:
+            from music_startup_save_suppression import set_page_change_origin
+
+            set_page_change_origin(ss, "cloud_restore")
+        except ImportError:
+            pass
         ss["studio_page"] = active_studio
         try:
             from studio_nav_state import write_canonical_studio_nav_state
@@ -2845,7 +2899,13 @@ def after_studio_page_change(
             consume_ami_return_resume(st, APP_ID)
     except ImportError:
         pass
-    prepare_page_change_save_state(ss, page_id, st=st)
+    try:
+        from music_startup_save_suppression import set_page_change_origin
+
+        set_page_change_origin(ss, "user_navigation")
+    except ImportError:
+        pass
+    prepare_page_change_save_state(ss, page_id, st=st, origin="user_navigation")
     try:
         from music_persistence_trace import update_trace
 

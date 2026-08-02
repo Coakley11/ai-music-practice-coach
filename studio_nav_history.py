@@ -279,8 +279,10 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
 
     try:
         from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
+        from music_startup_save_suppression import set_page_change_origin
 
-        prepare_page_change_save_state(session_state, page_id, st=_St())
+        set_page_change_origin(session_state, "user_navigation")
+        prepare_page_change_save_state(session_state, page_id, st=_St(), origin="user_navigation")
         try:
             from local_nav_trace import record_local_nav_checkpoint
 
