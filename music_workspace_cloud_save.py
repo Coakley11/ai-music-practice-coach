@@ -63,6 +63,15 @@ def record_save_transaction(session: dict[str, Any], **fields: Any) -> None:
     session[MUSIC_SAVE_TX_KEY] = tx
 
 
+def _snapshot_save_transaction_debug(st: Any, ss: dict[str, Any], *, event: str = "force_music_workspace_save") -> None:
+    try:
+        from music_workspace_save_transaction_debug import append_workspace_save_transaction_snapshot
+
+        append_workspace_save_transaction_snapshot(ss, st=st, event=event)
+    except ImportError:
+        pass
+
+
 def collect_save_transaction_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
     tx = session.get(MUSIC_SAVE_TX_KEY)
     return dict(tx) if isinstance(tx, dict) else {}
@@ -199,6 +208,7 @@ def force_music_workspace_save(
     if not allowed:
         ss["_music_force_save_ok"] = False
         ss["_music_force_save_blocked_reason"] = block
+        _snapshot_save_transaction_debug(st, ss, event="force_save_blocked")
         return False
 
     bypass_block = r in _USER_FORCE_REASONS
@@ -207,6 +217,7 @@ def force_music_workspace_save(
         br = str(ss.get("_suite_autosave_block_reason") or "post-restore cooldown")
         record_save_transaction(ss, force_save_allowed=False, force_save_block_reason=br)
         ss["_suite_autosave_blocked_after_restore"] = True
+        _snapshot_save_transaction_debug(st, ss, event="autosave_cooldown_blocked")
         return False
 
     if r:
@@ -231,6 +242,7 @@ def force_music_workspace_save(
     except Exception as exc:
         record_save_transaction(ss, envelope_built=False, cloud_write_error=str(exc))
         ss["_music_commit_error"] = str(exc)
+        _snapshot_save_transaction_debug(st, ss, event="envelope_build_failed")
         return False
 
     record_save_transaction(ss, envelope_built=True, envelope_revision_before=rev_before)
@@ -518,6 +530,12 @@ def force_music_workspace_save(
         and revision_advanced
         and (not cloud_required or readback_ok or duplicate_skipped)
     )
+    record_save_transaction(
+        ss,
+        cloud_confirmed=cloud_confirmed,
+        revision_advanced=revision_advanced,
+        suite_persist_last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")),
+    )
     if deferred_cloud:
         ss[_local_dirty_key(APP_ID)] = True
         ss["_music_force_save_ok"] = False
@@ -528,6 +546,8 @@ def force_music_workspace_save(
             retry_required=False,
             dirty_cleared_after_confirmed_save=False,
         )
+        record_save_transaction(ss, suite_persist_last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")))
+        _snapshot_save_transaction_debug(st, ss, event="strict_save_deferred")
         return False
 
     if cloud_required:
@@ -551,6 +571,8 @@ def force_music_workspace_save(
                 dirty_cleared_after_confirmed_save=False,
             )
             record_save_transaction(ss, **_merge_cloud_save_diagnostics(ss))
+            record_save_transaction(ss, suite_persist_last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")))
+            _snapshot_save_transaction_debug(st, ss, event="cloud_save_unconfirmed")
             return False
         ss["_suite_persist_last_save_cloud"] = True
         ss.pop("_suite_autosave_cloud_blocked_reason", None)
@@ -580,6 +602,8 @@ def force_music_workspace_save(
             clear_strict_pending_save(ss, flush_result="confirmed_inline")
         except ImportError:
             pass
+        record_save_transaction(ss, suite_persist_last_save_cloud=True, cloud_confirmed=True)
+        _snapshot_save_transaction_debug(st, ss, event="cloud_confirmed")
         return True
 
     if saved_disk or saved_cloud:
@@ -595,9 +619,12 @@ def force_music_workspace_save(
         ss.pop("_suite_autosave_block_reason", None)
         clear_workspace_autosave_block(st, APP_ID)
         ss["_suite_persist_last_save_at"] = _utc_now_iso()
+        record_save_transaction(ss, suite_persist_last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")))
+        _snapshot_save_transaction_debug(st, ss, event="disk_or_cloud_ok_no_strict")
         return True
 
     ss["_music_force_save_ok"] = False
+    _snapshot_save_transaction_debug(st, ss, event="save_failed")
     return False
 
 

@@ -1239,6 +1239,13 @@ def render_persistence_trace_sidebar(st: Any) -> None:
 
             st.text(f"{label}: {_trace_display(val)}")
 
+        try:
+            from music_workspace_save_transaction_debug import render_music_workspace_save_transaction_debug
+
+            render_music_workspace_save_transaction_debug(st)
+        except ImportError:
+            pass
+
 
 
         with st.expander("Phase C canonical state", expanded=False):

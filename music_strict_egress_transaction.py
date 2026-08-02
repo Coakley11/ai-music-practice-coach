@@ -159,6 +159,12 @@ def note_passive_autosave_cloud_skip(session: dict[str, Any], *, reason: str) ->
     if session.get("_suite_persist_last_save_cloud"):
         return
     session["_suite_autosave_cloud_blocked_reason"] = reason
+    try:
+        from music_workspace_save_transaction_debug import append_workspace_save_transaction_snapshot
+
+        append_workspace_save_transaction_snapshot(session, event=f"passive_autosave_skip:{reason}")
+    except ImportError:
+        pass
 
 
 __all__ = [
