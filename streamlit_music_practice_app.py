@@ -8626,6 +8626,17 @@ def _render_practice_setup_panel(
     _resolved_groove = resolve_practice_groove_style(st.session_state, default_groove=default_groove)
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
+    try:
+        from session_key_context import sync_effective_session_keys_before_render
+
+        sync_effective_session_keys_before_render(
+            st.session_state,
+            original_key=original_key or "C",
+            instrument=str(st.session_state.get("instrument") or "Piano"),
+        )
+    except ImportError:
+        pass
+
     with st.container(key="practice_control_panel", border=False):
         render_practice_control_panel_header(st)
 
@@ -9564,6 +9575,16 @@ original_key, _song_identity = display_key_context(
     catalog_song_data=_catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
+try:
+    from session_key_context import sync_effective_session_keys_before_render
+
+    sync_effective_session_keys_before_render(
+        st.session_state,
+        original_key=original_key,
+        instrument=str(st.session_state.get("instrument") or "Piano"),
+    )
+except ImportError:
+    pass
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 
 try:

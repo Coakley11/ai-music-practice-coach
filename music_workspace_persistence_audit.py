@@ -240,6 +240,15 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         key_family_trace = collect_key_family_persistence_trace(session)
     except ImportError:
         pass
+    live_render: dict[str, Any] = {}
+    try:
+        from session_key_context import collect_live_key_family_render_trace
+
+        live_render = collect_live_key_family_render_trace(session)
+    except ImportError:
+        pass
+    if live_render:
+        key_family_trace = {**key_family_trace, **live_render}
 
     return {
         "app_id": APP_ID,
@@ -339,6 +348,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
             "restore_trace": session.get("_music_workspace_restore_trace"),
         },
         "key_family_path": key_family_trace,
+        "live_key_family_render": live_render,
     }
 
 
@@ -346,6 +356,25 @@ def render_workspace_persistence_audit_sidebar(st_module: Any) -> None:
     audit = collect_workspace_persistence_audit(st_module.session_state)
     with st_module.sidebar.expander("Workspace persistence audit", expanded=False):
         st_module.caption("saved → applied → final (mismatch flagged)")
+        live_trace = audit.get("key_family_path") or audit.get("live_key_family_render") or {}
+        if live_trace:
+            st_module.markdown("**Live key family (pre-render)**")
+            for key in (
+                "fixed_key_mode_enabled",
+                "selected_family_normalized",
+                "active_object_mode",
+                "resolved_session_tonal_key",
+                "concert_key_after_override",
+                "practice_key_after_override",
+                "display_key_final",
+                "chart_target_key",
+                "backing_target_key",
+                "last_key_writer_function",
+                "key_overwritten_after_family_resolution",
+                "key_overwrite_stage",
+            ):
+                if key in live_trace:
+                    st_module.text(f"{key}: {live_trace.get(key)}")
         for key in (
             "app_id",
             "account_hint",

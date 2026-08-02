@@ -314,13 +314,30 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
         else:
             practice = live or concert or "C"
         practice = practice or "C"
+        try:
+            from backing_context import get_backing_context
+
+            _ctx_fix = creative_ctx or get_backing_context(session)
+            if _ctx_fix is not None:
+                practice = _fixed_practice_key_for_context(session, _ctx_fix, practice)
+        except ImportError:
+            pass
         return practice, practice, practice
     except ImportError:
         pass
     display = str(session.get("display_key") or "").strip()
     concert = display or str(session.get("concert_key") or "").strip()
     if concert:
-        return concert, display or concert, concert
+        practice = concert
+        try:
+            from backing_context import get_backing_context
+
+            _ctx_fix = get_backing_context(session)
+            if _ctx_fix is not None:
+                practice = _fixed_practice_key_for_context(session, _ctx_fix, practice)
+        except ImportError:
+            pass
+        return practice, display or practice, practice
     creative_keys = _creative_concert_keys(session)
     if creative_keys:
         return creative_keys

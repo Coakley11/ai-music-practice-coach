@@ -364,10 +364,23 @@ def apply_display_key_for_active_song(
 
     current = st.session_state.get("display_key", original_key)
     try:
-        from practice_key_mode import is_fixed_practice_key_mode
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(st.session_state):
-            return [str(current)]
+            target = resolve_practice_concert_key_for_song(
+                st.session_state,
+                original_key or "C",
+                fallback=original_key or "C",
+            )
+            if str(current or "").strip() != str(target).strip():
+                _apply_display_key_before_widget(
+                    st,
+                    target,
+                    source="fixed_key_family_sync",
+                )
+                st.session_state[LAST_DISPLAY_KEY] = target
+                st.session_state["last_key_writer_function"] = "apply_display_key_for_active_song:fixed_key_family_sync"
+            return [str(target)]
     except ImportError:
         pass
     if current not in options:
@@ -528,6 +541,28 @@ def get_authoritative_display_key(
             home = str(selected.get("key") or "C").strip() or "C"
         else:
             home = "C"
+
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            resolved = resolve_practice_concert_key_for_song(
+                session,
+                home,
+                pick_key=pick_key,
+                fallback=home,
+            )
+            trace_display_key_surface(
+                session,
+                surface or "authoritative",
+                resolved,
+                pick_key=pick_key,
+                source="fixed_key_family",
+            )
+            session["last_key_writer_function"] = "get_authoritative_display_key:fixed_key_family"
+            return resolved
+    except ImportError:
+        pass
 
     if custom_progression_is_active(session) or cpl_session_is_active(session):
         resolved = _resolve_custom_display_key_for_session(session, home)

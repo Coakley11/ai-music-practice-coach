@@ -362,7 +362,13 @@ def resolve_fixed_practice_concert_key_for_session(
 ) -> str:
     """Resolve a source key through the active fixed family, preserving spelling."""
     option_id = resolve_family_option_id(session)
-    return resolve_fixed_practice_concert_key_for_family(option_id, song_original_key)
+    try:
+        from session_key_context import resolve_active_object_mode
+
+        mode = resolve_active_object_mode(session, original_key=song_original_key)
+    except ImportError:
+        mode = key_mode(song_original_key)
+    return resolve_session_key_from_family(option_id, mode)
 
 
 def resolve_practice_concert_key_for_song(
