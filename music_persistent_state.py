@@ -2375,13 +2375,6 @@ def apply_music_disk_state(
             if not str(key).startswith("_ami_"):
                 ss[key] = copy.deepcopy(val)
 
-    try:
-        from practice_key_mode import prepare_practice_key_mode_widgets
-
-        prepare_practice_key_mode_widgets(ss)
-    except ImportError:
-        pass
-
     if authoritative_restore:
         try:
             from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
@@ -2617,6 +2610,32 @@ def apply_music_disk_state(
 
     if isinstance(core, dict) and core:
         _reapply_core_practice_globals_from_payload(ss, core)
+
+    try:
+        from practice_key_mode import prepare_practice_key_mode_widgets
+
+        if authoritative_restore or ss.get("_music_workspace_blob_hydrated"):
+            ss["_practice_key_mode_restored"] = bool(
+                ss.get("practice_key_mode") or ss.get("fixed_practice_key_family_id")
+            )
+        prepare_practice_key_mode_widgets(ss)
+    except ImportError:
+        pass
+
+    restore_trace = {
+        "studio_page_applied": str(ss.get("studio_page") or "").strip(),
+        "instrument_applied": str((core or {}).get("instrument") or ss.get("instrument") or "").strip(),
+        "level_applied": str((core or {}).get("level") or ss.get("level") or "").strip(),
+        "focus_applied": str((core or {}).get("focus") or ss.get("focus") or "").strip(),
+        "practice_section_applied": str(
+            (core or {}).get("practice_focus_section") or ss.get("practice_focus_section") or ""
+        ).strip(),
+        "pick_key_applied": str(ss.get("active_catalog_pick_key") or "").strip(),
+        "practice_key_mode_applied": str(ss.get("practice_key_mode") or "").strip(),
+        "key_family_applied": str(ss.get("fixed_practice_key_family_id") or "").strip(),
+        "display_key_applied": str((core or {}).get("display_key") or ss.get("display_key") or "").strip(),
+    }
+    ss["_music_workspace_restore_trace"] = restore_trace
 
     try:
         from music_workspace_hydration import mark_workspace_blob_hydrated

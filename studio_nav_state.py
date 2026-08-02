@@ -24,6 +24,7 @@ __all__ = (
     "prepare_studio_nav",
     "render_studio_nav_state_debug",
     "resolve_studio_page_for_restore",
+    "bootstrap_studio_page_session",
     "write_canonical_studio_nav_state",
 )
 
@@ -112,8 +113,24 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     if canonical:
         return write_canonical_studio_nav_state(session, canonical, reason="canonical_preserve")
 
-    page = _normalize_page(live_raw) or "practice"
-    return write_canonical_studio_nav_state(session, page, reason="reconcile_on_load")
+    page = _normalize_page(live_raw)
+    if page:
+        return write_canonical_studio_nav_state(session, page, reason="reconcile_on_load")
+
+    try:
+        from music_workspace_hydration import workspace_empty_confirmed
+
+        payload = session.get("_suite_last_cloud_fetch_payload")
+        if isinstance(payload, dict):
+            blob_page = _studio_page_from_blob(payload)
+            if blob_page:
+                return write_canonical_studio_nav_state(session, blob_page, reason="blob_before_default")
+        if not workspace_empty_confirmed(session):
+            return str(session.get("studio_page") or "")
+    except ImportError:
+        pass
+
+    return write_canonical_studio_nav_state(session, "practice", reason="empty_workspace_default")
 
 
 def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "autosave") -> str:
@@ -178,6 +195,49 @@ def resolve_studio_page_for_restore(
     if pre:
         return pre, "session_page"
     return "practice", "default"
+
+
+def bootstrap_studio_page_session(session: dict[str, Any], *, default: str = "practice") -> str:
+    """
+    Hydration-aware studio page for early script bootstrap.
+
+    Do not pin Practice while cloud workspace hydration is still pending.
+    """
+    try:
+        from music_workspace_hydration import can_finalize_music_restore, workspace_empty_confirmed
+
+        if can_finalize_music_restore(session):
+            return prepare_studio_nav(session) or str(session.get("studio_page") or default)
+    except ImportError:
+        return str(session.setdefault("studio_page", default))
+
+    page = _normalize_page(session.get("studio_page"))
+    if page:
+        session["studio_page"] = page
+        return page
+
+    canonical = canonical_studio_page(session)
+    if canonical:
+        session["studio_page"] = canonical
+        return canonical
+
+    payload = session.get("_suite_last_cloud_fetch_payload")
+    if isinstance(payload, dict):
+        blob_page = _studio_page_from_blob(payload)
+        if blob_page:
+            session["studio_page"] = blob_page
+            return blob_page
+
+    try:
+        from music_workspace_hydration import workspace_empty_confirmed
+
+        if workspace_empty_confirmed(session):
+            session.setdefault("studio_page", default)
+            return str(session.get("studio_page") or default)
+    except ImportError:
+        pass
+
+    return str(session.get("studio_page") or "")
 
 
 def apply_cloud_studio_nav_state_if_allowed(

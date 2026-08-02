@@ -19,6 +19,20 @@ def _saved_from_envelope(session: dict[str, Any], *paths: str) -> Any:
     return cur
 
 
+def _triple_when_authoritative(
+    saved: Any,
+    applied: Any,
+    final: Any,
+    *,
+    authoritative: bool,
+) -> dict[str, Any]:
+    block = _triple(saved, applied if authoritative else "(pending)", final)
+    if not authoritative:
+        block["mismatch"] = False
+        block["hydration_pending"] = True
+    return block
+
+
 def _triple(
     saved: Any,
     applied: Any,
@@ -68,13 +82,32 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
     saved_page = (
         str(ws_meta.get("studio_page") or core.get("studio_page") or core.get("page") or "").strip()
     )
-    applied_page = str(session.get("_suite_page_overwrite_source") or "").strip()
+    restore_trace = session.get("_music_workspace_restore_trace")
+    if not isinstance(restore_trace, dict):
+        restore_trace = {}
+    applied_page = str(
+        restore_trace.get("studio_page_applied")
+        or session.get("_suite_page_overwrite_source")
+        or ""
+    ).strip()
     final_page = str(session.get("studio_page") or "").strip()
 
     saved_pk = str(core.get("pick_key") or "").strip()
     active_song_meta = ws_meta.get("active_song")
     if not saved_pk and isinstance(active_song_meta, dict):
         saved_pk = str(active_song_meta.get("pick_key") or "").strip()
+    saved_title = str(
+        (active_song_meta or {}).get("title")
+        if isinstance(active_song_meta, dict)
+        else core.get("song")
+        or ""
+    ).strip()
+    if not saved_title:
+        sel = _saved_from_envelope(session, "session", "selected_song")
+        if isinstance(sel, dict):
+            saved_title = str(sel.get("title") or "").strip()
+
+    applied_pk = str(restore_trace.get("pick_key_applied") or session.get("_music_active_pick_key_reconciled") or "").strip()
 
     try:
         from songs.state import reconcile_active_pick_key
@@ -83,6 +116,60 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
     except ImportError:
         final_pk = str(session.get("active_catalog_pick_key") or "").strip()
 
+    final_title = ""
+    try:
+        from songs.state import SELECTED_SONG_STATE_KEY
+
+        sel_live = session.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel_live, dict):
+            final_title = str(sel_live.get("title") or "").strip()
+    except ImportError:
+        pass
+
+    saved_section = str(
+        core.get("practice_focus_section")
+        or _saved_from_envelope(session, "session", "practice_focus_section")
+        or ""
+    ).strip()
+    applied_section = str(restore_trace.get("practice_section_applied") or "").strip()
+    final_section = str(session.get("practice_focus_section") or "").strip()
+
+    saved_instrument = str(core.get("instrument") or "").strip()
+    applied_instrument = str(restore_trace.get("instrument_applied") or "").strip()
+    try:
+        from practice_setup_globals import get_active_instrument
+
+        final_instrument = str(get_active_instrument(session) or session.get("instrument") or "").strip()
+    except ImportError:
+        final_instrument = str(session.get("instrument") or "").strip()
+
+    saved_level = str(core.get("level") or "").strip()
+    applied_level = str(restore_trace.get("level_applied") or "").strip()
+    final_level = str(session.get("level") or "").strip()
+
+    saved_focus = str(core.get("focus") or "").strip()
+    applied_focus = str(restore_trace.get("focus_applied") or "").strip()
+    final_focus = str(session.get("focus") or "").strip()
+
+    family_saved = _saved_from_envelope(session, "session", "fixed_practice_key_family_id")
+    family_applied = restore_trace.get("key_family_applied") or session.get("fixed_practice_key_family_id")
+    family_final = session.get("fixed_practice_key_family_id")
+
+    fixed_mode_saved = _saved_from_envelope(session, "session", "practice_key_mode")
+    fixed_mode_applied = restore_trace.get("practice_key_mode_applied")
+    fixed_mode_final = session.get("practice_key_mode")
+
+    concert_saved = _saved_from_envelope(session, "session", "concert_key") or core.get("concert_key")
+    concert_final = session.get("concert_key") or session.get("original_key")
+
+    practice_key_saved = _saved_from_envelope(session, "session", "practice_key") or core.get("practice_key")
+    practice_key_final = session.get("practice_key") or session.get("display_key")
+
+    display_saved = str(core.get("display_key") or "").strip()
+    display_applied = str(restore_trace.get("display_key_applied") or "").strip()
+    display_final = str(session.get("display_key") or "").strip()
+
+    audit_authoritative = bool(session.get("_music_workspace_blob_hydrated"))
     creative_mode_saved = _saved_from_envelope(session, "session", "creative_lab_analysis_mode")
     creative_mode_final = session.get("creative_lab_analysis_mode")
 
@@ -97,9 +184,6 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         motif_hash_saved = str(hash(tuple(motif_saved.get("notes") or [])))
     if isinstance(motif_final, dict) and motif_final.get("notes"):
         motif_hash_final = str(hash(tuple(motif_final.get("notes") or [])))
-
-    family_saved = _saved_from_envelope(session, "session", "fixed_practice_key_family_id")
-    family_final = session.get("fixed_practice_key_family_id")
 
     capo_saved = _saved_from_envelope(session, "session", "guitar_capo_enabled")
     capo_final = session.get("guitar_capo_enabled")
@@ -177,8 +261,50 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
         "newer_cloud_ignored": session.get("_suite_workspace_sync_skipped_no_apply"),
         "hydration": hydration,
         **practice_audit,
-        "active_page": _triple(saved_page, applied_page or "(source)", final_page),
-        "active_song_pick_key": _triple(saved_pk, session.get("_music_active_pick_key_reconciled"), final_pk),
+        "audit_authoritative": audit_authoritative,
+        "studio_page_saved": saved_page or "(none)",
+        "studio_page_applied": applied_page or "(none)",
+        "studio_page_final": final_page or "(none)",
+        "active_pick_saved": saved_pk or "(none)",
+        "active_pick_applied": applied_pk or "(none)",
+        "active_pick_final": final_pk or "(none)",
+        "song_title_saved": saved_title or "(none)",
+        "song_title_final": final_title or "(none)",
+        "selected_section_saved": saved_section or "(none)",
+        "selected_section_applied": applied_section or "(none)",
+        "selected_section_final": final_section or "(none)",
+        "instrument_saved": saved_instrument or "(none)",
+        "instrument_applied": applied_instrument or "(none)",
+        "instrument_final": final_instrument or "(none)",
+        "level_saved": saved_level or "(none)",
+        "level_applied": applied_level or "(none)",
+        "level_final": final_level or "(none)",
+        "focus_saved": saved_focus or "(none)",
+        "focus_applied": applied_focus or "(none)",
+        "focus_final": final_focus or "(none)",
+        "practice_section_saved": saved_section or "(none)",
+        "practice_section_applied": applied_section or "(none)",
+        "practice_section_final": final_section or "(none)",
+        "key_family_saved": family_saved or "(none)",
+        "key_family_applied": family_applied or "(none)",
+        "key_family_final": family_final or "(none)",
+        "fixed_key_saved": fixed_mode_saved or "(none)",
+        "fixed_key_applied": fixed_mode_applied or "(none)",
+        "fixed_key_final": fixed_mode_final or "(none)",
+        "concert_key_saved": concert_saved or "(none)",
+        "concert_key_final": concert_final or "(none)",
+        "practice_key_saved": practice_key_saved or "(none)",
+        "practice_key_final": practice_key_final or "(none)",
+        "display_key_saved": display_saved or "(none)",
+        "display_key_applied": display_applied or "(none)",
+        "display_key_final": display_final or "(none)",
+        "active_page": _triple_when_authoritative(saved_page, applied_page, final_page, authoritative=audit_authoritative),
+        "active_song_pick_key": _triple_when_authoritative(saved_pk, applied_pk, final_pk, authoritative=audit_authoritative),
+        "song_title": _triple_when_authoritative(saved_title, applied_pk and saved_title, final_title, authoritative=audit_authoritative),
+        "selected_section": _triple_when_authoritative(saved_section, applied_section, final_section, authoritative=audit_authoritative),
+        "instrument": _triple_when_authoritative(saved_instrument, applied_instrument, final_instrument, authoritative=audit_authoritative),
+        "level": _triple_when_authoritative(saved_level, applied_level, final_level, authoritative=audit_authoritative),
+        "focus": _triple_when_authoritative(saved_focus, applied_focus, final_focus, authoritative=audit_authoritative),
         "creative_mode": _triple(creative_mode_saved, "(session_extra)", creative_mode_final),
         "mission_id": _triple(
             mission_saved if isinstance(mission_saved, str) else (mission_saved or {}).get("id") if isinstance(mission_saved, dict) else mission_saved,
@@ -186,7 +312,11 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
             mission_final if isinstance(mission_final, str) else (mission_final or {}).get("id") if isinstance(mission_final, dict) else mission_final,
         ),
         "active_motif_hash": _triple(motif_hash_saved or "(none)", "(session_extra)", motif_hash_final or "(none)"),
-        "key_family": _triple(family_saved, "(session_extra)", family_final),
+        "key_family": _triple_when_authoritative(family_saved, family_applied, family_final, authoritative=audit_authoritative),
+        "fixed_practice_key_mode": _triple_when_authoritative(
+            fixed_mode_saved, fixed_mode_applied, fixed_mode_final, authoritative=audit_authoritative
+        ),
+        "display_key": _triple_when_authoritative(display_saved, display_applied, display_final, authoritative=audit_authoritative),
         "resolved_session_key": resolved_session_key or "(n/a)",
         "capo_mode": _triple(capo_saved, "(session_extra)", capo_final),
         "shape_key": _triple(shape_saved, "(session_extra)", shape_final),
@@ -198,6 +328,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
             "creative_restore_skipped": session.get("_creative_restore_skipped_reason"),
             "studio_nav_restore_skipped": session.get("_studio_nav_restore_skipped_reason"),
             "page_overwrite_source": session.get("_suite_page_overwrite_source"),
+            "restore_trace": session.get("_music_workspace_restore_trace"),
         },
     }
 
@@ -226,10 +357,17 @@ def render_workspace_persistence_audit_sidebar(st_module: Any) -> None:
         for block_key in (
             "active_page",
             "active_song_pick_key",
+            "song_title",
+            "selected_section",
+            "instrument",
+            "level",
+            "focus",
+            "key_family",
+            "fixed_practice_key_mode",
+            "display_key",
             "creative_mode",
             "mission_id",
             "active_motif_hash",
-            "key_family",
             "capo_mode",
             "shape_key",
             "practice_tool",

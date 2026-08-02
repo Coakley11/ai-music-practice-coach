@@ -8017,7 +8017,15 @@ def _resolve_nav_page_ids(
 
 
 def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
-    return session_state.setdefault("studio_page", default)
+    try:
+        from studio_nav_state import bootstrap_studio_page_session
+
+        page = bootstrap_studio_page_session(session_state, default=default)
+        if page:
+            return page
+    except ImportError:
+        pass
+    return str(session_state.setdefault("studio_page", default))
 
 
 def begin_studio_control_deck() -> None:

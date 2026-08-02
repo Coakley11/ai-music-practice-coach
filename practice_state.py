@@ -651,7 +651,10 @@ def prepare_practice_page(session: dict[str, Any]) -> dict[str, Any]:
 
         )
 
-
+    if session.get(PRACTICE_RESTORED_KEY):
+        canonical = canonical_practice_filters(session)
+        if canonical is not None:
+            return write_canonical_practice_state(session, canonical, reason="restored_preserve")
 
     canonical = canonical_practice_filters(session)
 

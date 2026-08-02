@@ -202,6 +202,16 @@ def prepare_practice_key_mode_widgets(
 ) -> None:
     """Sync canonical practice-key mode into page widget keys before render."""
     _ = original_key
+    hydrated = bool(session.get("_music_workspace_blob_hydrated"))
+    restored = bool(session.get("_practice_key_mode_restored") or session.get("_music_authoritative_cloud_apply"))
+    if hydrated or restored:
+        if PRACTICE_KEY_MODE_KEY in session:
+            session[PRACTICE_KEY_MODE_WIDGET_KEY] = str(session.get(PRACTICE_KEY_MODE_KEY) or MODE_STANDARD)
+            if is_fixed_practice_key_mode(session):
+                fam = str(session.get(FIXED_PRACTICE_KEY_WIDGET_KEY) or session.get(FIXED_PRACTICE_KEY_FAMILY_ID) or "").strip()
+                if fam:
+                    session[FIXED_PRACTICE_KEY_WIDGET_KEY] = fam
+            return
     ensure_practice_key_mode_defaults(session)
     session[PRACTICE_KEY_MODE_WIDGET_KEY] = get_practice_key_mode(session)
     if is_fixed_practice_key_mode(session):
