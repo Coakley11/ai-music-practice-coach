@@ -75,7 +75,7 @@ class TestApplyMusicDiskStateMusicianContext(unittest.TestCase):
         self.assertEqual(ss.get("focus"), "Tone")
         self.assertEqual(ss.get("practice_focus_section"), "Verse")
         self.assertEqual(ss.get("practice_key_mode"), MODE_FIXED)
-        self.assertEqual(ss.get("fixed_practice_key_family_id"), "C major/A minor")
+        self.assertEqual(ss.get("fixed_practice_key_family_id"), "C|A")
 
     def test_practice_filters_not_clobbered_after_restore(self) -> None:
         ss = {

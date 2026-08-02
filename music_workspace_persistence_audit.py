@@ -233,6 +233,14 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
     account_hint = str(session.get("_suite_cloud_user_hint") or session.get("user_email") or "(unknown)")
 
     autosave_blocked = bool(session.get("_suite_autosave_block_reason"))
+    key_family_trace: dict[str, Any] = {}
+    try:
+        from key_family_persistence_trace import collect_key_family_persistence_trace
+
+        key_family_trace = collect_key_family_persistence_trace(session)
+    except ImportError:
+        pass
+
     return {
         "app_id": APP_ID,
         "account_hint": account_hint,
@@ -330,6 +338,7 @@ def collect_workspace_persistence_audit(session: dict[str, Any]) -> dict[str, An
             "page_overwrite_source": session.get("_suite_page_overwrite_source"),
             "restore_trace": session.get("_music_workspace_restore_trace"),
         },
+        "key_family_path": key_family_trace,
     }
 
 

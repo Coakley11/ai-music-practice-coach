@@ -151,12 +151,6 @@ def mark_display_key_changed(st: Any) -> None:
     dk = str(st.session_state.get("display_key") or "").strip()
     if dk:
         try:
-            from practice_key_mode import on_fixed_practice_concert_key_change
-
-            on_fixed_practice_concert_key_change(st.session_state, dk)
-        except ImportError:
-            pass
-        try:
             from practice_key_mode import is_fixed_practice_key_mode
             from songs.practice_key_state import (
                 creative_jam_owns_practice_settings,

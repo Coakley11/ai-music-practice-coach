@@ -2619,8 +2619,32 @@ def apply_music_disk_state(
                 ss.get("practice_key_mode") or ss.get("fixed_practice_key_family_id")
             )
         prepare_practice_key_mode_widgets(ss)
+        try:
+            from practice_key_mode import (
+                is_fixed_practice_key_mode,
+                normalize_stored_family_option_id,
+                set_fixed_practice_key_family,
+            )
+
+            if is_fixed_practice_key_mode(ss):
+                raw_fam = str(ss.get("fixed_practice_key_family_id") or "").strip()
+                norm = normalize_stored_family_option_id(raw_fam)
+                if norm and norm != raw_fam:
+                    set_fixed_practice_key_family(ss, norm)
+                    ss["key_family_overwritten_by_stage"] = "apply_music_disk_state:normalize_family_id"
+                elif norm and authoritative_restore:
+                    set_fixed_practice_key_family(ss, norm)
+        except ImportError:
+            pass
     except ImportError:
         pass
+
+    try:
+        from key_family_persistence_trace import collect_key_family_persistence_trace
+
+        key_trace = collect_key_family_persistence_trace(ss)
+    except ImportError:
+        key_trace = {}
 
     restore_trace = {
         "studio_page_applied": str(ss.get("studio_page") or "").strip(),
@@ -2635,6 +2659,7 @@ def apply_music_disk_state(
         "key_family_applied": str(ss.get("fixed_practice_key_family_id") or "").strip(),
         "display_key_applied": str((core or {}).get("display_key") or ss.get("display_key") or "").strip(),
     }
+    restore_trace.update(key_trace)
     ss["_music_workspace_restore_trace"] = restore_trace
 
     try:
