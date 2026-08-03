@@ -34,6 +34,16 @@ MISSION_CONFIG_SAVE_REASONS: frozenset[str] = frozenset(
 
 VIOLATION_PASSIVE_MISSION_STARTUP_WRITE = "CREATIVE_MISSION_PASSIVE_STARTUP_WRITE"
 VIOLATION_POST_INSTANTIATION_WIDGET_WRITE = "CREATIVE_MISSION_POST_INSTANTIATION_WIDGET_WRITE"
+VIOLATION_TARGET_IDENTITY_MISMATCH = "CREATIVE_MISSION_TARGET_IDENTITY_MISMATCH"
+
+MISSION_TARGET_IDENTITY_KEYS: tuple[str, ...] = (
+    "ii_selected_section",
+    "ii_selected_chord_index",
+    "ii_selected_chord",
+    "ii_selected_chord_label",
+)
+
+IMPROV_MISSION_SECTION_MAP_SESSION_KEY = "_improv_mission_section_map"
 
 # Item 2 scope — not generated example / practice lick (Item 3).
 MISSION_CONFIG_CANONICAL_KEYS: tuple[str, ...] = (
@@ -152,6 +162,287 @@ def _config_slice(session: dict[str, Any]) -> dict[str, Any]:
         out["improv_active_mission"] = pick
         out["improv_mission_pick"] = pick
     return out
+
+
+def _mission_chord_options_from_session(session: dict[str, Any]) -> list[str]:
+    raw = session.get("improv_mission_chord_options")
+    if isinstance(raw, list) and raw:
+        return [str(c) for c in raw]
+    section_map = session.get(IMPROV_MISSION_SECTION_MAP_SESSION_KEY)
+    if isinstance(section_map, list) and section_map:
+        try:
+            from improvisation_motif import flatten_section_map
+
+            return flatten_section_map(section_map)
+        except ImportError:
+            pass
+    return []
+
+
+def _mission_section_map_from_session(session: dict[str, Any]) -> list[tuple[str, list[str]]]:
+    raw = session.get(IMPROV_MISSION_SECTION_MAP_SESSION_KEY)
+    if not isinstance(raw, list):
+        return []
+    out: list[tuple[str, list[str]]] = []
+    for item in raw:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            label = str(item[0])
+            chords_raw = item[1]
+            if isinstance(chords_raw, list):
+                out.append((label, [str(c) for c in chords_raw]))
+    return out
+
+
+def _expected_mission_chord_label(section: str, chord: str) -> str:
+    sec = str(section or "").strip()
+    ch = str(chord or "").strip()
+    if sec:
+        return f"{sec} · {ch}"
+    return ch
+
+
+def _read_mission_target_tuple(
+    session: dict[str, Any],
+    values: dict[str, Any] | None = None,
+    *,
+    prefer_canonical: bool = False,
+) -> dict[str, Any]:
+    def from_mapping(src: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ii_selected_chord_index": src.get("ii_selected_chord_index"),
+            "ii_selected_chord": src.get("ii_selected_chord"),
+            "ii_selected_section": src.get("ii_selected_section"),
+            "ii_selected_chord_label": src.get("ii_selected_chord_label"),
+        }
+
+    canonical = {
+        k: canonical_mission_config_value(session, k) for k in MISSION_TARGET_IDENTITY_KEYS
+    }
+    from_values = from_mapping(values) if values else {}
+    from_session = from_mapping(session)
+    if prefer_canonical:
+        order = (canonical, from_values, from_session)
+    else:
+        order = (from_values, canonical, from_session)
+    merged: dict[str, Any] = {}
+    for src in order:
+        for k, v in src.items():
+            if v is None or v == "":
+                continue
+            if k not in merged:
+                merged[k] = copy.deepcopy(v)
+    return merged
+
+
+def mission_target_identity_valid(
+    chord_options: list[str],
+    section_map: list[tuple[str, list[str]]],
+    *,
+    index: Any,
+    chord: Any,
+    section: Any,
+    label: Any,
+) -> bool:
+    if not chord_options:
+        return False
+    try:
+        idx = int(index)
+    except (TypeError, ValueError):
+        return False
+    if idx < 0 or idx >= len(chord_options):
+        return False
+    ch = str(chord or "").strip()
+    if str(chord_options[idx]) != ch:
+        return False
+    if section_map:
+        try:
+            from improvisation_motif import section_and_chord_at_global_index
+
+            exp_sec, exp_ch = section_and_chord_at_global_index(section_map, idx)
+        except ImportError:
+            exp_sec, exp_ch = str(section or ""), ch
+        if str(exp_ch) != ch:
+            return False
+        if str(section or "").strip() and str(section) != str(exp_sec):
+            return False
+        exp_label = _expected_mission_chord_label(exp_sec, ch)
+    else:
+        exp_label = _expected_mission_chord_label(str(section or ""), ch)
+    return str(label or "") == exp_label
+
+
+def derive_default_mission_target(
+    chord_options: list[str],
+    section_map: list[tuple[str, list[str]]],
+) -> dict[str, Any]:
+    if not chord_options:
+        return {
+            "ii_selected_chord_index": 0,
+            "ii_selected_chord": "",
+            "ii_selected_section": "",
+            "ii_selected_chord_label": "",
+        }
+    idx = 0
+    ch = str(chord_options[0])
+    sec = ""
+    if section_map:
+        try:
+            from improvisation_motif import section_and_chord_at_global_index
+
+            sec, ch = section_and_chord_at_global_index(section_map, idx)
+            ch = str(ch)
+        except ImportError:
+            pass
+    return {
+        "ii_selected_chord_index": idx,
+        "ii_selected_chord": ch,
+        "ii_selected_section": sec,
+        "ii_selected_chord_label": _expected_mission_chord_label(sec, ch),
+    }
+
+
+def reconcile_mission_target_identity(
+    session: dict[str, Any],
+    values: dict[str, Any],
+    *,
+    save_reason: str,
+    function: str,
+    prefer_canonical_target: bool = False,
+) -> dict[str, Any]:
+    """Return an internally consistent target tuple + chord_options for commit."""
+    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    section_map = _mission_section_map_from_session(session)
+    if section_map and not chord_options:
+        try:
+            from improvisation_motif import flatten_section_map
+
+            chord_options = flatten_section_map(section_map)
+        except ImportError:
+            pass
+    if chord_options:
+        values["improv_mission_chord_options"] = list(chord_options)
+
+    candidates: list[dict[str, Any]] = []
+    if prefer_canonical_target:
+        candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
+    else:
+        candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=False))
+        candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
+
+    seen: set[tuple[Any, ...]] = set()
+    for cand in candidates:
+        key = tuple(cand.get(k) for k in MISSION_TARGET_IDENTITY_KEYS)
+        if key in seen:
+            continue
+        seen.add(key)
+        if mission_target_identity_valid(
+            chord_options,
+            section_map,
+            index=cand.get("ii_selected_chord_index"),
+            chord=cand.get("ii_selected_chord"),
+            section=cand.get("ii_selected_section"),
+            label=cand.get("ii_selected_chord_label"),
+        ):
+            values.update({k: copy.deepcopy(cand[k]) for k in MISSION_TARGET_IDENTITY_KEYS})
+            return values
+
+    default = derive_default_mission_target(chord_options, section_map)
+    values.update(default)
+    return values
+
+
+def record_mission_target_identity_mismatch(
+    session: dict[str, Any],
+    *,
+    mission: str,
+    chord_options: list[str],
+    section: Any,
+    index: Any,
+    chord: Any,
+    label: Any,
+    function: str,
+    save_reason: str,
+) -> None:
+    entry = {
+        "mission": mission,
+        "chord_options": list(chord_options),
+        "selected_section": section,
+        "selected_index": index,
+        "selected_chord": chord,
+        "selected_label": label,
+        "function": function,
+        "save_reason": save_reason,
+        "run_seq": _run_seq(session),
+    }
+    _diag(session)["last_target_identity_mismatch"] = copy.deepcopy(entry)
+    record_mission_config_violation(
+        session,
+        VIOLATION_TARGET_IDENTITY_MISMATCH,
+        detail=(
+            f"mission={mission}|index={index}|chord={chord}|label={label}|"
+            f"section={section}|function={function}|reason={save_reason}|run_seq={_run_seq(session)}"
+        ),
+    )
+
+
+def ensure_atomic_mission_target_before_save(
+    session: dict[str, Any],
+    values: dict[str, Any],
+    *,
+    save_reason: str,
+    function: str,
+    prefer_canonical_target: bool = False,
+) -> bool:
+    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    if not chord_options:
+        if save_reason == SAVE_REASON_MISSION_TARGET:
+            idx = values.get("ii_selected_chord_index")
+            ch = values.get("ii_selected_chord")
+            if idx is not None and ch not in (None, ""):
+                return True
+        for k in MISSION_TARGET_IDENTITY_KEYS:
+            v = canonical_mission_config_value(session, k)
+            if k == "ii_selected_chord_index" and v is not None:
+                values[k] = copy.deepcopy(v)
+            elif v is not None and v != "" and v != []:
+                values[k] = copy.deepcopy(v)
+        return True
+    reconcile_mission_target_identity(
+        session,
+        values,
+        save_reason=save_reason,
+        function=function,
+        prefer_canonical_target=prefer_canonical_target,
+    )
+    chord_options = list(values.get("improv_mission_chord_options") or [])
+    section_map = _mission_section_map_from_session(session)
+    mission = str(
+        values.get("improv_active_mission")
+        or values.get("improv_mission_pick")
+        or session.get("improv_mission_pick")
+        or ""
+    ).strip()
+    if mission_target_identity_valid(
+        chord_options,
+        section_map,
+        index=values.get("ii_selected_chord_index"),
+        chord=values.get("ii_selected_chord"),
+        section=values.get("ii_selected_section"),
+        label=values.get("ii_selected_chord_label"),
+    ):
+        return True
+    record_mission_target_identity_mismatch(
+        session,
+        mission=mission,
+        chord_options=chord_options,
+        section=values.get("ii_selected_section"),
+        index=values.get("ii_selected_chord_index"),
+        chord=values.get("ii_selected_chord"),
+        label=values.get("ii_selected_chord_label"),
+        function=function,
+        save_reason=save_reason,
+    )
+    return False
 
 
 def canonical_mission_config_value(session: dict[str, Any], key: str) -> Any:
@@ -401,6 +692,7 @@ def _handle_user_mission_config_change(
     field: str,
     values: dict[str, Any] | None = None,
     interaction: str = "",
+    prefer_canonical_target: bool = False,
 ) -> None:
     begin_mission_config_save_tx(session, save_reason=save_reason, field=field)
     session[CREATIVE_MISSION_USER_EVENT_KEY] = {
@@ -420,10 +712,23 @@ def _handle_user_mission_config_change(
             mark_mission_workspace_dirty(session)
         except ImportError:
             pass
+    payload = copy.deepcopy(values) if values is not None else _config_slice(session)
+    if not ensure_atomic_mission_target_before_save(
+        session,
+        payload,
+        save_reason=save_reason,
+        function="_handle_user_mission_config_change",
+        prefer_canonical_target=prefer_canonical_target,
+    ):
+        d = _diag(session)
+        d["cloud_save_requested"] = False
+        d["cloud_save_ok"] = False
+        session.pop(CREATIVE_MISSION_SAVE_ACTIVE_KEY, None)
+        return
     commit_mission_config_to_canonical(
         session,
         reason=save_reason,
-        values=values,
+        values=payload,
         project_widget_keys=False,
         interaction=interaction,
     )
@@ -436,12 +741,20 @@ def handle_user_mission_pick_change(session: dict[str, Any]) -> None:
     if pick:
         values["improv_active_mission"] = pick
         values["improv_mission_pick"] = pick
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_NEW_NONCE_KEY
+    except ImportError:
+        MISSION_EXAMPLE_KEY = "improv_mission_example"
+        MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
+    session.pop(MISSION_EXAMPLE_KEY, None)
+    session.pop(MISSION_NEW_NONCE_KEY, None)
     _handle_user_mission_config_change(
         session,
         save_reason=SAVE_REASON_MISSION_PICK,
         field="improv_mission_pick",
         values=values,
         interaction="mission_pick_on_change",
+        prefer_canonical_target=True,
     )
 
 
@@ -551,6 +864,7 @@ def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict
     d.setdefault("startup_write_attempted", bool(session.get(CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY)))
     d.setdefault("violations", d.get("violations") or [])
     d.setdefault("last_chord_click_trace", d.get("last_chord_click_trace"))
+    d.setdefault("last_target_identity_mismatch", d.get("last_target_identity_mismatch"))
     return d
 
 
@@ -567,8 +881,12 @@ __all__ = [
     "SAVE_REASON_MISSION_TARGET",
     "VIOLATION_PASSIVE_MISSION_STARTUP_WRITE",
     "VIOLATION_POST_INSTANTIATION_WIDGET_WRITE",
+    "VIOLATION_TARGET_IDENTITY_MISMATCH",
     "collect_creative_mission_config_diagnostics",
     "commit_mission_config_to_canonical",
+    "ensure_atomic_mission_target_before_save",
+    "reconcile_mission_target_identity",
+    "IMPROV_MISSION_SECTION_MAP_SESSION_KEY",
     "handle_user_mission_metrics_change",
     "handle_user_mission_pick_change",
     "handle_user_mission_target_change",

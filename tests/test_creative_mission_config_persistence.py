@@ -10,16 +10,19 @@ from creative_mission_config_persistence import (
     CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY,
     CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY,
     CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY,
+    IMPROV_MISSION_SECTION_MAP_SESSION_KEY,
     SAVE_REASON_MISSION_PICK,
     SAVE_REASON_MISSION_TARGET,
     VIOLATION_PASSIVE_MISSION_STARTUP_WRITE,
     VIOLATION_POST_INSTANTIATION_WIDGET_WRITE,
+    VIOLATION_TARGET_IDENTITY_MISMATCH,
     canonical_mission_config_value,
     commit_mission_config_to_canonical,
     handle_user_mission_metrics_change,
     handle_user_mission_pick_change,
     handle_user_mission_target_selection,
     mark_mission_widgets_instantiated,
+    mission_target_identity_valid,
     note_passive_mission_config_persist,
     project_mission_config_from_canonical_before_widgets,
     should_gather_mission_config_from_session,
@@ -75,9 +78,21 @@ class TestMissionConfigGather(unittest.TestCase):
 
 class TestMissionConfigUserSave(unittest.TestCase):
     def test_pick_change_requests_cloud_save(self) -> None:
+        chords = ["Cm", "Fm", "Bb", "Ab"]
+        section_map = [("Melody A", chords)]
         ss: dict = {
             "_script_run_seq": 3,
-            CREATIVE_WORKSPACE_STATE_KEY: default_creative_workspace_state(),
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_mission_pick": "ii–V–I drill",
+                "improv_mission_chord_options": chords,
+                "ii_selected_chord_index": 0,
+                "ii_selected_chord": "Cm",
+                "ii_selected_section": "Melody A",
+                "ii_selected_chord_label": "Melody A · Cm",
+            },
+            IMPROV_MISSION_SECTION_MAP_SESSION_KEY: section_map,
+            "improv_mission_chord_options": chords,
             "improv_mission_pick": "ii–V–I drill",
         }
         with patch(
@@ -88,6 +103,62 @@ class TestMissionConfigUserSave(unittest.TestCase):
             save.assert_called_once()
             self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_PICK)
         self.assertEqual(canonical_mission_config_value(ss, "improv_mission_pick"), "ii–V–I drill")
+
+    def test_mission_change_preserves_valid_canonical_target_over_stale_session_index(self) -> None:
+        chords = ["Cm", "Fm", "Bb", "Ab"]
+        section_map = [("Melody A", chords)]
+        ss: dict = {
+            "_script_run_seq": 20,
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_active_mission": "Use only chord tones",
+                "improv_mission_pick": "Use only chord tones",
+                "improv_mission_chord_options": chords,
+                "ii_selected_chord_index": 3,
+                "ii_selected_chord": "Ab",
+                "ii_selected_section": "Melody A",
+                "ii_selected_chord_label": "Melody A · Ab",
+            },
+            IMPROV_MISSION_SECTION_MAP_SESSION_KEY: section_map,
+            "improv_mission_chord_options": chords,
+            "improv_mission_pick": "Create tension on dominant chords",
+            "ii_selected_chord_index": 0,
+            "ii_selected_chord": "Ab",
+            "ii_selected_section": "Melody A",
+            "ii_selected_chord_label": "Melody A · Ab",
+            "improv_intelligence_tab": "Missions",
+        }
+        self.assertTrue(
+            mission_target_identity_valid(
+                chords,
+                section_map,
+                index=3,
+                chord="Ab",
+                section="Melody A",
+                label="Melody A · Ab",
+            )
+        )
+        with patch(
+            "creative_mission_config_persistence.request_mission_config_cloud_save",
+            return_value=True,
+        ) as save:
+            handle_user_mission_pick_change(ss)
+            self.assertEqual(save.call_count, 1)
+            self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_PICK)
+        idx = canonical_mission_config_value(ss, "ii_selected_chord_index")
+        ch = canonical_mission_config_value(ss, "ii_selected_chord")
+        label = canonical_mission_config_value(ss, "ii_selected_chord_label")
+        self.assertEqual(idx, 3)
+        self.assertEqual(ch, "Ab")
+        self.assertEqual(label, "Melody A · Ab")
+        self.assertEqual(chords[int(idx)], ch)
+        codes = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertNotIn(VIOLATION_TARGET_IDENTITY_MISMATCH, codes)
+        ss["_music_build_save_reason"] = SAVE_REASON_MISSION_PICK
+        gathered = gather_creative_workspace_from_session(ss)
+        self.assertEqual(gathered.get("ii_selected_chord_index"), 3)
+        self.assertEqual(gathered.get("ii_selected_chord"), "Ab")
 
 
 class TestMissionConfigPassiveWrite(unittest.TestCase):

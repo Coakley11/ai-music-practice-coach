@@ -1286,6 +1286,12 @@ def _tab_missions(
     mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
+    try:
+        from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
+
+        session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map
+    except ImportError:
+        session_state["_improv_mission_section_map"] = section_map
     chords = flatten_section_map(section_map)
     if not chords:
         st.warning("Select a song with chords first (Song Selection or Custom Progression).")
