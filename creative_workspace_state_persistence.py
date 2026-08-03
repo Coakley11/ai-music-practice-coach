@@ -100,11 +100,26 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
     except ImportError:
         pass
 
+    persist_reason = str(
+        session.get("_music_build_save_reason")
+        or session.get("_suite_pending_save_reason")
+        or session.get(CREATIVE_WORKSPACE_LAST_SAVE_REASON_KEY)
+        or "autosave"
+    )
     for key in CREATIVE_WORKSPACE_KEYS:
         if key in session:
             val = session[key]
             if key in preserved_selectors and _selector_value_empty(val):
                 continue
+            try:
+                from creative_tab_tool_persistence import should_gather_selector_from_session
+
+                if not should_gather_selector_from_session(
+                    session, key, val, persist_reason=persist_reason
+                ):
+                    continue
+            except ImportError:
+                pass
             base[key] = copy.deepcopy(val)
     for key, val in preserved_selectors.items():
         if _selector_value_empty(base.get(key)):
@@ -169,7 +184,7 @@ def write_canonical_creative_workspace(
                     function="write_canonical_creative_workspace",
                     reason=reason,
                     authoritative_restore=bool(session.get("_cloud_workspace_restored_this_run")),
-                    default_initialization=reason in ("migration_local", "autosave", ""),
+                    default_initialization=reason == "migration_local",
                 )
     except ImportError:
         pass
@@ -298,6 +313,22 @@ def apply_creative_workspace_to_session(
     write_canonical_creative_workspace(session, canonical, reason=source)
     session[CREATIVE_WORKSPACE_RESTORED_KEY] = True
     session.pop(CREATIVE_WORKSPACE_LAST_SKIP_KEY, None)
+    try:
+        from creative_tab_tool_persistence import (
+            project_creative_selectors_from_canonical,
+            snapshot_hydrated_creative_selectors,
+        )
+
+        project_creative_selectors_from_canonical(session, overwrite=True)
+        snapshot_hydrated_creative_selectors(session, source=source)
+    except ImportError:
+        pass
+    try:
+        from creative_selector_hydration_trace import mark_selector_hydration_complete
+
+        mark_selector_hydration_complete(session, source=source)
+    except ImportError:
+        pass
     try:
         from creative_workspace_persistence import hydrate_creative_workspace_after_restore
 
@@ -463,6 +494,12 @@ def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
         migrate_invalid_creative_selectors(session, source="prepare")
         project_creative_selectors_from_canonical(session, overwrite=True)
         snapshot_hydrated_creative_selectors(session, source="prepare")
+        try:
+            from creative_tab_tool_persistence import establish_selector_defaults_when_cloud_empty
+
+            establish_selector_defaults_when_cloud_empty(session)
+        except ImportError:
+            pass
         try:
             from creative_selector_hydration_trace import (
                 SELECTOR_CANONICAL_FIELDS,

@@ -22,6 +22,10 @@ CREATIVE_SELECTOR_PENDING_TX_KEY = "_creative_selector_pending_transaction"
 
 SAVE_REASON_TAB = "creative_tab_change"
 SAVE_REASON_TOOL = "creative_tool_change"
+STARTUP_DEFAULT_PROJECTION_REASON = "startup_default_projection"
+
+CREATIVE_SELECTOR_PERSISTENCE_REQUESTED_KEY = "_creative_selector_persistence_requested"
+_CREATIVE_SELECTOR_LOCAL_DEFAULT_PREFIX = "_creative_selector_local_default_"
 
 VIOLATION_WIDGET_OVERWROTE = "CREATIVE_TAB_WIDGET_OVERWROTE_HYDRATION"
 VIOLATION_PASSIVE_STARTUP_WRITE = "CREATIVE_TAB_PASSIVE_STARTUP_WRITE"
@@ -72,6 +76,139 @@ def _diag(session: dict[str, Any]) -> dict[str, Any]:
         d = {}
         session[CREATIVE_TAB_TOOL_DIAG_KEY] = d
     return d
+
+
+def selector_hydration_complete(session: dict[str, Any]) -> bool:
+    try:
+        from creative_selector_hydration_trace import CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY
+
+        return bool(session.get(CREATIVE_SELECTOR_HYDRATION_COMPLETE_KEY))
+    except ImportError:
+        return bool(session.get("_creative_selector_hydration_complete"))
+
+
+def _local_default_flag(canon_key: str) -> str:
+    return f"{_CREATIVE_SELECTOR_LOCAL_DEFAULT_PREFIX}{canon_key}"
+
+
+def should_gather_selector_from_session(
+    session: dict[str, Any],
+    key: str,
+    session_val: Any,
+    *,
+    persist_reason: str = "autosave",
+) -> bool:
+    """Block autosave from promoting widget-only defaults into canonical CWS."""
+    spec = _spec_for_field(key)
+    if not spec:
+        return True
+    canon_key = str(spec["canonical"])
+    touch = spec.get("user_touch_flag")
+    if touch and session.get(touch):
+        return True
+    if persist_reason in (SAVE_REASON_TAB, SAVE_REASON_TOOL):
+        return True
+    if session.get(CREATIVE_TAB_USER_EVENT_KEY):
+        return True
+    try:
+        from creative_workspace_state_persistence import CREATIVE_WORKSPACE_RESTORED_KEY
+
+        if session.get(CREATIVE_WORKSPACE_RESTORED_KEY) and not session.get("_creative_workspace_restored_applied"):
+            return False
+    except ImportError:
+        pass
+    if not selector_hydration_complete(session):
+        return False
+    canon = canonical_creative_selector_value(session, canon_key)
+    canon_s = str(canon or "").strip()
+    val_s = str(session_val or "").strip()
+    if session.get(_local_default_flag(canon_key)):
+        return False
+    if canon_s and val_s != canon_s:
+        return False
+    if canon_s:
+        return val_s == canon_s
+    if persist_reason in ("autosave", "force_autosave", "", STARTUP_DEFAULT_PROJECTION_REASON):
+        return False
+    return True
+
+
+def project_startup_default_selector(session: dict[str, Any], canon_key: str, value: str) -> str:
+    """Widget-only default before any cloud persist (empty authoritative cloud row)."""
+    spec = _spec_for_field(canon_key)
+    if not spec:
+        return str(value or "").strip()
+    if not selector_hydration_complete(session):
+        return ""
+    if canonical_creative_selector_value(session, canon_key):
+        return canonical_creative_selector_value(session, canon_key)
+    normalized = _normalize_for_spec(spec, value)
+    if not normalized:
+        return ""
+    widget = str(spec["widget"])
+    session[widget] = normalized
+    for mirror in spec.get("mirrors", ()):
+        session[str(mirror)] = normalized
+    session[_local_default_flag(canon_key)] = True
+    d = _diag(session)
+    projected = d.setdefault("local_default_projected", {})
+    if isinstance(projected, dict):
+        projected[canon_key] = normalized
+    d["projection_source"] = STARTUP_DEFAULT_PROJECTION_REASON
+    return normalized
+
+
+def establish_canonical_selector_without_cloud_dirty(
+    session: dict[str, Any],
+    canon_key: str,
+    value: str,
+) -> str:
+    """Runtime canonical for empty cloud — never triggers cloud save by itself."""
+    spec = _spec_for_field(canon_key)
+    if not spec:
+        return str(value or "").strip()
+    normalized = _normalize_for_spec(spec, value)
+    if not normalized:
+        return ""
+    blob = _ensure_canonical_blob(session)
+    if str(blob.get(canon_key) or "").strip():
+        return str(blob.get(canon_key) or "").strip()
+    blob[canon_key] = normalized
+    for mirror in spec.get("mirrors", ()):
+        blob[str(mirror)] = normalized
+    write_canonical_creative_workspace(session, blob, reason=STARTUP_DEFAULT_PROJECTION_REASON)
+    d = _diag(session)
+    d["canonical_default_initialized_without_dirtying"] = True
+    d.setdefault("local_default_projected", {})[canon_key] = normalized
+    return normalized
+
+
+def establish_selector_defaults_when_cloud_empty(session: dict[str, Any]) -> None:
+    """After hydration: local UI defaults when authoritative cloud had no selector fields."""
+    if not selector_hydration_complete(session):
+        return
+    try:
+        from creative_selector_hydration_trace import payload_has_selector_data
+
+        payload = session.get("_suite_last_cloud_fetch_payload")
+        if isinstance(payload, dict) and payload_has_selector_data(payload):
+            return
+    except ImportError:
+        pass
+    try:
+        from studio_page_state import IMPROV_ENTRY_MODES, IMPROV_TAB_NAMES
+    except ImportError:
+        IMPROV_TAB_NAMES = ("Entry & Jam",)
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation",)
+    defaults = {
+        "improv_intelligence_tab": IMPROV_TAB_NAMES[0],
+        "improv_entry_mode": IMPROV_ENTRY_MODES[0],
+        "creative_lab_analysis_mode": "Deep Harmonic Analyzer",
+    }
+    for key, val in defaults.items():
+        if canonical_creative_selector_value(session, key):
+            continue
+        project_startup_default_selector(session, key, val)
 
 
 def record_creative_tab_violation(session: dict[str, Any], code: str, *, detail: str = "") -> None:
@@ -328,6 +465,8 @@ def _spec_for_field(field: str) -> dict[str, Any] | None:
     for spec in _SELECTOR_SPECS:
         if spec["canonical"] == field or spec["widget"] == field:
             return spec
+        if field in spec.get("mirrors", ()):
+            return spec
     return None
 
 
@@ -563,7 +702,7 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
             pass
 
     d = _diag(session)
-    d["startup_write_attempted"] = bool(session.get("_creative_tab_startup_write_flag"))
+    d["startup_write_attempted"] = bool(session.get(CREATIVE_SELECTOR_PERSISTENCE_REQUESTED_KEY))
     d.update(
         {
             "save_reason": save_reason,
@@ -572,9 +711,12 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
             "authoritative_refetched_values": tx_record.get("authoritative_refetched_values"),
             "confirmation_status": tx_record.get("confirmation_status"),
             "confirmation_stage": tx_record.get("confirmation_stage"),
-            "confirmation_checks": tx_record.get("confirmation_checks"),
+            "confirmation_checks":         tx_record.get("confirmation_checks"),
             "selector_save_durability": tx_record.get("durability_trace"),
         }
+    )
+    d["cloud_upsert_attempted"] = bool(
+        ((tx_record.get("durability_trace") or {}).get("D_supabase_result") or {}).get("request_attempted")
     )
 
     if tx_record.get("confirmation_status") != "confirmed":
@@ -591,6 +733,9 @@ def record_creative_tab_save_outcome(session: dict[str, Any], *, save_reason: st
 
 
 def request_creative_selector_cloud_save(session: dict[str, Any], *, save_reason: str) -> bool:
+    d = _diag(session)
+    d["cloud_save_requested"] = True
+    session[CREATIVE_SELECTOR_PERSISTENCE_REQUESTED_KEY] = True
     try:
         import streamlit as st
     except ImportError:
@@ -626,6 +771,7 @@ def handle_user_creative_selector_change(session: dict[str, Any], field: str) ->
     touch_flag = spec.get("user_touch_flag")
     if touch_flag:
         session[touch_flag] = True
+    session.pop(_local_default_flag(str(spec["canonical"])), None)
     old_value = canonical_creative_selector_value(session, str(spec["canonical"]))
     run_seq = _current_run_seq(session)
     tx_id = f"sel-{run_seq}-{uuid.uuid4().hex[:8]}"
@@ -683,7 +829,7 @@ def handle_user_creative_selector_change(session: dict[str, Any], field: str) ->
 
 def note_passive_creative_tab_persist(session: dict[str, Any], *, reason: str) -> None:
     """Detect tab/tool fields entering a save envelope without a user selector event."""
-    if reason in (SAVE_REASON_TAB, SAVE_REASON_TOOL):
+    if reason in (SAVE_REASON_TAB, SAVE_REASON_TOOL, STARTUP_DEFAULT_PROJECTION_REASON):
         return
     if reason == "page_change":
         return
@@ -749,7 +895,7 @@ def collect_creative_tab_tool_diagnostics(session: dict[str, Any]) -> dict[str, 
         },
     )
     d.setdefault("widget_values", {s["widget"]: session.get(s["widget"]) for s in _SELECTOR_SPECS})
-    d.setdefault("startup_write_attempted", bool(session.get("_creative_tab_startup_write_flag")))
+    d.setdefault("startup_write_attempted", bool(session.get(CREATIVE_SELECTOR_PERSISTENCE_REQUESTED_KEY)))
     if hydration_trace:
         d["selector_hydration_trace"] = hydration_trace
     try:

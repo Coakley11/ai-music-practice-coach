@@ -914,6 +914,23 @@ def on_improv_jam_setting_change() -> None:
 
 def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str:
     """Restore Creative analysis mode before the selectbox renders."""
+    try:
+        from creative_tab_tool_persistence import (
+            canonical_creative_selector_value,
+            project_startup_default_selector,
+            selector_hydration_complete,
+        )
+
+        canon = canonical_creative_selector_value(session_state, "creative_lab_analysis_mode")
+        if canon:
+            if str(session_state.get("creative_lab_analysis_mode") or "").strip() != canon:
+                session_state["creative_lab_analysis_mode"] = canon
+            session_state["creative_lab_last_mode"] = canon
+            return canon
+        if not selector_hydration_complete(session_state):
+            return str(session_state.get("creative_lab_analysis_mode") or "").strip()
+    except ImportError:
+        pass
     last = str(session_state.get("creative_lab_last_mode") or "").strip()
     current = str(session_state.get("creative_lab_analysis_mode") or "").strip()
     if last and last != current:
@@ -925,6 +942,17 @@ def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str
     if last:
         session_state["creative_lab_analysis_mode"] = last
         return last
+    try:
+        from creative_tab_tool_persistence import project_startup_default_selector, selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            projected = project_startup_default_selector(
+                session_state, "creative_lab_analysis_mode", "Deep Harmonic Analyzer"
+            )
+            if projected:
+                return projected
+    except ImportError:
+        pass
     default = "Deep Harmonic Analyzer"
     session_state["creative_lab_analysis_mode"] = default
     session_state["creative_lab_last_mode"] = default

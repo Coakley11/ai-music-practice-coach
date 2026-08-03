@@ -327,11 +327,23 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
     try:
-        from creative_tab_tool_persistence import hydrate_improv_intelligence_tab_from_canonical
+        from creative_tab_tool_persistence import (
+            canonical_creative_selector_value,
+            hydrate_improv_intelligence_tab_from_canonical,
+            project_startup_default_selector,
+            selector_hydration_complete,
+        )
 
         canon_tab = hydrate_improv_intelligence_tab_from_canonical(session_state)
         if canon_tab:
             return canon_tab
+        canon = canonical_creative_selector_value(session_state, "improv_intelligence_tab")
+        if canon:
+            session_state["improv_intelligence_tab"] = canon
+            session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = canon
+            return canon
+        if not selector_hydration_complete(session_state):
+            return str(session_state.get("improv_intelligence_tab") or "").strip()
     except ImportError:
         pass
     if session_state.get("_improv_tab_user_touched"):
@@ -380,6 +392,16 @@ def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     if last and last in IMPROV_TAB_NAMES:
         session_state["improv_intelligence_tab"] = last
         return last
+    try:
+        from creative_tab_tool_persistence import project_startup_default_selector, selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            projected = project_startup_default_selector(session_state, "improv_intelligence_tab", IMPROV_TAB_NAMES[0])
+            if projected:
+                session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = projected
+                return projected
+    except ImportError:
+        pass
     default = IMPROV_TAB_NAMES[0]
     session_state["improv_intelligence_tab"] = default
     session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = default
@@ -460,6 +482,22 @@ def ensure_creative_widgets_from_backing_context(
 
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
+    try:
+        from creative_tab_tool_persistence import (
+            canonical_creative_selector_value,
+            project_startup_default_selector,
+            selector_hydration_complete,
+        )
+
+        canon = canonical_creative_selector_value(session_state, "improv_entry_mode")
+        if canon:
+            if str(session_state.get("improv_entry_mode") or "").strip() != canon:
+                session_state["improv_entry_mode"] = canon
+            return canon
+        if not selector_hydration_complete(session_state):
+            return str(session_state.get("improv_entry_mode") or "").strip()
+    except ImportError:
+        pass
     if session_state.get("_improv_tab_user_touched"):
         current = str(session_state.get("improv_entry_mode") or "").strip()
         if current in IMPROV_ENTRY_MODES:
@@ -528,6 +566,17 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     current = str(session_state.get("improv_entry_mode") or "").strip()
     if current in IMPROV_ENTRY_MODES:
         return current
+    try:
+        from creative_tab_tool_persistence import project_startup_default_selector, selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            projected = project_startup_default_selector(
+                session_state, "improv_entry_mode", IMPROV_ENTRY_MODES[0]
+            )
+            if projected:
+                return projected
+    except ImportError:
+        pass
     default = IMPROV_ENTRY_MODES[0]
     session_state["improv_entry_mode"] = default
     return default

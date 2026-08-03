@@ -567,7 +567,16 @@ def apply_creative_session_to_session(
     saved_mode = str(
         session.get("creative_lab_analysis_mode") or session.get("creative_lab_last_mode") or ""
     ).strip()
-    if saved_mode:
+    try:
+        from creative_tab_tool_persistence import canonical_creative_selector_value
+
+        canon_mode = canonical_creative_selector_value(session, "creative_lab_analysis_mode")
+    except ImportError:
+        canon_mode = ""
+    if canon_mode:
+        _set("creative_lab_analysis_mode", canon_mode)
+        _set("creative_lab_last_mode", canon_mode)
+    elif saved_mode:
         _set("creative_lab_analysis_mode", saved_mode)
         _set("creative_lab_last_mode", saved_mode)
     elif sess.tool_type == "song_based_improvisation":
