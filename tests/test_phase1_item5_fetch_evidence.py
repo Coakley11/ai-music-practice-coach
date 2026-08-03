@@ -7,8 +7,9 @@ from typing import Any
 
 from mission_backing_handoff_persistence import MISSION_BACKING_REFRESH_HYDRATION_TRACE_KEY
 from music_page_cloud_durability_trace import PAGE_CLOUD_DURABILITY_TRACE_KEY
-from phase1_item5_fetch_evidence import infer_item5_session_start_kind, resolve_item5_fetch_evidence
+from phase1_item5_fetch_evidence import resolve_item5_fetch_evidence
 from phase1_item5_refresh_certification import collect_phase1_item5_refresh_certification
+from phase1_item5_session_lifecycle import ITEM5_LIFECYCLE_DIAG_KEY
 
 
 def _base_session(**extra: Any) -> dict[str, Any]:
@@ -136,10 +137,23 @@ class TestItem5FetchEvidencePrecedence(unittest.TestCase):
         ev = resolve_item5_fetch_evidence(ss)
         self.assertEqual(ev["selected_certification_fetch_source"], "network")
 
-    def test_hard_refresh_classification_when_synced_before_restore(self) -> None:
+    def test_hard_refresh_requires_lifecycle_browser_marker_not_hydration_flags(self) -> None:
         ss = _base_session(_suite_already_synced_before_restore=True)
-        kind = infer_item5_session_start_kind(ss, certification_network=True)
-        self.assertEqual(kind, "hard_refresh")
+        from phase1_item5_session_lifecycle import classify_item5_session_start
+
+        self.assertEqual(
+            classify_item5_session_start(ss, certification_network=True)["session_start_kind"],
+            "unknown",
+        )
+        ss[ITEM5_LIFECYCLE_DIAG_KEY] = {
+            "prior_browser_session_marker_present": True,
+            "prior_streamlit_session_marker_present": False,
+            "current_marker_created_stage": None,
+        }
+        self.assertEqual(
+            classify_item5_session_start(ss, certification_network=True)["session_start_kind"],
+            "hard_refresh",
+        )
 
 
 if __name__ == "__main__":

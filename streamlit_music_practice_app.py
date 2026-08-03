@@ -57,6 +57,13 @@ try:
 
     init_developer_mode_from_query(st)
     init_simple_music_nav_from_query(st)
+    try:
+        from phase1_item5_session_lifecycle import observe_item5_session_lifecycle_start
+
+        if st.session_state.get("developer_mode"):
+            observe_item5_session_lifecycle_start(st, st.session_state)
+    except Exception:
+        pass
     from app_ui import reset_quick_nav_render_diagnostics
 
     reset_quick_nav_render_diagnostics(st.session_state)

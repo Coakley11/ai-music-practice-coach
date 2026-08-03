@@ -6,7 +6,8 @@ import copy
 import hashlib
 from typing import Any
 
-from phase1_item5_fetch_evidence import infer_item5_session_start_kind, resolve_item5_fetch_evidence
+from phase1_item5_fetch_evidence import resolve_item5_fetch_evidence
+from phase1_item5_session_lifecycle import classify_item5_session_start
 
 ITEM5_PANEL_HEADING = "Phase 1 Item 5 — Refresh / cold reboot certification"
 
@@ -15,6 +16,10 @@ ITEM5_PANEL_KEYS: tuple[str, ...] = (
     "hydration_run_id",
     "startup_run_seq",
     "session_start_kind",
+    "session_lifecycle",
+    "classification_evidence",
+    "classification_failures",
+    "classification_confidence",
     "fetch_source",
     "certification_fetch_source",
     "fetch_evidence",
@@ -335,16 +340,23 @@ def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[
         failures.append("item4_passive_audit_not_allowed")
 
     certification_passed = len(failures) == 0 and fetch_source == "network"
-    session_start_kind = infer_item5_session_start_kind(
+    classification = classify_item5_session_start(
         session,
         certification_network=(fetch_source == "network"),
+        fetch_evidence=fetch_evidence,
     )
+    session_start_kind = str(classification.get("session_start_kind") or "unknown")
+    session_lifecycle = classification.get("session_lifecycle")
 
     return {
         "certification_run_id": cert_id,
         "hydration_run_id": hydration_run_id,
         "startup_run_seq": run_seq,
         "session_start_kind": session_start_kind,
+        "session_lifecycle": session_lifecycle,
+        "classification_evidence": classification.get("classification_evidence"),
+        "classification_failures": classification.get("classification_failures"),
+        "classification_confidence": classification.get("classification_confidence"),
         "fetch_source": fetch_source,
         "certification_fetch_source": certification_fetch_source,
         "fetch_evidence": fetch_evidence,

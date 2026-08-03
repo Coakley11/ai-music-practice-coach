@@ -137,20 +137,15 @@ def resolve_item5_fetch_evidence(session: dict[str, Any]) -> dict[str, Any]:
 
 
 def infer_item5_session_start_kind(session: dict[str, Any], *, certification_network: bool) -> str:
-    explicit = str(session.get("_phase1_item5_session_start_kind") or "").strip()
-    if explicit in ("hard_refresh", "cold_reboot"):
-        return explicit
-    apply_reason = str(session.get("_suite_persist_apply_reason") or "")
-    if certification_network:
-        if "cold_start_hydrate" in apply_reason or "first_sync" in apply_reason:
-            return "cold_reboot"
-        if session.get("_suite_already_synced_before_restore"):
-            return "hard_refresh"
-        if session.get("_music_workspace_blob_hydrated") and not session.get("_suite_first_sync"):
-            return "hard_refresh"
-    if "cold_start_hydrate" in apply_reason:
-        return "cold_reboot"
-    return "unknown"
+    """Deprecated wrapper — use classify_item5_session_start."""
+    from phase1_item5_session_lifecycle import classify_item5_session_start
+
+    return str(
+        classify_item5_session_start(session, certification_network=certification_network).get(
+            "session_start_kind"
+        )
+        or "unknown"
+    )
 
 
 __all__ = [
