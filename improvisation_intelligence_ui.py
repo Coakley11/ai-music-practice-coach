@@ -963,7 +963,16 @@ def _ensure_chord_selection(
     _migrate_ii_chord_selection(session_state)
     if not chords:
         return
-    idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    try:
+        from creative_mission_config_persistence import canonical_mission_config_value
+
+        raw = canonical_mission_config_value(session_state, II_SELECTED_CHORD_INDEX)
+        if raw is not None:
+            idx = int(raw)
+        else:
+            idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    except ImportError:
+        idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
     if idx < 0 or idx >= len(chords):
         idx = 0
         session_state[II_SELECTED_CHORD_INDEX] = 0
@@ -1027,10 +1036,15 @@ def _render_section_chord_map(
 ) -> None:
     st.markdown("**Chord map by section**")
     _migrate_ii_chord_selection(session_state)
-    sel_idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    try:
+        from creative_mission_config_persistence import sync_mission_target_from_canonical
+
+        sel_idx = sync_mission_target_from_canonical(session_state)
+    except ImportError:
+        sel_idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
     src = _safe_widget_key_part(source_id)
 
-    def _chord_tile_on_click(ch: str, label: str, gidx: int) -> None:
+    def _chord_tile_on_click(ch: str, label: str, gidx: int, btn_key: str) -> None:
         import streamlit as st
 
         ss = st.session_state
@@ -1043,6 +1057,7 @@ def _render_section_chord_map(
                 section=label,
                 chord_index=gidx,
                 chord_label=f"{label} · {ch}",
+                button_key=btn_key,
             )
         except ImportError:
             pass
@@ -1071,7 +1086,7 @@ def _render_section_chord_map(
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
                         on_click=_chord_tile_on_click,
-                        args=(ch, label, gidx),
+                        args=(ch, label, gidx, button_key),
                     )
     cap = (
         "One progression per section — repeated verses/choruses and multi-bar holds "

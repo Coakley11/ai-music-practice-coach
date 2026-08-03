@@ -10,7 +10,6 @@ from creative_mission_config_persistence import (
     CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY,
     CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY,
     CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY,
-    CREATIVE_WORKSPACE_STATE_KEY,
     SAVE_REASON_MISSION_PICK,
     SAVE_REASON_MISSION_TARGET,
     VIOLATION_PASSIVE_MISSION_STARTUP_WRITE,
@@ -25,8 +24,10 @@ from creative_mission_config_persistence import (
     project_mission_config_from_canonical_before_widgets,
     should_gather_mission_config_from_session,
     snapshot_hydrated_mission_config,
+    sync_mission_target_from_canonical,
 )
 from creative_workspace_state_persistence import (
+    CREATIVE_WORKSPACE_STATE_KEY,
     default_creative_workspace_state,
     gather_creative_workspace_from_session,
     sync_creative_workspace_state_before_persist,
@@ -57,14 +58,17 @@ class TestMissionConfigGather(unittest.TestCase):
         gathered = gather_creative_workspace_from_session(ss)
         self.assertEqual(gathered.get("improv_mission_pick"), "Use only chord tones")
 
-    def test_user_save_reason_allows_gather(self) -> None:
+    def test_user_save_reason_skips_stale_session_gather(self) -> None:
         ss: dict = {
-            CREATIVE_WORKSPACE_STATE_KEY: default_creative_workspace_state(),
-            "improv_mission_pick": "Target tone drill",
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_mission_pick": "Target tone drill",
+            },
+            "improv_mission_pick": "Stale pick from widgets",
         }
-        self.assertTrue(
+        self.assertFalse(
             should_gather_mission_config_from_session(
-                ss, "improv_mission_pick", "Target tone drill", persist_reason=SAVE_REASON_MISSION_PICK
+                ss, "improv_mission_pick", "Stale pick from widgets", persist_reason=SAVE_REASON_MISSION_PICK
             )
         )
 
@@ -205,6 +209,54 @@ class TestMissionWidgetLifecycle(unittest.TestCase):
         ) as save:
             handle_user_mission_pick_change(ss)
             self.assertEqual(save.call_count, 1)
+
+    def test_second_chord_tile_click_survives_gather_and_next_render_highlight(self) -> None:
+        """Regression: stale session index must not revert canonical during target save."""
+        chords = ["C", "Dm", "Em", "F", "G", "Am"]
+        ss: dict = {
+            "_script_run_seq": 12,
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "ii_selected_chord_index": 0,
+                "ii_selected_chord": "C",
+                "ii_selected_section": "Verse",
+                "ii_selected_chord_label": "Verse · C",
+            },
+            "ii_selected_chord_index": 0,
+            "ii_selected_chord": "C",
+            "ii_selected_section": "Verse",
+            "ii_selected_chord_label": "Verse · C",
+            "improv_mission_chord_options": list(chords),
+        }
+        mark_mission_widgets_instantiated(ss)
+        with patch(
+            "creative_mission_config_persistence.request_mission_config_cloud_save",
+            return_value=True,
+        ) as save:
+            handle_user_mission_target_selection(
+                ss,
+                chord="Am",
+                section="Chorus",
+                chord_index=5,
+                chord_label="Chorus · Am",
+                button_key="ii_chord_tile_test_chorus_5_Am",
+            )
+            self.assertEqual(save.call_count, 1)
+            self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_TARGET)
+        self.assertEqual(ss.get("ii_selected_chord_index"), 0)
+        self.assertEqual(canonical_mission_config_value(ss, "ii_selected_chord_index"), 5)
+        ss["_music_build_save_reason"] = SAVE_REASON_MISSION_TARGET
+        gathered = gather_creative_workspace_from_session(ss)
+        self.assertEqual(gathered.get("ii_selected_chord_index"), 5)
+        self.assertEqual(gathered.get("ii_selected_chord"), "Am")
+        project_mission_config_from_canonical_before_widgets(ss)
+        highlight_idx = sync_mission_target_from_canonical(ss)
+        self.assertEqual(highlight_idx, 5)
+        self.assertEqual(ss.get("ii_selected_chord_index"), 5)
+        trace = (ss.get("_creative_mission_config_diag") or {}).get("last_chord_click_trace") or {}
+        self.assertTrue(trace.get("callback_invoked"))
+        self.assertEqual(trace.get("args", {}).get("chord_index"), 5)
 
 
 if __name__ == "__main__":

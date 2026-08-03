@@ -160,6 +160,8 @@ def canonical_mission_config_value(session: dict[str, Any], key: str) -> Any:
     blob = session.get(CREATIVE_WORKSPACE_STATE_KEY)
     if isinstance(blob, dict) and key in blob:
         val = blob.get(key)
+        if key == "ii_selected_chord_index" and val is not None:
+            return copy.deepcopy(val)
         if val is not None and val != "" and val != []:
             return copy.deepcopy(val)
     return copy.deepcopy(session.get(key))
@@ -200,6 +202,65 @@ def commit_mission_config_to_canonical(
         session[CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY] = True
 
 
+CREATIVE_MISSION_CHORD_CLICK_TRACE_KEY = "_creative_mission_chord_click_trace"
+
+
+def _mission_target_canonical_snapshot(session: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ii_selected_chord": canonical_mission_config_value(session, "ii_selected_chord"),
+        "ii_selected_section": canonical_mission_config_value(session, "ii_selected_section"),
+        "ii_selected_chord_index": canonical_mission_config_value(session, "ii_selected_chord_index"),
+        "ii_selected_chord_label": canonical_mission_config_value(session, "ii_selected_chord_label"),
+    }
+
+
+def record_mission_chord_click_trace(
+    session: dict[str, Any],
+    *,
+    button_key: str,
+    callback_invoked: bool,
+    args: dict[str, Any],
+    phase: str,
+    canonical_before: dict[str, Any] | None = None,
+    canonical_after: dict[str, Any] | None = None,
+    save_requested: bool | None = None,
+    overwrite_source: str = "",
+) -> None:
+    d = _diag(session)
+    entry = {
+        "phase": phase,
+        "button_key": button_key,
+        "callback_invoked": callback_invoked,
+        "args": copy.deepcopy(args),
+        "run_seq": _run_seq(session),
+        "canonical_before": copy.deepcopy(canonical_before) if canonical_before else None,
+        "canonical_after": copy.deepcopy(canonical_after) if canonical_after else None,
+        "save_requested": save_requested,
+        "overwrite_source": overwrite_source or None,
+        "session_index_after": session.get("ii_selected_chord_index"),
+    }
+    d["last_chord_click_trace"] = entry
+    journal = d.setdefault("chord_click_journal", [])
+    if isinstance(journal, list):
+        journal.append(entry)
+    session[CREATIVE_MISSION_CHORD_CLICK_TRACE_KEY] = copy.deepcopy(entry)
+
+
+def sync_mission_target_from_canonical(session: dict[str, Any]) -> int:
+    """Prefer canonical global chord index for highlight (projects when pending)."""
+    project_mission_config_from_canonical_before_widgets(session)
+    raw = canonical_mission_config_value(session, "ii_selected_chord_index")
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    try:
+        return int(session.get("ii_selected_chord_index", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def project_mission_config_from_canonical_before_widgets(session: dict[str, Any]) -> None:
     """Run before Missions widgets render — applies pending canonical → widget projection."""
     if not session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, False):
@@ -219,7 +280,10 @@ def snapshot_hydrated_mission_config(session: dict[str, Any], *, source: str = "
 def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
     for key in MISSION_CONFIG_CANONICAL_KEYS:
         val = canonical_mission_config_value(session, key)
-        if val is None or val == "" or val == []:
+        if key == "ii_selected_chord_index":
+            if val is None:
+                continue
+        elif val is None or val == "" or val == []:
             continue
         if overwrite or key not in session or session.get(key) in (None, "", []):
             session[key] = copy.deepcopy(val)
@@ -242,10 +306,11 @@ def should_gather_mission_config_from_session(
 ) -> bool:
     if key not in MISSION_CONFIG_CANONICAL_KEYS:
         return True
+    # User mission save commits to CWS first; session widget keys are still stale in on_click.
     if persist_reason in MISSION_CONFIG_SAVE_REASONS:
-        return True
+        return False
     if session.get(CREATIVE_MISSION_USER_EVENT_KEY):
-        return True
+        return False
     try:
         from creative_tab_tool_persistence import selector_hydration_complete
         from creative_workspace_state_persistence import CREATIVE_WORKSPACE_RESTORED_KEY
@@ -257,7 +322,12 @@ def should_gather_mission_config_from_session(
     except ImportError:
         pass
     canon = canonical_mission_config_value(session, key)
-    if canon is not None and canon != "" and canon != []:
+    if key == "ii_selected_chord_index":
+        if canon is not None and session_val != canon:
+            return False
+        if canon is not None:
+            return True
+    elif canon is not None and canon != "" and canon != []:
         if session_val != canon:
             return False
         return True
@@ -382,8 +452,24 @@ def handle_user_mission_target_selection(
     section: str,
     chord_index: int,
     chord_label: str,
+    button_key: str = "",
 ) -> None:
     """Canonical-only target update (chord tile on_click — no widget key writes)."""
+    canonical_before = _mission_target_canonical_snapshot(session)
+    click_args = {
+        "chord": chord,
+        "section": section,
+        "chord_index": int(chord_index),
+        "chord_label": chord_label,
+    }
+    record_mission_chord_click_trace(
+        session,
+        button_key=button_key or f"chord_tile_{chord_index}",
+        callback_invoked=True,
+        args=click_args,
+        phase="callback_start",
+        canonical_before=canonical_before,
+    )
     try:
         from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_NEW_NONCE_KEY
     except ImportError:
@@ -406,6 +492,17 @@ def handle_user_mission_target_selection(
         field="ii_selected_chord_index",
         values=values,
         interaction="chord_tile_on_click",
+    )
+    canonical_after = _mission_target_canonical_snapshot(session)
+    record_mission_chord_click_trace(
+        session,
+        button_key=button_key or f"chord_tile_{chord_index}",
+        callback_invoked=True,
+        args=click_args,
+        phase="callback_after_save",
+        canonical_before=canonical_before,
+        canonical_after=canonical_after,
+        save_requested=True,
     )
 
 
@@ -453,6 +550,7 @@ def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict
     )
     d.setdefault("startup_write_attempted", bool(session.get(CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY)))
     d.setdefault("violations", d.get("violations") or [])
+    d.setdefault("last_chord_click_trace", d.get("last_chord_click_trace"))
     return d
 
 
@@ -482,5 +580,8 @@ __all__ = [
     "project_mission_config_from_canonical_before_widgets",
     "request_mission_config_cloud_save",
     "should_gather_mission_config_from_session",
+    "sync_mission_target_from_canonical",
+    "record_mission_chord_click_trace",
+    "CREATIVE_MISSION_CHORD_CLICK_TRACE_KEY",
     "snapshot_hydrated_mission_config",
 ]

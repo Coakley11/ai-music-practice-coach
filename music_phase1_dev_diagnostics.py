@@ -126,6 +126,7 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             "startup_write_attempted",
             "violations",
             "last_user_event",
+            "last_chord_click_trace",
         ):
             val = mission_diag.get(key) if key != "last_user_event" else session.get("_creative_mission_config_last_user_event")
             if val is not None:
