@@ -51,6 +51,16 @@ def _network_hydrated_session(payload: dict[str, Any]) -> dict[str, Any]:
     ss["startup_revision_final"] = AUTHORITATIVE_REVISION
     ss["_suite_applied_workspace_revision"] = AUTHORITATIVE_REVISION
     ss["_phase1_item5_session_start_kind"] = "cold_reboot"
+    try:
+        from mission_backing_handoff_persistence import MISSION_BACKING_REFRESH_HYDRATION_TRACE_KEY
+
+        ss[MISSION_BACKING_REFRESH_HYDRATION_TRACE_KEY] = {
+            "fetch_source": "network",
+            "fetched_revision": AUTHORITATIVE_REVISION,
+            "steps": [{"function": "apply_music_disk_state:entry"}],
+        }
+    except ImportError:
+        pass
     return ss
 
 

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import uuid
 from typing import Any
+
+from phase1_item5_fetch_evidence import infer_item5_session_start_kind, resolve_item5_fetch_evidence
 
 ITEM5_PANEL_HEADING = "Phase 1 Item 5 — Refresh / cold reboot certification"
 
 ITEM5_PANEL_KEYS: tuple[str, ...] = (
     "certification_run_id",
+    "hydration_run_id",
+    "startup_run_seq",
     "session_start_kind",
     "fetch_source",
+    "certification_fetch_source",
+    "fetch_evidence",
     "loaded_revision",
     "current_cloud_revision",
     "revision_unchanged",
@@ -47,20 +52,6 @@ def _run_seq(session: dict[str, Any]) -> int:
         return int(session.get("_script_run_seq") or 0)
     except (TypeError, ValueError):
         return 0
-
-
-def _infer_session_start_kind(session: dict[str, Any]) -> str:
-    explicit = str(session.get("_phase1_item5_session_start_kind") or "").strip()
-    if explicit in ("hard_refresh", "cold_reboot"):
-        return explicit
-    apply_reason = str(session.get("_suite_persist_apply_reason") or "")
-    if "cold_start_hydrate" in apply_reason or "first_sync" in apply_reason:
-        return "cold_reboot"
-    if session.get("_suite_already_synced_before_restore") and str(
-        session.get("_music_last_cloud_fetch_source") or ""
-    ).strip() == "network":
-        return "hard_refresh"
-    return "unknown"
 
 
 def _artifact_context(blob: Any) -> dict[str, Any]:
@@ -173,12 +164,21 @@ def _envelope_presence(session: dict[str, Any]) -> dict[str, bool] | None:
 def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[str, Any]:
     """Read-only — must not mutate session, dirty flags, or routing."""
 
+    fetch_evidence = resolve_item5_fetch_evidence(session)
+    certification_fetch_source = fetch_evidence.get("selected_certification_fetch_source")
+    fetch_source = certification_fetch_source
+
     loaded = session.get("startup_revision_loaded")
     if loaded is None:
+        loaded = fetch_evidence.get("initial_startup_fetched_revision")
+    if loaded is None:
         loaded = session.get("_suite_applied_workspace_revision")
+
     current = session.get("startup_revision_final")
     if current is None:
         current = session.get("_suite_applied_workspace_revision")
+    if current is None:
+        current = fetch_evidence.get("initial_startup_fetched_revision")
     if current is None:
         payload = session.get("_suite_last_cloud_fetch_payload")
         if isinstance(payload, dict):
@@ -189,12 +189,6 @@ def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[
             except ImportError:
                 pass
 
-    fetch_source = str(
-        session.get("_music_last_cloud_fetch_source")
-        or session.get("_suite_last_cloud_fetch_source")
-        or ""
-    ).strip() or None
-
     payload_ref = session.get("_suite_last_cloud_fetch_payload")
     if isinstance(payload_ref, dict) and fetch_source == "network":
         try:
@@ -203,9 +197,16 @@ def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[
             net_rev = workspace_revision_from_blob(payload_ref)
             if loaded is None:
                 loaded = net_rev
-            current = net_rev
+            if current is None:
+                current = net_rev
         except ImportError:
             pass
+
+    if fetch_evidence.get("initial_startup_fetched_revision") is not None:
+        if loaded is None:
+            loaded = fetch_evidence["initial_startup_fetched_revision"]
+        if fetch_source == "network" and current is None:
+            current = fetch_evidence["initial_startup_fetched_revision"]
 
     pipeline = _read_startup_pipeline(session)
     v1, v2, v3, v4 = _item_violations(session)
@@ -292,21 +293,21 @@ def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[
     rev_loaded = int(loaded) if loaded is not None else None
     rev_current = int(current) if current is not None else None
     if rev_loaded is not None and fetch_source == "network":
-        confirmed = session.get("_music_last_confirmed_cloud_revision")
-        if confirmed is not None and int(confirmed) == rev_loaded:
-            rev_current = rev_loaded
-        elif session.get("startup_revision_final") == rev_loaded:
+        if session.get("startup_revision_final") == rev_loaded:
             rev_current = rev_loaded
         elif session.get("_suite_applied_workspace_revision") == rev_loaded:
+            rev_current = rev_loaded
+        elif fetch_evidence.get("initial_startup_fetched_revision") == rev_loaded:
             rev_current = rev_loaded
     revision_unchanged = (
         rev_loaded is not None and rev_current is not None and rev_loaded == rev_current
     )
 
     run_seq = _run_seq(session)
+    hydration_run_id = fetch_evidence.get("authoritative_hydration_run_id")
     cert_id = session.get("_phase1_item5_certification_run_id")
     if not cert_id:
-        seed = f"{run_seq}|{rev_current}|{fetch_source}|{uuid.uuid4().hex[:8]}"
+        seed = f"{run_seq}|{rev_loaded}|{certification_fetch_source}|{hydration_run_id}"
         cert_id = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
     failures: list[str] = []
@@ -334,11 +335,19 @@ def collect_phase1_item5_refresh_certification(session: dict[str, Any]) -> dict[
         failures.append("item4_passive_audit_not_allowed")
 
     certification_passed = len(failures) == 0 and fetch_source == "network"
+    session_start_kind = infer_item5_session_start_kind(
+        session,
+        certification_network=(fetch_source == "network"),
+    )
 
     return {
         "certification_run_id": cert_id,
-        "session_start_kind": _infer_session_start_kind(session),
+        "hydration_run_id": hydration_run_id,
+        "startup_run_seq": run_seq,
+        "session_start_kind": session_start_kind,
         "fetch_source": fetch_source,
+        "certification_fetch_source": certification_fetch_source,
+        "fetch_evidence": fetch_evidence,
         "loaded_revision": rev_loaded,
         "current_cloud_revision": rev_current,
         "revision_unchanged": revision_unchanged,
