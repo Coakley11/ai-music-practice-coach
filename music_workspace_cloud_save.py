@@ -288,6 +288,14 @@ def force_music_workspace_save(
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
     try:
+        from display_key_sidebar_persistence_trace import active_sidebar_display_key_transaction_id
+
+        sid = active_sidebar_display_key_transaction_id(ss)
+        if sid:
+            record_save_transaction(ss, transaction_id=sid)
+    except ImportError:
+        pass
+    try:
         from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
 
         if is_selector_save_reason(r):
@@ -475,6 +483,14 @@ def force_music_workspace_save(
             write_path="force_music_workspace_save",
         )
         try:
+            core = state.get("core") if isinstance(state.get("core"), dict) else {}
+            ass = state.get("active_song_state") if isinstance(state.get("active_song_state"), dict) else {}
+            payload_dk = str((ass or {}).get("display_key") or (core or {}).get("display_key") or "").strip()
+            if payload_dk:
+                record_save_transaction(ss, payload_core_display_key=payload_dk)
+        except Exception:
+            pass
+        try:
             from creative_selector_save_durability_trace import ensure_selector_field_in_upsert_payload
 
             ensure_selector_field_in_upsert_payload(ss, state)
@@ -633,6 +649,31 @@ def force_music_workspace_save(
             deferred_cloud = False
             payload_changed = True
             strict_approved = True
+    except ImportError:
+        pass
+
+    try:
+        from display_key_sidebar_persistence_trace import (
+            active_sidebar_display_key_transaction_id,
+            is_explicit_sidebar_display_key_save,
+            should_force_display_key_cloud_write,
+        )
+
+        if is_explicit_sidebar_display_key_save(r, ss) and should_force_display_key_cloud_write(
+            ss, save_reason=r, payload_fp=canonical_fp
+        ):
+            duplicate_skipped = False
+            deferred_cloud = False
+            payload_changed = True
+            strict_approved = True
+            sid = active_sidebar_display_key_transaction_id(ss)
+            record_save_transaction(
+                ss,
+                transaction_id=sid or None,
+                explicit_sidebar_display_key_save=True,
+                payload_changed_since_last_confirmed_save=True,
+                duplicate_write_skipped=False,
+            )
     except ImportError:
         pass
 
@@ -865,6 +906,14 @@ def force_music_workspace_save(
                 allow_single_strict_confirmation_read = lambda _s: True  # type: ignore[assignment,misc]
                 bump_cloud_read_count = lambda _s: 1  # type: ignore[assignment,misc]
 
+            try:
+                from display_key_sidebar_persistence_trace import is_explicit_sidebar_display_key_save
+
+                if saved_cloud and is_explicit_sidebar_display_key_save(r, ss) and not upsert_ok:
+                    upsert_ok = True
+            except ImportError:
+                pass
+
             if use_authoritative and upsert_ok:
                 cloud_diag = _merge_cloud_save_diagnostics(ss)
                 try:
@@ -938,6 +987,46 @@ def force_music_workspace_save(
         except Exception as exc:
             cloud_error = cloud_error or str(exc)
             readback_ok = False
+
+    try:
+        from display_key_sidebar_persistence_trace import (
+            display_key_from_cloud_session_blob,
+            is_explicit_sidebar_display_key_save,
+            record_display_key_sidebar_stage,
+        )
+
+        if is_explicit_sidebar_display_key_save(r, ss) and saved_cloud and not readback_ok:
+            from suite_cloud_state import load_cloud_full_session
+            from workspace_revision import workspace_revision_from_blob
+
+            record_save_transaction(ss, cloud_readback_attempted=True)
+            readback, cloud_ts = load_cloud_full_session(APP_ID, force=True)
+            expected = str(ss.get("display_key") or "").strip()
+            fetched = display_key_from_cloud_session_blob(readback if isinstance(readback, dict) else {})
+            if expected and fetched == expected:
+                readback_ok = True
+                authoritative_upsert = True
+                record_save_transaction(
+                    ss,
+                    network_refetch_display_key=fetched,
+                    cloud_readback_matches=True,
+                    cloud_readback_authoritative=True,
+                    fetched_revision=workspace_revision_from_blob(readback if isinstance(readback, dict) else {}),
+                )
+                if cloud_ts:
+                    ss[_applied_cloud_ts_key(APP_ID)] = cloud_ts
+            record_display_key_sidebar_stage(
+                ss,
+                "forced_network_confirmation",
+                caller="force_music_workspace_save",
+                reason=r,
+                network_refetch_display_key=fetched or None,
+                cloud_save_ok=readback_ok,
+            )
+    except ImportError:
+        pass
+    except Exception:
+        pass
 
     if str(r) == "page_change":
         try:

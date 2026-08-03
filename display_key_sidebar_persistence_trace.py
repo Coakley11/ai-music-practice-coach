@@ -7,7 +7,28 @@ import uuid
 from typing import Any
 
 DISPLAY_KEY_SIDEBAR_TRACE_KEY = "_display_key_sidebar_user_change_trace"
+DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY = "_display_key_sidebar_save_active"
 DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED = "DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED"
+
+_SAVE_TX_DIAG_KEYS: tuple[str, ...] = (
+    "transaction_id",
+    "force_save_reason",
+    "raw_save_reason",
+    "strict_egress_plan_action",
+    "strict_egress_approved",
+    "payload_changed_since_last_confirmed_save",
+    "duplicate_write_skipped",
+    "reserved_write_revision",
+    "envelope_revision_after",
+    "cloud_write_attempted",
+    "cloud_write_succeeded",
+    "cloud_upsert_succeeded",
+    "cloud_confirmed",
+    "cloud_readback_matches",
+    "force_save_block_reason",
+    "cloud_write_error",
+    "workspace_account_key",
+)
 
 ORDERED_STAGES: tuple[str, ...] = (
     "callback_enter",
@@ -45,25 +66,172 @@ def _canonical_display_key(session: dict[str, Any]) -> str:
     return ""
 
 
+def _cloud_display_key_from_hydrated(session: dict[str, Any]) -> str:
+    try:
+        from music_startup_save_suppression import HYDRATED_PAYLOAD_SNAPSHOT_KEY
+
+        snap = session.get(HYDRATED_PAYLOAD_SNAPSHOT_KEY)
+        if isinstance(snap, dict):
+            core = snap.get("core") if isinstance(snap.get("core"), dict) else {}
+            ass = snap.get("active_song_state") if isinstance(snap.get("active_song_state"), dict) else {}
+            for blob in (core, ass, snap):
+                if isinstance(blob, dict):
+                    dk = str(blob.get("display_key") or "").strip()
+                    if dk:
+                        return dk
+    except ImportError:
+        pass
+    return ""
+
+
+def _payload_core_display_key(session: dict[str, Any]) -> str:
+    tx = session.get("_music_workspace_save_transaction")
+    if isinstance(tx, dict):
+        for key in ("payload_core_display_key", "core_display_key"):
+            val = str(tx.get(key) or "").strip()
+            if val:
+                return val
+    return ""
+
+
+def active_sidebar_display_key_transaction_id(session: dict[str, Any]) -> str:
+    d = session.get(DISPLAY_KEY_SIDEBAR_TRACE_KEY)
+    if isinstance(d, dict):
+        tx = str(d.get("active_transaction_id") or "").strip()
+        if tx:
+            return tx
+    active = session.get(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY)
+    if isinstance(active, dict):
+        return str(active.get("transaction_id") or "").strip()
+    return ""
+
+
+def arm_explicit_sidebar_display_key_save(
+    session: dict[str, Any],
+    *,
+    transaction_id: str,
+    selected_display_key: str,
+    cloud_display_key_before: str = "",
+    canonical_display_key_before: str = "",
+) -> None:
+    cloud_before = str(cloud_display_key_before or _cloud_display_key_from_hydrated(session) or "").strip()
+    canon_before = str(canonical_display_key_before or _canonical_display_key(session) or "").strip()
+    session[DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY] = {
+        "transaction_id": str(transaction_id or "").strip() or None,
+        "selected_display_key": str(selected_display_key or "").strip() or None,
+        "cloud_display_key_before": cloud_before or None,
+        "canonical_display_key_before": canon_before or None,
+        "save_reason": "display_key_change",
+        "source": "sidebar_on_change",
+    }
+
+
+def disarm_explicit_sidebar_display_key_save(session: dict[str, Any]) -> None:
+    session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
+
+
+def is_explicit_sidebar_display_key_save(save_reason: str, session: dict[str, Any]) -> bool:
+    reason = str(save_reason or "").strip()
+    if reason not in ("display_key_change", "capo_widget"):
+        try:
+            from music_egress_config import normalize_music_save_reason
+
+            if normalize_music_save_reason(reason) != "display_key_change":
+                return False
+        except ImportError:
+            if reason != "display_key_change":
+                return False
+    active = session.get(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY)
+    if not isinstance(active, dict):
+        return False
+    src = str(session.get("display_key_change_source") or active.get("source") or "").strip()
+    return src == "sidebar_on_change"
+
+
+def should_force_display_key_cloud_write(
+    session: dict[str, Any],
+    *,
+    save_reason: str,
+    payload_fp: str = "",
+) -> bool:
+    if not is_explicit_sidebar_display_key_save(save_reason, session):
+        return False
+    active = session.get(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY)
+    if not isinstance(active, dict):
+        return True
+    before = str(active.get("cloud_display_key_before") or active.get("canonical_display_key_before") or "").strip()
+    after = str(session.get("display_key") or active.get("selected_display_key") or "").strip()
+    if before and after and before != after:
+        return True
+    if before and after and before == after:
+        return False
+    return bool(after)
+
+
+def display_key_from_cloud_session_blob(blob: dict[str, Any]) -> str:
+    if not isinstance(blob, dict):
+        return ""
+    for key in ("active_song_state", "core"):
+        part = blob.get(key)
+        if isinstance(part, dict):
+            dk = str(part.get("display_key") or "").strip()
+            if dk:
+                return dk
+    return str(blob.get("display_key") or "").strip()
+
+
+def sync_sidebar_trace_from_workspace_save(session: dict[str, Any]) -> None:
+    if not session.get("developer_mode"):
+        return
+    tx = session.get("_music_workspace_save_transaction")
+    if not isinstance(tx, dict):
+        return
+    d = _trace(session)
+    summary = {k: tx.get(k) for k in _SAVE_TX_DIAG_KEYS if tx.get(k) is not None}
+    core = tx.get("core") if isinstance(tx.get("core"), dict) else {}
+    if isinstance(core, dict) and core.get("display_key"):
+        summary.setdefault("payload_core_display_key", core.get("display_key"))
+    d["save_transaction"] = summary
+    sid = active_sidebar_display_key_transaction_id(session)
+    if sid:
+        d["active_transaction_id"] = sid
+        summary.setdefault("transaction_id", sid)
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        extra = collect_save_transaction_diagnostics(session)
+        if isinstance(extra, dict):
+            for k in _SAVE_TX_DIAG_KEYS:
+                if k not in summary and extra.get(k) is not None:
+                    summary[k] = extra.get(k)
+    except ImportError:
+        pass
+
+
+def _save_block_reason(session: dict[str, Any]) -> str:
+    tx = session.get("_music_workspace_save_transaction")
+    if isinstance(tx, dict):
+        for key in ("force_save_block_reason", "cloud_write_error", "final_cloud_write_block_reason"):
+            val = str(tx.get(key) or "").strip()
+            if val:
+                return val
+    return str(session.get("_music_force_save_blocked_reason") or session.get("_music_last_cloud_write_error") or "").strip()
+
+
 def _save_tx_fields(session: dict[str, Any]) -> dict[str, Any]:
     try:
         from music_workspace_cloud_save import collect_save_transaction_diagnostics
 
         tx = collect_save_transaction_diagnostics(session)
         if isinstance(tx, dict):
-            return {
-                k: tx.get(k)
-                for k in (
-                    "transaction_id",
-                    "save_reason",
-                    "reserved_revision",
-                    "confirmed_revision",
-                    "cloud_save_ok",
-                    "payload_core_display_key",
-                    "network_refetch_display_key",
-                )
-                if tx.get(k) is not None
-            }
+            out = {k: tx.get(k) for k in _SAVE_TX_DIAG_KEYS if tx.get(k) is not None}
+            core = tx.get("core") if isinstance(tx.get("core"), dict) else {}
+            if isinstance(core, dict) and core.get("display_key") and "payload_core_display_key" not in out:
+                out["payload_core_display_key"] = core.get("display_key")
+            sid = active_sidebar_display_key_transaction_id(session)
+            if sid and "transaction_id" not in out:
+                out["transaction_id"] = sid
+            return out
     except ImportError:
         pass
     return {}
@@ -154,23 +322,69 @@ def audit_display_key_user_change_committed(
     *,
     callback_invoked: bool,
     cloud_save_requested: bool,
+    cloud_save_ok: bool = False,
 ) -> None:
     if not session.get("developer_mode") or not callback_invoked:
         return
     live = str(session.get("display_key") or "").strip()
     canon = _canonical_display_key(session)
+    block = _save_block_reason(session)
+    tx = session.get("_music_workspace_save_transaction")
+    upsert_attempted = bool(isinstance(tx, dict) and tx.get("cloud_write_attempted"))
+    upsert_ok = bool(isinstance(tx, dict) and (tx.get("cloud_upsert_succeeded") or tx.get("cloud_write_succeeded")))
+    readback_ok = bool(isinstance(tx, dict) and tx.get("cloud_readback_matches"))
     if live and canon and live != canon:
         record_display_key_user_change_violation(
             session,
             "session_display_key_differs_from_canonical_after_callback",
             cloud_save_requested=cloud_save_requested,
+            cloud_save_ok=cloud_save_ok,
         )
-    elif not cloud_save_requested:
+        return
+    if not cloud_save_requested:
         record_display_key_user_change_violation(
             session,
             "display_key_change_cloud_save_not_requested",
             cloud_save_requested=False,
+            cloud_save_ok=False,
         )
+        return
+    if cloud_save_ok:
+        return
+    if block in ("startup_canonical_unchanged", "startup_suppression_armed", "startup_restore_in_progress"):
+        record_display_key_user_change_violation(
+            session,
+            "display_key_change_cloud_save_blocked",
+            cloud_save_requested=True,
+            cloud_save_ok=False,
+            block_reason=block or None,
+        )
+        return
+    if upsert_attempted and not upsert_ok:
+        record_display_key_user_change_violation(
+            session,
+            "display_key_change_cloud_upsert_failed",
+            cloud_save_requested=True,
+            cloud_save_ok=False,
+            block_reason=block or None,
+        )
+        return
+    if upsert_ok and not readback_ok:
+        record_display_key_user_change_violation(
+            session,
+            "display_key_change_cloud_confirmation_failed",
+            cloud_save_requested=True,
+            cloud_save_ok=False,
+            block_reason=block or "readback_not_confirmed",
+        )
+        return
+    record_display_key_user_change_violation(
+        session,
+        "display_key_change_cloud_save_blocked",
+        cloud_save_requested=True,
+        cloud_save_ok=False,
+        block_reason=block or "cloud_save_unconfirmed",
+    )
 
 
 def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]:
@@ -203,17 +417,44 @@ def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]
     stages = out.get("stages")
     if isinstance(stages, list) and stages:
         out["last_stage"] = stages[-1].get("stage") if isinstance(stages[-1], dict) else None
+        last_stage = stages[-1] if isinstance(stages[-1], dict) else {}
+        for key in (
+            "cloud_save_requested",
+            "cloud_save_ok",
+            "transaction_id",
+            "strict_egress_plan_action",
+            "duplicate_write_skipped",
+            "reserved_write_revision",
+            "payload_core_display_key",
+            "block_reason",
+        ):
+            if key not in out and last_stage.get(key) is not None:
+                out[key] = last_stage.get(key)
+    save_tx = out.get("save_transaction")
+    if isinstance(save_tx, dict):
+        out.setdefault("transaction_id", save_tx.get("transaction_id"))
+        for key in ("cloud_write_succeeded", "cloud_confirmed", "payload_core_display_key"):
+            if key not in out and save_tx.get(key) is not None:
+                out[key] = save_tx.get(key)
     return out
 
 
 __all__ = [
     "DISPLAY_KEY_SIDEBAR_TRACE_KEY",
+    "DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY",
     "DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED",
     "ORDERED_STAGES",
+    "active_sidebar_display_key_transaction_id",
+    "arm_explicit_sidebar_display_key_save",
     "audit_display_key_user_change_committed",
     "begin_display_key_sidebar_transaction",
     "collect_display_key_sidebar_trace",
+    "disarm_explicit_sidebar_display_key_save",
+    "display_key_from_cloud_session_blob",
+    "is_explicit_sidebar_display_key_save",
     "record_display_key_sidebar_event",
     "record_display_key_sidebar_stage",
     "record_display_key_user_change_violation",
+    "should_force_display_key_cloud_write",
+    "sync_sidebar_trace_from_workspace_save",
 ]

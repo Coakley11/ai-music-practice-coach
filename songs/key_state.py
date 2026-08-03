@@ -153,17 +153,25 @@ def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
     return coerce_key_to_mode(text, key_mode(original))
 
 
-def commit_explicit_sidebar_display_key_transaction(st: Any, *, caller: str = "mark_display_key_changed") -> bool:
+def commit_explicit_sidebar_display_key_transaction(
+    st: Any,
+    *,
+    caller: str = "mark_display_key_changed",
+    transaction_id: str = "",
+) -> bool:
     """Canonical + cloud save for an explicit sidebar Display key selection."""
     session = st.session_state
-    tx_id = ""
-    try:
-        from display_key_sidebar_persistence_trace import (
-            begin_display_key_sidebar_transaction,
-            record_display_key_sidebar_stage,
-        )
+    tx_id = str(transaction_id or "").strip()
+    if not tx_id:
+        try:
+            from display_key_sidebar_persistence_trace import active_sidebar_display_key_transaction_id
 
-        tx_id = begin_display_key_sidebar_transaction(session, caller=caller)
+            tx_id = active_sidebar_display_key_transaction_id(session)
+        except ImportError:
+            tx_id = ""
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+
         record_display_key_sidebar_stage(
             session,
             "canonical_commit_start",
@@ -192,29 +200,47 @@ def commit_explicit_sidebar_display_key_transaction(st: Any, *, caller: str = "m
         )
     except ImportError:
         pass
-    ok = False
     try:
-        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+        from display_key_sidebar_persistence_trace import (
+            arm_explicit_sidebar_display_key_save,
+            record_display_key_sidebar_stage,
+        )
 
+        arm_explicit_sidebar_display_key_save(
+            session,
+            transaction_id=tx_id,
+            selected_display_key=str(session.get("display_key") or ""),
+        )
         record_display_key_sidebar_stage(
             session,
             "cloud_save_start",
             caller=caller,
             transaction_id=tx_id or None,
             reason="display_key_change",
+            cloud_save_requested=True,
         )
     except ImportError:
         pass
+    ok = False
+    save_error = ""
     try:
         from music_persistent_state import flush_global_control_edits_and_save
 
         ok = bool(flush_global_control_edits_and_save(st, reason="display_key_change"))
-    except Exception:
+    except Exception as exc:
         ok = False
+        save_error = str(exc)
     session[LAST_DISPLAY_KEY_SAVE_OK_KEY] = ok
+    block_reason = ""
     try:
-        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+        from display_key_sidebar_persistence_trace import (
+            disarm_explicit_sidebar_display_key_save,
+            record_display_key_sidebar_stage,
+            sync_sidebar_trace_from_workspace_save,
+        )
 
+        sync_sidebar_trace_from_workspace_save(session)
+        block_reason = str(session.get("_music_force_save_blocked_reason") or session.get("_music_last_cloud_write_error") or save_error or "")
         record_display_key_sidebar_stage(
             session,
             "cloud_save_end",
@@ -223,7 +249,18 @@ def commit_explicit_sidebar_display_key_transaction(st: Any, *, caller: str = "m
             reason="display_key_change",
             cloud_save_requested=True,
             cloud_save_ok=ok,
+            block_reason=block_reason or None,
         )
+        if ok:
+            record_display_key_sidebar_stage(
+                session,
+                "forced_network_confirmation",
+                caller=caller,
+                transaction_id=tx_id or None,
+                reason="display_key_change",
+                cloud_save_ok=True,
+            )
+        disarm_explicit_sidebar_display_key_save(session)
     except ImportError:
         pass
     if ok:
@@ -348,7 +385,7 @@ def mark_display_key_changed(st: Any) -> None:
         pass
     save_ok = False
     try:
-        save_ok = commit_explicit_sidebar_display_key_transaction(st, caller=caller)
+        save_ok = commit_explicit_sidebar_display_key_transaction(st, caller=caller, transaction_id=tx_id)
     except Exception:
         st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = False
         save_ok = False
@@ -356,8 +393,10 @@ def mark_display_key_changed(st: Any) -> None:
         from display_key_sidebar_persistence_trace import (
             audit_display_key_user_change_committed,
             record_display_key_sidebar_event,
+            sync_sidebar_trace_from_workspace_save,
         )
 
+        sync_sidebar_trace_from_workspace_save(st.session_state)
         record_display_key_sidebar_event(
             st.session_state,
             "mark_display_key_changed",
@@ -365,14 +404,15 @@ def mark_display_key_changed(st: Any) -> None:
             widget_after=str(st.session_state.get("display_key") or "").strip() or None,
             callback_invoked=True,
             save_reason="display_key_change",
-            cloud_save_requested=bool(save_ok),
-            cloud_save_ok=bool(save_ok),
             transaction_id=tx_id or None,
+            cloud_save_requested=True,
+            cloud_save_ok=bool(save_ok),
         )
         audit_display_key_user_change_committed(
             st.session_state,
             callback_invoked=True,
-            cloud_save_requested=bool(save_ok),
+            cloud_save_requested=True,
+            cloud_save_ok=bool(save_ok),
         )
     except ImportError:
         pass

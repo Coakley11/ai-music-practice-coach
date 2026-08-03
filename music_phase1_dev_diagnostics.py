@@ -232,6 +232,7 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             for key in (
                 "events",
                 "stages",
+                "save_transaction",
                 "last_stage",
                 "violations",
                 "last_event",

@@ -274,6 +274,25 @@ def plan_strict_egress_cloud_write(
     coalesce = int(session.get(_COALESCE_COUNT_KEY) or 0)
     ts = float(now if now is not None else time.time())
 
+    try:
+        from display_key_sidebar_persistence_trace import should_force_display_key_cloud_write
+
+        if should_force_display_key_cloud_write(session, save_reason=reason, payload_fp=payload_fp):
+            return StrictEgressWritePlan(
+                allow_cloud_write=True,
+                defer_cloud_write=False,
+                block_reason="",
+                strict_egress_user_write_allowed=True,
+                strict_egress_reason=reason,
+                payload_changed_since_last_confirmed_save=True,
+                duplicate_write_skipped=False,
+                save_debounce_started=False,
+                save_debounce_completed=True,
+                edits_coalesced_count=0,
+            )
+    except ImportError:
+        pass
+
     if not strict:
         confirmed = last_confirmed_cloud_fingerprint(session)
         changed = bool(payload_fp) and payload_fp != confirmed
