@@ -1680,6 +1680,7 @@ def sections_dict_from_backing_context(
             sections = {label: list(ctx.progression)}
     elif ctx.source == "mission":
         label = str(ctx.section or ctx.progression_label or "Mission").strip() or "Mission"
+        sections: dict[str, list[str]] = {}
         chords = list(ctx.progression or [])
         if chords:
             sections = {label: chords}

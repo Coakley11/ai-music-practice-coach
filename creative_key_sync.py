@@ -16,6 +16,17 @@ PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"
 
 CREATIVE_MAJOR_JAM_MODES: tuple[str, ...] = ("Style Jam Mode", "Jam Session Generator")
 
+_SIDEBAR_USER_DISPLAY_KEY_SOURCES: frozenset[str] = frozenset(
+    {
+        "sidebar_on_change",
+        "sidebar",
+        "display_key_widget",
+        "display_key_change",
+        "user",
+        "user_navigation",
+    }
+)
+
 # Re-export for UI pickers.
 CREATIVE_MAJOR_KEY_OPTIONS = CREATIVE_MAJOR_KEY_OPTIONS
 
@@ -327,6 +338,33 @@ def on_improv_jam_key_change() -> None:
     )
 
 
+def user_sidebar_display_key_authoritative(session: dict[str, Any]) -> bool:
+    """True when the user explicitly set display_key — Creative projection must not overwrite."""
+    try:
+        from active_song_state import _display_key_override_valid_for_identity
+
+        if _display_key_override_valid_for_identity(session):
+            return True
+    except ImportError:
+        pass
+    src = str(session.get("display_key_change_source") or "").strip()
+    if src in _SIDEBAR_USER_DISPLAY_KEY_SOURCES:
+        return True
+    if src and "sidebar" in src.lower():
+        return True
+    return False
+
+
+def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[str]:
+    from music_theory import key_mode, practice_keys_for_mode
+
+    live = str(key or session.get("display_key") or "").strip() or "C"
+    options = list(practice_keys_for_mode(key_mode(live)))
+    if live not in options:
+        options = [live] + options
+    return options
+
+
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
     page = str(session.get("studio_page") or "").strip().lower()
@@ -445,12 +483,49 @@ def creative_sidebar_key_options(session: dict[str, Any]) -> list[str]:
     return options
 
 
+def _sidebar_preserve_user_display_key_options(
+    st: Any,
+    session: dict[str, Any],
+    *,
+    trace_phase: str,
+    **trace_fields: Any,
+) -> list[str] | None:
+    """When the user explicitly set display_key, skip Creative/backing projection."""
+    if not user_sidebar_display_key_authoritative(session):
+        return None
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not live:
+        return None
+    session["concert_key"] = live
+    options = _sidebar_key_options_including(session, live)
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+
+        record_display_key_sidebar_event(
+            session,
+            trace_phase,
+            skipped_projection=True,
+            **trace_fields,
+        )
+    except ImportError:
+        pass
+    return options
+
+
 def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
     """Apply non-major Creative backing concert key before the sidebar widget."""
     from music_theory import key_mode, practice_keys_for_mode
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+    preserved = _sidebar_preserve_user_display_key_options(
+        st,
+        session,
+        trace_phase="prepare_backing_context_sidebar:preserve_user_key",
+    )
+    if preserved is not None:
+        session.pop(PENDING_DISPLAY_KEY, None)
+        return preserved
     try:
         from backing_context import active_creative_backing_context, get_backing_context
         from backing_musical_state import resolve_current_backing_musical_state
@@ -576,6 +651,24 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             _apply_display_key_before_widget(st, selected, source="backing_context_concert")
             session["concert_key"] = selected
         return options
+    if user_sidebar_display_key_authoritative(session):
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if live:
+            options = _sidebar_key_options_including(session, live)
+            session["concert_key"] = live
+            try:
+                from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+
+                record_display_key_sidebar_event(
+                    session,
+                    "prepare_backing_context_sidebar:preserve_user_key",
+                    skipped_projection=True,
+                    resolver_key=resolver_key or None,
+                    selected_would_have_been=selected,
+                )
+            except ImportError:
+                pass
+            return options
     _apply_display_key_before_widget(st, selected, source="backing_context_concert")
     session["concert_key"] = selected
     return options
@@ -586,6 +679,14 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+    preserved = _sidebar_preserve_user_display_key_options(
+        st,
+        session,
+        trace_phase="prepare_creative_sidebar:preserve_user_key",
+    )
+    if preserved is not None:
+        session.pop(PENDING_DISPLAY_KEY, None)
+        return preserved
     options = creative_sidebar_key_options(session)
     backing_key = ""
     try:
@@ -619,6 +720,23 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     except ImportError:
         pass
     selected = to_major_key_preserve_spelling(selected)
+    if user_sidebar_display_key_authoritative(session):
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if live:
+            options = _sidebar_key_options_including(session, live)
+            session["concert_key"] = live
+            try:
+                from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+
+                record_display_key_sidebar_event(
+                    session,
+                    "prepare_creative_sidebar:preserve_user_key",
+                    skipped_projection=True,
+                    backing_key=backing_key or None,
+                )
+            except ImportError:
+                pass
+            return options
     if selected:
         if selected not in options:
             options = [selected] + [k for k in options if k != selected]

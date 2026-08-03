@@ -220,5 +220,33 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 if val is not None:
                     st.caption(f"`{key}`: {val!r}")
 
+        try:
+            from display_key_sidebar_persistence_trace import collect_display_key_sidebar_trace
+
+            dk_trace = collect_display_key_sidebar_trace(session)
+        except ImportError:
+            dk_trace = {}
+
+        if dk_trace:
+            st.markdown("**Display key sidebar (corrective save)**")
+            for key in (
+                "events",
+                "last_event",
+                "widget_before",
+                "widget_after",
+                "callback_invoked",
+                "display_key_change_source",
+                "session_display_key",
+                "canonical_display_key",
+                "skipped_projection",
+                "resolver_key",
+                "backing_key",
+                "save_reason",
+                "cloud_save_requested",
+            ):
+                val = dk_trace.get(key)
+                if val is not None:
+                    st.caption(f"`{key}`: {val!r}")
+
 
 __all__ = ["render_phase1_live_path_diagnostics"]

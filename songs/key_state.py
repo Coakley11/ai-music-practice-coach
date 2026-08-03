@@ -147,6 +147,7 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
 
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
+    widget_before = str(st.session_state.get("display_key") or "").strip()
     sync_display_key_owner_identity(st.session_state)
     dk = str(st.session_state.get("display_key") or "").strip()
     if dk:
@@ -243,6 +244,20 @@ def mark_display_key_changed(st: Any) -> None:
                 pass
     except Exception:
         st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = False
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+
+        record_display_key_sidebar_event(
+            st.session_state,
+            "mark_display_key_changed",
+            widget_before=widget_before,
+            widget_after=str(st.session_state.get("display_key") or "").strip() or None,
+            callback_invoked=True,
+            save_reason="display_key_change",
+            cloud_save_requested=bool(st.session_state.get(LAST_DISPLAY_KEY_SAVE_OK_KEY)),
+        )
+    except ImportError:
+        pass
 
 
 def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:
