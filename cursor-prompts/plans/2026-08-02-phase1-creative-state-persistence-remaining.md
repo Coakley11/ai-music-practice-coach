@@ -1,6 +1,6 @@
 # Phase 1 — Remaining Creative-state & cross-device persistence
 
-**Last updated:** 2026-08-02  
+**Last updated:** 2026-08-03  
 **Prerequisite (done):** Studio **page** persistence Backing → Creative → hard refresh @ rev **193** (`ad68e71`, 2026-08-02)
 
 ---
@@ -33,8 +33,8 @@ Contract reference: [2026-07-30-mission-workspace-contract.md](./2026-07-30-miss
 1. **Creative tool and tab selections** — ✅ live @ `549578d` (Daniel/music rev **203**, cold session, `startup_write_attempted=false`, `violations=[]`).
 2. **Mission configuration and selected mission** — ✅ live @ `c6c2f41` (2026-08-02).
 3. **Motif / lick and generated-example state** — ✅ **live-accepted** @ `616f4e4` (2026-08-03) — [Item 3 contract](./2026-08-02-item3-mission-artifact-persistence.md).
-4. **Key, section, and Creative context snapshots** — **in progress** — [Item 4 contract](./2026-08-03-item4-key-section-creative-context-snapshots.md).
-5. **Refresh and cold-reboot persistence** — full browser hard refresh + cold Streamlit reboot; workspace matches pre-refresh.
+4. **Key, section, and Creative context snapshots** — ✅ **live-accepted & frozen** @ `c72a879` (rev **315**, 2026-08-03) — [Item 4 contract](./2026-08-03-item4-key-section-creative-context-snapshots.md).
+5. **Refresh and cold-reboot persistence** — **next** — [Item 5 contract](./2026-08-03-item5-refresh-cold-reboot-persistence.md); full browser hard refresh + cold Streamlit reboot; workspace matches pre-refresh (Items 1–4 + frozen globals/page).
 6. **Dell → phone synchronization** — change on Dell; phone pull shows same Creative document.
 7. **Phone → Dell synchronization** — reverse direction.
 8. **Stale-device / revision protection** — older device cannot silently overwrite newer cloud revision (expect block or explicit retry; document in trace).

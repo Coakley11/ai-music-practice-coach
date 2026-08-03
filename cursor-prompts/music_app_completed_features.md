@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-03
 
 ---
 
@@ -23,6 +23,15 @@
 ---
 
 ## Completed Features
+
+### Phase 1 Creative-state persistence — Item 4 (2026-08-03)
+
+- [x] Harmony Map → `creative_context_section_change`; `harmony_map_*` in `creative_workspace_state`
+- [x] Item 2 target tuple independent; global Cm / Piano / Beginner / Left-Hand Patterns frozen
+- [x] Dev panel **Creative context snapshots (Item 4)** @ `aa77e58`; passive audit + run-scoped violations @ `d97da03` / `c72a879`
+- [x] Hard refresh @ rev **315**: full restore, `startup_write_attempted=false`, `violations=[]`
+- **Frozen commits:** `5edb81c`, `aa77e58`, `d97da03`, `c72a879`
+- Plan: [2026-08-03-item4-key-section-creative-context-snapshots.md](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md)
 
 ### Phase 1 studio page persistence — live sign-off (2026-08-02)
 

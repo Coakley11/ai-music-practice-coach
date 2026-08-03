@@ -1,8 +1,11 @@
 # Phase 1 Item 4 — Key, section, and Creative context snapshots
 
 **Last updated:** 2026-08-03  
-**Status:** Implementation on `dev`  
+**Status:** **LIVE-ACCEPTED — FROZEN** on Streamlit Cloud `dev` (rev **315** sign-off)  
+**Acceptance commits:** `5edb81c` (persistence), `aa77e58` (dev panel), `d97da03` (passive audit), `c72a879` (panel fields)  
 **Frozen prerequisites (commits through `616f4e4`):** Items 1–3 live-accepted; global Display-key pipeline; startup display-key queue; Mission Backing handoff; strict egress / revision / Supabase confirmation architecture.
+
+**Do not redesign** Item 4 behavior, save reasons, ownership table, passive hydration protections, or run-scoped diagnostics without `?dev=1` regression proof and explicit unfreeze.
 
 ---
 

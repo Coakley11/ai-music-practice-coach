@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-01 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-08-03 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 This is the master planning document. Related files:
 
@@ -90,6 +90,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 | Test | Scope | Status | Deploy marker / commit |
 |------|--------|--------|-------------------------|
 | **A** | Studio **page** sync (phone ↔ Dell) | **PASSED** | v14 `454e0af` |
+| **A′** | **Creative page** authoritative save + hard refresh @ cloud rev | **PASSED** | `ad68e71` (2026-08-02) — [remaining Creative-state plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) |
 | **B** | **Practice** field sync (section focus, groove, minutes) | **PASSED** | `97fad4a` |
 | **C** | **Backing** content sync (BPM, scope, loops, groove, meter) | **PASSED** | v18 `fdf9800` |
 | **D** | **Active song** + display key + instrument + page + written-key + transposing subtype | **PASSED** | v25 `f153204` |
@@ -97,7 +98,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P1** Composition Studio **Melody Capture planning** (CS-B5 shipped — full Vision→Review workflow on `dev`). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **P1** Flagship coaching **content**. **P1** Command Center homepage UI. **P1** [UI polish](./plans/2026-06-09-ui-polish-phase.md) (visual/layout only).
+**Next focus:** **P0** Phase 1 Item **5** refresh/cold-reboot ([contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md)) — Items 1–4 frozen through `c72a879`. **P0** [Creative-state remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) (blocks Phase 2). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md).
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 

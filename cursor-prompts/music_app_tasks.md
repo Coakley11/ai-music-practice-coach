@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-03 Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-03 (Item 4 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -22,8 +22,10 @@
 4. [ ] **Phase 1 Creative-state persistence (remaining)** — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) — **blocks Phase 2**
    - [x] **Item 1** Creative tool/tab selectors — live @ `549578d` (rev **203**, cold session)
    - [x] **Item 2** Mission configuration — live @ `c6c2f41` (mission/target/metrics)
-   - [ ] **Item 3** Motif / example / practice lick — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md) (`creative_mission_artifact_persistence.py`)
-   - [ ] Items 4–8 context, reboot, Dell↔phone, stale revision
+   - [x] **Item 3** Motif / example / practice lick + Mission Backing handoff — **live-accepted** @ `616f4e4` — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md)
+   - [x] **Item 4** Key, section, Creative context snapshots — **live-accepted & frozen** @ `c72a879` (rev **315**) — [contract](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md)
+   - [ ] **Item 5** Refresh + cold-reboot persistence — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) (**next**)
+   - [ ] Items 6–8 Dell↔phone, stale revision
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
