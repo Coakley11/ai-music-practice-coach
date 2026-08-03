@@ -24,6 +24,13 @@
 
 ## Completed Features
 
+### Phase 1 Creative-state persistence — Item 6 (2026-08-03)
+
+- [x] Dell writer: `creative_context_section_change` → Harmony Map **Melody A / Ab**; strict egress @ **317**; globals + Item 2 tuple preserved
+- [x] Phone reader: cold reboot; network hydrate @ **317**; no phone write; full Items 1–4 + globals; `certification_passed=true`
+- **Frozen:** live sign-off rev **317**; contract doc `2ec5015` (no Item 6 production delta required)
+- Plan: [2026-08-03-item6-dell-phone-cross-device-persistence.md](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md)
+
 ### Phase 1 Creative-state persistence — Item 5 (2026-08-03)
 
 - [x] Hard refresh @ rev **315**: authoritative network hydrate; `session_start_kind=hard_refresh`; no startup write / upsert

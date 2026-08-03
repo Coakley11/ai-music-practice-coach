@@ -12,7 +12,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 *Platform **Single Source of Truth** + **One Music Generation Engine** — see [2026-07-31 plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.*
 
-*Active: **P0 Phase 1 Item 6** (Dell → phone) — [contract](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md); Items 1–5 **frozen**. **P0 media persistence sprint** — see [music_app_tasks.md](./music_app_tasks.md).*
+*Active: **P0 Phase 1 Item 7** (phone → Dell) — [contract](./plans/2026-08-03-item7-phone-dell-cross-device-persistence.md); Items 1–6 **frozen**. **P0 media persistence sprint** — see [music_app_tasks.md](./music_app_tasks.md).*
 
 | Priority | Phase | Plan |
 |----------|-------|------|

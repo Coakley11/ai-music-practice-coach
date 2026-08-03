@@ -1,7 +1,11 @@
 # Phase 1 Item 6 — Dell → phone cross-device persistence
 
 **Last updated:** 2026-08-03  
-**Status:** **Next** — contract + live-test plan only (no implementation until gap proven)  
+**Status:** **LIVE-ACCEPTED — FROZEN** on Streamlit Cloud `dev` (sign-off rev **317**, 2026-08-03)  
+**Contract doc:** `2ec5015` (Item 6 contract + Phase 1 checklist; **no production code** required for live pass)
+
+**Do not redesign** cross-device apply/hydrate paths, save reasons, or Item 5 certification reuse on the reader without `?dev=1` regression proof and explicit unfreeze.
+
 **Prerequisites (frozen — do not redesign):**
 
 | Layer | Live-accept / freeze anchor |
@@ -10,9 +14,10 @@
 | Global control ownership, display-key pipeline, startup queue | Through `616f4e4`, `2aff988`, `f87c1f9` |
 | Studio page + Mission Backing handoff | `38664fc`–`ad68e71` |
 | Strict egress, monotonic revisions, Supabase upsert confirmation, startup suppression | Accepted architecture — no fork |
-| Item 5 refresh / cold reboot | **LIVE-ACCEPTED** `e36fd40`, `2156bb1`, `b989516` @ rev **315** |
+| Item 5 refresh / cold reboot | **LIVE-ACCEPTED** `e36fd40`, `2156bb1`, `b989516` |
+| Item 6 Dell → phone | **LIVE-ACCEPTED** @ rev **317** (this contract) |
 
-Items **7** (phone → Dell) and **8** (stale-device revision protection) are **out of scope** for Item 6.
+Item **7** (phone → Dell) and **8** (stale-device revision protection) are **out of scope** for Item 6.
 
 ---
 
@@ -176,6 +181,11 @@ Do **not** merge `main`.
 
 ---
 
-## Live acceptance (Item 6)
+## Live acceptance (Item 6) — **PASSED 2026-08-03**
 
-Single manual test **Dell → phone** passing the checklist with matching revision **R** and phone read startup showing **no spurious write**. Document commit SHA at sign-off (implementation commits, if any, separate from doc-only contract).
+| Role | Evidence |
+|------|----------|
+| **Dell writer** | `save_reason=creative_context_section_change`; Harmony Map **Melody A / Ab**; globals + Item 2 tuple unchanged; strict egress @ **R=317** (`cloud_confirmed`, `violations=[]`) |
+| **Phone reader** | Private fresh session; `session_start_kind=cold_reboot`; network hydrate @ **317**; no phone write; full Items 1–4 + globals restored; Harmony Map **Ab**; `certification_passed=true` |
+
+**Next Phase 1 gate:** Item **7** phone → Dell — [contract](./2026-08-03-item7-phone-dell-cross-device-persistence.md).
