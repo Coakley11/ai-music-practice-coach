@@ -397,7 +397,23 @@ def record_hydrated_canonical_fingerprint(
     try:
         from workspace_revision import workspace_revision_from_blob
 
-        session[STARTUP_REVISION_LOADED_KEY] = workspace_revision_from_blob(payload if isinstance(payload, dict) else {})
+        loaded_rev = workspace_revision_from_blob(payload if isinstance(payload, dict) else {})
+        session[STARTUP_REVISION_LOADED_KEY] = loaded_rev
+        if loaded_rev > 0:
+            try:
+                from music_device_applied_revision import (
+                    set_device_applied_revision_from_authoritative_hydrate,
+                )
+
+                set_device_applied_revision_from_authoritative_hydrate(
+                    session,
+                    loaded_rev,
+                    stage=str(stage or "hydrate"),
+                    source="authoritative_network_hydrate",
+                    payload=payload if isinstance(payload, dict) else None,
+                )
+            except ImportError:
+                pass
     except ImportError:
         session[STARTUP_REVISION_LOADED_KEY] = 0
     return fp

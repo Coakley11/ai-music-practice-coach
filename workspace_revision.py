@@ -109,12 +109,32 @@ def note_confirmed_workspace_revision(session: dict[str, Any], state: dict[str, 
     session.pop("_music_pending_save_revision", None)
     session.pop("_music_workspace_save_pending_retry", None)
     session.pop("_music_retry_required", None)
+    try:
+        from music_device_applied_revision import confirm_device_applied_revision_after_successful_cas
+
+        confirm_device_applied_revision_after_successful_cas(
+            session, rev, stage="note_confirmed_workspace_revision"
+        )
+    except ImportError:
+        session[APPLIED_REVISION_KEY] = rev
+        session[CLOUD_REVISION_KEY] = rev
 
 
 def stamp_applied_workspace_revision(session: dict[str, Any], state: dict[str, Any]) -> None:
-    rev = workspace_revision_from_blob(state)
-    session[APPLIED_REVISION_KEY] = rev
-    session[LOCAL_REVISION_KEY] = max(int(session.get(LOCAL_REVISION_KEY) or 0), rev)
+    try:
+        from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
+
+        set_device_applied_revision_from_authoritative_hydrate(
+            session,
+            workspace_revision_from_blob(state),
+            stage="stamp_applied_workspace_revision",
+            source="authoritative_payload_apply",
+            payload=state,
+        )
+    except ImportError:
+        rev = workspace_revision_from_blob(state)
+        session[APPLIED_REVISION_KEY] = rev
+        session[LOCAL_REVISION_KEY] = max(int(session.get(LOCAL_REVISION_KEY) or 0), rev)
 
 
 def cloud_revision_newer_than_applied(session: dict[str, Any], cloud_state: dict[str, Any]) -> bool:
