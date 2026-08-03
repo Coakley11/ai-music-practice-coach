@@ -24,6 +24,14 @@
 
 ## Completed Features
 
+### Phase 1 Creative-state persistence — Item 5 (2026-08-03)
+
+- [x] Hard refresh @ rev **315**: authoritative network hydrate; `session_start_kind=hard_refresh`; no startup write / upsert
+- [x] Cold reboot (Incognito + `?dev=1`): `session_start_kind=cold_reboot`; lifecycle markers + fetch precedence; full Items 1–4 + globals restore
+- [x] Read-only **Item 5 certification panel** + rev-315 fixture; `classification_*` separate from `certification_passed`
+- **Frozen commits:** `e36fd40`, `2156bb1`, `b989516`
+- Plan: [2026-08-03-item5-refresh-cold-reboot-persistence.md](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./plans/2026-08-03-item5-live-runbook.md)
+
 ### Phase 1 Creative-state persistence — Item 4 (2026-08-03)
 
 - [x] Harmony Map → `creative_context_section_change`; `harmony_map_*` in `creative_workspace_state`

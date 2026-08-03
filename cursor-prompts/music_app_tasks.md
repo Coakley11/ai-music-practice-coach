@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-03 (Item 4 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-03 (Item 5 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -23,9 +23,10 @@
    - [x] **Item 1** Creative tool/tab selectors — live @ `549578d` (rev **203**, cold session)
    - [x] **Item 2** Mission configuration — live @ `c6c2f41` (mission/target/metrics)
    - [x] **Item 3** Motif / example / practice lick + Mission Backing handoff — **live-accepted** @ `616f4e4` — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md)
-   - [x] **Item 4** Key, section, Creative context snapshots — **live-accepted & frozen** @ `c72a879` (rev **315**) — [contract](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md)
-   - [ ] **Item 5** Refresh + cold-reboot persistence — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [live runbook](./plans/2026-08-03-item5-live-runbook.md) (**certification support in progress**)
-   - [ ] Items 6–8 Dell↔phone, stale revision
+   - [x] **Item 4** Key, section, Creative context snapshots — **live-accepted & frozen** @ `c72a879` (rev **315**) — [contract](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md); doc freeze `cc00cda`
+   - [x] **Item 5** Refresh + cold-reboot persistence — **live-accepted & frozen** @ `e36fd40`–`b989516` (rev **315**) — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./plans/2026-08-03-item5-live-runbook.md)
+   - [ ] **Item 6** Dell → phone cross-device — [contract](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md) (**next**)
+   - [ ] Items 7–8 phone→Dell, stale revision
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
@@ -313,6 +314,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
+- **Phase 1 Items 1–5 (2026-08-03):** **Frozen** on live `dev` @ rev **315** — Item 5 commits `e36fd40`–`b989516`; Items 1–4 through `c72a879` / doc `cc00cda`. **Next:** Item 6 Dell → phone only.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
 - Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.

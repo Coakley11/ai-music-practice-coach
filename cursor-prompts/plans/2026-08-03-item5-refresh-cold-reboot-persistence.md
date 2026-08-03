@@ -1,7 +1,12 @@
 # Phase 1 Item 5 — Refresh and cold-reboot persistence
 
 **Last updated:** 2026-08-03  
-**Status:** **Next** — contract only (no implementation started)  
+**Status:** **LIVE-ACCEPTED — FROZEN** on Streamlit Cloud `dev` (rev **315** sign-off)  
+**Acceptance commits:** `e36fd40` (certification + fixture + runbook), `2156bb1` (fetch-source precedence), `b989516` (session-start lifecycle classification)  
+**Doc freeze anchor:** `cc00cda` (Items 1–4 frozen through `c72a879`; Item 5 contract published)
+
+**Do not redesign** Item 5 certification semantics, fetch-source precedence, session-start lifecycle markers, or refresh/cold-reboot read paths without `?dev=1` regression proof and explicit unfreeze.
+
 **Prerequisites (frozen — do not redesign):**
 
 | Layer | Live-accept commits / anchor |
@@ -184,14 +189,13 @@ Do **not** merge `main`. Do **not** start Phase 2 Style Identity engine until It
 
 ---
 
-## Live acceptance (Item 5)
+## Live acceptance (Item 5) — **PASSED 2026-08-03**
 
 **Runbook:** [2026-08-03-item5-live-runbook.md](./2026-08-03-item5-live-runbook.md)
 
-Same account, Streamlit Cloud `dev`, `?dev=1`:
+| Test | Result | Evidence |
+|------|--------|----------|
+| **TEST A — Hard refresh** | **PASSED** | `session_start_kind=hard_refresh`; authoritative network hydrate @ **315**; no writes; Items 1–4 + globals restored; `certification_passed=true` |
+| **TEST B — Cold reboot** | **PASSED** | Incognito + `?dev=1`; `session_start_kind=cold_reboot`; lifecycle markers + `classification_confidence=high`; same persistence bar as TEST A |
 
-1. Pre: user saves at least one Item 1–4 user event so rev is known (e.g. **315**).
-2. Hard refresh → full checklist; revision **315**; no upsert.
-3. Cold reboot → full checklist; revision **315**; no upsert.
-4. All Item passive audits: `startup_write_attempted=false`, `violations=[]`.
-5. Document commit SHA at sign-off in tasks + completed features.
+**Next Phase 1 gate:** Item **6** Dell → phone — [contract](./2026-08-03-item6-dell-phone-cross-device-persistence.md).

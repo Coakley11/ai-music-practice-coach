@@ -1,7 +1,7 @@
 # Phase 1 Item 5 — Live acceptance runbook
 
 **Contract:** [2026-08-03-item5-refresh-cold-reboot-persistence.md](./2026-08-03-item5-refresh-cold-reboot-persistence.md)  
-**Do not mark Item 5 live-accepted** until **both** tests below pass with **unchanged authoritative revision**.
+**Status:** **LIVE-ACCEPTED — FROZEN** (2026-08-03, rev **315**, commits `e36fd40` / `2156bb1` / `b989516`). Re-run only on `?dev=1` regression suspicion.
 
 **Environment:** Streamlit Cloud `dev`, Daniel workspace, URL includes **`?dev=1`**.
 

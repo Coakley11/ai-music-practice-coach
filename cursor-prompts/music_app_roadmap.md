@@ -98,7 +98,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** Phase 1 Item **5** refresh/cold-reboot ([contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md)) — Items 1–4 frozen through `c72a879`. **P0** [Creative-state remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) (blocks Phase 2). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md).
+**Next focus:** **P0** Phase 1 Item **6** Dell → phone ([contract](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md)). Items **1–5 frozen** (Item 5: `e36fd40`–`b989516`; Items 1–4: through `c72a879` / `cc00cda`). **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **Do not** start Phase 2 or Items 7–8 until Item 6 live-accept.
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 

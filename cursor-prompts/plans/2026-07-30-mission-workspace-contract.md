@@ -1,7 +1,7 @@
 # Creative Workspace Contract (long-term design)
 
 **Last updated:** 2026-08-01  
-**Status:** Implementation complete on `dev` (`a936dd5`); **manual cross-device sign-off pending** — architecture freezes only after checklist below passes.  
+**Status:** Studio **page** persistence signed off on live `dev` (2026-08-02, `ad68e71`); **Creative workspace content** Items **1–5** live-accepted & frozen (2026-08-03); Items **6–8** pending — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md).  
 **Code:** `creative_workspace_persistence.py`, `improvisation_mission_persistence.py`, `music_persistent_state._PERSIST_KEYS`, `studio_page_persistence` creative/backing snapshots.
 
 ---
