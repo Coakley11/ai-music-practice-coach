@@ -193,6 +193,17 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             st.caption(f"`item4_panel_error`: {exc!r}")
 
         try:
+            from phase1_item5_refresh_certification import render_phase1_item5_refresh_certification_panel
+
+            render_phase1_item5_refresh_certification_panel(st, session)
+        except ImportError:
+            st.markdown("**Phase 1 Item 5 — Refresh / cold reboot certification**")
+            st.caption("`item5_module`: unavailable (ImportError)")
+        except Exception as exc:
+            st.markdown("**Phase 1 Item 5 — Refresh / cold reboot certification**")
+            st.caption(f"`item5_panel_error`: {exc!r}")
+
+        try:
             from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
 
             handoff_diag = collect_mission_backing_handoff_diagnostics(session)

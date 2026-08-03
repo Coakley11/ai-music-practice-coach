@@ -24,7 +24,7 @@
    - [x] **Item 2** Mission configuration — live @ `c6c2f41` (mission/target/metrics)
    - [x] **Item 3** Motif / example / practice lick + Mission Backing handoff — **live-accepted** @ `616f4e4` — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md)
    - [x] **Item 4** Key, section, Creative context snapshots — **live-accepted & frozen** @ `c72a879` (rev **315**) — [contract](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md)
-   - [ ] **Item 5** Refresh + cold-reboot persistence — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) (**next**)
+   - [ ] **Item 5** Refresh + cold-reboot persistence — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [live runbook](./plans/2026-08-03-item5-live-runbook.md) (**certification support in progress**)
    - [ ] Items 6–8 Dell↔phone, stale revision
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests

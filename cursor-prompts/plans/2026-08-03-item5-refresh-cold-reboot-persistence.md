@@ -186,6 +186,8 @@ Do **not** merge `main`. Do **not** start Phase 2 Style Identity engine until It
 
 ## Live acceptance (Item 5)
 
+**Runbook:** [2026-08-03-item5-live-runbook.md](./2026-08-03-item5-live-runbook.md)
+
 Same account, Streamlit Cloud `dev`, `?dev=1`:
 
 1. Pre: user saves at least one Item 1–4 user event so rev is known (e.g. **315**).
