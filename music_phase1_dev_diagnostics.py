@@ -204,6 +204,17 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             st.caption(f"`item5_panel_error`: {exc!r}")
 
         try:
+            from phase1_item8_stale_write_certification import render_phase1_item8_stale_write_certification_panel
+
+            render_phase1_item8_stale_write_certification_panel(st, session)
+        except ImportError:
+            st.markdown("**Phase 1 Item 8 — Stale-device revision protection**")
+            st.caption("`item8_module`: unavailable (ImportError)")
+        except Exception as exc:
+            st.markdown("**Phase 1 Item 8 — Stale-device revision protection**")
+            st.caption(f"`item8_panel_error`: {exc!r}")
+
+        try:
             from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
 
             handoff_diag = collect_mission_backing_handoff_diagnostics(session)

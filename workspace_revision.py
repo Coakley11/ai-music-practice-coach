@@ -73,6 +73,12 @@ def reserve_workspace_revision_for_canonical_fp(
         rev = int(reserved)
     else:
         rev = compute_monotonic_next_revision(session, state)
+        try:
+            applied = int(session.get(APPLIED_REVISION_KEY) or 0)
+            cloud = int(session.get(CLOUD_REVISION_KEY) or 0)
+            rev = max(rev, applied + 1, cloud + 1)
+        except (TypeError, ValueError):
+            pass
         if fp:
             session[PENDING_CANONICAL_FP_KEY] = fp
         session[RESERVED_WRITE_REVISION_KEY] = rev

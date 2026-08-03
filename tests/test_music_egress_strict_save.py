@@ -79,6 +79,19 @@ class HevenuStrictSaveRegressionTests(unittest.TestCase):
                 patch("suite_cloud_state._import_storage", return_value=(suite_storage, "suite_storage")),
                 patch("suite_cloud_state._cloud_storage_app_id", return_value="music"),
                 patch.object(suite_storage, "save_current_state"),
+                patch("music_startup_save_suppression.gate_music_workspace_save_at_startup", return_value=(False, "")),
+                patch("suite_cloud_state.load_cloud_full_session", return_value=({"workspace_revision": 99}, "2026-01-01T00:00:00")),
+                patch.object(
+                    suite_storage,
+                    "save_current_state_conditional_cas",
+                    return_value={
+                        "accepted": True,
+                        "rows_affected": 1,
+                        "write_mode": "conditional_patch",
+                        "conditional_write_attempted": True,
+                        "unconditional_upsert_attempted": False,
+                    },
+                ),
                 patch("suite_cloud_state._streamlit_session", return_value=ss),
                 patch("suite_cloud_state.session_page_summary", return_value=("Creative", "Hevenu")),
             ):
@@ -119,8 +132,15 @@ class HevenuStrictSaveRegressionTests(unittest.TestCase):
     def test_page_change_writes_without_defer(self) -> None:
         os.environ[MUSIC_EGRESS_STRICT_KEY] = "1"
         from music_workspace_cloud_save import force_music_workspace_save
+        from music_restore_phase import complete_music_restore_phase
+        from music_startup_save_suppression import set_page_change_origin
 
         ss = {"_music_workspace_blob_hydrated": True, _local_dirty_key("music"): True}
+        from workspace_revision import APPLIED_REVISION_KEY
+
+        ss[APPLIED_REVISION_KEY] = 1
+        set_page_change_origin(ss, "user_navigation")
+        complete_music_restore_phase(ss)
         st = MagicMock()
         st.session_state = ss
 
@@ -145,6 +165,9 @@ class HevenuStrictSaveRegressionTests(unittest.TestCase):
         from music_workspace_cloud_save import force_music_workspace_save
 
         ss = {"_music_workspace_blob_hydrated": True, _local_dirty_key("music"): True}
+        from workspace_revision import APPLIED_REVISION_KEY
+
+        ss[APPLIED_REVISION_KEY] = 1
         st = MagicMock()
         st.session_state = ss
         t0 = 1_000_000.0

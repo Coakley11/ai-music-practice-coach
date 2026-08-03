@@ -4,6 +4,7 @@ Supabase PostgREST backend for cross-deployment suite activity.
 
 from __future__ import annotations
 
+import copy
 import json
 from activity_time import normalize_timestamp_iso, utc_now_iso
 from datetime import datetime
@@ -476,6 +477,206 @@ def append_event(
     if isinstance(rows, dict):
         return str(rows.get("id") or "")
     return ""
+
+
+def _load_state_row_metrics(scoped_app_key: str) -> dict[str, Any]:
+    params: dict[str, str] = {
+        "select": "metrics",
+        "app": f"eq.{scoped_app_key}",
+        "limit": "1",
+    }
+    uid = _cloud_user_id()
+    if uid:
+        params["user_id"] = f"eq.{uid}"
+    try:
+        rows = _request("GET", _TABLE_STATE, params=params, prefer="return=representation")
+    except Exception:
+        return {}
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        return {}
+    raw = rows[0].get("metrics")
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def metrics_workspace_revision(metrics: dict[str, Any] | None) -> int:
+    if not isinstance(metrics, dict):
+        return 0
+    try:
+        top = int(metrics.get("workspace_revision") or 0)
+        if top > 0:
+            return top
+    except (TypeError, ValueError):
+        pass
+    full = metrics.get(_FULL_SESSION_KEY)
+    if not isinstance(full, dict):
+        return 0
+    try:
+        from workspace_revision import workspace_revision_from_blob
+
+        return int(workspace_revision_from_blob(full))
+    except ImportError:
+        try:
+            ws = full.get("music_workspace_state")
+            if isinstance(ws, dict):
+                return int(ws.get("workspace_revision") or full.get("workspace_revision") or 0)
+            return int(full.get("workspace_revision") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+
+def _metrics_for_conditional_write(
+    scoped_app_key: str,
+    incoming: dict[str, Any] | None,
+    *,
+    candidate_workspace_revision: int,
+) -> dict[str, Any]:
+    prior = _load_state_row_metrics(scoped_app_key)
+    merged = dict(prior)
+    incoming_metrics = dict(incoming or {})
+    if _FULL_SESSION_KEY in incoming_metrics:
+        merged[_FULL_SESSION_KEY] = copy.deepcopy(incoming_metrics[_FULL_SESSION_KEY])
+    for key, val in incoming_metrics.items():
+        if key != _FULL_SESSION_KEY:
+            merged[key] = val
+    merged["workspace_revision"] = int(candidate_workspace_revision)
+    return merged
+
+
+def save_current_state_conditional_cas(
+    app: str,
+    *,
+    page: str = "",
+    summary: str = "",
+    metrics: dict[str, Any] | None = None,
+    expected_workspace_revision: int,
+    candidate_workspace_revision: int,
+) -> dict[str, Any]:
+    """
+    Atomic compare-and-swap for suite_app_current_state.
+
+    Succeeds only when stored metrics.workspace_revision equals expected_workspace_revision,
+    or when inserting the first row (expected == 0 and no row exists).
+    Never falls back to merge-duplicates upsert.
+    """
+    logical_app = normalize_app_key(app)
+    app_key = _scoped_storage_app(app)
+    try:
+        from suite_workspace import logical_storage_app_key
+
+        logical_app = logical_storage_app_key(app_key)
+    except ImportError:
+        pass
+    if logical_app not in ACTIVE_APP_KEYS:
+        return {
+            "accepted": False,
+            "rows_affected": 0,
+            "write_mode": "skipped",
+            "conditional_write_attempted": False,
+            "unconditional_upsert_attempted": False,
+            "reason": "inactive_app",
+        }
+
+    expected = int(expected_workspace_revision or 0)
+    candidate = int(candidate_workspace_revision or 0)
+    uid = _cloud_user_id()
+    merged_metrics = _metrics_for_conditional_write(
+        app_key,
+        metrics,
+        candidate_workspace_revision=candidate,
+    )
+    patch_body: dict[str, Any] = {
+        "page": page or "",
+        "summary": summary or "",
+        "metrics": merged_metrics,
+        "updated_at": _now_iso(),
+    }
+
+    base_result: dict[str, Any] = {
+        "conditional_write_attempted": True,
+        "unconditional_upsert_attempted": False,
+        "expected_workspace_revision": expected,
+        "candidate_workspace_revision": candidate,
+    }
+
+    if expected <= 0:
+        existing = _load_state_row_metrics(app_key)
+        if existing:
+            stored = metrics_workspace_revision(existing)
+            return {
+                **base_result,
+                "accepted": False,
+                "rows_affected": 0,
+                "write_mode": "conflict",
+                "reason": "row_exists_expected_zero",
+                "stored_workspace_revision": stored,
+            }
+        insert_body: dict[str, Any] = {
+            "app": app_key,
+            "page": page or "",
+            "summary": summary or "",
+            "metrics": merged_metrics,
+            "updated_at": _now_iso(),
+        }
+        if uid:
+            insert_body["user_id"] = uid
+        try:
+            rows = _request(
+                "POST",
+                _TABLE_STATE,
+                json_body=insert_body,
+                prefer="return=representation",
+            )
+        except RuntimeError as exc:
+            if _is_duplicate_key_error(exc):
+                return {
+                    **base_result,
+                    "accepted": False,
+                    "rows_affected": 0,
+                    "write_mode": "conflict",
+                    "reason": "insert_duplicate_key",
+                }
+            raise
+        count = len(rows) if isinstance(rows, list) else (1 if rows else 0)
+        return {
+            **base_result,
+            "accepted": count > 0,
+            "rows_affected": count,
+            "write_mode": "insert",
+            "reason": "insert_ok" if count else "insert_no_row",
+        }
+
+    params: dict[str, str] = {
+        "app": f"eq.{app_key}",
+        "metrics->>workspace_revision": f"eq.{expected}",
+    }
+    if uid:
+        params["user_id"] = f"eq.{uid}"
+
+    rows = _request(
+        "PATCH",
+        _TABLE_STATE,
+        params=params,
+        json_body=patch_body,
+        prefer="return=representation",
+    )
+    count = len(rows) if isinstance(rows, list) else 0
+    if count == 0:
+        stored_metrics = _load_state_row_metrics(app_key)
+        return {
+            **base_result,
+            "accepted": False,
+            "rows_affected": 0,
+            "write_mode": "conflict",
+            "reason": "conditional_patch_zero_rows",
+            "stored_workspace_revision": metrics_workspace_revision(stored_metrics),
+        }
+    return {
+        **base_result,
+        "accepted": True,
+        "rows_affected": count,
+        "write_mode": "conditional_patch",
+        "reason": "conditional_patch_ok",
+    }
 
 
 def save_current_state(

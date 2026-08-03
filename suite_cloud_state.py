@@ -41,6 +41,10 @@ class CloudSaveResult:
     save_cloud_full_session_return_value: bool = False
     cloud_upsert_attempted: bool = False
     cloud_upsert_succeeded: bool = False
+    conditional_write_attempted: bool = False
+    conditional_write_rows_affected: int = 0
+    stale_write_blocked: bool = False
+    unconditional_upsert_attempted: bool = False
     storage_module: str = ""
     storage_app_key: str = ""
 
@@ -67,6 +71,10 @@ class CloudSaveResult:
             "save_cloud_full_session_called": self.save_cloud_full_session_called,
             "cloud_upsert_attempted": self.cloud_upsert_attempted,
             "cloud_upsert_succeeded": self.cloud_upsert_succeeded,
+            "conditional_write_attempted": self.conditional_write_attempted,
+            "conditional_write_rows_affected": self.conditional_write_rows_affected,
+            "stale_write_blocked": self.stale_write_blocked,
+            "unconditional_upsert_attempted": self.unconditional_upsert_attempted,
             "cloud_storage_module": self.storage_module or "(none)",
             "cloud_storage_app_key": self.storage_app_key or "(none)",
         }
@@ -711,6 +719,92 @@ def save_cloud_full_session(
         return result
 
     try:
+        logical_app = _logical_app_key_for_cloud(app_id)
+        use_music_cas = logical_app == "music" and hasattr(storage, "save_current_state_conditional_cas")
+        if use_music_cas:
+            from music_workspace_conditional_cloud_write import (
+                prepare_music_conditional_write,
+                record_conditional_write_result,
+            )
+
+            prep = prepare_music_conditional_write(ss, state if isinstance(state, dict) else {})
+            candidate = int(prep.get("candidate_revision") or base.cloud_payload_revision or 0)
+            expected = int(prep.get("precondition_expected_revision") or 0)
+            if prep.get("blocked_precheck"):
+                cas = {
+                    "accepted": False,
+                    "rows_affected": 0,
+                    "write_mode": "conflict_precheck",
+                    "conditional_write_attempted": False,
+                    "unconditional_upsert_attempted": False,
+                    "reason": "candidate_not_gt_applied",
+                }
+                record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=False)
+                result = replace(
+                    base,
+                    failure_stage="stale_revision_precheck",
+                    cloud_client_available=True,
+                    cloud_upsert_attempted=False,
+                    cloud_upsert_succeeded=False,
+                    conditional_write_attempted=False,
+                    stale_write_blocked=True,
+                    storage_module=module_name,
+                    storage_app_key=storage_app_key,
+                )
+                _record_cloud_save_result(ss, result)
+                return result
+            cas = storage.save_current_state_conditional_cas(
+                storage_app_key,
+                page=page or "",
+                summary=summary or "Last session",
+                metrics={FULL_SESSION_KEY: copy.deepcopy(state)},
+                expected_workspace_revision=expected,
+                candidate_workspace_revision=candidate,
+            )
+            accepted = bool(cas.get("accepted"))
+            record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=accepted)
+            if not accepted:
+                result = replace(
+                    base,
+                    failure_stage="stale_revision_conflict",
+                    cloud_client_available=True,
+                    cloud_upsert_attempted=bool(cas.get("conditional_write_attempted")),
+                    cloud_upsert_succeeded=False,
+                    conditional_write_attempted=bool(cas.get("conditional_write_attempted")),
+                    conditional_write_rows_affected=int(cas.get("rows_affected") or 0),
+                    stale_write_blocked=True,
+                    unconditional_upsert_attempted=bool(cas.get("unconditional_upsert_attempted")),
+                    storage_module=module_name,
+                    storage_app_key=storage_app_key,
+                )
+                _record_cloud_save_result(ss, result)
+                return result
+            invalidate_cloud_full_session_cache(app_id)
+            result = CloudSaveResult(
+                success=True,
+                save_cloud_full_session_return_value=True,
+                account_resolution_attempted=base.account_resolution_attempted,
+                account_id_resolved=base.account_id_resolved,
+                account_id=base.account_id,
+                workspace_id_resolved=base.workspace_id_resolved,
+                cloud_document_path=base.cloud_document_path,
+                cloud_auth_available=base.cloud_auth_available,
+                cloud_payload_built=True,
+                cloud_payload_revision=candidate,
+                cloud_client_available=True,
+                cloud_upsert_attempted=bool(cas.get("conditional_write_attempted")),
+                cloud_upsert_succeeded=True,
+                conditional_write_attempted=bool(cas.get("conditional_write_attempted")),
+                conditional_write_rows_affected=int(cas.get("rows_affected") or 0),
+                stale_write_blocked=False,
+                unconditional_upsert_attempted=False,
+                supabase_response_status=200,
+                storage_module=module_name,
+                storage_app_key=storage_app_key,
+            )
+            _record_cloud_save_result(ss, result)
+            return result
+
         storage.save_current_state(
             storage_app_key,
             page=page or "",

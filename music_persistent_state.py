@@ -1686,6 +1686,14 @@ def save_music_cloud_session(
             exc = str(getattr(cloud_result, "exception", "") or "").strip()
             cloud_error = f"save_cloud_full_session:{stage}" + (f":{exc}" if exc else "")
             ss["_music_last_cloud_save_diag"] = cloud_result.to_diag()
+            if getattr(cloud_result, "stale_write_blocked", False) or stage.startswith("stale_revision"):
+                ss["_music_last_cloud_write_error"] = "stale_revision_conflict"
+                try:
+                    from music_workspace_conditional_cloud_write import fetch_latest_network_revision_evidence
+
+                    fetch_latest_network_revision_evidence(st, APP_ID)
+                except ImportError:
+                    pass
     except Exception as exc:
         cloud_error = str(exc)
     try:

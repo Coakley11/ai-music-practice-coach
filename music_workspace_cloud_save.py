@@ -1181,6 +1181,26 @@ def force_music_workspace_save(
             ss["_music_workspace_save_pending_retry"] = True
             ss["_music_force_save_ok"] = False
             ss["_music_force_save_blocked_reason"] = cloud_error or "cloud_save_unconfirmed"
+            if ss.get("_music_stale_write_blocked") or ss.get("stale_write_blocked"):
+                try:
+                    from music_workspace_conditional_cloud_write import STALE_WRITE_USER_MESSAGE
+
+                    ss["_music_force_save_blocked_reason"] = "stale_revision_conflict"
+                    record_save_transaction(
+                        ss,
+                        stale_write_blocked=True,
+                        conflict_detected=True,
+                        cloud_write_succeeded=False,
+                        cloud_confirmed=False,
+                        dirty_cleared_after_confirmed_save=False,
+                        revision_reserved=False,
+                    )
+                    try:
+                        st.warning(STALE_WRITE_USER_MESSAGE)
+                    except Exception:
+                        pass
+                except ImportError:
+                    pass
             _mark_workspace_pending_cloud_retry(
                 ss,
                 reason=r,
