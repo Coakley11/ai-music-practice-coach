@@ -132,8 +132,8 @@ class TestDisplayKeySidebarCreativeProjection(unittest.TestCase):
             return True
 
         with unittest.mock.patch(
-            "music_persistent_state.flush_global_control_edits_and_save",
-            side_effect=_global_save,
+            "display_key_sidebar_save_pipeline.run_explicit_display_key_cloud_save",
+            return_value=True,
         ):
             mark_display_key_changed(st)
         self.assertEqual(ss.get("display_key"), "Cm")
@@ -157,7 +157,7 @@ class TestDisplayKeySidebarCreativeProjection(unittest.TestCase):
         st = MagicMock()
         st.session_state = ss
         with unittest.mock.patch(
-            "music_persistent_state.flush_global_control_edits_and_save",
+            "display_key_sidebar_save_pipeline.run_explicit_display_key_cloud_save",
             return_value=True,
         ):
             mark_display_key_changed(st)

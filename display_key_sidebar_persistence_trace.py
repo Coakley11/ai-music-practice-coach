@@ -371,6 +371,13 @@ def audit_display_key_user_change_committed(
             return
         forensic = trace.get("confirmation_forensic")
         if isinstance(forensic, dict) and forensic.get("failure_code"):
+            record_display_key_user_change_violation(
+                session,
+                str(forensic.get("failure_detail") or "cloud_save_failed"),
+                violation_code=str(forensic.get("failure_code")),
+                cloud_save_requested=cloud_save_requested,
+                cloud_save_ok=False,
+            )
             return
     live = str(session.get("display_key") or "").strip()
     canon = _canonical_display_key(session)
@@ -390,6 +397,20 @@ def audit_display_key_user_change_committed(
             cloud_save_requested=False,
             cloud_save_ok=False,
         )
+        return
+    try:
+        from display_key_sidebar_cloud_confirmation import DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED
+
+        fallback_code = DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED
+    except ImportError:
+        fallback_code = DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED
+    record_display_key_user_change_violation(
+        session,
+        str(session.get("_music_force_save_blocked_reason") or "display_key_cloud_save_failed"),
+        violation_code=fallback_code,
+        cloud_save_requested=cloud_save_requested,
+        cloud_save_ok=False,
+    )
 
 
 def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]:
@@ -448,6 +469,14 @@ def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]
         for key in ("cloud_write_succeeded", "cloud_confirmed", "payload_core_display_key"):
             if key not in out and save_tx.get(key) is not None:
                 out[key] = save_tx.get(key)
+    try:
+        from display_key_sidebar_save_pipeline import DISPLAY_KEY_SAVE_PIPELINE_KEY
+
+        pipe = session.get(DISPLAY_KEY_SAVE_PIPELINE_KEY)
+        if isinstance(pipe, dict) and pipe.get("steps"):
+            out["save_pipeline"] = copy.deepcopy(pipe)
+    except ImportError:
+        pass
     return out
 
 

@@ -808,6 +808,12 @@ def force_music_workspace_save(
                         strict_egress_approval=approval,
                     )
                 )
+                record_save_transaction(
+                    ss,
+                    save_music_cloud_session_return_value=saved_cloud,
+                    save_music_cloud_session_return_type=type(saved_cloud).__name__,
+                    cloud_upsert_succeeded=saved_cloud if saved_cloud else None,
+                )
                 if saved_cloud:
                     cloud_error = ""
                     try:
@@ -833,6 +839,12 @@ def force_music_workspace_save(
                         page=page,
                         summary=summary,
                     )
+                )
+                record_save_transaction(
+                    ss,
+                    save_music_cloud_session_return_value=saved_cloud,
+                    save_music_cloud_session_return_type=type(saved_cloud).__name__,
+                    cloud_upsert_succeeded=saved_cloud if saved_cloud else None,
                 )
                 if saved_cloud:
                     cloud_error = ""

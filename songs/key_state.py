@@ -224,9 +224,45 @@ def commit_explicit_sidebar_display_key_transaction(
     ok = False
     save_error = ""
     try:
-        from music_persistent_state import flush_global_control_edits_and_save
+        from display_key_sidebar_save_pipeline import (
+            record_display_key_save_pipeline_step,
+            run_explicit_display_key_cloud_save,
+        )
 
-        ok = bool(flush_global_control_edits_and_save(st, reason="display_key_change"))
+        record_display_key_save_pipeline_step(
+            session,
+            function="commit_explicit_sidebar_display_key_transaction",
+            phase="enter",
+            transaction_id=tx_id,
+            save_reason="display_key_change",
+            caller=caller,
+            next_called="run_explicit_display_key_cloud_save",
+        )
+        ok = run_explicit_display_key_cloud_save(st, transaction_id=tx_id, caller=caller or "commit_explicit_sidebar")
+        record_display_key_save_pipeline_step(
+            session,
+            function="commit_explicit_sidebar_display_key_transaction",
+            phase="exit",
+            transaction_id=tx_id,
+            save_reason="display_key_change",
+            return_value=ok,
+            return_type=type(ok).__name__,
+        )
+    except ImportError:
+        try:
+            from music_persistent_state import force_save_music_state
+            from display_key_sidebar_cloud_confirmation import finalize_display_key_sidebar_save_outcome
+
+            raw = force_save_music_state(st, reason="display_key_change")
+            ok = finalize_display_key_sidebar_save_outcome(
+                st,
+                transaction_id=tx_id,
+                caller=caller,
+                force_save_return=raw,
+            )
+        except Exception as exc:
+            ok = False
+            save_error = str(exc)
     except Exception as exc:
         ok = False
         save_error = str(exc)
@@ -234,13 +270,17 @@ def commit_explicit_sidebar_display_key_transaction(
     block_reason = ""
     try:
         from display_key_sidebar_persistence_trace import (
-            disarm_explicit_sidebar_display_key_save,
             record_display_key_sidebar_stage,
             sync_sidebar_trace_from_workspace_save,
         )
 
         sync_sidebar_trace_from_workspace_save(session)
-        block_reason = str(session.get("_music_force_save_blocked_reason") or session.get("_music_last_cloud_write_error") or save_error or "")
+        block_reason = str(
+            session.get("_music_force_save_blocked_reason")
+            or session.get("_music_last_cloud_write_error")
+            or save_error
+            or ""
+        )
         record_display_key_sidebar_stage(
             session,
             "cloud_save_end",
@@ -251,16 +291,6 @@ def commit_explicit_sidebar_display_key_transaction(
             cloud_save_ok=ok,
             block_reason=block_reason or None,
         )
-        if ok:
-            record_display_key_sidebar_stage(
-                session,
-                "forced_network_confirmation",
-                caller=caller,
-                transaction_id=tx_id or None,
-                reason="display_key_change",
-                cloud_save_ok=True,
-            )
-        disarm_explicit_sidebar_display_key_save(session)
     except ImportError:
         pass
     if ok:
@@ -406,13 +436,13 @@ def mark_display_key_changed(st: Any) -> None:
             save_reason="display_key_change",
             transaction_id=tx_id or None,
             cloud_save_requested=True,
-            cloud_save_ok=bool(save_ok),
+            cloud_save_ok=save_ok,
         )
         audit_display_key_user_change_committed(
             st.session_state,
             callback_invoked=True,
             cloud_save_requested=True,
-            cloud_save_ok=bool(save_ok),
+            cloud_save_ok=save_ok,
         )
     except ImportError:
         pass

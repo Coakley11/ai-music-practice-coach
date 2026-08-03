@@ -130,7 +130,214 @@ def _store_confirmation_forensic(session: dict[str, Any], detail: dict[str, Any]
         trace = {}
         session[DISPLAY_KEY_SIDEBAR_TRACE_KEY] = trace
     trace["confirmation_forensic"] = copy.deepcopy(detail)
-    trace["save_transaction"] = _workspace_save_transaction(session)
+    trace["save_transaction"] = enrich_display_key_save_transaction(session)
+
+
+def enrich_display_key_save_transaction(
+    session: dict[str, Any],
+    *,
+    force_save_return: Any = None,
+    save_exception: str = "",
+) -> dict[str, Any]:
+    """Merge workspace save tx + cloud session return into sidebar trace save_transaction."""
+    try:
+        from display_key_sidebar_persistence_trace import sync_sidebar_trace_from_workspace_save
+
+        sync_sidebar_trace_from_workspace_save(session)
+    except ImportError:
+        pass
+    trace = session.get(DISPLAY_KEY_SIDEBAR_TRACE_KEY)
+    tx = _workspace_save_transaction(session)
+    if isinstance(trace, dict) and isinstance(trace.get("save_transaction"), dict):
+        for k, v in trace["save_transaction"].items():
+            if v is not None and k not in tx:
+                tx[k] = v
+    if force_save_return is not None:
+        tx["force_save_music_state_return_value"] = force_save_return
+        tx["force_save_music_state_return_type"] = type(force_save_return).__name__
+    smc = session.get("_music_last_cloud_write_ok")
+    if smc is not None:
+        tx["save_music_cloud_session_return_value"] = smc
+        tx["save_music_cloud_session_return_type"] = type(smc).__name__
+    elif tx.get("cloud_write_attempted"):
+        tx.setdefault("save_music_cloud_session_return_value", False)
+        tx.setdefault("save_music_cloud_session_return_type", "bool")
+    if save_exception:
+        tx["save_exception"] = save_exception
+    if isinstance(trace, dict):
+        trace["save_transaction"] = copy.deepcopy(tx)
+        session[DISPLAY_KEY_SIDEBAR_TRACE_KEY] = trace
+    return tx
+
+
+def record_display_key_confirmation_not_attempted(
+    session: dict[str, Any],
+    *,
+    save_reason: str,
+    detail: str,
+    tx: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    identity = _cloud_identity(session)
+    tx = tx if isinstance(tx, dict) else _workspace_save_transaction(session)
+    active = session.get(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY)
+    tx_id = None
+    if isinstance(active, dict):
+        tx_id = active.get("transaction_id")
+    forensic: dict[str, Any] = {
+        "attempted": False,
+        "confirmed": False,
+        "failure_code": DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED,
+        "reason": save_reason,
+        "failure_detail": detail,
+        "transaction_id": tx_id or tx.get("transaction_id"),
+        "workspace_account_key": identity.get("account_or_key"),
+        "workspace_id": identity.get("workspace_id"),
+        "strict_egress_plan_action": tx.get("strict_egress_plan_action"),
+        "duplicate_write_skipped": tx.get("duplicate_write_skipped"),
+        "reserved_write_revision": tx.get("reserved_write_revision"),
+        "payload_revision": tx.get("envelope_revision_after") or tx.get("payload_revision"),
+        "payload_core_display_key": tx.get("payload_core_display_key"),
+        "cloud_write_attempted": bool(tx.get("cloud_write_attempted")),
+        "cloud_upsert_succeeded": tx.get("cloud_upsert_succeeded"),
+        "cloud_write_error": tx.get("cloud_write_error") or session.get("_music_last_cloud_write_error"),
+        "save_music_cloud_session_return_value": tx.get("save_music_cloud_session_return_value"),
+        "force_save_early_return_reason": tx.get("force_save_early_return_reason"),
+        "force_save_block_reason": tx.get("force_save_block_reason") or session.get("_music_force_save_blocked_reason"),
+    }
+    _store_confirmation_forensic(session, forensic)
+    record_display_key_user_change_violation(
+        session,
+        detail,
+        violation_code=DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED,
+        **forensic,
+    )
+    record_display_key_sidebar_stage(
+        session,
+        "forced_network_confirmation",
+        reason=save_reason,
+        cloud_save_ok=False,
+        confirmation_forensic=forensic,
+    )
+    return forensic
+
+
+def finalize_display_key_sidebar_save_outcome(
+    st: Any,
+    *,
+    transaction_id: str = "",
+    caller: str = "",
+    force_save_return: Any = None,
+    save_exception: str = "",
+) -> bool:
+    """After force_save_music_state: merge tx diagnostics, confirm or record why not."""
+    session = st.session_state
+    save_reason = "display_key_change"
+    tx_id = str(transaction_id or "").strip()
+    tx = enrich_display_key_save_transaction(
+        session,
+        force_save_return=force_save_return,
+        save_exception=save_exception,
+    )
+    trace = session.get(DISPLAY_KEY_SIDEBAR_TRACE_KEY)
+    existing = trace.get("confirmation_forensic") if isinstance(trace, dict) else None
+    if isinstance(existing, dict) and existing.get("confirmed"):
+        try:
+            from display_key_sidebar_persistence_trace import disarm_explicit_sidebar_display_key_save
+
+            disarm_explicit_sidebar_display_key_save(session)
+        except ImportError:
+            session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
+        return True
+
+    if tx.get("cloud_confirmed") is True and tx.get("cloud_write_attempted"):
+        if not isinstance(existing, dict) or not existing.get("confirmed"):
+            identity = _cloud_identity(session)
+            forensic = {
+                "attempted": True,
+                "confirmed": True,
+                "reason": save_reason,
+                "transaction_id": tx_id or tx.get("transaction_id"),
+                "workspace_account_key": identity.get("account_or_key"),
+                "comparison": "cloud_confirmed_in_save_transaction",
+                **{k: tx.get(k) for k in (
+                    "strict_egress_plan_action",
+                    "duplicate_write_skipped",
+                    "reserved_write_revision",
+                    "payload_core_display_key",
+                    "cloud_write_attempted",
+                    "cloud_upsert_succeeded",
+                    "save_music_cloud_session_return_value",
+                )},
+            }
+            _store_confirmation_forensic(session, forensic)
+        try:
+            from display_key_sidebar_persistence_trace import disarm_explicit_sidebar_display_key_save
+
+            disarm_explicit_sidebar_display_key_save(session)
+        except ImportError:
+            session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
+        return True
+
+    upsert_attempted = bool(tx.get("cloud_write_attempted"))
+    block = (
+        str(session.get("_music_force_save_blocked_reason") or "").strip()
+        or str(tx.get("force_save_early_return_reason") or "").strip()
+        or str(tx.get("force_save_block_reason") or "").strip()
+        or str(save_exception or "").strip()
+        or "cloud_save_path_did_not_complete"
+    )
+
+    ok = False
+    if not upsert_attempted:
+        record_display_key_confirmation_not_attempted(
+            session,
+            save_reason=save_reason,
+            detail=block,
+            tx=tx,
+        )
+    elif isinstance(existing, dict) and existing.get("failure_code") and not existing.get("confirmed"):
+        ok = False
+    else:
+        ok_auth, _forensic = attempt_explicit_display_key_authoritative_confirmation(
+            session,
+            st=st,
+            save_reason=save_reason,
+            expected_display_key=str(session.get("display_key") or ""),
+        )
+        ok = ok_auth
+
+    if not ok:
+        trace = session.get(DISPLAY_KEY_SIDEBAR_TRACE_KEY)
+        violations = trace.get("violations") if isinstance(trace, dict) else None
+        if not isinstance(violations, list) or not violations:
+            forensic = trace.get("confirmation_forensic") if isinstance(trace, dict) else {}
+            code = DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED
+            detail = block
+            if isinstance(forensic, dict) and forensic.get("failure_code"):
+                code = str(forensic.get("failure_code"))
+                detail = str(forensic.get("failure_detail") or block)
+            record_display_key_user_change_violation(
+                session,
+                detail,
+                violation_code=code,
+            )
+
+    try:
+        from display_key_sidebar_persistence_trace import disarm_explicit_sidebar_display_key_save
+
+        disarm_explicit_sidebar_display_key_save(session)
+    except ImportError:
+        session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
+
+    try:
+        from display_key_sidebar_save_pipeline import resolve_display_key_cloud_save_ok
+
+        ok_resolved, _detail = resolve_display_key_cloud_save_ok(session)
+        if ok:
+            return True
+        return ok_resolved
+    except ImportError:
+        return bool(ok)
 
 
 def attempt_explicit_display_key_authoritative_confirmation(
@@ -214,17 +421,20 @@ def attempt_explicit_display_key_authoritative_confirmation(
         return False, forensic
 
     if not upsert_attempted:
+        forensic["attempted"] = False
         return _fail(
             DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED,
             "cloud_write_not_attempted",
             comparison="no_upsert_before_confirmation",
         )
     if not upsert_ok:
+        forensic["attempted"] = True
         return _fail(
             DISPLAY_KEY_CLOUD_UPSERT_FAILED,
             "cloud_upsert_not_succeeded",
             supabase_result=supabase or None,
         )
+    forensic["attempted"] = True
 
     try:
         from suite_cloud_state import load_cloud_full_session
@@ -303,6 +513,7 @@ def attempt_explicit_display_key_authoritative_confirmation(
         forensic["confirmation_attempts"].append(attempt_detail)
 
         if key_ok and rev_ok:
+            forensic["attempted"] = True
             forensic["confirmed"] = True
             forensic["fetch_source"] = "network"
             forensic["fetched_display_key"] = fetched_key
@@ -374,6 +585,9 @@ __all__ = [
     "DISPLAY_KEY_CLOUD_UPSERT_FAILED",
     "DISPLAY_KEY_CLOUD_WRITE_NOT_ATTEMPTED",
     "attempt_explicit_display_key_authoritative_confirmation",
+    "enrich_display_key_save_transaction",
+    "finalize_display_key_sidebar_save_outcome",
+    "record_display_key_confirmation_not_attempted",
     "record_display_key_payload_before_upsert",
     "record_display_key_supabase_result",
 ]
