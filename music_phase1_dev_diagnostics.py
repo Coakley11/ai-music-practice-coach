@@ -182,33 +182,15 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                     st.caption(f"`{key}`: {val!r}")
 
         try:
-            from creative_context_snapshot_persistence import collect_creative_context_snapshot_diagnostics
+            from creative_context_snapshot_persistence import render_item4_creative_context_snapshot_panel
 
-            context_diag = collect_creative_context_snapshot_diagnostics(session)
+            render_item4_creative_context_snapshot_panel(st, session)
         except ImportError:
-            context_diag = {}
-
-        if context_diag:
             st.markdown("**Creative context snapshots (Item 4)**")
-            for key in (
-                "last_user_interaction",
-                "save_reason",
-                "current_section_tuple",
-                "harmony_map",
-                "creative_session_tool",
-                "creative_session_key_snapshot",
-                "global_keys",
-                "envelope_field_presence",
-                "cloud_save_requested",
-                "cloud_save_ok",
-                "cloud_confirmed",
-                "payload_revision",
-                "startup_write_attempted",
-                "violations",
-            ):
-                val = context_diag.get(key)
-                if val is not None:
-                    st.caption(f"`{key}`: {val!r}")
+            st.caption("`item4_module`: unavailable (ImportError)")
+        except Exception as exc:
+            st.markdown("**Creative context snapshots (Item 4)**")
+            st.caption(f"`item4_panel_error`: {exc!r}")
 
         try:
             from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
