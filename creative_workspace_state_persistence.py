@@ -225,12 +225,34 @@ def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, rea
         note_passive_creative_tab_persist(session, reason=reason)
     except ImportError:
         pass
+    mission_passive_suppressed = False
     try:
-        from creative_mission_config_persistence import note_passive_mission_config_persist
+        from creative_mission_config_persistence import (
+            mission_passive_sync_suppressed_this_run,
+            note_passive_mission_config_persist,
+        )
 
-        note_passive_mission_config_persist(session, reason=reason)
+        mission_passive_suppressed = mission_passive_sync_suppressed_this_run(session, reason=reason)
+        if not mission_passive_suppressed:
+            note_passive_mission_config_persist(session, reason=reason)
     except ImportError:
         pass
+    if mission_passive_suppressed:
+        try:
+            from creative_mission_config_persistence import _append_mission_persistence_journal
+
+            _append_mission_persistence_journal(
+                session,
+                {
+                    "phase": "passive_creative_sync_suppressed",
+                    "reason": reason,
+                    "caller": "sync_creative_workspace_state_before_persist",
+                    "contributed_to_startup_write_attempted": False,
+                },
+            )
+        except ImportError:
+            pass
+        return
     gathered = gather_creative_workspace_from_session(session)
     write_canonical_creative_workspace(session, gathered, reason=reason)
 

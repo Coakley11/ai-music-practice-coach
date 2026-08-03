@@ -16,6 +16,9 @@ CREATIVE_MISSION_CONFIG_DIAG_KEY = "_creative_mission_config_diag"
 CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY = "_creative_mission_config_hydrated_snapshot"
 CREATIVE_MISSION_USER_EVENT_KEY = "_creative_mission_config_last_user_event"
 CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY = "_creative_mission_persistence_requested"
+CREATIVE_MISSION_PASSIVE_STARTUP_WRITE_REQUESTED_KEY = "_creative_mission_passive_startup_write_requested"
+CREATIVE_MISSION_USER_SAVE_THIS_RUN_KEY = "_creative_mission_user_save_this_run"
+CREATIVE_MISSION_PERSISTENCE_JOURNAL_KEY = "_creative_mission_persistence_journal"
 CREATIVE_MISSION_SAVE_ACTIVE_KEY = "_creative_mission_save_active_tx"
 CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY = "_creative_mission_config_needs_widget_projection"
 CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY = "_creative_mission_widgets_instantiated"
@@ -627,10 +630,69 @@ def should_gather_mission_config_from_session(
     return True
 
 
+def _append_mission_persistence_journal(session: dict[str, Any], entry: dict[str, Any]) -> None:
+    d = _diag(session)
+    journal = d.setdefault("persistence_journal", [])
+    if not isinstance(journal, list):
+        journal = []
+        d["persistence_journal"] = journal
+    row = copy.deepcopy(entry)
+    row.setdefault("run_seq", _run_seq(session))
+    journal.append(row)
+    session[CREATIVE_MISSION_PERSISTENCE_JOURNAL_KEY] = copy.deepcopy(journal)
+
+
+def mission_user_save_this_run(session: dict[str, Any]) -> bool:
+    try:
+        run = int(session.get("_script_run_seq") or 0)
+    except (TypeError, ValueError):
+        run = 0
+    return session.get(CREATIVE_MISSION_USER_SAVE_THIS_RUN_KEY) == run
+
+
+def mission_passive_sync_suppressed_this_run(session: dict[str, Any], *, reason: str) -> bool:
+    if str(reason or "").strip() not in ("autosave", "force_autosave", ""):
+        return False
+    return mission_user_save_this_run(session)
+
+
+def _workspace_save_fields(session: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        tx = collect_save_transaction_diagnostics(session)
+        if isinstance(tx, dict):
+            return {
+                "reserved_revision": tx.get("reserved_write_revision") or tx.get("envelope_revision_after"),
+                "duplicate_skipped": tx.get("duplicate_write_skipped"),
+                "upsert_attempted": tx.get("cloud_write_attempted"),
+            }
+    except ImportError:
+        pass
+    tx = session.get("_music_workspace_save_transaction")
+    if isinstance(tx, dict):
+        return {
+            "reserved_revision": tx.get("reserved_write_revision") or tx.get("envelope_revision_after"),
+            "duplicate_skipped": tx.get("duplicate_write_skipped"),
+            "upsert_attempted": tx.get("cloud_write_attempted"),
+        }
+    return {}
+
+
 def note_passive_mission_config_persist(session: dict[str, Any], *, reason: str) -> None:
     if reason in MISSION_CONFIG_SAVE_REASONS:
         return
     if reason == "page_change":
+        return
+    if mission_passive_sync_suppressed_this_run(session, reason=reason):
+        _append_mission_persistence_journal(
+            session,
+            {
+                "phase": "passive_mission_sync_suppressed",
+                "reason": reason,
+                "caller": "note_passive_mission_config_persist",
+            },
+        )
         return
     snap = session.get(CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY)
     if not isinstance(snap, dict):
@@ -639,7 +701,18 @@ def note_passive_mission_config_persist(session: dict[str, Any], *, reason: str)
         return
     for key in MISSION_CONFIG_CANONICAL_KEYS:
         if canonical_mission_config_value(session, key) != snap.get(key):
+            session[CREATIVE_MISSION_PASSIVE_STARTUP_WRITE_REQUESTED_KEY] = True
             record_mission_config_violation(session, VIOLATION_PASSIVE_MISSION_STARTUP_WRITE, detail=reason)
+            _append_mission_persistence_journal(
+                session,
+                {
+                    "phase": "passive_startup_write_violation",
+                    "reason": reason,
+                    "caller": "note_passive_mission_config_persist",
+                    "field": key,
+                    "contributed_to_startup_write_attempted": True,
+                },
+            )
             return
 
 
@@ -658,6 +731,22 @@ def request_mission_config_cloud_save(session: dict[str, Any], *, save_reason: s
     d = _diag(session)
     d["cloud_save_requested"] = True
     session[CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY] = True
+    active = session.get(CREATIVE_MISSION_SAVE_ACTIVE_KEY) if isinstance(session.get(CREATIVE_MISSION_SAVE_ACTIVE_KEY), dict) else {}
+    user_ev = session.get(CREATIVE_MISSION_USER_EVENT_KEY) if isinstance(session.get(CREATIVE_MISSION_USER_EVENT_KEY), dict) else {}
+    _append_mission_persistence_journal(
+        session,
+        {
+            "phase": "cloud_save_start",
+            "reason": save_reason,
+            "interaction": user_ev.get("interaction"),
+            "field": user_ev.get("field") or active.get("field"),
+            "transaction_id": active.get("transaction_id"),
+            "user_event_active": bool(user_ev),
+            "mission_save_active": bool(active),
+            "caller": "request_mission_config_cloud_save",
+            "contributed_to_startup_write_attempted": False,
+        },
+    )
     try:
         import streamlit as st
     except ImportError:
@@ -667,6 +756,26 @@ def request_mission_config_cloud_save(session: dict[str, Any], *, save_reason: s
 
         ok = force_save_music_state(st, reason=save_reason)
         d["cloud_save_ok"] = bool(ok)
+        ws = _workspace_save_fields(session)
+        _append_mission_persistence_journal(
+            session,
+            {
+                "phase": "cloud_save_end",
+                "reason": save_reason,
+                "interaction": user_ev.get("interaction"),
+                "field": user_ev.get("field") or active.get("field"),
+                "transaction_id": active.get("transaction_id"),
+                "user_event_active": bool(user_ev),
+                "mission_save_active": False,
+                "cloud_save_requested": True,
+                "cloud_save_ok": bool(ok),
+                "caller": "request_mission_config_cloud_save",
+                "contributed_to_startup_write_attempted": False,
+                **ws,
+            },
+        )
+        if ok and is_mission_config_save_reason(save_reason):
+            session[CREATIVE_MISSION_USER_SAVE_THIS_RUN_KEY] = _run_seq(session)
         session.pop(CREATIVE_MISSION_SAVE_ACTIVE_KEY, None)
         return bool(ok)
     except ImportError:
@@ -679,6 +788,23 @@ def request_mission_config_cloud_save(session: dict[str, Any], *, save_reason: s
                 build_state=build_music_disk_state,
             )
             d["cloud_save_ok"] = bool(ok)
+            ws = _workspace_save_fields(session)
+            _append_mission_persistence_journal(
+                session,
+                {
+                    "phase": "cloud_save_end",
+                    "reason": save_reason,
+                    "interaction": user_ev.get("interaction"),
+                    "field": user_ev.get("field") or active.get("field"),
+                    "transaction_id": active.get("transaction_id"),
+                    "cloud_save_ok": bool(ok),
+                    "caller": "request_mission_config_cloud_save",
+                    "contributed_to_startup_write_attempted": False,
+                    **ws,
+                },
+            )
+            if ok and is_mission_config_save_reason(save_reason):
+                session[CREATIVE_MISSION_USER_SAVE_THIS_RUN_KEY] = _run_seq(session)
             session.pop(CREATIVE_MISSION_SAVE_ACTIVE_KEY, None)
             return bool(ok)
         except ImportError:
@@ -732,6 +858,7 @@ def _handle_user_mission_config_change(
         project_widget_keys=False,
         interaction=interaction,
     )
+    snapshot_hydrated_mission_config(session, source=f"user_save:{save_reason}")
     request_mission_config_cloud_save(session, save_reason=save_reason)
 
 
@@ -861,7 +988,8 @@ def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict
         "canonical_values",
         {k: canonical_mission_config_value(session, k) for k in MISSION_CONFIG_CANONICAL_KEYS},
     )
-    d.setdefault("startup_write_attempted", bool(session.get(CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY)))
+    d.setdefault("startup_write_attempted", bool(session.get(CREATIVE_MISSION_PASSIVE_STARTUP_WRITE_REQUESTED_KEY)))
+    d.setdefault("persistence_journal", d.get("persistence_journal"))
     d.setdefault("violations", d.get("violations") or [])
     d.setdefault("last_chord_click_trace", d.get("last_chord_click_trace"))
     d.setdefault("last_target_identity_mismatch", d.get("last_target_identity_mismatch"))
@@ -900,6 +1028,9 @@ __all__ = [
     "should_gather_mission_config_from_session",
     "sync_mission_target_from_canonical",
     "record_mission_chord_click_trace",
-    "CREATIVE_MISSION_CHORD_CLICK_TRACE_KEY",
+    "CREATIVE_MISSION_PERSISTENCE_JOURNAL_KEY",
+    "CREATIVE_MISSION_PASSIVE_STARTUP_WRITE_REQUESTED_KEY",
+    "mission_passive_sync_suppressed_this_run",
+    "mission_user_save_this_run",
     "snapshot_hydrated_mission_config",
 ]

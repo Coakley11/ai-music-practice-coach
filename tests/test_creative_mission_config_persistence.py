@@ -13,6 +13,7 @@ from creative_mission_config_persistence import (
     IMPROV_MISSION_SECTION_MAP_SESSION_KEY,
     SAVE_REASON_MISSION_PICK,
     SAVE_REASON_MISSION_TARGET,
+    SAVE_REASON_MISSION_METRICS,
     VIOLATION_PASSIVE_MISSION_STARTUP_WRITE,
     VIOLATION_POST_INSTANTIATION_WIDGET_WRITE,
     VIOLATION_TARGET_IDENTITY_MISMATCH,
@@ -328,6 +329,78 @@ class TestMissionWidgetLifecycle(unittest.TestCase):
         trace = (ss.get("_creative_mission_config_diag") or {}).get("last_chord_click_trace") or {}
         self.assertTrue(trace.get("callback_invoked"))
         self.assertEqual(trace.get("args", {}).get("chord_index"), 5)
+
+
+class TestMissionMetricsPassiveWrite(unittest.TestCase):
+    def test_metrics_change_one_transaction_no_passive_violation(self) -> None:
+        section_map = [("Melody A", ["Cm", "Fm", "Bb", "Ab"])]
+        chords = ["Cm", "Fm", "Bb", "Ab"]
+        ss: dict = {
+            "_script_run_seq": 41,
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY: {
+                "improv_ai_metric_ids": ["melodic_diversity_goal"],
+                "improv_mission_pick": "Use only 5 notes in one register",
+            },
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_mission_pick": "Use only 5 notes in one register",
+                "improv_mission_chord_options": chords,
+                "ii_selected_chord_index": 3,
+                "ii_selected_chord": "Ab",
+                "ii_selected_section": "Melody A",
+                "ii_selected_chord_label": "Melody A · Ab",
+                "improv_ai_metric_ids": ["melodic_diversity_goal"],
+            },
+            IMPROV_MISSION_SECTION_MAP_SESSION_KEY: section_map,
+            "improv_mission_chord_options": chords,
+            "improv_ai_metric_multiselect": ["phrase_structure", "melodic_diversity_goal"],
+            "improv_intelligence_tab": "Missions",
+        }
+        def _fake_cloud_save(session: dict, *, save_reason: str) -> bool:
+            d = session.setdefault("_creative_mission_config_diag", {})
+            d["cloud_save_requested"] = True
+            d["cloud_save_ok"] = True
+            session["_creative_mission_user_save_this_run"] = session.get("_script_run_seq")
+            return True
+
+        with patch(
+            "creative_mission_config_persistence.request_mission_config_cloud_save",
+            side_effect=_fake_cloud_save,
+        ) as save:
+            handle_user_mission_metrics_change(ss)
+            self.assertEqual(save.call_count, 1)
+            self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_METRICS)
+        self.assertEqual(
+            canonical_mission_config_value(ss, "improv_ai_metric_ids"),
+            ["phrase_structure", "melodic_diversity_goal"],
+        )
+        snap = ss.get(CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY) or {}
+        self.assertEqual(snap.get("improv_ai_metric_ids"), ["phrase_structure", "melodic_diversity_goal"])
+        codes = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertNotIn(VIOLATION_PASSIVE_MISSION_STARTUP_WRITE, codes)
+        diag = ss.get("_creative_mission_config_diag") or {}
+        self.assertFalse(diag.get("startup_write_attempted"))
+        self.assertTrue(diag.get("cloud_save_requested"))
+        sync_creative_workspace_state_before_persist(ss, reason="autosave")
+        codes_after = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertNotIn(VIOLATION_PASSIVE_MISSION_STARTUP_WRITE, codes_after)
+        ss["_music_build_save_reason"] = SAVE_REASON_MISSION_METRICS
+        gathered = gather_creative_workspace_from_session(ss)
+        self.assertEqual(gathered.get("improv_ai_metric_ids"), ["phrase_structure", "melodic_diversity_goal"])
+
+    def test_passive_violation_still_detects_real_startup_drift(self) -> None:
+        ss: dict = {
+            CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY: {"improv_mission_pick": "Use only chord tones"},
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_mission_pick": "Rhythm-first, note-second",
+            },
+        }
+        note_passive_mission_config_persist(ss, reason="autosave")
+        codes = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertIn(VIOLATION_PASSIVE_MISSION_STARTUP_WRITE, codes)
+        self.assertTrue(ss.get("_creative_mission_passive_startup_write_requested"))
 
 
 if __name__ == "__main__":
