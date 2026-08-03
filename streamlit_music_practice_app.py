@@ -13779,6 +13779,16 @@ elif _studio_page == "creative":
             set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_CREATIVE)
         except ImportError:
             pass
+        try:
+            from mission_backing_handoff_persistence import (
+                arm_mission_backing_handoff_page_change,
+                handoff_with_practice_lick_pending,
+            )
+
+            if handoff_with_practice_lick_pending(st.session_state):
+                arm_mission_backing_handoff_page_change(st.session_state)
+        except ImportError:
+            pass
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
         try:

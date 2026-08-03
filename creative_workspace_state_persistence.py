@@ -223,6 +223,13 @@ def creative_workspace_state_restored(session: dict[str, Any]) -> bool:
 
 def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, reason: str = "autosave") -> None:
     try:
+        from mission_backing_handoff_persistence import should_skip_creative_sync_for_handoff_page_change
+
+        if should_skip_creative_sync_for_handoff_page_change(session):
+            return
+    except ImportError:
+        pass
+    try:
         from creative_workspace_persistence import sync_creative_workspace_before_persist
 
         sync_creative_workspace_before_persist(session)

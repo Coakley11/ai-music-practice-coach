@@ -2640,6 +2640,17 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             ss["_music_last_build_checkpoint_payload_pages"] = payload_pages_from_state(state)
     except ImportError:
         pass
+    try:
+        from mission_backing_handoff_persistence import (
+            clear_handoff_page_change_build_flag,
+            note_handoff_page_change_payload_built,
+        )
+
+        if ss.get("_music_build_save_reason") == "page_change" or save_reason == "page_change":
+            note_handoff_page_change_payload_built(ss, state)
+        clear_handoff_page_change_build_flag(ss)
+    except ImportError:
+        pass
     return state
 
 
@@ -2669,6 +2680,25 @@ def apply_music_disk_state(
         ss["_suite_last_cloud_fetch_payload"] = copy.deepcopy(payload)
     except Exception:
         ss["_suite_last_cloud_fetch_payload"] = payload
+    try:
+        from mission_backing_handoff_persistence import (
+            record_refresh_hydration_step,
+            summarize_handoff_payload_forensics,
+        )
+
+        forensics = summarize_handoff_payload_forensics(payload if isinstance(payload, dict) else {})
+        record_refresh_hydration_step(
+            ss,
+            "apply_music_disk_state:entry",
+            page=str((forensics.get("page_fields") or {}).get("workspace") or ss.get("studio_page") or ""),
+            backing_subview=str(forensics.get("backing_subview") or ""),
+            example_present=bool((forensics.get("improv_mission_example") or {}).get("present")),
+            lick_present=bool((forensics.get("improv_mission_practice_lick") or {}).get("present")),
+            fetched_revision=forensics.get("payload_revision"),
+            fetch_source=str(ss.get("_music_last_cloud_fetch_source") or "apply_music_disk_state"),
+        )
+    except ImportError:
+        pass
     try:
         from creative_selector_hydration_trace import record_raw_network_row
 
@@ -3145,6 +3175,18 @@ def apply_music_disk_state(
             payload,
             authoritative=authoritative_restore,
         )
+        try:
+            from mission_backing_handoff_persistence import record_refresh_hydration_step
+
+            record_refresh_hydration_step(
+                ss,
+                "apply_creative_workspace_from_payload",
+                page=str(ss.get("studio_page") or "").strip().lower() or None,
+                example_present=bool(ss.get("improv_mission_example")),
+                lick_present=bool(ss.get("improv_mission_practice_lick")),
+            )
+        except ImportError:
+            pass
     except ImportError:
         pass
 

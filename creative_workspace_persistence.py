@@ -83,6 +83,13 @@ def creative_session_blob_from_envelope(state: dict[str, Any]) -> dict[str, Any]
 
 def sync_creative_workspace_before_persist(session: dict[str, Any]) -> None:
     """Capture full Creative workspace immediately before disk/cloud save."""
+    try:
+        from mission_backing_handoff_persistence import should_skip_creative_sync_for_handoff_page_change
+
+        if should_skip_creative_sync_for_handoff_page_change(session):
+            return
+    except ImportError:
+        pass
     if not _session_has_creative_workspace(session):
         return
     _refresh_practice_lick_transport(session)

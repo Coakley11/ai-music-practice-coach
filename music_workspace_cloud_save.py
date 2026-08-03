@@ -489,6 +489,29 @@ def force_music_workspace_save(
             )
         except ImportError:
             pass
+        try:
+            from mission_backing_handoff_persistence import (
+                VIOLATION_POST_CONFIRM_OVERWRITE,
+                guard_mission_backing_handoff_post_confirm_overwrite,
+                record_handoff_final_upsert_if_active,
+            )
+
+            blocked, _detail = guard_mission_backing_handoff_post_confirm_overwrite(
+                ss, save_reason=r, state=state
+            )
+            if blocked:
+                ss["_music_force_save_ok"] = False
+                ss["_music_force_save_blocked_reason"] = VIOLATION_POST_CONFIRM_OVERWRITE
+                record_save_transaction(
+                    ss,
+                    force_save_allowed=False,
+                    force_save_block_reason=VIOLATION_POST_CONFIRM_OVERWRITE,
+                )
+                _snapshot_save_transaction_debug(st, ss, event="handoff_post_confirm_overwrite_blocked")
+                return False
+            record_handoff_final_upsert_if_active(ss, state=state, save_reason=r)
+        except ImportError:
+            pass
     except Exception as exc:
         record_save_transaction(ss, envelope_built=False, cloud_write_error=str(exc))
         ss["_music_commit_error"] = str(exc)
@@ -936,6 +959,18 @@ def force_music_workspace_save(
         and revision_advanced
         and (not cloud_required or readback_ok or duplicate_skipped)
     )
+    if str(r) == "page_change":
+        try:
+            from mission_backing_handoff_persistence import on_page_change_cloud_save_finished
+
+            on_page_change_cloud_save_finished(
+                ss,
+                state=state,
+                save_reason=r,
+                cloud_confirmed=bool(cloud_confirmed),
+            )
+        except ImportError:
+            pass
     record_save_transaction(
         ss,
         cloud_confirmed=cloud_confirmed,

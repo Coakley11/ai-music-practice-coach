@@ -167,6 +167,23 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             )
         except ImportError:
             pass
+        try:
+            from mission_backing_handoff_persistence import record_refresh_hydration_step
+
+            from creative_mission_artifact_persistence import canonical_mission_artifact_value
+            from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY
+
+            record_refresh_hydration_step(
+                session,
+                "studio_nav_state.prepare_studio_nav",
+                page=page,
+                backing_subview=None,
+                example_present=bool(canonical_mission_artifact_value(session, MISSION_EXAMPLE_KEY)),
+                lick_present=bool(canonical_mission_artifact_value(session, MISSION_PRACTICE_LICK_KEY)),
+                overwrite_function="studio_nav_state.prepare_studio_nav",
+            )
+        except ImportError:
+            pass
         return write_canonical_studio_nav_state(session, page, reason=reason, local_edit=local_edit)
 
     try:
