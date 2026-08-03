@@ -38,6 +38,7 @@ MISSION_CONFIG_SAVE_REASONS: frozenset[str] = frozenset(
 VIOLATION_PASSIVE_MISSION_STARTUP_WRITE = "CREATIVE_MISSION_PASSIVE_STARTUP_WRITE"
 VIOLATION_POST_INSTANTIATION_WIDGET_WRITE = "CREATIVE_MISSION_POST_INSTANTIATION_WIDGET_WRITE"
 VIOLATION_TARGET_IDENTITY_MISMATCH = "CREATIVE_MISSION_TARGET_IDENTITY_MISMATCH"
+VIOLATION_METRICS_WIDGET_DIVERGENCE = "CREATIVE_MISSION_METRICS_WIDGET_DIVERGENCE"
 
 MISSION_TARGET_IDENTITY_KEYS: tuple[str, ...] = (
     "ii_selected_section",
@@ -456,9 +457,136 @@ def canonical_mission_config_value(session: dict[str, Any], key: str) -> Any:
         val = blob.get(key)
         if key == "ii_selected_chord_index" and val is not None:
             return copy.deepcopy(val)
+        if key == "improv_ai_metric_ids" and isinstance(val, list):
+            return copy.deepcopy(val)
         if val is not None and val != "" and val != []:
             return copy.deepcopy(val)
     return copy.deepcopy(session.get(key))
+
+
+def mission_metrics_configured_in_canonical(session: dict[str, Any]) -> bool:
+    blob = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    return isinstance(blob, dict) and "improv_ai_metric_ids" in blob
+
+
+def canonical_mission_metric_ids(session: dict[str, Any]) -> list[str] | None:
+    """None = field absent in cloud canonical; otherwise explicit list (may be empty)."""
+    blob = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    if not isinstance(blob, dict) or "improv_ai_metric_ids" not in blob:
+        return None
+    val = blob.get("improv_ai_metric_ids")
+    if isinstance(val, list):
+        return [str(x) for x in val]
+    return []
+
+
+def _metric_labels_for_ids(metric_ids: list[str]) -> list[str]:
+    try:
+        from mission_analysis import AI_IMPROV_METRIC_IDS, MISSION_BY_ID
+
+        id_to_label = {mid: MISSION_BY_ID[mid].label for mid in AI_IMPROV_METRIC_IDS if mid in MISSION_BY_ID}
+        return [id_to_label[mid] for mid in metric_ids if mid in id_to_label]
+    except ImportError:
+        return []
+
+
+def _metric_ids_from_widget_labels(labels: list[Any]) -> list[str]:
+    try:
+        from mission_analysis_ui import _metric_id_label_maps
+
+        label_to_id, _ = _metric_id_label_maps()
+        return [label_to_id[str(l)] for l in labels if str(l) in label_to_id]
+    except ImportError:
+        return []
+
+
+def local_default_mission_metric_ids(session: dict[str, Any]) -> list[str]:
+    """Never persisted — only when improv_ai_metric_ids is absent from canonical."""
+    try:
+        from mission_analysis import mission_ids_from_legacy
+
+        legacy = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "")
+        return list(mission_ids_from_legacy(legacy))[:18]
+    except ImportError:
+        return []
+
+
+def resolve_mission_metric_ids_for_display(session: dict[str, Any]) -> list[str]:
+    configured = canonical_mission_metric_ids(session)
+    if configured is not None:
+        return list(configured)
+    if mission_metrics_configured_in_canonical(session):
+        return []
+    flat = session.get("improv_ai_metric_ids")
+    if isinstance(flat, list):
+        return [str(x) for x in flat]
+    return local_default_mission_metric_ids(session)
+
+
+def project_mission_metrics_widgets_from_canonical(
+    session: dict[str, Any],
+    *,
+    overwrite: bool = False,
+    key_prefix: str = "improv",
+) -> list[str]:
+    """Project canonical improv_ai_metric_ids into flat ids + multiselect widget labels (pre-widget)."""
+    ids = resolve_mission_metric_ids_for_display(session)
+    widget_key = f"{key_prefix}_ai_metric_multiselect"
+    store_key = f"{key_prefix}_ai_metric_ids"
+    labels = _metric_labels_for_ids(ids)
+    canonical_configured = mission_metrics_configured_in_canonical(session)
+    if overwrite or canonical_configured or widget_key not in session:
+        session[store_key] = copy.deepcopy(ids)
+        session[widget_key] = copy.deepcopy(labels)
+    d = _diag(session)
+    d.setdefault("metrics_widget_projection", {})
+    if isinstance(d.get("metrics_widget_projection"), dict):
+        d["metrics_widget_projection"] = {
+            "canonical_ids": list(ids) if canonical_configured else canonical_mission_metric_ids(session),
+            "projected_ids": copy.deepcopy(ids),
+            "projected_labels": copy.deepcopy(labels),
+            "widget_key": widget_key,
+            "overwrite": overwrite,
+            "canonical_configured": canonical_configured,
+        }
+    return ids
+
+
+def audit_mission_metrics_widget_divergence(
+    session: dict[str, Any],
+    *,
+    key_prefix: str = "improv",
+    function: str = "render_ai_improv_metrics_selector",
+) -> None:
+    if not mission_metrics_configured_in_canonical(session):
+        return
+    ev = session.get(CREATIVE_MISSION_USER_EVENT_KEY)
+    if isinstance(ev, dict) and ev.get("save_reason") == SAVE_REASON_MISSION_METRICS:
+        try:
+            if int(ev.get("run_seq") or -1) == _run_seq(session):
+                return
+        except (TypeError, ValueError):
+            pass
+    canonical_ids = list(canonical_mission_metric_ids(session) or [])
+    widget_key = f"{key_prefix}_ai_metric_multiselect"
+    store_key = f"{key_prefix}_ai_metric_ids"
+    widget_labels = list(session.get(widget_key) or [])
+    widget_ids = _metric_ids_from_widget_labels(widget_labels)
+    session_ids = list(session.get(store_key) or [])
+    hydrated = (session.get(CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY) or {}).get("improv_ai_metric_ids")
+    d = _diag(session)
+    d["widget_values"] = {
+        "improv_ai_metric_ids": copy.deepcopy(session_ids),
+        "improv_ai_metric_multiselect": copy.deepcopy(widget_labels),
+        "improv_ai_metric_ids_from_widget": copy.deepcopy(widget_ids),
+    }
+    if canonical_ids == widget_ids == session_ids:
+        return
+    detail = (
+        f"hydrated={hydrated!r}|canonical={canonical_ids!r}|session={session_ids!r}|"
+        f"widget={widget_ids!r}|labels={widget_labels!r}|function={function}|run_seq={_run_seq(session)}"
+    )
+    record_mission_config_violation(session, VIOLATION_METRICS_WIDGET_DIVERGENCE, detail=detail)
 
 
 def commit_mission_config_to_canonical(
@@ -577,6 +705,11 @@ def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite:
         if key == "ii_selected_chord_index":
             if val is None:
                 continue
+        elif key == "improv_ai_metric_ids":
+            if not mission_metrics_configured_in_canonical(session):
+                continue
+            session[key] = copy.deepcopy(val if isinstance(val, list) else [])
+            continue
         elif val is None or val == "" or val == []:
             continue
         if overwrite or key not in session or session.get(key) in (None, "", []):
@@ -587,6 +720,7 @@ def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite:
         session["improv_active_mission"] = active
     if pick:
         session["improv_mission_pick"] = pick
+    project_mission_metrics_widgets_from_canonical(session, overwrite=overwrite)
     d = _diag(session)
     d["projection_source"] = "creative_workspace_state"
 
@@ -625,6 +759,11 @@ def should_gather_mission_config_from_session(
         if session_val != canon:
             return False
         return True
+    if key == "improv_ai_metric_ids" and mission_metrics_configured_in_canonical(session):
+        if canon is not None and session_val != canon:
+            return False
+        if isinstance(canon, list):
+            return True
     if persist_reason in ("autosave", "force_autosave", ""):
         return False
     return True
@@ -993,6 +1132,7 @@ def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict
     d.setdefault("violations", d.get("violations") or [])
     d.setdefault("last_chord_click_trace", d.get("last_chord_click_trace"))
     d.setdefault("last_target_identity_mismatch", d.get("last_target_identity_mismatch"))
+    d.setdefault("widget_values", d.get("widget_values"))
     return d
 
 
@@ -1010,6 +1150,11 @@ __all__ = [
     "VIOLATION_PASSIVE_MISSION_STARTUP_WRITE",
     "VIOLATION_POST_INSTANTIATION_WIDGET_WRITE",
     "VIOLATION_TARGET_IDENTITY_MISMATCH",
+    "VIOLATION_METRICS_WIDGET_DIVERGENCE",
+    "audit_mission_metrics_widget_divergence",
+    "project_mission_metrics_widgets_from_canonical",
+    "canonical_mission_metric_ids",
+    "mission_metrics_configured_in_canonical",
     "collect_creative_mission_config_diagnostics",
     "commit_mission_config_to_canonical",
     "ensure_atomic_mission_target_before_save",

@@ -403,5 +403,77 @@ class TestMissionMetricsPassiveWrite(unittest.TestCase):
         self.assertTrue(ss.get("_creative_mission_passive_startup_write_requested"))
 
 
+class TestMissionMetricsWidgetProjection(unittest.TestCase):
+    def test_canonical_partial_list_projects_to_widget_without_extra_defaults(self) -> None:
+        ss: dict = {
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_ai_metric_ids": ["phrase_structure"],
+                "improv_active_mission": "Use only 5 notes in one register",
+            },
+            "improv_ai_metric_ids": ["phrase_structure", "melodic_diversity_goal"],
+            "improv_ai_metric_multiselect": ["Phrase structure", "Melodic diversity"],
+        }
+        from creative_mission_config_persistence import (
+            VIOLATION_METRICS_WIDGET_DIVERGENCE,
+            audit_mission_metrics_widget_divergence,
+            project_mission_metrics_widgets_from_canonical,
+        )
+
+        project_mission_metrics_widgets_from_canonical(ss, overwrite=True, key_prefix="improv")
+        self.assertEqual(ss.get("improv_ai_metric_ids"), ["phrase_structure"])
+        self.assertEqual(ss.get("improv_ai_metric_multiselect"), ["Phrase structure"])
+        audit_mission_metrics_widget_divergence(ss, key_prefix="improv")
+        codes = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertNotIn(VIOLATION_METRICS_WIDGET_DIVERGENCE, codes)
+
+    def test_user_removes_metric_then_refresh_projection_keeps_single_id(self) -> None:
+        section_map = [("Melody A", ["Cm", "Fm", "Bb", "Ab"])]
+        chords = ["Cm", "Fm", "Bb", "Ab"]
+        ss: dict = {
+            "_script_run_seq": 55,
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY: {
+                "improv_ai_metric_ids": ["phrase_structure", "melodic_diversity_goal"],
+            },
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(),
+                "improv_ai_metric_ids": ["phrase_structure", "melodic_diversity_goal"],
+            },
+            IMPROV_MISSION_SECTION_MAP_SESSION_KEY: section_map,
+            "improv_mission_chord_options": chords,
+            "improv_ai_metric_multiselect": ["phrase_structure", "melodic_diversity_goal"],
+        }
+
+        def _fake_cloud_save(session: dict, *, save_reason: str) -> bool:
+            session["_creative_mission_user_save_this_run"] = session.get("_script_run_seq")
+            return True
+
+        with patch(
+            "creative_mission_config_persistence.request_mission_config_cloud_save",
+            side_effect=_fake_cloud_save,
+        ):
+            ss["improv_ai_metric_multiselect"] = ["phrase_structure"]
+            handle_user_mission_metrics_change(ss)
+        self.assertEqual(canonical_mission_config_value(ss, "improv_ai_metric_ids"), ["phrase_structure"])
+        ss["improv_ai_metric_multiselect"] = ["Phrase structure", "Melodic diversity"]
+        from creative_mission_config_persistence import (
+            VIOLATION_METRICS_WIDGET_DIVERGENCE,
+            audit_mission_metrics_widget_divergence,
+            project_mission_config_from_canonical,
+            project_mission_metrics_widgets_from_canonical,
+        )
+
+        project_mission_config_from_canonical(ss, overwrite=True)
+        project_mission_metrics_widgets_from_canonical(ss, overwrite=True, key_prefix="improv")
+        self.assertEqual(canonical_mission_config_value(ss, "improv_ai_metric_ids"), ["phrase_structure"])
+        self.assertEqual(ss.get("improv_ai_metric_ids"), ["phrase_structure"])
+        self.assertEqual(ss.get("improv_ai_metric_multiselect"), ["Phrase structure"])
+        audit_mission_metrics_widget_divergence(ss, key_prefix="improv")
+        codes = [v.get("code") for v in (ss.get("_creative_mission_config_diag") or {}).get("violations") or []]
+        self.assertNotIn(VIOLATION_METRICS_WIDGET_DIVERGENCE, codes)
+
+
 if __name__ == "__main__":
     unittest.main()

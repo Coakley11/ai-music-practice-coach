@@ -54,16 +54,31 @@ def render_ai_improv_metrics_selector(
 
     label_to_id, id_to_label = _metric_id_label_maps()
     store_key = f"{key_prefix}_ai_metric_ids"
-    session_state.setdefault(store_key, list(session_state.get("analysis_ai_metric_ids") or []))
+    widget_key = f"{key_prefix}_ai_metric_multiselect"
+
+    try:
+        from creative_mission_config_persistence import (
+            audit_mission_metrics_widget_divergence,
+            project_mission_metrics_widgets_from_canonical,
+        )
+        from creative_tab_tool_persistence import selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            project_mission_metrics_widgets_from_canonical(
+                session_state,
+                overwrite=True,
+                key_prefix=key_prefix,
+            )
+    except ImportError:
+        pass
 
     current_ids = list(session_state.get(store_key) or [])
-    default_labels = [id_to_label[i] for i in current_ids if i in id_to_label]
 
     picked = st.multiselect(
         "Choose what you want AI to evaluate",
         AI_IMPROV_METRIC_LABELS,
-        default=default_labels,
-        key=f"{key_prefix}_ai_metric_multiselect",
+        default=[id_to_label[i] for i in current_ids if i in id_to_label],
+        key=widget_key,
         help="Select every skill you practiced — Upload Analysis scores each one.",
         on_change=_on_improv_ai_metrics_change if key_prefix == "improv" else None,
     )
@@ -71,6 +86,15 @@ def render_ai_improv_metrics_selector(
     session_state[store_key] = selected_ids
     session_state["analysis_ai_metric_ids"] = selected_ids
     session_state["analysis_mission_ids"] = selected_ids
+
+    try:
+        from creative_mission_config_persistence import audit_mission_metrics_widget_divergence
+        from creative_tab_tool_persistence import selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            audit_mission_metrics_widget_divergence(session_state, key_prefix=key_prefix)
+    except ImportError:
+        pass
 
     if show_history:
         render_mission_history_panel(st)
