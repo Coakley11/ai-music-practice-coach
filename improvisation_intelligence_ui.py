@@ -1029,6 +1029,27 @@ def _render_section_chord_map(
     _migrate_ii_chord_selection(session_state)
     sel_idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
     src = _safe_widget_key_part(source_id)
+
+    def _chord_tile_on_click(ch: str, label: str, gidx: int) -> None:
+        import streamlit as st
+
+        ss = st.session_state
+        try:
+            from creative_mission_config_persistence import handle_user_mission_target_selection
+
+            handle_user_mission_target_selection(
+                ss,
+                chord=ch,
+                section=label,
+                chord_index=gidx,
+                chord_label=f"{label} · {ch}",
+            )
+        except ImportError:
+            pass
+        if generate_motif_on_select:
+            ss["improv_motif"] = generate_musical_phrase(ch, key_center=key_center, kind="creative")
+            _clear_motif_outputs(ss)
+
     for sec_i, (label, chords) in enumerate(section_map):
         st.markdown(f"**{html.escape(label)}**")
         section_slug = _safe_widget_key_part(label)
@@ -1044,30 +1065,14 @@ def _render_section_chord_map(
                 )
                 with cols[ci]:
                     is_sel = gidx == sel_idx
-                    if st.button(
+                    st.button(
                         ch,
                         key=button_key,
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
-                    ):
-                        session_state[II_SELECTED_CHORD] = ch
-                        session_state[II_SELECTED_SECTION] = label
-                        session_state[II_SELECTED_CHORD_INDEX] = gidx
-                        session_state[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
-                        session_state.pop(MISSION_EXAMPLE_KEY, None)
-                        session_state.pop(MISSION_NEW_NONCE_KEY, None)
-                        try:
-                            from creative_mission_config_persistence import handle_user_mission_target_change
-
-                            handle_user_mission_target_change(session_state)
-                        except ImportError:
-                            pass
-                        if generate_motif_on_select:
-                            session_state["improv_motif"] = generate_musical_phrase(
-                                ch, key_center=key_center, kind="creative"
-                            )
-                            _clear_motif_outputs(session_state)
-                        st.rerun()
+                        on_click=_chord_tile_on_click,
+                        args=(ch, label, gidx),
+                    )
     cap = (
         "One progression per section — repeated verses/choruses and multi-bar holds "
         "are collapsed. Tap a chord to select."
@@ -1075,6 +1080,12 @@ def _render_section_chord_map(
     if generate_motif_on_select:
         cap += " Motif updates when you tap a chord."
     st.caption(cap)
+    try:
+        from creative_mission_config_persistence import mark_mission_widgets_instantiated
+
+        mark_mission_widgets_instantiated(session_state)
+    except ImportError:
+        pass
 
 
 def _render_motif_sheet_music(st: Any, abc_text: str, *, height: int = 360) -> None:
@@ -1222,6 +1233,13 @@ def _tab_missions(
         render_setup_quick_controls,
     )
 
+    try:
+        from creative_mission_config_persistence import project_mission_config_from_canonical_before_widgets
+
+        project_mission_config_from_canonical_before_widgets(session_state)
+    except ImportError:
+        pass
+
     st.markdown("#### Practice missions")
     st.caption(
         f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
@@ -1250,8 +1268,7 @@ def _tab_missions(
         key="improv_mission_pick",
         on_change=_on_mission_pick_change,
     )
-    if mission != session_state.get("improv_active_mission"):
-        session_state["improv_active_mission"] = mission
+    mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
     chords = flatten_section_map(section_map)

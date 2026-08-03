@@ -17,6 +17,8 @@ CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY = "_creative_mission_config_hydrated_snap
 CREATIVE_MISSION_USER_EVENT_KEY = "_creative_mission_config_last_user_event"
 CREATIVE_MISSION_PERSISTENCE_REQUESTED_KEY = "_creative_mission_persistence_requested"
 CREATIVE_MISSION_SAVE_ACTIVE_KEY = "_creative_mission_save_active_tx"
+CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY = "_creative_mission_config_needs_widget_projection"
+CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY = "_creative_mission_widgets_instantiated"
 
 SAVE_REASON_MISSION_PICK = "creative_mission_change"
 SAVE_REASON_MISSION_TARGET = "creative_mission_target_change"
@@ -31,6 +33,7 @@ MISSION_CONFIG_SAVE_REASONS: frozenset[str] = frozenset(
 )
 
 VIOLATION_PASSIVE_MISSION_STARTUP_WRITE = "CREATIVE_MISSION_PASSIVE_STARTUP_WRITE"
+VIOLATION_POST_INSTANTIATION_WIDGET_WRITE = "CREATIVE_MISSION_POST_INSTANTIATION_WIDGET_WRITE"
 
 # Item 2 scope — not generated example / practice lick (Item 3).
 MISSION_CONFIG_CANONICAL_KEYS: tuple[str, ...] = (
@@ -44,6 +47,19 @@ MISSION_CONFIG_CANONICAL_KEYS: tuple[str, ...] = (
     "ii_selected_chord_label",
     "improv_ai_metric_ids",
     "analysis_criteria_locked",
+)
+
+# Flat session keys that Streamlit widgets may own — never assign after instantiation.
+MISSION_WIDGET_SESSION_KEYS: frozenset[str] = frozenset(
+    {
+        "improv_mission_pick",
+        "ii_selected_chord",
+        "ii_selected_section",
+        "ii_selected_chord_index",
+        "ii_selected_chord_label",
+        "improv_ai_metric_ids",
+        "improv_ai_metric_multiselect",
+    }
 )
 
 
@@ -77,6 +93,55 @@ def _run_seq(session: dict[str, Any]) -> int:
         return 0
 
 
+def mark_mission_widgets_instantiated(session: dict[str, Any]) -> None:
+    session[CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY] = True
+
+
+def _record_post_instantiation_widget_write_violation(
+    session: dict[str, Any],
+    *,
+    key: str,
+    function: str,
+    save_reason: str = "",
+    interaction: str = "",
+) -> None:
+    record_mission_config_violation(
+        session,
+        VIOLATION_POST_INSTANTIATION_WIDGET_WRITE,
+        detail=(
+            f"key={key}|function={function}|reason={save_reason or 'none'}"
+            f"|interaction={interaction or 'none'}|run_seq={_run_seq(session)}"
+        ),
+    )
+
+
+def _safe_assign_mission_widget_key(
+    session: dict[str, Any],
+    key: str,
+    value: Any,
+    *,
+    function: str,
+    save_reason: str = "",
+    interaction: str = "",
+    allow_when_widgets_live: bool = False,
+) -> bool:
+    if (
+        not allow_when_widgets_live
+        and session.get(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY)
+        and key in MISSION_WIDGET_SESSION_KEYS
+    ):
+        _record_post_instantiation_widget_write_violation(
+            session,
+            key=key,
+            function=function,
+            save_reason=save_reason,
+            interaction=interaction,
+        )
+        return False
+    session[key] = copy.deepcopy(value)
+    return True
+
+
 def _config_slice(session: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key in MISSION_CONFIG_CANONICAL_KEYS:
@@ -100,18 +165,47 @@ def canonical_mission_config_value(session: dict[str, Any], key: str) -> Any:
     return copy.deepcopy(session.get(key))
 
 
-def commit_mission_config_to_canonical(session: dict[str, Any], *, reason: str) -> None:
+def commit_mission_config_to_canonical(
+    session: dict[str, Any],
+    *,
+    reason: str,
+    values: dict[str, Any] | None = None,
+    project_widget_keys: bool = False,
+    interaction: str = "",
+) -> None:
+    """Write mission configuration into creative_workspace_state only (default).
+
+    Widget session keys are projected on the next rerun via project_mission_config_from_canonical_before_widgets.
+    """
     blob = session.get(CREATIVE_WORKSPACE_STATE_KEY)
     if isinstance(blob, dict):
         base = copy.deepcopy(blob)
     else:
         base = default_creative_workspace_state()
-    slice_ = _config_slice(session)
+    slice_ = copy.deepcopy(values) if values is not None else _config_slice(session)
     for k, v in slice_.items():
         base[k] = copy.deepcopy(v)
     write_canonical_creative_workspace(session, base, reason=reason)
-    for k, v in slice_.items():
-        session[k] = copy.deepcopy(v)
+    if project_widget_keys:
+        for k, v in slice_.items():
+            _safe_assign_mission_widget_key(
+                session,
+                k,
+                v,
+                function="commit_mission_config_to_canonical",
+                save_reason=reason,
+                interaction=interaction,
+            )
+    else:
+        session[CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY] = True
+
+
+def project_mission_config_from_canonical_before_widgets(session: dict[str, Any]) -> None:
+    """Run before Missions widgets render — applies pending canonical → widget projection."""
+    if not session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, False):
+        return
+    session.pop(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY, None)
+    project_mission_config_from_canonical(session, overwrite=True)
 
 
 def snapshot_hydrated_mission_config(session: dict[str, Any], *, source: str = "prepare") -> None:
@@ -129,9 +223,11 @@ def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite:
             continue
         if overwrite or key not in session or session.get(key) in (None, "", []):
             session[key] = copy.deepcopy(val)
-    pick = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
+    pick = str(canonical_mission_config_value(session, "improv_mission_pick") or "").strip()
+    active = str(canonical_mission_config_value(session, "improv_active_mission") or pick).strip()
+    if active:
+        session["improv_active_mission"] = active
     if pick:
-        session["improv_active_mission"] = pick
         session["improv_mission_pick"] = pick
     d = _diag(session)
     d["projection_source"] = "creative_workspace_state"
@@ -233,12 +329,15 @@ def _handle_user_mission_config_change(
     *,
     save_reason: str,
     field: str,
+    values: dict[str, Any] | None = None,
+    interaction: str = "",
 ) -> None:
     begin_mission_config_save_tx(session, save_reason=save_reason, field=field)
     session[CREATIVE_MISSION_USER_EVENT_KEY] = {
         "field": field,
         "save_reason": save_reason,
         "run_seq": _run_seq(session),
+        "interaction": interaction or None,
     }
     try:
         from creative_workspace_persistence import mark_creative_workspace_dirty
@@ -251,25 +350,98 @@ def _handle_user_mission_config_change(
             mark_mission_workspace_dirty(session)
         except ImportError:
             pass
-    commit_mission_config_to_canonical(session, reason=save_reason)
+    commit_mission_config_to_canonical(
+        session,
+        reason=save_reason,
+        values=values,
+        project_widget_keys=False,
+        interaction=interaction,
+    )
     request_mission_config_cloud_save(session, save_reason=save_reason)
 
 
 def handle_user_mission_pick_change(session: dict[str, Any]) -> None:
     pick = str(session.get("improv_mission_pick") or "").strip()
+    values = _config_slice(session)
     if pick:
-        session["improv_active_mission"] = pick
-    _handle_user_mission_config_change(session, save_reason=SAVE_REASON_MISSION_PICK, field="improv_mission_pick")
+        values["improv_active_mission"] = pick
+        values["improv_mission_pick"] = pick
+    _handle_user_mission_config_change(
+        session,
+        save_reason=SAVE_REASON_MISSION_PICK,
+        field="improv_mission_pick",
+        values=values,
+        interaction="mission_pick_on_change",
+    )
+
+
+def handle_user_mission_target_selection(
+    session: dict[str, Any],
+    *,
+    chord: str,
+    section: str,
+    chord_index: int,
+    chord_label: str,
+) -> None:
+    """Canonical-only target update (chord tile on_click — no widget key writes)."""
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_NEW_NONCE_KEY
+    except ImportError:
+        MISSION_EXAMPLE_KEY = "improv_mission_example"
+        MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
+    session.pop(MISSION_EXAMPLE_KEY, None)
+    session.pop(MISSION_NEW_NONCE_KEY, None)
+    values = _config_slice(session)
+    values.update(
+        {
+            "ii_selected_chord": chord,
+            "ii_selected_section": section,
+            "ii_selected_chord_index": int(chord_index),
+            "ii_selected_chord_label": chord_label,
+        }
+    )
+    _handle_user_mission_config_change(
+        session,
+        save_reason=SAVE_REASON_MISSION_TARGET,
+        field="ii_selected_chord_index",
+        values=values,
+        interaction="chord_tile_on_click",
+    )
 
 
 def handle_user_mission_target_change(session: dict[str, Any]) -> None:
-    _handle_user_mission_config_change(session, save_reason=SAVE_REASON_MISSION_TARGET, field="ii_selected_chord_index")
+    """Legacy entry — prefer handle_user_mission_target_selection from on_click."""
+    values = _config_slice(session)
+    _handle_user_mission_config_change(
+        session,
+        save_reason=SAVE_REASON_MISSION_TARGET,
+        field="ii_selected_chord_index",
+        values=values,
+        interaction="chord_tile_legacy",
+    )
 
 
 def handle_user_mission_metrics_change(session: dict[str, Any]) -> None:
-    ids = list(session.get("improv_ai_metric_ids") or [])
-    session["improv_ai_metric_ids"] = ids
-    _handle_user_mission_config_change(session, save_reason=SAVE_REASON_MISSION_METRICS, field="improv_ai_metric_ids")
+    picked = list(session.get("improv_ai_metric_multiselect") or session.get("improv_ai_metric_ids") or [])
+    try:
+        from mission_analysis_ui import _metric_id_label_maps
+
+        label_to_id, _ = _metric_id_label_maps()
+        if picked and isinstance(picked[0], str) and picked[0] in label_to_id:
+            selected_ids = [label_to_id[l] for l in picked if l in label_to_id]
+        else:
+            selected_ids = list(picked)
+    except ImportError:
+        selected_ids = list(picked)
+    values = _config_slice(session)
+    values["improv_ai_metric_ids"] = selected_ids
+    _handle_user_mission_config_change(
+        session,
+        save_reason=SAVE_REASON_MISSION_METRICS,
+        field="improv_ai_metric_ids",
+        values=values,
+        interaction="metrics_multiselect_on_change",
+    )
 
 
 def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict[str, Any]:
@@ -286,21 +458,28 @@ def collect_creative_mission_config_diagnostics(session: dict[str, Any]) -> dict
 
 __all__ = [
     "CREATIVE_MISSION_HYDRATED_SNAPSHOT_KEY",
+    "CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY",
     "CREATIVE_MISSION_SAVE_ACTIVE_KEY",
+    "CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY",
     "MISSION_CONFIG_CANONICAL_KEYS",
     "MISSION_CONFIG_SAVE_REASONS",
+    "MISSION_WIDGET_SESSION_KEYS",
     "SAVE_REASON_MISSION_METRICS",
     "SAVE_REASON_MISSION_PICK",
     "SAVE_REASON_MISSION_TARGET",
     "VIOLATION_PASSIVE_MISSION_STARTUP_WRITE",
+    "VIOLATION_POST_INSTANTIATION_WIDGET_WRITE",
     "collect_creative_mission_config_diagnostics",
     "commit_mission_config_to_canonical",
     "handle_user_mission_metrics_change",
     "handle_user_mission_pick_change",
     "handle_user_mission_target_change",
+    "handle_user_mission_target_selection",
     "is_mission_config_save_reason",
+    "mark_mission_widgets_instantiated",
     "note_passive_mission_config_persist",
     "project_mission_config_from_canonical",
+    "project_mission_config_from_canonical_before_widgets",
     "request_mission_config_cloud_save",
     "should_gather_mission_config_from_session",
     "snapshot_hydrated_mission_config",
