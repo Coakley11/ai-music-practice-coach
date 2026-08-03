@@ -326,6 +326,41 @@ def handle_user_mission_practice_lick_saved(session: dict[str, Any], *, interact
     )
 
 
+def commit_mission_practice_lick_for_navigation_handoff(
+    session: dict[str, Any],
+    *,
+    interaction: str = "",
+) -> None:
+    """Commit practice lick to canonical for the next ``page_change`` save — no artifact cloud write."""
+    field = MISSION_PRACTICE_LICK_KEY
+    session[CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY] = {
+        "field": field,
+        "save_reason": SAVE_REASON_PRACTICE_LICK,
+        "run_seq": _run_seq(session),
+        "interaction": interaction or "store_practice_lick_for_backing",
+        "defer_cloud_until_page_change": True,
+    }
+    try:
+        from creative_workspace_persistence import mark_creative_workspace_dirty
+
+        mark_creative_workspace_dirty(session)
+    except ImportError:
+        try:
+            from improvisation_mission_persistence import mark_mission_workspace_dirty
+
+            mark_mission_workspace_dirty(session)
+        except ImportError:
+            pass
+    values = _artifact_slice(session)
+    commit_mission_artifacts_to_canonical(
+        session,
+        reason=SAVE_REASON_PRACTICE_LICK,
+        values=values,
+        removed_keys=(),
+    )
+    snapshot_hydrated_mission_artifacts(session, source="handoff:defer_cloud_until_page_change")
+
+
 def clear_mission_example_from_canonical(session: dict[str, Any], *, reason: str = "artifact_clear") -> None:
     """Explicit clear — removes example blob from canonical (session keys should already be popped)."""
     commit_mission_artifacts_to_canonical(
@@ -374,6 +409,7 @@ __all__ = [
     "collect_creative_mission_artifact_diagnostics",
     "commit_mission_artifacts_to_canonical",
     "handle_user_mission_example_artifact_saved",
+    "commit_mission_practice_lick_for_navigation_handoff",
     "handle_user_mission_practice_lick_saved",
     "handle_user_motif_artifact_change",
     "is_mission_artifact_save_reason",

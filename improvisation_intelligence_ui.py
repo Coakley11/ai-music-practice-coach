@@ -1435,8 +1435,19 @@ def _tab_missions(
                 meter=meter,
                 song_title=improv_ctx.song_title,
                 section_label=section_label,
+                persist_artifact=False,
             )
             queue_mission_practice_lick_handoff(session_state)
+            try:
+                from mission_backing_handoff_persistence import begin_mission_backing_handoff
+
+                begin_mission_backing_handoff(
+                    session_state,
+                    navigation_callback="_open_mission_backing",
+                    with_practice_lick=True,
+                )
+            except ImportError:
+                pass
         elif not with_practice_lick:
             session_state.pop(MISSION_PRACTICE_LICK_KEY, None)
         session_state[IMPROV_MISSION_BACKING_HANDOFF] = True

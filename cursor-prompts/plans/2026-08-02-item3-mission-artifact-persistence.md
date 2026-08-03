@@ -37,7 +37,7 @@ Mission config changes (Item 2) may **pop** session example keys; canonical exam
 | Motif transform / notation / TAB | `creative_motif_change` | `motif_transform_*`, `motif_notation_output` |
 | Motif chord tile (Phrase tab) | `creative_motif_change` | `motif_chord_tile_select` |
 | Generate / Easier / Harder / New idea example | `creative_mission_example_change` | `mission_example_generate_*` |
-| Open Mission Backing with practice lick | `creative_mission_practice_lick_change` | `store_practice_lick_for_backing` |
+| Open Mission Backing with practice lick | `page_change` (handoff) | `store_practice_lick_for_backing` — canonical commit deferred until navigation; **no** standalone `creative_mission_practice_lick_change` cloud write on handoff |
 
 Each user action: **one** cloud save transaction; gather skips stale session fields on user save reasons; same-run passive autosync suppressed (shared `_creative_mission_user_save_this_run`).
 

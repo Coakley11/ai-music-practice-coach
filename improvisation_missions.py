@@ -537,6 +537,7 @@ def store_mission_practice_lick_for_backing(
     meter: str,
     song_title: str,
     section_label: str,
+    persist_artifact: bool = True,
 ) -> None:
     """Persist the current mission lick for Mission Backing Jam (single motif source of truth)."""
     ex = mission_example_for_display(example, instrument=instrument, bpm=bpm)
@@ -562,9 +563,22 @@ def store_mission_practice_lick_for_backing(
     }
     session_state[MISSION_PRACTICE_LICK_KEY] = payload
     try:
-        from creative_mission_artifact_persistence import handle_user_mission_practice_lick_saved
+        if persist_artifact:
+            from creative_mission_artifact_persistence import handle_user_mission_practice_lick_saved
 
-        handle_user_mission_practice_lick_saved(session_state, interaction="store_practice_lick_for_backing")
+            handle_user_mission_practice_lick_saved(
+                session_state,
+                interaction="store_practice_lick_for_backing",
+            )
+        else:
+            from creative_mission_artifact_persistence import (
+                commit_mission_practice_lick_for_navigation_handoff,
+            )
+
+            commit_mission_practice_lick_for_navigation_handoff(
+                session_state,
+                interaction="store_practice_lick_for_backing",
+            )
     except ImportError:
         try:
             from improvisation_mission_persistence import mark_mission_workspace_dirty

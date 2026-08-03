@@ -13781,6 +13781,16 @@ elif _studio_page == "creative":
             pass
         set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(st.session_state, "backing")
+        try:
+            from mission_backing_handoff_persistence import complete_mission_backing_handoff_after_navigation
+
+            complete_mission_backing_handoff_after_navigation(
+                st.session_state,
+                navigation_callback="_improv_open_backing",
+                backing_source=creative_source,
+            )
+        except ImportError:
+            pass
         st.rerun()
 
     def _improv_open_practice() -> None:

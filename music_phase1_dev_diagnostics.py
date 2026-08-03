@@ -160,5 +160,40 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             if val is not None:
                 st.caption(f"`{key}`: {val!r}")
 
+        try:
+            from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
+
+            handoff_diag = collect_mission_backing_handoff_diagnostics(session)
+        except ImportError:
+            handoff_diag = {}
+
+        if handoff_diag:
+            st.markdown("**Mission Backing handoff (Item 3 nav)**")
+            for key in (
+                "navigation_callback",
+                "page_before",
+                "page_after",
+                "backing_subview_before",
+                "backing_subview_after",
+                "studio_nav_state_before",
+                "studio_nav_state_after",
+                "backing_view_state_before",
+                "backing_view_state_after",
+                "payload_page_fields",
+                "practice_lick_present_in_payload",
+                "practice_lick_present_after",
+                "save_reason",
+                "reserved_revision",
+                "confirmed_revision",
+                "upsert_result",
+                "authoritative_refetched_page",
+                "authoritative_refetched_backing_subview",
+                "overwrite_source",
+                "violations",
+            ):
+                val = handoff_diag.get(key)
+                if val is not None:
+                    st.caption(f"`{key}`: {val!r}")
+
 
 __all__ = ["render_phase1_live_path_diagnostics"]
