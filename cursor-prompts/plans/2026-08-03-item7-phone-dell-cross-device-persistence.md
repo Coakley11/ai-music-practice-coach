@@ -1,16 +1,20 @@
 # Phase 1 Item 7 — Phone → Dell cross-device persistence
 
 **Last updated:** 2026-08-03  
-**Status:** **Next** — contract + live-test plan only (no implementation until gap proven)  
+**Status:** **LIVE-ACCEPTED — FROZEN** on Streamlit Cloud `dev` (sign-off rev **319**, 2026-08-03)  
+**Contract doc:** `4c3ce81` (Item 7 contract; **no production code** required for live pass)
+
+**Do not redesign** phone→Dell cross-device read paths or Item 5 reader certification without `?dev=1` regression proof and explicit unfreeze.
+
 **Prerequisites (frozen — do not redesign):**
 
 | Layer | Live-accept / freeze anchor |
 |-------|-----------------------------|
 | Items 1–5 Creative stack + refresh/cold reboot | Through `b989516`; doc `cc00cda` / `2ec5015` |
-| Item 6 Dell → phone | **LIVE-ACCEPTED — FROZEN** @ rev **317** — [contract](./2026-08-03-item6-dell-phone-cross-device-persistence.md) |
-| Global control ownership, display-key pipeline, startup queue, Mission Backing, strict egress, startup suppression | Accepted architecture — no fork |
+| Item 6 Dell → phone | **LIVE-ACCEPTED — FROZEN** @ rev **317** |
+| Item 7 phone → Dell | **LIVE-ACCEPTED — FROZEN** @ rev **319** (this contract) |
 
-Item **8** (stale-device revision protection / conflict UX) and **Phase 2** are **out of scope** for Item 7.
+Item **8** (stale-device revision protection) and **Phase 2** are **out of scope** for Item 7.
 
 ---
 
@@ -168,6 +172,11 @@ Same as Item 6 — `suite_cloud_state`, `apply_music_disk_state`, `creative_work
 
 ---
 
-## Live acceptance (Item 7)
+## Live acceptance (Item 7) — **PASSED 2026-08-03**
 
-Single manual test **phone → Dell** with phone writer @ **R′**, Dell reader network hydrate @ **R′**, full checklist, Dell **no spurious write**, `certification_passed=true`. Document doc commit SHA at sign-off.
+| Role | Evidence |
+|------|----------|
+| **Phone writer** | Harmony Map **Ab → G7**; `creative_context_section_change`; Item 2 tuple **Ab** unchanged; strict egress @ **R′=319** |
+| **Dell stale reader** | Pre-phone tab hard-refreshed; `session_start_kind=hard_refresh`; network @ **319**; no Dell write; **G7** restored; `certification_passed=true` |
+
+**Next Phase 1 gate:** Item **8** stale-device overwrite protection — [contract](./2026-08-03-item8-stale-device-revision-protection.md).

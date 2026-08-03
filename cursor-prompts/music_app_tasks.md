@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-03 (Item 6 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-03 (Item 7 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -26,8 +26,8 @@
    - [x] **Item 4** Key, section, Creative context snapshots — **live-accepted & frozen** @ `c72a879` (rev **315**) — [contract](./plans/2026-08-03-item4-key-section-creative-context-snapshots.md); doc freeze `cc00cda`
    - [x] **Item 5** Refresh + cold-reboot persistence — **live-accepted & frozen** @ `e36fd40`–`b989516` (rev **315**) — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./plans/2026-08-03-item5-live-runbook.md)
    - [x] **Item 6** Dell → phone cross-device — **live-accepted & frozen** (rev **317**, 2026-08-03) — [contract](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md)
-   - [ ] **Item 7** Phone → Dell cross-device — [contract](./plans/2026-08-03-item7-phone-dell-cross-device-persistence.md) (**next**)
-   - [ ] Item 8 stale revision
+   - [x] **Item 7** Phone → Dell cross-device — **live-accepted & frozen** (rev **319**, 2026-08-03) — [contract](./plans/2026-08-03-item7-phone-dell-cross-device-persistence.md)
+   - [ ] **Item 8** Stale-device revision protection — [contract](./plans/2026-08-03-item8-stale-device-revision-protection.md) (**next**; **blocks Phase 2**)
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
@@ -46,7 +46,7 @@
 
 **Plan:** [plans/2026-07-03-style-identity-phase-2.md](./plans/2026-07-03-style-identity-phase-2.md)
 
-**Gate:** Do **not** start Phase 2 until [Phase 1 Creative-state persistence remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) items **1–8** pass on live `dev`.
+**Gate:** Do **not** start Phase 2 until [Phase 1 Creative-state persistence remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) items **1–8** pass on live `dev` (**Item 8** stale write protection is **next**).
 
 **Goal:** Style, mood, feel, intensity, and groove produce unmistakably different musical results for catalog, custom, and Creative Lab backing.
 
@@ -315,7 +315,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
-- **Phase 1 Items 1–6 (2026-08-03):** **Frozen** on live `dev` — Item 6 cross-device @ rev **317**; Items 1–5 through prior freeze commits. **Next:** Item 7 phone → Dell only.
+- **Phase 1 Items 1–7 (2026-08-03):** **Frozen** on live `dev` — Item 7 @ rev **319**; Item 6 @ **317**; Items 1–5 per prior commits. **Next:** Item 8 stale write protection only. **No Phase 2** until Item 8 live-accept.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
 - Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.

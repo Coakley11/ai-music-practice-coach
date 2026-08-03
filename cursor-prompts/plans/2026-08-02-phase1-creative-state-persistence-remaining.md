@@ -36,8 +36,8 @@ Contract reference: [2026-07-30-mission-workspace-contract.md](./2026-07-30-miss
 4. **Key, section, and Creative context snapshots** — ✅ **live-accepted & frozen** @ `c72a879` (rev **315**, 2026-08-03) — [Item 4 contract](./2026-08-03-item4-key-section-creative-context-snapshots.md).
 5. **Refresh and cold-reboot persistence** — ✅ **live-accepted & frozen** @ `e36fd40`–`b989516` (rev **315**, 2026-08-03) — [Item 5 contract](./2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./2026-08-03-item5-live-runbook.md).
 6. **Dell → phone synchronization** — ✅ **live-accepted & frozen** (rev **317**, 2026-08-03) — [Item 6 contract](./2026-08-03-item6-dell-phone-cross-device-persistence.md).
-7. **Phone → Dell synchronization** — **next** — [Item 7 contract](./2026-08-03-item7-phone-dell-cross-device-persistence.md); change on phone; Dell pull shows same Creative document @ same revision.
-8. **Stale-device / revision protection** — older device cannot silently overwrite newer cloud revision (expect block or explicit retry; document in trace).
+7. **Phone → Dell synchronization** — ✅ **live-accepted & frozen** (rev **319**, 2026-08-03) — [Item 7 contract](./2026-08-03-item7-phone-dell-cross-device-persistence.md).
+8. **Stale-device / revision protection** — **next** — [Item 8 contract](./2026-08-03-item8-stale-device-revision-protection.md); older device cannot silently overwrite newer cloud revision.
 
 ---
 

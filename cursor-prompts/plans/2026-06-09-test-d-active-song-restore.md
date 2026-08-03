@@ -1,8 +1,10 @@
 # Test D — Active song + display key + instrument + studio page restore
 
 **Last updated:** 2026-06-09  
-**Baseline:** v18 (`fdf9800`) — `page-change-save-stamp-v18-backing-user-dirty`  
-**Branch:** `dev`
+**Result:** **PASSED** (phone hard refresh 2026-06-09)  
+**Sign-off commit:** v25 `f153204` — `page-change-save-stamp-v25-transposing-save-trace`  
+**Branch:** `dev`  
+**Baseline doc:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ## Frozen (accepted — do not reopen without trace regression)
 
@@ -11,8 +13,9 @@
 | A | Studio page sync | **PASSED** |
 | B | Practice field sync | **PASSED** |
 | C | Backing content sync | **PASSED** (v18) |
+| D | Active song + key + instrument + page + written-key + subtype | **PASSED** (v25) |
 
-**Policy:** Do not modify page sync, Practice sync, or Backing sync code unless a new `?dev=1` trace proves regression in that area.
+**Policy:** Do not modify page / Practice / Backing / active-song persistence unless a new `?dev=1` trace proves regression.
 
 ---
 
@@ -58,12 +61,14 @@ Copy the **Test D compare** block (or note these fields):
 
 ---
 
-## Acceptance criteria
+## Acceptance criteria — **PASSED 2026-06-09**
 
-- Song, display key, instrument, and studio page restore **identically** across devices after refresh.
-- No fallback to defaults.
-- No overwrite from startup autosave.
-- No restore-order race between `active_song_state` and workspace restore.
+- [x] Song, display key, instrument, and studio page restore **identically** across devices after refresh.
+- [x] Written-key checkbox ON on phone; charts in written key.
+- [x] Transposing subtype (Tenor Saxophone) restored — not Alto default.
+- [x] Save payload matches canonical (`save_*` trace + cloud readback, v25).
+- [x] No fallback to trusted-core defaults.
+- [x] No post-refresh autosave overwrite before user touch (`save_overwrite_detected` false).
 
 ---
 

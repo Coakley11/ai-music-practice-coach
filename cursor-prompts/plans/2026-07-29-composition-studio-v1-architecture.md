@@ -321,7 +321,19 @@ User owns the work; no plagiarized famous hooks; experiments are labeled as prop
 
 ---
 
-## Architecture notes (Streamlit)
+### Egress (`MUSIC_EGRESS_STRICT`)
+
+When Streamlit secret or env `MUSIC_EGRESS_STRICT=1` is set, `music_egress_config.py` enables:
+
+- No Supabase readback after music cloud writes
+- Routine **autosave** → local disk only; cloud on `page_change` / explicit edit reasons
+- Lazy custom-song cloud merge (loads when Custom Songs library UI opens)
+- Saved-item list cap 25 (vs 200)
+- Ephemeral keys stripped from page snapshots in persist blobs
+
+Dev: sidebar **Supabase egress (dev)** shows strict on/off.
+
+---
 
 - Snapshot builder is **pure Python** and unit-testable — critical for “everything connected” guarantee.
 - Experiment sandbox lives in session (`composer_sandbox_overlay`) until applied.

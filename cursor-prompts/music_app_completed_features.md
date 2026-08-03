@@ -4,12 +4,6 @@
 
 ---
 
-## Current Priorities
-
-*None — this file is the historical record. See [music_app_tasks.md](./music_app_tasks.md) for active work.*
-
----
-
 ## Next Features
 
 *See [music_app_feature_backlog.md](./music_app_feature_backlog.md).*
@@ -23,6 +17,13 @@
 ---
 
 ## Completed Features
+
+### Phase 1 Creative-state persistence — Item 7 (2026-08-03)
+
+- [x] Phone writer: Harmony **Ab → G7** @ **319**; Item 2 tuple **Ab** independent; `creative_context_section_change`; strict egress confirmed
+- [x] Dell stale reader: hard refresh; `session_start_kind=hard_refresh`; network @ **319**; no Dell write; **G7** + studio **creative** / mission backing context restored; `certification_passed=true`
+- **Frozen:** live sign-off rev **319**; contract doc `4c3ce81`
+- Plan: [2026-08-03-item7-phone-dell-cross-device-persistence.md](./plans/2026-08-03-item7-phone-dell-cross-device-persistence.md)
 
 ### Phase 1 Creative-state persistence — Item 6 (2026-08-03)
 
