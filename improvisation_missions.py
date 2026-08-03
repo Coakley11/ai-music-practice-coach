@@ -444,7 +444,13 @@ def generate_mission_example(
     )
 
 
-def store_mission_example(session_state: dict, example: MissionExample) -> None:
+def store_mission_example(
+    session_state: dict,
+    example: MissionExample,
+    *,
+    persist_artifact: bool = False,
+    interaction: str = "store_mission_example",
+) -> None:
     session_state[MISSION_EXAMPLE_KEY] = {
         "mission": example.mission,
         "variant": example.variant,
@@ -460,6 +466,13 @@ def store_mission_example(session_state: dict, example: MissionExample) -> None:
         "show_piano": example.show_piano,
     }
     session_state[MISSION_VARIANT_KEY] = example.variant
+    if persist_artifact:
+        try:
+            from creative_mission_artifact_persistence import handle_user_mission_example_artifact_saved
+
+            handle_user_mission_example_artifact_saved(session_state, interaction=interaction)
+        except ImportError:
+            pass
     try:
         from improvisation_mission_persistence import mark_mission_workspace_dirty
 
@@ -549,11 +562,16 @@ def store_mission_practice_lick_for_backing(
     }
     session_state[MISSION_PRACTICE_LICK_KEY] = payload
     try:
-        from improvisation_mission_persistence import mark_mission_workspace_dirty
+        from creative_mission_artifact_persistence import handle_user_mission_practice_lick_saved
 
-        mark_mission_workspace_dirty(session_state)
+        handle_user_mission_practice_lick_saved(session_state, interaction="store_practice_lick_for_backing")
     except ImportError:
-        pass
+        try:
+            from improvisation_mission_persistence import mark_mission_workspace_dirty
+
+            mark_mission_workspace_dirty(session_state)
+        except ImportError:
+            pass
 
 
 def mission_practice_lick_payload(session_state: dict) -> dict[str, Any] | None:

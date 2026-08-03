@@ -31,8 +31,8 @@ Keep visible in Page cloud durability trace for later analysis of whether **192*
 Contract reference: [2026-07-30-mission-workspace-contract.md](./2026-07-30-mission-workspace-contract.md)
 
 1. **Creative tool and tab selections** — ✅ live @ `549578d` (Daniel/music rev **203**, cold session, `startup_write_attempted=false`, `violations=[]`).
-2. **Mission configuration and selected mission** — `improv_active_mission`, pick, progression, AI metric locks — **in progress** (`creative_mission_config_persistence.py`).
-3. **Motif / lick and generated-example state** — `improv_motif*`, `improv_mission_example`, practice lick; notation/TAB/playback from stored motif (no regen).
+2. **Mission configuration and selected mission** — ✅ live @ `c6c2f41` (2026-08-02).
+3. **Motif / lick and generated-example state** — **in progress** — [Item 3 contract](./2026-08-02-item3-mission-artifact-persistence.md).
 4. **Key, section, and Creative context snapshots** — chart key, `ii_selected_*`, section focus within Creative.
 5. **Refresh and cold-reboot persistence** — full browser hard refresh + cold Streamlit reboot; workspace matches pre-refresh.
 6. **Dell → phone synchronization** — change on Dell; phone pull shows same Creative document.

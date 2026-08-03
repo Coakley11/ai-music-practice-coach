@@ -129,6 +129,15 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
                     continue
             except ImportError:
                 pass
+            try:
+                from creative_mission_artifact_persistence import should_gather_mission_artifact_from_session
+
+                if not should_gather_mission_artifact_from_session(
+                    session, key, val, persist_reason=persist_reason
+                ):
+                    continue
+            except ImportError:
+                pass
             base[key] = copy.deepcopy(val)
     for key, val in preserved_selectors.items():
         if _selector_value_empty(base.get(key)):
@@ -235,6 +244,15 @@ def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, rea
         mission_passive_suppressed = mission_passive_sync_suppressed_this_run(session, reason=reason)
         if not mission_passive_suppressed:
             note_passive_mission_config_persist(session, reason=reason)
+    except ImportError:
+        pass
+    try:
+        from creative_mission_artifact_persistence import (
+            note_passive_mission_artifact_persist,
+        )
+
+        if not mission_passive_suppressed:
+            note_passive_mission_artifact_persist(session, reason=reason)
     except ImportError:
         pass
     if mission_passive_suppressed:
@@ -368,6 +386,16 @@ def apply_creative_workspace_to_session(
 
         project_mission_config_from_canonical(session, overwrite=True)
         snapshot_hydrated_mission_config(session, source=source)
+    except ImportError:
+        pass
+    try:
+        from creative_mission_artifact_persistence import (
+            project_mission_artifacts_from_canonical,
+            snapshot_hydrated_mission_artifacts,
+        )
+
+        project_mission_artifacts_from_canonical(session, overwrite=True)
+        snapshot_hydrated_mission_artifacts(session, source=source)
     except ImportError:
         pass
     project_creative_workspace_to_session(session, overwrite=True)
@@ -556,6 +584,16 @@ def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
 
             project_mission_config_from_canonical(session, overwrite=True)
             snapshot_hydrated_mission_config(session, source="prepare")
+        except ImportError:
+            pass
+        try:
+            from creative_mission_artifact_persistence import (
+                project_mission_artifacts_from_canonical,
+                snapshot_hydrated_mission_artifacts,
+            )
+
+            project_mission_artifacts_from_canonical(session, overwrite=True)
+            snapshot_hydrated_mission_artifacts(session, source="prepare")
         except ImportError:
             pass
         try:

@@ -136,5 +136,29 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             if val is not None:
                 st.caption(f"`{key}`: {val!r}")
 
+        try:
+            from creative_mission_artifact_persistence import collect_creative_mission_artifact_diagnostics
+
+            artifact_diag = collect_creative_mission_artifact_diagnostics(session)
+        except ImportError:
+            artifact_diag = {}
+
+        st.markdown("**Creative mission artifacts (Item 3)**")
+        for key in (
+            "hydrated_mission_artifacts",
+            "canonical_values",
+            "session_artifact_values",
+            "cloud_save_requested",
+            "cloud_save_ok",
+            "startup_write_attempted",
+            "violations",
+            "last_user_event",
+        ):
+            val = artifact_diag.get(key) if key != "last_user_event" else session.get(
+                "_creative_mission_artifact_last_user_event"
+            )
+            if val is not None:
+                st.caption(f"`{key}`: {val!r}")
+
 
 __all__ = ["render_phase1_live_path_diagnostics"]

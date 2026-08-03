@@ -776,6 +776,15 @@ def _tab_motif(
     st.markdown("#### Phrase / motif training")
     st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
 
+    try:
+        from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
+        from creative_tab_tool_persistence import selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            project_mission_artifacts_from_canonical(session_state, overwrite=True)
+    except ImportError:
+        pass
+
     section_map = resolve_improv_sections(session_state, improv_ctx)
     chords = flatten_section_map(section_map)
     if not chords:
@@ -807,6 +816,7 @@ def _tab_motif(
                 cur, key_center=improv_ctx.key_center, level=level, kind="creative"
             )
             _clear_motif_outputs(session_state)
+            _persist_motif_artifact(session_state, interaction="motif_generate_chord")
             st.rerun()
     with g1:
         if st.button("New motif", key="improv_motif_new", use_container_width=True):
@@ -819,6 +829,7 @@ def _tab_motif(
                 session_state=session_state,
             )
             _clear_motif_outputs(session_state)
+            _persist_motif_artifact(session_state, interaction="motif_new")
             st.rerun()
     with g2:
         if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
@@ -830,6 +841,7 @@ def _tab_motif(
                 variant="harder",
             )
             _clear_motif_outputs(session_state)
+            _persist_motif_artifact(session_state, interaction="motif_harder")
             st.rerun()
     with g3:
         if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
@@ -841,6 +853,7 @@ def _tab_motif(
                 variant="easier",
             )
             _clear_motif_outputs(session_state)
+            _persist_motif_artifact(session_state, interaction="motif_easier")
             st.rerun()
 
     motif = session_state.get("improv_motif")
@@ -878,6 +891,7 @@ def _tab_motif(
                     key_center=_motif_notation_reference_key(improv_ctx),
                     bpm=bpm,
                 )
+                _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                 st.rerun()
 
     st.markdown("---")
@@ -896,6 +910,8 @@ def _tab_motif(
                 bpm=bpm,
             )
             session_state.pop("improv_motif_tab", None)
+            _persist_motif_artifact(session_state, interaction="motif_notation_output")
+            st.rerun()
     with n2:
         if instrument == "Guitar" and st.button(
             "Generate Guitar TAB",
@@ -907,6 +923,8 @@ def _tab_motif(
                 session_state["improv_motif"]
             )
             session_state.pop("improv_motif_abc", None)
+            _persist_motif_artifact(session_state, interaction="motif_tab_output")
+            st.rerun()
 
     if session_state.get("improv_motif_output_mode") == MOTIF_OUTPUT_NOTATION:
         if session_state.get("improv_motif_abc"):
@@ -1006,6 +1024,15 @@ def _clear_motif_outputs(session_state: dict) -> None:
     _touch_creative_workspace(session_state)
 
 
+def _persist_motif_artifact(session_state: dict, *, interaction: str) -> None:
+    try:
+        from creative_mission_artifact_persistence import handle_user_motif_artifact_change
+
+        handle_user_motif_artifact_change(session_state, interaction=interaction)
+    except ImportError:
+        _touch_creative_workspace(session_state)
+
+
 def _refresh_motif_output_after_transform(
     session_state: dict,
     *,
@@ -1064,6 +1091,7 @@ def _render_section_chord_map(
         if generate_motif_on_select:
             ss["improv_motif"] = generate_musical_phrase(ch, key_center=key_center, kind="creative")
             _clear_motif_outputs(ss)
+            _persist_motif_artifact(ss, interaction="motif_chord_tile_select")
 
     for sec_i, (label, chords) in enumerate(section_map):
         st.markdown(f"**{html.escape(label)}**")
@@ -1357,7 +1385,12 @@ def _tab_missions(
             bpm=bpm,
             session_state=session_state,
         )
-        store_mission_example(session_state, example)
+        store_mission_example(
+            session_state,
+            example,
+            persist_artifact=True,
+            interaction=f"mission_example_generate_{variant}",
+        )
         try:
             from studio_page_persistence import save_page_snapshot
 

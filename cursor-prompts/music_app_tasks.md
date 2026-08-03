@@ -1,8 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-02
-
-Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-02 Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -23,8 +21,9 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 3. [x] **Phase 1 studio page persistence (live)** — Backing → Creative, authoritative save/refetch @ **193**, hard refresh hydrates Creative @ **193** (`38664fc`–`ad68e71`, signed off **2026-08-02**)
 4. [ ] **Phase 1 Creative-state persistence (remaining)** — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) — **blocks Phase 2**
    - [x] **Item 1** Creative tool/tab selectors — live @ `549578d` (rev **203**, cold session)
-   - [ ] **Item 2** Mission configuration + selected mission — dev: `creative_mission_config_persistence.py`
-   - [ ] Items 3–8 motif, context, reboot, Dell↔phone, stale revision
+   - [x] **Item 2** Mission configuration — live @ `c6c2f41` (mission/target/metrics)
+   - [ ] **Item 3** Motif / example / practice lick — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md) (`creative_mission_artifact_persistence.py`)
+   - [ ] Items 4–8 context, reboot, Dell↔phone, stale revision
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
