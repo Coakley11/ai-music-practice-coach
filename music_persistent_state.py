@@ -1710,6 +1710,12 @@ def save_music_cloud_session(
         record_supabase_result(ss, diag=diag if isinstance(diag, dict) else {}, saved=saved_cloud)
     except ImportError:
         pass
+    try:
+        from display_key_sidebar_cloud_confirmation import record_display_key_supabase_result
+
+        record_display_key_supabase_result(ss, saved=saved_cloud)
+    except ImportError:
+        pass
     if saved_cloud:
         readback: dict[str, Any] = {}
         try:

@@ -118,17 +118,32 @@ class TestDisplayKeySidebarCloudSave(unittest.TestCase):
         with self._save_patches(ss, stamp):
             def _fake_cloud_save(st: Any, state: dict, **_kw: Any) -> bool:
                 st.session_state["_music_last_cloud_save_diag"] = {
+                    "cloud_upsert_attempted": True,
                     "cloud_upsert_succeeded": True,
                     "cloud_payload_revision": rev + 1,
                 }
+                st.session_state["_music_workspace_save_transaction"] = {
+                    **(st.session_state.get("_music_workspace_save_transaction") or {}),
+                    "cloud_write_attempted": True,
+                    "cloud_upsert_succeeded": True,
+                    "reserved_write_revision": rev + 1,
+                }
+                try:
+                    from display_key_sidebar_cloud_confirmation import record_display_key_supabase_result
+
+                    record_display_key_supabase_result(st.session_state, saved=True)
+                except ImportError:
+                    pass
                 return True
 
             readback_state = self._hevenu_state(display_key="Cm", rev=rev + 1)
+
+            def _load_network(_app: str, *, force: bool = False) -> tuple[dict[str, Any], str]:
+                ss["_music_last_cloud_fetch_source"] = "network"
+                return readback_state, "2026-01-01T00:00:00Z"
+
             with patch("music_persistent_state.save_music_cloud_session", side_effect=_fake_cloud_save):
-                with patch(
-                    "suite_cloud_state.load_cloud_full_session",
-                    return_value=(readback_state, "2026-01-01T00:00:00Z"),
-                ):
+                with patch("suite_cloud_state.load_cloud_full_session", side_effect=_load_network):
                     ok = force_music_workspace_save(st, reason="display_key_change", build_state=build_state)
 
         self.assertTrue(ok, ss.get("_music_force_save_blocked_reason"))

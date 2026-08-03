@@ -123,7 +123,30 @@ def arm_explicit_sidebar_display_key_save(
         "canonical_display_key_before": canon_before or None,
         "save_reason": "display_key_change",
         "source": "sidebar_on_change",
+        "revision_loaded_before_edit": _revision_loaded_before_edit(session),
     }
+
+
+def _revision_loaded_before_edit(session: dict[str, Any]) -> int | None:
+    for key in (
+        "_suite_applied_workspace_revision",
+        "_music_startup_revision_loaded",
+        "_suite_cloud_workspace_revision",
+        "startup_revision_loaded",
+    ):
+        try:
+            if session.get(key) is not None:
+                return int(session.get(key))
+        except (TypeError, ValueError):
+            continue
+    try:
+        from workspace_revision import LAST_CONFIRMED_REVISION_KEY
+
+        if session.get(LAST_CONFIRMED_REVISION_KEY) is not None:
+            return int(session.get(LAST_CONFIRMED_REVISION_KEY))
+    except ImportError:
+        pass
+    return None
 
 
 def disarm_explicit_sidebar_display_key_save(session: dict[str, Any]) -> None:
@@ -183,14 +206,21 @@ def display_key_from_cloud_session_blob(blob: dict[str, Any]) -> str:
 def sync_sidebar_trace_from_workspace_save(session: dict[str, Any]) -> None:
     if not session.get("developer_mode"):
         return
-    tx = session.get("_music_workspace_save_transaction")
-    if not isinstance(tx, dict):
-        return
     d = _trace(session)
-    summary = {k: tx.get(k) for k in _SAVE_TX_DIAG_KEYS if tx.get(k) is not None}
-    core = tx.get("core") if isinstance(tx.get("core"), dict) else {}
-    if isinstance(core, dict) and core.get("display_key"):
-        summary.setdefault("payload_core_display_key", core.get("display_key"))
+    try:
+        from display_key_sidebar_cloud_confirmation import _workspace_save_transaction
+
+        summary = _workspace_save_transaction(session)
+    except ImportError:
+        summary = {}
+    tx = session.get("_music_workspace_save_transaction")
+    if isinstance(tx, dict):
+        for k, v in tx.items():
+            if v is not None and k not in summary:
+                summary[k] = v
+        core = tx.get("core") if isinstance(tx.get("core"), dict) else {}
+        if isinstance(core, dict) and core.get("display_key"):
+            summary.setdefault("payload_core_display_key", core.get("display_key"))
     d["save_transaction"] = summary
     sid = active_sidebar_display_key_transaction_id(session)
     if sid:
@@ -299,7 +329,13 @@ def record_display_key_sidebar_event(session: dict[str, Any], phase: str, **fiel
         del events[:-40]
 
 
-def record_display_key_user_change_violation(session: dict[str, Any], detail: str, **fields: Any) -> None:
+def record_display_key_user_change_violation(
+    session: dict[str, Any],
+    detail: str,
+    *,
+    violation_code: str = DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED,
+    **fields: Any,
+) -> None:
     if not session.get("developer_mode"):
         return
     d = _trace(session)
@@ -308,7 +344,7 @@ def record_display_key_user_change_violation(session: dict[str, Any], detail: st
         violations = []
         d["violations"] = violations
     entry = {
-        "code": DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED,
+        "code": str(violation_code or DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED).strip(),
         "detail": str(detail or "").strip() or "unknown",
         "session_display_key": str(session.get("display_key") or "").strip() or None,
         "canonical_display_key": _canonical_display_key(session) or None,
@@ -326,13 +362,18 @@ def audit_display_key_user_change_committed(
 ) -> None:
     if not session.get("developer_mode") or not callback_invoked:
         return
+    if cloud_save_ok:
+        return
+    trace = session.get(DISPLAY_KEY_SIDEBAR_TRACE_KEY)
+    if isinstance(trace, dict):
+        violations = trace.get("violations")
+        if isinstance(violations, list) and violations:
+            return
+        forensic = trace.get("confirmation_forensic")
+        if isinstance(forensic, dict) and forensic.get("failure_code"):
+            return
     live = str(session.get("display_key") or "").strip()
     canon = _canonical_display_key(session)
-    block = _save_block_reason(session)
-    tx = session.get("_music_workspace_save_transaction")
-    upsert_attempted = bool(isinstance(tx, dict) and tx.get("cloud_write_attempted"))
-    upsert_ok = bool(isinstance(tx, dict) and (tx.get("cloud_upsert_succeeded") or tx.get("cloud_write_succeeded")))
-    readback_ok = bool(isinstance(tx, dict) and tx.get("cloud_readback_matches"))
     if live and canon and live != canon:
         record_display_key_user_change_violation(
             session,
@@ -345,46 +386,10 @@ def audit_display_key_user_change_committed(
         record_display_key_user_change_violation(
             session,
             "display_key_change_cloud_save_not_requested",
+            violation_code=DISPLAY_KEY_USER_CHANGE_NOT_COMMITTED,
             cloud_save_requested=False,
             cloud_save_ok=False,
         )
-        return
-    if cloud_save_ok:
-        return
-    if block in ("startup_canonical_unchanged", "startup_suppression_armed", "startup_restore_in_progress"):
-        record_display_key_user_change_violation(
-            session,
-            "display_key_change_cloud_save_blocked",
-            cloud_save_requested=True,
-            cloud_save_ok=False,
-            block_reason=block or None,
-        )
-        return
-    if upsert_attempted and not upsert_ok:
-        record_display_key_user_change_violation(
-            session,
-            "display_key_change_cloud_upsert_failed",
-            cloud_save_requested=True,
-            cloud_save_ok=False,
-            block_reason=block or None,
-        )
-        return
-    if upsert_ok and not readback_ok:
-        record_display_key_user_change_violation(
-            session,
-            "display_key_change_cloud_confirmation_failed",
-            cloud_save_requested=True,
-            cloud_save_ok=False,
-            block_reason=block or "readback_not_confirmed",
-        )
-        return
-    record_display_key_user_change_violation(
-        session,
-        "display_key_change_cloud_save_blocked",
-        cloud_save_requested=True,
-        cloud_save_ok=False,
-        block_reason=block or "cloud_save_unconfirmed",
-    )
 
 
 def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]:
@@ -427,9 +432,16 @@ def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]
             "reserved_write_revision",
             "payload_core_display_key",
             "block_reason",
+            "confirmation_forensic",
         ):
             if key not in out and last_stage.get(key) is not None:
                 out[key] = last_stage.get(key)
+    if isinstance(out.get("confirmation_forensic"), dict):
+        out.setdefault("save_transaction", {})
+        if isinstance(out["save_transaction"], dict):
+            for k, v in out["confirmation_forensic"].items():
+                if k not in out["save_transaction"] and v is not None:
+                    out["save_transaction"][k] = v
     save_tx = out.get("save_transaction")
     if isinstance(save_tx, dict):
         out.setdefault("transaction_id", save_tx.get("transaction_id"))

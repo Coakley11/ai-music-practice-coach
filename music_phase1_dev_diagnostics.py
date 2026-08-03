@@ -249,6 +249,8 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 "cloud_save_requested",
                 "cloud_save_ok",
                 "transaction_id",
+                "confirmation_forensic",
+                "failure_code",
             ):
                 val = dk_trace.get(key)
                 if val is not None:
