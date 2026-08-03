@@ -5,6 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 
+def _render_phase1_item8_stale_write_panel(st: Any, session: dict[str, Any]) -> None:
+    """Always render Item 8 diagnostics (defaults before any stale-write event)."""
+    heading = "Phase 1 Item 8 — Stale-device revision protection"
+    try:
+        from phase1_item8_stale_write_certification import render_phase1_item8_stale_write_certification_panel
+
+        render_phase1_item8_stale_write_certification_panel(st, session)
+    except ImportError:
+        st.markdown(f"**{heading}**")
+        st.caption("`item8_module`: unavailable (ImportError)")
+    except Exception as exc:
+        st.markdown(f"**{heading}**")
+        st.caption(f"`item8_panel_error`: {exc!r}")
+
+
 def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> None:
     try:
         from music_global_control_diagnostics import collect_global_control_diagnostics
@@ -192,6 +207,8 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             st.markdown("**Creative context snapshots (Item 4)**")
             st.caption(f"`item4_panel_error`: {exc!r}")
 
+        _render_phase1_item8_stale_write_panel(st, session)
+
         try:
             from phase1_item5_refresh_certification import render_phase1_item5_refresh_certification_panel
 
@@ -202,17 +219,6 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
         except Exception as exc:
             st.markdown("**Phase 1 Item 5 — Refresh / cold reboot certification**")
             st.caption(f"`item5_panel_error`: {exc!r}")
-
-        try:
-            from phase1_item8_stale_write_certification import render_phase1_item8_stale_write_certification_panel
-
-            render_phase1_item8_stale_write_certification_panel(st, session)
-        except ImportError:
-            st.markdown("**Phase 1 Item 8 — Stale-device revision protection**")
-            st.caption("`item8_module`: unavailable (ImportError)")
-        except Exception as exc:
-            st.markdown("**Phase 1 Item 8 — Stale-device revision protection**")
-            st.caption(f"`item8_panel_error`: {exc!r}")
 
         try:
             from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
@@ -290,4 +296,4 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                     st.caption(f"`{key}`: {val!r}")
 
 
-__all__ = ["render_phase1_live_path_diagnostics"]
+__all__ = ["render_phase1_live_path_diagnostics", "_render_phase1_item8_stale_write_panel"]
