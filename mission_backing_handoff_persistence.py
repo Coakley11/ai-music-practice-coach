@@ -209,6 +209,16 @@ def seal_mission_backing_handoff_creative_envelope(session: dict[str, Any]) -> d
 
 def arm_mission_backing_handoff_page_change(session: dict[str, Any]) -> None:
     seal_mission_backing_handoff_creative_envelope(session)
+    try:
+        from creative_artifact_global_key_guard import freeze_global_keys_for_creative_artifact_save
+
+        freeze_global_keys_for_creative_artifact_save(
+            session,
+            save_reason="page_change",
+            caller="arm_mission_backing_handoff_page_change",
+        )
+    except ImportError:
+        pass
     d = _diag(session)
     d["sealed_creative_workspace_keys"] = sorted(
         (session.get("creative_workspace_state") or {}).keys()

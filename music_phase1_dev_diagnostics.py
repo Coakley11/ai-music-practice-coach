@@ -161,6 +161,27 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 st.caption(f"`{key}`: {val!r}")
 
         try:
+            from creative_artifact_global_key_guard import collect_creative_artifact_global_key_diagnostics
+
+            key_guard_diag = collect_creative_artifact_global_key_diagnostics(session)
+        except ImportError:
+            key_guard_diag = {}
+
+        if key_guard_diag:
+            st.markdown("**Creative artifact global key guard**")
+            for key in (
+                "prior_global_keys",
+                "session_keys_after_freeze",
+                "artifact_key_center",
+                "save_reason",
+                "writes",
+                "violations",
+            ):
+                val = key_guard_diag.get(key)
+                if val is not None:
+                    st.caption(f"`{key}`: {val!r}")
+
+        try:
             from mission_backing_handoff_persistence import collect_mission_backing_handoff_diagnostics
 
             handoff_diag = collect_mission_backing_handoff_diagnostics(session)

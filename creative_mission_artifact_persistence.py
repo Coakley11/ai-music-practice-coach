@@ -296,6 +296,16 @@ def _handle_user_artifact_change(
         removed_keys=removed_keys,
     )
     snapshot_hydrated_mission_artifacts(session, source=f"user_save:{save_reason}")
+    try:
+        from creative_artifact_global_key_guard import freeze_global_keys_for_creative_artifact_save
+
+        freeze_global_keys_for_creative_artifact_save(
+            session,
+            save_reason=save_reason,
+            caller="_handle_user_artifact_change",
+        )
+    except ImportError:
+        pass
     request_mission_artifact_cloud_save(session, save_reason=save_reason)
 
 
@@ -359,6 +369,16 @@ def commit_mission_practice_lick_for_navigation_handoff(
         removed_keys=(),
     )
     snapshot_hydrated_mission_artifacts(session, source="handoff:defer_cloud_until_page_change")
+    try:
+        from creative_artifact_global_key_guard import freeze_global_keys_for_creative_artifact_save
+
+        freeze_global_keys_for_creative_artifact_save(
+            session,
+            save_reason=SAVE_REASON_PRACTICE_LICK,
+            caller="commit_mission_practice_lick_for_navigation_handoff",
+        )
+    except ImportError:
+        pass
 
 
 def clear_mission_example_from_canonical(session: dict[str, Any], *, reason: str = "artifact_clear") -> None:

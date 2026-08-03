@@ -2336,6 +2336,19 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         pass
     save_reason = str(ss.get("_suite_pending_save_reason") or "autosave")
     ss["_music_build_save_reason"] = save_reason
+    try:
+        from creative_artifact_global_key_guard import (
+            audit_payload_global_keys,
+            freeze_global_keys_for_creative_artifact_save,
+        )
+
+        freeze_global_keys_for_creative_artifact_save(
+            ss,
+            save_reason=save_reason,
+            caller="build_music_disk_state",
+        )
+    except ImportError:
+        pass
     page_change_target = ""
     page_change_source = ""
     if save_reason == "page_change":
@@ -2649,6 +2662,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         if ss.get("_music_build_save_reason") == "page_change" or save_reason == "page_change":
             note_handoff_page_change_payload_built(ss, state)
         clear_handoff_page_change_build_flag(ss)
+    except ImportError:
+        pass
+    try:
+        from creative_artifact_global_key_guard import audit_payload_global_keys
+
+        audit_payload_global_keys(ss, state, save_reason=save_reason)
     except ImportError:
         pass
     return state

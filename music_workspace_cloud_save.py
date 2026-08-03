@@ -441,6 +441,17 @@ def force_music_workspace_save(
         ss["_suite_pending_save_reason"] = r
 
     try:
+        from creative_artifact_global_key_guard import freeze_global_keys_for_creative_artifact_save
+
+        freeze_global_keys_for_creative_artifact_save(
+            ss,
+            save_reason=r,
+            caller="force_music_workspace_save",
+        )
+    except ImportError:
+        pass
+
+    try:
         from music_page_cloud_durability_trace import begin_page_change_cloud_transaction
 
         begin_page_change_cloud_transaction(ss, save_reason=r)
