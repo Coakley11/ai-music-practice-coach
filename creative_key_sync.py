@@ -499,12 +499,23 @@ def _sidebar_preserve_user_display_key_options(
     session["concert_key"] = live
     options = _sidebar_key_options_including(session, live)
     try:
-        from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+        from display_key_sidebar_persistence_trace import (
+            record_display_key_sidebar_event,
+            record_display_key_sidebar_stage,
+        )
 
+        record_display_key_sidebar_stage(
+            session,
+            "next_rerun_projection",
+            caller=trace_phase,
+            skipped_projection=True,
+            **trace_fields,
+        )
         record_display_key_sidebar_event(
             session,
             trace_phase,
             skipped_projection=True,
+            stage="next_rerun_projection",
             **trace_fields,
         )
     except ImportError:

@@ -125,15 +125,15 @@ class TestDisplayKeySidebarCreativeProjection(unittest.TestCase):
         st = MagicMock()
         st.session_state = ss
 
-        def _flush_canonical(st_like: Any, *, reason: str = "") -> bool:
-            from active_song_state import flush_active_song_edits
+        def _global_save(st_like: Any, *, reason: str = "") -> bool:
+            from active_song_state import flush_global_control_edits
 
-            flush_active_song_edits(st_like.session_state, reason=reason or "display_key_change")
+            flush_global_control_edits(st_like.session_state, reason=reason or "display_key_change")
             return True
 
         with unittest.mock.patch(
-            "music_persistent_state.flush_active_song_edits_and_save",
-            side_effect=_flush_canonical,
+            "music_persistent_state.flush_global_control_edits_and_save",
+            side_effect=_global_save,
         ):
             mark_display_key_changed(st)
         self.assertEqual(ss.get("display_key"), "Cm")
@@ -157,11 +157,21 @@ class TestDisplayKeySidebarCreativeProjection(unittest.TestCase):
         st = MagicMock()
         st.session_state = ss
         with unittest.mock.patch(
-            "music_persistent_state.flush_active_song_edits_and_save",
+            "music_persistent_state.flush_global_control_edits_and_save",
             return_value=True,
         ):
             mark_display_key_changed(st)
         self.assertEqual(ss.get("display_key_change_source"), "sidebar_on_change")
+
+    def test_startup_fingerprint_allows_explicit_sidebar_display_key_save(self) -> None:
+        from music_startup_save_suppression import STARTUP_FINGERPRINT_MATCHES_KEY, should_suppress_music_workspace_save
+
+        ss: dict[str, Any] = {
+            STARTUP_FINGERPRINT_MATCHES_KEY: True,
+            "display_key_change_source": "sidebar_on_change",
+        }
+        suppress, _why = should_suppress_music_workspace_save(ss, "display_key_change")
+        self.assertFalse(suppress)
 
 
 if __name__ == "__main__":

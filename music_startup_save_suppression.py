@@ -963,6 +963,14 @@ def should_suppress_music_workspace_save(session: dict[str, Any], save_reason: s
         return True, "startup_restore_in_progress"
 
     if session.get(STARTUP_FINGERPRINT_MATCHES_KEY) and reason in _RESTORE_BLOCKED_SAVE_REASONS.union({"song_edit"}):
+        if reason == "display_key_change":
+            try:
+                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+                if str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip() == "sidebar_on_change":
+                    return False, ""
+            except ImportError:
+                pass
         return True, "startup_canonical_unchanged"
 
     return False, ""

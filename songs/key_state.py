@@ -145,11 +145,139 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
         pass
 
 
+def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
+    """Normalize widget spelling to the active song mode (Cm vs C minor, etc.)."""
+    selected = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+    original = str(selected.get("key") or session.get("original_key") or "C").strip() or "C"
+    text = str(raw or "C").strip() or "C"
+    return coerce_key_to_mode(text, key_mode(original))
+
+
+def commit_explicit_sidebar_display_key_transaction(st: Any, *, caller: str = "mark_display_key_changed") -> bool:
+    """Canonical + cloud save for an explicit sidebar Display key selection."""
+    session = st.session_state
+    tx_id = ""
+    try:
+        from display_key_sidebar_persistence_trace import (
+            begin_display_key_sidebar_transaction,
+            record_display_key_sidebar_stage,
+        )
+
+        tx_id = begin_display_key_sidebar_transaction(session, caller=caller)
+        record_display_key_sidebar_stage(
+            session,
+            "canonical_commit_start",
+            caller=caller,
+            transaction_id=tx_id or None,
+            reason="display_key_change",
+        )
+    except ImportError:
+        pass
+    try:
+        from active_song_state import flush_global_control_edits, mark_active_song_local_edit
+
+        mark_active_song_local_edit(session)
+        flush_global_control_edits(session, reason="display_key_change")
+    except ImportError:
+        pass
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+
+        record_display_key_sidebar_stage(
+            session,
+            "canonical_commit_end",
+            caller=caller,
+            transaction_id=tx_id or None,
+            reason="display_key_change",
+        )
+    except ImportError:
+        pass
+    ok = False
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+
+        record_display_key_sidebar_stage(
+            session,
+            "cloud_save_start",
+            caller=caller,
+            transaction_id=tx_id or None,
+            reason="display_key_change",
+        )
+    except ImportError:
+        pass
+    try:
+        from music_persistent_state import flush_global_control_edits_and_save
+
+        ok = bool(flush_global_control_edits_and_save(st, reason="display_key_change"))
+    except Exception:
+        ok = False
+    session[LAST_DISPLAY_KEY_SAVE_OK_KEY] = ok
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+
+        record_display_key_sidebar_stage(
+            session,
+            "cloud_save_end",
+            caller=caller,
+            transaction_id=tx_id or None,
+            reason="display_key_change",
+            cloud_save_requested=True,
+            cloud_save_ok=ok,
+        )
+    except ImportError:
+        pass
+    if ok:
+        try:
+            from active_song_state import clear_active_song_local_edit
+
+            clear_active_song_local_edit(session)
+        except ImportError:
+            pass
+    return ok
+
+
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
+    caller = "mark_display_key_changed"
+    tx_id = ""
+    try:
+        from display_key_sidebar_persistence_trace import (
+            begin_display_key_sidebar_transaction,
+            record_display_key_sidebar_stage,
+        )
+
+        tx_id = begin_display_key_sidebar_transaction(st.session_state, caller=caller)
+        record_display_key_sidebar_stage(st.session_state, "callback_enter", caller=caller, transaction_id=tx_id or None)
+    except ImportError:
+        pass
     widget_before = str(st.session_state.get("display_key") or "").strip()
+    raw_widget = widget_before
+    try:
+        from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
+
+        record_display_key_sidebar_stage(
+            st.session_state,
+            "widget_value_read",
+            caller=caller,
+            transaction_id=tx_id or None,
+            widget_value=raw_widget or None,
+        )
+    except ImportError:
+        pass
+    dk = normalize_sidebar_display_key(st.session_state, raw_widget)
+    if dk:
+        st.session_state["display_key"] = dk
     sync_display_key_owner_identity(st.session_state)
-    dk = str(st.session_state.get("display_key") or "").strip()
+    try:
+        from practice_setup_globals import record_global_control_change
+
+        record_global_control_change(
+            st.session_state,
+            "display_key",
+            "sidebar_on_change",
+        )
+    except Exception:
+        pass
     if dk:
         try:
             from practice_key_mode import is_fixed_practice_key_mode
@@ -183,16 +311,6 @@ def mark_display_key_changed(st: Any) -> None:
                     pass
         except ImportError:
             pass
-    try:
-        from practice_setup_globals import record_global_control_change
-
-        record_global_control_change(
-            st.session_state,
-            "display_key",
-            "sidebar_on_change",
-        )
-    except Exception:
-        pass
     try:
         from instrument_transposition import preserve_written_key_on_display_key_change
 
@@ -228,24 +346,17 @@ def mark_display_key_changed(st: Any) -> None:
         persist_music_local_state(st)
     except Exception:
         pass
+    save_ok = False
     try:
-        from active_song_state import mark_active_song_local_edit
-        from music_persistent_state import flush_active_song_edits_and_save
-
-        mark_active_song_local_edit(st.session_state)
-        ok = flush_active_song_edits_and_save(st, reason="display_key_change")
-        st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = bool(ok)
-        if ok:
-            try:
-                from active_song_state import clear_active_song_local_edit
-
-                clear_active_song_local_edit(st.session_state)
-            except ImportError:
-                pass
+        save_ok = commit_explicit_sidebar_display_key_transaction(st, caller=caller)
     except Exception:
         st.session_state[LAST_DISPLAY_KEY_SAVE_OK_KEY] = False
+        save_ok = False
     try:
-        from display_key_sidebar_persistence_trace import record_display_key_sidebar_event
+        from display_key_sidebar_persistence_trace import (
+            audit_display_key_user_change_committed,
+            record_display_key_sidebar_event,
+        )
 
         record_display_key_sidebar_event(
             st.session_state,
@@ -254,7 +365,14 @@ def mark_display_key_changed(st: Any) -> None:
             widget_after=str(st.session_state.get("display_key") or "").strip() or None,
             callback_invoked=True,
             save_reason="display_key_change",
-            cloud_save_requested=bool(st.session_state.get(LAST_DISPLAY_KEY_SAVE_OK_KEY)),
+            cloud_save_requested=bool(save_ok),
+            cloud_save_ok=bool(save_ok),
+            transaction_id=tx_id or None,
+        )
+        audit_display_key_user_change_committed(
+            st.session_state,
+            callback_invoked=True,
+            cloud_save_requested=bool(save_ok),
         )
     except ImportError:
         pass

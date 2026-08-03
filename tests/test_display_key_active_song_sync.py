@@ -468,7 +468,7 @@ class TestDisplayKeyActiveSongSync(unittest.TestCase):
                 "selected_song": {"pick_key": "pop::Trial", "title": "Trial", "key": "D"},
             }
         )
-        with patch("music_persistent_state.flush_active_song_edits_and_save", return_value=False):
+        with patch("music_persistent_state.flush_global_control_edits_and_save", return_value=False):
             with patch("songs.state.persist_music_local_state"):
                 mark_display_key_changed(st)
         self.assertEqual(

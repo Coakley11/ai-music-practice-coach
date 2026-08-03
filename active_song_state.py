@@ -315,6 +315,32 @@ def _display_key_override_valid_for_identity(session: dict[str, Any]) -> bool:
     return False
 
 
+_SIDEBAR_EXPLICIT_DISPLAY_KEY_SOURCES: frozenset[str] = frozenset(
+    {
+        "sidebar_on_change",
+        "sidebar",
+        "display_key_widget",
+        "display_key_change",
+        "user",
+    }
+)
+
+
+def _explicit_sidebar_display_key_user_commit(session: dict[str, Any]) -> bool:
+    """True when the user explicitly set Display key via the sidebar widget."""
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+        src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip()
+        if src in _SIDEBAR_EXPLICIT_DISPLAY_KEY_SOURCES:
+            return True
+        if src and "sidebar" in src.lower():
+            return True
+    except ImportError:
+        pass
+    return _display_key_override_valid_for_identity(session)
+
+
 def _merge_display_key_for_active_song(
     session: dict[str, Any],
     ctx: dict[str, Any],
@@ -324,6 +350,8 @@ def _merge_display_key_for_active_song(
     """Pick display key for canonical merge — cloud/canonical wins unless identity-scoped override."""
     live = str(session.get("display_key") or "").strip()
     canonical = str(ctx.get("display_key") or "").strip()
+    if _explicit_sidebar_display_key_user_commit(session) and live:
+        return live
     try:
         from music_restore_phase import authoritative_restore_in_progress
 
@@ -331,6 +359,8 @@ def _merge_display_key_for_active_song(
     except ImportError:
         restore_applying = bool(session.get("_cloud_workspace_restored_this_run"))
     if restore_applying and canonical and _display_key_override_valid_for_identity(session) is False:
+        if _explicit_sidebar_display_key_user_commit(session) and live:
+            return live
         ctx_pick = str(ctx.get("pick_key") or "").strip()
         try:
             from songs.state import ACTIVE_CATALOG_PICK_KEY

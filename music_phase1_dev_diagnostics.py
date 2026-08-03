@@ -231,6 +231,9 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             st.markdown("**Display key sidebar (corrective save)**")
             for key in (
                 "events",
+                "stages",
+                "last_stage",
+                "violations",
                 "last_event",
                 "widget_before",
                 "widget_after",
@@ -243,6 +246,8 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
                 "backing_key",
                 "save_reason",
                 "cloud_save_requested",
+                "cloud_save_ok",
+                "transaction_id",
             ):
                 val = dk_trace.get(key)
                 if val is not None:
