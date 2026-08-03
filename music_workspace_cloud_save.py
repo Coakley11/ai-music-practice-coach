@@ -32,6 +32,9 @@ _USER_FORCE_REASONS: frozenset[str] = frozenset(
         "backing_edit",
         "creative_tab_change",
         "creative_tool_change",
+        "creative_mission_change",
+        "creative_mission_target_change",
+        "creative_mission_metrics_change",
         "practice_tool_select",
         "practice_workspace_edit",
         "practice_key_mode_change",
@@ -563,6 +566,19 @@ def force_music_workspace_save(
         )
 
         if is_selector_save_reason(r) and ss.get(CREATIVE_SELECTOR_SAVE_ACTIVE_KEY):
+            duplicate_skipped = False
+            deferred_cloud = False
+            payload_changed = True
+            strict_approved = True
+    except ImportError:
+        pass
+    try:
+        from creative_mission_config_persistence import (
+            CREATIVE_MISSION_SAVE_ACTIVE_KEY,
+            is_mission_config_save_reason,
+        )
+
+        if is_mission_config_save_reason(r) and ss.get(CREATIVE_MISSION_SAVE_ACTIVE_KEY):
             duplicate_skipped = False
             deferred_cloud = False
             payload_changed = True

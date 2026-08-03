@@ -120,6 +120,15 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
                     continue
             except ImportError:
                 pass
+            try:
+                from creative_mission_config_persistence import should_gather_mission_config_from_session
+
+                if not should_gather_mission_config_from_session(
+                    session, key, val, persist_reason=persist_reason
+                ):
+                    continue
+            except ImportError:
+                pass
             base[key] = copy.deepcopy(val)
     for key, val in preserved_selectors.items():
         if _selector_value_empty(base.get(key)):
@@ -214,6 +223,12 @@ def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, rea
         from creative_tab_tool_persistence import note_passive_creative_tab_persist
 
         note_passive_creative_tab_persist(session, reason=reason)
+    except ImportError:
+        pass
+    try:
+        from creative_mission_config_persistence import note_passive_mission_config_persist
+
+        note_passive_mission_config_persist(session, reason=reason)
     except ImportError:
         pass
     gathered = gather_creative_workspace_from_session(session)
@@ -323,6 +338,17 @@ def apply_creative_workspace_to_session(
         snapshot_hydrated_creative_selectors(session, source=source)
     except ImportError:
         pass
+    try:
+        from creative_mission_config_persistence import (
+            project_mission_config_from_canonical,
+            snapshot_hydrated_mission_config,
+        )
+
+        project_mission_config_from_canonical(session, overwrite=True)
+        snapshot_hydrated_mission_config(session, source=source)
+    except ImportError:
+        pass
+    project_creative_workspace_to_session(session, overwrite=True)
     try:
         from creative_selector_hydration_trace import mark_selector_hydration_complete
 
@@ -498,6 +524,16 @@ def prepare_creative_workspace_for_render(session: dict[str, Any]) -> None:
             from creative_tab_tool_persistence import establish_selector_defaults_when_cloud_empty
 
             establish_selector_defaults_when_cloud_empty(session)
+        except ImportError:
+            pass
+        try:
+            from creative_mission_config_persistence import (
+                project_mission_config_from_canonical,
+                snapshot_hydrated_mission_config,
+            )
+
+            project_mission_config_from_canonical(session, overwrite=True)
+            snapshot_hydrated_mission_config(session, source="prepare")
         except ImportError:
             pass
         try:

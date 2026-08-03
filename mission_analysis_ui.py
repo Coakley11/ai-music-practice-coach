@@ -26,6 +26,26 @@ def _metric_id_label_maps() -> tuple[dict[str, str], dict[str, str]]:
     return label_to_id, id_to_label
 
 
+def _on_improv_ai_metrics_change() -> None:
+    import streamlit as st
+
+    picked = list(st.session_state.get("improv_ai_metric_multiselect") or [])
+    try:
+        from mission_analysis_ui import _metric_id_label_maps
+
+        label_to_id, _ = _metric_id_label_maps()
+        selected_ids = [label_to_id[l] for l in picked if l in label_to_id]
+    except ImportError:
+        selected_ids = []
+    st.session_state["improv_ai_metric_ids"] = selected_ids
+    try:
+        from creative_mission_config_persistence import handle_user_mission_metrics_change
+
+        handle_user_mission_metrics_change(st.session_state)
+    except ImportError:
+        pass
+
+
 def render_ai_improv_metrics_selector(
     st: Any,
     session_state: dict,
@@ -54,6 +74,7 @@ def render_ai_improv_metrics_selector(
         default=default_labels,
         key=f"{key_prefix}_ai_metric_multiselect",
         help="Select every skill you practiced — Upload Analysis scores each one.",
+        on_change=_on_improv_ai_metrics_change if key_prefix == "improv" else None,
     )
     selected_ids = [label_to_id[l] for l in picked if l in label_to_id]
     session_state[store_key] = selected_ids

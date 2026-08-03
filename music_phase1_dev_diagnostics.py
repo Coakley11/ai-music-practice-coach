@@ -110,5 +110,26 @@ def render_phase1_live_path_diagnostics(st: Any, session: dict[str, Any]) -> Non
             if val is not None:
                 st.caption(f"`{key}`: {val!r}")
 
+        try:
+            from creative_mission_config_persistence import collect_creative_mission_config_diagnostics
+
+            mission_diag = collect_creative_mission_config_diagnostics(session)
+        except ImportError:
+            mission_diag = {}
+
+        st.markdown("**Creative mission config (Item 2)**")
+        for key in (
+            "hydrated_mission_config",
+            "canonical_values",
+            "cloud_save_requested",
+            "cloud_save_ok",
+            "startup_write_attempted",
+            "violations",
+            "last_user_event",
+        ):
+            val = mission_diag.get(key) if key != "last_user_event" else session.get("_creative_mission_config_last_user_event")
+            if val is not None:
+                st.caption(f"`{key}`: {val!r}")
+
 
 __all__ = ["render_phase1_live_path_diagnostics"]

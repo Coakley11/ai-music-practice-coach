@@ -139,16 +139,25 @@ def test_music_mission_cloud_drift_detects_example_change() -> None:
         music_mission_cloud_drift,
     )
 
-    local = {"improv_mission_example": {"variant": "normal", "motif": {"notes": ["C"]}}}
+    local = {
+        "improv_mission_example": {"variant": "normal", "motif": {"notes": ["C"]}},
+        "creative_workspace_state": {
+            "improv_mission_example": {"variant": "normal", "motif": {"notes": ["C"]}},
+        },
+    }
     cloud = {
         "session": {
             "improv_mission_example": {"variant": "harder", "motif": {"notes": ["C", "E", "G"]}},
             MISSION_WORKSPACE_UPDATED_AT_KEY: "2026-07-30T12:00:00+00:00",
-        }
+        },
+        "creative_workspace_state": {
+            "improv_mission_example": {"variant": "harder", "motif": {"notes": ["C", "E", "G"]}},
+            MISSION_WORKSPACE_UPDATED_AT_KEY: "2026-07-30T12:00:00+00:00",
+        },
     }
     drift, detail = music_mission_cloud_drift({"session_state": local}, cloud, "2026-07-30T12:00:00+00:00")
     assert drift is True
-    assert "mission" in detail or "creative_stamp" in detail
+    assert "mission" in detail or "creative_stamp" in detail or "creative_workspace" in detail
 
 
 def test_apply_cloud_mission_overwrites_local_example() -> None:
@@ -165,7 +174,12 @@ def test_apply_cloud_mission_overwrites_local_example() -> None:
             "improv_mission_example": {"variant": "harder", "motif": {"notes": ["C", "E", "G"]}},
             MISSION_WORKSPACE_UPDATED_AT_KEY: "2026-07-30T12:00:00+00:00",
             "improv_mission_practice_lick": {"bpm": 70, "motif": {"notes": ["C", "E", "G"]}},
-        }
+        },
+        "creative_workspace_state": {
+            "improv_mission_example": {"variant": "harder", "motif": {"notes": ["C", "E", "G"]}},
+            MISSION_WORKSPACE_UPDATED_AT_KEY: "2026-07-30T12:00:00+00:00",
+            "improv_mission_practice_lick": {"bpm": 70, "motif": {"notes": ["C", "E", "G"]}},
+        },
     }
     assert apply_cloud_mission_state_if_allowed(session, payload) is True
     assert session["improv_mission_example"]["variant"] == "harder"

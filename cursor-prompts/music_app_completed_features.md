@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 
 ---
 
@@ -23,6 +23,14 @@
 ---
 
 ## Completed Features
+
+### Phase 1 studio page persistence — live sign-off (2026-08-02)
+
+- [x] Backing → Creative user navigation with startup suppression armed — queued pre-aligned release (`38664fc`–`ad68e71`)
+- [x] Authoritative page_change cloud save: upsert + force network refetch @ revision **193**, all page-bearing fields **creative**
+- [x] Hard refresh: network hydration @ **193**, `failure_class` null, app remains on **Creative**
+- [x] Durability trace retains revision ladder **191 / 192 / 193** for diagnostics (reservation analysis deferred)
+- Plan: [2026-08-02-phase1-creative-state-persistence-remaining.md](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) (next checks)
 
 ### Practice Tools — responsive launcher (2026-08-01)
 
@@ -194,6 +202,11 @@
 - [x] Edit Song Chart CTA + scroll anchors
 - [x] Custom progression hub variant (CPL active)
 - [x] Sidebar active source banner + jump to Song Selection
+
+### Phase 1 Creative-state persistence — Item 1 (2026-08-02)
+
+- [x] Creative tool/tab selectors in `creative_workspace_state` — `creative_tab_tool_persistence.py`, hydration trace, save durability trace
+- [x] Live sign-off @ `549578d` — Daniel/music rev **203**, cold incognito session, selectors + globals restore, `startup_write_attempted=false`, `violations=[]`
 
 ### Mission workspace persistence & contract (2026-07-30)
 

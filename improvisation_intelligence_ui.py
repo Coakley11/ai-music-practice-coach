@@ -1056,6 +1056,12 @@ def _render_section_chord_map(
                         session_state[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
                         session_state.pop(MISSION_EXAMPLE_KEY, None)
                         session_state.pop(MISSION_NEW_NONCE_KEY, None)
+                        try:
+                            from creative_mission_config_persistence import handle_user_mission_target_change
+
+                            handle_user_mission_target_change(session_state)
+                        except ImportError:
+                            pass
                         if generate_motif_on_select:
                             session_state["improv_motif"] = generate_musical_phrase(
                                 ch, key_center=key_center, kind="creative"
@@ -1188,6 +1194,19 @@ def render_mission_practice_lick_on_backing(
             st.markdown(f"- {line}")
 
 
+def _on_mission_pick_change() -> None:
+    import streamlit as st
+
+    try:
+        from creative_mission_config_persistence import handle_user_mission_pick_change
+
+        handle_user_mission_pick_change(st.session_state)
+    except ImportError:
+        pick = str(st.session_state.get("improv_mission_pick") or "").strip()
+        if pick:
+            st.session_state["improv_active_mission"] = pick
+
+
 def _tab_missions(
     st: Any,
     *,
@@ -1229,6 +1248,7 @@ def _tab_missions(
         mission_options,
         index=mission_idx,
         key="improv_mission_pick",
+        on_change=_on_mission_pick_change,
     )
     if mission != session_state.get("improv_active_mission"):
         session_state["improv_active_mission"] = mission

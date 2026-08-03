@@ -18,9 +18,13 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 **Delivery commits (in order):**
 
 1. [x] Audit panel + mission fail-closed + capo init guard + `resolve_session_key_from_family` (`c412d7c`)
-2. [x] Canonical `creative_workspace_state` save/apply + envelope (`824c961` Phase 0; Phase 1 creative blob on `dev`)
-3. [x] Canonical `practice_workspace_state` save/apply (prior)
-4. [ ] Navigation + Creative restore order; block post-hydrate overwrites
+2. [x] Canonical `creative_workspace_state` save/apply + envelope (`824c961` Phase 0; `66e89b6` Phase 1)
+2b. [x] **Phase 1 Creative hardening** (`971c6c4`) — global controls + page paths
+3. [x] **Phase 1 studio page persistence (live)** — Backing → Creative, authoritative save/refetch @ **193**, hard refresh hydrates Creative @ **193** (`38664fc`–`ad68e71`, signed off **2026-08-02**)
+4. [ ] **Phase 1 Creative-state persistence (remaining)** — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) — **blocks Phase 2**
+   - [x] **Item 1** Creative tool/tab selectors — live @ `549578d` (rev **203**, cold session)
+   - [ ] **Item 2** Mission configuration + selected mission — dev: `creative_mission_config_persistence.py`
+   - [ ] Items 3–8 motif, context, reboot, Dell↔phone, stale revision
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
@@ -38,6 +42,8 @@ Actionable work items. Master context: [music_app_roadmap.md](./music_app_roadma
 ### P0 — Style Identity & Creative Engine Phase 2
 
 **Plan:** [plans/2026-07-03-style-identity-phase-2.md](./plans/2026-07-03-style-identity-phase-2.md)
+
+**Gate:** Do **not** start Phase 2 until [Phase 1 Creative-state persistence remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) items **1–8** pass on live `dev`.
 
 **Goal:** Style, mood, feel, intensity, and groove produce unmistakably different musical results for catalog, custom, and Creative Lab backing.
 
@@ -306,6 +312,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
+- **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
 - Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.
 - **UI polish** and **nav audit/fix** = separate commits; never mix with persistence.
