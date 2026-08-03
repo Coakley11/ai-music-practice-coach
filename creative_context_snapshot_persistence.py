@@ -375,6 +375,8 @@ def default_item4_dev_diag(session: dict[str, Any] | None = None) -> dict[str, A
         "cloud_write_attempted": None,
         "cloud_write_succeeded": None,
         "startup_write_attempted": False,
+        "current_run_seq": _run_seq(session) if session else 0,
+        "passive_audit": None,
         "violations": [],
     }
 
