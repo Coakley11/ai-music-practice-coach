@@ -524,6 +524,64 @@ def metrics_workspace_revision(metrics: dict[str, Any] | None) -> int:
             return 0
 
 
+def cas_patch_revision_diagnostics(stored_metrics: dict[str, Any] | None) -> dict[str, Any]:
+    """Expose top-level vs nested revision fields for Item 8 CAS debugging."""
+    stored = dict(stored_metrics) if isinstance(stored_metrics, dict) else {}
+    full = stored.get(_FULL_SESSION_KEY)
+    top_present = "workspace_revision" in stored
+    top_raw = stored.get("workspace_revision") if top_present else None
+    blob_rev = 0
+    if isinstance(full, dict):
+        try:
+            from workspace_revision import workspace_revision_from_blob
+
+            blob_rev = int(workspace_revision_from_blob(full))
+        except ImportError:
+            blob_rev = 0
+    return {
+        "stored_top_level_workspace_revision": top_raw,
+        "stored_top_level_present": top_present,
+        "stored_blob_workspace_revision": blob_rev,
+        "stored_logical_workspace_revision": metrics_workspace_revision(stored),
+    }
+
+
+def build_cas_patch_filter_params(
+    stored_metrics: dict[str, Any] | None,
+    expected_workspace_revision: int,
+) -> tuple[dict[str, str], str]:
+    """
+    PostgREST filter params aligned with where the revision is stored in metrics JSON.
+
+    Legacy rows often keep workspace_revision only under metrics.full_session (no top-level key).
+    ``metrics_workspace_revision`` reads both; the PATCH filter must use the same path.
+    """
+    stored = dict(stored_metrics) if isinstance(stored_metrics, dict) else {}
+    expected_s = str(int(expected_workspace_revision))
+    if "workspace_revision" in stored:
+        key = "metrics->>workspace_revision"
+        return {key: f"eq.{expected_s}"}, key
+    full = stored.get(_FULL_SESSION_KEY)
+    if isinstance(full, dict):
+        ws = full.get("music_workspace_state")
+        if isinstance(ws, dict) and "workspace_revision" in ws:
+            key = "metrics->full_session->music_workspace_state->>workspace_revision"
+            return {key: f"eq.{expected_s}"}, key
+        if "workspace_revision" in full:
+            key = "metrics->full_session->>workspace_revision"
+            return {key: f"eq.{expected_s}"}, key
+    key = "metrics->>workspace_revision"
+    return {key: f"eq.{expected_s}"}, key
+
+
+def describe_cas_patch_filter(
+    stored_metrics: dict[str, Any] | None,
+    expected_workspace_revision: int,
+) -> str:
+    _params, field = build_cas_patch_filter_params(stored_metrics, expected_workspace_revision)
+    return f"{field}=eq.{int(expected_workspace_revision)}"
+
+
 def _metrics_for_conditional_write(
     scoped_app_key: str,
     incoming: dict[str, Any] | None,
@@ -579,6 +637,8 @@ def save_current_state_conditional_cas(
     expected = int(expected_workspace_revision or 0)
     candidate = int(candidate_workspace_revision or 0)
     uid = _cloud_user_id()
+    stored_before = _load_state_row_metrics(app_key)
+    rev_diag = cas_patch_revision_diagnostics(stored_before)
     merged_metrics = _metrics_for_conditional_write(
         app_key,
         metrics,
@@ -596,6 +656,7 @@ def save_current_state_conditional_cas(
         "unconditional_upsert_attempted": False,
         "expected_workspace_revision": expected,
         "candidate_workspace_revision": candidate,
+        **rev_diag,
     }
 
     if expected <= 0:
@@ -645,12 +706,21 @@ def save_current_state_conditional_cas(
             "reason": "insert_ok" if count else "insert_no_row",
         }
 
+    filter_params, filter_field = build_cas_patch_filter_params(stored_before, expected)
     params: dict[str, str] = {
         "app": f"eq.{app_key}",
-        "metrics->>workspace_revision": f"eq.{expected}",
+        **filter_params,
     }
     if uid:
         params["user_id"] = f"eq.{uid}"
+
+    http_trace: dict[str, Any] = {
+        "method": "PATCH",
+        "rest_path": f"rest/v1/{_TABLE_STATE}",
+        "query_params": dict(params),
+        "cas_filter_field": filter_field,
+        "patch_metrics_top_level_revision": merged_metrics.get("workspace_revision"),
+    }
 
     rows = _request(
         "PATCH",
@@ -660,6 +730,7 @@ def save_current_state_conditional_cas(
         prefer="return=representation",
     )
     count = len(rows) if isinstance(rows, list) else 0
+    http_trace["response_row_count"] = count
     if count == 0:
         stored_metrics = _load_state_row_metrics(app_key)
         return {
@@ -669,6 +740,8 @@ def save_current_state_conditional_cas(
             "write_mode": "conflict",
             "reason": "conditional_patch_zero_rows",
             "stored_workspace_revision": metrics_workspace_revision(stored_metrics),
+            "cas_http_trace": http_trace,
+            "actual_conditional_filter": describe_cas_patch_filter(stored_before, expected),
         }
     return {
         **base_result,
@@ -676,6 +749,8 @@ def save_current_state_conditional_cas(
         "rows_affected": count,
         "write_mode": "conditional_patch",
         "reason": "conditional_patch_ok",
+        "cas_http_trace": http_trace,
+        "actual_conditional_filter": describe_cas_patch_filter(stored_before, expected),
     }
 
 

@@ -60,6 +60,11 @@ def candidate_revision_from_state(state: dict[str, Any]) -> int:
 
 def _authoritative_row_metrics() -> tuple[bool, int]:
     """Network row probe for create-path authorization (does not apply payload)."""
+    exists, rev, _metrics = _authoritative_stored_metrics()
+    return exists, rev
+
+
+def _authoritative_stored_metrics() -> tuple[bool, int, dict[str, Any]]:
     try:
         from suite_cloud_state import _cloud_storage_app_id, _import_storage
         from suite_storage_supabase import metrics_workspace_revision
@@ -73,10 +78,10 @@ def _authoritative_row_metrics() -> tuple[bool, int]:
 
             existing = _load_state_row_metrics(app_key)
         if existing:
-            return True, int(metrics_workspace_revision(existing))
+            return True, int(metrics_workspace_revision(existing)), dict(existing)
     except Exception:
         pass
-    return False, 0
+    return False, 0, {}
 
 
 def prepare_music_conditional_write(
@@ -109,7 +114,7 @@ def prepare_music_conditional_write(
         create_path_allowed = applied <= 0
         revision_trace = {}
 
-    row_exists, stored_row_rev = _authoritative_row_metrics()
+    row_exists, stored_row_rev, stored_metrics = _authoritative_stored_metrics()
     create_path_selected = expected <= 0 and create_path_allowed and not row_exists
 
     if row_exists and expected <= 0:
@@ -142,7 +147,25 @@ def prepare_music_conditional_write(
         violations.append(VIOLATION_REVISION_REUSED)
         blocked = True
 
-    actual_filter = f"metrics->>workspace_revision=eq.{expected}" if expected > 0 else "insert_first_row"
+    actual_filter = "insert_first_row"
+    stored_top_level_present: bool | None = None
+    stored_blob_revision: int | None = None
+    if expected > 0:
+        try:
+            from suite_storage_supabase import (
+                cas_patch_revision_diagnostics,
+                describe_cas_patch_filter,
+            )
+
+            if stored_metrics:
+                actual_filter = describe_cas_patch_filter(stored_metrics, expected)
+                rev_diag = cas_patch_revision_diagnostics(stored_metrics)
+                stored_top_level_present = bool(rev_diag.get("stored_top_level_present"))
+                stored_blob_revision = rev_diag.get("stored_blob_workspace_revision")
+            else:
+                actual_filter = f"metrics->>workspace_revision=eq.{expected}"
+        except ImportError:
+            actual_filter = f"metrics->>workspace_revision=eq.{expected}"
 
     out: dict[str, Any] = {
         "device_applied_revision": applied,
@@ -160,6 +183,8 @@ def prepare_music_conditional_write(
         "create_path_allowed": create_path_allowed,
         "create_path_selected": create_path_selected,
         "actual_conditional_filter": actual_filter,
+        "stored_top_level_present": stored_top_level_present,
+        "stored_blob_workspace_revision": stored_blob_revision,
         "revision_surface_trace": revision_trace,
         "blocked_precheck": blocked,
         "violations_precheck": violations,
@@ -228,7 +253,6 @@ def record_conditional_write_result(
         "cloud_revision_newer_than_applied": prep.get("cloud_revision_newer_than_applied"),
         "conditional_write_attempted": bool(cas.get("conditional_write_attempted")),
         "conditional_write_rows_affected": rows,
-        "actual_conditional_filter": prep.get("actual_conditional_filter"),
         "conflict_reason": cas.get("reason"),
         "row_exists": prep.get("row_exists"),
         "create_path_selected": prep.get("create_path_selected"),
@@ -241,6 +265,16 @@ def record_conditional_write_result(
         "write_mode": write_mode,
         "cas_reason": cas.get("reason"),
         "revision_surface_trace": prep.get("revision_surface_trace"),
+        "stored_top_level_present": cas.get("stored_top_level_present")
+        if cas.get("stored_top_level_present") is not None
+        else prep.get("stored_top_level_present"),
+        "stored_blob_workspace_revision": cas.get("stored_blob_workspace_revision")
+        if cas.get("stored_blob_workspace_revision") is not None
+        else prep.get("stored_blob_workspace_revision"),
+        "stored_logical_workspace_revision": cas.get("stored_logical_workspace_revision"),
+        "actual_conditional_filter": cas.get("actual_conditional_filter")
+        or prep.get("actual_conditional_filter"),
+        "cas_http_trace": cas.get("cas_http_trace"),
     }
     session[ITEM8_DIAG_KEY] = diag
     session[ITEM8_VIOLATIONS_KEY] = violations

@@ -117,6 +117,61 @@ class TestItem8ConditionalCloudWrite(unittest.TestCase):
 
 
 class TestSupabaseConditionalCas(unittest.TestCase):
+    def test_build_cas_filter_legacy_nested_blob(self) -> None:
+        from suite_storage_supabase import build_cas_patch_filter_params, describe_cas_patch_filter
+
+        stored = {
+            "full_session": _payload(321, harmony="Ab"),
+        }
+        params, field = build_cas_patch_filter_params(stored, 321)
+        self.assertIn("music_workspace_state", field)
+        self.assertEqual(params[field], "eq.321")
+        self.assertIn(
+            "music_workspace_state",
+            describe_cas_patch_filter(stored, 321),
+        )
+
+    def test_build_cas_filter_top_level_when_present(self) -> None:
+        from suite_storage_supabase import build_cas_patch_filter_params
+
+        stored = {"workspace_revision": 321, "full_session": _payload(321)}
+        params, field = build_cas_patch_filter_params(stored, 321)
+        self.assertEqual(field, "metrics->>workspace_revision")
+
+    @patch("suite_workspace.logical_storage_app_key", return_value="music")
+    @patch("suite_storage_supabase.ACTIVE_APP_KEYS", frozenset({"music"}))
+    @patch("suite_storage_supabase.normalize_app_key", return_value="music")
+    @patch("suite_storage_supabase._request")
+    @patch("suite_storage_supabase._cloud_user_id", return_value="user-1")
+    @patch("suite_storage_supabase._scoped_storage_app", return_value="music:daniel")
+    def test_legacy_row_patch_succeeds_with_nested_filter(
+        self, _scoped: MagicMock, _uid: MagicMock, req: MagicMock, *_p: MagicMock
+    ) -> None:
+        from suite_storage_supabase import save_current_state_conditional_cas
+
+        legacy = {"full_session": _payload(321, harmony="G7")}
+        req.side_effect = [
+            [{"metrics": legacy}],
+            [{"metrics": legacy}],
+            [{"app": "music:daniel", "metrics": {**legacy, "workspace_revision": 323}}],
+        ]
+        out = save_current_state_conditional_cas(
+            "music",
+            page="creative",
+            summary="s",
+            metrics={"full_session": _payload(323, harmony="Ab")},
+            expected_workspace_revision=321,
+            candidate_workspace_revision=323,
+        )
+        self.assertTrue(out["accepted"])
+        patch_calls = [c for c in req.call_args_list if c.args and c.args[0] == "PATCH"]
+        self.assertEqual(len(patch_calls), 1)
+        params = patch_calls[0].kwargs.get("params") or {}
+        self.assertTrue(
+            any("music_workspace_state" in k for k in params),
+            msg=f"expected nested CAS filter, got {params!r}",
+        )
+
     @patch("suite_workspace.logical_storage_app_key", return_value="music")
     @patch("suite_storage_supabase.ACTIVE_APP_KEYS", frozenset({"music"}))
     @patch("suite_storage_supabase.normalize_app_key", return_value="music")
@@ -129,6 +184,7 @@ class TestSupabaseConditionalCas(unittest.TestCase):
         from suite_storage_supabase import save_current_state_conditional_cas
 
         req.side_effect = [
+            [{"metrics": {"workspace_revision": 319}}],  # stored_before
             [{"metrics": {"workspace_revision": 319}}],  # merge prior
             [],  # PATCH zero rows
             [{"metrics": {"workspace_revision": 321, "full_session": {}}}],  # stored after conflict
