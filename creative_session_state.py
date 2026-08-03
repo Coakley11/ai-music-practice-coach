@@ -166,8 +166,23 @@ def get_creative_session(session: dict[str, Any], *, allow_migrate: bool = True)
 
 
 def set_creative_session(session: dict[str, Any], sess: CreativeSession) -> None:
+    new_sig = compute_creative_session_signature(sess)
+    sess.signature = new_sig
+    raw = session.get(CREATIVE_SESSION_KEY)
+    if isinstance(raw, dict):
+        prior_sig = str(raw.get("signature") or "").strip()
+        if prior_sig and prior_sig == new_sig:
+            sess.updated_at = str(raw.get("updated_at") or sess.updated_at or utc_now_iso())
+            session[CREATIVE_SESSION_KEY] = sess.to_dict()
+            return
+        prior_norm = {k: v for k, v in raw.items() if k not in ("updated_at", "signature", "instrument")}
+        new_dict = sess.to_dict()
+        new_norm = {k: v for k, v in new_dict.items() if k not in ("updated_at", "signature", "instrument")}
+        if prior_norm == new_norm:
+            sess.updated_at = str(raw.get("updated_at") or sess.updated_at or utc_now_iso())
+            session[CREATIVE_SESSION_KEY] = sess.to_dict()
+            return
     sess.updated_at = utc_now_iso()
-    sess.signature = compute_creative_session_signature(sess)
     session[CREATIVE_SESSION_KEY] = sess.to_dict()
 
 

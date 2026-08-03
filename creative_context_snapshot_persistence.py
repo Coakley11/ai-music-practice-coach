@@ -41,6 +41,8 @@ ITEM4_DEV_PANEL_KEYS: tuple[str, ...] = (
     "cloud_write_attempted",
     "cloud_write_succeeded",
     "startup_write_attempted",
+    "current_run_seq",
+    "passive_audit",
     "violations",
 )
 
@@ -82,6 +84,13 @@ CREATIVE_CONTEXT_CANONICAL_KEYS: tuple[str, ...] = (
 )
 
 VIOLATION_PASSIVE_CONTEXT_STARTUP_WRITE = "CREATIVE_CONTEXT_PASSIVE_STARTUP_WRITE"
+VIOLATION_PASSIVE_CONTEXT_SAVE_REQUESTED = "CREATIVE_CONTEXT_PASSIVE_SAVE_REQUESTED"
+VIOLATION_PASSIVE_CONTEXT_REVISION_RESERVED = "CREATIVE_CONTEXT_PASSIVE_REVISION_RESERVED"
+VIOLATION_PASSIVE_CONTEXT_CLOUD_WRITE_ATTEMPTED = "CREATIVE_CONTEXT_PASSIVE_CLOUD_WRITE_ATTEMPTED"
+
+_CREATIVE_SESSION_PASSIVE_VOLATILE_KEYS: frozenset[str] = frozenset(
+    {"updated_at", "signature", "instrument"}
+)
 VIOLATION_SNAPSHOT_MUTATED_GLOBAL_KEY = "CREATIVE_CONTEXT_SNAPSHOT_MUTATED_GLOBAL_KEY"
 VIOLATION_PARTIAL_SECTION_TUPLE = "CREATIVE_CONTEXT_PARTIAL_SECTION_TUPLE"
 VIOLATION_MUTATED_ARTIFACT_CONTEXT = "CREATIVE_CONTEXT_MUTATED_ARTIFACT_CONTEXT"
@@ -104,15 +113,121 @@ def _diag(session: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def record_context_violation(session: dict[str, Any], code: str, *, detail: str = "") -> None:
+def _run_seq(session: dict[str, Any]) -> int:
+    try:
+        return int(session.get("_script_run_seq") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _normalize_context_field_for_compare(key: str, val: Any) -> Any:
+    if val is None:
+        return None
+    if key == "creative_session" and isinstance(val, dict):
+        out = copy.deepcopy(val)
+        for drop in _CREATIVE_SESSION_PASSIVE_VOLATILE_KEYS:
+            out.pop(drop, None)
+        return out
+    if isinstance(val, dict):
+        return copy.deepcopy(val)
+    return val
+
+
+def _context_fields_semantically_equal(key: str, left: Any, right: Any) -> bool:
+    return _normalize_context_field_for_compare(key, left) == _normalize_context_field_for_compare(key, right)
+
+
+def context_violations_for_current_run(session: dict[str, Any]) -> list[dict[str, Any]]:
+    run = _run_seq(session)
+    raw = _diag(session).get("violations") or []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        item_run = item.get("run_seq")
+        if item_run is None or item_run == run:
+            out.append(copy.deepcopy(item))
+    return out
+
+
+def record_context_violation(
+    session: dict[str, Any],
+    code: str,
+    *,
+    detail: str = "",
+    source: str = "",
+    transaction_id: str = "",
+) -> None:
     d = _diag(session)
     violations = d.setdefault("violations", [])
     if not isinstance(violations, list):
         violations = []
         d["violations"] = violations
-    entry = {"code": code, "detail": detail or None}
+    entry: dict[str, Any] = {
+        "code": code,
+        "detail": detail or None,
+        "run_seq": _run_seq(session),
+        "source": source or None,
+        "transaction_id": transaction_id or None,
+    }
     if entry not in violations:
         violations.append(entry)
+
+
+def _passive_write_pipeline_state(session: dict[str, Any], reason: str) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "passive_save_requested": False,
+        "passive_payload_built": False,
+        "passive_revision_reserved": False,
+        "passive_cloud_write_attempted": False,
+        "autosave_reason": str(reason or "").strip() or None,
+    }
+    build_reason = str(session.get("_music_build_save_reason") or session.get("_suite_pending_save_reason") or "").strip()
+    if build_reason:
+        out["pending_save_reason"] = build_reason
+    try:
+        from music_startup_save_suppression import (
+            STARTUP_RESTORE_IN_PROGRESS_KEY,
+            STARTUP_SUPPRESSION_ARMED_KEY,
+            STARTUP_SUPPRESSION_RELEASED_KEY,
+            collect_startup_save_suppression_diagnostics,
+        )
+
+        out["startup_restore_in_progress"] = bool(session.get(STARTUP_RESTORE_IN_PROGRESS_KEY))
+        out["startup_suppression_armed"] = bool(session.get(STARTUP_SUPPRESSION_ARMED_KEY))
+        out["startup_suppression_released"] = bool(session.get(STARTUP_SUPPRESSION_RELEASED_KEY))
+        out["startup_suppression"] = collect_startup_save_suppression_diagnostics(session)
+    except ImportError:
+        pass
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        tx = collect_save_transaction_diagnostics(session)
+        if isinstance(tx, dict):
+            out["loaded_revision"] = tx.get("loaded_revision") or tx.get("envelope_revision_before")
+            out["final_cloud_revision"] = tx.get("confirmed_revision") or tx.get("envelope_revision_after")
+            reserved = tx.get("reserved_write_revision")
+            if reserved is not None:
+                out["passive_revision_reserved"] = True
+            if tx.get("cloud_write_attempted") or tx.get("cloud_upsert_attempted"):
+                out["passive_cloud_write_attempted"] = True
+            if tx.get("payload_build_attempted"):
+                out["passive_payload_built"] = True
+    except ImportError:
+        tx = session.get("_music_workspace_save_transaction")
+        if isinstance(tx, dict):
+            reserved = tx.get("reserved_write_revision")
+            if reserved is not None:
+                out["passive_revision_reserved"] = True
+            if tx.get("cloud_write_attempted"):
+                out["passive_cloud_write_attempted"] = True
+    if session.get("_music_build_payload_attempted") or session.get("_suite_persist_payload_built"):
+        out["passive_payload_built"] = True
+    if session.get("_music_cloud_save_entered") or session.get("_suite_persist_save_requested"):
+        out["passive_save_requested"] = True
+    return out
 
 
 def is_context_snapshot_save_reason(reason: str) -> bool:
@@ -339,7 +454,10 @@ def commit_context_snapshot_to_canonical(
 
 
 def snapshot_hydrated_context(session: dict[str, Any], *, source: str = "prepare") -> None:
-    snap = {k: canonical_context_value(session, k) for k in CREATIVE_CONTEXT_CANONICAL_KEYS}
+    snap = {
+        k: _normalize_context_field_for_compare(k, canonical_context_value(session, k))
+        for k in CREATIVE_CONTEXT_CANONICAL_KEYS
+    }
     session[CREATIVE_CONTEXT_HYDRATED_SNAPSHOT_KEY] = snap
     d = _diag(session)
     d["hydrated_context"] = copy.deepcopy(snap)
@@ -409,16 +527,70 @@ def note_passive_context_persist(session: dict[str, Any], *, reason: str) -> Non
         return
     if session.get(CREATIVE_CONTEXT_USER_EVENT_KEY):
         return
+    run_seq = _run_seq(session)
+    d = _diag(session)
+    d["current_run_seq"] = run_seq
+    d["current_startup_run"] = run_seq
+    audit = d.setdefault("passive_audit", {})
+    audit.update(
+        {
+            "reason": reason,
+            "emitter": "creative_context_snapshot_persistence.note_passive_context_persist",
+            "emitter_line": "note_passive_context_persist",
+        }
+    )
+    drift_keys: list[str] = []
     for key in CREATIVE_CONTEXT_CANONICAL_KEYS:
         if key not in session:
             continue
-        if session.get(key) != snap.get(key):
-            record_context_violation(
-                session,
-                VIOLATION_PASSIVE_CONTEXT_STARTUP_WRITE,
-                detail=f"key={key}|reason={reason}",
-            )
-            break
+        if not _context_fields_semantically_equal(key, session.get(key), snap.get(key)):
+            drift_keys.append(key)
+    audit["semantic_drift_keys"] = drift_keys
+    if not drift_keys:
+        audit["violations_suppressed"] = "no_semantic_drift"
+        return
+    would_gather = [
+        k
+        for k in drift_keys
+        if should_gather_context_from_session(session, k, session.get(k), persist_reason=reason)
+    ]
+    audit["would_gather_keys"] = would_gather
+    pipeline = _passive_write_pipeline_state(session, reason)
+    audit.update(pipeline)
+    if not would_gather:
+        audit["violations_suppressed"] = "context_gather_blocked_for_passive_reason"
+        return
+    if pipeline.get("passive_save_requested"):
+        record_context_violation(
+            session,
+            VIOLATION_PASSIVE_CONTEXT_SAVE_REQUESTED,
+            detail=f"keys={','.join(would_gather)}|reason={reason}",
+            source="creative_context_snapshot_persistence.note_passive_context_persist",
+        )
+    if pipeline.get("passive_revision_reserved"):
+        record_context_violation(
+            session,
+            VIOLATION_PASSIVE_CONTEXT_REVISION_RESERVED,
+            detail=f"keys={','.join(would_gather)}|reason={reason}",
+            source="creative_context_snapshot_persistence.note_passive_context_persist",
+        )
+    if pipeline.get("passive_cloud_write_attempted"):
+        record_context_violation(
+            session,
+            VIOLATION_PASSIVE_CONTEXT_CLOUD_WRITE_ATTEMPTED,
+            detail=f"keys={','.join(would_gather)}|reason={reason}",
+            source="creative_context_snapshot_persistence.note_passive_context_persist",
+        )
+    if (
+        pipeline.get("passive_payload_built")
+        and pipeline.get("passive_cloud_write_attempted")
+    ):
+        record_context_violation(
+            session,
+            VIOLATION_PASSIVE_CONTEXT_STARTUP_WRITE,
+            detail=f"key={would_gather[0]}|reason={reason}",
+            source="creative_context_snapshot_persistence.note_passive_context_persist",
+        )
 
 
 def _record_user_event(session: dict[str, Any], *, interaction: str, save_reason: str, fields: dict[str, Any]) -> str:
@@ -598,7 +770,11 @@ def collect_creative_context_snapshot_diagnostics(session: dict[str, Any]) -> di
     except ImportError:
         base["startup_write_attempted"] = False
     _merge_workspace_tx_into_item4_diag(session, base)
-    base["violations"] = list(live.get("violations") or base.get("violations") or [])
+    base["violations"] = context_violations_for_current_run(session)
+    base["current_run_seq"] = _run_seq(session)
+    passive_audit = live.get("passive_audit")
+    if isinstance(passive_audit, dict):
+        base["passive_audit"] = copy.deepcopy(passive_audit)
     if isinstance(last, dict):
         for k in (
             "last_user_interaction",
@@ -665,9 +841,13 @@ __all__ = [
     "VIOLATION_ENVELOPE_FIELD_DROPPED",
     "VIOLATION_MUTATED_ARTIFACT_CONTEXT",
     "VIOLATION_PARTIAL_SECTION_TUPLE",
+    "VIOLATION_PASSIVE_CONTEXT_CLOUD_WRITE_ATTEMPTED",
+    "VIOLATION_PASSIVE_CONTEXT_REVISION_RESERVED",
+    "VIOLATION_PASSIVE_CONTEXT_SAVE_REQUESTED",
     "VIOLATION_PASSIVE_CONTEXT_STARTUP_WRITE",
     "VIOLATION_SNAPSHOT_MUTATED_GLOBAL_KEY",
     "audit_mission_target_tuple_complete",
+    "context_violations_for_current_run",
     "collect_creative_context_snapshot_diagnostics",
     "commit_context_snapshot_to_canonical",
     "default_item4_dev_diag",
