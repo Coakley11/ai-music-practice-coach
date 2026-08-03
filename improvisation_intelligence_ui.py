@@ -1676,7 +1676,16 @@ def _tab_harmony_map(
                 ):
                     session_state["harmony_map_section"] = sec_label
                     session_state["harmony_map_chord"] = ch
-                    _touch_creative_workspace(session_state)
+                    try:
+                        from creative_context_snapshot_persistence import handle_user_harmony_map_context_change
+
+                        handle_user_harmony_map_context_change(
+                            session_state,
+                            section=sec_label,
+                            chord=ch,
+                        )
+                    except ImportError:
+                        _touch_creative_workspace(session_state)
                     st.rerun()
 
     if not sel_chord:

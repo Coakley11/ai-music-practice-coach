@@ -54,6 +54,8 @@ _STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
         "creative_motif_change",
         "creative_mission_example_change",
         "creative_mission_practice_lick_change",
+        "creative_context_section_change",
+        "creative_context_snapshot_change",
         "music_coach_send",
         "practice_tool_select",
         "practice_workspace_edit",

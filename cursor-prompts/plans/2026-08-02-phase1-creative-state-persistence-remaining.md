@@ -32,8 +32,8 @@ Contract reference: [2026-07-30-mission-workspace-contract.md](./2026-07-30-miss
 
 1. **Creative tool and tab selections** — ✅ live @ `549578d` (Daniel/music rev **203**, cold session, `startup_write_attempted=false`, `violations=[]`).
 2. **Mission configuration and selected mission** — ✅ live @ `c6c2f41` (2026-08-02).
-3. **Motif / lick and generated-example state** — **in progress** — [Item 3 contract](./2026-08-02-item3-mission-artifact-persistence.md).
-4. **Key, section, and Creative context snapshots** — chart key, `ii_selected_*`, section focus within Creative.
+3. **Motif / lick and generated-example state** — ✅ **live-accepted** @ `616f4e4` (2026-08-03) — [Item 3 contract](./2026-08-02-item3-mission-artifact-persistence.md).
+4. **Key, section, and Creative context snapshots** — **in progress** — [Item 4 contract](./2026-08-03-item4-key-section-creative-context-snapshots.md).
 5. **Refresh and cold-reboot persistence** — full browser hard refresh + cold Streamlit reboot; workspace matches pre-refresh.
 6. **Dell → phone synchronization** — change on Dell; phone pull shows same Creative document.
 7. **Phone → Dell synchronization** — reverse direction.

@@ -604,19 +604,42 @@ def apply_creative_session_to_session(
         display = concert
     else:
         display = str(sess.display_key or concert).strip() or concert
-    if safe_assign_display_key is not None:
-        safe_assign_display_key(session, display, widget_safe=widget_safe)
-    else:
-        session["concert_key"] = concert
-        session["display_key"] = display
-        session["_pending_display_key"] = display
+    skip_global_key = False
+    try:
+        from creative_key_sync import user_sidebar_display_key_authoritative
+
+        if user_sidebar_display_key_authoritative(session):
+            skip_global_key = True
+    except ImportError:
+        pass
+    if not skip_global_key:
+        if safe_assign_display_key is not None:
+            safe_assign_display_key(session, display, widget_safe=widget_safe)
+        else:
+            session["concert_key"] = concert
+            session["display_key"] = display
+            session["_pending_display_key"] = display
 
     # Instrument / level / focus are global session controls — never overwrite from Creative snapshot.
 
     if sess.tool_type == "mission":
         session["improv_active_mission"] = sess.mission_id
         session["improv_mission_pick"] = sess.mission_id
-        if sess.sections:
+        skip_target_tuple = False
+        try:
+            from creative_mission_config_persistence import (
+                MISSION_TARGET_IDENTITY_KEYS,
+                canonical_mission_config_value,
+            )
+
+            if all(
+                str(canonical_mission_config_value(session, k) or "").strip()
+                for k in MISSION_TARGET_IDENTITY_KEYS
+            ):
+                skip_target_tuple = True
+        except ImportError:
+            pass
+        if not skip_target_tuple and sess.sections:
             sec_name = str(sess.selected_section or "").strip()
             if not sec_name:
                 sec_name = next(iter(sess.sections.keys()), "")
