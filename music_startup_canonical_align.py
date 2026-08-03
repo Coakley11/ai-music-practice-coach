@@ -89,6 +89,14 @@ def align_authoritative_canonical_from_hydrated(
         return
 
     try:
+        from display_key_startup_save_queue import has_queued_display_key_change
+
+        if has_queued_display_key_change(session):
+            return
+    except ImportError:
+        pass
+
+    try:
         from backing_track_state import (
             apply_cloud_backing_state_if_allowed,
             clear_backing_local_edit,

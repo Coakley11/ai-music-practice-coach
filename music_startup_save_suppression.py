@@ -87,6 +87,69 @@ def _differing_only_queued_page_navigation(
     return all(_is_page_bearing_canonical_path(str(p)) for p in differing)
 
 
+def _defer_finalize_for_pending_queued_display_key_change(session: dict[str, Any]) -> bool:
+    try:
+        from display_key_startup_save_queue import has_queued_display_key_change, is_genuine_queued_display_key_change
+
+        if has_queued_display_key_change(session) and is_genuine_queued_display_key_change(session):
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+def _apply_queued_display_key_startup_release(
+    session: dict[str, Any],
+    *,
+    stage: str = "display_key_release",
+) -> None:
+    """Release startup suppression for queued explicit sidebar display_key without discarding Cm."""
+    hydrated_fp = str(session.get(HYDRATED_CANONICAL_FP_KEY) or "").strip()
+    post_fp = str(session.get(POST_RESTORE_CANONICAL_FP_KEY) or "").strip() or hydrated_fp
+    try:
+        from display_key_startup_save_queue import record_startup_release_diag
+
+        record_startup_release_diag(
+            session,
+            release_stage=str(stage or "display_key_release"),
+            restore_finalized=bool(session.get(RESTORE_FINALIZED_STAGE_KEY)),
+            fingerprint_semantic_match=bool(session.get(STARTUP_FINGERPRINT_MATCHES_KEY)),
+            ignored_volatile_paths=list(session.get(DIFFERING_CANONICAL_PATHS_KEY) or [])
+            if isinstance(session.get(DIFFERING_CANONICAL_PATHS_KEY), list)
+            else None,
+        )
+    except ImportError:
+        pass
+    session[STARTUP_SUPPRESSION_RELEASED_KEY] = True
+    session[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
+    session[STARTUP_WRITE_ALLOWED_REASON_KEY] = "queued_display_key_change_after_alignment"
+    session.pop(STARTUP_SAVE_SUPPRESSED_KEY, None)
+    session.pop(STARTUP_SAVE_SUPPRESSION_REASON_KEY, None)
+    try:
+        from workspace_revision import (
+            APPLIED_REVISION_KEY,
+            CLOUD_REVISION_KEY,
+            LAST_CONFIRMED_REVISION_KEY,
+            LOCAL_REVISION_KEY,
+        )
+
+        rev_loaded = int(session.get(STARTUP_REVISION_LOADED_KEY) or 0)
+        if rev_loaded:
+            session[LAST_CONFIRMED_REVISION_KEY] = rev_loaded
+            session[CLOUD_REVISION_KEY] = rev_loaded
+            session[APPLIED_REVISION_KEY] = rev_loaded
+            session[LOCAL_REVISION_KEY] = rev_loaded
+    except ImportError:
+        pass
+    try:
+        from music_egress_strict_save import note_confirmed_cloud_fingerprint
+
+        note_confirmed_cloud_fingerprint(session, post_fp or hydrated_fp)
+    except ImportError:
+        if post_fp or hydrated_fp:
+            session["_music_last_confirmed_cloud_fp"] = post_fp or hydrated_fp
+
+
 def _metadata_only_canonical_diff(differing: list[str]) -> bool:
     """True when path diffs are only noncanonical ownership/timestamp metadata."""
     if not differing:
@@ -94,9 +157,41 @@ def _metadata_only_canonical_diff(differing: list[str]) -> bool:
     allowed = (
         "display_key_owner_identity",
         "improv_mission_workspace_updated_at",
+        "creative_session.updated_at",
+        ".updated_at",
     )
     for path in differing:
-        if not any(str(path).endswith(suffix) for suffix in allowed):
+        p = str(path)
+        if not any(p.endswith(suffix) or suffix in p for suffix in allowed):
+            return False
+    return True
+
+
+def _volatile_only_canonical_diff(differing: list[str]) -> bool:
+    return _metadata_only_canonical_diff(differing)
+
+
+def _differing_only_queued_display_key_change(session: dict[str, Any], differing: list[str]) -> bool:
+    try:
+        from display_key_startup_save_queue import has_queued_display_key_change
+
+        if not has_queued_display_key_change(session):
+            return False
+    except ImportError:
+        return False
+    if not differing:
+        return True
+    allowed = (
+        "display_key",
+        "core.display_key",
+        "active_song_state.display_key",
+        "music_workspace_state.active_song.display_key",
+    )
+    for path in differing:
+        p = str(path)
+        if not any(p.endswith(suffix) or p == suffix for suffix in allowed):
+            if _volatile_only_canonical_diff([p]):
+                continue
             return False
     return True
 
@@ -332,6 +427,13 @@ def note_first_song_edit_request(session: dict[str, Any], stage: str) -> None:
 
 
 def _discard_startup_pending_edits(session: dict[str, Any]) -> None:
+    try:
+        from display_key_startup_save_queue import has_queued_display_key_change
+
+        if has_queued_display_key_change(session):
+            return
+    except ImportError:
+        pass
     pending = session.get(STARTUP_PENDING_EDIT_REASONS_KEY)
     if isinstance(pending, list) and pending:
         session[STARTUP_PENDING_EDITS_DISCARDED_KEY] = list(pending)
@@ -624,7 +726,7 @@ def _record_alignment_diagnostics(
 def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finalize") -> bool:
     """Compare hydrated vs built state; release suppression when canonical content matches."""
     ss = st.session_state
-    if _defer_finalize_for_pending_queued_page_change(ss):
+    if _defer_finalize_for_pending_queued_page_change(ss) or _defer_finalize_for_pending_queued_display_key_change(ss):
         try:
             from music_queued_page_startup_release_trace import record_finalize_fallback_blocked
 
@@ -635,6 +737,17 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
         if _pre_navigation_startup_alignment_satisfied(ss):
             ss[STARTUP_FINGERPRINT_MATCHES_KEY] = True
+        try:
+            from display_key_startup_save_queue import (
+                flush_queued_display_key_change_once,
+                has_queued_display_key_change,
+            )
+
+            if has_queued_display_key_change(ss):
+                _apply_queued_display_key_startup_release(ss, stage=f"{stage}:queued_display_key")
+                flush_queued_display_key_change_once(st)
+        except ImportError:
+            pass
         return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
 
     _maybe_record_finalize_after_dedicated_release(ss, stage=stage)
@@ -648,10 +761,17 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
 
     try:
         from music_startup_canonical_align import align_authoritative_canonical_from_hydrated
+        from display_key_startup_save_queue import has_queued_display_key_change
 
-        align_authoritative_canonical_from_hydrated(ss, hydrated_side or payload)
+        if not has_queued_display_key_change(ss):
+            align_authoritative_canonical_from_hydrated(ss, hydrated_side or payload)
     except ImportError:
-        pass
+        try:
+            from music_startup_canonical_align import align_authoritative_canonical_from_hydrated
+
+            align_authoritative_canonical_from_hydrated(ss, hydrated_side or payload)
+        except ImportError:
+            pass
 
     post_state: dict[str, Any] | None = None
     try:
@@ -704,6 +824,24 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
     if not matches and _metadata_only_canonical_diff(differing):
         matches = True
 
+    if not matches and _volatile_only_canonical_diff(differing):
+        matches = True
+        try:
+            from display_key_startup_save_queue import record_startup_release_diag
+
+            record_startup_release_diag(
+                ss,
+                release_stage=str(stage),
+                restore_finalized=bool(ss.get(RESTORE_FINALIZED_STAGE_KEY)),
+                fingerprint_semantic_match=True,
+                ignored_volatile_paths=list(differing),
+            )
+        except ImportError:
+            pass
+
+    if not matches and _differing_only_queued_display_key_change(ss, differing):
+        matches = True
+
     rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
     rev_final = rev_loaded
     try:
@@ -734,8 +872,16 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         _record_startup_revision_invariant_violation(ss)
 
     if matches:
+        try:
+            from display_key_startup_save_queue import has_queued_display_key_change
+
+            queued_dk = has_queued_display_key_change(ss)
+        except ImportError:
+            queued_dk = False
         if queued_page and get_page_change_origin(ss) == "user_navigation":
             _apply_queued_page_startup_release(ss, rev_loaded=rev_loaded, stage=stage)
+        elif queued_dk:
+            _apply_queued_display_key_startup_release(ss, stage=stage)
         else:
             _apply_confirmed_startup_alignment(
                 ss,
@@ -748,6 +894,19 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         ss[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
     else:
         ss[STARTUP_WRITE_ALLOWED_REASON_KEY] = None
+
+    try:
+        from display_key_startup_save_queue import (
+            flush_queued_display_key_change_once,
+            has_queued_display_key_change,
+        )
+
+        if has_queued_display_key_change(ss):
+            if not ss.get(STARTUP_SUPPRESSION_RELEASED_KEY):
+                _apply_queued_display_key_startup_release(ss, stage=f"{stage}:queued_flush")
+            flush_queued_display_key_change_once(st)
+    except ImportError:
+        pass
 
     return matches
 
@@ -892,7 +1051,7 @@ def _maybe_record_hotfix_not_executed(session: dict[str, Any], *, queued: str) -
 
 def run_late_startup_restore_guard(st: Any) -> bool:
     ss = st.session_state
-    if _defer_finalize_for_pending_queued_page_change(ss):
+    if _defer_finalize_for_pending_queued_page_change(ss) or _defer_finalize_for_pending_queued_display_key_change(ss):
         try:
             from music_queued_page_startup_release_trace import record_finalize_fallback_blocked
 
@@ -901,6 +1060,17 @@ def run_late_startup_restore_guard(st: Any) -> bool:
             pass
         rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
         ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
+        try:
+            from display_key_startup_save_queue import (
+                flush_queued_display_key_change_once,
+                has_queued_display_key_change,
+            )
+
+            if has_queued_display_key_change(ss):
+                _apply_queued_display_key_startup_release(ss, stage="late_end_of_run:queued_display_key")
+                flush_queued_display_key_change_once(st)
+        except ImportError:
+            pass
         return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
     if not ss.get(STARTUP_SUPPRESSION_ARMED_KEY):
         return bool(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))

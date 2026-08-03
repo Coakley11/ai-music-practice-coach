@@ -340,6 +340,33 @@ def force_music_workspace_save(
                     st,
                     suppress_reason=str(_suppress_reason or ""),
                 )
+            elif r == "display_key_change":
+                try:
+                    from display_key_startup_save_queue import (
+                        attempt_release_startup_for_queued_display_key_change,
+                        attempt_release_stale_startup_suppression_for_display_key,
+                        maybe_queue_display_key_save_blocked_by_startup,
+                    )
+                    from display_key_sidebar_persistence_trace import (
+                        active_sidebar_display_key_transaction_id,
+                    )
+
+                    flushed = attempt_release_stale_startup_suppression_for_display_key(st)
+                    if not flushed:
+                        flushed = attempt_release_startup_for_queued_display_key_change(
+                            st,
+                            suppress_reason=str(_suppress_reason or ""),
+                        )
+                    if not flushed:
+                        maybe_queue_display_key_save_blocked_by_startup(
+                            ss,
+                            block_reason=str(_suppress_reason or ""),
+                            transaction_id=active_sidebar_display_key_transaction_id(ss),
+                        )
+                    skip_save, _suppress_reason = gate_music_workspace_save_at_startup(ss, r)
+                    flushed = not skip_save
+                except ImportError:
+                    pass
             if not flushed:
                 _record_force_save_early_return(
                     st,

@@ -94,6 +94,12 @@ def run_explicit_display_key_cloud_save(st: Any, *, transaction_id: str = "", ca
         save_reason=reason,
         caller=caller or None,
     )
+    try:
+        from display_key_startup_save_queue import attempt_release_stale_startup_suppression_for_display_key
+
+        attempt_release_stale_startup_suppression_for_display_key(st)
+    except ImportError:
+        pass
     raw_return: Any = None
     exc_text = ""
     try:

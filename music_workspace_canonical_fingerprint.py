@@ -178,6 +178,9 @@ def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) 
     if isinstance(cws, dict):
         cws.pop("updated_at", None)
         cws.pop("improv_mission_workspace_updated_at", None)
+        cs = cws.get("creative_session")
+        if isinstance(cs, dict):
+            cs.pop("updated_at", None)
 
     mws = canonical.get("music_workspace_state")
     if isinstance(mws, dict):
@@ -188,6 +191,9 @@ def _normalize_canonical_tree(state: dict[str, Any], canonical: dict[str, Any]) 
         if isinstance(nested_cws, dict):
             nested_cws.pop("updated_at", None)
             nested_cws.pop("improv_mission_workspace_updated_at", None)
+            nested_cs = nested_cws.get("creative_session")
+            if isinstance(nested_cs, dict):
+                nested_cs.pop("updated_at", None)
         for filt_key in ("backing_filters", "practice_filters"):
             filt = mws.get(filt_key)
             if isinstance(filt, dict):

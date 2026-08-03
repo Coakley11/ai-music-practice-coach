@@ -109,6 +109,21 @@ class CanonicalFingerprintNormalizationTests(unittest.TestCase):
         }
         self.assertEqual(workspace_canonical_content_fingerprint(a), workspace_canonical_content_fingerprint(b))
 
+    def test_creative_session_updated_at_ignored(self) -> None:
+        a = {
+            "active_song_state": {"instrument": "Piano", "display_key": "Dm"},
+            "creative_workspace_state": {
+                "creative_session": {"updated_at": "2026-01-01T00:00:00Z", "entry_mode": "Missions"},
+            },
+        }
+        b = {
+            "active_song_state": {"instrument": "Piano", "display_key": "Dm"},
+            "creative_workspace_state": {
+                "creative_session": {"updated_at": "2026-01-02T00:00:00Z", "entry_mode": "Missions"},
+            },
+        }
+        self.assertEqual(workspace_canonical_content_fingerprint(a), workspace_canonical_content_fingerprint(b))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -289,6 +289,18 @@ def finalize_display_key_sidebar_save_outcome(
 
     ok = False
     if not upsert_attempted:
+        try:
+            from display_key_startup_save_queue import (
+                maybe_queue_display_key_save_blocked_by_startup,
+            )
+
+            maybe_queue_display_key_save_blocked_by_startup(
+                session,
+                block_reason=block,
+                transaction_id=tx_id,
+            )
+        except ImportError:
+            pass
         record_display_key_confirmation_not_attempted(
             session,
             save_reason=save_reason,
@@ -324,8 +336,10 @@ def finalize_display_key_sidebar_save_outcome(
 
     try:
         from display_key_sidebar_persistence_trace import disarm_explicit_sidebar_display_key_save
+        from display_key_startup_save_queue import has_queued_display_key_change
 
-        disarm_explicit_sidebar_display_key_save(session)
+        if not has_queued_display_key_change(session):
+            disarm_explicit_sidebar_display_key_save(session)
     except ImportError:
         session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
 

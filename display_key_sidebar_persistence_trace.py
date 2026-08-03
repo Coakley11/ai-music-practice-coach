@@ -463,6 +463,9 @@ def collect_display_key_sidebar_trace(session: dict[str, Any]) -> dict[str, Any]
             for k, v in out["confirmation_forensic"].items():
                 if k not in out["save_transaction"] and v is not None:
                     out["save_transaction"][k] = v
+    for diag_key in ("queued_display_key_change", "startup_release", "queued_flush"):
+        if diag_key not in out and isinstance(raw, dict) and raw.get(diag_key) is not None:
+            out[diag_key] = copy.deepcopy(raw.get(diag_key))
     save_tx = out.get("save_transaction")
     if isinstance(save_tx, dict):
         out.setdefault("transaction_id", save_tx.get("transaction_id"))
