@@ -36,6 +36,7 @@ def handoff_mission_take_to_upload_analysis(
     audio_bytes: bytes,
     filename: str,
     source: str,
+    st: Any | None = None,
 ) -> None:
     """Preload take + mission context; leave AI criteria editable on Upload Analysis."""
     from mission_analysis_ui import (
@@ -88,6 +89,22 @@ def handoff_mission_take_to_upload_analysis(
         from mission_practice_context import MISSION_RECORDING_STUDIO_ENGAGED_KEY
 
         session[MISSION_RECORDING_STUDIO_ENGAGED_KEY] = True
+    except ImportError:
+        pass
+
+    try:
+        from mission_pending_upload_persistence import persist_mission_pending_upload_handoff
+
+        mixed = session.get("_mission_live_mic_mixed")
+        mixed_opt = bytes(mixed) if isinstance(mixed, (bytes, bytearray)) and mixed != audio_bytes else None
+        persist_mission_pending_upload_handoff(
+            session,
+            dry_bytes=bytes(audio_bytes),
+            mixed_bytes=mixed_opt,
+            filename=str(filename or "mission_live_take.wav"),
+            st=st,
+        )
+        session["_navigate_to_studio_page"] = "analysis"
     except ImportError:
         pass
 

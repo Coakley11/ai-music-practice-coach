@@ -9329,6 +9329,12 @@ try:
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
         )
+        try:
+            from mission_pending_upload_persistence import try_restore_pending_mission_upload_on_startup
+
+            try_restore_pending_mission_upload_on_startup(st.session_state, st=st)
+        except ImportError:
+            pass
         _catalog_genre, _catalog_song, _catalog_song_data = get_song_context(
             st,
             song_library=SONG_LIBRARY,
@@ -13273,6 +13279,24 @@ elif _studio_page == "analysis":
                         or authoritative_mission_type(st.session_state)
                     ):
                         render_mission_upload_compact_context(st, st.session_state)
+                        try:
+                            from mission_pending_upload_analysis import is_prepared_pending_upload
+                            from mission_pending_upload_persistence import (
+                                clear_prepared_mission_upload,
+                                render_pending_upload_dev_diagnostics,
+                            )
+
+                            render_pending_upload_dev_diagnostics(st, st.session_state)
+                            if is_prepared_pending_upload(st.session_state):
+                                if st.button(
+                                    "Clear prepared take",
+                                    key="analysis_clear_prepared_mission_take",
+                                    use_container_width=True,
+                                ):
+                                    clear_prepared_mission_upload(st.session_state, st=st)
+                                    st.rerun()
+                        except ImportError:
+                            pass
                         st.markdown("---")
                 except ImportError:
                     pass

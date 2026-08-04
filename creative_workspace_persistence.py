@@ -43,6 +43,7 @@ CREATIVE_WORKSPACE_EXTRA_KEYS: tuple[str, ...] = (
     "creative_session",
     "improv_ai_metric_ids",
     "analysis_criteria_locked",
+    "pending_upload_analysis_envelope",
 )
 
 CREATIVE_WORKSPACE_KEYS: tuple[str, ...] = tuple(

@@ -314,6 +314,7 @@ def render_mission_live_recording_studio(
             audio_bytes=audio,
             filename="mission_live_take.wav",
             source="live",
+            st=st,
         )
         if on_open_upload_analysis:
             on_open_upload_analysis()
