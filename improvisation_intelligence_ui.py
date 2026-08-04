@@ -118,7 +118,10 @@ from studio_page_state import (
 from songs.picker_session import mark_improv_tab_user_touched
 
 # Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
-MISSIONS_UI_BUILD_ID = "a6962ec-missions-v3-route-marker"
+MISSIONS_UI_BUILD_ID = "9b5c23b-missions-hotfix-widget-key"
+
+# Read-only dispatch shadow (not a Streamlit widget key).
+IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY = "_improv_intelligence_tab_for_render"
 
 
 def _improv_dev_mode(session_state: dict, st_module: Any | None = None) -> bool:
@@ -166,16 +169,12 @@ def _render_missions_route_dev_marker(
     )
 
 
-def _resolve_improv_tab_for_render(session_state: dict, radio_value: Any) -> str:
-    """Authoritative tab for content dispatch (widget value + session mirror)."""
-    tab = str(radio_value or session_state.get("improv_intelligence_tab") or "Entry & Jam").strip()
-    if tab not in IMPROV_TAB_NAMES:
-        tab = str(session_state.get("improv_intelligence_tab") or IMPROV_TAB_NAMES[0]).strip()
-    if tab not in IMPROV_TAB_NAMES:
-        tab = IMPROV_TAB_NAMES[0]
-    session_state["improv_intelligence_tab"] = tab
-    session_state["creative_improv_intelligence_tab"] = tab
-    return tab
+def _normalize_improv_tab_for_render(radio_value: Any) -> str:
+    """Map radio return value to a valid tab name — read-only, no session writes."""
+    tab = str(radio_value or IMPROV_TAB_NAMES[0]).strip()
+    if tab in IMPROV_TAB_NAMES:
+        return tab
+    return IMPROV_TAB_NAMES[0]
 
 
 def render_improvisation_intelligence_lab(
@@ -282,15 +281,8 @@ def render_improvisation_intelligence_lab(
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        tab_for_render = _resolve_improv_tab_for_render(session_state, active_tab)
-        if _improv_dev_mode(session_state, st) and tab_for_render != str(active_tab or "").strip():
-            _render_missions_route_dev_marker(
-                st,
-                session_state,
-                renderer="render_improvisation_intelligence_lab",
-                branch="tab_desync_corrected",
-                extra={"radio": str(active_tab), "resolved": tab_for_render},
-            )
+        tab_for_render = _normalize_improv_tab_for_render(active_tab)
+        session_state[IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY] = tab_for_render
 
         if tab_for_render == "Entry & Jam":
             _tab_entry_modes(
