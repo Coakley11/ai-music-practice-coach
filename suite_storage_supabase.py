@@ -499,87 +499,70 @@ def _load_state_row_metrics(scoped_app_key: str) -> dict[str, Any]:
 
 
 def metrics_workspace_revision(metrics: dict[str, Any] | None) -> int:
-    if not isinstance(metrics, dict):
-        return 0
     try:
-        top = int(metrics.get("workspace_revision") or 0)
-        if top > 0:
-            return top
-    except (TypeError, ValueError):
-        pass
-    full = metrics.get(_FULL_SESSION_KEY)
-    if not isinstance(full, dict):
-        return 0
-    try:
-        from workspace_revision import workspace_revision_from_blob
+        from music_metrics_logical_revision import metrics_logical_workspace_revision
 
-        return int(workspace_revision_from_blob(full))
+        return metrics_logical_workspace_revision(metrics)
     except ImportError:
+        if not isinstance(metrics, dict):
+            return 0
         try:
-            ws = full.get("music_workspace_state")
-            if isinstance(ws, dict):
-                return int(ws.get("workspace_revision") or full.get("workspace_revision") or 0)
-            return int(full.get("workspace_revision") or 0)
+            top = int(metrics.get("workspace_revision") or 0)
+            if top > 0:
+                return top
         except (TypeError, ValueError):
+            pass
+        full = metrics.get(_FULL_SESSION_KEY)
+        if not isinstance(full, dict):
+            return 0
+        try:
+            from workspace_revision import workspace_revision_from_blob
+
+            return int(workspace_revision_from_blob(full))
+        except ImportError:
             return 0
 
 
 def cas_patch_revision_diagnostics(stored_metrics: dict[str, Any] | None) -> dict[str, Any]:
-    """Expose top-level vs nested revision fields for Item 8 CAS debugging."""
-    stored = dict(stored_metrics) if isinstance(stored_metrics, dict) else {}
-    full = stored.get(_FULL_SESSION_KEY)
-    top_present = "workspace_revision" in stored
-    top_raw = stored.get("workspace_revision") if top_present else None
-    blob_rev = 0
-    if isinstance(full, dict):
-        try:
-            from workspace_revision import workspace_revision_from_blob
+    try:
+        from music_metrics_logical_revision import resolve_logical_stored_revision
 
-            blob_rev = int(workspace_revision_from_blob(full))
-        except ImportError:
-            blob_rev = 0
-    return {
-        "stored_top_level_workspace_revision": top_raw,
-        "stored_top_level_present": top_present,
-        "stored_blob_workspace_revision": blob_rev,
-        "stored_logical_workspace_revision": metrics_workspace_revision(stored),
-    }
+        return resolve_logical_stored_revision(stored_metrics)
+    except ImportError:
+        return {
+            "stored_top_level_workspace_revision": None,
+            "stored_top_level_present": False,
+            "stored_blob_workspace_revision": 0,
+            "stored_logical_workspace_revision": metrics_workspace_revision(stored_metrics),
+        }
 
 
 def build_cas_patch_filter_params(
     stored_metrics: dict[str, Any] | None,
     expected_workspace_revision: int,
 ) -> tuple[dict[str, str], str]:
-    """
-    PostgREST filter params aligned with where the revision is stored in metrics JSON.
+    from music_metrics_logical_revision import build_cas_patch_filter_params as _build
 
-    Legacy rows often keep workspace_revision only under metrics.full_session (no top-level key).
-    ``metrics_workspace_revision`` reads both; the PATCH filter must use the same path.
-    """
-    stored = dict(stored_metrics) if isinstance(stored_metrics, dict) else {}
-    expected_s = str(int(expected_workspace_revision))
-    if "workspace_revision" in stored:
-        key = "metrics->>workspace_revision"
-        return {key: f"eq.{expected_s}"}, key
-    full = stored.get(_FULL_SESSION_KEY)
-    if isinstance(full, dict):
-        ws = full.get("music_workspace_state")
-        if isinstance(ws, dict) and "workspace_revision" in ws:
-            key = "metrics->full_session->music_workspace_state->>workspace_revision"
-            return {key: f"eq.{expected_s}"}, key
-        if "workspace_revision" in full:
-            key = "metrics->full_session->>workspace_revision"
-            return {key: f"eq.{expected_s}"}, key
-    key = "metrics->>workspace_revision"
-    return {key: f"eq.{expected_s}"}, key
+    params, field, _resolved = _build(stored_metrics, expected_workspace_revision)
+    return params, field
+
+
+def build_cas_patch_filter_params_with_resolution(
+    stored_metrics: dict[str, Any] | None,
+    expected_workspace_revision: int,
+) -> tuple[dict[str, str], str, dict[str, Any]]:
+    from music_metrics_logical_revision import build_cas_patch_filter_params as _build
+
+    return _build(stored_metrics, expected_workspace_revision)
 
 
 def describe_cas_patch_filter(
     stored_metrics: dict[str, Any] | None,
     expected_workspace_revision: int,
 ) -> str:
-    _params, field = build_cas_patch_filter_params(stored_metrics, expected_workspace_revision)
-    return f"{field}=eq.{int(expected_workspace_revision)}"
+    from music_metrics_logical_revision import describe_cas_patch_filter as _describe
+
+    return _describe(stored_metrics, expected_workspace_revision)
 
 
 def _metrics_for_conditional_write(
@@ -596,7 +579,12 @@ def _metrics_for_conditional_write(
     for key, val in incoming_metrics.items():
         if key != _FULL_SESSION_KEY:
             merged[key] = val
-    merged["workspace_revision"] = int(candidate_workspace_revision)
+    try:
+        from music_metrics_logical_revision import sync_metrics_revision_surfaces
+
+        merged = sync_metrics_revision_surfaces(merged, int(candidate_workspace_revision))
+    except ImportError:
+        merged["workspace_revision"] = int(candidate_workspace_revision)
     return merged
 
 
@@ -706,7 +694,15 @@ def save_current_state_conditional_cas(
             "reason": "insert_ok" if count else "insert_no_row",
         }
 
-    filter_params, filter_field = build_cas_patch_filter_params(stored_before, expected)
+    filter_params, filter_field, filter_resolution = build_cas_patch_filter_params_with_resolution(
+        stored_before, expected
+    )
+    base_result.update(
+        {
+            "logical_revision_source": filter_resolution.get("logical_revision_source"),
+            "selected_cas_filter_path": filter_resolution.get("selected_cas_filter_path"),
+        }
+    )
     params: dict[str, str] = {
         "app": f"eq.{app_key}",
         **filter_params,
@@ -719,6 +715,8 @@ def save_current_state_conditional_cas(
         "rest_path": f"rest/v1/{_TABLE_STATE}",
         "query_params": dict(params),
         "cas_filter_field": filter_field,
+        "logical_revision_source": filter_resolution.get("logical_revision_source"),
+        "selected_cas_filter_path": filter_resolution.get("selected_cas_filter_path"),
         "patch_metrics_top_level_revision": merged_metrics.get("workspace_revision"),
     }
 

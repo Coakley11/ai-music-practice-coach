@@ -7,6 +7,7 @@ from typing import Any
 
 ITEM8_DIAG_KEY = "_phase1_item8_stale_write_diag"
 ITEM8_VIOLATIONS_KEY = "_phase1_item8_stale_write_violations"
+ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY = "_phase1_item8_violations_current_attempt"
 STALE_WRITE_USER_MESSAGE = (
     "This workspace changed on another device. Refresh to load the latest version before saving."
 )
@@ -115,10 +116,17 @@ def prepare_music_conditional_write(
         revision_trace = {}
 
     row_exists, stored_row_rev, stored_metrics = _authoritative_stored_metrics()
+    logical_resolution: dict[str, Any] = {}
+    if stored_metrics:
+        try:
+            from music_metrics_logical_revision import resolve_logical_stored_revision
+
+            logical_resolution = resolve_logical_stored_revision(stored_metrics)
+        except ImportError:
+            pass
     create_path_selected = expected <= 0 and create_path_allowed and not row_exists
 
     if row_exists and expected <= 0:
-        violations.append(VIOLATION_CAS_EXPECTED_ZERO)
         if stored_row_rev > 0:
             try:
                 from music_device_applied_revision import (
@@ -136,6 +144,8 @@ def prepare_music_conditional_write(
                 create_path_selected = False
             except ImportError:
                 violations.append(VIOLATION_EXISTING_ROW_CREATE)
+        else:
+            violations.append(VIOLATION_CAS_EXPECTED_ZERO)
     elif row_exists and create_path_allowed:
         violations.append(VIOLATION_EXISTING_ROW_CREATE)
 
@@ -149,19 +159,23 @@ def prepare_music_conditional_write(
 
     actual_filter = "insert_first_row"
     stored_top_level_present: bool | None = None
+    stored_top_level_revision: Any = None
     stored_blob_revision: int | None = None
+    stored_logical_revision: int | None = None
+    logical_revision_source: str | None = None
+    selected_cas_filter_path: str | None = None
     if expected > 0:
         try:
-            from suite_storage_supabase import (
-                cas_patch_revision_diagnostics,
-                describe_cas_patch_filter,
-            )
+            from music_metrics_logical_revision import describe_cas_patch_filter
 
             if stored_metrics:
                 actual_filter = describe_cas_patch_filter(stored_metrics, expected)
-                rev_diag = cas_patch_revision_diagnostics(stored_metrics)
-                stored_top_level_present = bool(rev_diag.get("stored_top_level_present"))
-                stored_blob_revision = rev_diag.get("stored_blob_workspace_revision")
+                stored_top_level_present = bool(logical_resolution.get("stored_top_level_present"))
+                stored_top_level_revision = logical_resolution.get("stored_top_level_workspace_revision")
+                stored_blob_revision = logical_resolution.get("stored_blob_workspace_revision")
+                stored_logical_revision = logical_resolution.get("stored_logical_workspace_revision")
+                logical_revision_source = logical_resolution.get("logical_revision_source")
+                selected_cas_filter_path = logical_resolution.get("selected_cas_filter_path")
             else:
                 actual_filter = f"metrics->>workspace_revision=eq.{expected}"
         except ImportError:
@@ -184,7 +198,11 @@ def prepare_music_conditional_write(
         "create_path_selected": create_path_selected,
         "actual_conditional_filter": actual_filter,
         "stored_top_level_present": stored_top_level_present,
+        "stored_top_level_workspace_revision": stored_top_level_revision,
         "stored_blob_workspace_revision": stored_blob_revision,
+        "stored_logical_workspace_revision": stored_logical_revision,
+        "logical_revision_source": logical_revision_source,
+        "selected_cas_filter_path": selected_cas_filter_path,
         "revision_surface_trace": revision_trace,
         "blocked_precheck": blocked,
         "violations_precheck": violations,
@@ -271,13 +289,23 @@ def record_conditional_write_result(
         "stored_blob_workspace_revision": cas.get("stored_blob_workspace_revision")
         if cas.get("stored_blob_workspace_revision") is not None
         else prep.get("stored_blob_workspace_revision"),
-        "stored_logical_workspace_revision": cas.get("stored_logical_workspace_revision"),
+        "stored_logical_workspace_revision": cas.get("stored_logical_workspace_revision")
+        if cas.get("stored_logical_workspace_revision") is not None
+        else prep.get("stored_logical_workspace_revision"),
+        "stored_top_level_workspace_revision": cas.get("stored_top_level_workspace_revision")
+        if cas.get("stored_top_level_workspace_revision") is not None
+        else prep.get("stored_top_level_workspace_revision"),
+        "logical_revision_source": cas.get("logical_revision_source") or prep.get("logical_revision_source"),
+        "selected_cas_filter_path": cas.get("selected_cas_filter_path")
+        or prep.get("selected_cas_filter_path"),
         "actual_conditional_filter": cas.get("actual_conditional_filter")
         or prep.get("actual_conditional_filter"),
         "cas_http_trace": cas.get("cas_http_trace"),
+        "violations_current_attempt": list(violations),
     }
     session[ITEM8_DIAG_KEY] = diag
     session[ITEM8_VIOLATIONS_KEY] = violations
+    session[ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY] = list(violations)
 
     if reservation_abandoned:
         abandon_revision_reservation(session)
@@ -326,6 +354,8 @@ def abandon_revision_reservation(session: dict[str, Any]) -> None:
 
 __all__ = [
     "ITEM8_DIAG_KEY",
+    "ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY",
+    "ITEM8_VIOLATIONS_KEY",
     "STALE_WRITE_USER_MESSAGE",
     "VIOLATION_CAS_EXPECTED_ZERO",
     "VIOLATION_DEVICE_APPLIED_NOT_INITIALIZED",

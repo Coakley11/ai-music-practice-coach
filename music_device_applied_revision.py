@@ -58,11 +58,16 @@ def set_device_applied_revision_from_authoritative_hydrate(
     rev = int(revision or 0)
     if rev <= 0 and isinstance(payload, dict):
         try:
-            from workspace_revision import workspace_revision_from_blob
+            from music_metrics_logical_revision import revision_for_authoritative_hydrate
 
-            rev = int(workspace_revision_from_blob(payload))
+            rev = int(revision_for_authoritative_hydrate(session, payload))
         except ImportError:
-            rev = 0
+            try:
+                from workspace_revision import workspace_revision_from_blob
+
+                rev = int(workspace_revision_from_blob(payload))
+            except ImportError:
+                rev = 0
     if rev <= 0:
         return 0
 

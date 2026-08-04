@@ -560,6 +560,13 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         metrics = row.get("metrics")
         if not isinstance(metrics, dict):
             metrics = {}
+        try:
+            from music_metrics_logical_revision import cache_cloud_metrics_logical_revision
+
+            if ss is not None:
+                cache_cloud_metrics_logical_revision(ss, metrics)
+        except ImportError:
+            pass
         blob = metrics.get(FULL_SESSION_KEY)
         session_out: dict[str, Any] = {}
         if isinstance(blob, dict) and blob:
@@ -723,9 +730,17 @@ def save_cloud_full_session(
         use_music_cas = logical_app == "music" and hasattr(storage, "save_current_state_conditional_cas")
         if use_music_cas:
             from music_workspace_conditional_cloud_write import (
+                ITEM8_DIAG_KEY,
+                ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY,
+                ITEM8_VIOLATIONS_KEY,
                 prepare_music_conditional_write,
                 record_conditional_write_result,
             )
+
+            if ss is not None:
+                ss.pop(ITEM8_VIOLATIONS_KEY, None)
+                ss.pop(ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY, None)
+                ss.pop(ITEM8_DIAG_KEY, None)
 
             prep = prepare_music_conditional_write(ss, state if isinstance(state, dict) else {})
             candidate = int(prep.get("candidate_revision") or base.cloud_payload_revision or 0)

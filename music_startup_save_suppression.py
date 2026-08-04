@@ -398,6 +398,12 @@ def record_hydrated_canonical_fingerprint(
         from workspace_revision import workspace_revision_from_blob
 
         loaded_rev = workspace_revision_from_blob(payload if isinstance(payload, dict) else {})
+        try:
+            from music_metrics_logical_revision import revision_for_authoritative_hydrate
+
+            loaded_rev = revision_for_authoritative_hydrate(session, payload if isinstance(payload, dict) else {})
+        except ImportError:
+            pass
         session[STARTUP_REVISION_LOADED_KEY] = loaded_rev
         if loaded_rev > 0:
             try:

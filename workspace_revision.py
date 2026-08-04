@@ -123,10 +123,12 @@ def note_confirmed_workspace_revision(session: dict[str, Any], state: dict[str, 
 def stamp_applied_workspace_revision(session: dict[str, Any], state: dict[str, Any]) -> None:
     try:
         from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
+        from music_metrics_logical_revision import revision_for_authoritative_hydrate
 
+        rev = revision_for_authoritative_hydrate(session, state)
         set_device_applied_revision_from_authoritative_hydrate(
             session,
-            workspace_revision_from_blob(state),
+            rev,
             stage="stamp_applied_workspace_revision",
             source="authoritative_payload_apply",
             payload=state,

@@ -16,10 +16,13 @@ ITEM8_PANEL_KEYS: tuple[str, ...] = (
     "candidate_revision",
     "precondition_expected_revision",
     "authoritative_revision_before_write",
-    "actual_conditional_filter",
     "stored_top_level_present",
+    "stored_top_level_workspace_revision",
     "stored_blob_workspace_revision",
     "stored_logical_workspace_revision",
+    "logical_revision_source",
+    "selected_cas_filter_path",
+    "actual_conditional_filter",
     "cas_http_trace",
     "conditional_write_rows_affected",
     "row_exists",
@@ -38,6 +41,7 @@ ITEM8_PANEL_KEYS: tuple[str, ...] = (
     "cloud_save_ok",
     "cloud_confirmed",
     "latest_network_workspace_context",
+    "violations_current_attempt",
     "violations",
 )
 
@@ -54,10 +58,13 @@ def default_item8_dev_diag(_session: dict[str, Any] | None = None) -> dict[str, 
         "candidate_revision": None,
         "precondition_expected_revision": None,
         "authoritative_revision_before_write": None,
-        "actual_conditional_filter": None,
         "stored_top_level_present": None,
+        "stored_top_level_workspace_revision": None,
         "stored_blob_workspace_revision": None,
         "stored_logical_workspace_revision": None,
+        "logical_revision_source": None,
+        "selected_cas_filter_path": None,
+        "actual_conditional_filter": None,
         "cas_http_trace": None,
         "conditional_write_rows_affected": None,
         "row_exists": None,
@@ -76,6 +83,7 @@ def default_item8_dev_diag(_session: dict[str, Any] | None = None) -> dict[str, 
         "cloud_save_ok": None,
         "cloud_confirmed": None,
         "latest_network_workspace_context": None,
+        "violations_current_attempt": [],
         "violations": [],
     }
 
@@ -131,6 +139,7 @@ def collect_phase1_item8_stale_write_certification(session: dict[str, Any]) -> d
         from music_workspace_cloud_save import collect_save_transaction_diagnostics
         from music_workspace_conditional_cloud_write import (
             ITEM8_DIAG_KEY,
+            ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY,
             ITEM8_VIOLATIONS_KEY,
             VIOLATION_REVISION_SURFACES_INCONSISTENT,
         )
@@ -145,7 +154,13 @@ def collect_phase1_item8_stale_write_certification(session: dict[str, Any]) -> d
     cloud_diag = session.get("_suite_last_cloud_save_result")
     cloud_diag = dict(cloud_diag) if isinstance(cloud_diag, dict) else {}
 
-    violations = list(session.get(ITEM8_VIOLATIONS_KEY) or [])
+    violations_current = list(
+        session.get(ITEM8_VIOLATIONS_CURRENT_ATTEMPT_KEY)
+        or item8.get("violations_current_attempt")
+        or session.get(ITEM8_VIOLATIONS_KEY)
+        or []
+    )
+    violations = list(violations_current)
     stale_blocked = bool(
         session.get("_music_stale_write_blocked")
         or session.get("stale_write_blocked")
@@ -207,10 +222,13 @@ def collect_phase1_item8_stale_write_certification(session: dict[str, Any]) -> d
         "authoritative_revision_before_write": item8.get("authoritative_revision_before_write")
         if item8.get("authoritative_revision_before_write") is not None
         else rev.get("cloud_workspace_revision"),
-        "actual_conditional_filter": item8.get("actual_conditional_filter"),
         "stored_top_level_present": item8.get("stored_top_level_present"),
+        "stored_top_level_workspace_revision": item8.get("stored_top_level_workspace_revision"),
         "stored_blob_workspace_revision": item8.get("stored_blob_workspace_revision"),
         "stored_logical_workspace_revision": item8.get("stored_logical_workspace_revision"),
+        "logical_revision_source": item8.get("logical_revision_source"),
+        "selected_cas_filter_path": item8.get("selected_cas_filter_path"),
+        "actual_conditional_filter": item8.get("actual_conditional_filter"),
         "cas_http_trace": item8.get("cas_http_trace"),
         "conditional_write_rows_affected": item8.get("conditional_write_rows_affected")
         if "conditional_write_rows_affected" in item8
@@ -238,6 +256,7 @@ def collect_phase1_item8_stale_write_certification(session: dict[str, Any]) -> d
         "cloud_save_ok": (cloud_ok and not stale_blocked) if tx or cloud_diag else None,
         "cloud_confirmed": (cloud_confirmed and not stale_blocked) if tx or cloud_diag else None,
         "latest_network_workspace_context": latest_ctx if latest_ctx else None,
+        "violations_current_attempt": violations_current,
         "violations": violations,
     }
     return {k: merged.get(k) for k in ITEM8_PANEL_KEYS}
