@@ -179,26 +179,37 @@ def on_creative_backing_handoff(session: dict[str, Any], *, source: str) -> None
 
 
 def visible_navigation_actions(session: dict[str, Any]) -> list[str]:
+    try:
+        from backing_workflow_context import get_backing_workflow_envelope, workflow_is_generated
+
+        env = get_backing_workflow_envelope(session)
+        if env and workflow_is_generated(session):
+            return ["Return to Creative Page"]
+    except ImportError:
+        pass
     route = get_backing_session_route(session) or sync_backing_session_route_from_context(session)
     if route is None:
         return []
     actions: list[str] = []
     bst, sst = route.backing_session_type, route.song_source_type
     if bst == "entry_jam":
-        actions.append(
-            "Return to Custom Song Backing" if sst == "custom" else "Return to Catalog Song Backing"
-        )
+        actions.append("Return to Creative Page")
     elif bst == "mission_jam":
         actions.append("Return to Mission")
-        actions.append(
-            "Return to Custom Song Backing" if sst == "custom" else "Return to Catalog Song Backing"
-        )
+        actions.append("Return to Creative Page")
     elif bst == "regular_song":
         actions.append("Return to Custom Songs" if sst == "custom" else "Return to Song Catalog")
     return actions
 
 
 def return_to_regular_backing_label(session: dict[str, Any]) -> str | None:
+    try:
+        from backing_workflow_context import workflow_is_generated
+
+        if workflow_is_generated(session):
+            return None
+    except ImportError:
+        pass
     route = get_backing_session_route(session) or sync_backing_session_route_from_context(session)
     if route is None or route.backing_session_type == "regular_song":
         return None

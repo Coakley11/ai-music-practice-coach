@@ -8808,20 +8808,55 @@ def _render_backing_return_source_action() -> None:
             render_backing_route_dev_marker,
             sync_backing_session_route_from_context,
         )
+        from backing_workflow_context import render_backing_workflow_dev_diagnostics
         from studio_page_persistence import save_page_snapshot
 
         sync_backing_session_route_from_context(st.session_state)
         render_backing_route_dev_marker(st, st.session_state)
+        render_backing_workflow_dev_diagnostics(st, st.session_state)
 
-        jam_label = return_to_regular_backing_label(st.session_state)
         ctx = get_backing_context(st.session_state)
-        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") in {
+        jam_label = return_to_regular_backing_label(st.session_state)
+
+        def _go_creative() -> None:
+            save_page_snapshot(st.session_state, "backing")
+            if ctx is not None and str(getattr(ctx, "source", "") or "") in {
+                "entry_jam",
+                "song_improv",
+                "mission",
+            }:
+                save_page_snapshot(st.session_state, "creative")
+            target = prepare_return_to_backing_source(st.session_state)
+            navigate_studio_page(st.session_state, target)
+            st.rerun()
+
+        if ctx is not None and str(getattr(ctx, "source", "") or "") in {
             "entry_jam",
             "song_improv",
+            "mission",
         }:
+            from backing_source_navigation import return_to_source_button_label
+
+            label = return_to_source_button_label(ctx)
+            if st.button(label, key="backing_return_creative_page_btn", use_container_width=False):
+                _go_creative()
+
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+            if st.button(
+                "Return to Mission",
+                key="backing_return_mission_btn",
+                use_container_width=False,
+            ):
+                _go_creative()
+
+        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
             if st.button(jam_label, key="backing_return_regular_song_btn", use_container_width=False):
                 navigate_to_regular_backing(st.session_state, st_like=st)
                 st.rerun()
+
+        if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission"}:
+            return
+        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
             return
 
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
@@ -8854,6 +8889,10 @@ def _render_backing_return_source_action() -> None:
             if st.button(jam_label, key="backing_mission_return_regular_btn", use_container_width=False):
                 navigate_to_regular_backing(st.session_state, st_like=st)
                 st.rerun()
+            return
+
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+            return
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")

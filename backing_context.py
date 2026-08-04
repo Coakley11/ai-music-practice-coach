@@ -903,13 +903,15 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
     if entry_mode == "Jam Session Generator":
-        style = str(session.get("improv_jam_style") or style_meta.get("style") or "").strip()
-        groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+        style = str(session.get("improv_jam_style") or style_meta.get("style") or "Jazz Swing").strip()
+        groove = str(style or style_meta.get("groove") or session.get("improv_groove") or "Jazz Swing").strip()
         bpm = int(session.get("improv_jam_bpm") or style_meta.get("bpm") or _default_bpm(session))
         mood = str(session.get("improv_jam_mood") or style_meta.get("mood") or "Mellow").strip()
     else:
-        style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
-        groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
+        style = str(style_meta.get("style") or session.get("improv_style") or session.get("improv_jam_style") or "").strip()
+        if not style:
+            style = "Jazz Swing"
+        groove = str(style or style_meta.get("groove") or session.get("improv_groove") or style).strip()
         bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
         mood = str(style_meta.get("mood") or session.get("improv_mood") or "Mellow").strip()
 
@@ -946,7 +948,22 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                     progression.extend(str(c) for c in chords if str(c).strip())
 
     scope, section, selected_sections = _default_scope(session)
-    if not section:
+    try:
+        import hashlib
+
+        from backing_workflow_context import backing_scope_for_workflow
+
+        wf: str = "jam_session_generator" if entry_mode == "Jam Session Generator" else "entry_jam"
+        fp_src = f"{wf}|{style}|{entry_mode}|{'/'.join(sorted(sections_dict.keys()))}"
+        fp = hashlib.sha256(fp_src.encode()).hexdigest()[:16]
+        scope, section, selected_sections = backing_scope_for_workflow(
+            session,
+            workflow_type=wf,  # type: ignore[arg-type]
+            context_fingerprint=fp,
+        )
+    except ImportError:
+        pass
+    if not section and scope not in {"Full song", "Mission chord"}:
         section = str(session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or "").strip() or None
     if selected_sections:
         sections_dict = _filter_sections_dict(sections_dict, section=section, selected=selected_sections)
@@ -960,8 +977,9 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                 progression = [c for chs in sections_dict.values() for c in chs]
 
     jam_title = style or mode_label or "Style jam"
-    if not style and str(resolve_improv_song_source(session) or "").strip() == "Active song":
-        jam_title = _song_title_from_session(session) or jam_title
+    if entry_mode not in {"Jam Session Generator", "Style Jam Mode"} and not style:
+        if str(resolve_improv_song_source(session) or "").strip() == "Active song":
+            jam_title = _song_title_from_session(session) or jam_title
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
@@ -1462,21 +1480,21 @@ def apply_backing_context_to_session(
             source = resolve_improv_song_source(session)
         except ImportError:
             source = str(session.get("improv_song_source") or "Active song")
-        if ctx.source == "song_improv" or source == "Active song":
+        if ctx.source == "song_improv" and source == "Active song":
             try:
                 from songs.music_source import set_catalog_source
 
                 set_catalog_source(session)
             except ImportError:
                 pass
-        elif source == "Custom progression":
+        elif ctx.source == "song_improv" and source == "Custom progression":
             try:
                 from songs.music_source import set_custom_source
 
                 set_custom_source(session)
             except ImportError:
                 pass
-        else:
+        elif ctx.source == "song_improv":
             try:
                 from songs.music_source import set_catalog_source
 
@@ -1946,6 +1964,12 @@ def open_backing_from_creative(
         apply_backing_context_to_session(session, ctx, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CREATIVE)
     sync_live_keys_from_backing_context(session, st_like=st_like)
+    try:
+        from backing_workflow_context import sync_backing_workflow_envelope
+
+        sync_backing_workflow_envelope(session, ctx)
+    except ImportError:
+        pass
     try:
         from studio_page_persistence import save_page_snapshot
 

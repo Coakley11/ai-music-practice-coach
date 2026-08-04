@@ -331,11 +331,21 @@ def refresh_mission_example(
     """Sync all instrument outputs to the current motif."""
     inst = instrument or example.instrument
     tempo = bpm if bpm is not None else 100
+    ref_key = example.display_key
+    try:
+        from mission_pitch_spelling import coaching_reference_for_mission_chord
+
+        ref_key = coaching_reference_for_mission_chord(
+            example.chord,
+            song_display_key=example.display_key,
+        )
+    except ImportError:
+        pass
     out = rebuild_mission_outputs(
         example.motif,
         chord=example.chord,
         instrument=inst,
-        key_center=example.display_key,
+        key_center=ref_key,
         bpm=tempo,
         mission=example.mission,
     )
