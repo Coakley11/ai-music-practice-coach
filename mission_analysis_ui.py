@@ -364,6 +364,13 @@ def prepare_metrics_upload_workflow(session_state: dict) -> None:
     session_state["analysis_sync_creative_mission"] = False
     session_state[ANALYSIS_CRITERIA_LOCKED] = True
     session_state[ANALYSIS_RETURN_TO_METRICS] = True
+    try:
+        from mission_practice_context import refresh_mission_practice_context, seal_recording_context
+
+        refresh_mission_practice_context(session_state)
+        seal_recording_context(session_state, association="metrics_upload_handoff")
+    except ImportError:
+        pass
 
 
 def is_analysis_criteria_locked(session_state: dict) -> bool:

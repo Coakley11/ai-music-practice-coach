@@ -622,6 +622,12 @@ def commit_mission_config_to_canonical(
             )
     else:
         session[CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY] = True
+    try:
+        from mission_practice_context import refresh_mission_practice_context
+
+        refresh_mission_practice_context(session)
+    except ImportError:
+        pass
 
 
 CREATIVE_MISSION_CHORD_CLICK_TRACE_KEY = "_creative_mission_chord_click_trace"

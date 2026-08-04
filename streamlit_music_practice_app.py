@@ -13255,6 +13255,30 @@ elif _studio_page == "analysis":
                 else:
                     mission_ids = render_mission_goals_selector(st, st.session_state)
 
+                try:
+                    from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
+
+                    render_exact_chord_mission_backing_panel(
+                        st,
+                        st.session_state,
+                        key_prefix="upload_mission_exact",
+                        compact=True,
+                    )
+                except ImportError:
+                    pass
+
+                try:
+                    from mission_practice_context import mission_capture_allowed
+
+                    _cap_ok, _cap_msg = mission_capture_allowed(
+                        st.session_state,
+                        require_mission_workflow=is_analysis_criteria_locked(st.session_state),
+                    )
+                    if not _cap_ok and _cap_msg:
+                        st.warning(_cap_msg.replace("**", ""))
+                except ImportError:
+                    pass
+
                 from upload_media import (
                     PreparedUpload,
                     UPLOAD_ACCEPT_TYPES,
@@ -13403,81 +13427,183 @@ elif _studio_page == "analysis":
                 if audio_obj is None:
                     st.warning("Upload or record audio first.")
                 else:
-                    ctx = _recording_analysis_context(
-                        recording_type=recording_type.lower().replace(" ", "_"),
-                    )
-                    ctx["mission_ids"] = mission_ids
-                    if not is_analysis_criteria_locked(st.session_state):
-                        ctx["custom_goal"] = str(
-                            st.session_state.get("analysis_custom_goal") or ""
-                        ).strip()
-                    else:
-                        ctx["custom_goal"] = ""
-                    from mission_analysis import mission_ids_from_legacy
-
-                    ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
-                        str(st.session_state.get("improv_active_mission") or "")
-                    )
-                    ctx["display_key"] = chart_key
-                    spin = (
-                        "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
-                        if mission_ids
-                        else "Analyzing timing, pitch, groove, and musicality…"
-                    )
-                    with st.spinner(spin):
-                        result = analyze_recording(
-                            audio_obj.getvalue(),
-                            getattr(audio_obj, "name", "recording.wav"),
-                            ctx,
-                        )
-                    st.session_state["last_analysis_result"] = result
-                    st.session_state["last_analysis_audio"] = audio_obj.getvalue()
-                    st.session_state["last_analysis_source_label"] = str(
-                        getattr(audio_obj, "name", None) or "recording.wav"
-                    )
                     try:
-                        from analysis_session_persistence import save_analysis_session
-                        from music_persistent_state import force_save_music_state
-
-                        save_analysis_session(st.session_state, st=st)
-                        force_save_music_state(st, reason="analysis_complete")
-                        try:
-                            from media_upload_catalog import register_upload_analysis_in_catalog
-
-                            register_upload_analysis_in_catalog(st.session_state, st=st)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-                    if result.get("ok"):
-                        try:
-                            from music_activity import log_recording_reviewed
-
-                            log_recording_reviewed(st)
-                        except Exception:
-                            pass
-                        from ai_performance_history import (
-                            SOURCE_METRICS_UPLOAD,
-                            append_performance_record,
-                            resolve_analysis_source,
+                        from mission_practice_context import (
+                            enrich_analysis_context,
+                            validate_analysis_mission_context,
                         )
 
-                        src = resolve_analysis_source(st.session_state)
-                        append_performance_record(result, ctx=ctx, source=src)
-                        result["analysis_source"] = src
-                        if src == SOURCE_METRICS_UPLOAD:
-                            went, imp = "", ""
-                            missions = result.get("mission_results") or []
-                            if missions:
-                                best = max(missions, key=lambda m: int(m.get("score") or 0))
-                                worst = min(missions, key=lambda m: int(m.get("score") or 0))
-                                went = str(best.get("went_well") or "")
-                                imp = str(worst.get("improve_to") or "")
-                            result["went_well"] = went
-                            result["improve_to"] = imp
-                            result["next_practice"] = str(
-                                result.get("mission_next_recommendation") or ""
+                        _ctx_ok, _ctx_err = validate_analysis_mission_context(st.session_state)
+                        if not _ctx_ok:
+                            st.error(_ctx_err.replace("**", ""))
+                        else:
+                            ctx = _recording_analysis_context(
+                                recording_type=recording_type.lower().replace(" ", "_"),
                             )
+                            ctx = enrich_analysis_context(st.session_state, ctx)
+                            ctx["mission_ids"] = mission_ids
+                            if not is_analysis_criteria_locked(st.session_state):
+                                ctx["custom_goal"] = str(
+                                    st.session_state.get("analysis_custom_goal") or ""
+                                ).strip()
+                            else:
+                                ctx["custom_goal"] = ""
+                            from mission_analysis import mission_ids_from_legacy
+
+                            ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
+                                str(st.session_state.get("improv_active_mission") or "")
+                            )
+                            ctx["display_key"] = chart_key
+                            stale = str(ctx.get("mission_context_stale_warning") or "")
+                            if stale:
+                                st.warning(stale)
+                            spin = (
+                                "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
+                                if mission_ids
+                                else "Analyzing timing, pitch, groove, and musicality…"
+                            )
+                            with st.spinner(spin):
+                                result = analyze_recording(
+                                    audio_obj.getvalue(),
+                                    getattr(audio_obj, "name", "recording.wav"),
+                                    ctx,
+                                )
+                            if stale:
+                                result["mission_context_stale_warning"] = stale
+                            st.session_state["last_analysis_result"] = result
+                            st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+                            st.session_state["last_analysis_source_label"] = str(
+                                getattr(audio_obj, "name", None) or "recording.wav"
+                            )
+                            try:
+                                from analysis_session_persistence import save_analysis_session
+                                from music_persistent_state import force_save_music_state
+
+                                save_analysis_session(st.session_state, st=st)
+                                force_save_music_state(st, reason="analysis_complete")
+                                try:
+                                    from media_upload_catalog import register_upload_analysis_in_catalog
+
+                                    register_upload_analysis_in_catalog(st.session_state, st=st)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                            if result.get("ok"):
+                                try:
+                                    from music_activity import log_recording_reviewed
+
+                                    log_recording_reviewed(st)
+                                except Exception:
+                                    pass
+                                from ai_performance_history import (
+                                    SOURCE_METRICS_UPLOAD,
+                                    append_performance_record,
+                                    resolve_analysis_source,
+                                )
+
+                                src = resolve_analysis_source(st.session_state)
+                                append_performance_record(result, ctx=ctx, source=src)
+                                result["analysis_source"] = src
+                                if src == SOURCE_METRICS_UPLOAD:
+                                    went, imp = "", ""
+                                    missions = result.get("mission_results") or []
+                                    if missions:
+                                        best = max(missions, key=lambda m: int(m.get("score") or 0))
+                                        worst = min(missions, key=lambda m: int(m.get("score") or 0))
+                                        went = str(best.get("went_well") or "")
+                                        imp = str(worst.get("improve_to") or "")
+                                    result["went_well"] = went
+                                    result["improve_to"] = imp
+                                    result["next_practice"] = str(
+                                        result.get("mission_next_recommendation") or ""
+                                    )
+                            result["recommendations"] = [
+                                str(result.get("mission_next_recommendation") or "")
+                            ]
+                        if st.session_state.get(ANALYSIS_RETURN_TO_METRICS):
+                            st.session_state["creative_lab_last_mode"] = (
+                                "Improvisation Intelligence"
+                            )
+                            st.session_state["improv_intelligence_tab"] = "Metrics & AI"
+                            navigate_studio_page(st.session_state, "creative")
+                            st.rerun()
+                    except ImportError:
+                        ctx = _recording_analysis_context(
+                            recording_type=recording_type.lower().replace(" ", "_"),
+                        )
+                        ctx["mission_ids"] = mission_ids
+                        if not is_analysis_criteria_locked(st.session_state):
+                            ctx["custom_goal"] = str(
+                                st.session_state.get("analysis_custom_goal") or ""
+                            ).strip()
+                        else:
+                            ctx["custom_goal"] = ""
+                        from mission_analysis import mission_ids_from_legacy
+
+                        ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
+                            str(st.session_state.get("improv_active_mission") or "")
+                        )
+                        ctx["display_key"] = chart_key
+                        spin = (
+                            "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
+                            if mission_ids
+                            else "Analyzing timing, pitch, groove, and musicality…"
+                        )
+                        with st.spinner(spin):
+                            result = analyze_recording(
+                                audio_obj.getvalue(),
+                                getattr(audio_obj, "name", "recording.wav"),
+                                ctx,
+                            )
+                        st.session_state["last_analysis_result"] = result
+                        st.session_state["last_analysis_audio"] = audio_obj.getvalue()
+                        st.session_state["last_analysis_source_label"] = str(
+                            getattr(audio_obj, "name", None) or "recording.wav"
+                        )
+                        try:
+                            from analysis_session_persistence import save_analysis_session
+                            from music_persistent_state import force_save_music_state
+
+                            save_analysis_session(st.session_state, st=st)
+                            force_save_music_state(st, reason="analysis_complete")
+                            try:
+                                from media_upload_catalog import register_upload_analysis_in_catalog
+
+                                register_upload_analysis_in_catalog(st.session_state, st=st)
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                        if result.get("ok"):
+                            try:
+                                from music_activity import log_recording_reviewed
+
+                                log_recording_reviewed(st)
+                            except Exception:
+                                pass
+                            from ai_performance_history import (
+                                SOURCE_METRICS_UPLOAD,
+                                append_performance_record,
+                                resolve_analysis_source,
+                            )
+
+                            src = resolve_analysis_source(st.session_state)
+                            append_performance_record(result, ctx=ctx, source=src)
+                            result["analysis_source"] = src
+                            if src == SOURCE_METRICS_UPLOAD:
+                                went, imp = "", ""
+                                missions = result.get("mission_results") or []
+                                if missions:
+                                    best = max(missions, key=lambda m: int(m.get("score") or 0))
+                                    worst = min(missions, key=lambda m: int(m.get("score") or 0))
+                                    went = str(best.get("went_well") or "")
+                                    imp = str(worst.get("improve_to") or "")
+                                result["went_well"] = went
+                                result["improve_to"] = imp
+                                result["next_practice"] = str(
+                                    result.get("mission_next_recommendation") or ""
+                                )
                             result["recommendations"] = [
                                 str(result.get("mission_next_recommendation") or "")
                             ]

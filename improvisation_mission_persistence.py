@@ -33,6 +33,8 @@ MISSION_WORKSPACE_KEYS: tuple[str, ...] = (
     "ii_selected_section",
     "ii_selected_chord_index",
     "ii_selected_chord_label",
+    "improv_mission_practice_context",
+    "improv_mission_recording_seal",
     MISSION_WORKSPACE_UPDATED_AT_KEY,
 )
 # Creative + backing page snapshots (page-local UI).
@@ -141,6 +143,12 @@ def _legacy_sync_mission_workspace_before_persist(session: dict[str, Any]) -> No
     if not any(session.get(k) for k in MISSION_WORKSPACE_KEYS if k != MISSION_WORKSPACE_UPDATED_AT_KEY):
         return
     _refresh_practice_lick_transport(session)
+    try:
+        from mission_practice_context import refresh_mission_practice_context
+
+        refresh_mission_practice_context(session)
+    except ImportError:
+        pass
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "backing":
         _merge_mission_keys_into_creative_snapshot(session)
@@ -183,6 +191,13 @@ def hydrate_mission_workspace_after_restore(
         variant = str(example.get("variant") or "").strip()
         if variant:
             session.setdefault(MISSION_VARIANT_KEY, variant)
+
+    try:
+        from mission_practice_context import hydrate_mission_practice_context_after_restore
+
+        hydrate_mission_practice_context_after_restore(session)
+    except ImportError:
+        pass
 
     payload = session.get(MISSION_PRACTICE_LICK_KEY)
     if isinstance(payload, dict):

@@ -1805,6 +1805,13 @@ def _tab_metrics_ai(
 
     selected = render_ai_improv_metrics_selector(st, session_state, key_prefix="improv")
 
+    try:
+        from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
+
+        render_exact_chord_mission_backing_panel(st, session_state, key_prefix="improv_metrics_exact")
+    except ImportError:
+        pass
+
     if not selected:
         st.info(
             "Select at least one metric above, then open Upload Analysis to record or upload a take."

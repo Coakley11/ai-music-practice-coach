@@ -62,7 +62,15 @@
 
 **Acceptance:** Same progression sounds clearly different across 6 styles blind; Funk Heavy/Energetic vs Light/Dreamy obvious; Jazz Relaxed vs Energetic distinct.
 
-### P0 — Tone & Tuner History (Practice page)
+### P0 — Phase 2A Mission selection + exact-chord backing (in progress)
+
+**Plan:** [plans/2026-08-03-phase-2a-mission-exact-chord-backing.md](./plans/2026-08-03-phase-2a-mission-exact-chord-backing.md)
+
+- [x] Authoritative `MissionPracticeContext` (type + chord + transport) persisted in mission workspace
+- [x] Exact-chord backing panel (Play/Stop, tempo, loop, volume, count-in, sounding chord) on Metrics & AI + Upload Analysis
+- [x] Mismatch + armed-backing guards; analysis enrichment + stale-context warning
+- [ ] Live smoke: Metrics → Upload → score on sealed chord; Backing Jam handoff arms context
+
 
 **Plan:** [plans/2026-06-27-tone-tuner-history-sprint.md](./plans/2026-06-27-tone-tuner-history-sprint.md)
 

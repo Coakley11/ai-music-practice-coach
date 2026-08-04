@@ -653,6 +653,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "ii_selected_section",
     "ii_selected_chord_index",
     "ii_selected_chord_label",
+    "improv_mission_practice_context",
+    "improv_mission_recording_seal",
     "improv_mission_workspace_updated_at",
     "harmony_map_section",
     "harmony_map_chord",
