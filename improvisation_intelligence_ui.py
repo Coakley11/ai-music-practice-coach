@@ -117,6 +117,66 @@ from studio_page_state import (
 )
 from songs.picker_session import mark_improv_tab_user_touched
 
+# Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
+MISSIONS_UI_BUILD_ID = "a6962ec-missions-v3-route-marker"
+
+
+def _improv_dev_mode(session_state: dict, st_module: Any | None = None) -> bool:
+    try:
+        from suite_workspace import is_developer_mode_enabled
+
+        return bool(is_developer_mode_enabled(st=st_module))
+    except ImportError:
+        return bool(session_state.get("_dev_mode") or session_state.get("dev_mode"))
+
+
+def _deploy_commit_short() -> str:
+    try:
+        from suite_deploy_marker import resolve_git_commit_short
+
+        return str(resolve_git_commit_short() or "unknown")
+    except ImportError:
+        return "unknown"
+
+
+def _render_missions_route_dev_marker(
+    st_module: Any,
+    session_state: dict,
+    *,
+    renderer: str,
+    branch: str,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    if not _improv_dev_mode(session_state, st_module):
+        return
+    lab = str(session_state.get("creative_lab_analysis_mode") or "")
+    tab = str(session_state.get("improv_intelligence_tab") or "")
+    bits = extra or {}
+    st_module.markdown(
+        f"<p style='font-size:0.78rem;color:#7c3aed;margin:0 0 0.35rem 0;'>"
+        f"<strong>DEV Missions route</strong> · renderer <code>{html.escape(renderer)}</code> · "
+        f"module <code>improvisation_intelligence_ui</code> · "
+        f"UI version <code>{html.escape(MISSIONS_UI_BUILD_ID)}</code> · "
+        f"deploy <code>{html.escape(_deploy_commit_short())}</code> · "
+        f"branch <code>{html.escape(branch)}</code> · "
+        f"lab <code>{html.escape(lab)}</code> · tab <code>{html.escape(tab)}</code>"
+        f"{(' · ' + html.escape(str(bits))) if bits else ''}"
+        f"</p>",
+        unsafe_allow_html=True,
+    )
+
+
+def _resolve_improv_tab_for_render(session_state: dict, radio_value: Any) -> str:
+    """Authoritative tab for content dispatch (widget value + session mirror)."""
+    tab = str(radio_value or session_state.get("improv_intelligence_tab") or "Entry & Jam").strip()
+    if tab not in IMPROV_TAB_NAMES:
+        tab = str(session_state.get("improv_intelligence_tab") or IMPROV_TAB_NAMES[0]).strip()
+    if tab not in IMPROV_TAB_NAMES:
+        tab = IMPROV_TAB_NAMES[0]
+    session_state["improv_intelligence_tab"] = tab
+    session_state["creative_improv_intelligence_tab"] = tab
+    return tab
+
 
 def render_improvisation_intelligence_lab(
     st: Any,
@@ -222,7 +282,17 @@ def render_improvisation_intelligence_lab(
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        if active_tab == "Entry & Jam":
+        tab_for_render = _resolve_improv_tab_for_render(session_state, active_tab)
+        if _improv_dev_mode(session_state, st) and tab_for_render != str(active_tab or "").strip():
+            _render_missions_route_dev_marker(
+                st,
+                session_state,
+                renderer="render_improvisation_intelligence_lab",
+                branch="tab_desync_corrected",
+                extra={"radio": str(active_tab), "resolved": tab_for_render},
+            )
+
+        if tab_for_render == "Entry & Jam":
             _tab_entry_modes(
                 st,
                 session_state=session_state,
@@ -235,9 +305,9 @@ def render_improvisation_intelligence_lab(
                 on_go_song_selection=on_go_song_selection,
                 on_go_custom_progression=on_go_custom_progression,
             )
-        elif active_tab == "Live Coach":
+        elif tab_for_render == "Live Coach":
             _tab_live_coach(st, session_state=session_state, improv_ctx=improv_ctx)
-        elif active_tab == "Phrase / Motif":
+        elif tab_for_render == "Phrase / Motif":
             _tab_motif(
                 st,
                 session_state=session_state,
@@ -246,7 +316,7 @@ def render_improvisation_intelligence_lab(
                 instrument=instrument,
                 bpm=bpm,
             )
-        elif active_tab == "Missions":
+        elif tab_for_render == "Missions":
             _tab_missions(
                 st,
                 session_state=session_state,
@@ -256,9 +326,9 @@ def render_improvisation_intelligence_lab(
                 on_open_practice=on_open_practice,
                 on_open_analysis=on_open_analysis,
             )
-        elif active_tab == "Harmony Map":
+        elif tab_for_render == "Harmony Map":
             _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
-        elif active_tab == "Deep Harmony":
+        elif tab_for_render == "Deep Harmony":
             _tab_deep_harmony(
                 st,
                 session_state=session_state,
@@ -266,7 +336,7 @@ def render_improvisation_intelligence_lab(
                 song_data=song_data,
                 genre=genre,
             )
-        elif active_tab == "Metrics & AI":
+        elif tab_for_render == "Metrics & AI":
             _tab_metrics_ai(
                 st,
                 session_state=session_state,
@@ -1473,6 +1543,16 @@ def _tab_missions(
         pass
 
     st.markdown("#### Practice missions")
+    _render_missions_route_dev_marker(
+        st,
+        session_state,
+        renderer="_tab_missions",
+        branch="missions_heading",
+        extra={
+            "studio_engaged": bool(session_state.get("_mission_recording_studio_engaged")),
+            "has_target_chord_card": False,
+        },
+    )
     st.caption(
         f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
         f"({html.escape(improv_ctx.artist)}) · key **{html.escape(improv_ctx.display_key)}**"
@@ -1771,7 +1851,7 @@ def _tab_missions(
     try:
         from mission_upload_recording_ui import render_mission_recording_upload_expander
 
-        dev_mode = bool(session_state.get("_dev_mode") or session_state.get("dev_mode"))
+        dev_mode = _improv_dev_mode(session_state, st)
         render_mission_recording_upload_expander(
             st,
             session_state,
@@ -1779,14 +1859,15 @@ def _tab_missions(
             on_open_upload_analysis=_open_mission_upload_analysis if on_open_analysis else None,
             dev_mode=dev_mode,
         )
-    except ImportError:
-        pass
+    except Exception as exc:
+        if _improv_dev_mode(session_state, st):
+            st.error(f"Mission recording expander failed: {exc!r}")
 
     try:
         from improvisation_missions import MISSION_NEW_IDEA_DIAG_KEY
         from creative_mission_artifact_persistence import collect_creative_mission_artifact_diagnostics
 
-        if dev_mode:
+        if _improv_dev_mode(session_state, st):
             diag = dict(session_state.get(MISSION_NEW_IDEA_DIAG_KEY) or {})
             ex = session_state.get("improv_mission_example") or {}
             if isinstance(ex, dict):

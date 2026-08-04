@@ -13859,6 +13859,12 @@ elif _studio_page == "creative":
         on_change=on_creative_analysis_mode_change,
     )
     st.session_state["creative_lab_last_mode"] = lab_mode
+    if _developer_mode_enabled() and str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
+        if lab_mode != "Improvisation Intelligence":
+            st.warning(
+                f"DEV: Session tab is **Missions** but Analysis mode is **{lab_mode}**. "
+                "Open **Improvisation Intelligence** to render the Missions tab UI."
+            )
 
     def _improv_apply_playback_from_style() -> None:
         meta = st.session_state.get("improv_style_meta") or {}
