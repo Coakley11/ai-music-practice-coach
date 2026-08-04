@@ -105,6 +105,16 @@ def capture_workflow_musical_state(session: dict[str, Any], wf: WorkflowType) ->
         if isinstance(jam, dict):
             blob["jam_session"] = copy.deepcopy(jam)
             blob["sections"] = copy.deepcopy(jam.get("sections") or {})
+    elif wf == "mission_jam":
+        blob["display_key"] = str(session.get("display_key") or "").strip()
+        blob["concert_key"] = str(session.get("concert_key") or "").strip()
+        blob["sections"] = copy.deepcopy(session.get("improv_song_concert_sections") or {})
+        blob["ii_selected_chord"] = str(session.get("ii_selected_chord") or "").strip()
+        blob["ii_selected_section"] = str(session.get("ii_selected_section") or "").strip()
+        blob["ii_selected_chord_index"] = int(session.get("ii_selected_chord_index") or 0)
+        blob["improv_active_mission"] = str(session.get("improv_active_mission") or "").strip()
+        blob["improv_mission_pick"] = str(session.get("improv_mission_pick") or "").strip()
+        blob["improv_intelligence_tab"] = "Missions"
     blob["fingerprint"] = hashlib.sha256(repr(sorted(blob.items())).encode()).hexdigest()[:12]
     return blob
 
@@ -178,6 +188,35 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
             session["display_key"] = key
             session["concert_key"] = key
         return True
+    if wf == "mission_jam":
+        session["improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
+        for k in ("display_key", "concert_key"):
+            v = str(blob.get(k) or "").strip()
+            if v:
+                session[k] = v
+                session["_pending_display_key"] = v
+        sec = blob.get("sections")
+        if isinstance(sec, dict) and sec:
+            session["improv_song_concert_sections"] = copy.deepcopy(sec)
+        for k in (
+            "ii_selected_chord",
+            "ii_selected_section",
+            "improv_active_mission",
+            "improv_mission_pick",
+        ):
+            v = blob.get(k)
+            if v is not None and str(v).strip() != "":
+                session[k] = v
+        if blob.get("ii_selected_chord_index") is not None:
+            session["ii_selected_chord_index"] = int(blob.get("ii_selected_chord_index") or 0)
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            deactivate_generated_jam_key_ownership(session)
+        except ImportError:
+            pass
+        return True
     return False
 
 
@@ -191,7 +230,18 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
         inferred = workflow_type_from_entry(entry)
         if inferred:
             save_workflow_snapshot(session, inferred)
-    restore_workflow_snapshot(session, new_wf)
+    ok = restore_workflow_snapshot(session, new_wf)
+    if new_wf == "mission_jam":
+        if not ok:
+            restore_workflow_snapshot(session, "song_based_improvisation")
+        session["improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            deactivate_generated_jam_key_ownership(session)
+        except ImportError:
+            pass
     session[ACTIVE_WORKFLOW_OWNER_KEY] = new_wf
 
 

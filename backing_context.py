@@ -1085,6 +1085,19 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     else:
         progression_label = mission_id or "Mission"
 
+    try:
+        from musical_context_authority import resolve_authoritative_practice_key
+
+        pk = resolve_authoritative_practice_key(session)
+        practice_token = pk.practice_key_token
+        if practice_token:
+            key = practice_token
+            display_key = practice_token
+            concert_key = practice_token
+            chart_display_key = _resolve_chart_display_key(session, concert_key)
+    except ImportError:
+        pass
+
     return BackingContext(
         source="mission",
         source_label="Mission Backing Jam",

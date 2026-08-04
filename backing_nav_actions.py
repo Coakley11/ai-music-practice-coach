@@ -14,6 +14,8 @@ class BackingNavAction:
     label: str
     destination: str
     purpose: str
+    icon: str = ""
+    priority: int = 50
 
 
 def _catalog_backing_destination(session: dict[str, Any]) -> str:
@@ -28,16 +30,25 @@ def _catalog_backing_destination(session: dict[str, Any]) -> str:
     return "regular_catalog_backing"
 
 
+def _workflow_identity(session: dict[str, Any], ctx: Any) -> str:
+    try:
+        from backing_workflow_context import get_backing_workflow_envelope
+
+        env = get_backing_workflow_envelope(session) or {}
+        wf = str(env.get("workflow_type") or "").strip()
+        sid = str(env.get("session_id") or session.get("active_catalog_pick_key") or "").strip()
+        return f"{wf}|{sid}|{getattr(ctx, 'source', '')}"
+    except ImportError:
+        return str(getattr(ctx, "source", "") or "")
+
+
 def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavAction], list[str]]:
     """
     Collect intended backing nav buttons and remove duplicates.
 
-    Rules:
-    - ``Return to Catalog Song Backing`` suppresses ``Use catalog song backing``.
-    - One ``Return to Mission`` when destinations match.
-    - ``Return to Creative Page`` and ``Return to Mission`` may coexist when distinct.
+    Deduplicate by (destination, purpose, workflow identity). Never show two mission-return buttons.
     """
-    actions: list[BackingNavAction] = []
+    candidates: list[BackingNavAction] = []
     try:
         from backing_context import BackingContext, get_backing_context
         from backing_session_route import return_to_regular_backing_label
@@ -53,44 +64,48 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
     src = str(getattr(ctx, "source", "") or "").strip()
     env = get_backing_workflow_envelope(session) or {}
     wf = str(env.get("workflow_type") or "").strip()
+    wf_id = _workflow_identity(session, ctx)
     jam_label = return_to_regular_backing_label(session)
 
     if src in {"entry_jam", "song_improv", "mission"}:
         creative_dest = "creative:missions" if src == "mission" or wf == "mission_jam" else "creative:improvisation"
-        actions.append(
+        candidates.append(
             BackingNavAction(
                 action_id="return_creative",
                 label=return_to_source_button_label(ctx),
                 destination=creative_dest,
                 purpose="return_creative",
+                icon="creative",
+                priority=10,
             )
         )
         if src == "mission" or wf == "mission_jam":
-            actions.append(
+            candidates.append(
                 BackingNavAction(
                     action_id="return_mission",
                     label="Return to Mission",
-                    destination="creative:mission_detail",
+                    destination=f"creative:mission_detail|{wf_id}",
                     purpose="return_mission",
+                    icon="mission",
+                    priority=5,
                 )
             )
 
     if jam_label and src in {"entry_jam", "song_improv", "mission"}:
-        actions.append(
+        candidates.append(
             BackingNavAction(
                 action_id="return_catalog_backing",
                 label=str(jam_label),
                 destination=_catalog_backing_destination(session),
                 purpose="catalog_backing",
+                icon="headphones",
+                priority=30,
             )
         )
 
     if src in {"entry_jam", "mission", "song_improv"}:
-        deduped, removed = _dedupe_actions(actions)
-        session[BACKING_NAV_DIAG_KEY] = {
-            "visible": [a.label for a in deduped],
-            "removed_duplicates": removed,
-        }
+        deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+        _store_nav_diag(session, candidates, deduped, removed)
         return deduped, removed
 
     if src == "regular_song" or not src:
@@ -99,61 +114,91 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
 
             route = get_backing_session_route(session)
             if route and route.song_source_type == "custom":
-                actions.append(
+                candidates.append(
                     BackingNavAction(
                         action_id="return_custom_songs",
                         label="Return to Custom Songs",
                         destination="creative:custom",
-                        purpose="return_creative",
+                        purpose="return_custom_page",
+                        icon="creative",
+                        priority=10,
                     )
                 )
             else:
-                actions.append(
+                candidates.append(
                     BackingNavAction(
                         action_id="return_song_catalog",
                         label="🎵 Return to Song Catalog",
                         destination="picker:catalog",
                         purpose="return_catalog_picker",
+                        icon="song_catalog",
+                        priority=10,
                     )
                 )
         except ImportError:
             pass
 
-    deduped, removed = _dedupe_actions(actions)
-    session[BACKING_NAV_DIAG_KEY] = {
-        "visible": [a.label for a in deduped],
-        "removed_duplicates": removed,
-    }
+    deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+    _store_nav_diag(session, candidates, deduped, removed)
     return deduped, removed
 
 
-def _dedupe_actions(actions: list[BackingNavAction]) -> tuple[list[BackingNavAction], list[str]]:
+def _dedupe_actions(
+    actions: list[BackingNavAction],
+    *,
+    session: dict[str, Any],
+    workflow_id: str,
+) -> tuple[list[BackingNavAction], list[str]]:
     removed: list[str] = []
-    seen_dest: set[str] = set()
     seen_purpose: set[str] = set()
+    seen_dest_purpose: set[tuple[str, str]] = set()
     out: list[BackingNavAction] = []
 
     has_catalog_return = any(a.purpose == "catalog_backing" for a in actions)
+    sorted_actions = sorted(actions, key=lambda a: a.priority)
 
-    for action in actions:
+    for action in sorted_actions:
         if action.purpose == "use_catalog_backing" and has_catalog_return:
-            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}")
+            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}:catalog_backing_exists")
             continue
-        if action.label.strip().lower().startswith("use catalog song backing") and has_catalog_return:
-            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}")
+        low = action.label.strip().lower()
+        if low.startswith("use catalog song backing") and has_catalog_return:
+            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}:use_catalog_suppressed")
             continue
-        key = (action.destination, action.purpose)
-        if action.purpose in {"return_mission", "catalog_backing", "return_creative"}:
-            if action.purpose in seen_purpose and action.purpose != "return_creative":
-                removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}")
+        if action.purpose == "return_mission" and "return_mission" in seen_purpose:
+            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}:second_mission_return")
+            continue
+        if action.purpose == "return_creative":
+            dup_edit = any(
+                a.purpose == "return_creative" and a.action_id != action.action_id for a in out
+            )
+            if dup_edit:
+                removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}:return_creative")
                 continue
-            seen_purpose.add(action.purpose)
-        if action.destination in seen_dest and action.purpose not in {"return_creative", "return_mission"}:
-            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}")
+        key = (action.destination.split("|")[0], action.purpose)
+        if key in seen_dest_purpose and action.purpose not in {"return_creative", "return_mission"}:
+            removed.append(f"DUPLICATE_BACKING_NAV_ACTION:{action.label}:dest_purpose")
             continue
-        seen_dest.add(action.destination)
+        seen_dest_purpose.add(key)
+        seen_purpose.add(action.purpose)
         out.append(action)
     return out, removed
+
+
+def _store_nav_diag(
+    session: dict[str, Any],
+    candidates: list[BackingNavAction],
+    visible: list[BackingNavAction],
+    removed: list[str],
+) -> None:
+    deploy = str(session.get("_studio_ui_release_sha") or "")[:7]
+    session[BACKING_NAV_DIAG_KEY] = {
+        "candidates": [a.label for a in candidates],
+        "visible": [a.label for a in visible],
+        "removed_duplicates": removed,
+        "destinations": {a.label: a.destination for a in visible},
+        "deploy_sha": deploy,
+    }
 
 
 def catalog_return_action_visible(session: dict[str, Any]) -> bool:
@@ -162,9 +207,15 @@ def catalog_return_action_visible(session: dict[str, Any]) -> bool:
     return any(a.purpose == "catalog_backing" for a in actions)
 
 
+def backing_nav_has_return_mission(session: dict[str, Any]) -> bool:
+    actions, _ = build_backing_nav_actions(session)
+    return any(a.action_id == "return_mission" for a in actions)
+
+
 __all__ = [
     "BACKING_NAV_DIAG_KEY",
     "BackingNavAction",
+    "backing_nav_has_return_mission",
     "build_backing_nav_actions",
     "catalog_return_action_visible",
 ]

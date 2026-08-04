@@ -50,7 +50,8 @@ class TestBackingNavDedupe(unittest.TestCase):
         sync_backing_workflow_envelope(session, ctx)
         actions, removed = build_backing_nav_actions(session)
         labels = [a.label for a in actions]
-        self.assertIn("Return to Creative Page", " ".join(labels))
+        mission_returns = [a for a in actions if a.action_id == "return_mission"]
+        self.assertEqual(len(mission_returns), 1)
         self.assertIn("Return to Mission", labels)
         self.assertTrue(catalog_return_action_visible(session))
         self.assertFalse(any("Use catalog song backing" in a.label for a in actions))

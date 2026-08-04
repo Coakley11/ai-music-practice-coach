@@ -8802,8 +8802,8 @@ def _render_backing_return_source_action() -> None:
     try:
         from backing_context import get_backing_context
         from backing_context_ui import render_backing_edit_source_action
-        from backing_nav_actions import build_backing_nav_actions
-        from backing_source_navigation import prepare_return_to_backing_source
+        from backing_nav_actions import build_backing_nav_actions, backing_nav_has_return_mission
+        from backing_source_navigation import prepare_return_to_backing_source, prepare_return_to_mission_detail
         from backing_session_route import (
             navigate_to_regular_backing,
             render_backing_route_dev_marker,
@@ -8836,10 +8836,25 @@ def _render_backing_return_source_action() -> None:
             navigate_studio_page(st.session_state, target)
             st.rerun()
 
+        def _go_mission_detail() -> None:
+            save_page_snapshot(st.session_state, "backing")
+            try:
+                from music_nav_dedupe import save_page_snapshot_deduped
+
+                save_page_snapshot_deduped(st.session_state, "creative")
+            except ImportError:
+                save_page_snapshot(st.session_state, "creative")
+            target = prepare_return_to_mission_detail(st.session_state)
+            navigate_studio_page(st.session_state, target)
+            st.rerun()
+
         for idx, action in enumerate(actions):
-            if action.action_id in {"return_creative", "return_mission"}:
+            if action.action_id == "return_creative":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     _go_creative()
+            elif action.action_id == "return_mission":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     navigate_to_regular_backing(st.session_state, st_like=st)
@@ -8858,6 +8873,10 @@ def _render_backing_return_source_action() -> None:
             return
 
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
+            return
+
+        nav_has_creative = any(a.action_id == "return_creative" for a in actions)
+        if nav_has_creative:
             return
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
@@ -12378,39 +12397,47 @@ elif _studio_page == "backing":
         from studio_page_persistence import save_page_snapshot
 
         def _return_to_mission_from_backing() -> None:
-            from backing_source_navigation import prepare_return_to_backing_source
+            from backing_source_navigation import prepare_return_to_mission_detail
 
             save_page_snapshot(st.session_state, "backing")
             save_page_snapshot(st.session_state, "creative")
-            st.session_state["improv_intelligence_tab"] = "Missions"
-            st.session_state["creative_improv_intelligence_tab"] = "Missions"
-            target = prepare_return_to_backing_source(st.session_state)
+            target = prepare_return_to_mission_detail(st.session_state)
             navigate_studio_page(st.session_state, target)
             st.rerun()
 
         _lick_payload = mission_practice_lick_payload(st.session_state)
         try:
+            from backing_nav_actions import backing_nav_has_return_mission
             from backing_session_route import mission_backing_ui_allowed
 
             _show_mission_lick = mission_backing_ui_allowed(st.session_state) and bool(_lick_payload)
+            _dup_mission_nav = backing_nav_has_return_mission(st.session_state)
         except ImportError:
-            _ctx = None
+            _dup_mission_nav = False
             try:
-                from backing_context import get_backing_context
+                from backing_session_route import mission_backing_ui_allowed
 
-                _ctx = get_backing_context(st.session_state)
+                _show_mission_lick = mission_backing_ui_allowed(st.session_state) and bool(_lick_payload)
             except ImportError:
-                pass
-            _show_mission_lick = bool(
-                _lick_payload
-                and _ctx is not None
-                and str(getattr(_ctx, "source", "") or "") == "mission"
-            )
+                _ctx = None
+                try:
+                    from backing_context import get_backing_context
+
+                    _ctx = get_backing_context(st.session_state)
+                except ImportError:
+                    pass
+                _show_mission_lick = bool(
+                    _lick_payload
+                    and _ctx is not None
+                    and str(getattr(_ctx, "source", "") or "") == "mission"
+                )
         render_mission_practice_lick_on_backing(
             st,
             st.session_state,
             applied_bpm=int(_synced_bpm),
-            on_return_to_mission=_return_to_mission_from_backing if _show_mission_lick else None,
+            on_return_to_mission=_return_to_mission_from_backing
+            if _show_mission_lick and not _dup_mission_nav
+            else None,
         )
     except Exception as _mission_lick_err:
         if _developer_mode_enabled():

@@ -210,6 +210,19 @@ def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwri
             if canon is not None and session.get(key) == canon:
                 continue
         if overwrite or key not in session:
+            if key == MISSION_EXAMPLE_KEY:
+                try:
+                    from active_musical_workflow_envelope import mission_example_allowed_for_projection
+
+                    if not mission_example_allowed_for_projection(session, val):
+                        record_mission_artifact_violation(
+                            session,
+                            "STALE_MISSION_ARTIFACT_RESTORED",
+                            detail=str((val or {}).get("chord") if isinstance(val, dict) else ""),
+                        )
+                        continue
+                except ImportError:
+                    pass
             session[key] = copy.deepcopy(val)
     note_mission_artifact_projection_applied(session)
     d = _diag(session)

@@ -1154,9 +1154,26 @@ def restore_session_widgets_from_backing_context(
 
     if ctx.source == "mission":
         session["improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
         if ctx.mission_id:
             session["improv_active_mission"] = ctx.mission_id
             session["improv_mission_pick"] = ctx.mission_id
+        if ctx.progression:
+            chord = str(ctx.progression[0] or "").strip()
+            if chord:
+                session["ii_selected_chord"] = chord
+                session["II_SELECTED_CHORD"] = chord
+        if ctx.section:
+            sec = str(ctx.section).split("·")[0].strip()
+            if sec:
+                session["ii_selected_section"] = sec
+                session["II_SELECTED_SECTION"] = sec
+        try:
+            from mission_practice_context import refresh_mission_practice_context
+
+            refresh_mission_practice_context(session)
+        except ImportError:
+            pass
         entry = str(ctx.entry_mode or "Song-Based Improvisation").strip()
         session["improv_entry_mode"] = entry or "Song-Based Improvisation"
         meta = dict(session.get("improv_style_meta") or {})
@@ -1349,7 +1366,7 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         entry = str(session.get("improv_entry_mode") or "").strip()
         if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") in {"mission", "song_improv"}:
             if tab == "Missions" or str(ctx.source or "") == "mission":
-                switch_workflow_owner(session, "song_based_improvisation")
+                switch_workflow_owner(session, "mission_jam")
             else:
                 switch_workflow_owner(session, "song_based_improvisation")
             deactivate_generated_jam_key_ownership(session)
@@ -1377,6 +1394,23 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     except ImportError:
         pass
     merge_live_practice_into_creative_session(session, prefer_backing_context_key=True)
+    return page
+
+
+def prepare_return_to_mission_detail(session: dict[str, Any]) -> CreativeReturnPage:
+    """Return to Creative with exact mission section/chord/example context restored."""
+    ctx = get_backing_context(session)
+    page = prepare_return_to_backing_source(session)
+    if ctx is not None and str(ctx.source or "") == "mission":
+        session["improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
+        restore_session_widgets_from_backing_context(session, ctx)
+        try:
+            from active_musical_workflow_envelope import reconcile_mission_workflow_envelope
+
+            reconcile_mission_workflow_envelope(session)
+        except ImportError:
+            pass
     return page
 
 
@@ -1496,6 +1530,7 @@ __all__ = [
     "open_backing_for_practice_source",
     "queue_backing_scope_from_practice_focus",
     "prepare_return_to_backing_source",
+    "prepare_return_to_mission_detail",
     "rehydrate_creative_from_backing_context",
     "resolve_entry_jam_entry_mode",
     "render_source_context_debug",

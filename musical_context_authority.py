@@ -139,7 +139,7 @@ def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation"}:
+    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
         return True
     page = str(session.get("studio_page") or "").strip().lower()
     if page in {"practice", "picker"}:

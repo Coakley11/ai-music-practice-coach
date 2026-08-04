@@ -406,7 +406,7 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation"}:
+    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
         return False
     page = str(session.get("studio_page") or "").strip().lower()
     entry = str(session.get("improv_entry_mode") or "").strip()

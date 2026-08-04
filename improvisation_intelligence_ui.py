@@ -1179,9 +1179,9 @@ def _render_section_chord_map(
 
         ss = st.session_state
         try:
-            from creative_mission_config_persistence import handle_user_mission_target_selection
+            from active_musical_workflow_envelope import apply_atomic_mission_chord_selection
 
-            handle_user_mission_target_selection(
+            apply_atomic_mission_chord_selection(
                 ss,
                 chord=ch,
                 section=label,
@@ -1190,7 +1190,19 @@ def _render_section_chord_map(
                 button_key=btn_key,
             )
         except ImportError:
-            pass
+            try:
+                from creative_mission_config_persistence import handle_user_mission_target_selection
+
+                handle_user_mission_target_selection(
+                    ss,
+                    chord=ch,
+                    section=label,
+                    chord_index=gidx,
+                    chord_label=f"{label} · {ch}",
+                    button_key=btn_key,
+                )
+            except ImportError:
+                pass
         if generate_motif_on_select:
             ss["improv_motif"] = generate_musical_phrase(ch, key_center=key_center, kind="creative")
             _clear_motif_outputs(ss)
@@ -1937,6 +1949,26 @@ def _tab_missions(
         on_change=_on_mission_pick_change,
     )
     mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
+
+    try:
+        from workflow_musical_authority import switch_workflow_owner, sync_song_improv_sections_to_practice_key
+
+        switch_workflow_owner(session_state, "mission_jam")
+        sync_song_improv_sections_to_practice_key(session_state)
+    except ImportError:
+        pass
+    try:
+        from active_musical_workflow_envelope import (
+            reconcile_mission_workflow_envelope,
+            render_workflow_envelope_dev_panel,
+        )
+
+        rep = reconcile_mission_workflow_envelope(session_state)
+        if not rep.get("consistent"):
+            st.caption("Mission context was reconciled — stale jam or artifact data was cleared.")
+        render_workflow_envelope_dev_panel(st, session_state)
+    except ImportError:
+        pass
 
     try:
         from mission_workflow_context import resolve_missions_section_map

@@ -189,6 +189,15 @@ def resolve_current_backing_musical_state(
 
     creative_active = creative is not None
     major_jam = is_creative_major_jam_active(session) if creative_active else False
+    if creative is not None and str(creative.source or "") in {"mission", "song_improv"}:
+        major_jam = False
+    try:
+        from musical_context_authority import song_catalog_context_owns_practice_key
+
+        if creative is not None and str(creative.source or "") == "mission" and song_catalog_context_owns_practice_key(session):
+            major_jam = False
+    except ImportError:
+        pass
     source_type: SourceType = (
         creative.source
         if creative
