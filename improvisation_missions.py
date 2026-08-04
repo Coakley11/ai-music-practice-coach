@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import random
 from dataclasses import dataclass, field
 from typing import Any
@@ -380,12 +381,17 @@ def generate_mission_example(
     variant: str = "normal",
     bpm: int = 100,
     session_state: dict | None = None,
+    nonce_override: int | None = None,
 ) -> MissionExample:
     variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
     nonce = 0
     if variant == "new" and session_state is not None:
-        nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
-        session_state[MISSION_NEW_NONCE_KEY] = nonce
+        if nonce_override is not None:
+            nonce = int(nonce_override)
+            session_state[MISSION_NEW_NONCE_KEY] = nonce
+        else:
+            nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
+            session_state[MISSION_NEW_NONCE_KEY] = nonce
     seed = _mission_seed(
         mission, chord, improv_ctx.song_title, variant, level, section, nonce=nonce
     )
@@ -442,6 +448,22 @@ def generate_mission_example(
         show_tab=family == "guitar",
         show_piano=family == "piano",
     )
+
+
+def mission_example_fingerprint(example: MissionExample | None) -> str:
+    if example is None:
+        return ""
+    motif = example.motif if isinstance(example.motif, dict) else {}
+    payload = {
+        "mission": example.mission,
+        "variant": example.variant,
+        "chord": example.chord,
+        "section": example.section,
+        "display": motif.get("display"),
+        "rhythm": motif.get("rhythm"),
+        "notes": motif.get("notes"),
+    }
+    return hashlib.md5(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def store_mission_example(

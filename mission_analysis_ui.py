@@ -355,6 +355,21 @@ def prepare_analysis_from_creative(session_state: dict, *, locked: bool = False)
         session_state[ANALYSIS_CRITERIA_LOCKED] = True
 
 
+def prepare_mission_upload_from_missions(session_state: dict) -> None:
+    """Missions tab → Upload Analysis with mission type/chord sealed for scoring."""
+    sync_analysis_missions_from_creative(session_state)
+    session_state["analysis_sync_creative_mission"] = True
+    session_state[ANALYSIS_CRITERIA_LOCKED] = True
+    session_state.pop(ANALYSIS_RETURN_TO_METRICS, None)
+    try:
+        from mission_practice_context import ensure_mission_practice_context, seal_recording_context
+
+        ensure_mission_practice_context(session_state, force=True)
+        seal_recording_context(session_state, association="missions_upload_handoff")
+    except ImportError:
+        pass
+
+
 def prepare_metrics_upload_workflow(session_state: dict) -> None:
     """Metrics & AI → Upload Analysis → return to Metrics & AI with results."""
     improv_ids = list(session_state.get("improv_ai_metric_ids") or [])
@@ -365,9 +380,9 @@ def prepare_metrics_upload_workflow(session_state: dict) -> None:
     session_state[ANALYSIS_CRITERIA_LOCKED] = True
     session_state[ANALYSIS_RETURN_TO_METRICS] = True
     try:
-        from mission_practice_context import refresh_mission_practice_context, seal_recording_context
+        from mission_practice_context import ensure_mission_practice_context, seal_recording_context
 
-        refresh_mission_practice_context(session_state)
+        ensure_mission_practice_context(session_state, force=True)
         seal_recording_context(session_state, association="metrics_upload_handoff")
     except ImportError:
         pass

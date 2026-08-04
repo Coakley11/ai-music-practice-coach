@@ -53,6 +53,7 @@ from improvisation_missions import (
     MISSION_EXAMPLE_KEY,
     MISSION_NEW_NONCE_KEY,
     MISSION_PRACTICE_LICK_KEY,
+    MissionExample,
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
@@ -152,16 +153,18 @@ def render_improvisation_intelligence_lab(
         pass
     ensure_creative_widgets_from_backing_context(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
-    try:
-        from backing_musical_state import (
-            render_backing_key_state_diagnostics,
-            resolve_current_backing_musical_state,
-        )
+    _creative_tab = str(session_state.get("improv_intelligence_tab") or "Entry & Jam")
+    if _creative_tab in ("Entry & Jam", "Missions", "Metrics & AI"):
+        try:
+            from backing_musical_state import (
+                render_backing_key_state_diagnostics,
+                resolve_current_backing_musical_state,
+            )
 
-        _creative_musical = resolve_current_backing_musical_state(session_state)
-        render_backing_key_state_diagnostics(st, session_state, _creative_musical)
-    except Exception:
-        pass
+            _creative_musical = resolve_current_backing_musical_state(session_state)
+            render_backing_key_state_diagnostics(st, session_state, _creative_musical)
+        except Exception:
+            pass
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")
@@ -1261,6 +1264,134 @@ def _on_mission_pick_change() -> None:
             st.session_state["improv_active_mission"] = pick
 
 
+def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContext | None:
+    from improvisation_motif import flatten_section_map, resolve_improv_sections
+
+    song_title = str(session_state.get("song") or "Song")
+    artist = str(session_state.get("artist") or "")
+    chart_key = str(session_state.get("display_key") or session_state.get("chart_key") or "C")
+    ctx = ImprovSessionContext(
+        song_title=song_title,
+        artist=artist,
+        key_center=str(session_state.get("concert_key") or chart_key),
+        display_key=chart_key,
+        instrument=str(session_state.get("instrument") or "Guitar"),
+        level=str(session_state.get("level") or "Intermediate"),
+        focus=str(session_state.get("focus") or "Improvisation"),
+        sections={},
+        bpm=int(session_state.get("backing_track_bpm") or 100),
+        style_label="",
+        progression_flat=[],
+    )
+    home = session_state.get("home_sections")
+    if isinstance(home, dict) and home:
+        ctx.sections = {str(k): list(v) for k, v in home.items() if isinstance(v, list)}
+        ctx.progression_flat = flatten_sections(ctx.sections)
+    section_map = resolve_improv_sections(session_state, ctx)
+    if section_map:
+        ctx.sections = {label: list(chs) for label, chs in section_map}
+        ctx.progression_flat = flatten_section_map(section_map)
+    return ctx
+
+
+def _run_mission_example_generate(session_state: dict, variant: str) -> None:
+    from improvisation_motif import flatten_section_map, resolve_improv_sections
+
+    improv_ctx = _mission_improv_ctx_from_session(session_state)
+    if improv_ctx is None:
+        return
+    section_map = resolve_improv_sections(session_state, improv_ctx)
+    chords = flatten_section_map(section_map) if section_map else []
+    if not chords:
+        return
+    _ensure_chord_selection(session_state, chords, section_map)
+    cur_chord, _ = _selected_chord(session_state, chords)
+    section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+    mission = str(
+        session_state.get("improv_mission_pick")
+        or session_state.get("improv_active_mission")
+        or ""
+    ).strip()
+    if not mission:
+        return
+    live_inst = str(session_state.get("instrument") or improv_ctx.instrument)
+    live_level = str(session_state.get("level") or improv_ctx.level)
+    live_focus = str(session_state.get("focus") or improv_ctx.focus)
+    bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
+    nonce_override = None
+    if variant == "new":
+        nonce_override = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
+    example = generate_mission_example(
+        mission,
+        improv_ctx=improv_ctx,
+        chord=cur_chord,
+        section=section_label,
+        level=live_level,
+        instrument=live_inst,
+        focus=live_focus,
+        variant=variant,
+        bpm=bpm,
+        session_state=session_state,
+        nonce_override=nonce_override,
+    )
+    store_mission_example(
+        session_state,
+        example,
+        persist_artifact=True,
+        interaction=f"mission_example_generate_{variant}",
+    )
+    from improvisation_missions import mission_example_fingerprint
+
+    session_state["_mission_example_output_fp"] = mission_example_fingerprint(example)
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "creative")
+    except ImportError:
+        pass
+
+
+def _on_mission_gen_normal() -> None:
+    import streamlit as st
+
+    _run_mission_example_generate(st.session_state, "normal")
+
+
+def _on_mission_gen_easier() -> None:
+    import streamlit as st
+
+    _run_mission_example_generate(st.session_state, "easier")
+
+
+def _on_mission_gen_harder() -> None:
+    import streamlit as st
+
+    _run_mission_example_generate(st.session_state, "harder")
+
+
+def _on_mission_gen_new_idea() -> None:
+    import streamlit as st
+
+    _run_mission_example_generate(st.session_state, "new")
+
+
+def _maybe_refresh_mission_example_outputs(
+    session_state: dict,
+    example: MissionExample,
+    *,
+    instrument: str,
+    bpm: int,
+) -> MissionExample:
+    from improvisation_missions import mission_example_fingerprint, mission_example_for_display
+
+    fp = mission_example_fingerprint(example)
+    if session_state.get("_mission_example_output_fp") == fp:
+        return example
+    refreshed = mission_example_for_display(example, instrument=instrument, bpm=bpm)
+    session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
+    return refreshed
+
+
 def _tab_missions(
     st: Any,
     *,
@@ -1347,57 +1478,67 @@ def _tab_missions(
         unsafe_allow_html=True,
     )
 
+    session_state["improv_active_mission"] = mission
+    try:
+        from mission_practice_context import mark_mission_practice_context_dirty
+
+        mark_mission_practice_context_dirty(session_state)
+    except ImportError:
+        pass
+
+    def _open_mission_upload_analysis() -> None:
+        if not on_open_analysis:
+            return
+        from mission_analysis_ui import prepare_mission_upload_from_missions
+
+        session_state["improv_active_mission"] = mission
+        prepare_mission_upload_from_missions(session_state)
+        on_open_analysis()
+
+    try:
+        from mission_upload_recording_ui import render_mission_upload_recording_studio
+
+        render_mission_upload_recording_studio(
+            st,
+            session_state,
+            key_prefix="improv_mission_upload",
+            on_open_full_upload=_open_mission_upload_analysis if on_open_analysis else None,
+        )
+    except ImportError:
+        pass
+
+    st.markdown("---")
+    st.markdown("##### Mission example (optional)")
     g1, g2, g3, g4 = st.columns(4)
     with g1:
-        gen_normal = st.button(
+        st.button(
             "Generate example",
             key="improv_mission_gen",
             type="primary",
             use_container_width=True,
+            on_click=_on_mission_gen_normal,
         )
     with g2:
-        gen_easier = st.button("Easier example", key="improv_mission_easier", use_container_width=True)
+        st.button(
+            "Easier example",
+            key="improv_mission_easier",
+            use_container_width=True,
+            on_click=_on_mission_gen_easier,
+        )
     with g3:
-        gen_harder = st.button("Harder example", key="improv_mission_harder", use_container_width=True)
+        st.button(
+            "Harder example",
+            key="improv_mission_harder",
+            use_container_width=True,
+            on_click=_on_mission_gen_harder,
+        )
     with g4:
-        gen_new = st.button("New idea", key="improv_mission_new", use_container_width=True)
-
-    variant = "normal"
-    if gen_easier:
-        variant = "easier"
-    elif gen_harder:
-        variant = "harder"
-    elif gen_new:
-        variant = "new"
-    elif gen_normal:
-        variant = "normal"
-
-    if gen_normal or gen_easier or gen_harder or gen_new:
-        example = generate_mission_example(
-            mission,
-            improv_ctx=improv_ctx,
-            chord=cur_chord,
-            section=section_label,
-            level=live_level,
-            instrument=live_inst,
-            focus=live_focus,
-            variant=variant,
-            bpm=bpm,
-            session_state=session_state,
+        st.button(
+            "New idea",
+            key="improv_mission_new",
+            use_container_width=True,
+            on_click=_on_mission_gen_new_idea,
         )
-        store_mission_example(
-            session_state,
-            example,
-            persist_artifact=True,
-            interaction=f"mission_example_generate_{variant}",
-        )
-        try:
-            from studio_page_persistence import save_page_snapshot
-
-            save_page_snapshot(session_state, "creative")
-        except ImportError:
-            pass
-        st.rerun()
 
     example = load_mission_example(session_state, improv_ctx)
     if example and example.mission != mission:
@@ -1465,20 +1606,9 @@ def _tab_missions(
     if on_open_analysis:
         st.markdown("---")
         st.caption(
-            "After practicing this mission, upload a take on **Upload Analysis** — "
-            "the coach scores how well you met this goal."
+            "Mission upload & recording above is the primary path. "
+            "**Practice in Backing Jam** below is optional for full-track jamming."
         )
-        if st.button(
-            "Analyze take for this mission",
-            key="improv_mission_analyze",
-            type="secondary",
-            use_container_width=True,
-        ):
-            from mission_analysis_ui import prepare_analysis_from_creative
-
-            session_state["improv_active_mission"] = mission
-            prepare_analysis_from_creative(st.session_state)
-            on_open_analysis()
 
     if not example:
         st.info(
@@ -1487,8 +1617,9 @@ def _tab_missions(
         )
         return
 
-    example = mission_example_for_display(example, instrument=live_inst, bpm=bpm)
-    store_mission_example(session_state, example)
+    example = _maybe_refresh_mission_example_outputs(
+        session_state, example, instrument=live_inst, bpm=bpm
+    )
     family = instrument_family(live_inst)
 
     st.markdown("##### Example")
@@ -1542,8 +1673,9 @@ def _tab_missions(
 
     example = load_mission_example(session_state, improv_ctx)
     if example:
-        example = mission_example_for_display(example, instrument=live_inst, bpm=bpm)
-        store_mission_example(session_state, example)
+        example = _maybe_refresh_mission_example_outputs(
+            session_state, example, instrument=live_inst, bpm=bpm
+        )
 
     st.markdown("**Chord tones**")
     st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
@@ -1804,13 +1936,6 @@ def _tab_metrics_ai(
         )
 
     selected = render_ai_improv_metrics_selector(st, session_state, key_prefix="improv")
-
-    try:
-        from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
-
-        render_exact_chord_mission_backing_panel(st, session_state, key_prefix="improv_metrics_exact")
-    except ImportError:
-        pass
 
     if not selected:
         st.info(

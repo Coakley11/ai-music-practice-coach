@@ -8,10 +8,11 @@ from typing import Any
 from mission_exact_chord_backing import generate_exact_chord_backing_wav, invalidate_exact_chord_backing_cache
 from mission_practice_context import (
     MISSION_CAPTURE_BLOCK_MESSAGE_KEY,
+    MISSION_EXACT_BACKING_ARMED_KEY,
     authoritative_mission_type,
-    load_mission_practice_context,
+    ensure_mission_practice_context,
+    mark_mission_practice_context_dirty,
     recording_context_stale_warning,
-    refresh_mission_practice_context,
     ui_backing_chord_mismatch,
 )
 
@@ -21,7 +22,7 @@ def _esc(text: Any) -> str:
 
 
 def should_show_exact_chord_panel(session: dict[str, Any]) -> bool:
-    ctx = load_mission_practice_context(session)
+    ctx = ensure_mission_practice_context(session)
     if ctx and (ctx.mission_type or ctx.chord.symbol):
         return True
     return bool(authoritative_mission_type(session))
@@ -37,14 +38,14 @@ def render_exact_chord_mission_backing_panel(
     if not should_show_exact_chord_panel(session):
         return
 
-    refresh_mission_practice_context(session)
-    ctx = load_mission_practice_context(session)
+    ctx = ensure_mission_practice_context(session)
     if not ctx:
         return
 
     mismatch, mismatch_msg = ui_backing_chord_mismatch(session)
     stale = recording_context_stale_warning(session)
     block = str(session.get(MISSION_CAPTURE_BLOCK_MESSAGE_KEY) or "")
+    armed = bool(session.get(MISSION_EXACT_BACKING_ARMED_KEY))
 
     chord_display = ctx.chord.symbol or "—"
     if ctx.chord.section:
@@ -63,6 +64,8 @@ def render_exact_chord_mission_backing_panel(
 
     if mismatch and mismatch_msg:
         st.error(mismatch_msg.replace("**", ""))
+    elif armed:
+        st.success("Exact chord backing armed — UI and sounding chord match.")
     if stale:
         st.warning(stale)
     if block and not mismatch:
@@ -90,7 +93,11 @@ def render_exact_chord_mission_backing_panel(
 
     col_c, col_d, col_e = st.columns(3)
     with col_c:
-        loop = st.checkbox("Loop", value=bool(session.get("mission_exact_backing_loop", ctx.loop)), key=f"{key_prefix}_loop")
+        loop = st.checkbox(
+            "Loop",
+            value=bool(session.get("mission_exact_backing_loop", ctx.loop)),
+            key=f"{key_prefix}_loop",
+        )
     with col_d:
         count_in = st.checkbox(
             "Count-in (1 bar)",
@@ -106,22 +113,33 @@ def render_exact_chord_mission_backing_panel(
             key=f"{key_prefix}_loops",
         )
 
+    transport_changed = (
+        int(bpm) != int(ctx.tempo_bpm)
+        or float(volume) != float(ctx.volume)
+        or bool(loop) != bool(ctx.loop)
+        or bool(count_in) != bool(ctx.count_in_bars)
+        or int(loops) != int(ctx.loops)
+    )
     session["backing_track_bpm"] = int(bpm)
     session["mission_exact_backing_volume"] = float(volume)
     session["mission_exact_backing_loop"] = bool(loop)
     session["mission_exact_backing_count_in"] = bool(count_in)
     session["backing_track_loops"] = int(loops)
-    refresh_mission_practice_context(session)
+    if transport_changed:
+        mark_mission_practice_context_dirty(session)
+        ctx = ensure_mission_practice_context(session)
 
     btn_play, btn_stop = st.columns(2)
     with btn_play:
-        if st.button("▶ Play backing", key=f"{key_prefix}_play", use_container_width=True, type="primary"):
+        if st.button("▶ Play", key=f"{key_prefix}_play", use_container_width=True, type="primary"):
             invalidate_exact_chord_backing_cache(session)
             wav, sounding = generate_exact_chord_backing_wav(session)
             if not wav:
                 st.warning("Select a mission chord first.")
             else:
-                session["mission_exact_backing_play_nonce"] = int(session.get("mission_exact_backing_play_nonce") or 0) + 1
+                session["mission_exact_backing_play_nonce"] = int(
+                    session.get("mission_exact_backing_play_nonce") or 0
+                ) + 1
                 st.caption(f"Sounding: **{sounding}** at {int(bpm)} BPM")
     with btn_stop:
         if st.button("■ Stop", key=f"{key_prefix}_stop", use_container_width=True):
@@ -135,6 +153,4 @@ def render_exact_chord_mission_backing_panel(
         st.caption(f"Currently sounding: **{_esc(sounding)}**")
 
     if not compact:
-        st.caption(
-            "Record or upload only after Play — scoring uses this exact chord and your selected mission."
-        )
+        st.caption("Press **Play** before live recording or analysis when mission workflow is locked.")

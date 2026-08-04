@@ -20,6 +20,8 @@ MISSION_RECORDING_SEAL_KEY = "improv_mission_recording_seal"
 MISSION_BACKING_SOUNDING_CHORD_KEY = "_mission_backing_sounding_chord"
 MISSION_EXACT_BACKING_ARMED_KEY = "_mission_exact_backing_armed"
 MISSION_CAPTURE_BLOCK_MESSAGE_KEY = "_mission_capture_block_message"
+MISSION_PRACTICE_CONTEXT_SIG_KEY = "_mission_practice_context_sig"
+MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY = "_mission_practice_context_needs_refresh"
 
 _CONTEXT_VERSION = 1
 
@@ -260,20 +262,54 @@ def write_mission_practice_context(session: dict[str, Any], ctx: MissionPractice
             pass
 
 
+def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[Any, ...]:
+    symbol, section, idx, label = _authoritative_chord_fields(session)
+    return (
+        authoritative_mission_type(session),
+        symbol,
+        section,
+        idx,
+        label,
+        int(session.get("backing_track_bpm") or 0),
+        str(session.get("backing_groove_style") or session.get("improv_groove") or ""),
+        str(session.get("backing_time_signature") or "4/4"),
+        int(session.get("backing_track_loops") or 0),
+        bool(session.get("mission_exact_backing_loop", True)),
+        round(float(session.get("mission_exact_backing_volume") or 0.85), 2),
+        bool(session.get("mission_exact_backing_count_in")),
+    )
+
+
+def mark_mission_practice_context_dirty(session: dict[str, Any]) -> None:
+    session[MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY] = True
+
+
 def refresh_mission_practice_context(session: dict[str, Any]) -> MissionPracticeContext:
     ctx = build_mission_practice_context(session)
     write_mission_practice_context(session, ctx)
+    session[MISSION_PRACTICE_CONTEXT_SIG_KEY] = mission_practice_context_input_signature(session)
+    session.pop(MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY, None)
     return ctx
 
 
+def ensure_mission_practice_context(
+    session: dict[str, Any],
+    *,
+    force: bool = False,
+) -> MissionPracticeContext | None:
+    if not force and not session.get(MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY):
+        sig = mission_practice_context_input_signature(session)
+        if session.get(MISSION_PRACTICE_CONTEXT_SIG_KEY) == sig:
+            loaded = MissionPracticeContext.from_dict(session.get(MISSION_PRACTICE_CONTEXT_KEY))
+            if loaded is not None:
+                return loaded
+    if not force and not authoritative_mission_type(session) and not _authoritative_chord_fields(session)[0]:
+        return None
+    return refresh_mission_practice_context(session)
+
+
 def load_mission_practice_context(session: dict[str, Any]) -> MissionPracticeContext | None:
-    raw = session.get(MISSION_PRACTICE_CONTEXT_KEY)
-    loaded = MissionPracticeContext.from_dict(raw)
-    if loaded is not None:
-        return loaded
-    if authoritative_mission_type(session) or _authoritative_chord_fields(session)[0]:
-        return refresh_mission_practice_context(session)
-    return None
+    return ensure_mission_practice_context(session)
 
 
 def backing_sounding_chord(session: dict[str, Any]) -> str:
@@ -367,8 +403,10 @@ def mission_capture_allowed(session: dict[str, Any], *, require_mission_workflow
 
 def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
     """Attach authoritative mission type/chord and prefer single-chord scoring pool."""
-    mpc = load_mission_practice_context(session) or refresh_mission_practice_context(session)
     out = dict(ctx)
+    mpc = ensure_mission_practice_context(session, force=True)
+    if mpc is None:
+        return out
     out["mission_practice_context"] = mpc.to_dict()
     out["improv_active_mission"] = mpc.mission_type
     out["mission_type"] = mpc.mission_type

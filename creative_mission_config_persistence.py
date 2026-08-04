@@ -623,9 +623,10 @@ def commit_mission_config_to_canonical(
     else:
         session[CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY] = True
     try:
-        from mission_practice_context import refresh_mission_practice_context
+        from mission_practice_context import mark_mission_practice_context_dirty
 
-        refresh_mission_practice_context(session)
+        if any(k in slice_ for k in (*MISSION_TARGET_IDENTITY_KEYS, "improv_active_mission", "improv_mission_pick")):
+            mark_mission_practice_context_dirty(session)
     except ImportError:
         pass
 

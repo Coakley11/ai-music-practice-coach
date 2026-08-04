@@ -1874,14 +1874,14 @@ def open_backing_from_creative(
             from mission_practice_context import (
                 MISSION_BACKING_SOUNDING_CHORD_KEY,
                 MISSION_EXACT_BACKING_ARMED_KEY,
-                refresh_mission_practice_context,
+                ensure_mission_practice_context,
                 seal_recording_context,
             )
 
             if ctx.progression:
                 session[MISSION_BACKING_SOUNDING_CHORD_KEY] = str(ctx.progression[0] or "").strip()
             session[MISSION_EXACT_BACKING_ARMED_KEY] = True
-            refresh_mission_practice_context(session)
+            ensure_mission_practice_context(session, force=True)
             seal_recording_context(session, association="mission_backing_jam")
         except ImportError:
             pass

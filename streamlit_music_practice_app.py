@@ -13240,6 +13240,30 @@ elif _studio_page == "analysis":
             )
 
             with st.container(key="upload_capture_panel", border=False):
+                try:
+                    from mission_upload_recording_ui import should_show_exact_chord_panel
+                    from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
+
+                    if should_show_exact_chord_panel(st.session_state) or is_analysis_criteria_locked(
+                        st.session_state
+                    ):
+                        st.markdown(
+                            '<p class="ui-upload-step-kicker">Mission upload & recording · exact chord</p>',
+                            unsafe_allow_html=True,
+                        )
+                        render_exact_chord_mission_backing_panel(
+                            st,
+                            st.session_state,
+                            key_prefix="upload_mission_exact",
+                            compact=False,
+                        )
+                        st.caption(
+                            "File uploads are scored against mission/chord context only — "
+                            "backing is not mixed into uploaded files unless you recorded that way."
+                        )
+                        st.markdown("---")
+                except ImportError:
+                    pass
                 st.markdown(
                     '<p class="ui-upload-step-kicker">Step 1 · Capture audio</p>',
                     unsafe_allow_html=True,
@@ -13254,18 +13278,6 @@ elif _studio_page == "analysis":
                     mission_ids = render_analysis_criteria_summary(st, st.session_state)
                 else:
                     mission_ids = render_mission_goals_selector(st, st.session_state)
-
-                try:
-                    from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
-
-                    render_exact_chord_mission_backing_panel(
-                        st,
-                        st.session_state,
-                        key_prefix="upload_mission_exact",
-                        compact=True,
-                    )
-                except ImportError:
-                    pass
 
                 try:
                     from mission_practice_context import mission_capture_allowed

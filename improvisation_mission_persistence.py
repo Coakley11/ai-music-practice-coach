@@ -144,9 +144,9 @@ def _legacy_sync_mission_workspace_before_persist(session: dict[str, Any]) -> No
         return
     _refresh_practice_lick_transport(session)
     try:
-        from mission_practice_context import refresh_mission_practice_context
+        from mission_practice_context import ensure_mission_practice_context
 
-        refresh_mission_practice_context(session)
+        ensure_mission_practice_context(session, force=True)
     except ImportError:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
