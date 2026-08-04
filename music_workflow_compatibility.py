@@ -140,6 +140,14 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
     if owner == "style_jam":
         record_legacy_field_read(session, "improv_style", adapter="style")
         record_legacy_field_read(session, "improv_generated_sections", adapter="sections")
+        record_legacy_field_read(session, "improv_style_key", adapter="style_key")
+        style_key = str(session.get("improv_style_key") or "").strip()
+        if style_key:
+            pt, pm = _tonic_mode_from_token(style_key)
+            blob.keys.practice_tonic = pt
+            blob.keys.practice_mode = pm
+            blob.keys.original_tonic = pt
+            blob.keys.original_mode = pm
         blob.style = str(session.get("improv_style") or "").strip()
         blob.source_type = "generated"
         blob.generated_session_id = sid
@@ -159,6 +167,12 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
             blob.meter = str(meta.get("meter") or "4/4")
     if owner == "jam_session_generator":
         record_legacy_field_read(session, "improv_jam_session", adapter="sections")
+        record_legacy_field_read(session, "improv_jam_key", adapter="jam_key")
+        jam_key = str(session.get("improv_jam_key") or "").strip()
+        if jam_key:
+            pt, pm = _tonic_mode_from_token(jam_key)
+            blob.keys.practice_tonic = pt
+            blob.keys.practice_mode = pm
         blob.source_type = "generated"
         blob.generated_session_id = sid
         blob.style = str(session.get("improv_jam_style") or "").strip()

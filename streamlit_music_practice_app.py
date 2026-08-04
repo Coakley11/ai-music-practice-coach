@@ -133,6 +133,12 @@ def _render_workflow_architecture_dev_panel() -> None:
     if not _developer_mode_enabled():
         return
     try:
+        from music_workflow_activation import bootstrap_active_workflow_if_needed
+
+        bootstrap_active_workflow_if_needed(st.session_state)
+    except Exception:
+        pass
+    try:
         from music_workflow_dev_panel import render_unified_workflow_architecture_panel
 
         render_unified_workflow_architecture_panel(st, st.session_state)

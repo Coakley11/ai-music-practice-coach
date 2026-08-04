@@ -76,7 +76,84 @@ def _selected_mission_fields(session: dict[str, Any]) -> tuple[str, str, int, st
 
 
 def build_active_workflow_envelope(session: dict[str, Any]) -> ActiveMusicalWorkflowEnvelope:
-    """Assemble envelope from authoritative resolvers — not ad-hoc globals."""
+    """Assemble envelope — active store blob is authoritative when pointer is set."""
+    ptr = None
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and ptr.workflow_owner:
+            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+            if blob:
+                return _envelope_from_workflow_blob(session, blob, ptr)
+    except ImportError:
+        pass
+    return _build_active_workflow_envelope_legacy(session, ptr)
+
+
+def project_envelope_from_active_store(session: dict[str, Any]) -> ActiveMusicalWorkflowEnvelope:
+    """Compatibility projection: active blob → envelope read model (one-way)."""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob, record_compat_fallback
+
+        ptr = get_active_workflow_pointer(session)
+        if not ptr or not ptr.workflow_owner:
+            record_compat_fallback(session, "envelope_projection_no_pointer", "")
+            return _build_active_workflow_envelope_legacy(session, None)
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        if blob is None:
+            record_compat_fallback(session, "envelope_projection_missing_blob", ptr.workflow_owner)
+            return _build_active_workflow_envelope_legacy(session, ptr)
+        env = _envelope_from_workflow_blob(session, blob, ptr)
+        session[ACTIVE_WORKFLOW_ENVELOPE_KEY] = asdict(env)
+        return env
+    except ImportError:
+        return build_active_workflow_envelope(session)
+
+
+def _envelope_from_workflow_blob(
+    session: dict[str, Any],
+    blob: Any,
+    ptr: Any,
+) -> ActiveMusicalWorkflowEnvelope:
+    env = ActiveMusicalWorkflowEnvelope()
+    env.workflow_owner = str(blob.workflow_owner or "")
+    env.workflow_session_id = str(blob.workflow_session_id or "")
+    env.original_song_tonic = str(blob.keys.original_tonic or "")
+    env.original_song_mode = str(blob.keys.original_mode or "")
+    env.current_practice_concert_tonic = str(blob.keys.practice_tonic or "")
+    env.current_practice_concert_mode = str(blob.keys.practice_mode or "")
+    tonic = env.current_practice_concert_tonic
+    mode = env.current_practice_concert_mode
+    env.current_practice_concert_key = f"{tonic}m" if mode == "minor" else tonic
+    env.instrument = str(session.get("instrument") or "Piano").strip()
+    env.song_id = str(blob.song_id or session.get("active_catalog_pick_key") or "").strip()
+    env.song_title = str(blob.song_title or session.get("song") or "").strip()
+    env.selected_chord_symbol = str(blob.selected_chord_symbol or "")
+    env.section = str(blob.selected_section or "")
+    env.chord_index = int(blob.selected_chord_index or 0)
+    env.mission_type = str(blob.mission_type or "")
+    env.mission_id = str(blob.mission_id or "")
+    env.artifact_fingerprint = str(blob.artifact_fingerprint or "")
+    env.example_fingerprint = str(blob.example_fingerprint or "")
+    env.backing_handoff_chord = str(blob.backing_handoff_chord or "")
+    env.recording_seal_chord = str(blob.recording_seal_chord or "")
+    env.style_owner = str(blob.style_owner or "")
+    env.style_groove = str(blob.groove or blob.style or "")
+    env.progression_owner = str(blob.progression_owner or "")
+    env.context_revision = str(ptr.context_revision if ptr else blob.context_revision)
+    session[ACTIVE_WORKFLOW_ENVELOPE_KEY] = asdict(env)
+    return env
+
+
+def _build_active_workflow_envelope_legacy(session: dict[str, Any], ptr: Any | None) -> ActiveMusicalWorkflowEnvelope:
+    """Legacy assembly — compatibility bypass when store pointer/blob unavailable."""
+    try:
+        from music_workflow_state_store import record_compat_fallback
+
+        record_compat_fallback(session, "envelope_legacy_assembly", "compatibility_bypass")
+    except ImportError:
+        pass
     env = ActiveMusicalWorkflowEnvelope()
     try:
         from musical_context_authority import resolve_authoritative_practice_key
@@ -93,6 +170,8 @@ def build_active_workflow_envelope(session: dict[str, Any]) -> ActiveMusicalWork
         ).strip()
 
     env.workflow_owner = str(session.get("_active_workflow_owner") or "").strip()
+    if ptr and getattr(ptr, "workflow_owner", None):
+        env.workflow_owner = str(ptr.workflow_owner)
     env.instrument = str(session.get("instrument") or "Piano").strip()
     env.song_id = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
     env.song_title = str(session.get("song") or "").strip()
@@ -113,8 +192,15 @@ def build_active_workflow_envelope(session: dict[str, Any]) -> ActiveMusicalWork
         or session.get("creative_improv_intelligence_tab")
         or ""
     ).strip()
-    if tab == "Missions" or env.backing_workflow_type == "mission_jam":
-        env.workflow_owner = env.workflow_owner or "mission_jam"
+    if not env.workflow_owner:
+        if tab == "Missions" or env.backing_workflow_type == "mission_jam":
+            try:
+                from music_workflow_state_store import record_compat_fallback
+
+                record_compat_fallback(session, "envelope_tab_inference", "compatibility_bypass")
+            except ImportError:
+                pass
+            env.workflow_owner = env.workflow_owner or "mission_jam"
 
     symbol, section, idx, _label = _selected_mission_fields(session)
     env.selected_chord_symbol = symbol
@@ -440,6 +526,7 @@ __all__ = [
     "SOURCE_SCAN_BYPASS_PATHS",
     "apply_atomic_mission_chord_selection",
     "build_active_workflow_envelope",
+    "project_envelope_from_active_store",
     "mission_example_allowed_for_projection",
     "reconcile_mission_workflow_envelope",
     "render_workflow_envelope_dev_panel",

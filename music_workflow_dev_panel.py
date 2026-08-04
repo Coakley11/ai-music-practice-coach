@@ -37,6 +37,8 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
     ws, acct = resolve_workspace_identity(session)
     store = session.get("_music_workflow_state_store") or {}
     stats = store.get("stats") if isinstance(store, dict) else {}
+    activation = session.get("_music_workflow_activation_last") or session.get("_music_workflow_activation_diag") or {}
+    bootstrap = session.get("_music_workflow_bootstrap_trace") or {}
     return {
         "workspace_id": ws,
         "account_id": acct,
@@ -51,6 +53,8 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
         "compat_fallbacks": list(session.get(WORKFLOW_COMPAT_FALLBACKS_KEY) or [])[-12:],
         "cache_identity": workflow_cache_identity(session),
         "violations": collect_consistency_violations(session),
+        "activation_last": activation,
+        "bootstrap_trace": bootstrap,
         "page": str(session.get("studio_page") or ""),
         "tab": str(session.get("improv_intelligence_tab") or ""),
         "entry_mode": str(session.get("improv_entry_mode") or ""),

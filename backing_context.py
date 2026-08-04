@@ -1959,15 +1959,45 @@ def open_backing_from_creative(
         ctx = build_entry_jam_context(session)
     try:
         from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source
+        from music_workflow_activation import activate_workflow_simple
 
         launch_wf = workflow_type_from_backing_source(
             str(ctx.source or source),
             entry_mode=str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
         )
         session["_backing_launch_workflow"] = launch_wf
+        owner = str(launch_wf)
+        if source == "mission":
+            owner = "mission_jam"
+        elif source == "song_improv":
+            owner = "song_based_improvisation"
+        elif source == "custom_progression":
+            owner = "regular_custom_backing"
+        elif str(ctx.source or "") == "entry_jam":
+            owner = launch_wf if launch_wf in {"style_jam", "jam_session_generator"} else "entry_jam"
+        else:
+            owner = "regular_catalog_backing"
+        activate_workflow_simple(
+            session,
+            owner,
+            activation_source="open_backing_from_creative",
+            page_route="backing",
+            return_route="creative",
+            persist_policy="durable_handoff",
+        )
         validate_workflow_consistency(session, ctx)
     except ImportError:
-        pass
+        try:
+            from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source
+
+            launch_wf = workflow_type_from_backing_source(
+                str(ctx.source or source),
+                entry_mode=str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
+            )
+            session["_backing_launch_workflow"] = launch_wf
+            validate_workflow_consistency(session, ctx)
+        except ImportError:
+            pass
     try:
         from generated_jam_key_context import activate_generated_jam_key_ownership
 

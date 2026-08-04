@@ -221,7 +221,18 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
 
 
 def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None:
-    """Persist outgoing workflow, restore incoming workflow musical state."""
+    """Persist outgoing workflow, restore incoming — delegates to activate_workflow."""
+    try:
+        from music_workflow_activation import activate_workflow_simple
+
+        activate_workflow_simple(
+            session,
+            str(new_wf),
+            activation_source="switch_workflow_owner",
+        )
+        return
+    except ImportError:
+        pass
     prev = str(session.get(ACTIVE_WORKFLOW_OWNER_KEY) or "").strip()
     if prev:
         save_workflow_snapshot(session, prev)  # type: ignore[arg-type]

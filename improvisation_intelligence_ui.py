@@ -227,6 +227,12 @@ def render_improvisation_intelligence_lab(
     from studio_page_persistence import ensure_creative_improv_initialized
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
+    try:
+        from music_workflow_activation import bootstrap_active_workflow_if_needed
+
+        bootstrap_active_workflow_if_needed(session_state)
+    except ImportError:
+        pass
     flush_pending_improv_song_source(session_state)
     from creative_key_sync import flush_pending_creative_major_keys
 
@@ -412,6 +418,12 @@ def _tab_entry_modes(
                 sync_creative_session_before_persist(session_state)
             except ImportError:
                 pass
+        try:
+            from music_workflow_activation import activate_workflow_for_entry_mode
+
+            activate_workflow_for_entry_mode(session_state)
+        except ImportError:
+            pass
 
     ensure_improv_entry_mode_restored(session_state)
     entry = st.radio(
@@ -1951,12 +1963,37 @@ def _tab_missions(
     mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
 
     try:
-        from workflow_musical_authority import switch_workflow_owner, sync_song_improv_sections_to_practice_key
+        from music_workflow_activation import (
+            activation_user_notice,
+            bootstrap_active_workflow_if_needed,
+        )
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
-        switch_workflow_owner(session_state, "mission_jam")
+        bootstrap_active_workflow_if_needed(session_state)
+        notice = activation_user_notice(session_state)
+        if notice:
+            st.warning(notice)
+        try:
+            from music_workflow_activation import activate_workflow_simple
+
+            activate_workflow_simple(
+                session_state,
+                "mission_jam",
+                activation_source="missions_tab_render",
+            )
+        except ImportError:
+            from workflow_musical_authority import switch_workflow_owner
+
+            switch_workflow_owner(session_state, "mission_jam")
         sync_song_improv_sections_to_practice_key(session_state)
     except ImportError:
-        pass
+        try:
+            from workflow_musical_authority import switch_workflow_owner, sync_song_improv_sections_to_practice_key
+
+            switch_workflow_owner(session_state, "mission_jam")
+            sync_song_improv_sections_to_practice_key(session_state)
+        except ImportError:
+            pass
     try:
         from active_musical_workflow_envelope import (
             reconcile_mission_workflow_envelope,
