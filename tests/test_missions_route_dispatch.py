@@ -124,7 +124,7 @@ class TestMissionsRouteDispatch(unittest.TestCase):
         self.assertEqual(session.get("improv_intelligence_tab"), "Missions")
 
     def test_build_id_hotfix_marker(self) -> None:
-        self.assertIn("9b5c23b", MISSIONS_UI_BUILD_ID)
+        self.assertIn("15e9e91", MISSIONS_UI_BUILD_ID)
 
 
 if __name__ == "__main__":

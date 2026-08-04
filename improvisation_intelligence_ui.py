@@ -58,6 +58,7 @@ from improvisation_missions import (
     apply_mission_motif_transform,
     generate_mission_example,
     load_mission_example,
+    mission_example_fingerprint,
     mission_example_for_display,
     mission_practice_lick_payload,
     queue_mission_practice_lick_handoff,
@@ -118,7 +119,7 @@ from studio_page_state import (
 from songs.picker_session import mark_improv_tab_user_touched
 
 # Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
-MISSIONS_UI_BUILD_ID = "9b5c23b-missions-hotfix-widget-key"
+MISSIONS_UI_BUILD_ID = "15e9e91-missions-unbound-load-fix"
 
 # Read-only dispatch shadow (not a Streamlit widget key).
 IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY = "_improv_intelligence_tab_for_render"
@@ -1863,8 +1864,6 @@ def _tab_missions(
             diag = dict(session_state.get(MISSION_NEW_IDEA_DIAG_KEY) or {})
             ex = session_state.get("improv_mission_example") or {}
             if isinstance(ex, dict):
-                from improvisation_missions import mission_example_fingerprint, load_mission_example
-
                 loaded = load_mission_example(session_state, improv_ctx)
                 diag["displayed_fp"] = mission_example_fingerprint(loaded)
             diag["artifact"] = collect_creative_mission_artifact_diagnostics(session_state)
