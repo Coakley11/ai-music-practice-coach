@@ -1,11 +1,46 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-03 (Phase 1 Items 1–8 **complete**; Item 8 frozen @ `8ef698e`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-04 (Phase 2A Missions recording @ `227a55b` pending live acceptance; new P0 handoff + speed plans) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
+
+### P0 — Mission Take → Upload Analysis durable handoff (queued)
+
+**Plan:** [plans/2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md)
+
+**Goal:** Missions **Analyze This Take** → Upload Analysis must survive refresh, reboot, and Dell ↔ phone on the same account/workspace — with dry mic as authoritative analysis source, optional mixed preview asset, full pending-analysis envelope, CAS lifecycle, and explicit clear.
+
+- [ ] Authoritative `pending_upload_analysis` envelope (metadata in workspace; no WAV blobs in JSON)
+- [ ] Dry audio → workspace-scoped object storage + fingerprint dedupe
+- [ ] Optional mixed-preview asset (labeled; AI defaults to dry)
+- [ ] Same-device refresh/reboot → Upload Analysis + editable pre-analysis state
+- [ ] Cross-device hydrate → route to Upload Analysis when pending handoff exists
+- [ ] Criteria/metrics edits persist pre-run; take-only metrics ≠ global AI Metrics
+- [ ] Lifecycle: prepared → restored/editable → running → completed; **Clear prepared take**
+- [ ] CAS / stale-device: newer envelope wins (consume Item 8 APIs — **do not modify frozen Item 8**)
+- [ ] Tests: handoff, refresh, reboot, Dell↔phone, isolation, dedupe, stale block, clear
+- [ ] `?dev=1` diagnostics: take id, asset fingerprints/refs, revision, hydrate/write results
+
+**Commits:** isolate from speed pass and from Phase 2A UI hotfixes where practical.
+
+### P0 — Navigation & page-load speed pass (queued)
+
+**Plan:** [plans/2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md)
+
+**Goal:** Measure and reduce real navigation latency (Creative, Missions, Backing, Upload Analysis, sidebar) — route gating, lazy Creative tabs, play-only backing generation, deferred Upload Analysis preprocessing, no navigation-only cloud writes.
+
+- [ ] Baseline `?dev=1` route spans (wall ms, cloud R/W, audio builds, projections)
+- [ ] Gate heavy work behind active `studio_page` / Creative sub-tab
+- [ ] Skip unchanged artifact projection + mission context rebuild
+- [ ] Backing WAV only on Play or musical signature change; cache reuse
+- [ ] Upload Analysis: lazy take load; preprocess on Run AI only; no backing player
+- [ ] Dedupe saves/uploads; preserve CAS fail-closed
+- [ ] Before/after report on listed routes
+
+**Commits:** separate from mission handoff persistence where practical.
 
 ### P0 — Music workspace persistence & state ownership (active)
 
@@ -62,13 +97,17 @@
 
 **Acceptance:** Same progression sounds clearly different across 6 styles blind; Funk Heavy/Energetic vs Light/Dreamy obvious; Jazz Relaxed vs Energetic distinct.
 
-### P0 — Phase 2A Mission selection + exact-chord backing (in progress)
+### P0 — Phase 2A Mission selection + exact-chord backing (in progress — live acceptance pending)
 
 **Plan:** [plans/2026-08-03-phase-2a-mission-exact-chord-backing.md](./plans/2026-08-03-phase-2a-mission-exact-chord-backing.md)
+
+**Live acceptance:** Pending user sign-off on **`227a55b`** (`phase2a-live-only-mix-v3`, `improv_mission_live`, audible mixed preview + dev route markers). Do not mark Phase 2A complete until deployed checklist passes.
 
 - [x] Authoritative `MissionPracticeContext` (type + chord + transport) persisted in mission workspace
 - [x] Exact-chord backing panel (Play/Stop, tempo, loop, volume, count-in, sounding chord) on Metrics & AI + Upload Analysis
 - [x] Mismatch + armed-backing guards; analysis enrichment + stale-context warning
+- [x] Missions live-only recording + mixed preview hotfix @ **`227a55b`**
+- [ ] **Live smoke:** route markers, no upload on Missions, Performance + Backing audible, rerun-stable mixed preview
 - [ ] Live smoke: Metrics → Upload → score on sealed chord; Backing Jam handoff arms context
 
 
@@ -323,7 +362,8 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
-- **Phase 1 Items 1–8 (2026-08-03):** **Live-accepted & frozen** on `dev` — Item 8 @ **`8ef698e`** (CAS + revision unification; TEST A/B/C). **Phase 2 gate open.** Do not modify frozen persistence/CAS without `?dev=1` proof.
+- **Phase 2A (2026-08-04):** **`227a55b`** on `origin/dev` — pending **live acceptance**; next P0: [mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) + [navigation speed pass](./plans/2026-08-04-music-navigation-speed-pass.md).
+- **Phase 1 Items 1–8 (2026-08-03):** **Live-accepted & frozen** on `dev` — Item 8 @ **`8ef698e`** (CAS + revision unification; TEST A/B/C). **Phase 2 gate open.** Do not modify frozen persistence/CAS or Item 8 diagnostics without `?dev=1` proof.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
 - Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.

@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -16,6 +16,8 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
+| **P0** (immediate) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
+| **P0** (immediate) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (immediate) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
 | **P1** | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
 | **P2** (later) | Back/Forward nav audit | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
@@ -23,6 +25,19 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 ---
 
 ## Next Features
+
+### Mission handoff & Upload Analysis (P0 — scheduled)
+
+- Durable **Analyze This Take** envelope: refresh, reboot, Dell ↔ phone
+- Dry mic in object storage; optional mixed preview asset; fingerprint dedupe
+- Explicit clear-prepared-take lifecycle; CAS stale-device protection
+- See [plan](./plans/2026-08-04-mission-take-upload-analysis-persistence.md)
+
+### Performance & navigation (P0 — scheduled)
+
+- Route gating; lazy Creative tabs; play-only backing; deferred Upload Analysis preprocess
+- Before/after measurements on major routes (`?dev=1`)
+- See [plan](./plans/2026-08-04-music-navigation-speed-pass.md)
 
 ### UI polish (scheduled — UI-only commits)
 
@@ -77,6 +92,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Upload & Multitrack
 
+- **Mission live take → Upload Analysis** — cross-device pending handoff (P0; [plan](./plans/2026-08-04-mission-take-upload-analysis-persistence.md))
 - Dedicated chord recognition from audio (noted as future in `recording_analysis.py`)
 - Onset-level timing report export
 - Multitrack: record all layers in one Streamlit session without reload

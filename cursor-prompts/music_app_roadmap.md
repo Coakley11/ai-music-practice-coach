@@ -1,8 +1,10 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-03 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-08-04 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
+
+**Phase 2A Missions recording/mix:** **`227a55b`** on `origin/dev` — **pending live acceptance** (2026-08-04).
 
 This is the master planning document. Related files:
 
@@ -78,6 +80,13 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## In flight (architecture)
 
+**Immediate P0 (2026-08-04):**
+
+| Initiative | Plan |
+|------------|------|
+| Mission Take → Upload Analysis durable handoff + cross-device audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
+| Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
+
 **Principle:** [One Music Generation Engine](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) — one core for phrases, rhythm, theory, spelling, notation, MIDI, playback; every page applies constraints only.
 
 - **Missions** — teach one concept (mission rules on engine).
@@ -101,7 +110,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 **Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Phase 1 Items **1–8 are frozen** (do not modify CAS / revision-unification / Items 1–7 save paths without `?dev=1` regression proof). Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md); **P0** Style Identity Phase 2 (gate **open** — [plan](./plans/2026-07-03-style-identity-phase-2.md)); **P1** UI polish. **No `main` merge** unless explicit release.
+**Next focus:** **P0** [Mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) + [navigation speed](./plans/2026-08-04-music-navigation-speed-pass.md); **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) (shared storage layer); **Phase 2A** live acceptance @ **`227a55b`**; **P0** Style Identity Phase 2 (gate **open**). **No `main` merge** unless explicit release.
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 
@@ -203,5 +212,7 @@ Karaoke Performance Setlist (voice): queue on Song Selection, persisted, session
 ## Notes
 
 - When asking Cursor for a **roadmap**, **feature plan**, or **implementation plan**, agents should update all four `cursor-prompts/music_app_*.md` files (see `.cursor/rules/music-app-roadmap-docs.mdc`).
-- Long implementation plans: save full content to the appropriate `.md` file under `cursor-prompts/`.
+- **Phase 2A** remains **pending live acceptance** on **`227a55b`** until the deployed Missions/Upload checklist passes.
+- **P0 queued (2026-08-04):** [mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md), [navigation speed pass](./plans/2026-08-04-music-navigation-speed-pass.md) — implement in isolated commits; do not regress Phase 1 Items 1–8 or Item 8 diagnostics.
+- Long implementation plans: save full content to the appropriate `.md` file under `cursor-prompts/plans/`.
 - Tests: `tests/test_studio_navigation.py`, `tests/test_sidebar_nav_collapse.py`, plus domain tests per module.

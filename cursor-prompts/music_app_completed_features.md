@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 
 ---
 
@@ -327,5 +327,6 @@
 
 ## Notes
 
+- **Phase 2A Missions live recording/mix @ `227a55b`:** shipped to `origin/dev` 2026-08-04 — **pending live acceptance** (not archived here until sign-off).
 - Mark new completions here and mirror a one-line summary in `music_app_roadmap.md`.
 - Remove items from `music_app_tasks.md` when done.
