@@ -2681,6 +2681,18 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     except ImportError:
         pass
     try:
+        from creative_artifact_global_key_guard import apply_frozen_global_keys_to_payload
+
+        state = apply_frozen_global_keys_to_payload(ss, state)
+    except ImportError:
+        pass
+    try:
+        from pending_upload_route_precedence import apply_pending_upload_to_save_payload
+
+        state = apply_pending_upload_to_save_payload(ss, state)
+    except ImportError:
+        pass
+    try:
         from creative_artifact_global_key_guard import audit_payload_global_keys
 
         audit_payload_global_keys(ss, state, save_reason=save_reason)
@@ -2715,6 +2727,12 @@ def apply_music_disk_state(
         ss["_suite_last_cloud_fetch_payload"] = copy.deepcopy(payload)
     except Exception:
         ss["_suite_last_cloud_fetch_payload"] = payload
+    try:
+        from pending_upload_route_precedence import hydrate_pending_upload_route_from_payload
+
+        hydrate_pending_upload_route_from_payload(ss, payload if isinstance(payload, dict) else {})
+    except ImportError:
+        pass
     try:
         from mission_backing_handoff_persistence import (
             record_refresh_hydration_step,

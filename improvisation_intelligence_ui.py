@@ -713,31 +713,34 @@ def _render_open_practice_backing_row(
     """Song/custom workflows offer Practice; Style Jam / Jam Session focus on Backing Studio."""
     st.markdown("---")
     if workflow == "jam":
-        if on_open_backing and st.button(
-            "🎧 Open in Backing Studio",
-            key="improv_to_backing_jam",
-            type="primary",
-            use_container_width=True,
-        ):
-            on_open_backing()
+        if on_open_backing:
+            st.button(
+                "🎧 Open in Backing Studio",
+                key="improv_to_backing_jam",
+                type="primary",
+                use_container_width=True,
+                on_click=on_open_backing,
+            )
         return
 
     c1, c2 = st.columns([2, 1])
     with c1:
-        if on_open_backing and st.button(
-            "🎧 Open in Backing Studio",
-            key="improv_to_backing",
-            type="primary",
-            use_container_width=True,
-        ):
-            on_open_backing()
+        if on_open_backing:
+            st.button(
+                "🎧 Open in Backing Studio",
+                key="improv_to_backing",
+                type="primary",
+                use_container_width=True,
+                on_click=on_open_backing,
+            )
     with c2:
-        if on_open_practice and st.button(
-            "🎯 Send to Practice Page",
-            key="improv_to_practice",
-            use_container_width=True,
-        ):
-            on_open_practice()
+        if on_open_practice:
+            st.button(
+                "🎯 Send to Practice Page",
+                key="improv_to_practice",
+                use_container_width=True,
+                on_click=on_open_practice,
+            )
 
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:

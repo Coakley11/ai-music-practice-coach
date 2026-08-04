@@ -12,6 +12,7 @@ from creative_mission_artifact_persistence import (
 from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY
 
 CREATIVE_ARTIFACT_GLOBAL_KEY_DIAG_KEY = "_creative_artifact_global_key_diag"
+CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY = "_creative_artifact_frozen_global_snapshot"
 VIOLATION_CREATIVE_ARTIFACT_GLOBAL_KEY_MUTATION = "CREATIVE_ARTIFACT_GLOBAL_KEY_MUTATION"
 
 GLOBAL_KEY_GUARD_FIELDS: tuple[str, ...] = (
@@ -174,23 +175,30 @@ def freeze_global_keys_for_creative_artifact_save(
     save_reason: str,
     caller: str = "freeze_global_keys_for_creative_artifact_save",
 ) -> dict[str, Any]:
-    """Restore session global keys from canonical SSOT before artifact/handoff persist."""
+    """Build canonical global-key snapshot for save — never mutate live widget-bound session keys."""
     if not is_creative_artifact_global_key_guard_reason(session, save_reason):
+        session.pop(CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY, None)
         return {"frozen": False}
     if explicit_display_key_user_event(session):
+        session.pop(CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY, None)
         return {"frozen": False, "skipped": "explicit_user_key_event"}
     canonical = canonical_global_key_snapshot(session)
+    frozen = {f: str(canonical.get(f) or "").strip() for f in GLOBAL_KEY_GUARD_FIELDS if canonical.get(f)}
+    session[CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY] = copy.deepcopy(frozen)
     d = _diag(session)
     d["prior_global_keys"] = copy.deepcopy(canonical)
+    d["frozen_snapshot"] = copy.deepcopy(frozen)
     d["save_reason"] = str(save_reason or "")
     d["artifact_key_center"] = _artifact_key_center(session)
-    reverted_any = False
+    d["caller"] = caller
+    would_revert: list[str] = []
     for field in GLOBAL_KEY_GUARD_FIELDS:
         canon_val = str(canonical.get(field) or "").strip()
         if not canon_val:
             continue
         live = str(session.get(field) or "").strip()
         if live and live != canon_val:
+            would_revert.append(field)
             _record_write(
                 session,
                 field=field,
@@ -199,14 +207,55 @@ def freeze_global_keys_for_creative_artifact_save(
                 function="freeze_global_keys_for_creative_artifact_save",
                 caller=caller,
                 save_reason=save_reason,
-                reverted=True,
+                reverted=False,
             )
-            session[field] = canon_val
-            reverted_any = True
     d["session_keys_after_freeze"] = {
         f: str(session.get(f) or "").strip() or None for f in GLOBAL_KEY_GUARD_FIELDS
     }
-    return {"frozen": True, "reverted": reverted_any, "canonical": canonical}
+    d["snapshot_only"] = True
+    d["would_revert_fields"] = would_revert
+    return {
+        "frozen": True,
+        "reverted": False,
+        "snapshot_only": True,
+        "would_revert_fields": would_revert,
+        "canonical": canonical,
+        "frozen_snapshot": frozen,
+    }
+
+
+def apply_frozen_global_keys_to_payload(session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """Overlay frozen canonical global keys onto save payload (not session)."""
+    frozen = session.get(CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY)
+    if not isinstance(frozen, dict) or not frozen:
+        diag = session.get(CREATIVE_ARTIFACT_GLOBAL_KEY_DIAG_KEY)
+        if isinstance(diag, dict) and isinstance(diag.get("frozen_snapshot"), dict):
+            frozen = diag["frozen_snapshot"]
+    if not isinstance(frozen, dict) or not frozen:
+        return state
+    core = state.get("core")
+    if isinstance(core, dict):
+        for field, val in frozen.items():
+            if val:
+                core[field] = val
+    sess = state.get("session")
+    if isinstance(sess, dict):
+        for field, val in frozen.items():
+            if val:
+                sess[field] = val
+    ass = state.get("active_song_state")
+    if isinstance(ass, dict):
+        for field, val in frozen.items():
+            if val:
+                ass[field] = val
+    return state
+
+
+def get_frozen_global_key_snapshot(session: dict[str, Any]) -> dict[str, str]:
+    raw = session.get(CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY)
+    if isinstance(raw, dict) and raw:
+        return {str(k): str(v) for k, v in raw.items() if v}
+    return {}
 
 
 def audit_payload_global_keys(
@@ -260,13 +309,16 @@ def collect_creative_artifact_global_key_diagnostics(session: dict[str, Any]) ->
 
 
 __all__ = [
+    "CREATIVE_ARTIFACT_FROZEN_GLOBAL_SNAPSHOT_KEY",
     "CREATIVE_ARTIFACT_GLOBAL_KEY_DIAG_KEY",
     "GLOBAL_KEY_GUARD_FIELDS",
     "VIOLATION_CREATIVE_ARTIFACT_GLOBAL_KEY_MUTATION",
+    "apply_frozen_global_keys_to_payload",
     "audit_payload_global_keys",
     "canonical_global_key_snapshot",
     "collect_creative_artifact_global_key_diagnostics",
     "explicit_display_key_user_event",
     "freeze_global_keys_for_creative_artifact_save",
+    "get_frozen_global_key_snapshot",
     "is_creative_artifact_global_key_guard_reason",
 ]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import unittest
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -30,9 +29,6 @@ from suite_user_persistence import _local_dirty_key
 
 
 class TestCreativeArtifactGlobalKeyGuard(unittest.TestCase):
-    def tearDown(self) -> None:
-        os.environ.pop(MUSIC_EGRESS_STRICT_KEY, None)
-
     def _session_cm_with_stale_dm(self) -> dict[str, Any]:
         ss: dict[str, Any] = {
             "developer_mode": True,
@@ -75,6 +71,37 @@ class TestCreativeArtifactGlobalKeyGuard(unittest.TestCase):
         )
         return ss
 
+    def test_freeze_snapshot_without_mutating_live_session_keys(self) -> None:
+        ss = self._session_cm_with_stale_dm()
+        live_before = str(ss.get("display_key"))
+        result = freeze_global_keys_for_creative_artifact_save(
+            ss,
+            save_reason=SAVE_REASON_MISSION_EXAMPLE,
+            caller="test",
+        )
+        self.assertTrue(result.get("frozen"))
+        self.assertTrue(result.get("snapshot_only"))
+        self.assertFalse(result.get("reverted"))
+        self.assertEqual(ss.get("display_key"), live_before)
+        self.assertEqual(result.get("frozen_snapshot", {}).get("display_key"), "Cm")
+        diag = collect_creative_artifact_global_key_diagnostics(ss)
+        writes = diag.get("writes") or []
+        self.assertTrue(any(w.get("field") == "display_key" and not w.get("reverted") for w in writes))
+
+    def test_apply_frozen_overlay_puts_cm_in_payload_not_session(self) -> None:
+        ss = self._session_cm_with_stale_dm()
+        freeze_global_keys_for_creative_artifact_save(
+            ss,
+            save_reason=SAVE_REASON_MISSION_EXAMPLE,
+            caller="test",
+        )
+        from creative_artifact_global_key_guard import apply_frozen_global_keys_to_payload
+
+        payload = {"core": {"display_key": "Dm"}, "session": {"display_key": "Dm"}, "active_song_state": {}}
+        apply_frozen_global_keys_to_payload(ss, payload)
+        self.assertEqual(payload["core"]["display_key"], "Cm")
+        self.assertEqual(ss.get("display_key"), "Dm")
+
     def test_freeze_reverts_stale_session_display_key_before_artifact_save(self) -> None:
         ss = self._session_cm_with_stale_dm()
         result = freeze_global_keys_for_creative_artifact_save(
@@ -83,11 +110,8 @@ class TestCreativeArtifactGlobalKeyGuard(unittest.TestCase):
             caller="test",
         )
         self.assertTrue(result.get("frozen"))
-        self.assertTrue(result.get("reverted"))
-        self.assertEqual(ss.get("display_key"), "Cm")
-        diag = collect_creative_artifact_global_key_diagnostics(ss)
-        writes = diag.get("writes") or []
-        self.assertTrue(any(w.get("field") == "display_key" and w.get("reverted") for w in writes))
+        self.assertEqual(ss.get("display_key"), "Dm")
+        self.assertEqual(result.get("frozen_snapshot", {}).get("display_key"), "Cm")
 
     def test_mission_example_save_payload_keeps_cm_display_key(self) -> None:
         ss = self._session_cm_with_stale_dm()
@@ -120,7 +144,11 @@ class TestCreativeArtifactGlobalKeyGuard(unittest.TestCase):
             with_practice_lick=True,
         )
         arm_mission_backing_handoff_page_change(ss)
-        self.assertEqual(ss.get("display_key"), "Cm")
+        self.assertEqual(ss.get("display_key"), "Dm")
+        self.assertEqual(
+            (ss.get("_creative_artifact_frozen_global_snapshot") or {}).get("display_key"),
+            "Cm",
+        )
         self.assertEqual(canonical_global_key_snapshot(ss).get("display_key"), "Cm")
 
 
