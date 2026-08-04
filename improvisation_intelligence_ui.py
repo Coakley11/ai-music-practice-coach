@@ -628,6 +628,20 @@ def _tab_entry_modes(
                 difficulty=str(session_state.get("improv_difficulty") or "Intermediate"),
                 mood=str(session_state.get("improv_mood") or "Mellow"),
             )
+            try:
+                from music_workflow_generated_session import commit_style_jam_generation
+
+                commit_style_jam_generation(
+                    session_state,
+                    key_center=k,
+                    style=style,
+                    section_map=dict(session_state.get("improv_generated_sections") or {}),
+                    mood=str(session_state.get("improv_mood") or ""),
+                    groove=str(session_state.get("improv_groove") or ""),
+                    tempo_bpm=int(session_state.get("improv_style_bpm") or 0),
+                )
+            except ImportError:
+                pass
             sync_creative_style_jam_meta(session_state)
             apply_creative_concert_key(session_state, k, st_like=st)
             session_state[IMPROV_STYLE_KEY_TRACKER] = k
@@ -733,6 +747,18 @@ def _tab_entry_modes(
                 )
             except ImportError:
                 session_state["improv_jam_session"] = jam
+            try:
+                from music_workflow_generated_session import commit_jam_session_generation
+
+                commit_jam_session_generation(
+                    session_state,
+                    jam if isinstance(jam, dict) else {},
+                    key_center=str(key_c or "C"),
+                    style=str(style or ""),
+                    new_session=True,
+                )
+            except ImportError:
+                pass
             st.rerun()
 
         jam = session_state.get("improv_jam_session")
@@ -1716,6 +1742,18 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     session_state["ii_selected_chord_index"] = int(chord_idx)
     session_state["improv_active_mission"] = mission
     session_state["improv_mission_pick"] = mission
+    try:
+        from music_workflow_mutation import mutate_mission_chord_selection
+
+        mutate_mission_chord_selection(
+            session_state,
+            chord=cur_chord,
+            section=section_label,
+            chord_index=int(chord_idx),
+            chord_label=f"{section_label} · {cur_chord}",
+        )
+    except ImportError:
+        pass
 
     prior = load_mission_example(session_state, improv_ctx)
     prev_fp = mission_example_fingerprint(prior)

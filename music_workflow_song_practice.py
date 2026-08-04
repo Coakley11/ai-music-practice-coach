@@ -1,0 +1,68 @@
+"""Per-song practice key identity — separate from generated workflow keys (Commit 4)."""
+
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, get_workflow_blob, save_workflow_blob
+
+
+def song_practice_storage_id(session: dict[str, Any]) -> tuple[str, str]:
+    """Stable song identity: (source_type, song_id)."""
+    pick = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
+    try:
+        from studio_page_state import resolve_improv_song_source
+
+        if str(resolve_improv_song_source(session) or "") == "Custom progression":
+            custom = str(session.get("custom_progression_id") or session.get("cpl_active_id") or "custom").strip()
+            return "custom", custom or "custom"
+    except ImportError:
+        pass
+    if not pick:
+        pick = "song"
+    return "catalog", pick
+
+
+def song_based_blob_session_id(session: dict[str, Any]) -> str:
+    src, sid = song_practice_storage_id(session)
+    return sid if src == "catalog" else f"custom|{sid}"
+
+
+def mission_blob_session_id(session: dict[str, Any]) -> str:
+    return f"mission|{song_based_blob_session_id(session)}"
+
+
+def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob: WorkflowStateBlob) -> None:
+    """Keep mission_jam blob practice key aligned with the active song blob."""
+    sid = mission_blob_session_id(session)
+    mission = get_workflow_blob(session, "mission_jam", sid)
+    if mission is None:
+        mission = WorkflowStateBlob(
+            workflow_owner="mission_jam",
+            workflow_session_id=sid,
+            song_id=song_blob.song_id,
+            song_title=song_blob.song_title,
+            source_type=song_blob.source_type,
+        )
+    mission.keys = KeyAuthority(
+        original_tonic=song_blob.keys.original_tonic,
+        original_mode=song_blob.keys.original_mode,
+        practice_tonic=song_blob.keys.practice_tonic,
+        practice_mode=song_blob.keys.practice_mode,
+        written_tonic=song_blob.keys.written_tonic,
+        written_mode=song_blob.keys.written_mode,
+        instrument=song_blob.keys.instrument,
+        key_owner="mission_jam",
+    )
+    if song_blob.section_map and not mission.section_map:
+        mission.section_map = copy.deepcopy(song_blob.section_map)
+    save_workflow_blob(session, mission, source="mirror_song_practice_key")
+
+
+__all__ = [
+    "mirror_song_practice_key_to_mission_blob",
+    "mission_blob_session_id",
+    "song_based_blob_session_id",
+    "song_practice_storage_id",
+]

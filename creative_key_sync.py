@@ -337,6 +337,19 @@ def on_improv_jam_key_change() -> None:
     new = str(st.session_state.get("improv_jam_key") or "").strip()
     if not new:
         return
+    try:
+        from music_workflow_mutation import update_active_practice_key
+
+        result = update_active_practice_key(
+            st.session_state,
+            new,
+            source="on_improv_jam_key_change",
+            transpose_progression=False,
+        )
+        if not result.ok:
+            return
+    except ImportError:
+        pass
     gen = st.session_state.get("improv_jam_session")
     if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
         st.session_state["improv_jam_session"] = {
@@ -349,22 +362,6 @@ def on_improv_jam_key_change() -> None:
         }
     apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
     st.session_state[IMPROV_JAM_KEY_TRACKER] = new
-    try:
-        from music_workflow_mutation import update_active_practice_key
-
-        update_active_practice_key(
-            st.session_state,
-            new,
-            source="on_improv_jam_key_change",
-            transpose_progression=True,
-        )
-    except ImportError:
-        try:
-            from workflow_musical_authority import save_workflow_snapshot
-
-            save_workflow_snapshot(st.session_state, "jam_session_generator")
-        except ImportError:
-            pass
     try:
         from generated_jam_key_context import activate_generated_jam_key_ownership
 
@@ -924,6 +921,78 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     if not new:
         return
     try:
+        from music_workflow_mutation import update_active_practice_key
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and ptr.workflow_owner == "style_jam":
+            result = update_active_practice_key(
+                session, new, source="on_improv_style_key_change", transpose_progression=True
+            )
+            if not result.ok:
+                return
+            prev = str(session.get(IMPROV_STYLE_KEY_TRACKER) or "").strip()
+            sync_creative_key_change(session, new, previous_key=prev, st_like=st_like)
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            return
+        if ptr and ptr.workflow_owner == "jam_session_generator":
+            prev = str(session.get(IMPROV_JAM_KEY_TRACKER) or "").strip()
+            result = update_active_practice_key(
+                session, new, source="on_improv_jam_key_change", transpose_progression=True
+            )
+            if not result.ok:
+                return
+            gen = session.get("improv_jam_session")
+            if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
+                session["improv_jam_session"] = {
+                    **gen,
+                    "sections": retranspose_generated_sections(
+                        dict(gen.get("sections") or {}),
+                        from_key=prev,
+                        to_key=new,
+                    ),
+                }
+            apply_creative_concert_key(session, new, st_like=st_like, source="creative_jam_session")
+            session[IMPROV_JAM_KEY_TRACKER] = new
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            return
+        if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+            result = update_active_practice_key(
+                session, new, source="sidebar_song_improv", transpose_progression=True
+            )
+            if not result.ok:
+                return
+            session["concert_key"] = new
+            try:
+                from backing_context import sync_improv_widgets_from_live_concert_key
+
+                sync_improv_widgets_from_live_concert_key(session)
+            except ImportError:
+                pass
+            try:
+                from backing_musical_state import clear_stale_chart_session_keys
+                from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+                clear_stale_chart_session_keys(session)
+                if st_like is not None:
+                    invalidate_backing_cache(st_like)
+                session[BACKING_NEEDS_REGEN] = True
+            except ImportError:
+                pass
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            try:
+                from creative_session_state import sync_creative_session_from_session
+
+                sync_creative_session_from_session(session)
+            except ImportError:
+                pass
+            return
+    except ImportError:
+        pass
+    try:
         from backing_context import get_backing_context
 
         ctx = get_backing_context(session)
@@ -1069,18 +1138,20 @@ def on_improv_style_key_change() -> None:
     )
     prev = str(st.session_state.get(IMPROV_STYLE_KEY_TRACKER) or "").strip()
     new = str(st.session_state.get("improv_style_key") or "").strip()
-    sync_creative_key_change(st.session_state, new, previous_key=prev, st_like=st)
     try:
         from music_workflow_mutation import update_active_practice_key
 
-        update_active_practice_key(
+        result = update_active_practice_key(
             st.session_state,
             new,
             source="on_improv_style_key_change",
             transpose_progression=True,
         )
+        if not result.ok:
+            return
     except ImportError:
         pass
+    sync_creative_key_change(st.session_state, new, previous_key=prev, st_like=st)
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_style_key_change"
     )

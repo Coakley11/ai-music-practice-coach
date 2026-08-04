@@ -165,11 +165,24 @@ def capture_outgoing_blob(session: dict[str, Any]) -> tuple[str, str, WorkflowSt
         sid = legacy_session_id_for_owner(session, owner)
         record_compat_fallback(session, "capture_outgoing_legacy_owner", owner)
     stored = get_workflow_blob(session, owner, sid)
+    try:
+        from music_workflow_legacy_capture import capture_outgoing_workflow_blob
+
+        outgoing = capture_outgoing_workflow_blob(
+            session,
+            owner=owner,
+            session_id=sid,
+            allow_legacy_bootstrap=stored is None,
+        )
+        if outgoing is not None:
+            return owner, sid, outgoing
+    except ImportError:
+        pass
+    if stored is not None:
+        return owner, sid, stored
     fresh = build_workflow_blob_from_legacy(session, owner)
     fresh.workflow_owner = owner
     fresh.workflow_session_id = sid
-    if stored and fresh.context_revision < stored.context_revision:
-        fresh.context_revision = stored.context_revision
     return owner, sid, fresh
 
 

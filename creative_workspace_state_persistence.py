@@ -170,6 +170,25 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
             cs["instrument"] = live_inst
         base[CREATIVE_SESSION_KEY] = cs
     base["updated_at"] = _utc_now_iso()
+    try:
+        from music_workflow_canonical_persistence import (
+            CWS_WORKFLOW_STATE_NESTED_KEY,
+            gather_workflow_state_canonical_slice,
+            note_workflow_persist_performed,
+            resolve_workflow_persist_reason,
+            should_gather_workflow_state_to_canonical,
+        )
+
+        wf_reason = resolve_workflow_persist_reason(session, fallback=persist_reason)
+        if should_gather_workflow_state_to_canonical(session, persist_reason=wf_reason):
+            nested = gather_workflow_state_canonical_slice(session)
+            if nested:
+                base[CWS_WORKFLOW_STATE_NESTED_KEY] = nested
+                ptr = session.get("_music_active_workflow")
+                rev = int(ptr.get("context_revision") or 0) if isinstance(ptr, dict) else 0
+                note_workflow_persist_performed(session, revision=rev)
+    except ImportError:
+        pass
     return base
 
 
@@ -407,6 +426,17 @@ def apply_creative_workspace_to_session(
         pass
     canonical = upgrade_creative_workspace_blob(blob)
     write_canonical_creative_workspace(session, canonical, reason=source)
+    try:
+        from music_workflow_canonical_persistence import (
+            CWS_WORKFLOW_STATE_NESTED_KEY,
+            apply_workflow_state_canonical_slice,
+        )
+
+        nested = canonical.get(CWS_WORKFLOW_STATE_NESTED_KEY)
+        if nested:
+            apply_workflow_state_canonical_slice(session, nested)
+    except ImportError:
+        pass
     session[CREATIVE_WORKSPACE_RESTORED_KEY] = True
     session.pop(CREATIVE_WORKSPACE_LAST_SKIP_KEY, None)
     try:

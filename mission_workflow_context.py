@@ -234,6 +234,21 @@ def ensure_mission_handoff_aligned(
     song_title: str,
     example: Any | None,
 ) -> None:
+    try:
+        from music_workflow_mutation import mutate_mission_handoff_aligned
+
+        result = mutate_mission_handoff_aligned(
+            session,
+            mission=mission,
+            cur_chord=cur_chord,
+            section_label=section_label,
+            chord_idx=chord_idx,
+            example=example,
+        )
+        if result.ok:
+            return
+    except ImportError:
+        pass
     session["ii_selected_chord"] = str(cur_chord)
     session["II_SELECTED_CHORD"] = str(cur_chord)
     session["ii_selected_chord_index"] = int(chord_idx)

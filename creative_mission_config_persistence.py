@@ -707,6 +707,13 @@ def snapshot_hydrated_mission_config(session: dict[str, Any], *, source: str = "
 
 
 def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
+    try:
+        from music_workflow_mutation import should_project_mission_config_from_canonical
+
+        if not should_project_mission_config_from_canonical(session):
+            return
+    except ImportError:
+        pass
     for key in MISSION_CONFIG_CANONICAL_KEYS:
         val = canonical_mission_config_value(session, key)
         if key == "ii_selected_chord_index":

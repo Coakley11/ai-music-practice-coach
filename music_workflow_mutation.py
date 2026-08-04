@@ -551,7 +551,113 @@ def update_active_practice_key(
             (get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) or blob).section_map
         )
         session[WORKFLOW_MUTATION_LAST_KEY] = result.trace
+        try:
+            from music_workflow_song_practice import mirror_song_practice_key_to_mission_blob, song_based_blob_session_id
+
+            if owner in {"song_based_improvisation", "mission_jam"}:
+                active_blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+                if active_blob:
+                    song_sid = song_based_blob_session_id(session)
+                    if owner == "mission_jam":
+                        song_blob = get_workflow_blob(session, "song_based_improvisation", song_sid)
+                        if song_blob is None:
+                            song_blob = WorkflowStateBlob(
+                                workflow_owner="song_based_improvisation",
+                                workflow_session_id=song_sid,
+                                keys=active_blob.keys,
+                                section_map=copy.deepcopy(active_blob.section_map),
+                            )
+                            save_workflow_blob(session, song_blob, source="key_mirror_song")
+                        else:
+                            song_blob.keys = copy.deepcopy(active_blob.keys)
+                            song_blob.section_map = copy.deepcopy(active_blob.section_map)
+                            save_workflow_blob(session, song_blob, source="key_mirror_song")
+                        mirror_song_practice_key_to_mission_blob(session, song_blob)
+                    else:
+                        mirror_song_practice_key_to_mission_blob(session, active_blob)
+        except ImportError:
+            pass
     return result
+
+
+def mutate_mission_handoff_aligned(
+    session: dict[str, Any],
+    *,
+    mission: str,
+    cur_chord: str,
+    section_label: str,
+    chord_idx: int,
+    example: Any | None = None,
+) -> MutationResult:
+    if example is not None and str(getattr(example, "chord", "") or "") != str(cur_chord):
+        return MutationResult(ok=False, error_code="HANDOFF_MISMATCH", error_message="Example chord mismatch.")
+    result = mutate_mission_chord_selection(
+        session,
+        chord=str(cur_chord),
+        section=str(section_label),
+        chord_index=int(chord_idx),
+        chord_label=f"{section_label} · {cur_chord}",
+    )
+    if result.ok:
+        session["_mission_last_handoff_chord"] = str(cur_chord)
+        try:
+            from mission_practice_context import ensure_mission_practice_context
+
+            ensure_mission_practice_context(session, force=True)
+        except ImportError:
+            pass
+    return result
+
+
+def update_mission_example_on_blob(
+    session: dict[str, Any],
+    *,
+    chord: str,
+    example_fingerprint: str,
+    artifact_fingerprint: str = "",
+) -> MutationResult:
+    def _mut(b: WorkflowStateBlob) -> None:
+        b.selected_chord_symbol = str(chord or "").strip()
+        b.example_fingerprint = str(example_fingerprint or "")[:24]
+        if artifact_fingerprint:
+            b.artifact_fingerprint = str(artifact_fingerprint)[:24]
+        if b.selected_chord_symbol and b.example_fingerprint:
+            b.backing_handoff_chord = b.selected_chord_symbol
+
+    return mutate_active_workflow(
+        session,
+        _mut,
+        mutation_type="mission_example_artifact",
+        source="mission_example_save",
+        expected_owner="mission_jam",
+        persist_policy="explicit",
+    )
+
+
+def should_project_mission_config_from_canonical(session: dict[str, Any]) -> bool:
+    """Active blob wins over stale canonical mission config."""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        if not ptr or ptr.workflow_owner != "mission_jam":
+            return True
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        if blob is None:
+            return True
+        canon_chord = ""
+        try:
+            from creative_mission_config_persistence import canonical_mission_config_value
+
+            canon_chord = str(canonical_mission_config_value(session, "ii_selected_chord") or "").strip()
+        except ImportError:
+            return True
+        if canon_chord and blob.selected_chord_symbol and canon_chord != blob.selected_chord_symbol:
+            record_compat_fallback(session, "canonical_mission_config_stale", canon_chord)
+            return False
+    except ImportError:
+        return True
+    return True
 
 
 __all__ = [
@@ -564,7 +670,10 @@ __all__ = [
     "commit_staged_workflow",
     "log_direct_owner_write_attempt",
     "mutate_active_workflow",
+    "mutate_mission_handoff_aligned",
     "mutate_mission_chord_selection",
+    "should_project_mission_config_from_canonical",
+    "update_mission_example_on_blob",
     "resolve_workflow_routes",
     "set_legacy_owner_compat_hint",
     "snapshot_session_for_rollback",
