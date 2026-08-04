@@ -35,6 +35,8 @@ MISSION_WORKSPACE_KEYS: tuple[str, ...] = (
     "ii_selected_chord_label",
     "improv_mission_practice_context",
     "improv_mission_recording_seal",
+    "improv_mission_evaluation_focus",
+    "improv_mission_match_example_mode",
     MISSION_WORKSPACE_UPDATED_AT_KEY,
 )
 # Creative + backing page snapshots (page-local UI).

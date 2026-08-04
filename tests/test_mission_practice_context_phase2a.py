@@ -85,17 +85,51 @@ class TestMissionPracticeContextPhase2A(unittest.TestCase):
         self.assertEqual(out["mission_chord"], "Fmaj7")
         self.assertEqual(out["sections"], {"Chorus": ["Fmaj7"]})
 
-    def test_capture_blocked_without_armed_backing(self) -> None:
+    def test_capture_upload_path_without_armed_backing(self) -> None:
         session = {
             "improv_active_mission": "Guide-tone targeting",
             "improv_mission_chord_options": ["Em7"],
             "ii_selected_chord_index": 0,
             "ii_selected_chord": "Em7",
-            MISSION_BACKING_SOUNDING_CHORD_KEY: "Em7",
         }
-        ok, msg = mission_capture_allowed(session, require_mission_workflow=True)
-        self.assertFalse(ok)
-        self.assertIn("exact-chord backing", msg.lower())
+        ok, _msg = mission_capture_allowed(
+            session,
+            require_mission_workflow=True,
+            capture_path="upload",
+        )
+        self.assertTrue(ok)
+
+    def test_enrich_analysis_includes_evaluation_focus(self) -> None:
+        session = {
+            "improv_active_mission": "Develop one motif",
+            "improv_mission_chord_options": ["Ab7"],
+            "ii_selected_chord_index": 0,
+            "ii_selected_chord": "Ab7",
+            "improv_mission_evaluation_focus": "Melodic development",
+        }
+        out = enrich_analysis_context(session, {})
+        self.assertEqual(out.get("evaluation_focus"), "Melodic development")
+        self.assertTrue(out.get("optional_mission_example_only"))
+
+    def test_example_change_does_not_stale_seal(self) -> None:
+        session = {
+            "improv_active_mission": "Develop one motif",
+            "improv_mission_chord_options": ["Cmaj7"],
+            "ii_selected_chord_index": 0,
+            "ii_selected_chord": "Cmaj7",
+            MISSION_EXACT_BACKING_ARMED_KEY: True,
+            "improv_mission_evaluation_focus": "Motif development",
+        }
+        seal_recording_context(session, association="test")
+        session["improv_mission_example"] = {"motif": {"notes": ["D4", "E4"]}, "variant": "new"}
+        warn = recording_context_stale_warning(session)
+        self.assertEqual(warn, "")
+        ok, _ = mission_capture_allowed(
+            session,
+            require_mission_workflow=True,
+            capture_path="analysis",
+        )
+        self.assertTrue(ok)
 
 
 if __name__ == "__main__":

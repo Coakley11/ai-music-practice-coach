@@ -34,6 +34,7 @@ def render_exact_chord_mission_backing_panel(
     *,
     key_prefix: str = "mission_exact",
     compact: bool = False,
+    play_label: str | None = None,
 ) -> None:
     if not should_show_exact_chord_panel(session):
         return
@@ -47,25 +48,29 @@ def render_exact_chord_mission_backing_panel(
     block = str(session.get(MISSION_CAPTURE_BLOCK_MESSAGE_KEY) or "")
     armed = bool(session.get(MISSION_EXACT_BACKING_ARMED_KEY))
 
-    chord_display = ctx.chord.symbol or "—"
-    if ctx.chord.section:
-        chord_display = f"{ctx.chord.section} · {chord_display}"
+    chord_only = ctx.chord.symbol or "—"
+    play_caption = play_label or f"Play backing for {chord_only}"
+    if ctx.chord.section and not compact:
+        chord_display = f"{ctx.chord.section} · {chord_only}"
+    else:
+        chord_display = chord_only
 
     st.markdown(
         f'<div style="border:1px solid #e2e8f0;border-radius:12px;padding:0.75rem 1rem;margin:0.5rem 0;'
         f'background:linear-gradient(145deg,#faf5ff,#f8fafc);">'
         f'<div style="font-size:0.78rem;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.04em;">'
-        f'Exact chord backing</div>'
+        f'Backing for this mission</div>'
         f'<div style="font-size:1.65rem;font-weight:800;color:#0f172a;margin:0.15rem 0;">{_esc(chord_display)}</div>'
-        f'<div style="font-size:0.85rem;color:#475569;">Mission · {_esc(ctx.mission_type or "Practice")}'
-        f'{" · " + _esc(ctx.chord.quality_label) if ctx.chord.quality_label else ""}</div></div>',
+        f'<div style="font-size:0.85rem;color:#475569;">{_esc(play_caption)}'
+        f'{" · " + _esc(ctx.chord.quality_label) if ctx.chord.quality_label else ""}'
+        f'<br><span style="font-size:0.82rem;">Improvise freely while focusing on your selected mission.</span></div></div>',
         unsafe_allow_html=True,
     )
 
     if mismatch and mismatch_msg:
         st.error(mismatch_msg.replace("**", ""))
     elif armed:
-        st.success("Exact chord backing armed — UI and sounding chord match.")
+        st.success("Backing armed — matches selected chord.")
     if stale:
         st.warning(stale)
     if block and not mismatch:
@@ -153,4 +158,4 @@ def render_exact_chord_mission_backing_panel(
         st.caption(f"Currently sounding: **{_esc(sounding)}**")
 
     if not compact:
-        st.caption("Press **Play** before live recording or analysis when mission workflow is locked.")
+        st.caption("Play is optional for uploads; use it when you want to hear the chord while recording live.")

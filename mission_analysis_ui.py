@@ -362,8 +362,13 @@ def prepare_mission_upload_from_missions(session_state: dict) -> None:
     session_state[ANALYSIS_CRITERIA_LOCKED] = True
     session_state.pop(ANALYSIS_RETURN_TO_METRICS, None)
     try:
-        from mission_practice_context import ensure_mission_practice_context, seal_recording_context
+        from mission_practice_context import (
+            MISSION_RECORDING_STUDIO_ENGAGED_KEY,
+            ensure_mission_practice_context,
+            seal_recording_context,
+        )
 
+        session_state[MISSION_RECORDING_STUDIO_ENGAGED_KEY] = True
         ensure_mission_practice_context(session_state, force=True)
         seal_recording_context(session_state, association="missions_upload_handoff")
     except ImportError:

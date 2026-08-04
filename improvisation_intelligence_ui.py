@@ -1478,6 +1478,12 @@ def _tab_missions(
         unsafe_allow_html=True,
     )
 
+    from improvisation_missions import mission_brief_for_practice
+
+    st.markdown("##### Mission instructions")
+    st.markdown(mission_brief_for_practice(mission))
+    st.caption("Improvise freely — you are not required to copy any example notes.")
+
     session_state["improv_active_mission"] = mission
     try:
         from mission_practice_context import mark_mission_practice_context_dirty
@@ -1495,20 +1501,11 @@ def _tab_missions(
         prepare_mission_upload_from_missions(session_state)
         on_open_analysis()
 
-    try:
-        from mission_upload_recording_ui import render_mission_upload_recording_studio
-
-        render_mission_upload_recording_studio(
-            st,
-            session_state,
-            key_prefix="improv_mission_upload",
-            on_open_full_upload=_open_mission_upload_analysis if on_open_analysis else None,
-        )
-    except ImportError:
-        pass
-
     st.markdown("---")
-    st.markdown("##### Mission example (optional)")
+    st.markdown("##### Optional example idea")
+    st.caption(
+        "This is one possible way to practice the mission. You may create your own notes and phrases."
+    )
     g1, g2, g3, g4 = st.columns(4)
     with g1:
         st.button(
@@ -1604,128 +1601,138 @@ def _tab_missions(
             _open_mission_backing(with_practice_lick=False)
 
     if on_open_analysis:
-        st.markdown("---")
-        st.caption(
-            "Mission upload & recording above is the primary path. "
-            "**Practice in Backing Jam** below is optional for full-track jamming."
-        )
+        pass  # optional recording expander rendered at bottom
 
     if not example:
         st.info(
-            "Pick a mission and press **Generate example** for a playable idea tied to "
-            f"**{html.escape(improv_ctx.song_title)}**."
+            "Press **Generate example** for optional inspiration tied to "
+            f"**{html.escape(improv_ctx.song_title)}** — or improvise your own ideas."
         )
-        return
-
-    example = _maybe_refresh_mission_example_outputs(
-        session_state, example, instrument=live_inst, bpm=bpm
-    )
-    family = instrument_family(live_inst)
-
-    st.markdown("##### Example")
-    st.markdown(
-        f"**Notes:** `{example.motif.get('display', '')}` · "
-        f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
-    )
-    st.markdown(f"**Why it works:** {example.why}")
-    for step in example.practice_steps:
-        st.markdown(f"- {step}")
-
-    st.markdown("**Transform idea**")
-    t1, t2, t3, t4 = st.columns(4)
-    transform_clicked = False
-    with t1:
-        if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
-            apply_mission_motif_transform(
-                session_state, improv_ctx, "sequence_up", bpm=bpm
-            )
-            transform_clicked = True
-    with t2:
-        if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
-            apply_mission_motif_transform(
-                session_state, improv_ctx, "sequence_down", bpm=bpm
-            )
-            transform_clicked = True
-    with t3:
-        if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
-            apply_mission_motif_transform(
-                session_state, improv_ctx, "invert", bpm=bpm
-            )
-            transform_clicked = True
-    with t4:
-        if st.button(
-            "Change Rhythm",
-            key="improv_mission_change_rhythm",
-            use_container_width=True,
-        ):
-            apply_mission_motif_transform(
-                session_state, improv_ctx, "change_rhythm", bpm=bpm
-            )
-            transform_clicked = True
-    if transform_clicked:
-        try:
-            from studio_page_persistence import save_page_snapshot
-
-            save_page_snapshot(session_state, "creative")
-        except ImportError:
-            pass
-        st.rerun()
-
-    example = load_mission_example(session_state, improv_ctx)
-    if example:
+    else:
         example = _maybe_refresh_mission_example_outputs(
             session_state, example, instrument=live_inst, bpm=bpm
         )
+        family = instrument_family(live_inst)
 
-    st.markdown("**Chord tones**")
-    st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
-    if family != "wind":
-        st.markdown("**Suggested scales**")
-        suggestions = example.insight.scale_suggestions or [
-            build_scale_suggestion(label, reference_key=example.display_key)
-            for label in example.insight.scales
-        ]
-        for suggestion in suggestions:
-            st.markdown(format_scale_line(suggestion, example.insight.chord_tones))
+        st.markdown("##### Optional example (inspiration only)")
+        st.markdown(
+            f"**Notes:** `{example.motif.get('display', '')}` · "
+            f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
+        )
+        st.markdown(f"**Why it works:** {example.why}")
+        for step in example.practice_steps:
+            st.markdown(f"- {step}")
 
-    if example.abc:
-        st.markdown("**Sheet music**")
-        n_notes = len(example.motif.get("notes") or [])
-        staff_h = min(720, max(360, 280 + n_notes * 14))
-        _render_motif_sheet_music(st, example.abc, height=staff_h)
+        st.markdown("**Transform idea**")
+        t1, t2, t3, t4 = st.columns(4)
+        transform_clicked = False
+        with t1:
+            if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
+                apply_mission_motif_transform(
+                    session_state, improv_ctx, "sequence_up", bpm=bpm
+                )
+                transform_clicked = True
+        with t2:
+            if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
+                apply_mission_motif_transform(
+                    session_state, improv_ctx, "sequence_down", bpm=bpm
+                )
+                transform_clicked = True
+        with t3:
+            if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
+                apply_mission_motif_transform(
+                    session_state, improv_ctx, "invert", bpm=bpm
+                )
+                transform_clicked = True
+        with t4:
+            if st.button(
+                "Change Rhythm",
+                key="improv_mission_change_rhythm",
+                use_container_width=True,
+            ):
+                apply_mission_motif_transform(
+                    session_state, improv_ctx, "change_rhythm", bpm=bpm
+                )
+                transform_clicked = True
+        if transform_clicked:
+            try:
+                from studio_page_persistence import save_page_snapshot
 
-    if family == "guitar" and example.tab:
-        st.markdown("**Guitar TAB**")
-        st.code(example.tab, language=None)
+                save_page_snapshot(session_state, "creative")
+            except ImportError:
+                pass
+            st.rerun()
 
-    if family == "piano" and example.piano_html:
-        st.markdown("**Piano guide**")
-        st.markdown(example.piano_html, unsafe_allow_html=True)
+        example = load_mission_example(session_state, improv_ctx)
+        if example:
+            example = _maybe_refresh_mission_example_outputs(
+                session_state, example, instrument=live_inst, bpm=bpm
+            )
 
-    if family == "wind":
-        st.markdown("**Phrasing & articulation**")
-        for line in wind_phrasing_lines(live_inst, example.motif):
-            st.markdown(f"- {line}")
+        st.markdown("**Chord tones**")
+        st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
+        if family != "wind":
+            st.markdown("**Suggested scales**")
+            suggestions = example.insight.scale_suggestions or [
+                build_scale_suggestion(label, reference_key=example.display_key)
+                for label in example.insight.scales
+            ]
+            for suggestion in suggestions:
+                st.markdown(format_scale_line(suggestion, example.insight.chord_tones))
+
+        if example.abc:
+            st.markdown("**Sheet music**")
+            n_notes = len(example.motif.get("notes") or [])
+            staff_h = min(720, max(360, 280 + n_notes * 14))
+            _render_motif_sheet_music(st, example.abc, height=staff_h)
+
+        if family == "guitar" and example.tab:
+            st.markdown("**Guitar TAB**")
+            st.code(example.tab, language=None)
+
+        if family == "piano" and example.piano_html:
+            st.markdown("**Piano guide**")
+            st.markdown(example.piano_html, unsafe_allow_html=True)
+
+        if family == "wind":
+            st.markdown("**Phrasing & articulation**")
+            for line in wind_phrasing_lines(live_inst, example.motif):
+                st.markdown(f"- {line}")
+
+        st.markdown("---")
+        practice_in_jam = st.checkbox(
+            "Practice this lick in Backing Jam",
+            value=True,
+            key="improv_mission_practice_lick_toggle",
+            help="Optional: open Backing Jam with this example for reference — not required for scoring.",
+        )
+        if on_open_backing and st.button(
+            "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
+            key="improv_mission_over_backing_bottom",
+            type="primary",
+            use_container_width=True,
+        ):
+            _open_mission_backing(with_practice_lick=practice_in_jam)
+
+        st.caption(
+            f"Inspiration variant: **{example.variant}** · "
+            f"notation shown for **{html.escape(live_inst)}** — scoring uses your mission, not these exact pitches."
+        )
 
     st.markdown("---")
-    practice_in_jam = st.checkbox(
-        "Practice this lick in Backing Jam",
-        value=True,
-        key="improv_mission_practice_lick_toggle",
-        help="When on, Backing Jam shows this motif (sheet music, TAB, playback) synced to tempo.",
-    )
-    if on_open_backing and st.button(
-        "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
-        key="improv_mission_over_backing_bottom",
-        type="primary",
-        use_container_width=True,
-    ):
-        _open_mission_backing(with_practice_lick=practice_in_jam)
+    try:
+        from mission_upload_recording_ui import render_mission_recording_upload_expander
 
-    st.caption(
-        f"Example variant: **{example.variant}** · "
-        f"outputs follow **{html.escape(live_inst)}** and the current notes/rhythm."
-    )
+        dev_mode = bool(session_state.get("_dev_mode") or session_state.get("dev_mode"))
+        render_mission_recording_upload_expander(
+            st,
+            session_state,
+            key_prefix="improv_mission_upload",
+            on_analyze_take=_open_mission_upload_analysis if on_open_analysis else None,
+            dev_mode=dev_mode,
+        )
+    except ImportError:
+        pass
 
 
 def _tab_harmony_map(

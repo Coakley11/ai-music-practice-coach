@@ -213,10 +213,26 @@ def _why_it_works(
     )
 
 
+def mission_brief_for_practice(mission: str) -> str:
+    """User-facing mission instructions (no example required)."""
+    low = str(mission or "").lower()
+    if "chord tone" in low:
+        return "Outline the harmony using chord tones while improvising your own lines and rhythms."
+    if "guide tone" in low:
+        return "Connect 3rds and 7ths in your phrases while keeping your own melodic choices."
+    if "motif" in low:
+        return "Develop a short idea: repeat, vary, and grow it while improvising freely over the target chord."
+    if "silence" in low or "space" in low:
+        return "Use rests and space deliberately as part of your phrasing over the target chord."
+    if "rhythm" in low:
+        return "Explore rhythmic variety and groove while staying with the mission over the target chord."
+    return "Focus on the mission goal while improvising freely over the selected chord."
+
+
 def _practice_steps(mission: str, level: str, instrument: str) -> list[str]:
     steps = [
-        "Sing the example, then play it slowly with the metronome.",
-        "Loop the motif 4× on one chord before moving to the next change.",
+        "Optional: use the example idea for inspiration — invent your own notes and phrases.",
+        "Loop your idea on one chord before moving to the next change.",
     ]
     low = mission.lower()
     if "motif" in low and "solo" in low:

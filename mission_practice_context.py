@@ -22,6 +22,7 @@ MISSION_EXACT_BACKING_ARMED_KEY = "_mission_exact_backing_armed"
 MISSION_CAPTURE_BLOCK_MESSAGE_KEY = "_mission_capture_block_message"
 MISSION_PRACTICE_CONTEXT_SIG_KEY = "_mission_practice_context_sig"
 MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY = "_mission_practice_context_needs_refresh"
+MISSION_RECORDING_STUDIO_ENGAGED_KEY = "_mission_recording_studio_engaged"
 
 _CONTEXT_VERSION = 1
 
@@ -60,6 +61,8 @@ class MissionPracticeContext:
     recording_association: str = ""
     context_fingerprint: str = ""
     sealed_at: str = ""
+    evaluation_focus: str = ""
+    score_against_example: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
@@ -101,6 +104,8 @@ class MissionPracticeContext:
             recording_association=str(raw.get("recording_association") or ""),
             context_fingerprint=str(raw.get("context_fingerprint") or ""),
             sealed_at=str(raw.get("sealed_at") or ""),
+            evaluation_focus=str(raw.get("evaluation_focus") or ""),
+            score_against_example=bool(raw.get("score_against_example")),
         )
 
 
@@ -188,6 +193,8 @@ def context_fingerprint(ctx: MissionPracticeContext) -> str:
         "style": ctx.backing_style,
         "groove": ctx.backing_groove,
         "meter": ctx.meter,
+        "evaluation_focus": ctx.evaluation_focus,
+        "score_against_example": ctx.score_against_example,
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:24]
@@ -225,6 +232,18 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
     pick_key = str(session.get("active_catalog_pick_key") or session.get("_active_pick_key") or "").strip()
     display_key = str(session.get("display_key") or session.get("chart_key") or "").strip()
 
+    try:
+        from mission_evaluation_focus import (
+            authoritative_evaluation_focus,
+            example_match_mode_enabled,
+        )
+
+        eval_focus = authoritative_evaluation_focus(session)
+        match_example = example_match_mode_enabled(session)
+    except ImportError:
+        eval_focus = ""
+        match_example = False
+
     ctx = MissionPracticeContext(
         mission_type=mission_type,
         mission_pick=mission_type,
@@ -240,6 +259,8 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
         song_title=song_title,
         pick_key=pick_key,
         display_key=display_key,
+        evaluation_focus=eval_focus,
+        score_against_example=match_example,
     )
     ctx.context_fingerprint = context_fingerprint(ctx)
     return ctx
@@ -277,6 +298,8 @@ def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[A
         bool(session.get("mission_exact_backing_loop", True)),
         round(float(session.get("mission_exact_backing_volume") or 0.85), 2),
         bool(session.get("mission_exact_backing_count_in")),
+        str(session.get("improv_mission_evaluation_focus") or ""),
+        bool(session.get("improv_mission_match_example_mode")),
     )
 
 
@@ -375,29 +398,46 @@ def recording_context_stale_warning(session: dict[str, Any]) -> str:
         )
     if sealed.tempo_bpm != live.tempo_bpm:
         parts.append(f"tempo changed from {sealed.tempo_bpm} to {live.tempo_bpm} BPM")
+    if sealed.evaluation_focus != live.evaluation_focus:
+        parts.append(
+            f"evaluation focus changed from “{sealed.evaluation_focus}” to “{live.evaluation_focus}”"
+        )
     if not parts:
         return "Mission practice context changed after this take was prepared."
-    return "Mission context changed after recording: " + "; ".join(parts) + "."
+    return "Take context changed: " + "; ".join(parts) + "."
 
 
-def mission_capture_allowed(session: dict[str, Any], *, require_mission_workflow: bool) -> tuple[bool, str]:
+def mission_capture_allowed(
+    session: dict[str, Any],
+    *,
+    require_mission_workflow: bool,
+    capture_path: str = "live",
+) -> tuple[bool, str]:
     if not require_mission_workflow:
         return True, ""
     mission_type = authoritative_mission_type(session)
     symbol, _s, _i, _l = _authoritative_chord_fields(session)
     if not mission_type and not symbol:
         return True, ""
+
     mismatch, msg = ui_backing_chord_mismatch(session)
     if mismatch:
         session[MISSION_CAPTURE_BLOCK_MESSAGE_KEY] = msg
         return False, msg
-    if not session.get(MISSION_EXACT_BACKING_ARMED_KEY) and symbol:
-        hint = (
-            "Start **exact-chord backing** (Play) so the take matches the selected chord, "
-            "or open Mission Backing Jam with the same chord."
-        )
-        session[MISSION_CAPTURE_BLOCK_MESSAGE_KEY] = hint
-        return False, hint
+
+    path = str(capture_path or "live").strip().lower()
+    if path == "analysis":
+        stale = recording_context_stale_warning(session)
+        if stale:
+            session[MISSION_CAPTURE_BLOCK_MESSAGE_KEY] = stale
+            return False, stale
+        return True, ""
+
+    if path == "upload":
+        session.pop(MISSION_CAPTURE_BLOCK_MESSAGE_KEY, None)
+        return True, ""
+
+    session.pop(MISSION_CAPTURE_BLOCK_MESSAGE_KEY, None)
     return True, ""
 
 
@@ -418,6 +458,11 @@ def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dic
         sections = out.get("sections")
         if isinstance(sections, dict) and mpc.chord.section:
             out["sections"] = {mpc.chord.section: [mpc.chord.symbol]}
+    out["evaluation_focus"] = mpc.evaluation_focus
+    out["mission_evaluation_focus"] = mpc.evaluation_focus
+    out["score_against_example"] = mpc.score_against_example
+    if not mpc.score_against_example:
+        out["optional_mission_example_only"] = True
     stale = recording_context_stale_warning(session)
     if stale:
         out["mission_context_stale_warning"] = stale
@@ -435,7 +480,11 @@ def validate_analysis_mission_context(session: dict[str, Any]) -> tuple[bool, st
     symbol, _s, _i, _l = _authoritative_chord_fields(session)
     if locked and not (mission_type or symbol):
         return False, "Upload Analysis is locked to a mission take but mission type/chord are missing. Re-open from Metrics & AI."
-    ok, msg = mission_capture_allowed(session, require_mission_workflow=locked)
+    ok, msg = mission_capture_allowed(
+        session,
+        require_mission_workflow=locked,
+        capture_path="analysis",
+    )
     if not ok:
         return False, msg
     return True, ""

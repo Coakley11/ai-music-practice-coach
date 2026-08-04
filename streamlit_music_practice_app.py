@@ -13258,8 +13258,8 @@ elif _studio_page == "analysis":
                             compact=False,
                         )
                         st.caption(
-                            "File uploads are scored against mission/chord context only — "
-                            "backing is not mixed into uploaded files unless you recorded that way."
+                            "The uploaded recording will be analyzed using this mission, chord, and evaluation focus. "
+                            "The backing track is not added to the uploaded audio."
                         )
                         st.markdown("---")
                 except ImportError:
