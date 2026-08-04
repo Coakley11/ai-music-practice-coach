@@ -6,6 +6,7 @@ import unittest
 from typing import Any
 
 from backing_context import BackingContext, build_entry_jam_context, open_backing_from_creative, set_backing_context
+from backing_nav_actions import build_backing_nav_actions
 from backing_session_route import return_to_regular_backing_label, visible_navigation_actions
 from backing_workflow_context import (
     get_backing_workflow_envelope,
@@ -35,8 +36,11 @@ class TestBackingWorkflowContext(unittest.TestCase):
         self.assertEqual(env.get("workflow_type"), "jam_session_generator")
         self.assertEqual(env.get("source_type"), "generated")
         self.assertIn("Bossa Nova", str(ctx.style or ctx.groove))
-        self.assertIsNone(return_to_regular_backing_label(session))
-        self.assertIn("Return to Creative Page", " ".join(visible_navigation_actions(session)))
+        self.assertNotIn("Jewish", str(ctx.style or ""))
+        actions, _ = build_backing_nav_actions(session)
+        labels = " ".join(a.label for a in actions)
+        self.assertIn("Return to Catalog Song Backing", labels)
+        self.assertIn("Return to Creative Page", labels)
 
     def test_entry_jam_defaults_full_song_scope(self) -> None:
         session: dict[str, Any] = {

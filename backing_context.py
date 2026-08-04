@@ -402,7 +402,8 @@ def _resolve_chart_display_key(session: dict[str, Any], concert_key: str) -> str
 
 
 def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
-    if entry_mode == "Jam Session Generator":
+    mode = str(entry_mode or "").strip()
+    if mode == "Jam Session Generator":
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict):
             raw = jam.get("sections")
@@ -412,25 +413,28 @@ def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[s
                     for name, chords in raw.items()
                     if isinstance(chords, list)
                 }
-    gen = session.get("improv_generated_sections")
-    if isinstance(gen, dict) and gen:
-        return {
-            str(name): [str(c) for c in chords if str(c).strip()]
-            for name, chords in gen.items()
-            if isinstance(chords, list)
-        }
-    try:
-        from creative_session_state import get_creative_session
-
-        sess = get_creative_session(session)
-        if sess is not None and sess.sections:
+        return {}
+    if mode == "Style Jam Mode":
+        gen = session.get("improv_generated_sections")
+        if isinstance(gen, dict) and gen:
             return {
                 str(name): [str(c) for c in chords if str(c).strip()]
-                for name, chords in sess.sections.items()
+                for name, chords in gen.items()
                 if isinstance(chords, list)
             }
-    except ImportError:
-        pass
+        try:
+            from creative_session_state import get_creative_session
+
+            sess = get_creative_session(session)
+            if sess is not None and sess.tool_type == "entry_style_jam" and sess.sections:
+                return {
+                    str(name): [str(c) for c in chords if str(c).strip()]
+                    for name, chords in sess.sections.items()
+                    if isinstance(chords, list)
+                }
+        except ImportError:
+            pass
+        return {}
     return {}
 
 
@@ -749,12 +753,6 @@ def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
                 }
     except ImportError:
         pass
-    if isinstance(stored, dict) and stored:
-        return {
-            str(name): [str(c) for c in chords if str(c).strip()]
-            for name, chords in stored.items()
-            if isinstance(chords, list)
-        }
     return {}
 
 
@@ -831,6 +829,12 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             pass
 
     pick_key = _current_pick_key(session)
+    try:
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        sync_song_improv_sections_to_practice_key(session)
+    except ImportError:
+        pass
     key, display_key, concert_key = _live_backing_concert_keys(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     scope, section, selected_sections = _default_scope(session)
@@ -900,34 +904,28 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         entry_mode = str(session.get("improv_entry_mode") or "Style Jam Mode").strip()
         if entry_mode == "Song-Based Improvisation":
             entry_mode = "Style Jam Mode"
-    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
-
     if entry_mode == "Jam Session Generator":
-        style = str(session.get("improv_jam_style") or style_meta.get("style") or "Jazz Swing").strip()
-        groove = str(style or style_meta.get("groove") or session.get("improv_groove") or "Jazz Swing").strip()
-        bpm = int(session.get("improv_jam_bpm") or style_meta.get("bpm") or _default_bpm(session))
-        mood = str(session.get("improv_jam_mood") or style_meta.get("mood") or "Mellow").strip()
+        style = str(session.get("improv_jam_style") or "Jazz Swing").strip() or "Jazz Swing"
+        groove = str(session.get("improv_groove") or style).strip()
+        bpm = int(session.get("improv_jam_bpm") or 110)
+        mood = str(session.get("improv_jam_mood") or "Mellow").strip()
     else:
-        style = str(style_meta.get("style") or session.get("improv_style") or session.get("improv_jam_style") or "").strip()
-        if not style:
-            style = "Jazz Swing"
-        groove = str(style or style_meta.get("groove") or session.get("improv_groove") or style).strip()
-        bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
-        mood = str(style_meta.get("mood") or session.get("improv_mood") or "Mellow").strip()
+        style = str(session.get("improv_style") or "").strip() or "Jazz Swing"
+        groove = str(session.get("improv_groove") or style).strip()
+        bpm = int(session.get("improv_style_bpm") or 110)
+        mood = str(session.get("improv_mood") or "Mellow").strip()
 
-    groove_intensity = str(
-        style_meta.get("groove_intensity") or session.get("improv_groove") or "Medium"
-    ).strip()
+    groove_intensity = str(session.get("improv_groove") or "Medium").strip()
     from songs.playback_defaults import normalize_groove_label
 
     backing_style = normalize_groove_label(style or "Pop groove")
-    difficulty = str(
-        style_meta.get("difficulty") or session.get("improv_difficulty") or "Intermediate"
-    ).strip()
+    difficulty = str(session.get("improv_difficulty") or "Intermediate").strip()
     meter = str(
-        style_meta.get("meter") or session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
+        session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
     ).strip()
-    jam_id = str(style or entry_mode).strip() or None
+    import hashlib
+
+    jam_id = hashlib.sha256(f"{entry_mode}|{style}|{concert_key}".encode()).hexdigest()[:12]
     mode_label = entry_mode.replace(" Mode", "").replace(" Generator", "")
 
     sections_dict = _entry_jam_sections_dict(session, entry_mode)
@@ -941,7 +939,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
             progression = flatten_sections(sections_dict)
             first_sec = next(iter(sections_dict.keys()), "")
-            progression_label = f"{style or mode_label} · {first_sec}" if first_sec else (style or mode_label)
+            progression_label = first_sec if first_sec else (style or mode_label)
         except ImportError:
             for chords in sections_dict.values():
                 if isinstance(chords, list):
@@ -953,7 +951,11 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
         from backing_workflow_context import backing_scope_for_workflow
 
-        wf: str = "jam_session_generator" if entry_mode == "Jam Session Generator" else "entry_jam"
+        wf: str = (
+            "jam_session_generator"
+            if entry_mode == "Jam Session Generator"
+            else ("style_jam" if entry_mode == "Style Jam Mode" else "entry_jam")
+        )
         fp_src = f"{wf}|{style}|{entry_mode}|{'/'.join(sorted(sections_dict.keys()))}"
         fp = hashlib.sha256(fp_src.encode()).hexdigest()[:16]
         scope, section, selected_sections = backing_scope_for_workflow(
@@ -977,13 +979,11 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                 progression = [c for chs in sections_dict.values() for c in chs]
 
     jam_title = style or mode_label or "Style jam"
-    if entry_mode not in {"Jam Session Generator", "Style Jam Mode"} and not style:
-        if str(resolve_improv_song_source(session) or "").strip() == "Active song":
-            jam_title = _song_title_from_session(session) or jam_title
+    gen_song_id = f"generated::{entry_mode}::{jam_id}"
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
-        active_song_id=pick_key,
+        active_song_id=gen_song_id,
         song_title=jam_title,
         key=key,
         display_key=display_key,
@@ -1716,11 +1716,26 @@ def sections_dict_from_backing_context(
     practice_key = str(session.get("display_key") or ctx.concert_key or "C").strip() or "C"
     practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
-        sections = _song_improv_sections_dict(session)
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            sections = sync_song_improv_sections_to_practice_key(session) or _song_improv_sections_dict(session)
+        except ImportError:
+            sections = _song_improv_sections_dict(session)
         if not sections and ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Song").strip() or "Song"
             sections = {label: list(ctx.progression)}
-        origin = str(ctx.concert_key or ctx.display_key or "").strip()
+        origin = str(ctx.key or ctx.concert_key or ctx.display_key or "").strip()
+        if not origin:
+            try:
+                from songs.music_source import resolve_catalog_song_for_pick
+                from backing_context import _current_pick_key
+
+                selected, _ = resolve_catalog_song_for_pick(session, _current_pick_key(session))
+                if isinstance(selected, dict):
+                    origin = str(selected.get("key") or selected.get("original_key") or "").strip()
+            except ImportError:
+                origin = str(ctx.concert_key or ctx.display_key or "").strip()
         if sections and origin and origin != practice_key:
             try:
                 from creative_key_sync import retranspose_generated_sections
@@ -1929,6 +1944,17 @@ def open_backing_from_creative(
         ctx = build_custom_progression_context(session)
     else:
         ctx = build_entry_jam_context(session)
+    try:
+        from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source
+
+        launch_wf = workflow_type_from_backing_source(
+            str(ctx.source or source),
+            entry_mode=str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
+        )
+        session["_backing_launch_workflow"] = launch_wf
+        validate_workflow_consistency(session, ctx)
+    except ImportError:
+        pass
     try:
         from generated_jam_key_context import activate_generated_jam_key_ownership
 

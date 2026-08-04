@@ -164,12 +164,21 @@ def apply_creative_concert_key(
     if not key:
         return
     try:
-        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from creative_key_sync import is_creative_major_jam_active
 
-        if is_fixed_practice_key_mode(session):
-            key = resolve_practice_concert_key_for_song(session, key, fallback=key)
+        if not is_creative_major_jam_active(session):
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+            if is_fixed_practice_key_mode(session):
+                key = resolve_practice_concert_key_for_song(session, key, fallback=key)
     except ImportError:
-        pass
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+            if is_fixed_practice_key_mode(session):
+                key = resolve_practice_concert_key_for_song(session, key, fallback=key)
+        except ImportError:
+            pass
     session[CREATIVE_CONCERT_KEY_SOURCE] = source
     session["concert_key"] = to_major_key_preserve_spelling(key)
     key = session["concert_key"]
@@ -340,6 +349,18 @@ def on_improv_jam_key_change() -> None:
         }
     apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
     st.session_state[IMPROV_JAM_KEY_TRACKER] = new
+    try:
+        from workflow_musical_authority import save_workflow_snapshot
+
+        save_workflow_snapshot(st.session_state, "jam_session_generator")
+    except ImportError:
+        pass
+    try:
+        from generated_jam_key_context import activate_generated_jam_key_ownership
+
+        activate_generated_jam_key_ownership(st.session_state, entry_mode="Jam Session Generator")
+    except ImportError:
+        pass
     invalidate_creative_backing_context(st.session_state)
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_jam_key_change"

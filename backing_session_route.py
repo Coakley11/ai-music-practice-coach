@@ -203,13 +203,6 @@ def visible_navigation_actions(session: dict[str, Any]) -> list[str]:
 
 
 def return_to_regular_backing_label(session: dict[str, Any]) -> str | None:
-    try:
-        from backing_workflow_context import workflow_is_generated
-
-        if workflow_is_generated(session):
-            return None
-    except ImportError:
-        pass
     route = get_backing_session_route(session) or sync_backing_session_route_from_context(session)
     if route is None or route.backing_session_type == "regular_song":
         return None

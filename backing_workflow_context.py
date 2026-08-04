@@ -14,6 +14,7 @@ BACKING_WORKFLOW_SCOPE_OWNER_KEY = "_backing_workflow_scope_owner"
 
 WorkflowType = Literal[
     "song_based_improvisation",
+    "style_jam",
     "entry_jam",
     "jam_session_generator",
     "mission_jam",
@@ -36,12 +37,14 @@ def _workflow_from_ctx(ctx: BackingContext) -> WorkflowType:
     if src == "entry_jam":
         if entry == "Jam Session Generator":
             return "jam_session_generator"
+        if entry == "Style Jam Mode":
+            return "style_jam"
         return "entry_jam"
     return "regular_catalog_backing"
 
 
 def _source_type_for_workflow(wf: WorkflowType, ctx: BackingContext) -> SourceType:
-    if wf in {"entry_jam", "jam_session_generator"}:
+    if wf in {"entry_jam", "jam_session_generator", "style_jam"}:
         return "generated"
     if wf == "song_based_improvisation":
         return "custom" if str(ctx.active_song_id or "").startswith("custom::") else "catalog"
@@ -81,7 +84,7 @@ def _creative_origin_mode(ctx: BackingContext) -> str:
 def _return_destination(wf: WorkflowType) -> str:
     if wf == "mission_jam":
         return "creative:missions"
-    if wf in {"entry_jam", "jam_session_generator", "song_based_improvisation"}:
+    if wf in {"entry_jam", "jam_session_generator", "style_jam", "song_based_improvisation"}:
         return "creative:improvisation"
     return "creative"
 
@@ -103,7 +106,7 @@ def build_backing_workflow_envelope(
     if wf == "song_based_improvisation":
         song_id = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
         owner_id = song_id or "song_improv"
-    elif wf in {"entry_jam", "jam_session_generator"}:
+    elif wf in {"entry_jam", "jam_session_generator", "style_jam"}:
         generated_id = str(ctx.jam_id or ctx.source_signature or wf).strip()
         owner_id = generated_id or wf
     elif wf == "mission_jam":
@@ -122,14 +125,14 @@ def build_backing_workflow_envelope(
         "generated_session_id": generated_id or None,
         "tonic": str(ctx.concert_key or ctx.display_key or ctx.key or "C").strip() or "C",
         "mode": str(ctx.mode_label or "").strip() or None,
-        "style_owner": owner_id if wf in {"entry_jam", "jam_session_generator"} else (song_id or owner_id),
+        "style_owner": owner_id if wf in {"entry_jam", "jam_session_generator", "style_jam"} else (song_id or owner_id),
         "progression_owner": owner_id,
         "section_map_keys": list(ctx.section_labels or ctx.sections or []),
         "style": str(ctx.style or "").strip(),
         "mood": str(ctx.mood or "").strip(),
         "groove": str(ctx.groove or "").strip(),
         "tempo_bpm": int(ctx.bpm or 0),
-        "style_source": "generated" if wf in {"entry_jam", "jam_session_generator"} else "workflow",
+        "style_source": "generated" if wf in {"entry_jam", "jam_session_generator", "style_jam"} else "workflow",
         "creative_origin_tab": _creative_tab_for_ctx(ctx, session),
         "creative_origin_mode": _creative_origin_mode(ctx),
         "return_destination": _return_destination(wf),
@@ -141,7 +144,7 @@ def build_backing_workflow_envelope(
     try:
         from music_theory import key_is_minor, split_chord
 
-        if wf in {"entry_jam", "jam_session_generator"}:
+        if wf in {"entry_jam", "jam_session_generator", "style_jam"}:
             envelope["current_practice_mode"] = "major" if not key_is_minor(str(ctx.concert_key or "")) else "minor"
         else:
             from musical_context_authority import resolve_authoritative_practice_key
@@ -182,7 +185,7 @@ def workflow_is_generated(session: dict[str, Any]) -> bool:
     ctx = get_backing_context(session)
     if ctx is None:
         return False
-    return _workflow_from_ctx(ctx) in {"entry_jam", "jam_session_generator"}
+    return _workflow_from_ctx(ctx) in {"entry_jam", "jam_session_generator", "style_jam"}
 
 
 def backing_scope_for_workflow(
@@ -221,6 +224,8 @@ def display_source_label(session: dict[str, Any]) -> str:
         wf = str(env.get("workflow_type") or "")
         if wf == "jam_session_generator":
             return "Jam Session Generator"
+        if wf == "style_jam":
+            return "Style Jam"
         if wf == "entry_jam":
             return "Entry & Jam"
         if wf == "song_based_improvisation":
@@ -256,11 +261,14 @@ def render_backing_workflow_dev_diagnostics(st_module: Any, session: dict[str, A
 
         run_musical_context_consistency_checks(session)
         pk_diag = session.get(PRACTICE_KEY_AUTHORITY_DIAG_KEY) or {}
+        wf_diag = session.get("_workflow_consistency_diag") or {}
     except ImportError:
         pk_diag = {}
+        wf_diag = {}
     st_module.caption(
         "DEV backing workflow · "
         f"type `{env.get('workflow_type', '—')}` · "
+        f"launch `{session.get('_backing_launch_workflow', '—')}` · "
         f"source `{env.get('source_type', '—')}` · "
         f"owner `{env.get('context_owner_id', '—')}` · "
         f"origin `{env.get('creative_origin_mode', '—')}` · "
@@ -272,6 +280,7 @@ def render_backing_workflow_dev_diagnostics(st_module: Any, session: dict[str, A
         f"nav `{session.get('_backing_nav_actions_diag', {}).get('visible', [])}` · "
         f"nav_removed `{session.get('_backing_nav_actions_diag', {}).get('removed_duplicates', [])}` · "
         f"violations `{pk_diag.get('violations', [])}` · "
+        f"wf_violations `{wf_diag.get('violations', [])}` · "
         f"fp `{env.get('context_fingerprint', '—')}` · "
         f"sha `{deploy[:7] if deploy != '—' else '—'}`"
     )

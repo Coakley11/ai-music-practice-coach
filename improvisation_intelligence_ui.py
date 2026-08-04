@@ -1791,7 +1791,9 @@ def _maybe_refresh_mission_example_outputs(
     from improvisation_missions import mission_example_fingerprint, mission_example_for_display
 
     fp = mission_example_fingerprint(example)
-    if session_state.get("_mission_example_output_fp") == fp:
+    spell_fp = str((example.motif or {}).get("spelling_reference") or "")
+    needs = session_state.get("_mission_example_output_fp") != fp or not spell_fp
+    if not needs:
         return example
     refreshed = mission_example_for_display(example, instrument=instrument, bpm=bpm)
     session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)

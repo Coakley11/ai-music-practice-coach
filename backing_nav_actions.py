@@ -75,7 +75,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
                 )
             )
 
-    if jam_label and src in {"entry_jam", "song_improv", "mission"} and not workflow_is_generated(session):
+    if jam_label and src in {"entry_jam", "song_improv", "mission"}:
         actions.append(
             BackingNavAction(
                 action_id="return_catalog_backing",

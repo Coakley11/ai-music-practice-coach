@@ -55,18 +55,19 @@ class TestBackingNavDedupe(unittest.TestCase):
         self.assertTrue(catalog_return_action_visible(session))
         self.assertFalse(any("Use catalog song backing" in a.label for a in actions))
 
-    def test_generator_no_catalog_return_label(self) -> None:
+    def test_generator_catalog_return_without_use_button(self) -> None:
         session: dict[str, Any] = {
             "improv_entry_mode": "Jam Session Generator",
             "improv_jam_key": "C",
             "improv_jam_style": "Bossa",
-            "improv_generated_sections": {"A": ["C", "F", "G"]},
+            "improv_jam_session": {"sections": {"A": ["C", "F", "G"]}},
         }
         ctx = build_entry_jam_context(session)
         set_backing_context(session, ctx)
         sync_backing_workflow_envelope(session, ctx)
         actions, _ = build_backing_nav_actions(session)
-        self.assertEqual(len([a for a in actions if a.purpose == "catalog_backing"]), 0)
+        self.assertEqual(len([a for a in actions if a.purpose == "catalog_backing"]), 1)
+        self.assertFalse(any("Use catalog song backing" in a.label.lower() for a in actions))
 
 
 class TestGeneratorOpenBackingRoute(unittest.TestCase):

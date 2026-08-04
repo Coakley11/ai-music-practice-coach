@@ -221,9 +221,73 @@ def assert_mission_spelling_consistency(
     return diag
 
 
+def notation_spelling_mode_for_chord(chord: object, *, song_display_key: str = "") -> str:
+    """flat | sharp | natural for ABC and motif note names."""
+    from music_theory import reference_spelling_mode
+
+    ref = harmonic_reference_for_chord(
+        chord,
+        song_display_key=song_display_key,
+        song_key_center=song_display_key,
+    )
+    mode = reference_spelling_mode(ref)
+    if mode != "natural":
+        return mode
+    root = spelled_chord_root_from_symbol(chord)
+    return reference_spelling_mode(root)
+
+
+def spell_pitch_classes_for_chord(
+    pitch_classes: list[int],
+    chord: object,
+    *,
+    song_display_key: str = "",
+) -> list[str]:
+    from music_theory import spell_pitch_class
+
+    mode = notation_spelling_mode_for_chord(chord, song_display_key=song_display_key)
+    return [spell_pitch_class(int(pc) % 12, mode=mode) for pc in pitch_classes]
+
+
+def apply_motif_chord_spelling(
+    motif: dict[str, Any],
+    chord: object,
+    *,
+    song_display_key: str = "",
+) -> dict[str, Any]:
+    """Rewrite motif note names from MIDI using the active chord spelling family."""
+    from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
+
+    midis = list(motif.get("midi") or [])
+    notes = list(motif.get("notes") or [])
+    if not midis and notes:
+        midis = []
+        for n in notes:
+            root = normalize_root(split_chord(str(n))[0])
+            midis.append(NOTE_TO_MIDI.get(root, 60))
+    if not midis:
+        return motif
+    ref = harmonic_reference_for_chord(
+        str(chord or motif.get("chord") or ""),
+        song_display_key=song_display_key,
+    )
+    spelled = spell_pitch_classes_for_chord(
+        [int(m) % 12 for m in midis],
+        chord,
+        song_display_key=song_display_key,
+    )
+    motif["notes"] = spelled
+    motif["display"] = " – ".join(spelled)
+    motif["midi"] = [int(m) for m in midis]
+    motif["spelling_reference"] = ref
+    motif["chord"] = str(chord or motif.get("chord") or "")
+    return motif
+
+
 __all__ = [
     "SPELLING_DIAG_KEY",
     "assert_mission_spelling_consistency",
+    "apply_motif_chord_spelling",
     "build_scale_suggestion_for_chord",
     "harmonic_reference_for_chord",
     "prefer_sharps_for_chord_symbol",

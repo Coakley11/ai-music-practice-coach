@@ -1008,13 +1008,17 @@ def resolve_entry_jam_entry_mode(
     ctx: BackingContext | None = None,
 ) -> str:
     """Authoritative entry mode for entry_jam — never inherit stale SBI widget state."""
+    widget = str(session.get("improv_entry_mode") or "").strip()
+    if widget == "Style Jam Mode":
+        return "Style Jam Mode"
+    if widget == "Jam Session Generator":
+        return "Jam Session Generator"
     if ctx is not None:
         ctx_entry = str(ctx.entry_mode or "").strip()
         if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
             return ctx_entry
-    widget = str(session.get("improv_entry_mode") or "").strip()
     jam = session.get("improv_jam_session")
-    if isinstance(jam, dict) and jam.get("sections"):
+    if isinstance(jam, dict) and jam.get("sections") and widget != "Style Jam Mode":
         return "Jam Session Generator"
     if widget == "Jam Session Generator":
         return widget
@@ -1339,12 +1343,29 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         return page
     try:
         from generated_jam_key_context import deactivate_generated_jam_key_ownership
+        from workflow_musical_authority import switch_workflow_owner, workflow_type_from_entry
 
         tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
-        if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") == "mission":
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") in {"mission", "song_improv"}:
+            if tab == "Missions" or str(ctx.source or "") == "mission":
+                switch_workflow_owner(session, "song_based_improvisation")
+            else:
+                switch_workflow_owner(session, "song_based_improvisation")
             deactivate_generated_jam_key_ownership(session)
+        elif entry == "Jam Session Generator" or str(ctx.entry_mode or "") == "Jam Session Generator":
+            switch_workflow_owner(session, "jam_session_generator")
+        elif entry == "Style Jam Mode" or str(ctx.entry_mode or "") == "Style Jam Mode":
+            switch_workflow_owner(session, "style_jam")
     except ImportError:
-        pass
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
+            if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") == "mission":
+                deactivate_generated_jam_key_ownership(session)
+        except ImportError:
+            pass
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
     session.pop("_improv_tab_user_touched", None)

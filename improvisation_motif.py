@@ -751,12 +751,9 @@ def generate_motif_for_chord(
 
     rhythm = " ".join(rhythm_syms)
     tier_label = {"easier": "Easier", "harder": "Harder", "normal": level_norm}.get(tier, level_norm)
-    from music_theory import respell_notes_for_key
-
-    notes = respell_notes_for_key(notes, key_center)
-    return {
+    motif: dict[str, Any] = {
         "chord": chord,
-        "notes": notes,
+        "notes": list(notes),
         "display": " – ".join(notes),
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
@@ -767,6 +764,16 @@ def generate_motif_for_chord(
         "student_level": level_norm,
         "harder_example": use_hard_rhythm,
     }
+    try:
+        from harmonic_spelling import apply_motif_chord_spelling
+
+        apply_motif_chord_spelling(motif, chord, song_display_key=key_center)
+    except ImportError:
+        from music_theory import respell_notes_for_key
+
+        motif["notes"] = respell_notes_for_key(list(notes), key_center)
+        motif["display"] = " – ".join(motif["notes"])
+    return motif
 
 
 def transform_motif(
@@ -900,7 +907,8 @@ def build_motif_abc(
         abc_tokens.append("|")
 
     music = " ".join(abc_tokens)
-    k = _abc_key_header(key_center)
+    ref_key = str(motif.get("spelling_reference") or key_center or "C").strip() or "C"
+    k = _abc_key_header(ref_key)
 
     return f"""X:1
 T:{title}

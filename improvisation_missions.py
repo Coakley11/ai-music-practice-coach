@@ -296,9 +296,21 @@ def rebuild_mission_outputs(
     key_center: str,
     bpm: int,
     mission: str = "",
+    song_display_key: str = "",
 ) -> dict[str, Any]:
     """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
     motif = sync_motif_midi(dict(motif))
+    try:
+        from harmonic_spelling import apply_motif_chord_spelling, harmonic_reference_for_chord
+
+        spell_ref = harmonic_reference_for_chord(
+            chord,
+            song_display_key=song_display_key or key_center,
+        )
+        apply_motif_chord_spelling(motif, chord, song_display_key=song_display_key or key_center)
+        key_center = spell_ref
+    except ImportError:
+        pass
     family = _instrument_family(instrument)
     abc = build_mission_notation_abc(
         motif, mission=mission, key_center=key_center, bpm=bpm
@@ -356,6 +368,7 @@ def refresh_mission_example(
         key_center=ref_key,
         bpm=tempo,
         mission=example.mission,
+        song_display_key=example.display_key,
     )
     example.instrument = inst
     example.motif = out["motif"]
@@ -554,6 +567,7 @@ def generate_mission_example(
         key_center=spell_ref,
         bpm=bpm,
         mission=mission,
+        song_display_key=improv_ctx.display_key,
     )
     motif = out["motif"]
     family = _instrument_family(instrument)
