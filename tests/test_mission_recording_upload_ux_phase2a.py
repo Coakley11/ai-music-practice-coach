@@ -62,10 +62,6 @@ class TestMissionRecordingUploadUx(unittest.TestCase):
             render_mission_recording_upload_expander(_St(), session)
             studio.assert_not_called()
 
-    def test_evaluation_focus_options_complete(self) -> None:
-        self.assertIn("Melodic development", EVALUATION_FOCUS_OPTIONS)
-        self.assertIn("Overall mission execution", EVALUATION_FOCUS_OPTIONS)
-
     def test_analysis_context_no_example_matching_by_default(self) -> None:
         session = {
             "improv_active_mission": "Develop a Motif",

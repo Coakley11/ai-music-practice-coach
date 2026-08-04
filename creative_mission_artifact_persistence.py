@@ -128,6 +128,9 @@ def snapshot_hydrated_mission_artifacts(session: dict[str, Any], *, source: str 
 
 
 def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
+    user_ev = session.get(CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY)
+    user_field = str((user_ev or {}).get("field") or "") if isinstance(user_ev, dict) else ""
+    session_fp = str(session.get("_mission_example_output_fp") or "")
     for key in MISSION_ARTIFACT_CANONICAL_KEYS:
         if not mission_artifact_configured_in_canonical(session, key):
             continue
@@ -136,6 +139,32 @@ def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwri
             continue
         if key == "improv_motif" and isinstance(val, dict) and not val.get("notes"):
             continue
+        if key == MISSION_EXAMPLE_KEY and overwrite and key in session:
+            try:
+                from improvisation_missions import mission_example_fingerprint, load_mission_example
+                from improvisation_intelligence import ImprovSessionContext
+
+                raw = session.get(MISSION_EXAMPLE_KEY)
+                if isinstance(raw, dict) and session_fp:
+                    ctx = ImprovSessionContext(
+                        song_title=str(session.get("song") or "Song"),
+                        artist=str(session.get("artist") or ""),
+                        key_center=str(session.get("concert_key") or session.get("display_key") or "C"),
+                        display_key=str(session.get("display_key") or "C"),
+                        instrument=str(session.get("instrument") or "Guitar"),
+                        level=str(session.get("level") or "Intermediate"),
+                        focus=str(session.get("focus") or "Improvisation"),
+                        sections={},
+                    )
+                    loaded = load_mission_example(session, ctx)
+                    if loaded and mission_example_fingerprint(loaded) == session_fp:
+                        continue
+            except Exception:
+                pass
+        if key == MISSION_EXAMPLE_KEY and user_field == MISSION_EXAMPLE_KEY:
+            canon = canonical_mission_artifact_value(session, key)
+            if canon is not None and session.get(key) == canon:
+                continue
         if overwrite or key not in session:
             session[key] = copy.deepcopy(val)
     d = _diag(session)

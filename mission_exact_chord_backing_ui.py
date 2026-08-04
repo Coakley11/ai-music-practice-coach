@@ -138,6 +138,9 @@ def render_exact_chord_mission_backing_panel(
     with btn_play:
         if st.button("▶ Play", key=f"{key_prefix}_play", use_container_width=True, type="primary"):
             invalidate_exact_chord_backing_cache(session)
+            import time
+
+            session["_mission_backing_play_start_mono"] = time.monotonic()
             wav, sounding = generate_exact_chord_backing_wav(session)
             if not wav:
                 st.warning("Select a mission chord first.")

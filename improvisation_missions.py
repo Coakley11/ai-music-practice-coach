@@ -48,6 +48,7 @@ def build_mission_notation_abc(
 MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
 MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
+MISSION_NEW_IDEA_DIAG_KEY = "_mission_new_idea_diag"
 IMPROV_MISSION_BACKING_HANDOFF = "improv_mission_backing_handoff"
 MISSION_PRACTICE_LICK_KEY = "improv_mission_practice_lick"
 IMPROV_MISSION_PRACTICE_LICK_HANDOFF = "improv_mission_practice_lick_handoff"
@@ -344,6 +345,80 @@ def refresh_mission_example(
     return example
 
 
+def motif_material_fingerprint(motif: dict[str, Any] | None) -> str:
+    if not isinstance(motif, dict):
+        return ""
+    payload = {
+        "notes": list(motif.get("notes") or []),
+        "rhythm_key": motif.get("rhythm_key"),
+        "rhythm_symbols": motif.get("rhythm_symbols"),
+        "display": motif.get("display"),
+    }
+    return hashlib.md5(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def mission_example_artifact_id(
+    session_state: dict,
+    *,
+    mission: str,
+    chord: str,
+    section: str,
+    chord_index: int,
+) -> str:
+    song = str(session_state.get("song") or session_state.get("active_catalog_pick_key") or "song")
+    workspace = str(session_state.get("suite_active_workspace") or session_state.get("music_user_id") or "")
+    return f"mission_example|{workspace}|{song}|{section}|{chord_index}|{chord}|{mission}"
+
+
+def generate_mission_example_distinct(
+    mission: str,
+    *,
+    improv_ctx: ImprovSessionContext,
+    chord: str,
+    section: str,
+    level: str,
+    instrument: str,
+    focus: str,
+    variant: str = "new",
+    bpm: int = 100,
+    session_state: dict | None = None,
+    nonce_override: int | None = None,
+    prior_material_fp: str = "",
+    max_attempts: int = 8,
+) -> tuple[MissionExample, int, bool]:
+    """Generate a new idea; retry when material matches prior (not nonce-only)."""
+    base_nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) if session_state else 0
+    if variant == "new" and session_state is not None:
+        base_nonce = int(nonce_override if nonce_override is not None else base_nonce + 1)
+
+    last: MissionExample | None = None
+    retries = 0
+    for attempt in range(max(1, int(max_attempts))):
+        nonce = base_nonce + attempt if variant == "new" else 0
+        ex = generate_mission_example(
+            mission,
+            improv_ctx=improv_ctx,
+            chord=chord,
+            section=section,
+            level=level,
+            instrument=instrument,
+            focus=focus,
+            variant=variant,
+            bpm=bpm,
+            session_state=session_state,
+            nonce_override=nonce if variant == "new" else None,
+        )
+        last = ex
+        mat = motif_material_fingerprint(ex.motif)
+        if variant != "new":
+            return ex, retries, False
+        if not prior_material_fp or mat != prior_material_fp:
+            return ex, retries, retries > 0
+        retries += 1
+    assert last is not None
+    return last, retries, retries > 0
+
+
 def apply_mission_motif_transform(
     session_state: dict,
     improv_ctx: ImprovSessionContext,
@@ -366,7 +441,24 @@ def apply_mission_motif_transform(
         motif = sync_motif_midi(motif)
     example.motif = motif
     example = refresh_mission_example(example, instrument=example.instrument, bpm=bpm)
-    store_mission_example(session_state, example)
+    idx = int(session_state.get("ii_selected_chord_index") or 0)
+    artifact_id = mission_example_artifact_id(
+        session_state,
+        mission=example.mission,
+        chord=example.chord,
+        section=example.section,
+        chord_index=idx,
+    )
+    session_state["_mission_example_artifact_id"] = artifact_id
+    session_state["_mission_example_last_transform"] = operation
+    store_mission_example(
+        session_state,
+        example,
+        persist_artifact=True,
+        interaction=f"mission_transform_{operation}",
+    )
+    session_state["_mission_example_output_fp"] = mission_example_fingerprint(example)
+    session_state["_mission_example_material_fp"] = motif_material_fingerprint(example.motif)
     return example
 
 
@@ -502,6 +594,9 @@ def store_mission_example(
         "practice_steps": example.practice_steps,
         "show_tab": example.show_tab,
         "show_piano": example.show_piano,
+        "artifact_id": session_state.get("_mission_example_artifact_id"),
+        "last_transform": session_state.get("_mission_example_last_transform"),
+        "material_fp": motif_material_fingerprint(example.motif),
     }
     session_state[MISSION_VARIANT_KEY] = example.variant
     if persist_artifact:

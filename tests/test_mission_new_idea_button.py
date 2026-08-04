@@ -13,8 +13,10 @@ from improvisation_intelligence import ImprovSessionContext
 from improvisation_intelligence_ui import _run_mission_example_generate
 from improvisation_missions import (
     MISSION_EXAMPLE_KEY,
+    MISSION_NEW_IDEA_DIAG_KEY,
     load_mission_example,
     mission_example_fingerprint,
+    motif_material_fingerprint,
 )
 
 
@@ -50,6 +52,8 @@ class TestMissionNewIdeaButton(unittest.TestCase):
         second_display = (session.get(MISSION_EXAMPLE_KEY) or {}).get("motif", {}).get("display")
         self.assertNotEqual(first_fp, second_fp)
         self.assertNotEqual(first_display, second_display)
+        diag = session.get(MISSION_NEW_IDEA_DIAG_KEY) or {}
+        self.assertNotEqual(diag.get("previous_material_fp"), diag.get("generated_material_fp"))
 
         saved = copy.deepcopy(session.get(MISSION_EXAMPLE_KEY))
         commit_mission_artifacts_to_canonical(

@@ -1296,6 +1296,15 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
 
 def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     from improvisation_motif import flatten_section_map, resolve_improv_sections
+    from improvisation_missions import (
+        generate_mission_example,
+        generate_mission_example_distinct,
+        load_mission_example,
+        mission_example_artifact_id,
+        mission_example_fingerprint,
+        motif_material_fingerprint,
+        MISSION_NEW_IDEA_DIAG_KEY,
+    )
 
     improv_ctx = _mission_improv_ctx_from_session(session_state)
     if improv_ctx is None:
@@ -1305,7 +1314,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     if not chords:
         return
     _ensure_chord_selection(session_state, chords, section_map)
-    cur_chord, _ = _selected_chord(session_state, chords)
+    cur_chord, chord_idx = _selected_chord(session_state, chords)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
     mission = str(
         session_state.get("improv_mission_pick")
@@ -1318,31 +1327,71 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     live_level = str(session_state.get("level") or improv_ctx.level)
     live_focus = str(session_state.get("focus") or improv_ctx.focus)
     bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
-    nonce_override = None
+
+    prior = load_mission_example(session_state, improv_ctx)
+    prev_fp = mission_example_fingerprint(prior)
+    prev_mat = motif_material_fingerprint(prior.motif if prior else None)
+
+    retries = 0
+    retried = False
     if variant == "new":
         nonce_override = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
-    example = generate_mission_example(
-        mission,
-        improv_ctx=improv_ctx,
+        example, retries, retried = generate_mission_example_distinct(
+            mission,
+            improv_ctx=improv_ctx,
+            chord=cur_chord,
+            section=section_label,
+            level=live_level,
+            instrument=live_inst,
+            focus=live_focus,
+            variant="new",
+            bpm=bpm,
+            session_state=session_state,
+            nonce_override=nonce_override,
+            prior_material_fp=prev_mat,
+            max_attempts=8,
+        )
+    else:
+        example = generate_mission_example(
+            mission,
+            improv_ctx=improv_ctx,
+            chord=cur_chord,
+            section=section_label,
+            level=live_level,
+            instrument=live_inst,
+            focus=live_focus,
+            variant=variant,
+            bpm=bpm,
+            session_state=session_state,
+        )
+
+    session_state["_mission_example_artifact_id"] = mission_example_artifact_id(
+        session_state,
+        mission=mission,
         chord=cur_chord,
         section=section_label,
-        level=live_level,
-        instrument=live_inst,
-        focus=live_focus,
-        variant=variant,
-        bpm=bpm,
-        session_state=session_state,
-        nonce_override=nonce_override,
+        chord_index=int(chord_idx),
     )
+    session_state.pop("_mission_example_last_transform", None)
     store_mission_example(
         session_state,
         example,
         persist_artifact=True,
         interaction=f"mission_example_generate_{variant}",
     )
-    from improvisation_missions import mission_example_fingerprint
-
-    session_state["_mission_example_output_fp"] = mission_example_fingerprint(example)
+    gen_fp = mission_example_fingerprint(example)
+    session_state["_mission_example_output_fp"] = gen_fp
+    session_state["_mission_example_material_fp"] = motif_material_fingerprint(example.motif)
+    session_state[MISSION_NEW_IDEA_DIAG_KEY] = {
+        "previous_fp": prev_fp,
+        "generated_fp": gen_fp,
+        "committed_fp": gen_fp,
+        "displayed_fp": gen_fp,
+        "retried": retried,
+        "retry_count": retries,
+        "previous_material_fp": prev_mat,
+        "generated_material_fp": motif_material_fingerprint(example.motif),
+    }
     try:
         from studio_page_persistence import save_page_snapshot
 
@@ -1414,6 +1463,15 @@ def _tab_missions(
     except ImportError:
         pass
 
+    try:
+        from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
+        from creative_tab_tool_persistence import selector_hydration_complete
+
+        if selector_hydration_complete(session_state):
+            project_mission_artifacts_from_canonical(session_state, overwrite=False)
+    except ImportError:
+        pass
+
     st.markdown("#### Practice missions")
     st.caption(
         f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
@@ -1467,16 +1525,6 @@ def _tab_missions(
     )
     cur_chord, _ = _selected_chord(session_state, chords)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
-
-    st.markdown(
-        f'<div class="ui-card soft" style="border-left:4px solid #8b5cf6;">'
-        f"<p class=\"ui-card-title\">{html.escape(mission)}</p>"
-        f"<p class=\"ui-card-sub\">Target chord <strong>{html.escape(cur_chord)}</strong> "
-        f"· section <strong>{html.escape(section_label)}</strong> · "
-        f"{html.escape(live_inst)} · {html.escape(live_level)} · {html.escape(live_focus)}</p>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
     from improvisation_missions import mission_brief_for_practice
 
@@ -1728,9 +1776,27 @@ def _tab_missions(
             st,
             session_state,
             key_prefix="improv_mission_upload",
-            on_analyze_take=_open_mission_upload_analysis if on_open_analysis else None,
+            on_open_upload_analysis=_open_mission_upload_analysis if on_open_analysis else None,
             dev_mode=dev_mode,
         )
+    except ImportError:
+        pass
+
+    try:
+        from improvisation_missions import MISSION_NEW_IDEA_DIAG_KEY
+        from creative_mission_artifact_persistence import collect_creative_mission_artifact_diagnostics
+
+        if dev_mode:
+            diag = dict(session_state.get(MISSION_NEW_IDEA_DIAG_KEY) or {})
+            ex = session_state.get("improv_mission_example") or {}
+            if isinstance(ex, dict):
+                from improvisation_missions import mission_example_fingerprint, load_mission_example
+
+                loaded = load_mission_example(session_state, improv_ctx)
+                diag["displayed_fp"] = mission_example_fingerprint(loaded)
+            diag["artifact"] = collect_creative_mission_artifact_diagnostics(session_state)
+            with st.expander("Developer · mission example / artifact", expanded=False):
+                st.json(diag)
     except ImportError:
         pass
 
