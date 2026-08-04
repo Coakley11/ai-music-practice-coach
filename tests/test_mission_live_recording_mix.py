@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from mission_live_recording_mix import mix_dry_mic_with_backing
+from mission_live_recording_mix import backing_energy_in_mixed, mix_dry_mic_with_backing
 
 
 def _tone_wav(freq: float, ms: int, *, sr: int = 44100) -> bytes:
@@ -39,10 +39,8 @@ class TestMissionLiveRecordingMix(unittest.TestCase):
         dry = _tone_wav(440, 200)
         back = _tone_wav(220, 400)
         mixed = mix_dry_mic_with_backing(dry, back, backing_offset_samples=0, backing_gain=0.8)
-        self.assertGreater(len(mixed), len(dry))
-        dry_rms = np.sqrt(np.mean(np.frombuffer(dry[44:], dtype=np.int16).astype(float) ** 2))
-        mix_rms = np.sqrt(np.mean(np.frombuffer(mixed[44:], dtype=np.int16).astype(float) ** 2))
-        self.assertGreater(mix_rms, dry_rms * 0.95)
+        self.assertNotEqual(mixed, dry)
+        self.assertGreater(backing_energy_in_mixed(mixed, dry), 0.001)
 
 
 if __name__ == "__main__":

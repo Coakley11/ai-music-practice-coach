@@ -145,6 +145,7 @@ def render_exact_chord_mission_backing_panel(
             if not wav:
                 st.warning("Select a mission chord first.")
             else:
+                session[MISSION_EXACT_BACKING_ARMED_KEY] = True
                 session["mission_exact_backing_play_nonce"] = int(
                     session.get("mission_exact_backing_play_nonce") or 0
                 ) + 1

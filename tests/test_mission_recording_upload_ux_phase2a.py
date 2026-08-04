@@ -120,10 +120,10 @@ class TestMissionRecordingUploadUx(unittest.TestCase):
 
     def test_upload_caption_wording_module(self) -> None:
         import inspect
-        from mission_upload_recording_ui import render_mission_upload_recording_studio
+        from mission_upload_recording_ui import render_mission_live_recording_studio
 
-        src = inspect.getsource(render_mission_upload_recording_studio)
-        self.assertIn("not added to the uploaded audio", src)
+        src = inspect.getsource(render_mission_live_recording_studio)
+        self.assertIn("Upload Analysis", src)
 
 
 if __name__ == "__main__":

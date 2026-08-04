@@ -61,6 +61,25 @@ def count_in_samples(*, bpm: int, meter: str, bars: int, sample_rate: int = _SAM
     return int(sample_rate * beat_sec * beats_per_bar * bars)
 
 
+def _loop_backing_segment(
+    back: np.ndarray,
+    *,
+    out_len: int,
+    offset: int,
+) -> np.ndarray:
+    """Tile backing from offset through out_len (for previews longer than one loop)."""
+    if back.size == 0 or out_len <= 0:
+        return np.zeros(0, dtype=np.float32)
+    out = np.zeros(out_len, dtype=np.float32)
+    start = max(0, int(offset))
+    pos = start
+    while pos < out_len:
+        take = min(back.size, out_len - pos)
+        out[pos : pos + take] += back[:take]
+        pos += back.size
+    return out
+
+
 def mix_dry_mic_with_backing(
     dry_wav: bytes,
     backing_wav: bytes,
@@ -68,6 +87,7 @@ def mix_dry_mic_with_backing(
     backing_offset_samples: int = 0,
     backing_gain: float = 0.85,
     mic_gain: float = 1.0,
+    loop_backing: bool = True,
 ) -> bytes:
     """Align backing to recording start and sum channels (dry mic unchanged in session)."""
     mic, mic_sr = _parse_wav_mono(dry_wav)
@@ -79,32 +99,48 @@ def mix_dry_mic_with_backing(
     mic = _resample_linear(mic, mic_sr, _SAMPLE_RATE)
     back = _resample_linear(back, back_sr, _SAMPLE_RATE)
     offset = max(0, int(backing_offset_samples))
-    out_len = max(mic.size, offset + back.size)
+    out_len = mic.size
     mixed = np.zeros(out_len, dtype=np.float32)
     mixed[: mic.size] += mic * float(mic_gain)
-    end = min(out_len, offset + back.size)
-    if end > offset:
-        mixed[offset:end] += back[: end - offset] * float(backing_gain)
+    if loop_backing:
+        back_track = _loop_backing_segment(back, out_len=out_len, offset=offset)
+        mixed[:out_len] += back_track[:out_len] * float(backing_gain)
+    else:
+        end = min(out_len, offset + back.size)
+        if end > offset:
+            mixed[offset:end] += back[: end - offset] * float(backing_gain)
+    peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
+    if peak > 1.0:
+        mixed = mixed / peak * 0.98
     return _encode_wav_mono(mixed)
 
 
+def backing_energy_in_mixed(mixed_wav: bytes, dry_wav: bytes) -> float:
+    """Rough RMS delta — backing should add energy vs dry alone."""
+    mix, _ = _parse_wav_mono(mixed_wav)
+    dry, _ = _parse_wav_mono(dry_wav)
+    if mix.size == 0 or dry.size == 0 or mix.size != dry.size:
+        return 0.0
+    diff = mix - dry[: mix.size]
+    return float(np.sqrt(np.mean(diff * diff)))
+
+
 def estimate_backing_offset_samples(session: dict[str, Any], *, bpm: int, meter: str) -> int:
-    """Offset backing so mic aligns with performance (count-in + play/recording skew)."""
+    """Count-in alignment only — avoid monotonic clock skew across Streamlit reruns."""
     ctx = session.get("improv_mission_recording_seal") or session.get("improv_mission_practice_context")
     count_in = 0
     if isinstance(ctx, dict):
         count_in = int(ctx.get("count_in_bars") or 0)
     if session.get("mission_exact_backing_count_in"):
         count_in = max(count_in, 1)
-    offset = count_in_samples(bpm=bpm, meter=meter, bars=count_in)
-    try:
-        rec_start = float(session.get("_mission_live_record_start_mono") or 0)
-        play_start = float(session.get("_mission_backing_play_start_mono") or 0)
-        if rec_start > 0 and play_start > 0 and rec_start >= play_start:
-            offset += int((rec_start - play_start) * _SAMPLE_RATE)
-    except (TypeError, ValueError):
-        pass
-    return max(0, offset)
+    return count_in_samples(bpm=bpm, meter=meter, bars=count_in)
+
+
+def wav_duration_sec(wav: bytes, *, default_sr: int = _SAMPLE_RATE) -> float:
+    samples, sr = _parse_wav_mono(wav)
+    if samples.size == 0:
+        return 0.0
+    return float(samples.size) / float(sr or default_sr)
 
 
 def build_live_recording_previews(
@@ -115,10 +151,14 @@ def build_live_recording_previews(
     bpm: int,
     meter: str,
     backing_gain: float,
+    mic_gain: float = 1.0,
 ) -> dict[str, Any]:
     dry = bytes(dry_wav)
     session["_mission_live_mic_dry"] = dry
     mixed = dry
+    looped = False
+    offset = 0
+    back_energy = 0.0
     if backing_wav:
         offset = estimate_backing_offset_samples(session, bpm=bpm, meter=meter)
         mixed = mix_dry_mic_with_backing(
@@ -126,6 +166,29 @@ def build_live_recording_previews(
             backing_wav,
             backing_offset_samples=offset,
             backing_gain=backing_gain,
+            mic_gain=mic_gain,
+            loop_backing=True,
         )
+        looped = True
+        back_energy = backing_energy_in_mixed(mixed, dry)
     session["_mission_live_mic_mixed"] = mixed
-    return {"dry": dry, "mixed": mixed, "has_backing_mix": backing_wav is not None}
+    session["_mission_live_mix_diag"] = {
+        "dry_bytes": len(dry),
+        "backing_bytes": len(backing_wav or b""),
+        "mixed_bytes": len(mixed),
+        "dry_sec": round(wav_duration_sec(dry), 3),
+        "backing_sec": round(wav_duration_sec(backing_wav or b""), 3),
+        "mixed_sec": round(wav_duration_sec(mixed), 3),
+        "offset_samples": offset,
+        "backing_gain": backing_gain,
+        "mic_gain": mic_gain,
+        "backing_looped": looped,
+        "backing_residual_rms": round(back_energy, 6),
+        "mixed_differs_from_dry": mixed != dry,
+    }
+    return {
+        "dry": dry,
+        "mixed": mixed,
+        "has_backing_mix": backing_wav is not None and mixed != dry,
+        "backing_residual_rms": back_energy,
+    }

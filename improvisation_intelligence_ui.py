@@ -1828,6 +1828,12 @@ def _tab_missions(
         if isinstance(user_ev, dict) and user_ev.get("field") == MISSION_EXAMPLE_KEY:
             skip_project = True
         if selector_hydration_complete(session_state) and not skip_project:
+            try:
+                from music_dev_nav import dev_count
+
+                dev_count(session_state, "missions_artifact_project")
+            except ImportError:
+                pass
             with dev_perf_span(session_state, "missions_project_artifacts", st_module=st):
                 project_mission_artifacts_from_canonical(session_state, overwrite=False)
     except ImportError:
