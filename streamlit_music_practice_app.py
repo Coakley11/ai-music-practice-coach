@@ -129,6 +129,17 @@ def _developer_mode_enabled() -> bool:
             return bool(st.session_state.get("developer_mode", False))
 
 
+def _render_workflow_architecture_dev_panel() -> None:
+    if not _developer_mode_enabled():
+        return
+    try:
+        from music_workflow_dev_panel import render_unified_workflow_architecture_panel
+
+        render_unified_workflow_architecture_panel(st, st.session_state)
+    except Exception:
+        pass
+
+
 # -------------------------------------------------
 # GLOBAL CONSTANTS + SONG CATALOG
 # -------------------------------------------------
@@ -10733,6 +10744,7 @@ if pp.show_quick_nav(st):
         record_local_nav_checkpoint(st, "post_quick_nav")
     except Exception:
         pass
+    _render_workflow_architecture_dev_panel()
 
 if _developer_mode_enabled():
     try:
