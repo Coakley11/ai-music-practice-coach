@@ -11885,6 +11885,13 @@ elif _studio_page == "picker":
 
 elif _studio_page == "backing":
 
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+
+        route_perf_begin(st.session_state, "studio.backing", st_module=st)
+    except ImportError:
+        route_perf_begin = route_perf_end = render_route_baseline_caption = None  # type: ignore[assignment,misc]
+
     ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     try:
@@ -13110,12 +13117,27 @@ elif _studio_page == "backing":
     except Exception:
         pass
 
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_end
+
+        route_perf_end(st.session_state, "studio.backing", st_module=st)
+        render_route_baseline_caption(st, st.session_state, route_id="studio.backing")
+    except ImportError:
+        pass
+
 
 # -------------------------------------------------
 # UPLOAD / RECORDING ANALYSIS
 # -------------------------------------------------
 
 elif _studio_page == "analysis":
+
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+
+        route_perf_begin(st.session_state, "studio.analysis", st_module=st)
+    except ImportError:
+        route_perf_begin = route_perf_end = render_route_baseline_caption = None  # type: ignore[assignment,misc]
 
     try:
         from media_multitrack_export_catalog import (
@@ -13161,7 +13183,6 @@ elif _studio_page == "analysis":
         pass
     ensure_page_initialized(st.session_state, "analysis")
     note_page_visit(st.session_state, "analysis")
-    from recording_analysis import analyze_multitrack, analyze_recording
     from recording_analysis_ui import render_analysis_dashboard
 
     try:
@@ -13440,6 +13461,8 @@ elif _studio_page == "analysis":
                         if not _ctx_ok:
                             st.error(_ctx_err.replace("**", ""))
                         else:
+                            from recording_analysis import analyze_recording
+
                             ctx = _recording_analysis_context(
                                 recording_type=recording_type.lower().replace(" ", "_"),
                             )
@@ -13548,6 +13571,8 @@ elif _studio_page == "analysis":
                             str(st.session_state.get("improv_active_mission") or "")
                         )
                         ctx["display_key"] = chart_key
+                        from recording_analysis import analyze_recording
+
                         spin = (
                             "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
                             if mission_ids
@@ -13685,6 +13710,8 @@ elif _studio_page == "analysis":
                             }
                         )
                     ctx = _recording_analysis_context(recording_type="multitrack")
+                    from recording_analysis import analyze_multitrack
+
                     with st.spinner("Comparing layers…"):
                         mt_result = analyze_multitrack(tracks, ctx)
                     st.session_state["last_analysis_result"] = mt_result
@@ -13725,7 +13752,15 @@ elif _studio_page == "analysis":
         from studio_history_ui import render_upload_history_panel
 
         render_upload_history_panel(st)
-    except Exception:
+    except ImportError:
+        pass
+
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_end
+
+        route_perf_end(st.session_state, "studio.analysis", st_module=st)
+        render_route_baseline_caption(st, st.session_state, route_id="studio.analysis")
+    except ImportError:
         pass
 
 
@@ -13783,6 +13818,13 @@ elif _studio_page == "composer":
 # -------------------------------------------------
 
 elif _studio_page == "creative":
+
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+
+        route_perf_begin(st.session_state, "studio.creative", st_module=st)
+    except ImportError:
+        route_perf_begin = route_perf_end = render_route_baseline_caption = None  # type: ignore[assignment,misc]
 
     ensure_page_initialized(st.session_state, "creative")
     note_page_visit(st.session_state, "creative")
@@ -14081,6 +14123,14 @@ elif _studio_page == "creative":
                     st.markdown(adaptive_weakness_detection_text(ctx))
                 else:
                     st.markdown(musical_development_tracker_text())
+
+    try:
+        from music_dev_route_baseline import render_route_baseline_caption, route_perf_end
+
+        route_perf_end(st.session_state, "studio.creative", st_module=st)
+        render_route_baseline_caption(st, st.session_state, route_id="studio.creative")
+    except ImportError:
+        pass
 
 
 # -------------------------------------------------

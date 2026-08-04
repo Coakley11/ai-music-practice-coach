@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import uuid
 from typing import Any
 
@@ -48,6 +50,39 @@ MISSION_ARTIFACT_CANONICAL_KEYS: tuple[str, ...] = (
     MISSION_NEW_NONCE_KEY,
     MISSION_PRACTICE_LICK_KEY,
 )
+
+MISSION_ARTIFACT_PROJECTION_FP_KEY = "_mission_artifact_projection_fp"
+
+
+def mission_artifact_canonical_fingerprint(session: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in MISSION_ARTIFACT_CANONICAL_KEYS:
+        if not mission_artifact_configured_in_canonical(session, key):
+            continue
+        val = canonical_mission_artifact_value(session, key)
+        try:
+            parts.append(f"{key}:{json.dumps(val, sort_keys=True, default=str)}")
+        except TypeError:
+            parts.append(f"{key}:{repr(val)}")
+    if not parts:
+        return ""
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def should_skip_mission_artifact_projection(session: dict[str, Any]) -> bool:
+    fp = mission_artifact_canonical_fingerprint(session)
+    if not fp or fp != session.get(MISSION_ARTIFACT_PROJECTION_FP_KEY):
+        return False
+    for key in MISSION_ARTIFACT_CANONICAL_KEYS:
+        if mission_artifact_configured_in_canonical(session, key) and key not in session:
+            return False
+    return True
+
+
+def note_mission_artifact_projection_applied(session: dict[str, Any]) -> None:
+    fp = mission_artifact_canonical_fingerprint(session)
+    if fp:
+        session[MISSION_ARTIFACT_PROJECTION_FP_KEY] = fp
 
 
 def _diag(session: dict[str, Any]) -> dict[str, Any]:
@@ -176,6 +211,7 @@ def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwri
                 continue
         if overwrite or key not in session:
             session[key] = copy.deepcopy(val)
+    note_mission_artifact_projection_applied(session)
     d = _diag(session)
     d["projection_source"] = "creative_workspace_state"
 

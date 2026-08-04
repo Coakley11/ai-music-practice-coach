@@ -204,6 +204,9 @@ def render_improvisation_intelligence_lab(
     on_go_custom_progression: Callable[[], None] | None = None,
 ) -> None:
     """Full Improvisation Intelligence workspace under Creative Lab."""
+    from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+
+    route_perf_begin(session_state, "creative.improv_intelligence", st_module=st)
     from studio_page_persistence import ensure_creative_improv_initialized
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
@@ -220,7 +223,7 @@ def render_improvisation_intelligence_lab(
     ensure_creative_widgets_from_backing_context(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
     _creative_tab = str(session_state.get("improv_intelligence_tab") or "Entry & Jam")
-    if _creative_tab in ("Entry & Jam", "Missions", "Metrics & AI"):
+    if _improv_dev_mode(session_state, st) and _creative_tab in ("Entry & Jam", "Missions", "Metrics & AI"):
         try:
             from backing_musical_state import (
                 render_backing_key_state_diagnostics,
@@ -343,6 +346,8 @@ def render_improvisation_intelligence_lab(
                 on_open_analysis=on_open_analysis,
             )
 
+        route_perf_end(session_state, "creative.improv_intelligence", st_module=st)
+        render_route_baseline_caption(st, session_state, route_id="creative.improv_intelligence")
         st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -853,7 +858,10 @@ def _tab_motif(
         from creative_tab_tool_persistence import selector_hydration_complete
 
         if selector_hydration_complete(session_state):
-            project_mission_artifacts_from_canonical(session_state, overwrite=True)
+            from creative_mission_artifact_persistence import should_skip_mission_artifact_projection
+
+            if not should_skip_mission_artifact_projection(session_state):
+                project_mission_artifacts_from_canonical(session_state, overwrite=True)
     except ImportError:
         pass
 
@@ -1820,6 +1828,7 @@ def _tab_missions(
         from creative_mission_artifact_persistence import (
             CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY,
             project_mission_artifacts_from_canonical,
+            should_skip_mission_artifact_projection,
         )
         from creative_tab_tool_persistence import selector_hydration_complete
 
@@ -1828,14 +1837,22 @@ def _tab_missions(
         if isinstance(user_ev, dict) and user_ev.get("field") == MISSION_EXAMPLE_KEY:
             skip_project = True
         if selector_hydration_complete(session_state) and not skip_project:
-            try:
-                from music_dev_nav import dev_count
+            if should_skip_mission_artifact_projection(session_state):
+                try:
+                    from music_dev_nav import dev_count
 
-                dev_count(session_state, "missions_artifact_project")
-            except ImportError:
-                pass
-            with dev_perf_span(session_state, "missions_project_artifacts", st_module=st):
-                project_mission_artifacts_from_canonical(session_state, overwrite=False)
+                    dev_count(session_state, "missions_artifact_project_skipped")
+                except ImportError:
+                    pass
+            else:
+                try:
+                    from music_dev_nav import dev_count
+
+                    dev_count(session_state, "missions_artifact_project")
+                except ImportError:
+                    pass
+                with dev_perf_span(session_state, "missions_project_artifacts", st_module=st):
+                    project_mission_artifacts_from_canonical(session_state, overwrite=False)
     except ImportError:
         pass
 

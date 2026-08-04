@@ -136,6 +136,12 @@ def _compact_summary(session: dict[str, Any]) -> tuple[str, str]:
     return mission, chord
 
 
+def _dry_wav_fingerprint(wav: bytes) -> str:
+    if not wav:
+        return ""
+    return hashlib.sha256(wav).hexdigest()[:16]
+
+
 def _refresh_live_previews(
     session: dict[str, Any],
     dry_wav: bytes,
@@ -238,20 +244,30 @@ def render_mission_live_recording_studio(
                 )
                 dry_bytes = previews["dry"]
                 mixed_bytes = previews["mixed"]
+                session["_mission_live_dry_fp"] = _dry_wav_fingerprint(bytes(dry_bytes))
         except Exception:
             st.caption("Live mic unavailable in this browser — use Upload Analysis for file uploads.")
 
     if dry_bytes and not recording:
-        previews = _refresh_live_previews(
-            session,
-            bytes(dry_bytes),
-            bpm=bpm,
-            meter=meter,
-            backing_gain=backing_gain,
-            mic_gain=mic_gain,
-        )
-        dry_bytes = previews["dry"]
-        mixed_bytes = previews["mixed"]
+        dry_fp = _dry_wav_fingerprint(bytes(dry_bytes))
+        if (
+            dry_fp
+            and dry_fp == session.get("_mission_live_dry_fp")
+            and session.get("_mission_live_mic_mixed")
+        ):
+            mixed_bytes = session.get("_mission_live_mic_mixed")
+        else:
+            previews = _refresh_live_previews(
+                session,
+                bytes(dry_bytes),
+                bpm=bpm,
+                meter=meter,
+                backing_gain=backing_gain,
+                mic_gain=mic_gain,
+            )
+            dry_bytes = previews["dry"]
+            mixed_bytes = previews["mixed"]
+            session["_mission_live_dry_fp"] = _dry_wav_fingerprint(bytes(dry_bytes))
 
     preview_mode = "Performance Only"
     if dry_bytes:
