@@ -138,6 +138,9 @@ def resolve_selected_mission_ids(
             if mid in MISSION_BY_ID and mid != "custom" and mid not in ids:
                 ids.append(mid)
 
+    _add(session_state.get("analysis_inherited_ai_metric_ids"))
+    _add(session_state.get("analysis_additional_take_metric_ids"))
+    _add(session_state.get("analysis_effective_metric_ids"))
     _add(session_state.get("improv_ai_metric_ids"))
     _add(session_state.get("analysis_ai_metric_ids"))
     _add(session_state.get("analysis_mission_ids"))

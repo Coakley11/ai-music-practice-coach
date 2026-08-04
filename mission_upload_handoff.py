@@ -73,12 +73,16 @@ def handoff_mission_take_to_upload_analysis(
     session[MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY] = True
     session["analysis_sync_creative_mission"] = True
 
-    focus = authoritative_evaluation_focus(session)
-    default_ids = _default_analysis_metric_ids_for_focus(focus)
-    if default_ids:
-        session.setdefault("analysis_ai_metric_ids", list(default_ids))
-        session.setdefault("analysis_mission_ids", list(default_ids))
-    session.setdefault("improv_ai_metric_ids", list(session.get("analysis_ai_metric_ids") or []))
+    try:
+        from mission_upload_metrics import seed_upload_metrics_from_mission_handoff
+
+        seed_upload_metrics_from_mission_handoff(session)
+    except ImportError:
+        focus = authoritative_evaluation_focus(session)
+        default_ids = _default_analysis_metric_ids_for_focus(focus)
+        if default_ids:
+            session.setdefault("analysis_ai_metric_ids", list(default_ids))
+            session.setdefault("analysis_mission_ids", list(default_ids))
 
     try:
         from mission_practice_context import MISSION_RECORDING_STUDIO_ENGAGED_KEY

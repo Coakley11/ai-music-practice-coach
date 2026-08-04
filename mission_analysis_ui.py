@@ -103,7 +103,86 @@ def render_ai_improv_metrics_selector(
 
 
 def render_mission_goals_selector(st: Any, session_state: dict) -> list[str]:
-    """Upload Analysis — same metric catalog as Improvisation Intelligence."""
+    """Upload Analysis — inherited AI Metrics + take-only additions."""
+    try:
+        from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+        from mission_upload_metrics import (
+            ANALYSIS_ADDITIONAL_TAKE_METRIC_IDS_KEY,
+            ANALYSIS_INHERITED_AI_METRIC_IDS_KEY,
+            apply_additional_take_metrics,
+            compute_effective_upload_metric_ids,
+            seed_upload_metrics_from_mission_handoff,
+            sync_effective_upload_metrics_to_session,
+        )
+    except ImportError:
+        return _render_mission_goals_selector_legacy(st, session_state)
+
+    if session_state.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY) or session_state.get(
+        "_analysis_prepared_upload"
+    ):
+        if ANALYSIS_INHERITED_AI_METRIC_IDS_KEY not in session_state:
+            seed_upload_metrics_from_mission_handoff(session_state)
+
+    st.markdown("##### AI Improvisation Metrics")
+    st.caption("Choose the improvisation skills you practiced in this take.")
+
+    session_state.setdefault("analysis_sync_creative_mission", True)
+    st.checkbox(
+        "Include active Creative Lab / Practice mission",
+        key="analysis_sync_creative_mission",
+        help="Adds criteria mapped from your current Practice Mission.",
+    )
+
+    label_to_id, id_to_label = _metric_id_label_maps()
+    inherited_ids = list(session_state.get(ANALYSIS_INHERITED_AI_METRIC_IDS_KEY) or [])
+    inherited_labels = [id_to_label[i] for i in inherited_ids if i in id_to_label]
+
+    st.markdown("**Inherited from AI Metrics**")
+    if inherited_labels:
+        st.markdown(
+            " ".join(f"`{html.escape(l)}`" for l in inherited_labels),
+        )
+    else:
+        st.caption("No AI Metrics selected yet on Metrics & AI — add metrics below.")
+
+    additional_ids = list(session_state.get(ANALYSIS_ADDITIONAL_TAKE_METRIC_IDS_KEY) or [])
+    add_labels_default = [id_to_label[i] for i in additional_ids if i in id_to_label]
+    extra_options = [l for l in AI_IMPROV_METRIC_LABELS if l not in inherited_labels]
+
+    st.markdown("**Add metrics for this take**")
+    picked_extra = st.multiselect(
+        "Additional metrics (this recording only)",
+        extra_options,
+        default=[l for l in add_labels_default if l in extra_options],
+        key="analysis_additional_take_metric_multiselect",
+    )
+    extra_ids = [label_to_id[l] for l in picked_extra if l in label_to_id]
+    apply_additional_take_metrics(session_state, extra_ids)
+
+    effective = sync_effective_upload_metrics_to_session(session_state)
+    effective_labels = [id_to_label[i] for i in effective if i in id_to_label]
+    st.markdown("**AI will evaluate**")
+    if effective_labels:
+        st.markdown(" · ".join(f"**{_esc(l)}**" for l in effective_labels))
+    mission = str(session_state.get("improv_active_mission") or "").strip()
+    chord = str(session_state.get("ii_selected_chord") or "").strip()
+    if session_state.get("analysis_sync_creative_mission") and mission:
+        st.caption(f"Active mission: **{_esc(mission)}**" + (f" over **{_esc(chord)}**" if chord else ""))
+
+    session_state.setdefault("analysis_custom_goal_enabled", False)
+    if st.checkbox("Add custom goal", key="analysis_custom_goal_enabled"):
+        session_state.setdefault("analysis_custom_goal", "")
+        st.text_input(
+            "Custom criterion",
+            key="analysis_custom_goal",
+            placeholder="e.g. Trade fours with backing hits",
+        )
+
+    render_mission_history_panel(st)
+    return resolve_selected_mission_ids(session_state)
+
+
+def _render_mission_goals_selector_legacy(st: Any, session_state: dict) -> list[str]:
     st.markdown("##### AI Improvisation Metrics")
     st.caption("Choose the improvisation skills you practiced in this take.")
 

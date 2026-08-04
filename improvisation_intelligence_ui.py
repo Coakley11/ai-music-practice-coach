@@ -55,6 +55,8 @@ from improvisation_missions import (
     MISSION_NEW_IDEA_DIAG_KEY,
     MISSION_EXAMPLE_GEN_DIAG_KEY,
     MISSION_EXAMPLE_FRESH_RUN_KEY,
+    MISSIONS_GENERATE_CONTEXT_KEY,
+    MISSIONS_LAST_EXAMPLE_CALLBACK_KEY,
     MISSION_PRACTICE_LICK_KEY,
     MissionExample,
     PRACTICE_MISSIONS,
@@ -123,7 +125,7 @@ from studio_page_state import (
 from songs.picker_session import mark_improv_tab_user_touched
 
 # Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
-MISSIONS_UI_BUILD_ID = "2264e3f-missions-generate-upload-split"
+MISSIONS_UI_BUILD_ID = "d2cf531-missions-generate-context-handoff"
 
 # Read-only dispatch shadow (not a Streamlit widget key).
 IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY = "_improv_intelligence_tab_for_render"
@@ -1413,6 +1415,112 @@ def _record_mission_example_gen_diag(
     session_state[MISSION_NEW_IDEA_DIAG_KEY] = dict(diag)
 
 
+def _normalize_section_map_for_generate(raw: Any) -> list[tuple[str, list[str]]]:
+    if isinstance(raw, dict):
+        return [(str(k), list(v)) for k, v in raw.items() if isinstance(v, list)]
+    if not isinstance(raw, list):
+        return []
+    out: list[tuple[str, list[str]]] = []
+    for item in raw:
+        if isinstance(item, (list, tuple)) and len(item) >= 2 and isinstance(item[1], list):
+            out.append((str(item[0]), list(item[1])))
+    return out
+
+
+def _sync_missions_session_from_improv_ctx(
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    *,
+    section_map: dict[str, list[str]] | None,
+) -> None:
+    session_state.setdefault("song", improv_ctx.song_title)
+    session_state.setdefault("artist", improv_ctx.artist)
+    session_state.setdefault("display_key", improv_ctx.display_key)
+    session_state.setdefault("concert_key", improv_ctx.key_center)
+    session_state.setdefault("instrument", improv_ctx.instrument)
+    session_state.setdefault("level", improv_ctx.level)
+    session_state.setdefault("focus", improv_ctx.focus)
+    if section_map and isinstance(section_map, list):
+        session_state["home_sections"] = {
+            str(label): list(chs) for label, chs in section_map if isinstance(chs, list)
+        }
+    elif section_map and isinstance(section_map, dict):
+        session_state["home_sections"] = {k: list(v) for k, v in section_map.items()}
+    elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
+        session_state.setdefault(
+            "home_sections",
+            {k: list(v) for k, v in improv_ctx.sections.items()},
+        )
+
+
+def _stash_missions_generate_context(
+    session_state: dict,
+    *,
+    improv_ctx: ImprovSessionContext,
+    section_map: list[tuple[str, list[str]]],
+    mission: str,
+    cur_chord: str,
+    section_label: str,
+    chord_idx: int,
+    live_inst: str,
+    live_level: str,
+    live_focus: str,
+    bpm: int,
+) -> None:
+    session_state[MISSIONS_GENERATE_CONTEXT_KEY] = {
+        "mission": mission,
+        "cur_chord": cur_chord,
+        "section_label": section_label,
+        "chord_idx": int(chord_idx),
+        "live_inst": live_inst,
+        "live_level": live_level,
+        "live_focus": live_focus,
+        "bpm": int(bpm),
+        "improv_ctx": {
+            "song_title": improv_ctx.song_title,
+            "artist": improv_ctx.artist,
+            "key_center": improv_ctx.key_center,
+            "display_key": improv_ctx.display_key,
+            "instrument": improv_ctx.instrument,
+            "level": improv_ctx.level,
+            "focus": improv_ctx.focus,
+            "bpm": improv_ctx.bpm,
+            "sections": _normalize_section_map_for_generate(section_map),
+        },
+    }
+
+
+def _improv_ctx_from_generate_context(session_state: dict) -> ImprovSessionContext | None:
+    snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+    if not isinstance(snap, dict):
+        return None
+    raw = snap.get("improv_ctx")
+    if not isinstance(raw, dict):
+        return None
+    sections_raw = raw.get("sections")
+    sections: dict[str, list[str]] = {}
+    if isinstance(sections_raw, list):
+        for item in sections_raw:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                sections[str(item[0])] = list(item[1])
+    elif isinstance(sections_raw, dict):
+        sections = {str(k): list(v) for k, v in sections_raw.items() if isinstance(v, list)}
+    return ImprovSessionContext(
+        song_title=str(raw.get("song_title") or "Song"),
+        artist=str(raw.get("artist") or ""),
+        key_center=str(raw.get("key_center") or raw.get("display_key") or "C"),
+        display_key=str(raw.get("display_key") or "C"),
+        instrument=str(snap.get("live_inst") or raw.get("instrument") or "Guitar"),
+        level=str(snap.get("live_level") or raw.get("level") or "Intermediate"),
+        focus=str(snap.get("live_focus") or raw.get("focus") or "Improvisation"),
+        sections={str(k): list(v) for k, v in sections.items() if isinstance(v, list)},
+        bpm=int(snap.get("bpm") or raw.get("bpm") or 100),
+        style_label="",
+        progression_flat=[],
+        section_order=list(sections.keys()),
+    )
+
+
 def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContext | None:
     from improvisation_motif import flatten_section_map, resolve_improv_sections
 
@@ -1452,30 +1560,72 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         mission_example_artifact_id,
         mission_example_fingerprint,
         motif_material_fingerprint,
-        MISSION_NEW_IDEA_DIAG_KEY,
     )
 
-    improv_ctx = _mission_improv_ctx_from_session(session_state)
+    snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+    improv_ctx = _improv_ctx_from_generate_context(session_state)
     if improv_ctx is None:
+        improv_ctx = _mission_improv_ctx_from_session(session_state)
+    if improv_ctx is None:
+        session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
+            "callback": f"mission_example_generate_{variant}",
+            "callback_fired": True,
+            "abort": "no_improv_ctx",
+        }
         return
-    section_map = resolve_improv_sections(session_state, improv_ctx)
-    chords = flatten_section_map(section_map) if section_map else []
-    if not chords:
+
+    if isinstance(snap, dict) and snap.get("cur_chord"):
+        cur_chord = str(snap.get("cur_chord"))
+        section_label = str(snap.get("section_label") or "Progression")
+        mission = str(snap.get("mission") or "").strip()
+        chord_idx = int(snap.get("chord_idx") or 0)
+        live_inst = str(snap.get("live_inst") or improv_ctx.instrument)
+        live_level = str(snap.get("live_level") or improv_ctx.level)
+        live_focus = str(snap.get("live_focus") or improv_ctx.focus)
+        bpm = int(snap.get("bpm") or improv_ctx.bpm or 100)
+        section_map_raw = snap.get("improv_ctx", {}).get("sections")
+        section_map_norm = _normalize_section_map_for_generate(section_map_raw)
+        chords = flatten_section_map(section_map_norm) if section_map_norm else list(improv_ctx.progression_flat or [])
+    else:
+        section_map = resolve_improv_sections(session_state, improv_ctx)
+        chords = flatten_section_map(section_map) if section_map else []
+        if not chords:
+            session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
+                "callback": f"mission_example_generate_{variant}",
+                "callback_fired": True,
+                "abort": "no_chords",
+                "improv_ctx_sections": bool(improv_ctx.sections),
+                "home_sections": bool(session_state.get("home_sections")),
+            }
+            return
+        _ensure_chord_selection(session_state, chords, section_map)
+        cur_chord, chord_idx = _selected_chord(session_state, chords)
+        section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+        mission = str(
+            session_state.get("improv_mission_pick")
+            or session_state.get("improv_active_mission")
+            or ""
+        ).strip()
+        live_inst = str(session_state.get("instrument") or improv_ctx.instrument)
+        live_level = str(session_state.get("level") or improv_ctx.level)
+        live_focus = str(session_state.get("focus") or improv_ctx.focus)
+        bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
+
+    if not chords or not mission:
+        session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
+            "callback": f"mission_example_generate_{variant}",
+            "callback_fired": True,
+            "abort": "empty_chords_or_mission",
+            "chords_n": len(chords),
+            "mission": mission,
+        }
         return
-    _ensure_chord_selection(session_state, chords, section_map)
-    cur_chord, chord_idx = _selected_chord(session_state, chords)
-    section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
-    mission = str(
-        session_state.get("improv_mission_pick")
-        or session_state.get("improv_active_mission")
-        or ""
-    ).strip()
-    if not mission:
-        return
-    live_inst = str(session_state.get("instrument") or improv_ctx.instrument)
-    live_level = str(session_state.get("level") or improv_ctx.level)
-    live_focus = str(session_state.get("focus") or improv_ctx.focus)
-    bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
+
+    session_state[II_SELECTED_CHORD] = cur_chord
+    session_state[II_SELECTED_SECTION] = section_label
+    session_state["ii_selected_chord_index"] = int(chord_idx)
+    session_state["improv_active_mission"] = mission
+    session_state["improv_mission_pick"] = mission
 
     prior = load_mission_example(session_state, improv_ctx)
     prev_fp = mission_example_fingerprint(prior)
@@ -1542,6 +1692,13 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         retries=retries,
         retried=retried,
     )
+    diag = session_state.get(MISSION_EXAMPLE_GEN_DIAG_KEY) or {}
+    if isinstance(diag, dict):
+        diag["mission"] = mission
+        diag["chord"] = cur_chord
+        diag["section"] = section_label
+        diag["used_generate_context"] = isinstance(snap, dict) and bool(snap.get("cur_chord"))
+        session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = diag
     try:
         from studio_page_persistence import save_page_snapshot
 
@@ -1550,36 +1707,39 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         pass
 
 
+def _finalize_mission_gen_callback(session_state: dict, variant: str) -> None:
+    session_state[MISSIONS_LAST_EXAMPLE_CALLBACK_KEY] = f"mission_example_generate_{variant}"
+    session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
+    prior_notes = str(session_state.get("_missions_display_notes_before") or "")
+    session_state["_missions_display_notes_before"] = prior_notes
+
+
 def _on_mission_gen_normal() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "normal")
-    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
-    st.rerun()
+    _finalize_mission_gen_callback(st.session_state, "normal")
 
 
 def _on_mission_gen_easier() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "easier")
-    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
-    st.rerun()
+    _finalize_mission_gen_callback(st.session_state, "easier")
 
 
 def _on_mission_gen_harder() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "harder")
-    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
-    st.rerun()
+    _finalize_mission_gen_callback(st.session_state, "harder")
 
 
 def _on_mission_gen_new_idea() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "new")
-    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
-    st.rerun()
+    _finalize_mission_gen_callback(st.session_state, "new")
 
 
 def _maybe_refresh_mission_example_outputs(
@@ -1599,6 +1759,39 @@ def _maybe_refresh_mission_example_outputs(
     return refreshed
 
 
+def _render_mission_example_buttons_dev_panel(
+    st_module: Any,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+) -> None:
+    diag = dict(session_state.get(MISSION_EXAMPLE_GEN_DIAG_KEY) or {})
+    loaded = load_mission_example(session_state, improv_ctx)
+    loaded_fp = mission_example_fingerprint(loaded) if loaded else ""
+    loaded_mat = motif_material_fingerprint(loaded.motif) if loaded else ""
+    raw = session_state.get(MISSION_EXAMPLE_KEY)
+    stored_mat = str((raw or {}).get("material_fp") or "") if isinstance(raw, dict) else ""
+    st_module.markdown(
+        f"<p style='font-size:0.72rem;color:#6b21a8;margin:0.15rem 0 0.5rem 0;'>"
+        f"<strong>DEV example buttons</strong> · "
+        f"callback: <code>{html.escape(str(session_state.get(MISSIONS_LAST_EXAMPLE_CALLBACK_KEY) or diag.get('callback') or '—'))}</code> · "
+        f"abort: <code>{html.escape(str(diag.get('abort') or '—'))}</code> · "
+        f"context: <code>{'yes' if session_state.get(MISSIONS_GENERATE_CONTEXT_KEY) else 'no'}</code><br/>"
+        f"prev mat: <code>{html.escape(str(diag.get('previous_material_fp') or '—')[:12])}</code> · "
+        f"gen mat: <code>{html.escape(str(diag.get('generated_material_fp') or stored_mat)[:12])}</code> · "
+        f"stored mat: <code>{html.escape(stored_mat[:12] or '—')}</code> · "
+        f"canon: <code>{html.escape(str(diag.get('canonical_artifact_fp') or _canonical_mission_example_fingerprint(session_state))[:12])}</code><br/>"
+        f"loaded: <code>{html.escape(loaded_fp[:12] or '—')}</code> / "
+        f"<code>{html.escape(loaded_mat[:12] or '—')}</code> · "
+        f"display: <code>{html.escape(str(diag.get('displayed_material_fp') or loaded_mat)[:12])}</code> · "
+        f"artifact id: <code>{html.escape(str(session_state.get('_mission_example_artifact_id') or '—')[:24])}</code> · "
+        f"overwrite: <code>{diag.get('artifact_overwritten')}</code><br/>"
+        f"notes before: <code>{html.escape(str(session_state.get('_missions_display_notes_before') or '—')[:40])}</code> · "
+        f"notes now: <code>{html.escape(str(loaded.motif.get('display') if loaded else '—')[:40])}</code>"
+        f"</p>",
+        unsafe_allow_html=True,
+    )
+
+
 def _tab_missions(
     st: Any,
     *,
@@ -1609,6 +1802,8 @@ def _tab_missions(
     on_open_practice: Callable[[], None] | None,
     on_open_analysis: Callable[[], None] | None = None,
 ) -> None:
+    from music_dev_perf import dev_perf_span, render_dev_perf_caption
+
     from practice_setup_controls import (
         DEFAULT_INSTRUMENT_OPTIONS,
         render_setup_quick_controls,
@@ -1622,11 +1817,19 @@ def _tab_missions(
         pass
 
     try:
-        from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
+        from creative_mission_artifact_persistence import (
+            CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY,
+            project_mission_artifacts_from_canonical,
+        )
         from creative_tab_tool_persistence import selector_hydration_complete
 
-        if selector_hydration_complete(session_state):
-            project_mission_artifacts_from_canonical(session_state, overwrite=False)
+        skip_project = bool(session_state.get(MISSION_EXAMPLE_FRESH_RUN_KEY))
+        user_ev = session_state.get(CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY)
+        if isinstance(user_ev, dict) and user_ev.get("field") == MISSION_EXAMPLE_KEY:
+            skip_project = True
+        if selector_hydration_complete(session_state) and not skip_project:
+            with dev_perf_span(session_state, "missions_project_artifacts", st_module=st):
+                project_mission_artifacts_from_canonical(session_state, overwrite=False)
     except ImportError:
         pass
 
@@ -1691,8 +1894,10 @@ def _tab_missions(
         source_id=_improv_source_id(session_state, improv_ctx),
         key_center=improv_ctx.key_center,
     )
-    cur_chord, _ = _selected_chord(session_state, chords)
+    cur_chord, chord_idx = _selected_chord(session_state, chords)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+
+    _sync_missions_session_from_improv_ctx(session_state, improv_ctx, section_map=section_map)
 
     from improvisation_missions import mission_brief_for_practice
 
@@ -1722,6 +1927,28 @@ def _tab_missions(
     st.caption(
         "This is one possible way to practice the mission. You may create your own notes and phrases."
     )
+
+    _prior_loaded = load_mission_example(session_state, improv_ctx)
+    session_state["_missions_display_notes_before"] = str(
+        (_prior_loaded.motif.get("display") if _prior_loaded else "")
+        or (session_state.get(MISSION_EXAMPLE_KEY) or {}).get("motif", {}).get("display")
+        or ""
+    )
+
+    _stash_missions_generate_context(
+        session_state,
+        improv_ctx=improv_ctx,
+        section_map=section_map,
+        mission=mission,
+        cur_chord=cur_chord,
+        section_label=section_label,
+        chord_idx=int(chord_idx),
+        live_inst=live_inst,
+        live_level=live_level,
+        live_focus=live_focus,
+        bpm=bpm,
+    )
+
     g1, g2, g3, g4 = st.columns(4)
     with g1:
         st.button(
@@ -1752,6 +1979,9 @@ def _tab_missions(
             use_container_width=True,
             on_click=_on_mission_gen_new_idea,
         )
+
+    if _improv_dev_mode(session_state, st):
+        _render_mission_example_buttons_dev_panel(st, session_state, improv_ctx)
 
     example = load_mission_example(session_state, improv_ctx)
     if example and not _example_matches_active_context(
@@ -2004,6 +2234,8 @@ def _tab_missions(
                 st.json(dev_diag)
     except ImportError:
         pass
+
+    render_dev_perf_caption(st, session_state, route="_tab_missions")
 
 
 def _tab_harmony_map(
