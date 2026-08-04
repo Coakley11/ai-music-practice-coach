@@ -16,6 +16,7 @@ from active_musical_workflow_envelope import (
 )
 from backing_context import BackingContext, build_mission_context, set_backing_context
 from backing_nav_actions import build_backing_nav_actions, backing_nav_has_return_mission
+from improvisation_missions import MISSION_EXAMPLE_KEY
 from workflow_musical_authority import (
     save_workflow_snapshot,
     switch_workflow_owner,
