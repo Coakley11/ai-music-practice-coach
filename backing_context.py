@@ -717,7 +717,38 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
 
 
 def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Full catalog/custom song sections — never Entry Jam generated maps or one-chord mission slices."""
     stored = session.get("improv_song_concert_sections")
+    if isinstance(stored, dict) and stored:
+        flat_count = sum(len(v) for v in stored.values() if isinstance(v, list))
+        if flat_count > 1:
+            return {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in stored.items()
+                if isinstance(chords, list)
+            }
+    home = session.get("home_sections")
+    if isinstance(home, dict) and home:
+        return {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in home.items()
+            if isinstance(chords, list)
+        }
+    try:
+        from songs.music_source import resolve_catalog_song_for_pick
+
+        pick_key = _current_pick_key(session)
+        selected, _ok = resolve_catalog_song_for_pick(session, pick_key)
+        if isinstance(selected, dict):
+            sec = selected.get("sections")
+            if isinstance(sec, dict) and sec:
+                return {
+                    str(name): [str(c) for c in chords if str(c).strip()]
+                    for name, chords in sec.items()
+                    if isinstance(chords, list)
+                }
+    except ImportError:
+        pass
     if isinstance(stored, dict) and stored:
         return {
             str(name): [str(c) for c in chords if str(c).strip()]
@@ -1865,6 +1896,13 @@ def open_backing_from_creative(
         on_creative_backing_handoff(session, source=str(source))
     except ImportError:
         pass
+    if source == "song_improv":
+        try:
+            from mission_workflow_context import _deactivate_entry_jam_transient_for_missions
+
+            _deactivate_entry_jam_transient_for_missions(session)
+        except ImportError:
+            pass
     if source == "mission":
         ctx = build_mission_context(session)
     elif source == "song_improv":

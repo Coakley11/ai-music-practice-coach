@@ -187,6 +187,79 @@ def deactivate_mission_jam_route_for_upload_handoff(session: dict[str, Any]) -> 
         session.pop("_mission_backing_handoff_active", None)
 
 
+def apply_pending_upload_to_save_payload(session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """Pin Upload Analysis destination into cloud payload when pending handoff owns the route."""
+    owns = bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY)) or pending_upload_should_restore_analysis_page(
+        session, None
+    )
+    if not owns:
+        return state
+    page = "analysis"
+    try:
+        from mission_pending_upload_analysis import envelope_from_session_or_canonical
+
+        env = envelope_from_session_or_canonical(session) or {}
+    except ImportError:
+        env = {}
+    nav = env.get("navigation") if isinstance(env.get("navigation"), dict) else {}
+    route_blob = {
+        "destination_page": page,
+        "studio_page": page,
+        "resume_upload_analysis": nav.get("resume_upload_analysis", True),
+        "route_lock": True,
+        "take_id": env.get("take_id"),
+        "destination_workflow": nav.get("workflow_owner") or "pending_mission_upload_analysis",
+    }
+    mws = state.get("music_workspace_state")
+    if not isinstance(mws, dict):
+        mws = {}
+        state["music_workspace_state"] = mws
+    mws["studio_page"] = page
+    mws["page"] = page
+    mws["pending_upload_route"] = copy.deepcopy(route_blob)
+    core = state.get("core")
+    if isinstance(core, dict):
+        core["studio_page"] = page
+    sns = state.get("studio_nav_state")
+    if isinstance(sns, dict):
+        sns["studio_page"] = page
+        sns["page"] = page
+    cws = state.get("creative_workspace_state")
+    if isinstance(cws, dict) and env:
+        cws.setdefault("pending_upload_analysis_envelope", copy.deepcopy(env))
+    record_pending_upload_route_trace(
+        session,
+        stage="payload_pin_analysis",
+        old_page=str(session.get("studio_page") or ""),
+        new_page=page,
+        source="apply_pending_upload_to_save_payload",
+        reason="cloud_save",
+    )
+    return state
+
+
+def hydrate_pending_upload_route_from_payload(session: dict[str, Any], payload: dict[str, Any]) -> None:
+    """Restore route lock from durable music_workspace_state.pending_upload_route."""
+    mws = payload.get("music_workspace_state") if isinstance(payload.get("music_workspace_state"), dict) else {}
+    route = mws.get("pending_upload_route") if isinstance(mws, dict) else None
+    if not isinstance(route, dict):
+        return
+    if not route.get("route_lock") and not route.get("resume_upload_analysis"):
+        return
+    if str(route.get("destination_page") or "") != "analysis":
+        return
+    session[PENDING_UPLOAD_ROUTE_LOCK_KEY] = True
+    session["_pending_upload_suppresses_mission_backing"] = True
+    record_pending_upload_route_trace(
+        session,
+        stage="hydrate_route_from_payload",
+        old_page=str(session.get("studio_page") or ""),
+        new_page="analysis",
+        source="music_workspace_state.pending_upload_route",
+        reason="cloud_hydrate",
+    )
+
+
 def attach_navigation_to_envelope(env: dict[str, Any]) -> dict[str, Any]:
     out = copy.deepcopy(env)
     out["active_destination_page"] = "analysis"
@@ -195,6 +268,8 @@ def attach_navigation_to_envelope(env: dict[str, Any]) -> dict[str, Any]:
         "workflow_owner": "pending_mission_upload_analysis",
         "resume_upload_analysis": True,
         "mission_jam_route_suppressed": True,
+        "route_lock": True,
+        "destination_workflow": "pending_mission_upload_analysis",
     }
     return out
 
@@ -363,8 +438,10 @@ def render_pending_upload_route_dev_diagnostics(st_module: Any, session: dict[st
 
 
 __all__ = [
+    "apply_pending_upload_to_save_payload",
     "commit_pending_upload_navigation_handoff",
     "enforce_pending_upload_startup_route",
+    "hydrate_pending_upload_route_from_payload",
     "pending_upload_should_restore_analysis_page",
     "release_pending_upload_resume_route",
     "render_pending_upload_route_dev_diagnostics",

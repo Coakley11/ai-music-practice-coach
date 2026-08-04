@@ -112,7 +112,24 @@ class TestPendingUploadRouteLock(unittest.TestCase):
         write_canonical_studio_nav_state(session, "creative", reason="workspace_restore")
         self.assertEqual(str(session.get("studio_page")), "analysis")
 
-    def test_prepared_envelope_requests_analysis_restore(self) -> None:
+    def test_payload_pins_analysis_when_route_lock(self) -> None:
+        from pending_upload_route_precedence import (
+            PENDING_UPLOAD_ROUTE_LOCK_KEY,
+            apply_pending_upload_to_save_payload,
+        )
+
+        session: dict[str, Any] = {
+            PENDING_UPLOAD_ROUTE_LOCK_KEY: True,
+            "pending_upload_analysis_envelope": {
+                "take_id": "t1",
+                "analysis_status": "prepared",
+                "navigation": {"resume_upload_analysis": True},
+            },
+        }
+        state: dict[str, Any] = {"music_workspace_state": {"studio_page": "creative"}, "core": {}}
+        apply_pending_upload_to_save_payload(session, state)
+        self.assertEqual(state["music_workspace_state"]["studio_page"], "analysis")
+        self.assertTrue(state["music_workspace_state"]["pending_upload_route"]["route_lock"])
         session = {
             "pending_upload_analysis_envelope": {
                 "take_id": "x",
