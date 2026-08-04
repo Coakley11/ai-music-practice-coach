@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-03 (Item 7 frozen) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-03 (Phase 1 Items 1–8 **complete**; Item 8 frozen @ `8ef698e`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -19,7 +19,7 @@
 2. [x] Canonical `creative_workspace_state` save/apply + envelope (`824c961` Phase 0; `66e89b6` Phase 1)
 2b. [x] **Phase 1 Creative hardening** (`971c6c4`) — global controls + page paths
 3. [x] **Phase 1 studio page persistence (live)** — Backing → Creative, authoritative save/refetch @ **193**, hard refresh hydrates Creative @ **193** (`38664fc`–`ad68e71`, signed off **2026-08-02**)
-4. [ ] **Phase 1 Creative-state persistence (remaining)** — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) — **blocks Phase 2**
+4. [x] **Phase 1 Creative-state persistence (remaining)** — [plan](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) — **Items 1–8 live-accepted** (2026-08-03); **Phase 2 gate open**
    - [x] **Item 1** Creative tool/tab selectors — live @ `549578d` (rev **203**, cold session)
    - [x] **Item 2** Mission configuration — live @ `c6c2f41` (mission/target/metrics)
    - [x] **Item 3** Motif / example / practice lick + Mission Backing handoff — **live-accepted** @ `616f4e4` — [contract](./plans/2026-08-02-item3-mission-artifact-persistence.md)
@@ -27,7 +27,7 @@
    - [x] **Item 5** Refresh + cold-reboot persistence — **live-accepted & frozen** @ `e36fd40`–`b989516` (rev **315**) — [contract](./plans/2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./plans/2026-08-03-item5-live-runbook.md)
    - [x] **Item 6** Dell → phone cross-device — **live-accepted & frozen** (rev **317**, 2026-08-03) — [contract](./plans/2026-08-03-item6-dell-phone-cross-device-persistence.md)
    - [x] **Item 7** Phone → Dell cross-device — **live-accepted & frozen** (rev **319**, 2026-08-03) — [contract](./plans/2026-08-03-item7-phone-dell-cross-device-persistence.md)
-   - [ ] **Item 8** Stale-device revision protection — [contract](./plans/2026-08-03-item8-stale-device-revision-protection.md) (**next**; **blocks Phase 2**)
+   - [x] **Item 8** Stale-device revision protection — **live-accepted & frozen** @ **`8ef698e`** (2026-08-03; TEST A/B/C @ cloud **323→325**) — [contract](./plans/2026-08-03-item8-stale-device-revision-protection.md)
 5. [ ] Key-family wiring + capo regression suite
 6. [ ] Mission spec validation + structured results + 20× strict tests
 7. [ ] Practice Tools — single “Metronome, Tuner & Tone” launcher + persistence
@@ -46,7 +46,7 @@
 
 **Plan:** [plans/2026-07-03-style-identity-phase-2.md](./plans/2026-07-03-style-identity-phase-2.md)
 
-**Gate:** Do **not** start Phase 2 until [Phase 1 Creative-state persistence remaining](./plans/2026-08-02-phase1-creative-state-persistence-remaining.md) items **1–8** pass on live `dev` (**Item 8** stale write protection is **next**).
+**Gate:** Phase 1 Items **1–8** are **live-accepted & frozen** on `dev` (Item 8 @ **`8ef698e`**). Phase 2 work may proceed per schedule below; do not modify frozen Item 8 CAS / revision-unification without `?dev=1` regression proof.
 
 **Goal:** Style, mood, feel, intensity, and groove produce unmistakably different musical results for catalog, custom, and Creative Lab backing.
 
@@ -315,7 +315,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
-- **Phase 1 Items 1–7 (2026-08-03):** **Frozen** on live `dev` — Item 7 @ rev **319**; Item 6 @ **317**; Items 1–5 per prior commits. **Next:** Item 8 stale write protection only. **No Phase 2** until Item 8 live-accept.
+- **Phase 1 Items 1–8 (2026-08-03):** **Live-accepted & frozen** on `dev` — Item 8 @ **`8ef698e`** (CAS + revision unification; TEST A/B/C). **Phase 2 gate open.** Do not modify frozen persistence/CAS without `?dev=1` proof.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
 - Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.

@@ -18,6 +18,15 @@
 
 ## Completed Features
 
+### Phase 1 Creative-state persistence — Item 8 (2026-08-03)
+
+- [x] Atomic conditional music workspace cloud writes (CAS); stale-device block + resync-then-save recovery
+- [x] Logical revision unification (`music_metrics_logical_revision`) — blob/top-level sync; nested CAS filter when appropriate
+- [x] Phone current-device save **PASS**; Dell stale **TEST A/B/C PASS** @ build **`8ef698e`** (cloud **323→325**)
+- [x] Item 8 `?dev=1` panel: `logical_revision_source`, `selected_cas_filter_path`, `cas_http_trace`, `violations_current_attempt`
+- **Frozen:** implementation baseline `4a446a0`, `62bf143`, `4192fa2`, **`8ef698e`** — do not weaken CAS or Items 1–7 paths
+- Plan: [2026-08-03-item8-stale-device-revision-protection.md](./plans/2026-08-03-item8-stale-device-revision-protection.md)
+
 ### Phase 1 Creative-state persistence — Item 7 (2026-08-03)
 
 - [x] Phone writer: Harmony **Ab → G7** @ **319**; Item 2 tuple **Ab** independent; `creative_context_section_change`; strict egress confirmed

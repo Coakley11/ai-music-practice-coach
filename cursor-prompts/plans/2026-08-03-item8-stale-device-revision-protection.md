@@ -1,7 +1,9 @@
 # Phase 1 Item 8 — Stale-device revision protection & overwrite prevention
 
 **Last updated:** 2026-08-03  
-**Status:** **Next** — contract + live-test plan only (no implementation until gap proven or live failure)  
+**Status:** **LIVE ACCEPTED & FROZEN** — phone current-device save + stale Dell **TEST A/B/C** passed on `dev` @ build **`8ef698e`**.  
+**Acceptance baseline (do not regress without `?dev=1` proof):** `4a446a0` (atomic CAS), `62bf143` (applied revision hydrate), `4192fa2` (nested CAS filter), **`8ef698e`** (logical revision unification + Item 8 diagnostics).
+
 **Prerequisites (frozen — do not redesign):**
 
 | Layer | Live-accept / freeze anchor |
@@ -9,9 +11,10 @@
 | Items 1–5 | Through `b989516`; doc `cc00cda` |
 | Item 6 Dell → phone | **FROZEN** @ **317** |
 | Item 7 phone → Dell (stale reader hydrate) | **FROZEN** @ **319** — [contract](./2026-08-03-item7-phone-dell-cross-device-persistence.md) |
+| **Item 8** stale write + recovery | **FROZEN** @ **`8ef698e`** — live path through cloud **325** after TEST C |
 | Monotonic `workspace_revision`, strict egress, startup suppression, Items 1–4 save reasons | Accepted architecture — no fork |
 
-**Phase 2** Style Identity engine starts only after Item **8** live-accept (Phase 1 items **1–8** complete).
+**Phase 2** Style Identity engine may proceed per [tasks](../music_app_tasks.md); Item **8** implementation and `?dev=1` Item 8 panel are **frozen** like Items 1–7.
 
 ---
 
@@ -23,6 +26,28 @@ Item 8 is the **write-side** cross-device gate. Items **6–7** proved **read** 
 
 ---
 
+## Live acceptance (2026-08-03) — **PASS**
+
+**Environment:** Streamlit Cloud `dev`, Daniel workspace, **`?dev=1`**, build **`8ef698e`**.
+
+| Scenario | Result | Summary |
+|----------|--------|---------|
+| Phone current-device save | **PASS** | Nested CAS @ blob **321** → `response_row_count=1`, confirmed @ applied **323** |
+| **TEST A** Stale Dell | **PASS** | Dell applied **321**, cloud **323**; `stale_write_blocked=true`; no overwrite |
+| **TEST B** Authoritative reader | **PASS** | Phone refresh @ **323**; Harmony unchanged; TEST A did not mutate cloud |
+| **TEST C** Recovery | **PASS** | Dell refresh @ **323**; save @ expected **323** → candidate **325**; confirmed |
+
+**Implementation notes (frozen):**
+
+- `music_metrics_logical_revision.resolve_logical_stored_revision` — single logical revision; top-level used only when consistent with blob.
+- CAS filter path matches logical source (`music_workspace_state` nested path when top-level absent/stale).
+- Successful writes sync `metrics.workspace_revision` + blob surfaces via `sync_metrics_revision_surfaces`.
+- Item 8 dev panel: `logical_revision_source`, `selected_cas_filter_path`, `violations_current_attempt`, `cas_http_trace`.
+
+**Do not:** weaken atomic CAS, restore unconditional upsert, or change Items 1–7 ownership without unfreeze.
+
+---
+
 ## Distinction from Items 6–7
 
 | Item | Question answered |
@@ -30,119 +55,49 @@ Item 8 is the **write-side** cross-device gate. Items **6–7** proved **read** 
 | **6–7** | After remote save @ **R**, does the other device **read** **R** correctly without spurious startup write? |
 | **8** | With local state still at **L < R**, does a **local user save attempt** **fail closed** (no confirmed upsert @ stale revision) and leave cloud @ **R** intact? |
 
-Item 7’s Dell hard refresh **without edit** is **not** Item 8. Item 8 requires the stale device to **attempt a user-initiated persist** while still logically behind cloud (or immediately after hydrate skip without full resync — see live script).
-
 ---
 
-## Authoritative failure / success signals
+## Authoritative failure / success signals (reference)
 
 ### Stale writer attempt (device behind cloud)
 
-Precondition: cloud authoritative @ **R** (e.g. **319** from Item 7 phone write). Stale device session believes or carries canonical aligned to **L < R** (e.g. Dell tab **never refreshed** after phone save, Harmony Map still **Ab** locally).
+| Signal | Expected (pass) |
+|--------|-----------------|
+| `cloud_write_succeeded` / `cloud_confirmed` | **false** OR blocked pre-upsert |
+| Authoritative **cloud revision after attempt** | Still **R** |
+| `stale_write_blocked` / `conflict_detected` | **true** when CAS rejects |
 
-User triggers **one frozen save reason** on stale device (e.g. Harmony Map tap, mission target, display-key flush).
+### Current-device save (synchronized writer)
 
 | Signal | Expected (pass) |
 |--------|-----------------|
-| `cloud_save_requested` | May be true (attempt entered pipeline) |
-| `cloud_write_succeeded` / `cloud_confirmed` | **false** OR save **blocked before upsert** with documented reason |
-| `cloud_write_attempted` | **false** if blocked pre-egress; **true** only if strict path rejects without applying stale payload to cloud |
-| Authoritative **cloud revision after attempt** | Still **R** (unchanged) |
-| Stale device must not publish payload with `workspace_revision` ≤ **L** that replaces cloud **R** | Verified by refetch or second-device read |
-
-### Trace / diagnostics (`?dev=1`)
-
-Document at least one of:
-
-- `conflict_detected` / `conflict_resolution_result` (`workspace_revision.collect_workspace_revision_diagnostics`)
-- Explicit block reason in save transaction / egress trace (e.g. cloud newer than local, revision mismatch, resync required)
-- `music_creative_cloud_drift` / content resync path forcing **network apply before save** (if product chooses reconcile-then-save — must not double-write stale)
-
-**Pass:** cloud @ **R** unchanged; other device reader still sees **R** document.  
-**Fail:** cloud drops to stale content or revision regresses / duplicate fork.
-
-### After explicit reconcile (optional sub-test)
-
-If UX requires **Refresh / pull latest** or automatic resync:
-
-1. Stale device hydrates @ **R** (Item 5/7 bar).
-2. **Then** user save bumps to **R+1** with confirmed upsert.
-
-Reconcile path is **in scope** only if live stale-save attempt would otherwise trap user; must not weaken Item 8 fail-closed default.
+| `conditional_write_rows_affected` | **1** |
+| `cloud_confirmed` | **true** |
+| `logical_revision_source` + filter path | Align with stored row |
 
 ---
 
-## Live-test script (primary gate)
+## Live-test script (reference — passed 2026-08-03)
 
-**Environment:** Streamlit Cloud `dev`, Daniel workspace, **`?dev=1`**.
-
-### Setup
-
-1. Establish cloud @ **R** (Item 7 end state: Harmony **G7**, rev **319** on phone + refreshed Dell).
-2. **Stale device:** Dell (or phone) tab left open **without refresh** since **before** phone wrote **319**, local UI still shows pre-**319** state (e.g. Harmony **Ab**). Confirm session applied revision **L < 319** in dev revision diagnostics if visible.
-
-### TEST A — Stale save blocked (required)
-
-1. On stale tab only, one deliberate **frozen** user interaction (e.g. tap Harmony Map chord or mission tile).
-2. Capture save transaction + workspace revision diagnostics + egress trace.
-3. **Verify cloud still @ 319** (refresh other device or Supabase/dev panel `current_cloud_revision`).
-4. **Verify** Harmony on authoritative reader still **G7**, Item 2 tuple unchanged, no silent regression to **Ab** cloud-wide.
-
-### TEST B — Cloud unchanged on second reader (required)
-
-1. Without saving on fresh device, open `?dev=1` on phone (or Dell hard refresh) **after** TEST A.
-2. Expect network @ **319**, Item 5 `certification_passed=true`, Item 4 harmony **G7**.
-
-### TEST C — Explicit retry after resync (recommended)
-
-1. Hard refresh stale device → hydrate @ **319**.
-2. One user save → **R+1** with `cloud_confirmed=true`.
-3. Confirms stale block is not a dead-end.
+See **Live acceptance** table above. Legacy rev-319 script preserved in git history; baseline after phone PASS was cloud **R=323**, TEST C exit **325**.
 
 ---
 
-## Save / write contract (Item 8 may extend diagnostics only)
+## Save / write contract (frozen)
 
-**Allowed changes (minimal):**
+- Music cloud writes: `save_current_state_conditional_cas` only (no merge-duplicates upsert for music full_session).
+- Pre-save: `prepare_music_conditional_write` + logical revision from full metrics row.
+- Diagnostics: `collect_phase1_item8_stale_write_certification`, `phase1_item8_stale_write_certification.py`.
 
-- Pre-save guard: compare `workspace_revision_from_blob(local_canonical)` vs `_suite_cloud_workspace_revision` / last confirmed cloud revision.
-- Set `_suite_workspace_conflict_detected` + `conflict_resolution_result` when blocking.
-- Read-only Item 8 panel fields mirroring Item 5 pattern (`stale_write_blocked`, `local_revision`, `cloud_revision`, `block_reason`).
+**Existing hooks:**
 
-**Forbidden without unfreeze:**
-
-- New Creative-only sync channel.
-- Weakening Items 1–7 gather/suppression or strict egress confirmation.
-- Silent “last writer wins” without monotonic revision check when cloud is ahead.
-
-**Existing hooks (read first):**
-
-- `workspace_revision.py` — `cloud_revision_newer_than_applied`, `collect_workspace_revision_diagnostics`
-- `suite_user_persistence.py` — cloud newer apply paths, content resync
-- `music_egress_strict_save.py` — fail-closed egress
-- `music_workspace_cloud_save` / save transaction diagnostics
+- `music_metrics_logical_revision.py`, `music_workspace_conditional_cloud_write.py`, `suite_storage_supabase.py`
+- `workspace_revision.py`, `music_device_applied_revision.py`
+- `music_egress_strict_save.py`, `music_workspace_cloud_save`
 
 ---
 
-## Focused implementation plan
+## Out of scope (unchanged)
 
-1. **Live TEST A/B first** on current `dev` — document pass/fail with traces (may already block via strict egress + revision; Item 8 names the acceptance bar).
-2. If live **fail** (silent stale overwrite): smallest guard in save reservation or egress preflight; unit tests for `L < R` block.
-3. Optional read-only `collect_phase1_item8_stale_write_certification(session)` — no Supabase persist.
-4. Automated: `test_stale_local_revision_cannot_confirm_upsert_when_cloud_ahead` with mocked cloud @ **319**, local @ **317**.
-5. Sign-off: update [phase1 remaining](./2026-08-02-phase1-creative-state-persistence-remaining.md), [completed features](../music_app_completed_features.md); **then** Phase 2 gate review — **do not** start Phase 2 until Item 8 ✅.
-
----
-
-## Out of scope
-
-- Phase 2 Style Identity engine (queued after Item 8)
-- Upload/multitrack media sprint
-- Full conflict-merge UX / version history (v1 = block or resync-then-save only)
+- Full conflict-merge UX / version history (v1 = block or resync-then-save)
 - `main` merge unless explicit release
-
----
-
-## Live acceptance (Item 8)
-
-Stale-device user save with **L < R** does **not** confirm cloud upsert; cloud remains @ **R**; authoritative reader unchanged; trace documents block or resync. Optional TEST C proves recovery path. Document commit SHA at sign-off.

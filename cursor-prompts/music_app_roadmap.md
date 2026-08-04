@@ -2,6 +2,8 @@
 
 **Last updated:** 2026-08-03 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
+**Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
+
 This is the master planning document. Related files:
 
 | File | Purpose |
@@ -95,10 +97,11 @@ We are building **core platform architecture**, not a bag of isolated features.
 | **C** | **Backing** content sync (BPM, scope, loops, groove, meter) | **PASSED** | v18 `fdf9800` |
 | **D** | **Active song** + display key + instrument + page + written-key + transposing subtype | **PASSED** | v25 `f153204` |
 | **E** | AMI return restores song/key/instrument/written-key/subtype/page + practice/backing | **PASSED** | v26 `1b00d58` — [plan](./plans/2026-06-09-test-e-ami-return.md) |
+| **Phase 1 Items 1–8** | Creative-state + cross-device write protection (CAS, revision unification) | **PASSED** | Item 8 frozen @ **`8ef698e`** — [contract](./plans/2026-08-03-item8-stale-device-revision-protection.md) |
 
-**Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Do not modify persistence unless a new `?dev=1` trace proves regression. Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
+**Policy (accepted 2026-06-09):** Tests **A–E are frozen**. Phase 1 Items **1–8 are frozen** (do not modify CAS / revision-unification / Items 1–7 save paths without `?dev=1` regression proof). Baseline: [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).
 
-**Next focus:** **P0** Phase 1 Item **8** stale-device overwrite protection ([contract](./plans/2026-08-03-item8-stale-device-revision-protection.md)). Items **1–7 frozen** (Item 7 @ **319**). **Phase 2 gated** until Item 8 passes. **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md). **No `main` merge.**
+**Next focus:** **P0** [Uploads + Multitrack persistence](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md); **P0** Style Identity Phase 2 (gate **open** — [plan](./plans/2026-07-03-style-identity-phase-2.md)); **P1** UI polish. **No `main` merge** unless explicit release.
 
 **Trace:** Music persistence sidebar (`?dev=1`) — Test D compare, Test E compare, **Transposing save (last cloud write)**, workspace restore, Local nav checkpoints.
 

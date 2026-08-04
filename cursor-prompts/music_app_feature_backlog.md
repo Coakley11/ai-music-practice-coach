@@ -12,7 +12,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 *Platform **Single Source of Truth** + **One Music Generation Engine** — see [2026-07-31 plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.*
 
-*Active: **P0 Phase 1 Item 8** (stale revision / overwrite block) — [contract](./plans/2026-08-03-item8-stale-device-revision-protection.md); Items 1–7 **frozen**; **Phase 2 blocked** until Item 8.*
+*Phase 1 Items **1–8** **live-accepted & frozen** on `dev` (Item 8 @ **`8ef698e`**). **Phase 2** may proceed per [tasks](./music_app_tasks.md).*
 
 | Priority | Phase | Plan |
 |----------|-------|------|

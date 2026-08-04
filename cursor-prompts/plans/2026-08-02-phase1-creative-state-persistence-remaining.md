@@ -1,7 +1,7 @@
 # Phase 1 — Remaining Creative-state & cross-device persistence
 
 **Last updated:** 2026-08-03  
-**Prerequisite (done):** Studio **page** persistence Backing → Creative → hard refresh @ rev **193** (`ad68e71`, 2026-08-02)
+**Status:** **Complete** — all manual acceptance items **1–8** passed on live `dev`.
 
 ---
 
@@ -37,19 +37,19 @@ Contract reference: [2026-07-30-mission-workspace-contract.md](./2026-07-30-miss
 5. **Refresh and cold-reboot persistence** — ✅ **live-accepted & frozen** @ `e36fd40`–`b989516` (rev **315**, 2026-08-03) — [Item 5 contract](./2026-08-03-item5-refresh-cold-reboot-persistence.md) | [runbook](./2026-08-03-item5-live-runbook.md).
 6. **Dell → phone synchronization** — ✅ **live-accepted & frozen** (rev **317**, 2026-08-03) — [Item 6 contract](./2026-08-03-item6-dell-phone-cross-device-persistence.md).
 7. **Phone → Dell synchronization** — ✅ **live-accepted & frozen** (rev **319**, 2026-08-03) — [Item 7 contract](./2026-08-03-item7-phone-dell-cross-device-persistence.md).
-8. **Stale-device / revision protection** — **next** — [Item 8 contract](./2026-08-03-item8-stale-device-revision-protection.md); older device cannot silently overwrite newer cloud revision.
-
----
-
-## Implementation notes (when a check fails)
-
-- Save path: `sync_creative_workspace_before_persist`, `creative_workspace_state`, page snapshots (`creative` / `backing`).
-- Apply path: `apply_cloud_creative_state_if_allowed`, envelope apply in `apply_music_disk_state`.
-- Do **not** fork a separate Creative-only cloud channel.
-- Do **not** reopen Tests A–E page/global/AMI restore without `?dev=1` regression proof.
+8. **Stale-device / revision protection** — ✅ **live-accepted & frozen** @ **`8ef698e`** (2026-08-03) — [Item 8 contract](./2026-08-03-item8-stale-device-revision-protection.md); TEST A/B/C passed (cloud **323→325**).
 
 ---
 
 ## Phase 2 gate
 
-**Style Identity & Creative Engine Phase 2** ([plan](./2026-07-03-style-identity-phase-2.md)) starts only after items **1–8** above are checked on live `dev`.
+**Style Identity & Creative Engine Phase 2** ([plan](./2026-07-03-style-identity-phase-2.md)): **gate cleared** — Items **1–8** live-accepted on `dev` (2026-08-03). Begin Phase 2 work per [music_app_tasks.md](../music_app_tasks.md); frozen Item 8 baseline must not regress.
+
+---
+
+## Implementation notes (regression guard)
+
+- Save path: `sync_creative_workspace_before_persist`, `creative_workspace_state`, music CAS via `save_current_state_conditional_cas` (**Item 8 frozen**).
+- Apply path: `apply_cloud_creative_state_if_allowed`, envelope apply in `apply_music_disk_state`, `music_metrics_logical_revision`.
+- Do **not** fork a separate Creative-only cloud channel or restore unconditional upsert.
+- Do **not** reopen Tests A–E or Items 1–8 without `?dev=1` regression proof.

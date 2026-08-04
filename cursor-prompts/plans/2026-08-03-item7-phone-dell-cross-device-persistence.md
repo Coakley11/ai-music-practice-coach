@@ -179,4 +179,4 @@ Same as Item 6 — `suite_cloud_state`, `apply_music_disk_state`, `creative_work
 | **Phone writer** | Harmony Map **Ab → G7**; `creative_context_section_change`; Item 2 tuple **Ab** unchanged; strict egress @ **R′=319** |
 | **Dell stale reader** | Pre-phone tab hard-refreshed; `session_start_kind=hard_refresh`; network @ **319**; no Dell write; **G7** restored; `certification_passed=true` |
 
-**Next Phase 1 gate:** Item **8** stale-device overwrite protection — [contract](./2026-08-03-item8-stale-device-revision-protection.md).
+**Phase 1 gate (Item 8):** **Live-accepted & frozen** @ **`8ef698e`** — [contract](./2026-08-03-item8-stale-device-revision-protection.md).
