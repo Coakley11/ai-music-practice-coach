@@ -1929,6 +1929,13 @@ def open_backing_from_creative(
         ctx = build_custom_progression_context(session)
     else:
         ctx = build_entry_jam_context(session)
+    try:
+        from generated_jam_key_context import activate_generated_jam_key_ownership
+
+        if source in {"entry_jam"} or str(ctx.source or "") == "entry_jam":
+            activate_generated_jam_key_ownership(session, entry_mode=str(ctx.entry_mode or ""))
+    except ImportError:
+        pass
     existing = get_backing_context(session)
     if not existing or existing.source_signature != ctx.source_signature or existing.source != ctx.source:
         session.pop(_CANONICAL_BACKING_ID_KEY, None)

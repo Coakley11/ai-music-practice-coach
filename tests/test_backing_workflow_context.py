@@ -36,7 +36,7 @@ class TestBackingWorkflowContext(unittest.TestCase):
         self.assertEqual(env.get("source_type"), "generated")
         self.assertIn("Bossa Nova", str(ctx.style or ctx.groove))
         self.assertIsNone(return_to_regular_backing_label(session))
-        self.assertIn("Return to Creative Page", visible_navigation_actions(session))
+        self.assertIn("Return to Creative Page", " ".join(visible_navigation_actions(session)))
 
     def test_entry_jam_defaults_full_song_scope(self) -> None:
         session: dict[str, Any] = {

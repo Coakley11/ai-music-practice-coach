@@ -311,10 +311,19 @@ def analyze_chord_for_harmony_map(
 ) -> HarmonyChordGuide:
     level = improv_ctx.level or "Intermediate"
     focus = improv_ctx.focus or "Improvisation"
-    ref_key = coaching_reference_key(
-        key_center=improv_ctx.key_center,
-        display_key=improv_ctx.display_key,
-    )
+    try:
+        from harmonic_spelling import harmonic_reference_for_chord
+
+        ref_key = harmonic_reference_for_chord(
+            chord,
+            song_display_key=improv_ctx.display_key,
+            song_key_center=improv_ctx.key_center,
+        )
+    except ImportError:
+        ref_key = coaching_reference_key(
+            key_center=improv_ctx.key_center,
+            display_key=improv_ctx.display_key,
+        )
     stable = _stable_tones(chord, reference_key=ref_key)
     colors, avoids = _color_catalog(
         chord,
@@ -326,7 +335,7 @@ def analyze_chord_for_harmony_map(
 
     insight = chord_coach_insight(
         chord,
-        key_center=ref_key,
+        key_center=improv_ctx.display_key or ref_key,
         next_chord=next_chord,
         instrument=improv_ctx.instrument,
         level=level,
@@ -335,10 +344,18 @@ def analyze_chord_for_harmony_map(
     scale_lines: list[str] = []
     focus_low = focus.lower()
     if "scale" in focus_low or level != "Beginner":
-        suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label, reference_key=ref_key)
-            for label in insight.scales
-        ]
+        try:
+            from harmonic_spelling import build_scale_suggestion_for_chord
+
+            suggestions = insight.scale_suggestions or [
+                build_scale_suggestion_for_chord(label, chord_symbol=chord, reference_key=ref_key)
+                for label in insight.scales
+            ]
+        except ImportError:
+            suggestions = insight.scale_suggestions or [
+                build_scale_suggestion(label, reference_key=ref_key)
+                for label in insight.scales
+            ]
         max_scales = 2 if level == "Beginner" else 4
         scale_lines = [
             format_scale_line(s, stable) for s in suggestions[:max_scales]

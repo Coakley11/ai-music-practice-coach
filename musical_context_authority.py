@@ -117,6 +117,13 @@ def format_practice_concert_key_line(session: dict[str, Any], *, fallback: str =
 def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
     """True when catalog/custom song (not generated jam) owns sidebar key mode."""
     try:
+        from generated_jam_key_context import generated_jam_owns_practice_key
+
+        if generated_jam_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
+    try:
         from backing_workflow_context import get_backing_workflow_envelope
 
         env = get_backing_workflow_envelope(session) or {}

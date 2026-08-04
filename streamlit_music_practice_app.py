@@ -8802,10 +8802,10 @@ def _render_backing_return_source_action() -> None:
     try:
         from backing_context import get_backing_context
         from backing_context_ui import render_backing_edit_source_action
+        from backing_nav_actions import build_backing_nav_actions
         from backing_source_navigation import prepare_return_to_backing_source
         from backing_session_route import (
             navigate_to_regular_backing,
-            return_to_regular_backing_label,
             render_backing_route_dev_marker,
             sync_backing_session_route_from_context,
         )
@@ -8817,7 +8817,7 @@ def _render_backing_return_source_action() -> None:
         render_backing_workflow_dev_diagnostics(st, st.session_state)
 
         ctx = get_backing_context(st.session_state)
-        jam_label = return_to_regular_backing_label(st.session_state)
+        actions, _removed = build_backing_nav_actions(st.session_state)
 
         def _go_creative() -> None:
             save_page_snapshot(st.session_state, "backing")
@@ -8831,66 +8831,28 @@ def _render_backing_return_source_action() -> None:
             navigate_studio_page(st.session_state, target)
             st.rerun()
 
-        if ctx is not None and str(getattr(ctx, "source", "") or "") in {
-            "entry_jam",
-            "song_improv",
-            "mission",
-        }:
-            from backing_source_navigation import return_to_source_button_label
-
-            label = return_to_source_button_label(ctx)
-            if st.button(label, key="backing_return_creative_page_btn", use_container_width=False):
-                _go_creative()
-
-        if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
-            if st.button(
-                "Return to Mission",
-                key="backing_return_mission_btn",
-                use_container_width=False,
-            ):
-                _go_creative()
-
-        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") in {
-            "entry_jam",
-            "song_improv",
-        }:
-            if st.button(jam_label, key="backing_return_regular_song_btn", use_container_width=False):
-                navigate_to_regular_backing(st.session_state, st_like=st)
-                st.rerun()
+        for idx, action in enumerate(actions):
+            if action.action_id in {"return_creative", "return_mission"}:
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    _go_creative()
+            elif action.action_id == "return_catalog_backing":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    navigate_to_regular_backing(st.session_state, st_like=st)
+                    st.rerun()
+            elif action.action_id == "return_song_catalog":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
+                    navigate_studio_page(st.session_state, "picker")
+                    st.rerun()
+            elif action.action_id == "return_custom_songs":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    navigate_studio_page(st.session_state, "creative")
+                    st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
 
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
-            try:
-                from backing_session_route import get_backing_session_route
-
-                route = get_backing_session_route(st.session_state)
-                if route and route.song_source_type == "custom":
-                    if st.button(
-                        "Return to Custom Songs",
-                        key="backing_go_custom_songs_btn",
-                        use_container_width=False,
-                    ):
-                        navigate_studio_page(st.session_state, "creative")
-                        st.rerun()
-                    return
-            except ImportError:
-                pass
-            if st.button(
-                "🎵 Return to Song Catalog",
-                key="backing_go_catalog_song_btn",
-                use_container_width=False,
-            ):
-                set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
-                navigate_studio_page(st.session_state, "picker")
-                st.rerun()
-            return
-
-        if jam_label and str(getattr(ctx, "source", "") or "") == "mission":
-            if st.button(jam_label, key="backing_mission_return_regular_btn", use_container_width=False):
-                navigate_to_regular_backing(st.session_state, st_like=st)
-                st.rerun()
             return
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
@@ -14079,7 +14041,9 @@ elif _studio_page == "creative":
             entry = _creative_handoff_entry_mode(st.session_state)
         except ImportError:
             pass
-        if str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
+        if entry in ("Style Jam Mode", "Jam Session Generator"):
+            creative_source = "entry_jam"
+        elif str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
             creative_source = "mission"
         elif st.session_state.pop("improv_mission_backing_handoff", False):
             creative_source = "mission"

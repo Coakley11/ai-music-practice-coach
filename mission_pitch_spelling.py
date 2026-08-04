@@ -33,13 +33,21 @@ def coaching_reference_for_mission_chord(
     root = normalize_root(chord_root_for_theory(symbol) or root_raw or "C")
     low = str(suffix or "").lower()
     song = str(song_display_key or song_key_center or "").strip()
+    spelled_root = str(root_raw or root).strip() or root
     if song and normalize_root(split_chord(song)[0]) == root:
         return song
+    if not key_is_minor(song) and "m" in low and "maj" not in low and "dim" not in low:
+        return song if song else f"{spelled_root} minor"
     if key_is_minor(song) and "m" in low and "maj" not in low:
         return f"{root} minor"
+    if key_is_minor(song) and "m" not in low and "dim" not in low and "aug" not in low:
+        if normalize_root(split_chord(song)[0]) != root:
+            return spelled_root
     if reference_spelling_mode(root) == reference_spelling_mode(song) and song:
+        if key_is_minor(song) and "m" not in low and normalize_root(split_chord(song)[0]) != root:
+            return spelled_root
         return song
-    return root
+    return spelled_root
 
 
 def chord_coach_insight_for_mission(

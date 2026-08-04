@@ -35,6 +35,19 @@ def harmonic_reference_for_chord(
     if "#" in root:
         return root
     try:
+        from music_theory import key_is_minor, normalize_chord_for_theory, normalize_root, split_chord
+
+        head = normalize_chord_for_theory(chord).split("/", 1)[0].strip() or str(chord or "").split("/", 1)[0].strip()
+        _, suffix = split_chord(head or "C")
+        low = str(suffix or "").lower()
+        song = str(song_display_key or song_key_center or "").strip()
+        is_minor_chord = "m" in low and "maj" not in low and "dim" not in low
+        if song and key_is_minor(song) and not is_minor_chord:
+            if normalize_root(split_chord(song)[0]) != normalize_root(root):
+                return root
+    except ImportError:
+        pass
+    try:
         from mission_pitch_spelling import coaching_reference_for_mission_chord
 
         return coaching_reference_for_mission_chord(
@@ -124,10 +137,96 @@ def record_spelling_consistency_check(
     return diag
 
 
+def prefer_sharps_for_chord_symbol(chord: object) -> bool | None:
+    """True when the chord's authoritative spelling family is sharp-oriented."""
+    from music_theory import reference_spelling_mode
+
+    ref = harmonic_reference_for_chord(chord)
+    mode = reference_spelling_mode(ref)
+    if mode == "sharp":
+        return True
+    if mode == "flat":
+        return False
+    return None
+
+
+def _note_set_uses_wrong_accidental_family(notes: list[str], *, prefer_sharps: bool) -> bool:
+    joined = " ".join(str(n) for n in notes)
+    if prefer_sharps:
+        for bad in ("Eb", "Gb", "Ab", "Db", "Cb", "Bb", "Fb"):
+            if bad in joined and f"{bad}7" not in joined:
+                if bad + " " in joined or joined.startswith(bad) or f", {bad}" in joined or f"· {bad}" in joined:
+                    return True
+                if f" {bad}" in joined or f"{bad}," in joined:
+                    return True
+    else:
+        for bad in ("C#", "D#", "F#", "G#", "A#", "E#", "B#"):
+            if bad in joined:
+                return True
+    return False
+
+
+def assert_mission_spelling_consistency(
+    session: dict[str, Any],
+    *,
+    chord_symbol: str,
+    stable_tones: list[str] | None = None,
+    coaching_tones: list[str] | None = None,
+    color_tones: list[str] | None = None,
+    scale_note_text: str = "",
+    motif_notes: list[str] | None = None,
+    notation_text: str = "",
+) -> dict[str, Any]:
+    """Dev/runtime check — one accidental family per mission chord surface."""
+    from improvisation_motif import chord_tone_names
+
+    chord = str(chord_symbol or "").strip()
+    ref = harmonic_reference_for_chord(chord)
+    prefer_sh = prefer_sharps_for_chord_symbol(chord)
+    parsed = chord_tone_names(chord, reference_key=ref)[:3]
+    violations: list[str] = []
+
+    def _check(label: str, notes: list[str] | None) -> None:
+        if prefer_sh is None or not notes:
+            return
+        if _note_set_uses_wrong_accidental_family(list(notes), prefer_sharps=prefer_sh):
+            violations.append(label)
+
+    _check("MISSION_CHORD_TONE_SPELLING_MISMATCH", stable_tones or parsed)
+    _check("MISSION_COACHING_SPELLING_MISMATCH", coaching_tones)
+    _check("MISSION_COLOR_TONE_SPELLING_MISMATCH", color_tones)
+    _check("MISSION_EXAMPLE_SPELLING_MISMATCH", motif_notes)
+    if prefer_sh is True and any(x in scale_note_text for x in ("Eb", "Gb", "Ab")):
+        if "C#" in scale_note_text or "D#" in scale_note_text or "F#" in scale_note_text:
+            pass
+        elif "Eb" in scale_note_text or "Gb" in scale_note_text:
+            violations.append("MISSION_SCALE_SPELLING_MISMATCH")
+    if prefer_sh is True and notation_text:
+        if any(x in notation_text for x in ("_e", "_g", "_a", "_d")) and "B major" in chord.upper():
+            violations.append("MISSION_NOTATION_SPELLING_MISMATCH")
+        if "^D" in notation_text or "^F" in notation_text or "^G" in notation_text:
+            pass
+        elif "_e" in notation_text.lower() or "_g" in notation_text.lower():
+            violations.append("MISSION_NOTATION_SPELLING_MISMATCH")
+
+    diag = {
+        "chord_symbol": chord,
+        "reference_key": ref,
+        "prefer_sharps": prefer_sh,
+        "parsed_chord_tones": parsed,
+        "violations": violations,
+        "consistent": not violations,
+    }
+    session["_mission_spelling_consistency"] = diag
+    return diag
+
+
 __all__ = [
     "SPELLING_DIAG_KEY",
+    "assert_mission_spelling_consistency",
     "build_scale_suggestion_for_chord",
     "harmonic_reference_for_chord",
+    "prefer_sharps_for_chord_symbol",
     "record_spelling_consistency_check",
     "scale_root_for_label",
     "spelled_chord_root_from_symbol",

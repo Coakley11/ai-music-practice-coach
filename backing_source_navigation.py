@@ -403,8 +403,17 @@ def _open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None 
 def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
     """Authoritative Creative entry mode for Open Backing / return handoff."""
     try:
-        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
         from studio_page_state import IMPROV_ENTRY_MODES
+
+        live = str(
+            session.get("improv_entry_mode") or session.get("creative_improv_entry_mode") or ""
+        ).strip()
+        if live in IMPROV_ENTRY_MODES:
+            return live
+    except ImportError:
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+    try:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 
         pending = str(session.get(PENDING_IMPROV_ENTRY_MODE_KEY) or "").strip()
         if pending in IMPROV_ENTRY_MODES:
@@ -448,6 +457,8 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             session.pop("improv_mission_backing_handoff", None)
             return activate_mission_ownership(session, st_like=st_like)
         entry = _creative_handoff_entry_mode(session)
+        if entry in ("Style Jam Mode", "Jam Session Generator"):
+            return activate_entry_jam_ownership(session, st_like=st_like)
         if entry == "Song-Based Improvisation":
             try:
                 from studio_page_state import resolve_improv_song_source
@@ -1326,6 +1337,14 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     page = target_page_for_backing_context(ctx)
     if ctx is None:
         return page
+    try:
+        from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+        tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
+        if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") == "mission":
+            deactivate_generated_jam_key_ownership(session)
+    except ImportError:
+        pass
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
     session.pop("_improv_tab_user_touched", None)

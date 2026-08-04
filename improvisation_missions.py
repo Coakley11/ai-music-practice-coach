@@ -526,11 +526,21 @@ def generate_mission_example(
         mission, chord, improv_ctx.song_title, variant, level, section, nonce=nonce
     )
     rng = random.Random(seed)
+    try:
+        from harmonic_spelling import harmonic_reference_for_chord
+
+        spell_ref = harmonic_reference_for_chord(
+            chord,
+            song_display_key=improv_ctx.display_key,
+            song_key_center=improv_ctx.key_center,
+        )
+    except ImportError:
+        spell_ref = improv_ctx.display_key
 
     motif = _build_motif_for_mission(
         mission,
         chord,
-        key_center=improv_ctx.display_key,
+        key_center=spell_ref,
         level=level,
         variant=variant,
         rng=rng,
@@ -541,7 +551,7 @@ def generate_mission_example(
         motif,
         chord=chord,
         instrument=instrument,
-        key_center=improv_ctx.display_key,
+        key_center=spell_ref,
         bpm=bpm,
         mission=mission,
     )

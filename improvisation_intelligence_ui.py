@@ -94,7 +94,18 @@ MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
 
 
-def _motif_notation_reference_key(improv_ctx: ImprovSessionContext) -> str:
+def _motif_notation_reference_key(improv_ctx: ImprovSessionContext, chord: str = "") -> str:
+    if chord:
+        try:
+            from harmonic_spelling import harmonic_reference_for_chord
+
+            return harmonic_reference_for_chord(
+                chord,
+                song_display_key=improv_ctx.display_key,
+                song_key_center=improv_ctx.key_center,
+            )
+        except ImportError:
+            pass
     return coaching_reference_key(
         key_center=improv_ctx.key_center,
         display_key=improv_ctx.display_key,
@@ -2453,6 +2464,20 @@ def _tab_harmony_map(
         next_chord=next_ch,
         prev_chord=prev_ch,
     )
+    try:
+        from harmonic_spelling import assert_mission_spelling_consistency
+
+        scale_text = " ".join(guide.scale_lines or [])
+        assert_mission_spelling_consistency(
+            session_state,
+            chord_symbol=sel_chord,
+            stable_tones=guide.stable_tones,
+            coaching_tones=list(guide.stable_tones),
+            color_tones=[c.note for c in guide.color_tones],
+            scale_note_text=scale_text,
+        )
+    except ImportError:
+        pass
 
     st.markdown(
         f'<div class="hm-guide-card">'

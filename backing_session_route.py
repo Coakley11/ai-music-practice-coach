@@ -180,11 +180,11 @@ def on_creative_backing_handoff(session: dict[str, Any], *, source: str) -> None
 
 def visible_navigation_actions(session: dict[str, Any]) -> list[str]:
     try:
-        from backing_workflow_context import get_backing_workflow_envelope, workflow_is_generated
+        from backing_nav_actions import build_backing_nav_actions
 
-        env = get_backing_workflow_envelope(session)
-        if env and workflow_is_generated(session):
-            return ["Return to Creative Page"]
+        actions, _ = build_backing_nav_actions(session)
+        if actions:
+            return [a.label for a in actions]
     except ImportError:
         pass
     route = get_backing_session_route(session) or sync_backing_session_route_from_context(session)

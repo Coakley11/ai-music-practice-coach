@@ -82,6 +82,14 @@ def retranspose_generated_sections(
 def is_creative_catalog_pick_frozen(session: dict[str, Any]) -> bool:
     """True when Creative jam/style edits must not mutate the active catalog song."""
     page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        try:
+            from backing_workflow_context import workflow_is_generated
+
+            if workflow_is_generated(session):
+                return True
+        except ImportError:
+            pass
     if page != "creative":
         return False
     entry = str(session.get("improv_entry_mode") or "").strip()

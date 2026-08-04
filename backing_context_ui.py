@@ -391,6 +391,13 @@ def render_backing_edit_source_action(
 
 def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     """Reset Creative/custom backing to catalog or custom active song."""
+    try:
+        from backing_nav_actions import catalog_return_action_visible
+
+        if catalog_return_action_visible(session):
+            return
+    except ImportError:
+        pass
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return
