@@ -105,34 +105,38 @@ def persist_mission_pending_upload_handoff(
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(merged)
     try:
         from creative_workspace_state_persistence import (
-            CREATIVE_WORKSPACE_STATE_KEY,
-            sync_creative_workspace_state_before_persist,
+            gather_creative_workspace_from_session,
             write_canonical_creative_workspace,
         )
-        from creative_workspace_state_persistence import gather_creative_workspace_from_session
+        from mission_pending_upload_analysis import SAVE_REASON_MISSION_PENDING_UPLOAD
 
         blob = gather_creative_workspace_from_session(session)
         blob[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(merged)
         write_canonical_creative_workspace(session, blob, reason=SAVE_REASON_MISSION_PENDING_UPLOAD)
     except ImportError:
         pass
+    try:
+        from pending_upload_route_precedence import commit_pending_upload_navigation_handoff
+
+        commit_pending_upload_navigation_handoff(session, st=None, persist_save=False)
+    except ImportError:
+        pass
     if st is not None:
         try:
             from music_persistent_state import force_save_music_state
 
-            force_save_music_state(st, reason=SAVE_REASON_MISSION_PENDING_UPLOAD)
-            diag["persistence_write"] = "ok"
+            ok = force_save_music_state(st, reason=SAVE_REASON_MISSION_PENDING_UPLOAD)
+            cloud_ok = bool(st.session_state.get("_suite_persist_last_save_cloud"))
+            diag["persistence_write"] = "ok" if ok and cloud_ok else f"save_error:cloud={cloud_ok}"
+            diag["cloud_confirmed"] = cloud_ok
+            diag["workspace_revision"] = st.session_state.get("_suite_last_persisted_revision")
         except Exception as exc:
             diag["persistence_write"] = f"save_error:{type(exc).__name__}"
+            diag["cloud_confirmed"] = False
     else:
         diag["persistence_write"] = "session_only"
+        diag["cloud_confirmed"] = False
     session[PENDING_UPLOAD_DIAG_KEY] = diag
-    try:
-        from pending_upload_route_precedence import commit_pending_upload_navigation_handoff
-
-        commit_pending_upload_navigation_handoff(session, st=st)
-    except ImportError:
-        pass
     return diag
 
 
@@ -277,10 +281,40 @@ def render_pending_upload_dev_diagnostics(st_module: Any, session: dict[str, Any
             return
     env = envelope_from_session_or_canonical(session) or {}
     diag = dict(session.get(PENDING_UPLOAD_DIAG_KEY) or {})
+    nav = env.get("navigation") if isinstance(env.get("navigation"), dict) else {}
+    route = {}
+    cws = session.get("creative_workspace_state")
+    if isinstance(cws, dict) and env.get("take_id"):
+        route["cloud_envelope"] = True
+    else:
+        route["cloud_envelope"] = bool(env.get("take_id"))
+    route["destination"] = nav.get("studio_page") or env.get("active_destination_page")
+    route["route_lock_durable"] = bool(nav.get("route_lock"))
+    route["revision"] = diag.get("workspace_revision") or env.get("handoff_revision")
+    try:
+        from pending_upload_route_precedence import (
+            PENDING_UPLOAD_ROUTE_LOCK_KEY,
+            PENDING_UPLOAD_ROUTE_DIAG_KEY,
+            durable_pending_upload_route_active,
+        )
+
+        route_diag = session.get(PENDING_UPLOAD_ROUTE_DIAG_KEY) or {}
+        route["final_owner"] = route_diag.get("winning_route_reason") or "—"
+        route["lock_session"] = bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY))
+        route["lock_durable"] = durable_pending_upload_route_active(
+            session, session.get("_suite_last_cloud_fetch_payload")
+        )
+    except ImportError:
+        pass
+    deploy = str(session.get("_studio_ui_release_sha") or "—")
     st_module.caption(
         f"DEV pending upload · take `{env.get('take_id', '—')}` · "
-        f"rev `{env.get('handoff_revision', '—')}` · "
-        f"dry `{((env.get('dry_audio') or {}).get('fingerprint') or '—')[:12]}` · "
-        f"mixed `{((env.get('mixed_preview_audio') or {}).get('fingerprint') or '—')[:12]}` · "
-        f"hydrate `{diag.get('hydrate', '—')}` · write `{diag.get('persistence_write', '—')}`"
+        f"rev `{route.get('revision', '—')}` · "
+        f"envelope `{route.get('cloud_envelope')}` · "
+        f"dest `{route.get('destination', '—')}` · "
+        f"lock durable `{route.get('lock_durable')}` · "
+        f"hydrate `{diag.get('hydrate', '—')}` · "
+        f"owner `{route.get('final_owner', '—')}` · "
+        f"write `{diag.get('persistence_write', '—')}` · "
+        f"sha `{deploy[:7] if deploy else '—'}`"
     )

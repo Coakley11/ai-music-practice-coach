@@ -2734,6 +2734,20 @@ def apply_music_disk_state(
     except ImportError:
         pass
     try:
+        from mission_pending_upload_analysis import (
+            PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY,
+            envelope_from_session_or_canonical,
+        )
+
+        if not envelope_from_session_or_canonical(ss):
+            cws = payload.get("creative_workspace_state") if isinstance(payload, dict) else None
+            if isinstance(cws, dict):
+                raw = cws.get(PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY)
+                if isinstance(raw, dict) and raw.get("take_id"):
+                    ss[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(raw)
+    except ImportError:
+        pass
+    try:
         from mission_backing_handoff_persistence import (
             record_refresh_hydration_step,
             summarize_handoff_payload_forensics,

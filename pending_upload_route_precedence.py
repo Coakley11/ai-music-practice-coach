@@ -47,8 +47,67 @@ def record_pending_upload_route_trace(
     session[PENDING_UPLOAD_ROUTE_TRACE_KEY] = trace[-40:]
 
 
-def pending_upload_owns_active_destination(session: dict[str, Any]) -> bool:
-    return pending_upload_should_restore_analysis_page(session, None)
+def pending_upload_owns_active_destination(session: dict[str, Any], blob: dict[str, Any] | None = None) -> bool:
+    return pending_upload_should_restore_analysis_page(session, blob)
+
+
+def _route_from_blob(blob: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(blob, dict):
+        return None
+    mws = blob.get("music_workspace_state")
+    if isinstance(mws, dict):
+        route = mws.get("pending_upload_route")
+        if isinstance(route, dict):
+            return route
+    return None
+
+
+def durable_pending_upload_route_active(
+    session: dict[str, Any],
+    blob: dict[str, Any] | None = None,
+) -> bool:
+    """Route lock must come from cloud envelope or music_workspace_state — not session-only."""
+    route = _route_from_blob(blob)
+    if isinstance(route, dict):
+        if route.get("route_lock") and str(route.get("destination_page") or "") == "analysis":
+            return True
+    env = _envelope(session, blob)
+    if not env:
+        return False
+    nav = env.get("navigation") if isinstance(env.get("navigation"), dict) else {}
+    if nav.get("route_lock") and nav.get("resume_upload_analysis") is not False:
+        return True
+    if str(env.get("active_destination_page") or "").strip().lower() == "analysis" and nav.get(
+        "resume_upload_analysis"
+    ):
+        return bool(nav.get("route_lock"))
+    return False
+
+
+def pending_upload_blocks_passive_creative_sync(session: dict[str, Any], *, reason: str = "") -> bool:
+    if not durable_pending_upload_route_active(session, session.get("_suite_last_cloud_fetch_payload")):
+        if not session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY):
+            return False
+    try:
+        from mission_pending_upload_analysis import SAVE_REASON_MISSION_PENDING_UPLOAD
+    except ImportError:
+        SAVE_REASON_MISSION_PENDING_UPLOAD = "mission_pending_upload_handoff"
+    allowed = {
+        SAVE_REASON_MISSION_PENDING_UPLOAD,
+        "pending_upload_navigation_handoff",
+        "mission_pending_upload_cleared",
+        "mission_pending_upload_handoff",
+    }
+    r = str(reason or "").strip()
+    if r in allowed:
+        return False
+    if str(session.get("studio_page") or "").strip().lower() == "analysis":
+        return True
+    return bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY))
+
+
+def pending_upload_owns_active_destination(session: dict[str, Any], blob: dict[str, Any] | None = None) -> bool:
+    return pending_upload_should_restore_analysis_page(session, blob)
 
 
 def guard_studio_page_write_for_pending_upload(
@@ -59,7 +118,9 @@ def guard_studio_page_write_for_pending_upload(
 ) -> str:
     """Block passive overwrites of analysis while prepared upload resume is active."""
     proposed = str(page or "").strip().lower()
-    if not pending_upload_owns_active_destination(session):
+    blob = session.get("_suite_last_cloud_fetch_payload")
+    blob_dict = blob if isinstance(blob, dict) else None
+    if not pending_upload_owns_active_destination(session, blob_dict):
         return proposed or str(page or "")
     if proposed == "analysis":
         return "analysis"
@@ -74,7 +135,9 @@ def guard_studio_page_write_for_pending_upload(
             reason=r or "user_nav",
         )
         return proposed
-    if session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY):
+    if session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY) or durable_pending_upload_route_active(
+        session, blob_dict
+    ):
         old = str(session.get("studio_page") or "")
         record_pending_upload_route_trace(
             session,
@@ -153,6 +216,8 @@ def pending_upload_should_restore_analysis_page(
         return False
     if session.get("_pending_upload_user_left_analysis"):
         return False
+    if not durable_pending_upload_route_active(session, blob):
+        return False
     if nav.get("resume_upload_analysis") is True:
         return True
     return str(env.get("active_destination_page") or "").strip().lower() == "analysis"
@@ -189,9 +254,11 @@ def deactivate_mission_jam_route_for_upload_handoff(session: dict[str, Any]) -> 
 
 def apply_pending_upload_to_save_payload(session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     """Pin Upload Analysis destination into cloud payload when pending handoff owns the route."""
+    blob = session.get("_suite_last_cloud_fetch_payload")
+    blob_dict = blob if isinstance(blob, dict) else None
     owns = bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY)) or pending_upload_should_restore_analysis_page(
-        session, None
-    )
+        session, blob_dict
+    ) or durable_pending_upload_route_active(session, blob_dict)
     if not owns:
         return state
     page = "analysis"
@@ -274,7 +341,12 @@ def attach_navigation_to_envelope(env: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def commit_pending_upload_navigation_handoff(session: dict[str, Any], *, st: Any | None = None) -> None:
+def commit_pending_upload_navigation_handoff(
+    session: dict[str, Any],
+    *,
+    st: Any | None = None,
+    persist_save: bool = True,
+) -> None:
     """Pin durable destination to Upload Analysis and drop transient mission backing route."""
     try:
         from mission_pending_upload_analysis import (
@@ -323,7 +395,7 @@ def commit_pending_upload_navigation_handoff(session: dict[str, Any], *, st: Any
         synchronize_page_bearing_state_for_save(session, "analysis")
     except ImportError:
         pass
-    if st is not None:
+    if persist_save and st is not None:
         try:
             from music_persistent_state import force_save_music_state
 
@@ -439,6 +511,8 @@ def render_pending_upload_route_dev_diagnostics(st_module: Any, session: dict[st
 
 __all__ = [
     "apply_pending_upload_to_save_payload",
+    "durable_pending_upload_route_active",
+    "pending_upload_blocks_passive_creative_sync",
     "commit_pending_upload_navigation_handoff",
     "enforce_pending_upload_startup_route",
     "hydrate_pending_upload_route_from_payload",

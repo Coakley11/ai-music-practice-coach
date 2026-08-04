@@ -151,6 +151,17 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
     for key, val in preserved_selectors.items():
         if _selector_value_empty(base.get(key)):
             base[key] = copy.deepcopy(val)
+    try:
+        from mission_pending_upload_analysis import (
+            PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY,
+            envelope_from_session_or_canonical,
+        )
+
+        env = envelope_from_session_or_canonical(session)
+        if isinstance(env, dict) and env.get("take_id"):
+            base[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(env)
+    except ImportError:
+        pass
     cs = base.get(CREATIVE_SESSION_KEY)
     if isinstance(cs, dict):
         cs = copy.deepcopy(cs)
@@ -231,6 +242,13 @@ def creative_workspace_state_restored(session: dict[str, Any]) -> bool:
 
 
 def sync_creative_workspace_state_before_persist(session: dict[str, Any], *, reason: str = "autosave") -> None:
+    try:
+        from pending_upload_route_precedence import pending_upload_blocks_passive_creative_sync
+
+        if pending_upload_blocks_passive_creative_sync(session, reason=reason):
+            return
+    except ImportError:
+        pass
     try:
         from mission_backing_handoff_persistence import should_skip_creative_sync_for_handoff_page_change
 

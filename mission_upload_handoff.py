@@ -37,7 +37,7 @@ def handoff_mission_take_to_upload_analysis(
     filename: str,
     source: str,
     st: Any | None = None,
-) -> None:
+) -> tuple[bool, str]:
     """Preload take + mission context; leave AI criteria editable on Upload Analysis."""
     from mission_analysis_ui import (
         ANALYSIS_CRITERIA_LOCKED,
@@ -97,16 +97,23 @@ def handoff_mission_take_to_upload_analysis(
 
         mixed = session.get("_mission_live_mic_mixed")
         mixed_opt = bytes(mixed) if isinstance(mixed, (bytes, bytearray)) and mixed != audio_bytes else None
-        persist_mission_pending_upload_handoff(
+        diag = persist_mission_pending_upload_handoff(
             session,
             dry_bytes=bytes(audio_bytes),
             mixed_bytes=mixed_opt,
             filename=str(filename or "mission_live_take.wav"),
             st=st,
         )
+        write_state = str(diag.get("persistence_write") or "")
+        if write_state != "ok" or not diag.get("cloud_confirmed"):
+            msg = write_state or "cloud_save_unconfirmed"
+            session.pop("_navigate_to_studio_page", None)
+            return False, msg
         session["_navigate_to_studio_page"] = "analysis"
+        return True, ""
     except ImportError:
-        pass
+        session["_navigate_to_studio_page"] = "analysis"
+        return True, ""
 
 
 __all__ = ["handoff_mission_take_to_upload_analysis"]

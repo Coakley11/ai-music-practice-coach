@@ -64,14 +64,22 @@ class TestMissionPendingUploadPersistence(unittest.TestCase):
                 "playback_status": "playable",
             }
 
-        with patch("media_storage.persist_recording_audio", side_effect=_fake_persist):
-            handoff_mission_take_to_upload_analysis(
-                session, audio_bytes=wav, filename="t.wav", source="live"
+        with patch("media_storage.persist_recording_audio", side_effect=_fake_persist), patch(
+            "music_persistent_state.force_save_music_state",
+            side_effect=lambda st, reason="": (
+                st.session_state.__setitem__("_suite_persist_last_save_cloud", True) or True
+            ),
+        ):
+            st_like = type("St", (), {"session_state": session})()
+            ok, _err = handoff_mission_take_to_upload_analysis(
+                session, audio_bytes=wav, filename="t.wav", source="live", st=st_like
             )
+            self.assertTrue(ok)
             self.assertEqual(len(store_calls), 1)
-            handoff_mission_take_to_upload_analysis(
-                session, audio_bytes=wav, filename="t.wav", source="live"
+            ok2, _err2 = handoff_mission_take_to_upload_analysis(
+                session, audio_bytes=wav, filename="t.wav", source="live", st=st_like
             )
+            self.assertTrue(ok2)
             self.assertEqual(len(store_calls), 1)
         env = session.get(PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY)
         self.assertIsInstance(env, dict)

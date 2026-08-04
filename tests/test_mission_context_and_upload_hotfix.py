@@ -100,7 +100,11 @@ class TestPendingUploadRouteLock(unittest.TestCase):
         env = {
             "take_id": "t1",
             "analysis_status": "prepared",
-            "navigation": {"resume_upload_analysis": True, "studio_page": "analysis"},
+            "navigation": {
+                "resume_upload_analysis": True,
+                "studio_page": "analysis",
+                "route_lock": True,
+            },
         }
         session: dict[str, Any] = {
             "studio_page": "analysis",
@@ -123,7 +127,7 @@ class TestPendingUploadRouteLock(unittest.TestCase):
             "pending_upload_analysis_envelope": {
                 "take_id": "t1",
                 "analysis_status": "prepared",
-                "navigation": {"resume_upload_analysis": True},
+                "navigation": {"resume_upload_analysis": True, "route_lock": True},
             },
         }
         state: dict[str, Any] = {"music_workspace_state": {"studio_page": "creative"}, "core": {}}
@@ -134,7 +138,7 @@ class TestPendingUploadRouteLock(unittest.TestCase):
             "pending_upload_analysis_envelope": {
                 "take_id": "x",
                 "analysis_status": "prepared",
-                "navigation": {"resume_upload_analysis": True},
+                "navigation": {"resume_upload_analysis": True, "route_lock": True},
             }
         }
         self.assertTrue(pending_upload_should_restore_analysis_page(session, None))

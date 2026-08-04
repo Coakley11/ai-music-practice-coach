@@ -161,7 +161,11 @@ class TestPendingUploadRoutePrecedence(unittest.TestCase):
             "take_id": "t1",
             "analysis_status": "prepared",
             "active_destination_page": "analysis",
-            "navigation": {"resume_upload_analysis": True, "studio_page": "analysis"},
+            "navigation": {
+                "resume_upload_analysis": True,
+                "studio_page": "analysis",
+                "route_lock": True,
+            },
         }
         session: dict[str, Any] = {
             "studio_page": "backing",
@@ -191,14 +195,22 @@ class TestPendingUploadRoutePrecedence(unittest.TestCase):
                 "playback_status": "playable",
             }
 
-        with patch("media_storage.persist_recording_audio", side_effect=_fake_persist):
+        with patch("media_storage.persist_recording_audio", side_effect=_fake_persist), patch(
+            "music_persistent_state.force_save_music_state",
+            side_effect=lambda st, reason="": (
+                st.session_state.__setitem__("_suite_persist_last_save_cloud", True) or True
+            ),
+        ):
             with patch("media_storage.load_recording_audio", return_value=(wav, "ok")):
-                handoff_mission_take_to_upload_analysis(
-                    session, audio_bytes=wav, filename="t.wav", source="live"
+                st_like = type("St", (), {"session_state": session})()
+                ok, _ = handoff_mission_take_to_upload_analysis(
+                    session, audio_bytes=wav, filename="t.wav", source="live", st=st_like
                 )
+                self.assertTrue(ok)
         nav = (session.get("pending_upload_analysis_envelope") or {}).get("navigation") or {}
         self.assertTrue(nav.get("resume_upload_analysis"))
         self.assertEqual(nav.get("studio_page"), "analysis")
+        self.assertTrue(nav.get("route_lock"))
 
 
 class TestBuildMissionContextStyle(unittest.TestCase):

@@ -309,14 +309,19 @@ def render_mission_live_recording_studio(
         disabled=not has_take or not analyze_ok,
     ):
         audio = bytes(dry_bytes or session.get("_mission_live_mic_pending") or b"")
-        handoff_mission_take_to_upload_analysis(
+        ok, err = handoff_mission_take_to_upload_analysis(
             session,
             audio_bytes=audio,
             filename="mission_live_take.wav",
             source="live",
             st=st,
         )
-        if on_open_upload_analysis:
+        if not ok:
+            st.error(
+                "Could not save your take for Upload Analysis. "
+                f"Stay on Missions and try again. ({err})"
+            )
+        elif on_open_upload_analysis:
             on_open_upload_analysis()
 
     if not has_take:
