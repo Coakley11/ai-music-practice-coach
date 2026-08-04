@@ -8802,12 +8802,46 @@ def _render_backing_return_source_action() -> None:
         from backing_context import get_backing_context
         from backing_context_ui import render_backing_edit_source_action
         from backing_source_navigation import prepare_return_to_backing_source
+        from backing_session_route import (
+            navigate_to_regular_backing,
+            return_to_regular_backing_label,
+            render_backing_route_dev_marker,
+            sync_backing_session_route_from_context,
+        )
         from studio_page_persistence import save_page_snapshot
 
+        sync_backing_session_route_from_context(st.session_state)
+        render_backing_route_dev_marker(st, st.session_state)
+
+        jam_label = return_to_regular_backing_label(st.session_state)
         ctx = get_backing_context(st.session_state)
+        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") in {
+            "entry_jam",
+            "song_improv",
+        }:
+            if st.button(jam_label, key="backing_return_regular_song_btn", use_container_width=False):
+                navigate_to_regular_backing(st.session_state, st_like=st)
+                st.rerun()
+            return
+
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
+            try:
+                from backing_session_route import get_backing_session_route
+
+                route = get_backing_session_route(st.session_state)
+                if route and route.song_source_type == "custom":
+                    if st.button(
+                        "Return to Custom Songs",
+                        key="backing_go_custom_songs_btn",
+                        use_container_width=False,
+                    ):
+                        navigate_studio_page(st.session_state, "creative")
+                        st.rerun()
+                    return
+            except ImportError:
+                pass
             if st.button(
-                "🎵 Return to Catalog Song",
+                "Return to Song Catalog",
                 key="backing_go_catalog_song_btn",
                 use_container_width=False,
             ):
@@ -8815,6 +8849,11 @@ def _render_backing_return_source_action() -> None:
                 navigate_studio_page(st.session_state, "picker")
                 st.rerun()
             return
+
+        if jam_label and str(getattr(ctx, "source", "") or "") == "mission":
+            if st.button(jam_label, key="backing_mission_return_regular_btn", use_container_width=False):
+                navigate_to_regular_backing(st.session_state, st_like=st)
+                st.rerun()
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
@@ -9413,6 +9452,16 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
+try:
+    from pending_upload_route_precedence import (
+        enforce_pending_upload_startup_route,
+        render_pending_upload_route_dev_diagnostics,
+    )
+
+    enforce_pending_upload_startup_route(st.session_state, st=st)
+    render_pending_upload_route_dev_diagnostics(st, st.session_state)
+except ImportError:
+    pass
 try:
     from local_nav_trace import record_local_nav_checkpoint
 
@@ -12310,11 +12359,28 @@ elif _studio_page == "backing":
             st.rerun()
 
         _lick_payload = mission_practice_lick_payload(st.session_state)
+        try:
+            from backing_session_route import mission_backing_ui_allowed
+
+            _show_mission_lick = mission_backing_ui_allowed(st.session_state) and bool(_lick_payload)
+        except ImportError:
+            _ctx = None
+            try:
+                from backing_context import get_backing_context
+
+                _ctx = get_backing_context(st.session_state)
+            except ImportError:
+                pass
+            _show_mission_lick = bool(
+                _lick_payload
+                and _ctx is not None
+                and str(getattr(_ctx, "source", "") or "") == "mission"
+            )
         render_mission_practice_lick_on_backing(
             st,
             st.session_state,
             applied_bpm=int(_synced_bpm),
-            on_return_to_mission=_return_to_mission_from_backing if _lick_payload else None,
+            on_return_to_mission=_return_to_mission_from_backing if _show_mission_lick else None,
         )
     except Exception as _mission_lick_err:
         if _developer_mode_enabled():

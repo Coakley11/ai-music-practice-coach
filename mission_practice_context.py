@@ -201,6 +201,12 @@ def context_fingerprint(ctx: MissionPracticeContext) -> str:
 
 
 def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeContext:
+    try:
+        from mission_song_backing_style import sync_mission_style_from_song
+
+        sync_mission_style_from_song(session)
+    except ImportError:
+        pass
     mission_type = authoritative_mission_type(session)
     symbol, section, idx, label = _authoritative_chord_fields(session)
     parsed = parse_mission_chord(symbol, section=section, chord_index=idx, chord_label=label)

@@ -963,6 +963,12 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
 
 def build_mission_context(session: dict[str, Any]) -> BackingContext:
+    try:
+        from mission_song_backing_style import sync_mission_style_from_song
+
+        sync_mission_style_from_song(session)
+    except ImportError:
+        pass
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _display_keys_from_session(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
@@ -1851,6 +1857,12 @@ def open_backing_from_creative(
         from creative_session_state import sync_creative_session_from_session
 
         sync_creative_session_from_session(session)
+    except ImportError:
+        pass
+    try:
+        from backing_session_route import on_creative_backing_handoff
+
+        on_creative_backing_handoff(session, source=str(source))
     except ImportError:
         pass
     if source == "mission":

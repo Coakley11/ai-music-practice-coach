@@ -1264,6 +1264,20 @@ def render_mission_practice_lick_on_backing(
     on_return_to_mission: Callable[[], None] | None = None,
 ) -> None:
     """Mission lick panel on Backing Jam — notation/TAB rebuilt from stored motif at current BPM."""
+    try:
+        from backing_session_route import mission_backing_ui_allowed
+
+        if not mission_backing_ui_allowed(session_state):
+            return
+    except ImportError:
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session_state)
+            if ctx is None or str(ctx.source or "") != "mission":
+                return
+        except ImportError:
+            pass
     payload = mission_practice_lick_payload(session_state)
     if not payload:
         return

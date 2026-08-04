@@ -395,6 +395,14 @@ def resolve_studio_page_for_restore(
     st: Any | None = None,
 ) -> tuple[str, str]:
     """Pick authoritative studio page after cloud restore (respects manual nav + AMI return)."""
+    try:
+        from pending_upload_route_precedence import resolve_pending_upload_studio_page
+
+        pending = resolve_pending_upload_studio_page(session, blob if isinstance(blob, dict) else None)
+        if pending:
+            return pending
+    except ImportError:
+        pass
     blob_page = _studio_page_from_blob(blob)
     pre = _normalize_page(pre_restore_page)
     if session.get("_studio_nav_from_history") and pre:

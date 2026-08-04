@@ -95,6 +95,12 @@ def build_pending_upload_envelope(
         "handoff_revision": rev,
         "analysis_status": "prepared",
         "active_destination_page": "analysis",
+        "navigation": {
+            "studio_page": "analysis",
+            "workflow_owner": "pending_mission_upload_analysis",
+            "resume_upload_analysis": True,
+            "mission_jam_route_suppressed": True,
+        },
         "source": "mission_live_recording",
         "capture_timestamp": _utc_now(),
         "recording_seal": seal,

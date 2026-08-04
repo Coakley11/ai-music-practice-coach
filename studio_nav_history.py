@@ -273,6 +273,12 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         session_state[NAV_FORWARD_STACK] = []
     session_state["studio_page"] = page_id
     try:
+        from pending_upload_route_precedence import release_pending_upload_resume_route
+
+        release_pending_upload_resume_route(session_state, new_page=page_id)
+    except ImportError:
+        pass
+    try:
         from music_persistent_state import mark_user_navigated_page_this_run
 
         mark_user_navigated_page_this_run(session_state, page_id)

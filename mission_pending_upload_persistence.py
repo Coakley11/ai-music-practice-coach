@@ -127,6 +127,12 @@ def persist_mission_pending_upload_handoff(
     else:
         diag["persistence_write"] = "session_only"
     session[PENDING_UPLOAD_DIAG_KEY] = diag
+    try:
+        from pending_upload_route_precedence import commit_pending_upload_navigation_handoff
+
+        commit_pending_upload_navigation_handoff(session, st=st)
+    except ImportError:
+        pass
     return diag
 
 
@@ -233,6 +239,8 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("last_analysis_audio", None)
     session.pop(_LAST_DRY_UPLOAD_FP_KEY, None)
     session.pop("_mission_pending_take_id", None)
+    session.pop("_pending_upload_user_left_analysis", None)
+    session.pop("_pending_upload_suppresses_mission_backing", None)
     try:
         from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
 
