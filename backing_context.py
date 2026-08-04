@@ -1983,6 +1983,7 @@ def open_backing_from_creative(
             activation_source="open_backing_from_creative",
             page_route="backing",
             return_route="creative",
+            navigation_intent="backing_open",
             persist_policy="durable_handoff",
         )
         validate_workflow_consistency(session, ctx)

@@ -38,7 +38,9 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
     store = session.get("_music_workflow_state_store") or {}
     stats = store.get("stats") if isinstance(store, dict) else {}
     activation = session.get("_music_workflow_activation_last") or session.get("_music_workflow_activation_diag") or {}
+    mutation = session.get("_music_workflow_mutation_last") or session.get("_music_workflow_mutation_diag") or {}
     bootstrap = session.get("_music_workflow_bootstrap_trace") or {}
+    direct_writes = list(session.get("_music_workflow_direct_write_log") or [])[-6:]
     return {
         "workspace_id": ws,
         "account_id": acct,
@@ -54,7 +56,10 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
         "cache_identity": workflow_cache_identity(session),
         "violations": collect_consistency_violations(session),
         "activation_last": activation,
+        "mutation_last": mutation,
         "bootstrap_trace": bootstrap,
+        "active_creative_view": str(session.get("_music_active_creative_view") or ""),
+        "direct_owner_writes": direct_writes,
         "page": str(session.get("studio_page") or ""),
         "tab": str(session.get("improv_intelligence_tab") or ""),
         "entry_mode": str(session.get("improv_entry_mode") or ""),

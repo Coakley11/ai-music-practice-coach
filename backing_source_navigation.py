@@ -1371,6 +1371,7 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
                     "mission_jam",
                     activation_source="return_from_backing",
                     return_route="creative",
+                    navigation_intent="return_from_backing",
                 )
             else:
                 activate_workflow_simple(

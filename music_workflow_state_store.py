@@ -105,6 +105,10 @@ class WorkflowStateBlob:
     progression_owner: str = ""
     page_route: str = ""
     return_route: str = ""
+    last_backing_route: str = ""
+    return_to_source_route: str = ""
+    resumable_route: str = ""
+    active_creative_view: str = ""
     pending_analysis_take_id: str = ""
     material_fingerprint: str = ""
     updated_at_seq: int = 0
@@ -150,6 +154,10 @@ class WorkflowStateBlob:
             progression_owner=str(raw.get("progression_owner") or ""),
             page_route=str(raw.get("page_route") or ""),
             return_route=str(raw.get("return_route") or ""),
+            last_backing_route=str(raw.get("last_backing_route") or raw.get("page_route") or ""),
+            return_to_source_route=str(raw.get("return_to_source_route") or raw.get("return_route") or ""),
+            resumable_route=str(raw.get("resumable_route") or ""),
+            active_creative_view=str(raw.get("active_creative_view") or ""),
             pending_analysis_take_id=str(raw.get("pending_analysis_take_id") or ""),
             material_fingerprint=str(raw.get("material_fingerprint") or ""),
             updated_at_seq=int(raw.get("updated_at_seq") or 0),
@@ -348,6 +356,11 @@ def workflow_cache_identity(session: dict[str, Any]) -> str:
                 blob.selected_chord_symbol,
                 blob.generated_session_id,
                 blob.material_fingerprint,
+                blob.example_fingerprint,
+                blob.artifact_fingerprint,
+                blob.style,
+                blob.groove,
+                str(hash(json.dumps(blob.section_map, sort_keys=True, default=str)))[:8],
             ]
         )
     raw = "|".join(parts)

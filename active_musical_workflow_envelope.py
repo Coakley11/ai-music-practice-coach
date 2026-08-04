@@ -374,11 +374,22 @@ def reconcile_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, An
         except ImportError:
             pass
         pk = envelope.current_practice_concert_key
-        if pk:
-            session["display_key"] = pk
-            session["concert_key"] = pk
-            session["_pending_display_key"] = pk
-            actions.append("restored_practice_concert_key")
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer, record_compat_fallback
+
+            if get_active_workflow_pointer(session):
+                record_compat_fallback(session, "reconcile_skip_blob_key_overwrite", "compatibility_bypass")
+            elif pk:
+                session["display_key"] = pk
+                session["concert_key"] = pk
+                session["_pending_display_key"] = pk
+                actions.append("restored_practice_concert_key")
+        except ImportError:
+            if pk:
+                session["display_key"] = pk
+                session["concert_key"] = pk
+                session["_pending_display_key"] = pk
+                actions.append("restored_practice_concert_key")
 
     if sel and (
         VIOLATION_MISSION_BACKING_HANDOFF_MISMATCH in diag.get("violations", [])
@@ -422,11 +433,11 @@ def apply_atomic_mission_chord_selection(
     chord_label: str,
     button_key: str = "",
 ) -> None:
-    """One atomic update for mission chord — invalidates all chord-dependent arms."""
+    """One atomic update for mission chord — authoritative store mutation (Commit 3 B1)."""
     try:
-        from creative_mission_config_persistence import handle_user_mission_target_selection
+        from music_workflow_mutation import mutate_mission_chord_selection
 
-        handle_user_mission_target_selection(
+        result = mutate_mission_chord_selection(
             session,
             chord=chord,
             section=section,
@@ -434,34 +445,20 @@ def apply_atomic_mission_chord_selection(
             chord_label=chord_label,
             button_key=button_key,
         )
-    except ImportError:
-        session["ii_selected_chord"] = chord
-        session["ii_selected_section"] = section
-        session["ii_selected_chord_index"] = int(chord_index)
-        session["ii_selected_chord_label"] = chord_label
+        if not result.ok:
+            try:
+                import streamlit as st
 
-    session.pop("improv_mission_recording_seal", None)
-    session.pop("_mission_exact_backing_armed", None)
-    session.pop("improv_mission_backing_handoff", None)
-    try:
-        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
-
-        invalidate_exact_chord_backing_cache(session)
+                st.warning(result.error_message or "Mission chord could not be saved. Reload the page.")
+            except ImportError:
+                pass
+        return
     except ImportError:
         pass
-    try:
-        from mission_practice_context import refresh_mission_practice_context
-
-        refresh_mission_practice_context(session)
-    except ImportError:
-        pass
-    try:
-        from workflow_musical_authority import save_workflow_snapshot
-
-        save_workflow_snapshot(session, "song_based_improvisation")
-    except ImportError:
-        pass
-    session["_active_workflow_owner"] = "mission_jam"
+    session["ii_selected_chord"] = chord
+    session["ii_selected_section"] = section
+    session["ii_selected_chord_index"] = int(chord_index)
+    session["ii_selected_chord_label"] = chord_label
     build_active_workflow_envelope(session)
 
 

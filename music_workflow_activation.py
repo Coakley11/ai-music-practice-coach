@@ -13,7 +13,12 @@ from music_workflow_compatibility import (
 )
 from music_workflow_legacy_projection import (
     project_active_blob_to_legacy_session,
-    restore_workflow_blob_to_session,
+)
+from music_workflow_mutation import (
+    commit_staged_workflow,
+    resolve_workflow_routes,
+    snapshot_session_for_rollback,
+    validate_staged_blob,
 )
 from music_workflow_state_store import (
     ActiveWorkflowPointer,
@@ -48,6 +53,9 @@ class ActivateWorkflowRequest:
     mutate_incoming: dict[str, Any] | None = None
     page_route: str = ""
     return_route: str = ""
+    navigation_intent: str = ""
+    active_creative_view: str = ""
+    apply_studio_page: bool = False
     persist_policy: PersistPolicy = "none"
     expected_workspace_id: str = ""
     expected_account_id: str = ""
@@ -265,6 +273,8 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         and not request.incoming_blob
         and not request.mutate_incoming
         and not request.page_route
+        and not request.return_route
+        and not request.navigation_intent
     ):
         trace["validation_result"] = "ok_unchanged"
         trace["skipped"] = True
@@ -303,21 +313,71 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         trace["incoming_blob_explicit"] = True
 
     _merge_blob_mutations(target_blob, request.mutate_incoming)
-    if request.page_route:
-        target_blob.page_route = request.page_route
+    if request.page_route == "backing":
+        target_blob.last_backing_route = "backing"
+        target_blob.page_route = "backing"
+    elif request.page_route:
+        target_blob.resumable_route = request.page_route
     if request.return_route:
+        target_blob.return_to_source_route = request.return_route
         target_blob.return_route = request.return_route
+    if request.active_creative_view:
+        target_blob.active_creative_view = request.active_creative_view
+    elif request.navigation_intent == "creative_missions":
+        target_blob.active_creative_view = "Missions"
 
     mode = str(target_blob.keys.practice_mode or "").strip().lower()
     if not mode:
         return _fail(session, "MISSING_MODE", "Target workflow lacks explicit practice mode.", trace)
 
-    save_workflow_blob(session, target_blob, source=f"activate_in:{request.activation_source}")
+    nav = resolve_workflow_routes(
+        blob=target_blob,
+        requested_page=request.page_route if request.apply_studio_page else "",
+        requested_return=request.return_route,
+        navigation_intent=request.navigation_intent
+        or ("creative_missions" if target_owner == "mission_jam" and request.activation_source.endswith("missions_tab_render") else "")
+        or ("backing_open" if request.page_route == "backing" else "")
+        or ("return_from_backing" if request.return_route else ""),
+    )
+    trace["route_resolution"] = nav
+    if nav.get("violations"):
+        trace["route_violations"] = nav.get("violations")
 
-    restore_workflow_blob_to_session(session, target_blob)
-    projection = project_active_blob_to_legacy_session(session, target_blob)
-    trace["legacy_fields_projected"] = projection.get("projected_keys")
-    trace["incompatible_fields_cleared"] = projection.get("cleared")
+    legacy_snap = snapshot_session_for_rollback(session, target_owner)
+    staged_ptr = ActiveWorkflowPointer(
+        workflow_owner=target_owner,
+        workflow_session_id=target_sid,
+        context_revision=int(target_blob.context_revision or 1),
+        activation_source=request.activation_source,
+        workspace_id=ws,
+        account_id=acct,
+    )
+    pre_v = validate_staged_blob(session, target_blob, staged_ptr)
+    trace["validation_before_commit"] = pre_v
+    if pre_v:
+        from music_workflow_mutation import _restore_legacy_snapshot
+
+        _restore_legacy_snapshot(session, legacy_snap)
+        return _fail(session, "STAGED_VALIDATION", "Workflow activation failed validation.", trace)
+
+    commit = commit_staged_workflow(
+        session,
+        target_blob,
+        mutation_type="workflow_activation",
+        source=request.activation_source,
+        ptr=staged_ptr,
+        navigation=nav,
+        persist_policy=request.persist_policy,
+        legacy_snapshot=legacy_snap,
+    )
+    if not commit.ok:
+        return _fail(session, commit.error_code or "COMMIT_FAILED", commit.error_message or "Activation failed.", trace)
+
+    ptr_after = get_active_workflow_pointer(session)
+    trace["pointer_after"] = ptr_after.to_dict() if ptr_after else None
+    trace["context_revision_after"] = int(ptr_after.context_revision if ptr_after else 0)
+    trace["legacy_fields_projected"] = commit.trace.get("validation_after_projection")
+    trace["validation_after_projection"] = commit.trace.get("validation_after_projection")
 
     if target_owner == "mission_jam":
         try:
@@ -327,39 +387,8 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         except ImportError:
             pass
 
-    new_ptr = ActiveWorkflowPointer(
-        workflow_owner=target_owner,
-        workflow_session_id=target_sid,
-        context_revision=int(target_blob.context_revision or 1),
-        activation_source=request.activation_source,
-        workspace_id=ws,
-        account_id=acct,
-    )
-    pointer_changed = set_active_workflow_pointer(session, new_ptr, source=request.activation_source)
-    ptr_after = get_active_workflow_pointer(session)
-    trace["pointer_after"] = ptr_after.to_dict() if ptr_after else None
-    trace["context_revision_after"] = int(ptr_after.context_revision if ptr_after else 0)
-
-    caches = invalidate_workflow_caches(session, prev_ptr=ptr_before, new_ptr=new_ptr)
+    caches = invalidate_workflow_caches(session, prev_ptr=ptr_before, new_ptr=staged_ptr)
     trace["caches_invalidated"] = caches
-
-    try:
-        from active_musical_workflow_envelope import project_envelope_from_active_store
-
-        project_envelope_from_active_store(session)
-        trace["envelope_projected"] = True
-    except ImportError:
-        record_compat_fallback(session, "envelope_projection_missing", "")
-
-    violations = collect_consistency_violations(session)
-    trace["violations"] = violations
-    if violations:
-        return _fail(
-            session,
-            "VALIDATION_FAILED",
-            "Workflow activation could not be validated. Reload the page.",
-            trace,
-        )
 
     if request.persist_policy in {"explicit", "durable_handoff"}:
         session[WORKFLOW_PENDING_CANONICAL_REASON_KEY] = SAVE_REASON_ACTIVATE
@@ -367,7 +396,6 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         trace["persistence_performed"] = True
 
     trace["validation_result"] = "ok"
-    trace["pointer_changed"] = pointer_changed
     trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
     trace["deploy_sha"] = str(session.get("_studio_ui_release_sha") or "")[:7]
     session[WORKFLOW_ACTIVATION_DIAG_KEY] = trace
@@ -458,7 +486,9 @@ def activate_workflow_for_entry_mode(session: dict[str, Any]) -> ActivateWorkflo
     owner = mapping.get(entry)
     if not owner:
         return None
-    return activate_workflow_simple(session, owner, activation_source="entry_mode_change")
+    return activate_workflow_simple(
+        session, owner, activation_source="entry_mode_change", navigation_intent="creative_entry"
+    )
 
 
 def activate_workflow_simple(
@@ -469,6 +499,8 @@ def activate_workflow_simple(
     persist_policy: PersistPolicy = "none",
     page_route: str = "",
     return_route: str = "",
+    navigation_intent: str = "",
+    active_creative_view: str = "",
 ) -> ActivateWorkflowResult:
     return activate_workflow(
         session,
@@ -478,6 +510,8 @@ def activate_workflow_simple(
             persist_policy=persist_policy,
             page_route=page_route,
             return_route=return_route,
+            navigation_intent=navigation_intent,
+            active_creative_view=active_creative_view,
         ),
     )
 

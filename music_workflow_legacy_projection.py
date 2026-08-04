@@ -129,7 +129,9 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         try:
             from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
 
-            session[ACTIVE_WORKFLOW_OWNER_KEY] = "mission_jam"
+            from music_workflow_mutation import set_legacy_owner_compat_hint
+
+            set_legacy_owner_compat_hint(session, "mission_jam")
         except ImportError:
             pass
     elif owner == "style_jam":
@@ -153,9 +155,9 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         session["concert_key"] = key_token
         session["_pending_display_key"] = key_token
         try:
-            from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+            from music_workflow_mutation import set_legacy_owner_compat_hint
 
-            session[ACTIVE_WORKFLOW_OWNER_KEY] = "style_jam"
+            set_legacy_owner_compat_hint(session, "style_jam")
         except ImportError:
             pass
     elif owner == "jam_session_generator":
@@ -187,22 +189,21 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         session["concert_key"] = key_token
         session["_pending_display_key"] = key_token
         try:
-            from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+            from music_workflow_mutation import set_legacy_owner_compat_hint
 
-            session[ACTIVE_WORKFLOW_OWNER_KEY] = "jam_session_generator"
+            set_legacy_owner_compat_hint(session, "jam_session_generator")
         except ImportError:
             pass
     elif owner == "song_based_improvisation":
         try:
-            from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+            from music_workflow_mutation import set_legacy_owner_compat_hint
 
-            session[ACTIVE_WORKFLOW_OWNER_KEY] = "song_based_improvisation"
+            set_legacy_owner_compat_hint(session, "song_based_improvisation")
         except ImportError:
             pass
-    if blob.page_route:
-        session["studio_page"] = blob.page_route
-    if blob.return_route:
-        session["_music_workflow_return_route"] = blob.return_route
+    # Navigation routes are never applied from blob restore (Commit 3 B2).
+    if blob.return_to_source_route or blob.return_route:
+        session["_music_workflow_return_route"] = str(blob.return_to_source_route or blob.return_route or "")
 
 
 def project_active_blob_to_legacy_session(

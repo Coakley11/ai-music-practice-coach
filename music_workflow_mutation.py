@@ -1,0 +1,573 @@
+"""Authoritative workflow mutations — stage, validate, commit, rollback (Commit 3)."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Literal
+
+from music_workflow_legacy_projection import PROJECTED_LEGACY_KEYS, project_active_blob_to_legacy_session
+from music_workflow_state_store import (
+    ActiveWorkflowPointer,
+    KeyAuthority,
+    WorkflowStateBlob,
+    collect_consistency_violations,
+    get_active_workflow_pointer,
+    get_workflow_blob,
+    record_compat_fallback,
+    resolve_workspace_identity,
+    save_workflow_blob,
+    set_active_workflow_pointer,
+    validate_owner_bound_fingerprints,
+    workflow_cache_identity,
+)
+
+WORKFLOW_MUTATION_DIAG_KEY = "_music_workflow_mutation_diag"
+WORKFLOW_MUTATION_LAST_KEY = "_music_workflow_mutation_last"
+ACTIVE_CREATIVE_VIEW_KEY = "_music_active_creative_view"
+WORKFLOW_DIRECT_WRITE_LOG_KEY = "_music_workflow_direct_write_log"
+
+VIOLATION_STALE_BACKING_ROUTE_OVERRIDE = "STALE_BACKING_ROUTE_OVERRIDE"
+VIOLATION_WORKFLOW_ROUTE_OWNER_MISMATCH = "WORKFLOW_ROUTE_OWNER_MISMATCH"
+VIOLATION_RETURN_ROUTE_DESTINATION_MISMATCH = "RETURN_ROUTE_DESTINATION_MISMATCH"
+VIOLATION_KEY_HANDLER_OWNER_MISMATCH = "KEY_HANDLER_OWNER_MISMATCH"
+VIOLATION_KEY_LABEL_PROGRESSION_MISMATCH = "KEY_LABEL_PROGRESSION_MISMATCH"
+VIOLATION_PRACTICE_KEY_BLOB_MISMATCH = "PRACTICE_KEY_BLOB_MISMATCH"
+VIOLATION_WRITTEN_CONCERT_KEY_MISMATCH = "WRITTEN_CONCERT_KEY_MISMATCH"
+
+PersistPolicy = Literal["none", "explicit", "durable_handoff"]
+
+_OWNER_FOR_KEY_SOURCE: dict[str, str] = {
+    "creative_jam_session": "jam_session_generator",
+    "on_improv_jam_key_change": "jam_session_generator",
+    "on_improv_style_key_change": "style_jam",
+    "creative_style_jam": "style_jam",
+    "sidebar_song_improv": "song_based_improvisation",
+    "sidebar_mission": "mission_jam",
+    "sidebar_missions": "mission_jam",
+    "sync_sidebar_creative_concert_key": "",
+}
+
+
+@dataclass
+class MutationResult:
+    ok: bool
+    error_code: str = ""
+    error_message: str = ""
+    rollback_performed: bool = False
+    trace: dict[str, Any] = field(default_factory=dict)
+
+
+def log_direct_owner_write_attempt(session: dict[str, Any], key: str, *, caller: str) -> None:
+    bucket = session.setdefault(WORKFLOW_DIRECT_WRITE_LOG_KEY, [])
+    if not isinstance(bucket, list):
+        bucket = []
+        session[WORKFLOW_DIRECT_WRITE_LOG_KEY] = bucket
+    bucket.append({"key": key, "caller": caller, "ts": time.time()})
+    record_compat_fallback(session, "direct_owner_write_blocked", caller)
+
+
+def set_legacy_owner_compat_hint(session: dict[str, Any], owner: str) -> None:
+    """Single allowed path for legacy _active_workflow_owner hint (projection pipeline)."""
+    try:
+        from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+
+        session[ACTIVE_WORKFLOW_OWNER_KEY] = str(owner or "").strip()
+    except ImportError:
+        pass
+
+
+def _clone_blob(blob: WorkflowStateBlob) -> WorkflowStateBlob:
+    return WorkflowStateBlob.from_dict(copy.deepcopy(blob.to_dict())) or blob
+
+
+def _progression_fingerprint(section_map: dict[str, list[str]]) -> str:
+    raw = json.dumps(section_map, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _snapshot_legacy_keys(session: dict[str, Any], owner: str) -> dict[str, Any]:
+    keys = set()
+    for group in PROJECTED_LEGACY_KEYS.values():
+        keys.update(group)
+    keys.update(
+        {
+            "studio_page",
+            ACTIVE_CREATIVE_VIEW_KEY,
+            "_music_workflow_return_route",
+        }
+    )
+    return {k: copy.deepcopy(session.get(k)) for k in keys if k in session}
+
+
+def snapshot_session_for_rollback(session: dict[str, Any], owner: str) -> dict[str, Any]:
+    return _snapshot_legacy_keys(session, owner)
+
+
+def _restore_legacy_snapshot(session: dict[str, Any], snap: dict[str, Any]) -> None:
+    for k, v in snap.items():
+        if v is None:
+            session.pop(k, None)
+        else:
+            session[k] = copy.deepcopy(v)
+
+
+def resolve_workflow_routes(
+    *,
+    blob: WorkflowStateBlob,
+    requested_page: str = "",
+    requested_return: str = "",
+    navigation_intent: str = "",
+) -> dict[str, Any]:
+    """Choose navigation fields — explicit request beats stale stored backing route."""
+    stored_backing = str(blob.last_backing_route or blob.page_route or "").strip()
+    stored_return = str(blob.return_to_source_route or blob.return_route or "").strip()
+    chosen_page = ""
+    precedence = "none"
+    violations: list[str] = []
+
+    intent = str(navigation_intent or "").strip().lower()
+    req_page = str(requested_page or "").strip()
+    req_return = str(requested_return or "").strip()
+
+    if intent in {"creative_missions", "creative_entry", "creative_tab"}:
+        chosen_page = "creative"
+        precedence = "explicit_creative_intent"
+        if stored_backing == "backing" and not req_page:
+            violations.append(VIOLATION_STALE_BACKING_ROUTE_OVERRIDE)
+    elif intent == "backing_open":
+        chosen_page = "backing"
+        precedence = "explicit_backing_open"
+    elif intent == "return_from_backing":
+        chosen_page = req_return or "creative"
+        precedence = "return_route_request"
+        if req_return and stored_return and req_return != stored_return:
+            violations.append(VIOLATION_RETURN_ROUTE_DESTINATION_MISMATCH)
+    elif req_page:
+        chosen_page = req_page
+        precedence = "requested_page_route"
+    elif req_return:
+        chosen_page = req_return
+        precedence = "requested_return_route"
+    else:
+        precedence = "no_studio_page_apply"
+        if stored_backing == "backing":
+            violations.append(VIOLATION_STALE_BACKING_ROUTE_OVERRIDE)
+
+    return {
+        "stored_backing_route": stored_backing,
+        "stored_return_route": stored_return,
+        "requested_page": req_page,
+        "requested_return": req_return,
+        "chosen_studio_page": chosen_page,
+        "precedence": precedence,
+        "violations": violations,
+        "navigation_intent": intent,
+    }
+
+
+def validate_staged_blob(
+    session: dict[str, Any],
+    blob: WorkflowStateBlob,
+    ptr: ActiveWorkflowPointer,
+    *,
+    allow_owner_change: bool = False,
+) -> list[str]:
+    violations: list[str] = []
+    if not allow_owner_change:
+        if ptr.workflow_owner != blob.workflow_owner or ptr.workflow_session_id != blob.workflow_session_id:
+            violations.append("POINTER_BLOB_IDENTITY_MISMATCH")
+    mode = str(blob.keys.practice_mode or "").strip().lower()
+    if not mode:
+        violations.append("MISSING_MODE")
+    if not str(blob.keys.practice_tonic or "").strip():
+        violations.append("MISSING_TONIC")
+    violations.extend(validate_owner_bound_fingerprints(session, blob))
+    if blob.workflow_owner == "mission_jam" and blob.example_fingerprint and blob.selected_chord_symbol:
+        if blob.backing_handoff_chord and blob.backing_handoff_chord != blob.selected_chord_symbol:
+            violations.append("MISSION_BACKING_HANDOFF_CHORD_MISMATCH")
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if live and blob.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+        try:
+            from music_workflow_compatibility import _tonic_mode_from_token
+
+            pt, pm = _tonic_mode_from_token(live)
+            if pm != blob.keys.practice_mode and pt != blob.keys.practice_tonic:
+                pass
+        except ImportError:
+            pass
+    return violations
+
+
+def commit_staged_workflow(
+    session: dict[str, Any],
+    staged: WorkflowStateBlob,
+    *,
+    mutation_type: str,
+    source: str,
+    ptr: ActiveWorkflowPointer | None = None,
+    navigation: dict[str, Any] | None = None,
+    persist_policy: PersistPolicy = "none",
+    legacy_snapshot: dict[str, Any] | None = None,
+) -> MutationResult:
+    """Validate staged blob, commit to store, project legacy — rollback on failure."""
+    t0 = time.perf_counter()
+    ws, acct = resolve_workspace_identity(session)
+    ptr = ptr or get_active_workflow_pointer(session)
+    trace: dict[str, Any] = {
+        "mutation_type": mutation_type,
+        "source": source,
+        "owner": staged.workflow_owner,
+        "session_id": staged.workflow_session_id,
+        "staged_fingerprint": staged.material_fingerprint,
+    }
+    if ptr is None:
+        return _fail_mutation(session, trace, legacy_snapshot, "NO_ACTIVE_POINTER", "No active workflow pointer.")
+
+    staged.context_revision = max(int(staged.context_revision or 0), int(ptr.context_revision or 0))
+    pre_violations = validate_staged_blob(session, staged, ptr)
+    trace["validation_before_commit"] = pre_violations
+    if pre_violations:
+        return _fail_mutation(session, trace, legacy_snapshot, "STAGED_VALIDATION", "Workflow mutation failed validation.", pre_violations)
+
+    save_workflow_blob(session, staged, source=f"{mutation_type}:{source}")
+    new_ptr = ActiveWorkflowPointer(
+        workflow_owner=staged.workflow_owner,
+        workflow_session_id=staged.workflow_session_id,
+        context_revision=int(staged.context_revision or ptr.context_revision),
+        activation_source=source,
+        workspace_id=ws,
+        account_id=acct,
+    )
+    set_active_workflow_pointer(session, new_ptr, source=source)
+
+    if staged.active_creative_view:
+        session[ACTIVE_CREATIVE_VIEW_KEY] = staged.active_creative_view
+
+    nav = navigation or {}
+    chosen = str(nav.get("chosen_studio_page") or "").strip()
+    trace["route_diag"] = nav
+    if chosen:
+        session["studio_page"] = chosen
+    elif nav.get("precedence") == "no_studio_page_apply":
+        pass
+
+    project_active_blob_to_legacy_session(session, staged)
+    set_legacy_owner_compat_hint(session, staged.workflow_owner)
+
+    try:
+        from active_musical_workflow_envelope import project_envelope_from_active_store
+
+        project_envelope_from_active_store(session)
+    except ImportError:
+        pass
+
+    post_violations = collect_consistency_violations(session)
+    trace["validation_after_projection"] = post_violations
+    if post_violations:
+        return _fail_mutation(session, trace, legacy_snapshot, "POST_PROJECTION_VALIDATION", "Projected workflow state is inconsistent.", post_violations)
+
+    session["_music_workflow_cache_identity"] = workflow_cache_identity(session)
+    if persist_policy in {"explicit", "durable_handoff"}:
+        session["_music_workflow_pending_canonical_reason"] = "music_workflow_activate"
+
+    trace["validation_result"] = "ok"
+    trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+    trace["deploy_sha"] = str(session.get("_studio_ui_release_sha") or "")[:7]
+    session[WORKFLOW_MUTATION_DIAG_KEY] = trace
+    session[WORKFLOW_MUTATION_LAST_KEY] = trace
+    return MutationResult(ok=True, trace=trace)
+
+
+def _fail_mutation(
+    session: dict[str, Any],
+    trace: dict[str, Any],
+    legacy_snapshot: dict[str, Any] | None,
+    code: str,
+    message: str,
+    violations: list[str] | None = None,
+) -> MutationResult:
+    rollback = False
+    if legacy_snapshot is not None:
+        _restore_legacy_snapshot(session, legacy_snapshot)
+        rollback = True
+    trace["validation_result"] = "fail"
+    trace["error_code"] = code
+    if violations:
+        trace["violations"] = violations
+    trace["rollback_performed"] = rollback
+    session[WORKFLOW_MUTATION_DIAG_KEY] = trace
+    session[WORKFLOW_MUTATION_LAST_KEY] = trace
+    try:
+        from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+        session[WORKFLOW_ACTIVATION_ERROR_KEY] = {"code": code, "message": message}
+    except ImportError:
+        pass
+    return MutationResult(ok=False, error_code=code, error_message=message, rollback_performed=rollback, trace=trace)
+
+
+def mutate_active_workflow(
+    session: dict[str, Any],
+    mutator: Callable[[WorkflowStateBlob], None],
+    *,
+    mutation_type: str,
+    source: str,
+    expected_owner: str = "",
+    persist_policy: PersistPolicy = "none",
+) -> MutationResult:
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or not ptr.workflow_owner:
+        return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
+    if expected_owner and ptr.workflow_owner != expected_owner:
+        return MutationResult(ok=False, error_code="OWNER_MISMATCH", error_message="Active owner mismatch.")
+    blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+    if blob is None:
+        return MutationResult(ok=False, error_code="NO_BLOB", error_message="Active blob missing.")
+    legacy_snap = _snapshot_legacy_keys(session, ptr.workflow_owner)
+    staged = _clone_blob(blob)
+    mutator(staged)
+    return commit_staged_workflow(
+        session,
+        staged,
+        mutation_type=mutation_type,
+        source=source,
+        ptr=ptr,
+        persist_policy=persist_policy,
+        legacy_snapshot=legacy_snap,
+    )
+
+
+def mutate_mission_chord_selection(
+    session: dict[str, Any],
+    *,
+    chord: str,
+    section: str,
+    chord_index: int,
+    chord_label: str,
+    button_key: str = "",
+) -> MutationResult:
+    """B1 — mission chord updates active mission_jam blob atomically."""
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or ptr.workflow_owner != "mission_jam":
+        try:
+            from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
+
+            sid = str(session.get("active_catalog_pick_key") or "song").strip()
+            activate_workflow(
+                session,
+                ActivateWorkflowRequest(
+                    target_owner="mission_jam",
+                    target_session_id=f"mission|{sid}",
+                    activation_source="mission_chord_pre_activate",
+                    navigation_intent="creative_missions",
+                ),
+            )
+        except ImportError:
+            return MutationResult(ok=False, error_code="NOT_MISSION", error_message="Mission workflow not active.")
+        ptr = get_active_workflow_pointer(session)
+
+    prev_chord = ""
+    blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) if ptr else None
+    if blob:
+        prev_chord = str(blob.selected_chord_symbol or "").strip()
+
+    try:
+        from creative_mission_config_persistence import handle_user_mission_target_selection
+
+        handle_user_mission_target_selection(
+            session,
+            chord=chord,
+            section=section,
+            chord_index=int(chord_index),
+            chord_label=chord_label,
+            button_key=button_key,
+        )
+    except ImportError:
+        session["ii_selected_chord"] = chord
+        session["ii_selected_section"] = section
+        session["ii_selected_chord_index"] = int(chord_index)
+        session["ii_selected_chord_label"] = chord_label
+
+    def _mut(b: WorkflowStateBlob) -> None:
+        b.selected_chord_symbol = str(chord or "").strip()
+        b.selected_section = str(section or "").strip()
+        b.selected_chord_index = int(chord_index)
+        b.backing_handoff_chord = str(chord or "").strip()
+        b.recording_seal_chord = ""
+        b.active_creative_view = "Missions"
+        if prev_chord and prev_chord != str(chord or "").strip():
+            b.example_fingerprint = ""
+            b.artifact_fingerprint = ""
+        try:
+            from mission_practice_context import authoritative_mission_type
+
+            mt = authoritative_mission_type(session)
+            b.mission_type = mt
+            b.mission_id = mt
+        except ImportError:
+            b.mission_type = str(session.get("improv_active_mission") or "").strip()
+            b.mission_id = b.mission_type
+
+    result = mutate_active_workflow(
+        session,
+        _mut,
+        mutation_type="mission_chord_selection",
+        source="apply_atomic_mission_chord",
+        expected_owner="mission_jam",
+    )
+    if not result.ok:
+        return result
+
+    if prev_chord and prev_chord != str(chord or "").strip():
+        try:
+            from improvisation_missions import MISSION_EXAMPLE_KEY
+
+            ex = session.get(MISSION_EXAMPLE_KEY)
+            if isinstance(ex, dict) and str(ex.get("chord") or "").strip() not in {"", str(chord or "").strip()}:
+                session.pop(MISSION_EXAMPLE_KEY, None)
+                session.pop("_mission_example_output_fp", None)
+        except ImportError:
+            session.pop("improv_mission_example", None)
+    session.pop("improv_mission_recording_seal", None)
+    session.pop("_mission_exact_backing_armed", None)
+    session.pop("improv_mission_backing_handoff", None)
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+    try:
+        from mission_practice_context import refresh_mission_practice_context
+
+        refresh_mission_practice_context(session)
+    except ImportError:
+        pass
+    return result
+
+
+def _parse_key_token(key: str) -> tuple[str, str]:
+    try:
+        from music_workflow_compatibility import _tonic_mode_from_token
+
+        return _tonic_mode_from_token(str(key or "C"))
+    except ImportError:
+        return "C", "major"
+
+
+def update_active_practice_key(
+    session: dict[str, Any],
+    key_token: str,
+    *,
+    source: str,
+    transpose_progression: bool = True,
+    persist_policy: PersistPolicy = "none",
+) -> MutationResult:
+    """B3 — update practice key on the active owner blob only."""
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None:
+        return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
+    expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
+    if expected and ptr.workflow_owner != expected:
+        if source == "sidebar_song_improv" and ptr.workflow_owner in {"mission_jam", "song_based_improvisation"}:
+            pass
+        else:
+            return MutationResult(
+                ok=False,
+                error_code="KEY_HANDLER_OWNER_MISMATCH",
+                error_message="Key handler owner does not match active workflow.",
+            )
+    owner = ptr.workflow_owner
+    if owner not in {"song_based_improvisation", "mission_jam", "style_jam", "jam_session_generator"}:
+        return MutationResult(ok=False, error_code="UNSUPPORTED_OWNER", error_message="Key change unsupported for owner.")
+
+    new_tonic, new_mode = _parse_key_token(key_token)
+    blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+    if blob is None:
+        return MutationResult(ok=False, error_code="NO_BLOB", error_message="Active blob missing.")
+
+    prev_token = f"{blob.keys.practice_tonic}{blob.keys.practice_mode}"
+    prev_sections_fp = _progression_fingerprint(blob.section_map)
+
+    def _mut(b: WorkflowStateBlob) -> None:
+        orig_t = b.keys.original_tonic or b.keys.practice_tonic
+        orig_m = b.keys.original_mode or b.keys.practice_mode
+        b.keys = KeyAuthority(
+            original_tonic=orig_t,
+            original_mode=orig_m,
+            practice_tonic=new_tonic,
+            practice_mode=new_mode,
+            written_tonic=b.keys.written_tonic,
+            written_mode=b.keys.written_mode,
+            instrument=b.keys.instrument or str(session.get("instrument") or ""),
+            key_owner=owner,
+        )
+        if owner == "jam_session_generator":
+            jam = session.get("improv_jam_session")
+            if isinstance(jam, dict) and isinstance(jam.get("sections"), dict):
+                b.section_map = copy.deepcopy(jam.get("sections") or {})
+            elif transpose_progression and b.section_map:
+                old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+                try:
+                    from music_theory import transpose_sections_dict
+
+                    b.section_map = transpose_sections_dict(b.section_map, old_key, key_token)
+                except ImportError:
+                    pass
+        elif transpose_progression and b.section_map:
+            old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+            try:
+                from music_theory import transpose_sections_dict
+
+                b.section_map = transpose_sections_dict(b.section_map, old_key, key_token)
+            except ImportError:
+                pass
+        if owner == "mission_jam" and b.section_map:
+            flat = [c for chs in b.section_map.values() for c in chs]
+            idx = int(b.selected_chord_index or 0)
+            if flat and 0 <= idx < len(flat):
+                b.selected_chord_symbol = str(flat[idx])
+
+    trace_extra = {
+        "key_handler_source": source,
+        "requested_key": key_token,
+        "progression_fp_before": prev_sections_fp,
+    }
+    result = mutate_active_workflow(
+        session,
+        _mut,
+        mutation_type="practice_key_change",
+        source=source,
+        expected_owner=owner,
+        persist_policy=persist_policy,
+    )
+    if result.ok:
+        result.trace.update(trace_extra)
+        result.trace["progression_fp_after"] = _progression_fingerprint(
+            (get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) or blob).section_map
+        )
+        session[WORKFLOW_MUTATION_LAST_KEY] = result.trace
+    return result
+
+
+__all__ = [
+    "ACTIVE_CREATIVE_VIEW_KEY",
+    "MutationResult",
+    "VIOLATION_KEY_HANDLER_OWNER_MISMATCH",
+    "VIOLATION_STALE_BACKING_ROUTE_OVERRIDE",
+    "WORKFLOW_MUTATION_DIAG_KEY",
+    "WORKFLOW_MUTATION_LAST_KEY",
+    "commit_staged_workflow",
+    "log_direct_owner_write_attempt",
+    "mutate_active_workflow",
+    "mutate_mission_chord_selection",
+    "resolve_workflow_routes",
+    "set_legacy_owner_compat_hint",
+    "snapshot_session_for_rollback",
+    "update_active_practice_key",
+    "validate_staged_blob",
+]

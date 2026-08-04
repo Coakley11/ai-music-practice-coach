@@ -303,15 +303,33 @@ def render_improvisation_intelligence_lab(
             pass
 
         st.markdown('<div class="ui-creative-mode-segment">', unsafe_allow_html=True)
+        def _on_improv_tab_change() -> None:
+            mark_improv_tab_user_touched(session_state)
+            try:
+                from music_workflow_creative_nav import sync_workflow_for_creative_tab
+
+                sync_workflow_for_creative_tab(
+                    session_state,
+                    str(session_state.get("improv_intelligence_tab") or "").strip(),
+                )
+            except ImportError:
+                pass
+
         active_tab = st.radio(
             "Improvisation section",
             list(IMPROV_TAB_NAMES),
             horizontal=True,
             key="improv_intelligence_tab",
             label_visibility="collapsed",
-            on_change=mark_improv_tab_user_touched,
+            on_change=_on_improv_tab_change,
             kwargs={"session_state": session_state},
         )
+        try:
+            from music_workflow_creative_nav import sync_workflow_for_creative_tab
+
+            sync_workflow_for_creative_tab(session_state, str(active_tab or "").strip())
+        except ImportError:
+            pass
         st.markdown("</div>", unsafe_allow_html=True)
 
         tab_for_render = _normalize_improv_tab_for_render(active_tab)
@@ -1974,17 +1992,30 @@ def _tab_missions(
         if notice:
             st.warning(notice)
         try:
-            from music_workflow_activation import activate_workflow_simple
+            from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
 
-            activate_workflow_simple(
+            activate_workflow(
                 session_state,
-                "mission_jam",
-                activation_source="missions_tab_render",
+                ActivateWorkflowRequest(
+                    target_owner="mission_jam",
+                    activation_source="missions_tab_render",
+                    navigation_intent="creative_missions",
+                    active_creative_view="Missions",
+                ),
             )
         except ImportError:
-            from workflow_musical_authority import switch_workflow_owner
+            try:
+                from music_workflow_activation import activate_workflow_simple
 
-            switch_workflow_owner(session_state, "mission_jam")
+                activate_workflow_simple(
+                    session_state,
+                    "mission_jam",
+                    activation_source="missions_tab_render",
+                )
+            except ImportError:
+                from workflow_musical_authority import switch_workflow_owner
+
+                switch_workflow_owner(session_state, "mission_jam")
         sync_song_improv_sections_to_practice_key(session_state)
     except ImportError:
         try:
