@@ -38,7 +38,7 @@ class TestMissionLiveRecordingMix(unittest.TestCase):
     def test_mix_includes_backing_energy(self) -> None:
         dry = _tone_wav(440, 200)
         back = _tone_wav(220, 400)
-        mixed = mix_dry_mic_with_backing(dry, back, backing_offset_samples=0, backing_gain=0.8)
+        mixed, _diag = mix_dry_mic_with_backing(dry, back, backing_offset_samples=0, backing_gain=0.8)
         self.assertNotEqual(mixed, dry)
         self.assertGreater(backing_energy_in_mixed(mixed, dry), 0.001)
 

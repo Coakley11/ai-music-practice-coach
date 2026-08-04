@@ -7,9 +7,11 @@ import time
 from typing import Any, Callable
 
 from mission_evaluation_focus import default_mission_recording_expander_expanded
-from mission_exact_chord_backing import generate_exact_chord_backing_wav
 from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
-from mission_live_recording_mix import build_live_recording_previews
+from mission_live_recording_mix import (
+    build_live_recording_previews,
+    resolve_backing_wav_for_live_mix,
+)
 from mission_practice_context import (
     MISSION_RECORDING_STUDIO_ENGAGED_KEY,
     authoritative_mission_type,
@@ -23,6 +25,53 @@ from mission_upload_handoff import handoff_mission_take_to_upload_analysis
 
 MISSION_RECORDING_EXPANDER_LABEL = "Mission Live Recording (optional)"
 MISSIONS_LIVE_ONLY_KEY = "_missions_live_recording_only"
+MISSIONS_RECORDING_UI_VERSION = "phase2a-live-only-mix-v3"
+MISSIONS_RECORDING_KEY_PREFIX = "improv_mission_live"
+
+_LEGACY_MISSION_CAPTURE_WIDGET_SUFFIXES = (
+    "_capture_path",
+    "_file",
+    "_upload_pending_bytes",
+)
+
+
+def _clear_legacy_missions_upload_widgets(session: dict[str, Any]) -> None:
+    """Drop stale Streamlit/session keys from pre-live-only Missions UI."""
+    session["mission_upload_capture_mode"] = "live"
+    for suffix in _LEGACY_MISSION_CAPTURE_WIDGET_SUFFIXES:
+        session.pop(f"improv_mission_upload{suffix}", None)
+        session.pop(f"{MISSIONS_RECORDING_KEY_PREFIX}{suffix}", None)
+
+
+def _deploy_commit_short() -> str:
+    try:
+        from suite_deploy_marker import resolve_git_commit_short
+
+        return str(resolve_git_commit_short() or "unknown")
+    except ImportError:
+        return "unknown"
+
+
+def _render_recording_route_dev_marker(
+    st: Any,
+    *,
+    renderer: str,
+    key_prefix: str,
+    dev_mode: bool,
+) -> None:
+    if not dev_mode:
+        return
+    st.markdown(
+        f"<p style='font-size:0.75rem;color:#0f766e;margin:0.35rem 0;'>"
+        f"<strong>DEV recording route</strong> · renderer <code>{renderer}</code> · "
+        f"module <code>mission_upload_recording_ui</code> · "
+        f"version <code>{MISSIONS_RECORDING_UI_VERSION}</code> · "
+        f"key_prefix <code>{key_prefix}</code> · "
+        f"live_only <code>true</code> · "
+        f"deploy <code>{_deploy_commit_short()}</code>"
+        f"</p>",
+        unsafe_allow_html=True,
+    )
 
 
 def should_show_exact_chord_panel(session: dict[str, Any]) -> bool:
@@ -48,10 +97,12 @@ def render_mission_recording_upload_expander(
     st: Any,
     session: dict[str, Any],
     *,
-    key_prefix: str = "improv_mission_upload",
+    key_prefix: str = MISSIONS_RECORDING_KEY_PREFIX,
     on_open_upload_analysis: Callable[[], None] | None = None,
     dev_mode: bool = False,
 ) -> None:
+    session[MISSIONS_LIVE_ONLY_KEY] = True
+    _clear_legacy_missions_upload_widgets(session)
     with st.expander(
         MISSION_RECORDING_EXPANDER_LABEL,
         expanded=default_mission_recording_expander_expanded(),
@@ -92,11 +143,11 @@ def _refresh_live_previews(
     bpm: int,
     meter: str,
     backing_gain: float,
+    mic_gain: float = 1.0,
 ) -> dict[str, Any]:
-    """Regenerate backing from sealed mission context and build mixed preview."""
-    backing_wav, _ = generate_exact_chord_backing_wav(session)
-    if not backing_wav:
-        backing_wav = session.get("mission_exact_backing_wav")
+    """Build mixed preview using the same backing WAV as Play when available."""
+    backing_wav, source = resolve_backing_wav_for_live_mix(session)
+    session["_mission_live_backing_source"] = source
     return build_live_recording_previews(
         session,
         dry_wav,
@@ -104,6 +155,7 @@ def _refresh_live_previews(
         bpm=bpm,
         meter=meter,
         backing_gain=backing_gain,
+        mic_gain=mic_gain,
     )
 
 
@@ -111,12 +163,20 @@ def render_mission_live_recording_studio(
     st: Any,
     session: dict[str, Any],
     *,
-    key_prefix: str = "mission_upload",
+    key_prefix: str = MISSIONS_RECORDING_KEY_PREFIX,
     on_open_upload_analysis: Callable[[], None] | None = None,
     dev_mode: bool = False,
 ) -> None:
     session[MISSIONS_LIVE_ONLY_KEY] = True
     session["mission_upload_capture_mode"] = "live"
+    _clear_legacy_missions_upload_widgets(session)
+
+    _render_recording_route_dev_marker(
+        st,
+        renderer="render_mission_live_recording_studio",
+        key_prefix=key_prefix,
+        dev_mode=dev_mode,
+    )
 
     mission, chord = _compact_summary(session)
     st.markdown(f"**Mission:** {mission} · **Chord:** {chord}")
@@ -141,7 +201,8 @@ def render_mission_live_recording_studio(
     ctx = ensure_mission_practice_context(session)
     bpm = int(ctx.tempo_bpm if ctx else session.get("backing_track_bpm") or 100)
     meter = str(ctx.meter if ctx else "4/4")
-    backing_gain = float(session.get("mission_exact_backing_volume") or (ctx.volume if ctx else 0.85))
+    backing_gain = float(session.get("mission_live_mix_backing_gain") or 0.65)
+    mic_gain = float(session.get("mission_live_mix_mic_gain") or 1.0)
 
     cap_ok, cap_msg = mission_capture_allowed(
         session, require_mission_workflow=True, capture_path="live"
@@ -168,7 +229,12 @@ def render_mission_live_recording_studio(
                 raw = mic.getvalue()
                 session["_mission_live_mic_pending"] = raw
                 previews = _refresh_live_previews(
-                    session, raw, bpm=bpm, meter=meter, backing_gain=backing_gain
+                    session,
+                    raw,
+                    bpm=bpm,
+                    meter=meter,
+                    backing_gain=backing_gain,
+                    mic_gain=mic_gain,
                 )
                 dry_bytes = previews["dry"]
                 mixed_bytes = previews["mixed"]
@@ -177,7 +243,12 @@ def render_mission_live_recording_studio(
 
     if dry_bytes and not recording:
         previews = _refresh_live_previews(
-            session, bytes(dry_bytes), bpm=bpm, meter=meter, backing_gain=backing_gain
+            session,
+            bytes(dry_bytes),
+            bpm=bpm,
+            meter=meter,
+            backing_gain=backing_gain,
+            mic_gain=mic_gain,
         )
         dry_bytes = previews["dry"]
         mixed_bytes = previews["mixed"]
@@ -190,13 +261,24 @@ def render_mission_live_recording_studio(
             key=f"{key_prefix}_preview_mode",
             horizontal=True,
         )
-        use_mixed = preview_mode.startswith("Performance +") and mixed_bytes
-        if use_mixed and mixed_bytes != dry_bytes:
+        want_mixed = preview_mode.startswith("Performance +")
+        mixed_ok = bool(mixed_bytes) and mixed_bytes != dry_bytes
+        if want_mixed and mixed_ok:
             st.audio(mixed_bytes, format="audio/wav")
-            session["_mission_preview_source"] = "mixed"
+            session["_mission_preview_source"] = "_mission_live_mic_mixed"
         else:
+            if want_mixed and not mixed_ok:
+                st.caption(
+                    "Mixed preview unavailable — press **Play** on backing before recording, then try again."
+                )
             st.audio(dry_bytes, format="audio/wav")
-            session["_mission_preview_source"] = "dry"
+            session["_mission_preview_source"] = "_mission_live_mic_dry"
+
+        if dev_mode:
+            backing_only = session.get("_mission_live_backing_looped_preview")
+            if isinstance(backing_only, (bytes, bytearray)) and len(backing_only) > 44:
+                st.caption("Developer · Backing Only (looped for mix)")
+                st.audio(bytes(backing_only), format="audio/wav")
 
     has_take = bool(dry_bytes)
     analyze_ok, analyze_msg = mission_capture_allowed(
@@ -228,6 +310,11 @@ def render_mission_live_recording_studio(
     if dev_mode:
         diag = dict(session.get("_mission_live_mix_diag") or {})
         diag["preview_source"] = session.get("_mission_preview_source")
+        diag["renderer"] = "render_mission_live_recording_studio"
+        diag["recording_ui_version"] = MISSIONS_RECORDING_UI_VERSION
+        diag["key_prefix"] = key_prefix
+        diag["live_only"] = True
+        diag["deploy_sha"] = _deploy_commit_short()
         diag["dry_fp"] = hashlib.md5(bytes(dry_bytes or b"")).hexdigest()[:12] if dry_bytes else ""
         diag["mixed_fp"] = (
             hashlib.md5(bytes(mixed_bytes or b"")).hexdigest()[:12] if mixed_bytes else ""
@@ -245,37 +332,26 @@ def render_mission_upload_recording_studio(
     dev_mode: bool = False,
     show_live_mic: bool = True,
 ) -> None:
-    """Legacy entry — Missions uses live-only; upload path is Upload Analysis only."""
-    if session.get(MISSIONS_LIVE_ONLY_KEY) or key_prefix.startswith("improv_mission"):
-        render_mission_live_recording_studio(
-            st,
-            session,
-            key_prefix=key_prefix,
-            on_open_upload_analysis=on_open_upload_analysis,
-            dev_mode=dev_mode,
-        )
-        return
-
-    mission, chord = _compact_summary(session)
-    st.markdown(f"**Mission:** {mission} · **Chord:** {chord}")
-    path = st.radio(
-        "Choose one",
-        ("Record Live", "Upload Existing Take"),
-        key=f"{key_prefix}_capture_path",
-        horizontal=True,
+    """Legacy name — Missions and improv paths are live-only; file upload is Upload Analysis only."""
+    del show_live_mic
+    session[MISSIONS_LIVE_ONLY_KEY] = True
+    render_mission_live_recording_studio(
+        st,
+        session,
+        key_prefix=key_prefix if key_prefix.startswith("improv") else MISSIONS_RECORDING_KEY_PREFIX,
+        on_open_upload_analysis=on_open_upload_analysis,
+        dev_mode=dev_mode,
     )
-    capture_path = "live" if path == "Record Live" else "upload"
-    session["mission_upload_capture_mode"] = capture_path
-    if capture_path == "live":
-        render_mission_live_recording_studio(
-            st,
-            session,
-            key_prefix=key_prefix,
-            on_open_upload_analysis=on_open_upload_analysis,
-            dev_mode=dev_mode,
-        )
-        return
-    st.caption("Upload a file on this page, or use Upload Analysis in the sidebar.")
+
+
+def render_mission_file_upload_capture(
+    st: Any,
+    session: dict[str, Any],
+    *,
+    key_prefix: str = "mission_upload_analysis",
+) -> None:
+    """Existing-file capture for Upload Analysis workflows (not Missions)."""
+    st.caption("Upload a take to analyze — live recording stays on the Missions tab.")
     uploaded = st.file_uploader(
         "Select audio file",
         type=["wav", "mp3", "m4a", "ogg", "flac"],
@@ -284,4 +360,5 @@ def render_mission_upload_recording_studio(
     if uploaded is not None:
         session["_mission_upload_pending_bytes"] = uploaded.getvalue()
         session["_mission_upload_pending_name"] = uploaded.name
+        session["mission_upload_capture_mode"] = "upload"
         st.audio(uploaded.getvalue())

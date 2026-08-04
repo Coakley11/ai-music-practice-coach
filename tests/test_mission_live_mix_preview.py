@@ -42,7 +42,7 @@ class TestMissionLiveMixPreview(unittest.TestCase):
     def test_looping_mix_differs_from_dry_with_backing_energy(self) -> None:
         dry = _tone_wav(440, 500)
         back = _tone_wav(220, 200)
-        mixed = mix_dry_mic_with_backing(
+        mixed, _diag = mix_dry_mic_with_backing(
             dry, back, backing_offset_samples=0, backing_gain=0.85, loop_backing=True
         )
         self.assertNotEqual(mixed, dry)
@@ -58,28 +58,30 @@ class TestMissionLiveMixPreview(unittest.TestCase):
         dry = _tone_wav(330, 400)
         back = _tone_wav(110, 300)
 
-        def _fake_gen(_s):
-            return back, "Em"
-
         import mission_upload_recording_ui as ui
 
         with unittest.mock.patch(
-            "mission_upload_recording_ui.generate_exact_chord_backing_wav",
-            side_effect=_fake_gen,
+            "mission_live_recording_mix.resolve_backing_wav_for_live_mix",
+            side_effect=lambda _s: (back, "test"),
         ):
             p1 = ui._refresh_live_previews(session, dry, bpm=100, meter="4/4", backing_gain=0.8)
             mixed1 = bytes(session["_mission_live_mic_mixed"])
             p2 = ui._refresh_live_previews(session, dry, bpm=100, meter="4/4", backing_gain=0.8)
         self.assertEqual(mixed1, session["_mission_live_mic_mixed"])
         self.assertTrue(p2["has_backing_mix"])
-        self.assertTrue(session.get("_mission_live_mix_diag", {}).get("mixed_differs_from_dry"))
+        self.assertTrue(session.get("_mission_live_mix_diag", {}).get("backing_clearly_audible"))
 
     def test_missions_ui_has_no_upload_existing_take(self) -> None:
         import inspect
-        from mission_upload_recording_ui import render_mission_live_recording_studio
+        import mission_upload_recording_ui as ui_mod
 
-        src = inspect.getsource(render_mission_live_recording_studio)
-        self.assertNotIn("Upload Existing Take", src)
+        for name in (
+            "render_mission_live_recording_studio",
+            "render_mission_recording_upload_expander",
+            "render_mission_upload_recording_studio",
+        ):
+            src = inspect.getsource(getattr(ui_mod, name))
+            self.assertNotIn("Upload Existing Take", src, msg=name)
 
 
 if __name__ == "__main__":

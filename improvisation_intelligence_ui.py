@@ -125,7 +125,7 @@ from studio_page_state import (
 from songs.picker_session import mark_improv_tab_user_touched
 
 # Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
-MISSIONS_UI_BUILD_ID = "d2cf531-missions-generate-context-handoff"
+MISSIONS_UI_BUILD_ID = "phase2a-live-only-mix-v3"
 
 # Read-only dispatch shadow (not a Streamlit widget key).
 IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY = "_improv_intelligence_tab_for_render"
@@ -2176,13 +2176,17 @@ def _tab_missions(
 
     st.markdown("---")
     try:
-        from mission_upload_recording_ui import render_mission_recording_upload_expander
+        from mission_upload_recording_ui import (
+            MISSIONS_RECORDING_KEY_PREFIX,
+            render_mission_recording_upload_expander,
+        )
 
         dev_mode = _improv_dev_mode(session_state, st)
+
         render_mission_recording_upload_expander(
             st,
             session_state,
-            key_prefix="improv_mission_upload",
+            key_prefix=MISSIONS_RECORDING_KEY_PREFIX,
             on_open_upload_analysis=_open_mission_upload_analysis if on_open_analysis else None,
             dev_mode=dev_mode,
         )

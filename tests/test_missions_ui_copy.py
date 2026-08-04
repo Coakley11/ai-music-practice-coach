@@ -15,9 +15,9 @@ class TestMissionsUiCopy(unittest.TestCase):
         self.assertNotIn("Target chord", src)
 
     def test_recording_studio_single_compact_summary(self) -> None:
-        from mission_upload_recording_ui import render_mission_upload_recording_studio
+        from mission_upload_recording_ui import render_mission_live_recording_studio
 
-        src = inspect.getsource(render_mission_upload_recording_studio)
+        src = inspect.getsource(render_mission_live_recording_studio)
         self.assertIn("Mission:**", src)
         self.assertEqual(src.count("Evaluation focus"), 0)
 

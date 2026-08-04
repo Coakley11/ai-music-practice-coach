@@ -50,7 +50,7 @@ class TestMissionRecordingUploadUx(unittest.TestCase):
 
     def test_heavy_backing_panel_not_called_when_not_engaged(self) -> None:
         session = {"improv_active_mission": "Motif", "improv_mission_chord_options": ["C"]}
-        with patch("mission_upload_recording_ui.render_mission_upload_recording_studio") as studio:
+        with patch("mission_upload_recording_ui.render_mission_live_recording_studio") as studio:
 
             class _St:
                 def expander(self, *a, **k):
