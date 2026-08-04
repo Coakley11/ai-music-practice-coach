@@ -49,6 +49,8 @@ MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
 MISSION_NEW_NONCE_KEY = "improv_mission_new_nonce"
 MISSION_NEW_IDEA_DIAG_KEY = "_mission_new_idea_diag"
+MISSION_EXAMPLE_GEN_DIAG_KEY = "_mission_example_gen_diag"
+MISSION_EXAMPLE_FRESH_RUN_KEY = "_mission_example_fresh_this_run"
 IMPROV_MISSION_BACKING_HANDOFF = "improv_mission_backing_handoff"
 MISSION_PRACTICE_LICK_KEY = "improv_mission_practice_lick"
 IMPROV_MISSION_PRACTICE_LICK_HANDOFF = "improv_mission_practice_lick_handoff"
@@ -614,19 +616,36 @@ def store_mission_example(
         pass
 
 
+def _fallback_chord_insight(chord: str) -> ChordCoachInsight:
+    tones = chord_tone_names(str(chord or "C"))
+    return ChordCoachInsight(
+        chord=str(chord or "C"),
+        scales=["major"],
+        scale_suggestions=[],
+        chord_tones=tones,
+        tensions=[],
+        avoid_notes=[],
+        target_notes=tones[:2],
+        motif_idea="",
+        resolve_hint="",
+        instrument_tips=[],
+    )
+
+
 def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) -> MissionExample | None:
     raw = session_state.get(MISSION_EXAMPLE_KEY)
     if not raw or not isinstance(raw, dict):
         return None
+    chord = str(raw.get("chord", "C"))
     try:
         insight = chord_coach_insight(
-            str(raw.get("chord", "C")),
+            chord,
             key_center=improv_ctx.display_key,
             instrument=str(session_state.get("instrument", improv_ctx.instrument)),
             level=str(session_state.get("level", improv_ctx.level)),
         )
     except Exception:
-        return None
+        insight = _fallback_chord_insight(chord)
     return MissionExample(
         mission=str(raw.get("mission", "")),
         variant=str(raw.get("variant", "normal")),

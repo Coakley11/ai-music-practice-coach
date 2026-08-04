@@ -26,10 +26,16 @@ MISSION_RECORDING_EXPANDER_LABEL = "Mission Recording & Upload (optional)"
 
 def should_show_exact_chord_panel(session: dict[str, Any]) -> bool:
     try:
+        from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+    except ImportError:
+        MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY = "_mission_upload_analysis_handoff"
+    if session.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY):
+        return False
+    try:
         from mission_analysis_ui import is_analysis_criteria_locked
 
         if is_analysis_criteria_locked(session) and authoritative_mission_type(session):
-            return True
+            return False
     except ImportError:
         pass
     if not session.get(MISSION_RECORDING_STUDIO_ENGAGED_KEY):

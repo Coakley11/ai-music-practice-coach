@@ -38,6 +38,16 @@ class TestMissionRecordingUploadUx(unittest.TestCase):
         session[MISSION_RECORDING_STUDIO_ENGAGED_KEY] = True
         self.assertTrue(should_show_exact_chord_panel(session))
 
+    def test_exact_chord_panel_hidden_on_upload_analysis_handoff(self) -> None:
+        session = {
+            "improv_active_mission": "Develop one motif for the entire solo",
+            "improv_mission_chord_options": ["Ab7"],
+            "ii_selected_chord_index": 0,
+            MISSION_RECORDING_STUDIO_ENGAGED_KEY: True,
+            "_mission_upload_analysis_handoff": True,
+        }
+        self.assertFalse(should_show_exact_chord_panel(session))
+
     def test_heavy_backing_panel_not_called_when_not_engaged(self) -> None:
         session = {"improv_active_mission": "Motif", "improv_mission_chord_options": ["C"]}
         with patch("mission_upload_recording_ui.render_mission_upload_recording_studio") as studio:

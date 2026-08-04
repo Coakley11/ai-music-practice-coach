@@ -52,6 +52,9 @@ from improvisation_missions import (
     IMPROV_MISSION_BACKING_HANDOFF,
     MISSION_EXAMPLE_KEY,
     MISSION_NEW_NONCE_KEY,
+    MISSION_NEW_IDEA_DIAG_KEY,
+    MISSION_EXAMPLE_GEN_DIAG_KEY,
+    MISSION_EXAMPLE_FRESH_RUN_KEY,
     MISSION_PRACTICE_LICK_KEY,
     MissionExample,
     PRACTICE_MISSIONS,
@@ -60,6 +63,7 @@ from improvisation_missions import (
     load_mission_example,
     mission_example_fingerprint,
     mission_example_for_display,
+    motif_material_fingerprint,
     mission_practice_lick_payload,
     queue_mission_practice_lick_handoff,
     rebuild_mission_outputs,
@@ -119,7 +123,7 @@ from studio_page_state import (
 from songs.picker_session import mark_improv_tab_user_touched
 
 # Bump when Missions tab layout/flow changes (visible in ?dev=1 route marker).
-MISSIONS_UI_BUILD_ID = "15e9e91-missions-unbound-load-fix"
+MISSIONS_UI_BUILD_ID = "2264e3f-missions-generate-upload-split"
 
 # Read-only dispatch shadow (not a Streamlit widget key).
 IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY = "_improv_intelligence_tab_for_render"
@@ -1327,6 +1331,88 @@ def _on_mission_pick_change() -> None:
             st.session_state["improv_active_mission"] = pick
 
 
+def _example_matches_active_context(
+    example: MissionExample,
+    *,
+    mission: str,
+    cur_chord: str,
+    section_label: str,
+) -> bool:
+    if str(example.mission or "").strip() != str(mission or "").strip():
+        return False
+    if str(example.chord or "").strip() != str(cur_chord or "").strip():
+        return False
+    ex_sec = str(example.section or "").strip()
+    cur_sec = str(section_label or "").strip()
+    if ex_sec and cur_sec and ex_sec != cur_sec:
+        return False
+    return True
+
+
+def _canonical_mission_example_fingerprint(session_state: dict) -> str:
+    try:
+        from creative_mission_artifact_persistence import canonical_mission_artifact_value
+        from improvisation_missions import mission_example_fingerprint
+
+        raw = canonical_mission_artifact_value(session_state, MISSION_EXAMPLE_KEY)
+        if not isinstance(raw, dict):
+            return ""
+        ctx = ImprovSessionContext(
+            song_title=str(session_state.get("song") or "Song"),
+            artist=str(session_state.get("artist") or ""),
+            key_center=str(session_state.get("concert_key") or session_state.get("display_key") or "C"),
+            display_key=str(session_state.get("display_key") or "C"),
+            instrument=str(session_state.get("instrument") or "Guitar"),
+            level=str(session_state.get("level") or "Intermediate"),
+            focus=str(session_state.get("focus") or "Improvisation"),
+            sections={},
+        )
+        loaded = load_mission_example(session_state | {MISSION_EXAMPLE_KEY: raw}, ctx)
+        return mission_example_fingerprint(loaded) if loaded else ""
+    except Exception:
+        return ""
+
+
+def _record_mission_example_gen_diag(
+    session_state: dict,
+    *,
+    variant: str,
+    prior: MissionExample | None,
+    example: MissionExample,
+    prev_fp: str,
+    prev_mat: str,
+    gen_fp: str,
+    retries: int,
+    retried: bool,
+) -> None:
+    gen_mat = motif_material_fingerprint(example.motif)
+    stored_raw = session_state.get(MISSION_EXAMPLE_KEY)
+    stored_mat = ""
+    if isinstance(stored_raw, dict):
+        stored_mat = str(stored_raw.get("material_fp") or "")
+    canon_fp = _canonical_mission_example_fingerprint(session_state)
+    diag = {
+        "callback": f"mission_example_generate_{variant}",
+        "callback_fired": True,
+        "variant": variant,
+        "previous_fp": prev_fp,
+        "generated_fp": gen_fp,
+        "stored_artifact_fp": gen_fp,
+        "canonical_artifact_fp": canon_fp,
+        "previous_material_fp": prev_mat,
+        "generated_material_fp": gen_mat,
+        "stored_material_fp": stored_mat or gen_mat,
+        "loaded_fp": gen_fp,
+        "displayed_fp": gen_fp,
+        "displayed_material_fp": gen_mat,
+        "retried": retried,
+        "retry_count": retries,
+        "artifact_overwritten": False,
+    }
+    session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = diag
+    session_state[MISSION_NEW_IDEA_DIAG_KEY] = dict(diag)
+
+
 def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContext | None:
     from improvisation_motif import flatten_section_map, resolve_improv_sections
 
@@ -1445,16 +1531,17 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     gen_fp = mission_example_fingerprint(example)
     session_state["_mission_example_output_fp"] = gen_fp
     session_state["_mission_example_material_fp"] = motif_material_fingerprint(example.motif)
-    session_state[MISSION_NEW_IDEA_DIAG_KEY] = {
-        "previous_fp": prev_fp,
-        "generated_fp": gen_fp,
-        "committed_fp": gen_fp,
-        "displayed_fp": gen_fp,
-        "retried": retried,
-        "retry_count": retries,
-        "previous_material_fp": prev_mat,
-        "generated_material_fp": motif_material_fingerprint(example.motif),
-    }
+    _record_mission_example_gen_diag(
+        session_state,
+        variant=variant,
+        prior=prior,
+        example=example,
+        prev_fp=prev_fp,
+        prev_mat=prev_mat,
+        gen_fp=gen_fp,
+        retries=retries,
+        retried=retried,
+    )
     try:
         from studio_page_persistence import save_page_snapshot
 
@@ -1467,24 +1554,32 @@ def _on_mission_gen_normal() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "normal")
+    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
+    st.rerun()
 
 
 def _on_mission_gen_easier() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "easier")
+    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
+    st.rerun()
 
 
 def _on_mission_gen_harder() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "harder")
+    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
+    st.rerun()
 
 
 def _on_mission_gen_new_idea() -> None:
     import streamlit as st
 
     _run_mission_example_generate(st.session_state, "new")
+    st.session_state[MISSION_EXAMPLE_FRESH_RUN_KEY] = True
+    st.rerun()
 
 
 def _maybe_refresh_mission_example_outputs(
@@ -1659,13 +1754,16 @@ def _tab_missions(
         )
 
     example = load_mission_example(session_state, improv_ctx)
-    if example and example.mission != mission:
-        example = None
-    if example and (
-        example.chord != cur_chord
-        or str(example.section or "").strip() != str(section_label or "").strip()
+    if example and not _example_matches_active_context(
+        example, mission=mission, cur_chord=cur_chord, section_label=section_label
     ):
         example = None
+
+    pre_render_fp = str(session_state.get("_mission_example_output_fp") or "")
+    raw_example = session_state.get(MISSION_EXAMPLE_KEY)
+    pre_render_mat = ""
+    if isinstance(raw_example, dict):
+        pre_render_mat = str(raw_example.get("material_fp") or "")
 
     def _open_mission_backing(*, with_practice_lick: bool = False) -> None:
         if not on_open_backing:
@@ -1856,19 +1954,54 @@ def _tab_missions(
         if _improv_dev_mode(session_state, st):
             st.error(f"Mission recording expander failed: {exc!r}")
 
+    loaded_after = load_mission_example(session_state, improv_ctx)
+    diag = dict(session_state.get(MISSION_EXAMPLE_GEN_DIAG_KEY) or {})
+    if diag:
+        diag["loaded_fp_after_render"] = (
+            mission_example_fingerprint(loaded_after) if loaded_after else ""
+        )
+        if example:
+            diag["displayed_fp"] = mission_example_fingerprint(example)
+            diag["displayed_material_fp"] = motif_material_fingerprint(example.motif)
+            diag["display_notes"] = str(example.motif.get("display") or "")
+        else:
+            diag["displayed_fp"] = ""
+            diag["displayed_material_fp"] = ""
+            diag["display_notes"] = ""
+        diag["canonical_artifact_fp"] = _canonical_mission_example_fingerprint(session_state)
+        post_fp = str(session_state.get("_mission_example_output_fp") or "")
+        post_mat = ""
+        raw_post = session_state.get(MISSION_EXAMPLE_KEY)
+        if isinstance(raw_post, dict):
+            post_mat = str(raw_post.get("material_fp") or "")
+        diag["artifact_overwritten"] = bool(
+            pre_render_fp
+            and post_fp
+            and pre_render_fp != post_fp
+            and pre_render_mat
+            and post_mat
+            and pre_render_mat != post_mat
+        )
+        session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = diag
+        session_state[MISSION_NEW_IDEA_DIAG_KEY] = dict(diag)
+    session_state.pop(MISSION_EXAMPLE_FRESH_RUN_KEY, None)
+
+    if _improv_dev_mode(session_state, st) and diag.get("callback_fired"):
+        st.caption(
+            f"DEV example · {diag.get('callback', '—')} · "
+            f"mat {str(diag.get('previous_material_fp') or '—')[:8]}→"
+            f"{str(diag.get('displayed_material_fp') or '—')[:8]} · "
+            f"overwrite={diag.get('artifact_overwritten')}"
+        )
+
     try:
-        from improvisation_missions import MISSION_NEW_IDEA_DIAG_KEY
         from creative_mission_artifact_persistence import collect_creative_mission_artifact_diagnostics
 
         if _improv_dev_mode(session_state, st):
-            diag = dict(session_state.get(MISSION_NEW_IDEA_DIAG_KEY) or {})
-            ex = session_state.get("improv_mission_example") or {}
-            if isinstance(ex, dict):
-                loaded = load_mission_example(session_state, improv_ctx)
-                diag["displayed_fp"] = mission_example_fingerprint(loaded)
-            diag["artifact"] = collect_creative_mission_artifact_diagnostics(session_state)
+            dev_diag = dict(session_state.get(MISSION_EXAMPLE_GEN_DIAG_KEY) or {})
+            dev_diag["artifact"] = collect_creative_mission_artifact_diagnostics(session_state)
             with st.expander("Developer · mission example / artifact", expanded=False):
-                st.json(diag)
+                st.json(dev_diag)
     except ImportError:
         pass
 

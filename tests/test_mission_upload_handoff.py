@@ -27,6 +27,7 @@ class TestMissionUploadHandoff(unittest.TestCase):
         )
         self.assertIsNotNone(session.get("_analysis_prepared_upload"))
         self.assertFalse(session.get("analysis_criteria_locked"))
+        self.assertTrue(session.get("_mission_upload_analysis_handoff"))
         self.assertTrue(session.get("_mission_upload_is_file_take"))
         self.assertFalse(session.get("_mission_upload_is_live_take"))
 

@@ -13241,26 +13241,17 @@ elif _studio_page == "analysis":
 
             with st.container(key="upload_capture_panel", border=False):
                 try:
-                    from mission_upload_recording_ui import should_show_exact_chord_panel
-                    from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
+                    from mission_analysis_ui import (
+                        render_mission_upload_compact_context,
+                    )
+                    from mission_practice_context import authoritative_mission_type
 
-                    if should_show_exact_chord_panel(st.session_state) or is_analysis_criteria_locked(
-                        st.session_state
+                    if (
+                        st.session_state.get("_analysis_prepared_upload")
+                        or st.session_state.get("analysis_sync_creative_mission")
+                        or authoritative_mission_type(st.session_state)
                     ):
-                        st.markdown(
-                            '<p class="ui-upload-step-kicker">Mission upload & recording · exact chord</p>',
-                            unsafe_allow_html=True,
-                        )
-                        render_exact_chord_mission_backing_panel(
-                            st,
-                            st.session_state,
-                            key_prefix="upload_mission_exact",
-                            compact=False,
-                        )
-                        st.caption(
-                            "The uploaded recording will be analyzed using this mission, chord, and evaluation focus. "
-                            "The backing track is not added to the uploaded audio."
-                        )
+                        render_mission_upload_compact_context(st, st.session_state)
                         st.markdown("---")
                 except ImportError:
                     pass

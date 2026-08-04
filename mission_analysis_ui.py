@@ -397,6 +397,23 @@ def is_analysis_criteria_locked(session_state: dict) -> bool:
     return bool(session_state.get(ANALYSIS_CRITERIA_LOCKED))
 
 
+def render_mission_upload_compact_context(st: Any, session_state: dict) -> None:
+    """One-line mission/chord context on Upload Analysis — no backing or practice copy."""
+    try:
+        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+
+        ctx = ensure_mission_practice_context(session_state)
+        mission = authoritative_mission_type(session_state) or (
+            ctx.mission_type if ctx else ""
+        )
+        chord = ctx.chord.symbol if ctx else str(session_state.get("ii_selected_chord") or "—")
+    except ImportError:
+        mission = str(session_state.get("improv_active_mission") or "—")
+        chord = str(session_state.get("ii_selected_chord") or "—")
+    if mission:
+        st.markdown(f"**Mission:** {_esc(mission)} · **Chord:** {_esc(chord)}")
+
+
 def clear_analysis_workflow_flags(session_state: dict) -> None:
     session_state.pop(ANALYSIS_CRITERIA_LOCKED, None)
     session_state.pop(ANALYSIS_RETURN_TO_METRICS, None)

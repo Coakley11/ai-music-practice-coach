@@ -6,6 +6,7 @@ from typing import Any
 
 from upload_media import PreparedUpload
 
+MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY = "_mission_upload_analysis_handoff"
 
 def _default_analysis_metric_ids_for_focus(focus: str) -> list[str]:
     try:
@@ -69,6 +70,7 @@ def handoff_mission_take_to_upload_analysis(
 
     prepare_mission_upload_from_missions(session)
     clear_analysis_workflow_flags(session)
+    session[MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY] = True
     session["analysis_sync_creative_mission"] = True
 
     focus = authoritative_evaluation_focus(session)

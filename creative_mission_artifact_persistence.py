@@ -131,7 +131,16 @@ def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwri
     user_ev = session.get(CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY)
     user_field = str((user_ev or {}).get("field") or "") if isinstance(user_ev, dict) else ""
     session_fp = str(session.get("_mission_example_output_fp") or "")
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_FRESH_RUN_KEY, MISSION_EXAMPLE_KEY
+
+        skip_example_projection = bool(session.get(MISSION_EXAMPLE_FRESH_RUN_KEY))
+    except ImportError:
+        MISSION_EXAMPLE_KEY = "improv_mission_example"
+        skip_example_projection = bool(session.get("_mission_example_fresh_this_run"))
     for key in MISSION_ARTIFACT_CANONICAL_KEYS:
+        if key == MISSION_EXAMPLE_KEY and skip_example_projection and session.get(MISSION_EXAMPLE_KEY):
+            continue
         if not mission_artifact_configured_in_canonical(session, key):
             continue
         val = canonical_mission_artifact_value(session, key)
