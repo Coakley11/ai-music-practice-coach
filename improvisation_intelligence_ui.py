@@ -218,6 +218,12 @@ def render_improvisation_intelligence_lab(
     from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
 
     route_perf_begin(session_state, "creative.improv_intelligence", st_module=st)
+    try:
+        from music_route_gates import resolve_route_context
+
+        resolve_route_context(session_state)
+    except ImportError:
+        pass
     from studio_page_persistence import ensure_creative_improv_initialized
 
     ensure_creative_improv_initialized(session_state, is_custom_active=is_custom)
@@ -870,12 +876,15 @@ def _tab_motif(
     try:
         from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
         from creative_tab_tool_persistence import selector_hydration_complete
+        from music_route_gates import guard_creative_tab_heavy
 
-        if selector_hydration_complete(session_state):
+        if selector_hydration_complete(session_state) and guard_creative_tab_heavy(
+            session_state, "Phrase / Motif", "artifact_projection"
+        ):
             from creative_mission_artifact_persistence import should_skip_mission_artifact_projection
 
             if not should_skip_mission_artifact_projection(session_state):
-                project_mission_artifacts_from_canonical(session_state, overwrite=True)
+                project_mission_artifacts_from_canonical(session_state, overwrite=False)
     except ImportError:
         pass
 

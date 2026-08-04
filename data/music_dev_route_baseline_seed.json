@@ -1,0 +1,15 @@
+{
+  "schema": "music_dev_route_baseline_v1",
+  "note": "Populate p50_ms/p95_ms from ?dev=1 session _music_dev_route_baselines after smoke runs.",
+  "routes": {
+    "studio.creative": {"p50_ms": null, "p95_ms": null, "wall_ms_baseline": null},
+    "creative.improv_intelligence": {"p50_ms": null, "p95_ms": null},
+    "studio.backing": {"p50_ms": null, "p95_ms": null},
+    "studio.analysis": {"p50_ms": null, "p95_ms": null}
+  },
+  "counters_baseline": {
+    "page_snapshot_save_skipped": 0,
+    "missions_artifact_project_skipped": 0,
+    "inactive_heavy": 0
+  }
+}

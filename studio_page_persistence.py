@@ -840,7 +840,12 @@ def handle_studio_page_transition(session_state: dict) -> None:
     current = str(session_state.get("studio_page", "practice"))
     last = session_state.get(_ACTIVE_PAGE_TRACKER)
     if last and last != current:
-        save_page_snapshot(session_state, str(last))
+        try:
+            from music_nav_dedupe import save_page_snapshot_deduped
+
+            save_page_snapshot_deduped(session_state, str(last))
+        except ImportError:
+            save_page_snapshot(session_state, str(last))
         restore_page_snapshot(session_state, current)
         if mark_page_snapshot_hydrated is not None:
             mark_page_snapshot_hydrated(session_state, current)

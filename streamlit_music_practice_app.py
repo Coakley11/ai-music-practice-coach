@@ -8826,7 +8826,12 @@ def _render_backing_return_source_action() -> None:
                 "song_improv",
                 "mission",
             }:
-                save_page_snapshot(st.session_state, "creative")
+                try:
+                    from music_nav_dedupe import save_page_snapshot_deduped
+
+                    save_page_snapshot_deduped(st.session_state, "creative")
+                except ImportError:
+                    save_page_snapshot(st.session_state, "creative")
             target = prepare_return_to_backing_source(st.session_state)
             navigate_studio_page(st.session_state, target)
             st.rerun()
@@ -9655,7 +9660,10 @@ elif _studio_page_for_hydrate == "creative":
         try:
             from songs.music_source import snapshot_catalog_before_creative
 
-            snapshot_catalog_before_creative(st.session_state, refresh_if_pick_changed=True)
+            from music_route_gates import should_hydrate_catalog_on_creative_page
+
+            if should_hydrate_catalog_on_creative_page(st.session_state):
+                snapshot_catalog_before_creative(st.session_state, refresh_if_pick_changed=True)
             from songs.music_source import pin_catalog_pick_aliases
 
             pin_catalog_pick_aliases(st.session_state)
@@ -11990,15 +11998,17 @@ elif _studio_page == "backing":
             resolve_creative_backing_sections,
             sync_creative_session_before_persist,
         )
+        from music_route_gates import should_hydrate_creative_session_on_backing_page
 
         _backing_ctx_for_hydrate = get_backing_context(st.session_state)
-        if _backing_ctx_for_hydrate is None or _backing_ctx_for_hydrate.source != "regular_song":
-            hydrate_creative_session_for_page(st.session_state)
-            if creative_session_is_active(st.session_state):
-                sync_creative_session_before_persist(st.session_state)
-                _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
-                if _creative_playback_sections:
-                    sections_for_backing = _creative_playback_sections
+        if should_hydrate_creative_session_on_backing_page(st.session_state):
+            if _backing_ctx_for_hydrate is None or _backing_ctx_for_hydrate.source != "regular_song":
+                hydrate_creative_session_for_page(st.session_state)
+                if creative_session_is_active(st.session_state):
+                    sync_creative_session_before_persist(st.session_state)
+                    _creative_playback_sections = resolve_creative_backing_sections(st.session_state)
+                    if _creative_playback_sections:
+                        sections_for_backing = _creative_playback_sections
         render_creative_session_diagnostic(st, st.session_state)
     except Exception:
         pass
@@ -13248,8 +13258,14 @@ elif _studio_page == "analysis":
 
         if not upload_analysis_has_export_handoff(st.session_state):
             from analysis_session_persistence import restore_analysis_session
+            from music_route_gates import (
+                mark_upload_analysis_restore_done,
+                should_restore_upload_analysis_session,
+            )
 
-            restore_analysis_session(st.session_state, st=st)
+            if should_restore_upload_analysis_session(st.session_state):
+                restore_analysis_session(st.session_state, st=st)
+                mark_upload_analysis_restore_done(st.session_state)
     except Exception:
         pass
 

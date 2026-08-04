@@ -9,8 +9,23 @@ from music_dev_nav import _COUNTERS_KEY
 from music_dev_perf import _PERF_KEY, _enabled
 
 _BASELINES_KEY = "_music_dev_route_baselines"
+_ROUTE_HISTORY_KEY = "_music_dev_route_history"
 _ACTIVE_ROUTE_KEY = "_music_dev_route_active"
 _ROUTE_T0_KEY = "_music_dev_route_t0"
+
+
+def _percentile(values: list[float], pct: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(float(v) for v in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    k = (len(ordered) - 1) * (pct / 100.0)
+    f = int(k)
+    c = min(f + 1, len(ordered) - 1)
+    if f == c:
+        return ordered[f]
+    return ordered[f] + (ordered[c] - ordered[f]) * (k - f)
 
 
 def route_perf_begin(session: dict[str, Any], route_id: str, *, st_module: Any | None = None) -> None:
@@ -46,6 +61,16 @@ def route_perf_end(session: dict[str, Any], route_id: str, *, st_module: Any | N
             record["prev_wall_ms"] = prev.get("wall_ms")
             record["prev_span_ms"] = prev.get("span_ms")
         baselines[route_id] = record
+    history = session.setdefault(_ROUTE_HISTORY_KEY, {})
+    if isinstance(history, dict):
+        samples = history.setdefault(route_id, [])
+        if isinstance(samples, list):
+            samples.append(float(record["wall_ms"]))
+            if len(samples) > 24:
+                del samples[: len(samples) - 24]
+            record["p50_ms"] = _percentile(samples, 50)
+            record["p95_ms"] = _percentile(samples, 95)
+            record["samples_n"] = len(samples)
     session.pop(_ACTIVE_ROUTE_KEY, None)
     session.pop(_ROUTE_T0_KEY, None)
 
@@ -71,5 +96,6 @@ def render_route_baseline_caption(st_module: Any, session: dict[str, Any], *, ro
     ctr = ", ".join(f"{k}={v}" for k, v in sorted(counters.items()) if v)
     st_module.caption(
         f"DEV route · **{route_id}** · wall **{wall}ms** · spans **{rec.get('span_ms')}ms**{delta}"
+        + (f" · p50 **{rec.get('p50_ms')}ms** p95 **{rec.get('p95_ms')}ms**" if rec.get("p50_ms") is not None else "")
         + (f" · {ctr}" if ctr else "")
     )
