@@ -640,12 +640,25 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         return None
     chord = str(raw.get("chord", "C"))
     try:
-        insight = chord_coach_insight(
+        from mission_pitch_spelling import chord_coach_insight_for_mission
+
+        insight = chord_coach_insight_for_mission(
             chord,
-            key_center=improv_ctx.display_key,
+            song_display_key=improv_ctx.display_key,
+            song_key_center=improv_ctx.key_center,
             instrument=str(session_state.get("instrument", improv_ctx.instrument)),
             level=str(session_state.get("level", improv_ctx.level)),
         )
+    except ImportError:
+        try:
+            insight = chord_coach_insight(
+                chord,
+                key_center=improv_ctx.display_key,
+                instrument=str(session_state.get("instrument", improv_ctx.instrument)),
+                level=str(session_state.get("level", improv_ctx.level)),
+            )
+        except Exception:
+            insight = _fallback_chord_insight(chord)
     except Exception:
         insight = _fallback_chord_insight(chord)
     return MissionExample(

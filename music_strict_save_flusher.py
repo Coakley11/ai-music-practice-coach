@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+try:
+    from music_egress_strict_save import _record_strict_pending_diag
+except ImportError:
+    _record_strict_pending_diag = None  # type: ignore[assignment,misc]
+
 _FRAGMENT_KEY = "_music_strict_save_flusher_mounted"
 
 

@@ -78,6 +78,29 @@ def write_canonical_studio_nav_state(
 ) -> str:
     """Single write path for ``studio_page``."""
     normalized = _normalize_page(page) or _normalize_page(session.get("studio_page")) or "practice"
+    try:
+        from pending_upload_route_precedence import (
+            guard_studio_page_write_for_pending_upload,
+            record_pending_upload_route_trace,
+        )
+
+        guarded = guard_studio_page_write_for_pending_upload(
+            session,
+            normalized,
+            reason=reason or "",
+        )
+        if guarded != normalized:
+            record_pending_upload_route_trace(
+                session,
+                stage="write_canonical_studio_nav_state",
+                old_page=str(session.get("studio_page") or ""),
+                new_page=guarded,
+                source="studio_nav_state",
+                reason=reason or "",
+            )
+        normalized = guarded
+    except ImportError:
+        pass
     old_page = session.get("studio_page")
     old_nav = session.get(STUDIO_NAV_STATE_KEY)
     old_nav_page = old_nav.get("studio_page") if isinstance(old_nav, dict) else None
@@ -196,6 +219,19 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             navigation_widget_value_before_render=str(session.get("studio_page") or "").strip() or None,
             page_restore_overwrite_function="studio_nav_state.prepare_studio_nav",
         )
+    except ImportError:
+        pass
+
+    try:
+        from pending_upload_route_precedence import apply_pending_upload_startup_page_if_needed
+
+        forced = apply_pending_upload_startup_page_if_needed(session)
+        if forced:
+            return _finish(
+                "pending_upload_analysis_startup",
+                forced,
+                reason="pending_upload_analysis",
+            )
     except ImportError:
         pass
 

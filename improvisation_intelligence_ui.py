@@ -1361,8 +1361,11 @@ def _example_matches_active_context(
     mission: str,
     cur_chord: str,
     section_label: str,
+    song_title: str = "",
 ) -> bool:
     if str(example.mission or "").strip() != str(mission or "").strip():
+        return False
+    if song_title and str(example.song_title or "").strip() not in ("", song_title):
         return False
     if str(example.chord or "").strip() != str(cur_chord or "").strip():
         return False
@@ -1910,7 +1913,14 @@ def _tab_missions(
     )
     mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
 
-    section_map = resolve_improv_sections(session_state, improv_ctx)
+    try:
+        from mission_workflow_context import resolve_missions_section_map
+
+        section_map, _prog_owner = resolve_missions_section_map(session_state, improv_ctx)
+    except ImportError:
+        section_map = resolve_improv_sections(session_state, improv_ctx)
+    if not section_map:
+        section_map = resolve_improv_sections(session_state, improv_ctx)
     try:
         from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
 
@@ -1933,6 +1943,31 @@ def _tab_missions(
     )
     cur_chord, chord_idx = _selected_chord(session_state, chords)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+
+    try:
+        from mission_workflow_context import (
+            reconcile_missions_workflow_context,
+            render_mission_context_dev_panel,
+        )
+
+        section_map, ctx_report = reconcile_missions_workflow_context(
+            session_state,
+            improv_ctx,
+            mission=mission,
+            cur_chord=cur_chord,
+            section_label=section_label,
+        )
+        render_mission_context_dev_panel(st, session_state)
+        if not ctx_report.ok:
+            chords = flatten_section_map(section_map)
+            _ensure_chord_selection(session_state, chords, section_map)
+            cur_chord, chord_idx = _selected_chord(session_state, chords)
+            section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+            st.caption(
+                "Mission context was reconciled to your active catalog song (stale jam data removed)."
+            )
+    except ImportError:
+        pass
 
     _sync_missions_session_from_improv_ctx(session_state, improv_ctx, section_map=section_map)
 
@@ -2022,7 +2057,7 @@ def _tab_missions(
 
     example = load_mission_example(session_state, improv_ctx)
     if example and not _example_matches_active_context(
-        example, mission=mission, cur_chord=cur_chord, section_label=section_label
+        example, mission=mission, cur_chord=cur_chord, section_label=section_label, song_title=improv_ctx.song_title
     ):
         example = None
 
@@ -2036,6 +2071,21 @@ def _tab_missions(
         if not on_open_backing:
             return
         if with_practice_lick and example:
+            try:
+                from mission_workflow_context import ensure_mission_handoff_aligned
+
+                ensure_mission_handoff_aligned(
+                    session_state,
+                    mission=mission,
+                    cur_chord=cur_chord,
+                    section_label=section_label,
+                    chord_idx=int(chord_idx),
+                    song_title=improv_ctx.song_title,
+                    example=example,
+                )
+            except (ImportError, ValueError):
+                if with_practice_lick:
+                    return
             style_meta = session_state.get("improv_style_meta") or {}
             groove = str(
                 session_state.get("improv_groove")

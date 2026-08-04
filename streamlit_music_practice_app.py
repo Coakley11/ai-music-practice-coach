@@ -9444,6 +9444,23 @@ except NameError:
         _catalog_genre, _catalog_song, _catalog_song_data = "Pop", "", {}
 
 # Studio page bootstrap (sidebar order is rendered below Command Center link).
+try:
+    from mission_pending_upload_persistence import (
+        apply_pending_upload_envelope_to_session,
+        is_prepared_pending_upload,
+    )
+    from pending_upload_route_precedence import (
+        apply_pending_upload_startup_page_if_needed,
+        pending_upload_should_restore_analysis_page,
+    )
+
+    if pending_upload_should_restore_analysis_page(st.session_state):
+        apply_pending_upload_envelope_to_session(st.session_state, st=st, source="pre_bootstrap_hydrate")
+        apply_pending_upload_startup_page_if_needed(st.session_state)
+    elif is_prepared_pending_upload(st.session_state):
+        apply_pending_upload_startup_page_if_needed(st.session_state)
+except ImportError:
+    pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)

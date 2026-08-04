@@ -242,6 +242,12 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("_pending_upload_user_left_analysis", None)
     session.pop("_pending_upload_suppresses_mission_backing", None)
     try:
+        from pending_upload_route_precedence import PENDING_UPLOAD_ROUTE_LOCK_KEY
+
+        session.pop(PENDING_UPLOAD_ROUTE_LOCK_KEY, None)
+    except ImportError:
+        session.pop("_pending_upload_route_lock", None)
+    try:
         from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
 
         session.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)

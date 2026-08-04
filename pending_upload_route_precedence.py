@@ -6,6 +6,118 @@ import copy
 from typing import Any
 
 PENDING_UPLOAD_ROUTE_DIAG_KEY = "_pending_upload_route_restore_diag"
+PENDING_UPLOAD_ROUTE_LOCK_KEY = "_pending_upload_route_lock"
+PENDING_UPLOAD_ROUTE_TRACE_KEY = "_pending_upload_route_trace"
+
+_USER_NAV_REASONS = frozenset(
+    {
+        "user_nav_this_run",
+        "user_navigation",
+        "user_navigation_preserve",
+        "user_page_preserved",
+        "pending_upload_cleared",
+        "explicit_user_navigation",
+    }
+)
+
+
+def record_pending_upload_route_trace(
+    session: dict[str, Any],
+    *,
+    stage: str,
+    old_page: str = "",
+    new_page: str = "",
+    source: str = "",
+    reason: str = "",
+) -> None:
+    trace = session.get(PENDING_UPLOAD_ROUTE_TRACE_KEY)
+    if not isinstance(trace, list):
+        trace = []
+    run_seq = int(session.get("_script_run_seq") or 0)
+    trace.append(
+        {
+            "run_seq": run_seq,
+            "stage": stage,
+            "old_page": old_page or None,
+            "new_page": new_page or None,
+            "source": source or None,
+            "reason": reason or None,
+        }
+    )
+    session[PENDING_UPLOAD_ROUTE_TRACE_KEY] = trace[-40:]
+
+
+def pending_upload_owns_active_destination(session: dict[str, Any]) -> bool:
+    return pending_upload_should_restore_analysis_page(session, None)
+
+
+def guard_studio_page_write_for_pending_upload(
+    session: dict[str, Any],
+    page: str,
+    *,
+    reason: str = "",
+) -> str:
+    """Block passive overwrites of analysis while prepared upload resume is active."""
+    proposed = str(page or "").strip().lower()
+    if not pending_upload_owns_active_destination(session):
+        return proposed or str(page or "")
+    if proposed == "analysis":
+        return "analysis"
+    r = str(reason or "").strip()
+    if r in _USER_NAV_REASONS or session.get("_music_user_navigated_page_this_run"):
+        record_pending_upload_route_trace(
+            session,
+            stage="guard_allow_user_nav",
+            old_page=str(session.get("studio_page") or ""),
+            new_page=proposed,
+            source="pending_upload_route_precedence",
+            reason=r or "user_nav",
+        )
+        return proposed
+    if session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY):
+        old = str(session.get("studio_page") or "")
+        record_pending_upload_route_trace(
+            session,
+            stage="guard_block_overwrite",
+            old_page=old,
+            new_page=proposed,
+            source="pending_upload_route_precedence",
+            reason=r or "blocked",
+        )
+        return "analysis"
+    return proposed or str(page or "")
+
+
+def apply_pending_upload_startup_page_if_needed(session: dict[str, Any]) -> str | None:
+    """Early startup: pending prepared take owns Upload Analysis destination."""
+    blob = session.get("_suite_last_cloud_fetch_payload")
+    blob_dict = blob if isinstance(blob, dict) else None
+    if not pending_upload_should_restore_analysis_page(session, blob_dict):
+        return None
+    old = str(session.get("studio_page") or "")
+    session[PENDING_UPLOAD_ROUTE_LOCK_KEY] = True
+    session["_pending_upload_suppresses_mission_backing"] = True
+    try:
+        from studio_nav_state import write_canonical_studio_nav_state
+
+        write_canonical_studio_nav_state(session, "analysis", reason="pending_upload_startup_owner")
+    except ImportError:
+        session["studio_page"] = "analysis"
+    try:
+        from music_persistent_state import synchronize_page_bearing_state_for_save
+
+        synchronize_page_bearing_state_for_save(session, "analysis")
+    except ImportError:
+        pass
+    record_pending_upload_route_trace(
+        session,
+        stage="startup_page_owner",
+        old_page=old,
+        new_page="analysis",
+        source="apply_pending_upload_startup_page_if_needed",
+        reason="pending_upload_analysis",
+    )
+    return "analysis"
 
 
 def _envelope(session: dict[str, Any], blob: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -114,6 +226,15 @@ def commit_pending_upload_navigation_handoff(session: dict[str, Any], *, st: Any
     except ImportError:
         pass
     deactivate_mission_jam_route_for_upload_handoff(session)
+    session[PENDING_UPLOAD_ROUTE_LOCK_KEY] = True
+    record_pending_upload_route_trace(
+        session,
+        stage="handoff_commit",
+        old_page=str(session.get("studio_page") or ""),
+        new_page="analysis",
+        source="commit_pending_upload_navigation_handoff",
+        reason="pending_upload_handoff",
+    )
     try:
         from studio_nav_state import write_canonical_studio_nav_state
 
@@ -121,6 +242,12 @@ def commit_pending_upload_navigation_handoff(session: dict[str, Any], *, st: Any
     except ImportError:
         session["studio_page"] = "analysis"
     session["_navigate_to_studio_page"] = "analysis"
+    try:
+        from music_persistent_state import synchronize_page_bearing_state_for_save
+
+        synchronize_page_bearing_state_for_save(session, "analysis")
+    except ImportError:
+        pass
     if st is not None:
         try:
             from music_persistent_state import force_save_music_state
@@ -151,6 +278,15 @@ def release_pending_upload_resume_route(session: dict[str, Any], *, new_page: st
     updated["navigation"] = nav
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = updated
     session["_pending_upload_user_left_analysis"] = True
+    session.pop(PENDING_UPLOAD_ROUTE_LOCK_KEY, None)
+    record_pending_upload_route_trace(
+        session,
+        stage="release_resume_route",
+        old_page="analysis",
+        new_page=page,
+        source="release_pending_upload_resume_route",
+        reason="user_left_analysis",
+    )
 
 
 def enforce_pending_upload_startup_route(session: dict[str, Any], *, st: Any | None = None) -> dict[str, Any]:
@@ -213,13 +349,15 @@ def render_pending_upload_route_dev_diagnostics(st_module: Any, session: dict[st
             return
     diag = dict(session.get(PENDING_UPLOAD_ROUTE_DIAG_KEY) or {})
     deploy = str(session.get("_studio_ui_release_sha") or "—")
+    trace_tail = (session.get(PENDING_UPLOAD_ROUTE_TRACE_KEY) or [])[-3:]
     st_module.caption(
         "DEV route restore · "
         f"take `{diag.get('hydrated_take_id', '—')}` · "
         f"status `{diag.get('pending_analysis_status', '—')}` · "
         f"dest `{diag.get('persisted_active_destination', '—')}` · "
         f"win `{diag.get('winning_route', '—')}` ({diag.get('winning_route_reason', '—')}) · "
-        f"mission_jam_suppressed `{diag.get('stale_mission_jam_suppressed')}` · "
+        f"lock `{session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY)}` · "
+        f"trace `{trace_tail}` · "
         f"sha `{deploy[:7] if deploy else '—'}`"
     )
 
