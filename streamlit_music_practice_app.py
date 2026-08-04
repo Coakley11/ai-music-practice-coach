@@ -7525,6 +7525,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         if _chart_key and _chart_key != _practice_concert_key:
             _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
+            original_key=_orig_label if show_key_row else "",
             display_key=_practice_label if show_key_row else "",
             written_key=_written_label if show_key_row else "",
             written_key_label=_written_badge_label,
@@ -8849,14 +8850,15 @@ def _render_backing_return_source_action() -> None:
             ):
                 _go_creative()
 
-        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") in {
+            "entry_jam",
+            "song_improv",
+        }:
             if st.button(jam_label, key="backing_return_regular_song_btn", use_container_width=False):
                 navigate_to_regular_backing(st.session_state, st_like=st)
                 st.rerun()
 
-        if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission"}:
-            return
-        if jam_label and ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+        if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
 
         if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
@@ -8876,7 +8878,7 @@ def _render_backing_return_source_action() -> None:
             except ImportError:
                 pass
             if st.button(
-                "Return to Song Catalog",
+                "🎵 Return to Song Catalog",
                 key="backing_go_catalog_song_btn",
                 use_container_width=False,
             ):

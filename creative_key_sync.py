@@ -367,6 +367,18 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
+    try:
+        from musical_context_authority import song_catalog_context_owns_practice_key
+
+        if song_catalog_context_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
+    tab = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    if tab in {"Missions", "Song-Based Improvisation"}:
+        return False
     page = str(session.get("studio_page") or "").strip().lower()
     entry = str(session.get("improv_entry_mode") or "").strip()
     if page == "creative" and entry in CREATIVE_MAJOR_JAM_MODES:

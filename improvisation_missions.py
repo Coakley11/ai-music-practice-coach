@@ -333,14 +333,22 @@ def refresh_mission_example(
     tempo = bpm if bpm is not None else 100
     ref_key = example.display_key
     try:
-        from mission_pitch_spelling import coaching_reference_for_mission_chord
+        from harmonic_spelling import harmonic_reference_for_chord
 
-        ref_key = coaching_reference_for_mission_chord(
+        ref_key = harmonic_reference_for_chord(
             example.chord,
             song_display_key=example.display_key,
         )
     except ImportError:
-        pass
+        try:
+            from mission_pitch_spelling import coaching_reference_for_mission_chord
+
+            ref_key = coaching_reference_for_mission_chord(
+                example.chord,
+                song_display_key=example.display_key,
+            )
+        except ImportError:
+            pass
     out = rebuild_mission_outputs(
         example.motif,
         chord=example.chord,

@@ -210,7 +210,8 @@ def build_scale_suggestion(label: str, *, reference_key: str = "C") -> ScaleSugg
     kind = parts[1] if len(parts) > 1 else "major"
     from music_theory import respell_note_for_key
 
-    root = respell_note_for_key(root, reference_key)
+    if "b" not in str(root) and "#" not in str(root):
+        root = respell_note_for_key(root, reference_key)
     canon = _resolve_scale_kind(kind)
     notes = spell_scale_notes(root, canon, reference_key)
     display_label = _pretty_scale_label(root, canon)
@@ -251,11 +252,13 @@ def _chord_quality(ch: str) -> str:
 
 
 def _chord_root(ch: str) -> str:
+    from harmonic_spelling import spelled_chord_root_from_symbol
+
+    spelled = spelled_chord_root_from_symbol(ch)
+    if spelled:
+        return spelled
     from music_theory import chord_root_for_theory
 
-    text = normalize_chord_for_theory(ch).split("/", 1)[0].strip()
-    if text.lower() == "dorian":
-        return "D"
     root = chord_root_for_theory(ch)
     return root or "C"
 
@@ -321,12 +324,19 @@ def chord_coach_insight(
     level: str = "Intermediate",
 ) -> ChordCoachInsight:
     """Real-time improvisation suggestions for one harmony."""
-    ref = str(key_center or "C")
     symbol = normalize_chord_for_theory(chord) or str(chord or "").strip()
     qual = _chord_quality(symbol)
     root = _chord_root(symbol)
+    from harmonic_spelling import harmonic_reference_for_chord, build_scale_suggestion_for_chord
     from improvisation_motif import chord_tone_names
 
+    ref = harmonic_reference_for_chord(
+        symbol,
+        song_display_key=str(key_center or ""),
+        song_key_center=str(key_center or ""),
+    )
+    if not ref:
+        ref = str(key_center or "C")
     tones = chord_tone_names(symbol, reference_key=ref)
     third = tones[1] if len(tones) > 1 else transpose_chord(root, 4, reference_key=ref)
     fifth = tones[2] if len(tones) > 2 else transpose_chord(root, 7, reference_key=ref)
@@ -391,7 +401,10 @@ def chord_coach_insight(
     inst_tips = instrument_coaching_lines(instrument, symbol or chord, level, qual, root)
 
     scale_labels = scales[:4]
-    scale_suggestions = [build_scale_suggestion(label, reference_key=ref) for label in scale_labels]
+    scale_suggestions = [
+        build_scale_suggestion_for_chord(label, chord_symbol=symbol, reference_key=ref)
+        for label in scale_labels
+    ]
 
     return ChordCoachInsight(
         chord=chord,

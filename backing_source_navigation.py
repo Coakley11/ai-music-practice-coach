@@ -1411,6 +1411,12 @@ def merge_live_practice_into_creative_session(
     apply_creative_session_to_session(session, sess, widget_safe=True)
 
 
+def return_to_catalog_song_backing_label(*, custom: bool = False) -> str:
+    if custom:
+        return "🎧 Return to Custom Song Backing"
+    return "🎧 Return to Catalog Song Backing"
+
+
 def return_to_source_button_label(ctx: BackingContext | None) -> str:
     """User-facing label for the return-to-source button."""
     if ctx is None:
@@ -1457,6 +1463,7 @@ __all__ = [
     "source_ownership_diagnostics_enabled",
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
+    "return_to_catalog_song_backing_label",
     "return_to_source_button_label",
     "set_backing_open_intent",
     "set_key_transition_intent",

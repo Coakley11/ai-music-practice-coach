@@ -159,13 +159,19 @@ def render_backing_creative_context_card(
             subtitle = html.escape(f"{sec_name} · {mission_chord}".strip(" ·"))
     elif ctx.source == "entry_jam":
         source_title = (
-            "Entry Style Jam"
-            if str(ctx.entry_mode or "").strip() == "Style Jam Mode"
-            else "Entry & Jam"
+            "Jam Session Generator"
+            if str(ctx.entry_mode or "").strip() == "Jam Session Generator"
+            else (
+                "Entry & Jam"
+                if str(ctx.entry_mode or "").strip() in {"Style Jam Mode", "Entry & Jam"}
+                else "Entry Style Jam"
+            )
         )
         mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
-        style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
-        title = html.escape(style_label or ctx.song_title or "Creative backing")
+        style_label = str(ctx.style or state.style or applied_groove or "Auto").strip()
+        if not style_label or style_label.lower() in {"jewish ballad", "pop groove"}:
+            style_label = str(ctx.style or ctx.groove or applied_groove or mode_label or "Auto").strip()
+        title = html.escape(style_label or mode_label or "Creative backing")
         subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
     elif ctx.source == "song_improv":
         source_title = "Song-Based Improvisation"
@@ -186,7 +192,17 @@ def render_backing_creative_context_card(
         style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
     backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
-    concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
+    try:
+        from musical_context_authority import format_practice_concert_key_line
+
+        concert = html.escape(
+            format_practice_concert_key_line(
+                session,
+                fallback=str(state.practice_concert_key or practice_key or "C"),
+            )
+        )
+    except ImportError:
+        concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
     inst_raw = str(state.instrument or session.get("instrument") or "Piano")
     try:
         from instrument_aware import instrument_theme
@@ -304,7 +320,13 @@ def render_backing_custom_progression_context_card(
 
     state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
     title = html.escape(str(ctx.song_title or "Custom progression").strip() or "Custom progression")
-    concert = html.escape(str(state.practice_concert_key or practice_key or ctx.concert_key or "C").strip() or "C")
+    concert_raw = str(state.practice_concert_key or practice_key or ctx.concert_key or "C").strip() or "C"
+    try:
+        from musical_context_authority import format_practice_concert_key_line
+
+        concert = html.escape(format_practice_concert_key_line(session, fallback=concert_raw))
+    except ImportError:
+        concert = html.escape(concert_raw)
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
     groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")

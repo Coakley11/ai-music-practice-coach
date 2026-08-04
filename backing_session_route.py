@@ -214,8 +214,18 @@ def return_to_regular_backing_label(session: dict[str, Any]) -> str | None:
     if route is None or route.backing_session_type == "regular_song":
         return None
     if route.song_source_type == "custom":
-        return "Return to Custom Song Backing"
-    return "Return to Catalog Song Backing"
+        try:
+            from backing_source_navigation import return_to_catalog_song_backing_label
+
+            return return_to_catalog_song_backing_label(custom=True)
+        except ImportError:
+            return "🎧 Return to Custom Song Backing"
+    try:
+        from backing_source_navigation import return_to_catalog_song_backing_label
+
+        return return_to_catalog_song_backing_label(custom=False)
+    except ImportError:
+        return "🎧 Return to Catalog Song Backing"
 
 
 def navigate_to_regular_backing(session: dict[str, Any], *, st_like: Any | None = None) -> None:

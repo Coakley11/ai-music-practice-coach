@@ -318,6 +318,17 @@ def resolve_current_backing_musical_state(
         style = str(creative.style or "").strip()
         meter = str(creative.meter or "4/4").strip()
         groove = str(creative.groove or "").strip()
+        try:
+            from backing_workflow_context import get_backing_workflow_envelope, workflow_is_generated
+
+            if workflow_is_generated(session):
+                env = get_backing_workflow_envelope(session) or {}
+                style = str(env.get("style") or style or groove or "").strip()
+                groove = str(env.get("groove") or groove or style).strip()
+                if not style and groove:
+                    style = groove
+        except ImportError:
+            pass
         context_bpm = source_bpm
         bpm_source = f"creative:{creative.source}"
     elif custom_ctx is not None:

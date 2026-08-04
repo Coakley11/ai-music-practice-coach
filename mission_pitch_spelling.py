@@ -58,10 +58,11 @@ def chord_coach_insight_for_mission(
     )
     insight = chord_coach_insight(chord, key_center=ref, **kwargs)
     try:
-        from improvisation_intelligence import build_scale_suggestion
+        from harmonic_spelling import build_scale_suggestion_for_chord
 
         insight.scale_suggestions = [
-            build_scale_suggestion(label, reference_key=ref) for label in (insight.scales or [])
+            build_scale_suggestion_for_chord(label, chord_symbol=str(chord or ""), reference_key=ref)
+            for label in (insight.scales or [])
         ]
     except Exception:
         pass

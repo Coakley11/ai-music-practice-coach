@@ -122,6 +122,7 @@ def build_backing_workflow_envelope(
         "generated_session_id": generated_id or None,
         "tonic": str(ctx.concert_key or ctx.display_key or ctx.key or "C").strip() or "C",
         "mode": str(ctx.mode_label or "").strip() or None,
+        "style_owner": owner_id if wf in {"entry_jam", "jam_session_generator"} else (song_id or owner_id),
         "progression_owner": owner_id,
         "section_map_keys": list(ctx.section_labels or ctx.sections or []),
         "style": str(ctx.style or "").strip(),
@@ -137,6 +138,22 @@ def build_backing_workflow_envelope(
         "mission_id": str(ctx.mission_id or "").strip() or None,
         "entry_mode": str(ctx.entry_mode or "").strip() or None,
     }
+    try:
+        from music_theory import key_is_minor, split_chord
+
+        if wf in {"entry_jam", "jam_session_generator"}:
+            envelope["current_practice_mode"] = "major" if not key_is_minor(str(ctx.concert_key or "")) else "minor"
+        else:
+            from musical_context_authority import resolve_authoritative_practice_key
+
+            pk = resolve_authoritative_practice_key(session)
+            envelope["original_tonic"] = pk.original_tonic
+            envelope["original_mode"] = pk.original_mode
+            envelope["current_practice_tonic"] = pk.practice_tonic
+            envelope["current_practice_mode"] = pk.practice_mode
+    except ImportError:
+        pass
+    envelope["displayed_style"] = str(ctx.style or ctx.groove or "").strip() or None
     envelope["context_fingerprint"] = _context_fingerprint(
         {k: envelope[k] for k in envelope if k != "context_fingerprint"}
     )
@@ -230,14 +247,27 @@ def render_backing_workflow_dev_diagnostics(st_module: Any, session: dict[str, A
             return
     env = get_backing_workflow_envelope(session) or {}
     deploy = str(session.get("_studio_ui_release_sha") or "—")
+    try:
+        from musical_context_authority import (
+            PRACTICE_KEY_AUTHORITY_DIAG_KEY,
+            run_musical_context_consistency_checks,
+            sidebar_key_list_mode,
+        )
+
+        run_musical_context_consistency_checks(session)
+        pk_diag = session.get(PRACTICE_KEY_AUTHORITY_DIAG_KEY) or {}
+    except ImportError:
+        pk_diag = {}
     st_module.caption(
         "DEV backing workflow · "
         f"type `{env.get('workflow_type', '—')}` · "
         f"source `{env.get('source_type', '—')}` · "
         f"owner `{env.get('context_owner_id', '—')}` · "
-        f"gen `{env.get('generated_session_id', '—')}` · "
-        f"scope `{session.get('backing_track_scope', '—')}` · "
-        f"return `{env.get('return_destination', '—')}` · "
+        f"style `{env.get('displayed_style') or env.get('style', '—')}` · "
+        f"style_owner `{env.get('style_owner', '—')}` · "
+        f"practice `{env.get('current_practice_tonic', '—')}` `{env.get('current_practice_mode', '—')}` · "
+        f"sidebar_mode `{sidebar_key_list_mode(session) if pk_diag else '—'}` · "
+        f"violations `{pk_diag.get('violations', [])}` · "
         f"fp `{env.get('context_fingerprint', '—')}` · "
         f"sha `{deploy[:7] if deploy != '—' else '—'}`"
     )
