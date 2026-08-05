@@ -154,10 +154,21 @@ def emit_deploy_startup_log(*, force: bool = False) -> None:
     if _PROCESS_DEPLOY_LOGGED and not force:
         return
     _PROCESS_DEPLOY_LOGGED = True
+    try:
+        from music_dependency_compatibility import (
+            enforce_runtime_compatibility,
+            evaluate_starlette_streamlit_compatibility,
+        )
+
+        dep = enforce_runtime_compatibility(context="emit_deploy_startup_log")
+    except SystemExit:
+        raise
+    except Exception as dep_exc:
+        dep = {"compatible": True, "reason": str(dep_exc)}
     ident = resolve_deploy_identity()
     scan_m = scan_late_missions_activation_in_source()
     scan_a = scan_late_artifact_freeze_in_source()
-    pre = evaluate_deploy_preflight(ident, scan_m, artifact_scan=scan_a)
+    pre = evaluate_deploy_preflight(ident, scan_m, artifact_scan=scan_a, dependency_eval=dep)
     paths = module_runtime_paths()
     audio = _audio_stack_versions()
     line = (
@@ -340,12 +351,33 @@ def evaluate_deploy_preflight(
     *,
     artifact_scan: dict[str, Any] | None = None,
     backing_scan: dict[str, Any] | None = None,
+    dependency_eval: dict[str, Any] | None = None,
     required_sha: str = REQUIRED_MISSIONS_HOTFIX_PREFIX,
 ) -> dict[str, Any]:
     ident = ident or resolve_deploy_identity()
     scan = scan or scan_late_missions_activation_in_source()
     artifact_scan = artifact_scan or scan_late_artifact_freeze_in_source()
     backing_scan = backing_scan or scan_mission_backing_handoff_in_source()
+    if dependency_eval is None:
+        try:
+            from music_dependency_compatibility import evaluate_starlette_streamlit_compatibility
+
+            dependency_eval = evaluate_starlette_streamlit_compatibility()
+        except ImportError:
+            dependency_eval = {"compatible": True}
+    if not dependency_eval.get("compatible", True):
+        return {
+            "status": "FAIL — DEPENDENCY INCOMPATIBLE",
+            "required_sha": required_sha,
+            "actual_sha": str(ident.get("sha_short") or ident.get("sha_full") or "").strip(),
+            "branch": ident.get("branch", ""),
+            "dependency_reason": dependency_eval.get("reason"),
+            "dependency_versions": {
+                k: dependency_eval.get(k)
+                for k in ("python", "streamlit", "starlette", "uvicorn")
+                if k in dependency_eval
+            },
+        }
     sha = str(ident.get("sha_short") or ident.get("sha_full") or "").strip()
     full = str(ident.get("sha_full") or "").strip()
     matches = _sha_matches_accepted_deploy(sha, full)

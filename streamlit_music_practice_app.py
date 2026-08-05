@@ -3,6 +3,15 @@
 import sys
 
 try:
+    from music_dependency_compatibility import enforce_runtime_compatibility
+
+    enforce_runtime_compatibility(context="streamlit_entry")
+except SystemExit:
+    raise
+except Exception:
+    pass
+
+try:
     from music_deploy_verification import emit_deploy_startup_log
 
     emit_deploy_startup_log()
