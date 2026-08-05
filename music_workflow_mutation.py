@@ -9,7 +9,11 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
-from music_workflow_legacy_projection import PROJECTED_LEGACY_KEYS, project_active_blob_to_legacy_session
+from music_workflow_legacy_projection import (
+    PROJECTED_LEGACY_KEYS,
+    RequiresPreWidgetActivation,
+    project_active_blob_to_legacy_session,
+)
 from music_workflow_state_store import (
     ActiveWorkflowPointer,
     KeyAuthority,
@@ -236,6 +240,15 @@ def commit_staged_workflow(
     if pre_violations:
         return _fail_mutation(session, trace, legacy_snapshot, "STAGED_VALIDATION", "Workflow mutation failed validation.", pre_violations)
 
+    ptr_before_commit = get_active_workflow_pointer(session)
+    blob_before_commit = None
+    if ptr_before_commit is not None:
+        blob_before_commit = get_workflow_blob(
+            session,
+            ptr_before_commit.workflow_owner,
+            ptr_before_commit.workflow_session_id,
+        )
+
     save_workflow_blob(session, staged, source=f"{mutation_type}:{source}")
     new_ptr = ActiveWorkflowPointer(
         workflow_owner=staged.workflow_owner,
@@ -258,7 +271,36 @@ def commit_staged_workflow(
     elif nav.get("precedence") == "no_studio_page_apply":
         pass
 
-    project_active_blob_to_legacy_session(session, staged)
+    try:
+        project_active_blob_to_legacy_session(session, staged)
+    except RequiresPreWidgetActivation as exc:
+        if ptr_before_commit is not None:
+            set_active_workflow_pointer(session, ptr_before_commit, source=f"rollback:{source}")
+        if blob_before_commit is not None:
+            save_workflow_blob(session, blob_before_commit, source=f"rollback:{source}")
+        trace["requires_pre_widget_activation"] = {"owner": exc.owner, "field": exc.field}
+        try:
+            from music_workflow_pending_backing_handoff import (
+                backing_source_from_workflow_owner,
+                queue_pending_backing_workflow_handoff,
+            )
+
+            owner = str(staged.workflow_owner or exc.owner or "").strip()
+            queue_pending_backing_workflow_handoff(
+                session,
+                backing_source=backing_source_from_workflow_owner(owner),
+                workflow_owner=owner,
+                activation_source=str(source or "projection_guard"),
+            )
+        except ImportError:
+            pass
+        return _fail_mutation(
+            session,
+            trace,
+            legacy_snapshot,
+            "REQUIRES_PRE_WIDGET_ACTIVATION",
+            str(exc),
+        )
     set_legacy_owner_compat_hint(session, staged.workflow_owner)
 
     try:

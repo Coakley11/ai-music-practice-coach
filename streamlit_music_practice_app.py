@@ -9593,6 +9593,12 @@ try:
     exit_run_phase(st.session_state, "pending_upload_route")
 except ImportError:
     pass
+try:
+    from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
+
+    consume_pending_backing_workflow_handoff(st.session_state, st=st)
+except ImportError:
+    pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)
@@ -14356,7 +14362,55 @@ elif _studio_page == "creative":
         persist_creative_analysis_mode(st.session_state)
         persist_improv_intelligence_tab(st.session_state)
         save_page_snapshot(st.session_state, "creative")
-        open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
+
+        try:
+            from music_workflow_pending_backing_handoff import (
+                backing_workflow_owner_is_active,
+                queue_pending_backing_workflow_handoff,
+                resolve_backing_workflow_owner,
+                should_defer_backing_workflow_activation,
+                should_request_backing_handoff_rerun,
+            )
+
+            defer_wf = should_defer_backing_workflow_activation(st.session_state)
+            wf_owner = resolve_backing_workflow_owner(st.session_state, backing_source=creative_source)
+            needs_activation = not backing_workflow_owner_is_active(st.session_state, wf_owner)
+            with_lick = False
+            try:
+                from mission_backing_handoff_persistence import handoff_with_practice_lick_pending
+
+                with_lick = handoff_with_practice_lick_pending(st.session_state)
+            except ImportError:
+                pass
+            open_backing_from_creative(
+                st.session_state,
+                source=creative_source,
+                st_like=st,
+                skip_workflow_activation=defer_wf or not needs_activation,
+            )
+            if defer_wf and needs_activation:
+                queue_pending_backing_workflow_handoff(
+                    st.session_state,
+                    backing_source=creative_source,
+                    workflow_owner=wf_owner,
+                    with_practice_lick=with_lick,
+                )
+                if should_request_backing_handoff_rerun(st.session_state):
+                    try:
+                        from music_app_rerun import request_app_rerun
+
+                        request_app_rerun(
+                            st,
+                            st.session_state,
+                            reason="pending_backing_workflow_handoff",
+                            stage="mission_backing_pre_widget",
+                        )
+                    except ImportError:
+                        st.rerun()
+                return
+        except ImportError:
+            open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
+
         try:
             from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, set_backing_open_intent
 
@@ -14385,7 +14439,17 @@ elif _studio_page == "creative":
             )
         except ImportError:
             pass
-        st.rerun()
+        try:
+            from music_app_rerun import request_app_rerun
+
+            request_app_rerun(
+                st,
+                st.session_state,
+                reason="improv_open_backing",
+                stage="backing_navigation",
+            )
+        except ImportError:
+            st.rerun()
 
     def _improv_open_practice() -> None:
         source = resolve_improv_song_source(st.session_state)

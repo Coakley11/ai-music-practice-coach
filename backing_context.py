@@ -1906,6 +1906,7 @@ def open_backing_from_creative(
     *,
     source: BackingSource,
     st_like: Any | None = None,
+    skip_workflow_activation: bool = False,
 ) -> BackingContext:
     """Build, store, and apply Creative backing context."""
     from backing_musical_state import clear_stale_chart_session_keys
@@ -1977,15 +1978,16 @@ def open_backing_from_creative(
             owner = launch_wf if launch_wf in {"style_jam", "jam_session_generator"} else "entry_jam"
         else:
             owner = "regular_catalog_backing"
-        activate_workflow_simple(
-            session,
-            owner,
-            activation_source="open_backing_from_creative",
-            page_route="backing",
-            return_route="creative",
-            navigation_intent="backing_open",
-            persist_policy="durable_handoff",
-        )
+        if not skip_workflow_activation:
+            activate_workflow_simple(
+                session,
+                owner,
+                activation_source="open_backing_from_creative",
+                page_route="backing",
+                return_route="creative",
+                navigation_intent="backing_open",
+                persist_policy="durable_handoff",
+            )
         validate_workflow_consistency(session, ctx)
     except ImportError:
         try:

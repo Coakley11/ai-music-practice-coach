@@ -91,6 +91,15 @@ def clear_incompatible_legacy_fields(session: dict[str, Any], owner: str) -> lis
     return cleared
 
 
+class RequiresPreWidgetActivation(RuntimeError):
+    """Legacy projection cannot run after Streamlit widgets exist."""
+
+    def __init__(self, owner: str, *, field: str = "display_key") -> None:
+        self.owner = owner
+        self.field = field
+        super().__init__(f"requires_pre_widget_activation:{owner}:{field}")
+
+
 def _project_session_field(session: dict[str, Any], key: str, value: Any) -> None:
     try:
         from session_widget_safe import WIDGET_BOUND_KEYS, safe_session_assign, widgets_likely_instantiated
@@ -175,8 +184,8 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             session[IMPROV_STYLE_KEY_TRACKER] = key_token
         except ImportError:
             pass
-        session["display_key"] = key_token
-        session["concert_key"] = key_token
+        _project_session_field(session, "display_key", key_token)
+        _project_session_field(session, "concert_key", key_token)
         session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
@@ -209,8 +218,8 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:
             pass
-        session["display_key"] = key_token
-        session["concert_key"] = key_token
+        _project_session_field(session, "display_key", key_token)
+        _project_session_field(session, "concert_key", key_token)
         session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
@@ -236,6 +245,23 @@ def project_active_blob_to_legacy_session(
 ) -> dict[str, Any]:
     """One-way compatibility projection after activation — does not mutate store or pointer."""
     owner = str(blob.workflow_owner or "").strip()
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        if widgets_likely_instantiated(session) and owner in {
+            "mission_jam",
+            "style_jam",
+            "jam_session_generator",
+            "song_based_improvisation",
+        }:
+            session["_music_workflow_projection_diag"] = {
+                "blocked": True,
+                "reason": "requires_pre_widget_activation",
+                "owner": owner,
+            }
+            raise RequiresPreWidgetActivation(owner)
+    except ImportError:
+        pass
     cleared = clear_incompatible_legacy_fields(session, owner)
     restore_workflow_blob_to_session(session, blob)
     projected = list(PROJECTED_LEGACY_KEYS.get(owner, ()))
@@ -246,6 +272,7 @@ def project_active_blob_to_legacy_session(
 
 __all__ = [
     "PROJECTED_LEGACY_KEYS",
+    "RequiresPreWidgetActivation",
     "clear_incompatible_legacy_fields",
     "project_active_blob_to_legacy_session",
     "restore_workflow_blob_to_session",
