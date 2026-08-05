@@ -27,7 +27,12 @@ def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
     }
 
 
-def activate_generated_jam_key_ownership(session: dict[str, Any], *, entry_mode: str = "") -> None:
+def activate_generated_jam_key_ownership(
+    session: dict[str, Any],
+    *,
+    entry_mode: str = "",
+    practice_key: str = "",
+) -> None:
     """While generator/entry jam owns creative or backing route, practice key follows generated session."""
     entry = str(entry_mode or session.get("improv_entry_mode") or "").strip()
     if entry not in {"Style Jam Mode", "Jam Session Generator"}:
@@ -50,7 +55,11 @@ def activate_generated_jam_key_ownership(session: dict[str, Any], *, entry_mode:
         creative_entry_concert_key = lambda s: str(s.get("improv_jam_key") or s.get("improv_style_key") or "C")  # type: ignore
         to_major_key_preserve_spelling = lambda k: k  # type: ignore
 
-    tonic = to_major_key_preserve_spelling(creative_entry_concert_key(session) or "C")
+    tonic = str(practice_key or "").strip()
+    if not tonic:
+        tonic = to_major_key_preserve_spelling(creative_entry_concert_key(session) or "C")
+    else:
+        tonic = to_major_key_preserve_spelling(tonic)
     session[GENERATED_JAM_KEY_CONTEXT_KEY] = {
         "generated_session_id": _jam_session_id(session),
         "practice_tonic": tonic,

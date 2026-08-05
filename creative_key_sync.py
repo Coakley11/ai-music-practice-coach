@@ -352,32 +352,28 @@ def on_improv_jam_key_change() -> None:
     before_pick = guard_creative_catalog_pick_before_edit(
         st.session_state, writer="on_improv_jam_key_change"
     )
-    prev = str(st.session_state.get(IMPROV_JAM_KEY_TRACKER) or "").strip()
-    new = str(st.session_state.get("improv_jam_key") or "").strip()
-    if not new:
-        return
     try:
-        from music_workflow_mutation import update_active_practice_key
+        from generated_jam_key_change import apply_generated_workflow_practice_key_user_edit
 
-        result = update_active_practice_key(
+        apply_generated_workflow_practice_key_user_edit(
             st.session_state,
-            new,
-            source="on_improv_jam_key_change",
-            transpose_progression=True,
+            widget_key="improv_jam_key",
+            st_like=st,
         )
-        if not result.ok:
-            return
     except ImportError:
-        pass
-    apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
-    st.session_state[IMPROV_JAM_KEY_TRACKER] = new
-    try:
-        from generated_jam_key_context import activate_generated_jam_key_ownership
+        new = str(st.session_state.get("improv_jam_key") or "").strip()
+        if new:
+            try:
+                from music_workflow_mutation import update_active_practice_key
 
-        activate_generated_jam_key_ownership(st.session_state, entry_mode="Jam Session Generator")
-    except ImportError:
-        pass
-    invalidate_creative_backing_context(st.session_state)
+                update_active_practice_key(
+                    st.session_state,
+                    new,
+                    source="on_improv_jam_key_change",
+                    transpose_progression=True,
+                )
+            except ImportError:
+                pass
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_jam_key_change"
     )
@@ -1131,22 +1127,30 @@ def on_improv_style_key_change() -> None:
     before_pick = guard_creative_catalog_pick_before_edit(
         st.session_state, writer="on_improv_style_key_change"
     )
-    prev = str(st.session_state.get(IMPROV_STYLE_KEY_TRACKER) or "").strip()
-    new = str(st.session_state.get("improv_style_key") or "").strip()
     try:
-        from music_workflow_mutation import update_active_practice_key
+        from generated_jam_key_change import apply_generated_workflow_practice_key_user_edit
 
-        result = update_active_practice_key(
+        apply_generated_workflow_practice_key_user_edit(
             st.session_state,
-            new,
-            source="on_improv_style_key_change",
-            transpose_progression=True,
+            widget_key="improv_style_key",
+            st_like=st,
         )
-        if not result.ok:
-            return
     except ImportError:
-        pass
-    sync_style_jam_legacy_after_authoritative_key(st.session_state, new, st_like=st)
+        new = str(st.session_state.get("improv_style_key") or "").strip()
+        if new:
+            try:
+                from music_workflow_mutation import update_active_practice_key
+
+                result = update_active_practice_key(
+                    st.session_state,
+                    new,
+                    source="on_improv_style_key_change",
+                    transpose_progression=True,
+                )
+                if result.ok:
+                    sync_style_jam_legacy_after_authoritative_key(st.session_state, new, st_like=st)
+            except ImportError:
+                pass
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_style_key_change"
     )

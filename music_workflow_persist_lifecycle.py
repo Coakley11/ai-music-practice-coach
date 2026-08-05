@@ -151,6 +151,12 @@ def confirm_workflow_persist_after_cloud_save(
     session.pop(WORKFLOW_PERSIST_PENDING_KEY, None)
     session.pop(WORKFLOW_PENDING_CANONICAL_REASON_KEY, None)
     try:
+        from generated_jam_key_change import clear_generated_key_hydrate_guard
+
+        clear_generated_key_hydrate_guard(session)
+    except ImportError:
+        pass
+    try:
         from music_workflow_persist_confirmed import note_persist_confirmed
 
         ws_rev = 0

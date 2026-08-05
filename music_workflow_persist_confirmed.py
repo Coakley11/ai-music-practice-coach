@@ -37,6 +37,21 @@ def note_persist_confirmed(
 
 def has_unconfirmed_local_workflow_changes(session: dict[str, Any]) -> bool:
     """True when live blob fingerprint differs from last confirmed durable save."""
+    try:
+        from music_workflow_persist_lifecycle import WORKFLOW_PERSIST_PENDING_KEY
+
+        pend = session.get(WORKFLOW_PERSIST_PENDING_KEY)
+        if isinstance(pend, dict) and not pend.get("persist_confirmed"):
+            return True
+    except ImportError:
+        pass
+    try:
+        from generated_jam_key_change import GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY
+
+        if isinstance(session.get(GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY), dict):
+            return True
+    except ImportError:
+        pass
     confirmed = get_persist_confirmed(session)
     if not confirmed.get("last_confirmed_material_fingerprint"):
         return False

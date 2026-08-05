@@ -163,6 +163,14 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
         if live_blob is not None and live_blob.material_fingerprint and blob.material_fingerprint:
             if live_blob.material_fingerprint == blob.material_fingerprint:
                 continue
+            try:
+                from generated_jam_key_change import generated_key_hydrate_guard_blocks_blob
+
+                if generated_key_hydrate_guard_blocks_blob(session, live_blob):
+                    record_compat_fallback(session, "GENERATED_KEY_HYDRATE_GUARD_BLOCKED", blob.workflow_owner)
+                    continue
+            except ImportError:
+                pass
             if unconfirmed:
                 record_compat_fallback(session, "UNCONFIRMED_LOCAL_CHANGE_OVERWRITE_BLOCKED", blob.workflow_owner)
                 continue
