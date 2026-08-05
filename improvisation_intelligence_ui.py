@@ -1141,6 +1141,34 @@ def _ensure_chord_selection(
     if not chords:
         return
     try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session_state)
+        if ptr and ptr.workflow_owner == "mission_jam":
+            blob = get_workflow_blob(session_state, ptr.workflow_owner, ptr.workflow_session_id)
+            if blob and blob.selected_chord_symbol:
+                sym = str(blob.selected_chord_symbol).strip()
+                if sym in chords:
+                    idx = chords.index(sym)
+                    session_state[II_SELECTED_CHORD_INDEX] = idx
+                    session_state[II_SELECTED_CHORD] = sym
+                    if section_map:
+                        sec, _ = section_and_chord_at_global_index(section_map, idx)
+                        if sec:
+                            session_state[II_SELECTED_SECTION] = sec
+                            session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {sym}"
+                    session_state["improv_mission_chord_options"] = list(chords)
+                    return
+    except ImportError:
+        pass
+    try:
+        from music_workflow_mutation import should_project_mission_config_from_canonical
+
+        if not should_project_mission_config_from_canonical(session_state):
+            return
+    except ImportError:
+        pass
+    try:
         from creative_mission_config_persistence import canonical_mission_config_value
 
         raw = canonical_mission_config_value(session_state, II_SELECTED_CHORD_INDEX)

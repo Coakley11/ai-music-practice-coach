@@ -1567,6 +1567,12 @@ def record_music_cloud_write_result(
 
         ss["_suite_last_cloud_save_payload"] = _copy.deepcopy(state)
         try:
+            from music_workflow_persist_lifecycle import confirm_workflow_persist_after_cloud_save
+
+            confirm_workflow_persist_after_cloud_save(ss, saved_cloud=True)
+        except ImportError:
+            pass
+        try:
             from backing_track_state import record_backing_disk_payload_trace
 
             record_backing_disk_payload_trace(ss, state)
@@ -1584,6 +1590,12 @@ def record_music_cloud_write_result(
         ss.pop("_music_last_cloud_write_error", None)
     elif cloud_error:
         ss["_music_last_cloud_write_error"] = cloud_error
+        try:
+            from music_workflow_persist_lifecycle import confirm_workflow_persist_after_cloud_save
+
+            confirm_workflow_persist_after_cloud_save(ss, saved_cloud=False, error=cloud_error)
+        except ImportError:
+            pass
 
 
 def save_music_cloud_session(

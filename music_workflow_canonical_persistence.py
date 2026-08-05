@@ -46,10 +46,15 @@ def _persist_stats(session: dict[str, Any]) -> dict[str, Any]:
 
 
 def resolve_workflow_persist_reason(session: dict[str, Any], *, fallback: str = "") -> str:
-    pending = str(session.get("_music_workflow_pending_canonical_reason") or "").strip()
-    if pending:
-        return pending
-    return str(fallback or "").strip()
+    try:
+        from music_workflow_persist_lifecycle import resolve_workflow_persist_reason as _resolve
+
+        return _resolve(session, fallback=fallback)
+    except ImportError:
+        pending = str(session.get("_music_workflow_pending_canonical_reason") or "").strip()
+        if pending:
+            return pending
+        return str(fallback or "").strip()
 
 
 def note_workflow_persist_requested(session: dict[str, Any], reason: str) -> None:
@@ -63,6 +68,7 @@ def note_workflow_persist_performed(session: dict[str, Any], *, revision: int = 
     s["workflow_persist_performed"] = int(s.get("workflow_persist_performed") or 0) + 1
     s["persisted_context_revision"] = int(revision or 0)
     session.pop("_music_workflow_pending_canonical_reason", None)
+    session.pop("_music_workflow_persist_pending", None)
 
 
 def note_workflow_persist_skipped(session: dict[str, Any]) -> None:
@@ -71,20 +77,86 @@ def note_workflow_persist_skipped(session: dict[str, Any]) -> None:
 
 
 def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -> None:
-    """Restore from cloud/canonical — rebind via activation when possible."""
+    """Restore from cloud/canonical — never overwrite newer live workflow state."""
     if not isinstance(nested, dict):
         return
-    store = nested.get("store")
-    ptr = nested.get("active_pointer")
-    if isinstance(store, dict):
-        session[MUSIC_WORKFLOW_STATE_STORE_KEY] = copy.deepcopy(store)
-    if isinstance(ptr, dict):
-        try:
-            from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
+    diag = session.setdefault("_music_workflow_canonical_restore_diag", {})
+    if not isinstance(diag, dict):
+        diag = {}
+        session["_music_workflow_canonical_restore_diag"] = diag
 
-            owner = str(ptr.get("workflow_owner") or "")
-            sid = str(ptr.get("workflow_session_id") or "")
-            if owner and sid:
+    from music_workflow_state_store import (
+        WorkflowStateBlob,
+        get_active_workflow_pointer,
+        get_workflow_blob,
+        record_compat_fallback,
+        resolve_workspace_identity,
+        save_workflow_blob,
+        set_active_workflow_pointer,
+        ActiveWorkflowPointer,
+    )
+
+    ws, acct = resolve_workspace_identity(session)
+    nested_ws = str(nested.get("workspace_id") or "").strip()
+    if nested_ws and nested_ws != ws:
+        record_compat_fallback(session, "CANONICAL_WORKSPACE_IDENTITY_MISMATCH", nested_ws)
+        diag["decision"] = "blocked_workspace"
+        return
+
+    canon_store = nested.get("store") if isinstance(nested.get("store"), dict) else {}
+    canon_ptr_raw = nested.get("active_pointer") if isinstance(nested.get("active_pointer"), dict) else {}
+    live_ptr = get_active_workflow_pointer(session)
+    live_rev = int(live_ptr.context_revision if live_ptr else 0)
+    canon_rev = int(canon_ptr_raw.get("context_revision") or nested.get("context_revision") or 0)
+    diag["live_revision"] = live_rev
+    diag["canonical_revision"] = canon_rev
+
+    if live_ptr and live_ptr.workflow_owner and canon_ptr_raw:
+        co = str(canon_ptr_raw.get("workflow_owner") or "")
+        cs = str(canon_ptr_raw.get("workflow_session_id") or "")
+        if co and cs and (co != live_ptr.workflow_owner or cs != live_ptr.workflow_session_id):
+            if live_rev > canon_rev:
+                record_compat_fallback(session, "CANONICAL_LIVE_REVISION_CONFLICT", co)
+                diag["decision"] = "retain_live_pointer"
+                return
+
+    if live_rev > canon_rev and live_ptr:
+        record_compat_fallback(session, "STALE_CANONICAL_WORKFLOW_RESTORE_BLOCKED", str(canon_rev))
+        diag["decision"] = "live_newer"
+        return
+
+    blobs_in = (canon_store.get("blobs") or {}) if isinstance(canon_store, dict) else {}
+    if not blobs_in and not canon_ptr_raw:
+        diag["decision"] = "empty_slice"
+        return
+
+    applied = 0
+    for _key, raw in blobs_in.items():
+        blob = WorkflowStateBlob.from_dict(raw if isinstance(raw, dict) else None)
+        if not blob or not blob.workflow_owner:
+            continue
+        live_blob = get_workflow_blob(session, blob.workflow_owner, blob.workflow_session_id)
+        if live_blob is not None and int(live_blob.context_revision or 0) > int(blob.context_revision or 0):
+            record_compat_fallback(session, "STALE_CANONICAL_WORKFLOW_RESTORE_BLOCKED", blob.workflow_owner)
+            continue
+        if live_blob is not None and live_blob.material_fingerprint and blob.material_fingerprint:
+            if (
+                live_blob.material_fingerprint != blob.material_fingerprint
+                and int(live_blob.context_revision or 0) >= int(blob.context_revision or 0)
+            ):
+                record_compat_fallback(session, "CANONICAL_WORKFLOW_FINGERPRINT_CONFLICT", blob.workflow_owner)
+                continue
+        save_workflow_blob(session, blob, source="canonical_hydrate")
+        applied += 1
+    diag["blobs_applied"] = applied
+
+    if isinstance(canon_ptr_raw, dict) and canon_ptr_raw.get("workflow_owner"):
+        owner = str(canon_ptr_raw.get("workflow_owner") or "")
+        sid = str(canon_ptr_raw.get("workflow_session_id") or "")
+        if owner and sid:
+            try:
+                from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
+
                 activate_workflow(
                     session,
                     ActivateWorkflowRequest(
@@ -94,10 +166,14 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
                         persist_policy="none",
                     ),
                 )
+                diag["decision"] = "activated"
                 return
-        except ImportError:
-            pass
-        session[MUSIC_ACTIVE_WORKFLOW_KEY] = copy.deepcopy(ptr)
+            except ImportError:
+                pass
+            ptr = ActiveWorkflowPointer.from_dict(canon_ptr_raw)
+            if ptr:
+                set_active_workflow_pointer(session, ptr, source="canonical_restore")
+                diag["decision"] = "pointer_only"
 
 
 def gather_workflow_state_canonical_slice(session: dict[str, Any]) -> dict[str, Any]:

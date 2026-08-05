@@ -47,7 +47,12 @@ class TestWorkflowBootstrap(unittest.TestCase):
         self.assertEqual(ptr.workflow_owner, "song_based_improvisation")
 
     def test_bootstrap_not_repeated(self) -> None:
-        session = _session(improv_intelligence_tab="Missions", display_key="Em", concert_key="Em")
+        session = _session(
+            improv_intelligence_tab="Missions",
+            display_key="Em",
+            concert_key="Em",
+            active_catalog_pick_key="hevenu",
+        )
         bootstrap_active_workflow_if_needed(session)
         ptr1 = get_active_workflow_pointer(session)
         bootstrap_active_workflow_if_needed(session)
@@ -161,6 +166,7 @@ class TestBackingOwners(unittest.TestCase):
             display_key="Em",
             concert_key="Em",
             ii_selected_chord="B",
+            active_catalog_pick_key="hevenu",
         )
         activate_workflow(
             session,

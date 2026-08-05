@@ -40,6 +40,10 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
     activation = session.get("_music_workflow_activation_last") or session.get("_music_workflow_activation_diag") or {}
     mutation = session.get("_music_workflow_mutation_last") or session.get("_music_workflow_mutation_diag") or {}
     bootstrap = session.get("_music_workflow_bootstrap_trace") or {}
+    mission_boot = session.get("_music_workflow_mission_bootstrap_diag") or {}
+    persist_pending = session.get("_music_workflow_persist_pending") or {}
+    canon_restore = session.get("_music_workflow_canonical_restore_diag") or {}
+    legacy_capture = session.get("_music_workflow_legacy_capture_stats") or {}
     direct_writes = list(session.get("_music_workflow_direct_write_log") or [])[-6:]
     return {
         "workspace_id": ws,
@@ -58,6 +62,11 @@ def build_workflow_architecture_snapshot(session: dict[str, Any]) -> dict[str, A
         "activation_last": activation,
         "mutation_last": mutation,
         "bootstrap_trace": bootstrap,
+        "mission_bootstrap_diag": mission_boot,
+        "persist_pending": persist_pending,
+        "canonical_restore_diag": canon_restore,
+        "legacy_capture_stats": legacy_capture,
+        "persist_stats": session.get("_music_workflow_persist_stats") or {},
         "active_creative_view": str(session.get("_music_active_creative_view") or ""),
         "direct_owner_writes": direct_writes,
         "page": str(session.get("studio_page") or ""),

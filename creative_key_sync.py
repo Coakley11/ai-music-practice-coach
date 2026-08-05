@@ -290,6 +290,25 @@ def sync_creative_key_change(
     invalidate_creative_backing_context(session)
 
 
+def sync_style_jam_legacy_after_authoritative_key(
+    session: dict[str, Any],
+    new_key: str,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """After update_active_practice_key — sync trackers only; do not re-transpose sections."""
+    new = str(new_key or "").strip()
+    if not new:
+        return
+    apply_creative_concert_key(session, new, st_like=st_like, source="style_jam_authoritative_key")
+    session[IMPROV_STYLE_KEY_TRACKER] = new
+    meta = dict(session.get("improv_style_meta") or {})
+    meta["key"] = new
+    session["improv_style_meta"] = meta
+    invalidate_creative_backing_context(session)
+    _apply_pending_backing_context_on_page(session, st_like=st_like)
+
+
 def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
     """Keep improv_style_meta aligned with Style Jam widgets."""
     from songs.playback_defaults import normalize_groove_label
@@ -344,22 +363,12 @@ def on_improv_jam_key_change() -> None:
             st.session_state,
             new,
             source="on_improv_jam_key_change",
-            transpose_progression=False,
+            transpose_progression=True,
         )
         if not result.ok:
             return
     except ImportError:
         pass
-    gen = st.session_state.get("improv_jam_session")
-    if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
-        st.session_state["improv_jam_session"] = {
-            **gen,
-            "sections": retranspose_generated_sections(
-                dict(gen.get("sections") or {}),
-                from_key=prev,
-                to_key=new,
-            ),
-        }
     apply_creative_concert_key(st.session_state, new, st_like=st, source="creative_jam_session")
     st.session_state[IMPROV_JAM_KEY_TRACKER] = new
     try:
@@ -931,28 +940,14 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             )
             if not result.ok:
                 return
-            prev = str(session.get(IMPROV_STYLE_KEY_TRACKER) or "").strip()
-            sync_creative_key_change(session, new, previous_key=prev, st_like=st_like)
-            invalidate_creative_backing_context(session)
-            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            sync_style_jam_legacy_after_authoritative_key(session, new, st_like=st_like)
             return
         if ptr and ptr.workflow_owner == "jam_session_generator":
-            prev = str(session.get(IMPROV_JAM_KEY_TRACKER) or "").strip()
             result = update_active_practice_key(
                 session, new, source="on_improv_jam_key_change", transpose_progression=True
             )
             if not result.ok:
                 return
-            gen = session.get("improv_jam_session")
-            if isinstance(gen, dict) and gen.get("sections") and prev and prev != new:
-                session["improv_jam_session"] = {
-                    **gen,
-                    "sections": retranspose_generated_sections(
-                        dict(gen.get("sections") or {}),
-                        from_key=prev,
-                        to_key=new,
-                    ),
-                }
             apply_creative_concert_key(session, new, st_like=st_like, source="creative_jam_session")
             session[IMPROV_JAM_KEY_TRACKER] = new
             invalidate_creative_backing_context(session)
@@ -1151,7 +1146,7 @@ def on_improv_style_key_change() -> None:
             return
     except ImportError:
         pass
-    sync_creative_key_change(st.session_state, new, previous_key=prev, st_like=st)
+    sync_style_jam_legacy_after_authoritative_key(st.session_state, new, st_like=st)
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_style_key_change"
     )

@@ -174,19 +174,21 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
         from music_workflow_canonical_persistence import (
             CWS_WORKFLOW_STATE_NESTED_KEY,
             gather_workflow_state_canonical_slice,
-            note_workflow_persist_performed,
             resolve_workflow_persist_reason,
             should_gather_workflow_state_to_canonical,
         )
 
         wf_reason = resolve_workflow_persist_reason(session, fallback=persist_reason)
         if should_gather_workflow_state_to_canonical(session, persist_reason=wf_reason):
+            try:
+                from music_workflow_persist_lifecycle import note_workflow_gather_called
+
+                note_workflow_gather_called(session)
+            except ImportError:
+                pass
             nested = gather_workflow_state_canonical_slice(session)
             if nested:
                 base[CWS_WORKFLOW_STATE_NESTED_KEY] = nested
-                ptr = session.get("_music_active_workflow")
-                rev = int(ptr.get("context_revision") or 0) if isinstance(ptr, dict) else 0
-                note_workflow_persist_performed(session, revision=rev)
     except ImportError:
         pass
     return base

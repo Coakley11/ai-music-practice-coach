@@ -35,7 +35,10 @@ VIOLATION_WORKFLOW_ROUTE_OWNER_MISMATCH = "WORKFLOW_ROUTE_OWNER_MISMATCH"
 VIOLATION_RETURN_ROUTE_DESTINATION_MISMATCH = "RETURN_ROUTE_DESTINATION_MISMATCH"
 VIOLATION_KEY_HANDLER_OWNER_MISMATCH = "KEY_HANDLER_OWNER_MISMATCH"
 VIOLATION_KEY_LABEL_PROGRESSION_MISMATCH = "KEY_LABEL_PROGRESSION_MISMATCH"
-VIOLATION_PRACTICE_KEY_BLOB_MISMATCH = "PRACTICE_KEY_BLOB_MISMATCH"
+VIOLATION_STYLE_JAM_DOUBLE_TRANSPOSE = "STYLE_JAM_DOUBLE_TRANSPOSE_ATTEMPT"
+VIOLATION_GENERATOR_KEY_PROGRESSION_MISMATCH = "GENERATOR_KEY_PROGRESSION_MISMATCH"
+VIOLATION_GENERATOR_SECTION_OWNER_MISMATCH = "GENERATOR_SECTION_OWNER_MISMATCH"
+VIOLATION_GENERATOR_PRETRANSPOSE_SECTIONS_RETAINED = "GENERATOR_PRETRANSPOSE_SECTIONS_RETAINED"
 VIOLATION_WRITTEN_CONCERT_KEY_MISMATCH = "WRITTEN_CONCERT_KEY_MISMATCH"
 
 PersistPolicy = Literal["none", "explicit", "durable_handoff"]
@@ -272,7 +275,18 @@ def commit_staged_workflow(
 
     session["_music_workflow_cache_identity"] = workflow_cache_identity(session)
     if persist_policy in {"explicit", "durable_handoff"}:
-        session["_music_workflow_pending_canonical_reason"] = "music_workflow_activate"
+        canon_reason = "creative_mission_example_change" if mutation_type == "mission_example_artifact" else "music_workflow_state_save"
+        try:
+            from music_workflow_persist_lifecycle import request_workflow_canonical_persist
+
+            request_workflow_canonical_persist(
+                session,
+                canon_reason,
+                expected_revision=int(staged.context_revision or 0),
+                expected_fingerprint=str(staged.material_fingerprint or ""),
+            )
+        except ImportError:
+            session["_music_workflow_pending_canonical_reason"] = canon_reason
 
     trace["validation_result"] = "ok"
     trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
@@ -492,6 +506,7 @@ def update_active_practice_key(
 
     prev_token = f"{blob.keys.practice_tonic}{blob.keys.practice_mode}"
     prev_sections_fp = _progression_fingerprint(blob.section_map)
+    auth_old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
 
     def _mut(b: WorkflowStateBlob) -> None:
         orig_t = b.keys.original_tonic or b.keys.practice_tonic
@@ -507,19 +522,43 @@ def update_active_practice_key(
             key_owner=owner,
         )
         if owner == "jam_session_generator":
+            old_key = auth_old_key
+            sections_src: dict[str, list[str]] = copy.deepcopy(b.section_map) if b.section_map else {}
             jam = session.get("improv_jam_session")
-            if isinstance(jam, dict) and isinstance(jam.get("sections"), dict):
-                b.section_map = copy.deepcopy(jam.get("sections") or {})
-            elif transpose_progression and b.section_map:
-                old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+            jam_id = ""
+            if isinstance(jam, dict):
+                jam_id = str(jam.get("id") or b.generated_session_id or "").strip()
+                if isinstance(jam.get("sections"), dict) and jam.get("sections"):
+                    sections_src = copy.deepcopy(jam.get("sections"))
+            if sections_src and transpose_progression and old_key and old_key != key_token:
                 try:
                     from music_theory import transpose_sections_dict
 
-                    b.section_map = transpose_sections_dict(b.section_map, old_key, key_token)
+                    transposed = transpose_sections_dict(sections_src, old_key, key_token)
+                    b.section_map = transposed
+                    if isinstance(jam, dict):
+                        session["improv_jam_session"] = {
+                            **copy.deepcopy(jam),
+                            "sections": copy.deepcopy(transposed),
+                            "id": jam_id or jam.get("id"),
+                        }
                 except ImportError:
-                    pass
+                    b.section_map = sections_src
+                    record_compat_fallback(session, VIOLATION_GENERATOR_PRETRANSPOSE_SECTIONS_RETAINED, key_token)
+            elif sections_src:
+                b.section_map = sections_src
+            if jam_id:
+                b.generated_session_id = jam_id
+        elif owner == "style_jam" and transpose_progression and b.section_map:
+            old_key = auth_old_key
+            try:
+                from music_theory import transpose_sections_dict
+
+                b.section_map = transpose_sections_dict(b.section_map, old_key, key_token)
+            except ImportError:
+                pass
         elif transpose_progression and b.section_map:
-            old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+            old_key = auth_old_key
             try:
                 from music_theory import transpose_sections_dict
 
@@ -535,7 +574,9 @@ def update_active_practice_key(
     trace_extra = {
         "key_handler_source": source,
         "requested_key": key_token,
+        "authoritative_old_key": auth_old_key,
         "progression_fp_before": prev_sections_fp,
+        "transpose_applications": 1 if transpose_progression else 0,
     }
     result = mutate_active_workflow(
         session,
@@ -550,6 +591,7 @@ def update_active_practice_key(
         result.trace["progression_fp_after"] = _progression_fingerprint(
             (get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) or blob).section_map
         )
+        result.trace["projected_legacy_key"] = str(session.get("display_key") or session.get("concert_key") or "")
         session[WORKFLOW_MUTATION_LAST_KEY] = result.trace
         try:
             from music_workflow_song_practice import mirror_song_practice_key_to_mission_blob, song_based_blob_session_id
@@ -615,12 +657,18 @@ def update_mission_example_on_blob(
     chord: str,
     example_fingerprint: str,
     artifact_fingerprint: str = "",
+    mission_type: str = "",
+    section: str = "",
 ) -> MutationResult:
     def _mut(b: WorkflowStateBlob) -> None:
         b.selected_chord_symbol = str(chord or "").strip()
         b.example_fingerprint = str(example_fingerprint or "")[:24]
         if artifact_fingerprint:
             b.artifact_fingerprint = str(artifact_fingerprint)[:24]
+        if mission_type:
+            b.mission_type = str(mission_type).strip()
+        if section:
+            b.selected_section = str(section).strip()
         if b.selected_chord_symbol and b.example_fingerprint:
             b.backing_handoff_chord = b.selected_chord_symbol
 
@@ -632,6 +680,20 @@ def update_mission_example_on_blob(
         expected_owner="mission_jam",
         persist_policy="explicit",
     )
+
+
+def mission_example_matches_active_blob(session: dict[str, Any], *, chord: str, example_fp: str) -> bool:
+    ptr = get_active_workflow_pointer(session)
+    if not ptr or ptr.workflow_owner != "mission_jam":
+        return True
+    blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+    if blob is None:
+        return False
+    if blob.selected_chord_symbol and str(chord or "").strip() != blob.selected_chord_symbol:
+        return False
+    if blob.example_fingerprint and example_fp and blob.example_fingerprint != str(example_fp)[:24]:
+        return False
+    return True
 
 
 def should_project_mission_config_from_canonical(session: dict[str, Any]) -> bool:
@@ -672,6 +734,7 @@ __all__ = [
     "mutate_active_workflow",
     "mutate_mission_handoff_aligned",
     "mutate_mission_chord_selection",
+    "mission_example_matches_active_blob",
     "should_project_mission_config_from_canonical",
     "update_mission_example_on_blob",
     "resolve_workflow_routes",

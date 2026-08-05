@@ -312,16 +312,33 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     target_blob = request.incoming_blob
     if target_blob is None:
         target_blob = get_workflow_blob(session, target_owner, target_sid)
+        if target_blob is None and target_owner == "mission_jam":
+            try:
+                from music_workflow_mission_bootstrap import ensure_mission_blob_from_song
+
+                target_blob = ensure_mission_blob_from_song(session, target_sid)
+                if target_blob is not None:
+                    trace["mission_bootstrap_source"] = session.get("_music_workflow_mission_bootstrap_diag", {})
+            except ImportError:
+                pass
         if target_blob is None:
             _hydrate_blob_from_legacy_musical_snapshot(session, target_owner, target_sid)
             target_blob = get_workflow_blob(session, target_owner, target_sid)
-        if target_blob is None:
+        if target_blob is None and target_owner != "mission_jam":
             target_blob = build_workflow_blob_from_legacy(session, target_owner)
             target_blob.workflow_owner = target_owner
             target_blob.workflow_session_id = target_sid
             trace["incoming_blob_built_compat"] = True
+        elif target_blob is None and target_owner == "mission_jam":
+            return _fail(
+                session,
+                "MISSION_BOOTSTRAP_FAILED",
+                "Could not bootstrap mission workflow from song practice state.",
+                trace,
+            )
         else:
-            trace["incoming_blob_restored"] = True
+            if not trace.get("mission_bootstrap_source"):
+                trace["incoming_blob_restored"] = True
     else:
         trace["incoming_blob_explicit"] = True
 
@@ -404,9 +421,19 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     trace["caches_invalidated"] = caches
 
     if request.persist_policy in {"explicit", "durable_handoff"}:
-        session[WORKFLOW_PENDING_CANONICAL_REASON_KEY] = SAVE_REASON_ACTIVATE
+        try:
+            from music_workflow_persist_lifecycle import request_workflow_canonical_persist
+
+            rid = request_workflow_canonical_persist(
+                session,
+                SAVE_REASON_ACTIVATE,
+                expected_revision=int(ptr_after.context_revision if ptr_after else 0),
+            )
+            trace["persist_request_id"] = rid
+        except ImportError:
+            session[WORKFLOW_PENDING_CANONICAL_REASON_KEY] = SAVE_REASON_ACTIVATE
         trace["persistence_skipped"] = False
-        trace["persistence_performed"] = True
+        trace["persistence_requested"] = True
 
     trace["validation_result"] = "ok"
     trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)

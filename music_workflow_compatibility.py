@@ -73,6 +73,13 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         record_legacy_field_read(session, "active_catalog_pick_key", adapter="session_id")
         return str(session.get("active_catalog_pick_key") or session.get("song") or "song").strip() or "song"
     if owner == "mission_jam":
+        try:
+            from music_workflow_song_practice import mission_blob_session_id
+
+            record_legacy_field_read(session, "active_catalog_pick_key", adapter="session_id")
+            return mission_blob_session_id(session)
+        except ImportError:
+            pass
         record_legacy_field_read(session, "active_catalog_pick_key", adapter="session_id")
         pick = str(session.get("active_catalog_pick_key") or session.get("song") or "song").strip()
         return f"mission|{pick}"

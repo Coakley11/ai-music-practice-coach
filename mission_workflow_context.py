@@ -247,32 +247,7 @@ def ensure_mission_handoff_aligned(
         )
         if result.ok:
             return
-    except ImportError:
-        pass
-    session["ii_selected_chord"] = str(cur_chord)
-    session["II_SELECTED_CHORD"] = str(cur_chord)
-    session["ii_selected_chord_index"] = int(chord_idx)
-    session["II_SELECTED_CHORD_INDEX"] = int(chord_idx)
-    session["ii_selected_section"] = str(section_label)
-    session["II_SELECTED_SECTION"] = str(section_label)
-    session["improv_active_mission"] = str(mission)
-    if example is not None and str(getattr(example, "chord", "") or "") != str(cur_chord):
-        raise ValueError("MISSION_ARTIFACT_HANDOFF_MISMATCH")
-    prior_chord = str(session.get("_mission_last_handoff_chord") or "")
-    if prior_chord and prior_chord != str(cur_chord):
-        session.pop("_mission_exact_backing_armed", None)
-        session.pop("improv_mission_recording_seal", None)
-        try:
-            from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
-
-            invalidate_exact_chord_backing_cache(session)
-        except ImportError:
-            pass
-    session["_mission_last_handoff_chord"] = str(cur_chord)
-    try:
-        from mission_practice_context import ensure_mission_practice_context
-
-        ensure_mission_practice_context(session, force=True)
+        return
     except ImportError:
         pass
 
