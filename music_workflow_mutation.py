@@ -275,15 +275,20 @@ def commit_staged_workflow(
 
     session["_music_workflow_cache_identity"] = workflow_cache_identity(session)
     if persist_policy in {"explicit", "durable_handoff"}:
-        canon_reason = "creative_mission_example_change" if mutation_type == "mission_example_artifact" else "music_workflow_state_save"
+        canon_reason = "material_workflow_key_change" if mutation_type == "practice_key_change" else (
+            "creative_mission_example_change" if mutation_type == "mission_example_artifact" else "music_workflow_state_save"
+        )
         try:
-            from music_workflow_persist_lifecycle import request_workflow_canonical_persist
+            from music_workflow_persist_lifecycle import supersede_workflow_persist_request
 
-            request_workflow_canonical_persist(
+            supersede_workflow_persist_request(
                 session,
-                canon_reason,
+                reason=canon_reason,
                 expected_revision=int(staged.context_revision or 0),
                 expected_fingerprint=str(staged.material_fingerprint or ""),
+                owner=str(staged.workflow_owner or ""),
+                session_id=str(staged.workflow_session_id or ""),
+                expected_workspace_revision=int(session.get("_suite_applied_workspace_revision") or 0),
             )
         except ImportError:
             session["_music_workflow_pending_canonical_reason"] = canon_reason
@@ -371,11 +376,17 @@ def mutate_mission_chord_selection(
             from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
 
             sid = str(session.get("active_catalog_pick_key") or "song").strip()
+            try:
+                from music_workflow_mission_session import mission_blob_session_id
+
+                sid = mission_blob_session_id(session)
+            except ImportError:
+                sid = f"mission|catalog|{sid}"
             activate_workflow(
                 session,
                 ActivateWorkflowRequest(
                     target_owner="mission_jam",
-                    target_session_id=f"mission|{sid}",
+                    target_session_id=sid,
                     activation_source="mission_chord_pre_activate",
                     navigation_intent="creative_missions",
                 ),
@@ -464,6 +475,37 @@ def mutate_mission_chord_selection(
     return result
 
 
+def _reconcile_key_dependent_state(
+    session: dict[str, Any],
+    blob: WorkflowStateBlob,
+    owner: str,
+    old_key: str,
+    new_key: str,
+) -> None:
+    if old_key == new_key:
+        return
+    if owner in {"style_jam", "jam_session_generator"}:
+        blob.example_fingerprint = ""
+        blob.artifact_fingerprint = ""
+        blob.backing_handoff_chord = ""
+        return
+    if owner not in {"mission_jam", "song_based_improvisation"}:
+        return
+    blob.example_fingerprint = ""
+    blob.artifact_fingerprint = ""
+    blob.backing_handoff_chord = ""
+    blob.recording_seal_chord = ""
+    session.pop("improv_mission_recording_seal", None)
+    session.pop("_mission_exact_backing_armed", None)
+    session.pop("improv_mission_backing_handoff", None)
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+
+
 def _parse_key_token(key: str) -> tuple[str, str]:
     try:
         from music_workflow_compatibility import _tonic_mode_from_token
@@ -505,6 +547,11 @@ def update_active_practice_key(
         return MutationResult(ok=False, error_code="NO_BLOB", error_message="Active blob missing.")
 
     prev_token = f"{blob.keys.practice_tonic}{blob.keys.practice_mode}"
+    new_token = f"{new_tonic}{new_mode}"
+    key_material_change = new_token != prev_token
+    effective_persist: PersistPolicy = persist_policy
+    if key_material_change and effective_persist == "none":
+        effective_persist = "explicit"
     prev_sections_fp = _progression_fingerprint(blob.section_map)
     auth_old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
 
@@ -570,6 +617,8 @@ def update_active_practice_key(
             idx = int(b.selected_chord_index or 0)
             if flat and 0 <= idx < len(flat):
                 b.selected_chord_symbol = str(flat[idx])
+        if key_material_change:
+            _reconcile_key_dependent_state(session, b, owner, auth_old_key, key_token)
 
     trace_extra = {
         "key_handler_source": source,
@@ -584,7 +633,7 @@ def update_active_practice_key(
         mutation_type="practice_key_change",
         source=source,
         expected_owner=owner,
-        persist_policy=persist_policy,
+        persist_policy=effective_persist,
     )
     if result.ok:
         result.trace.update(trace_extra)

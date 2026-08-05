@@ -708,6 +708,13 @@ def snapshot_hydrated_mission_config(session: dict[str, Any], *, source: str = "
 
 def project_mission_config_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
     try:
+        from music_workflow_restore_guard import restore_guard_active
+
+        if restore_guard_active(session):
+            return
+    except ImportError:
+        pass
+    try:
         from music_workflow_mutation import should_project_mission_config_from_canonical
 
         if not should_project_mission_config_from_canonical(session):

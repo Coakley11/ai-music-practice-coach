@@ -8,8 +8,11 @@ from typing import Any
 
 from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
 from music_workflow_mission_bootstrap import ensure_mission_blob_from_song
+from music_workflow_mission_session import mission_blob_session_id
 from music_workflow_mutation import update_active_practice_key
+from music_workflow_persist_confirmed import note_persist_confirmed
 from music_workflow_persist_lifecycle import (
+    WORKFLOW_PERSIST_PENDING_KEY,
     confirm_workflow_persist_after_cloud_save,
     request_workflow_canonical_persist,
     resolve_workflow_persist_reason,
@@ -119,7 +122,7 @@ class TestMissionBootstrapFromSong(unittest.TestCase):
             ActiveWorkflowPointer(workflow_owner="style_jam", workflow_session_id="Bossa"),
             source="t",
         )
-        mission = ensure_mission_blob_from_song(session, "mission|girl_from_ipanema")
+        mission = ensure_mission_blob_from_song(session, mission_blob_session_id(session))
         assert mission is not None
         self.assertEqual(mission.keys.practice_tonic, "F")
         self.assertEqual(mission.keys.practice_mode, "major")
@@ -136,12 +139,12 @@ class TestMissionBootstrapFromSong(unittest.TestCase):
             session,
             ActivateWorkflowRequest(
                 target_owner="mission_jam",
-                target_session_id="mission|hevenu",
+                target_session_id="mission|catalog|hevenu",
                 activation_source="creative_missions",
                 navigation_intent="creative_missions",
             ),
         )
-        m = get_workflow_blob(session, "mission_jam", "mission|hevenu")
+        m = get_workflow_blob(session, "mission_jam", "mission|catalog|hevenu")
         assert m is not None
         self.assertEqual(m.keys.practice_mode, "minor")
         self.assertEqual(m.keys.practice_tonic, "E")
@@ -157,7 +160,12 @@ class TestPersistLifecycle(unittest.TestCase):
     def test_cloud_success_clears_pending(self) -> None:
         session = _session()
         rid = request_workflow_canonical_persist(session, "music_workflow_activate")
-        confirm_workflow_persist_after_cloud_save(session, saved_cloud=True)
+        pend = session[WORKFLOW_PERSIST_PENDING_KEY]
+        confirm_workflow_persist_after_cloud_save(
+            session,
+            saved_cloud=True,
+            save_state={"creative_workspace_state": {"music_workflow_state_v1": {"persist_request": dict(pend)}}},
+        )
         self.assertNotIn("_music_workflow_persist_pending", session)
 
     def test_cloud_failure_retains_pending(self) -> None:
@@ -172,35 +180,45 @@ class TestCanonicalRestorePrecedence(unittest.TestCase):
         session = _session()
         live = WorkflowStateBlob(
             workflow_owner="mission_jam",
-            workflow_session_id="m",
+            workflow_session_id="mission|catalog|h",
             keys=KeyAuthority(practice_tonic="E", practice_mode="minor"),
             selected_chord_symbol="B",
             context_revision=5,
         )
         save_workflow_blob(session, live, source="t")
+        note_persist_confirmed(
+            session,
+            request_id="confirmed",
+            owner="mission_jam",
+            session_id="mission|catalog|h",
+            context_revision=5,
+            material_fingerprint=str(live.material_fingerprint or ""),
+            workspace_revision=20,
+        )
         set_active_workflow_pointer(
             session,
-            ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="m", context_revision=5),
+            ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="mission|catalog|h", context_revision=5),
             source="t",
         )
         stale_blob = live.to_dict()
         stale_blob["selected_chord_symbol"] = "Ab"
         stale_blob["context_revision"] = 1
         nested = {
-            "schema_version": 1,
+            "schema_version": 2,
+            "saved_workspace_revision": 10,
             "store": {
                 "schema_version": 1,
-                "blobs": {f"mission_jam|m": stale_blob},
+                "blobs": {f"mission_jam|mission|catalog|h": stale_blob},
                 "context_revision_seq": 1,
             },
             "active_pointer": {
                 "workflow_owner": "mission_jam",
-                "workflow_session_id": "m",
+                "workflow_session_id": "mission|catalog|h",
                 "context_revision": 1,
             },
         }
         apply_workflow_state_canonical_slice(session, nested)
-        kept = get_workflow_blob(session, "mission_jam", "m")
+        kept = get_workflow_blob(session, "mission_jam", "mission|catalog|h")
         assert kept is not None
         self.assertEqual(kept.selected_chord_symbol, "B")
 

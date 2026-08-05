@@ -73,7 +73,7 @@ class TestMissionGeneratorIsolation(unittest.TestCase):
         save_workflow_blob(session, song, source="test")
         mission = WorkflowStateBlob(
             workflow_owner="mission_jam",
-            workflow_session_id="mission|hevenu",
+            workflow_session_id="mission|catalog|hevenu",
             keys=KeyAuthority(practice_tonic="E", practice_mode="minor"),
             selected_chord_symbol="B",
             selected_section="Melody A",
@@ -96,14 +96,14 @@ class TestMissionGeneratorIsolation(unittest.TestCase):
             session,
             ActivateWorkflowRequest(
                 target_owner="mission_jam",
-                target_session_id="mission|hevenu",
+                target_session_id="mission|catalog|hevenu",
                 activation_source="test",
             ),
         )
         ptr = get_active_workflow_pointer(session)
         assert ptr is not None
         self.assertEqual(ptr.workflow_owner, "mission_jam")
-        blob = get_workflow_blob(session, "mission_jam", "mission|hevenu")
+        blob = get_workflow_blob(session, "mission_jam", "mission|catalog|hevenu")
         assert blob is not None
         self.assertEqual(blob.keys.practice_tonic, "E")
         self.assertEqual(blob.keys.practice_mode, "minor")
@@ -120,7 +120,7 @@ class TestMissionGeneratorIsolation(unittest.TestCase):
         )
         mission = WorkflowStateBlob(
             workflow_owner="mission_jam",
-            workflow_session_id="mission|h",
+            workflow_session_id="mission|catalog|h",
             keys=KeyAuthority(practice_tonic="E", practice_mode="minor"),
             selected_chord_symbol="B",
         )
@@ -128,7 +128,7 @@ class TestMissionGeneratorIsolation(unittest.TestCase):
         save_workflow_blob(session, mission, source="test")
         activate_workflow(
             session,
-            ActivateWorkflowRequest(target_owner="mission_jam", target_session_id="mission|h", activation_source="test"),
+            ActivateWorkflowRequest(target_owner="mission_jam", target_session_id="mission|catalog|h", activation_source="test"),
         )
         activate_workflow(
             session,
@@ -151,7 +151,7 @@ class TestMissionGeneratorIsolation(unittest.TestCase):
         save_workflow_blob(session, gen, source="test")
         activate_workflow(
             session,
-            ActivateWorkflowRequest(target_owner="mission_jam", target_session_id="mission|x", activation_source="test"),
+            ActivateWorkflowRequest(target_owner="mission_jam", target_session_id="mission|catalog|x", activation_source="test"),
         )
         loaded = get_workflow_blob(session, "jam_session_generator", "jam-1")
         assert loaded is not None
@@ -168,11 +168,17 @@ class TestBackingOwners(unittest.TestCase):
             ii_selected_chord="B",
             active_catalog_pick_key="hevenu",
         )
+        song = WorkflowStateBlob(
+            workflow_owner="song_based_improvisation",
+            workflow_session_id="hevenu",
+            keys=KeyAuthority(practice_tonic="E", practice_mode="minor"),
+        )
+        save_workflow_blob(session, song, source="test")
         activate_workflow(
             session,
             ActivateWorkflowRequest(
                 target_owner="mission_jam",
-                target_session_id="mission|hevenu",
+                target_session_id="mission|catalog|hevenu",
                 activation_source="open_backing",
                 page_route="backing",
             ),

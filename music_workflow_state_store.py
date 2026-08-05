@@ -258,10 +258,26 @@ def get_workflow_blob(
     store = _ensure_store(session)
     key = blob_storage_key(workflow_owner, workflow_session_id)
     raw = (store.get("blobs") or {}).get(key)
+    blob = WorkflowStateBlob.from_dict(raw)
+    if blob is None and workflow_owner == "mission_jam":
+        try:
+            from music_workflow_mission_session import legacy_mission_session_aliases
+
+            for alt in legacy_mission_session_aliases(workflow_session_id):
+                alt_key = blob_storage_key(workflow_owner, alt)
+                alt_raw = (store.get("blobs") or {}).get(alt_key)
+                legacy_blob = WorkflowStateBlob.from_dict(alt_raw)
+                if legacy_blob is not None:
+                    legacy_blob.workflow_session_id = workflow_session_id
+                    save_workflow_blob(session, legacy_blob, source="mission_session_id_migration")
+                    blob = legacy_blob
+                    break
+        except ImportError:
+            pass
     stats = store.get("stats")
     if isinstance(stats, dict):
         stats["reads"] = int(stats.get("reads") or 0) + 1
-    return WorkflowStateBlob.from_dict(raw)
+    return blob
 
 
 def save_workflow_blob(

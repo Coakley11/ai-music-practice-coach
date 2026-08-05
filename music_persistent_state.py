@@ -1569,7 +1569,7 @@ def record_music_cloud_write_result(
         try:
             from music_workflow_persist_lifecycle import confirm_workflow_persist_after_cloud_save
 
-            confirm_workflow_persist_after_cloud_save(ss, saved_cloud=True)
+            confirm_workflow_persist_after_cloud_save(ss, saved_cloud=True, save_state=state)
         except ImportError:
             pass
         try:

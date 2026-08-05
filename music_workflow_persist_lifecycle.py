@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import time
 import uuid
 from typing import Any
@@ -22,20 +21,33 @@ def request_workflow_canonical_persist(
     *,
     expected_revision: int = 0,
     expected_fingerprint: str = "",
+    owner: str = "",
+    session_id: str = "",
+    progression_fingerprint: str = "",
+    source_type: str = "",
+    song_or_session_id: str = "",
+    expected_workspace_revision: int = 0,
 ) -> str:
-    """Material action requests durable workflow slice — not cleared until cloud save succeeds."""
+    """Material action requests durable workflow slice — not cleared until matching cloud save succeeds."""
     request_id = str(uuid.uuid4())
     payload = {
         "persist_request_id": request_id,
         "persist_reason": str(reason or "").strip(),
         "persist_requested_revision": int(expected_revision or 0),
         "persist_requested_fingerprint": str(expected_fingerprint or "")[:32],
+        "persist_requested_owner": str(owner or ""),
+        "persist_requested_session_id": str(session_id or ""),
+        "persist_requested_progression_fp": str(progression_fingerprint or "")[:32],
+        "persist_source_type": str(source_type or ""),
+        "persist_song_or_session_id": str(song_or_session_id or ""),
+        "expected_workspace_base_revision": int(expected_workspace_revision or 0),
         "persist_attempted": False,
         "persist_confirmed": False,
         "persist_error": "",
         "persist_cleared_reason": "",
         "requested_at": time.time(),
         "gather_called": False,
+        "superseded_by": "",
     }
     session[WORKFLOW_PERSIST_PENDING_KEY] = payload
     session[WORKFLOW_PENDING_CANONICAL_REASON_KEY] = payload["persist_reason"]
@@ -65,41 +77,103 @@ def note_workflow_gather_called(session: dict[str, Any]) -> None:
         pend["persist_attempted"] = True
 
 
-def confirm_workflow_persist_after_cloud_save(session: dict[str, Any], *, saved_cloud: bool, error: str = "") -> None:
-    """Call from record_music_cloud_write_result — only successful saves clear matching pending request."""
+def confirm_workflow_persist_after_cloud_save(
+    session: dict[str, Any],
+    *,
+    saved_cloud: bool,
+    error: str = "",
+    save_state: dict[str, Any] | None = None,
+) -> None:
+    """Clear pending only when saved payload confirms exact request id/revision/fingerprint."""
     pend = _pending(session)
     if pend is None:
         session.pop(WORKFLOW_PENDING_CANONICAL_REASON_KEY, None)
         return
-    if saved_cloud:
-        pend["persist_confirmed"] = True
-        pend["persist_cleared_reason"] = "cloud_save_ok"
-        session.pop(WORKFLOW_PERSIST_PENDING_KEY, None)
-        session.pop(WORKFLOW_PENDING_CANONICAL_REASON_KEY, None)
-        try:
-            from music_workflow_canonical_persistence import note_workflow_persist_performed
-
-            ptr = session.get("_music_active_workflow")
-            rev = int(ptr.get("context_revision") or 0) if isinstance(ptr, dict) else int(
-                pend.get("persist_requested_revision") or 0
-            )
-            note_workflow_persist_performed(session, revision=rev)
-        except ImportError:
-            pass
-    else:
+    if not saved_cloud:
         pend["persist_error"] = str(error or "cloud_save_failed")[:120]
         pend["persist_cleared_reason"] = "retained_for_retry"
+        return
+
+    try:
+        from music_workflow_persist_confirmed import extract_workflow_persist_request_from_save_state
+        from music_workflow_state_store import record_compat_fallback
+
+        saved_req = extract_workflow_persist_request_from_save_state(save_state or {})
+        if not saved_req:
+            record_compat_fallback(session, "UNRELATED_CLOUD_SUCCESS_NOT_WORKFLOW_CONFIRMATION", "no_slice")
+            pend["persist_cleared_reason"] = "no_workflow_slice_in_payload"
+            return
+        saved_id = str(saved_req.get("persist_request_id") or "")
+        pending_id = str(pend.get("persist_request_id") or "")
+        if saved_id != pending_id:
+            if pend.get("superseded_at"):
+                pend["persist_cleared_reason"] = "superseded"
+            else:
+                record_compat_fallback(session, "PERSIST_CONFIRM_REQUEST_ID_MISMATCH", saved_id)
+                pend["persist_cleared_reason"] = "request_id_mismatch"
+            return
+        if int(saved_req.get("persist_requested_revision") or 0) != int(pend.get("persist_requested_revision") or 0):
+            record_compat_fallback(session, "PERSIST_CONFIRM_REVISION_MISMATCH", saved_id)
+            pend["persist_cleared_reason"] = "revision_mismatch"
+            return
+        sf = str(saved_req.get("persist_requested_fingerprint") or "")[:32]
+        pf = str(pend.get("persist_requested_fingerprint") or "")[:32]
+        if sf and pf and sf != pf:
+            record_compat_fallback(session, "PERSIST_CONFIRM_FINGERPRINT_MISMATCH", saved_id)
+            pend["persist_cleared_reason"] = "fingerprint_mismatch"
+            return
+    except ImportError:
+        saved_req = pend
+
+    pend["persist_confirmed"] = True
+    pend["persist_cleared_reason"] = "cloud_save_matched"
+    cleared = dict(pend)
+    session.pop(WORKFLOW_PERSIST_PENDING_KEY, None)
+    session.pop(WORKFLOW_PENDING_CANONICAL_REASON_KEY, None)
+    try:
+        from music_workflow_persist_confirmed import note_persist_confirmed
+
+        ws_rev = 0
+        if isinstance(save_state, dict):
+            ws_rev = int(save_state.get("workspace_revision") or save_state.get("logical_revision") or 0)
+        note_persist_confirmed(
+            session,
+            request_id=str(cleared.get("persist_request_id") or saved_req.get("persist_request_id") or ""),
+            owner=str(cleared.get("persist_requested_owner") or ""),
+            session_id=str(cleared.get("persist_requested_session_id") or ""),
+            context_revision=int(cleared.get("persist_requested_revision") or 0),
+            material_fingerprint=str(cleared.get("persist_requested_fingerprint") or ""),
+            workspace_revision=ws_rev,
+            reason=str(cleared.get("persist_reason") or ""),
+        )
+        from music_workflow_canonical_persistence import note_workflow_persist_performed
+
+        note_workflow_persist_performed(session, revision=int(cleared.get("persist_requested_revision") or 0))
+    except ImportError:
+        pass
 
 
-def supersede_workflow_persist_request(session: dict[str, Any], *, reason: str) -> str:
-    """Newer material change replaces pending request without clearing on old completion."""
+def supersede_workflow_persist_request(
+    session: dict[str, Any],
+    *,
+    reason: str,
+    **kwargs: Any,
+) -> str:
+    """Newer material change replaces pending request."""
     prev = _pending(session)
     if prev:
         prev["superseded_at"] = time.time()
     return request_workflow_canonical_persist(
         session,
         reason,
-        expected_revision=int(prev.get("persist_requested_revision") or 0) if prev else 0,
+        expected_revision=int(kwargs.get("expected_revision") or (prev.get("persist_requested_revision") if prev else 0) or 0),
+        expected_fingerprint=str(kwargs.get("expected_fingerprint") or (prev.get("persist_requested_fingerprint") if prev else "")),
+        owner=str(kwargs.get("owner") or (prev.get("persist_requested_owner") if prev else "")),
+        session_id=str(kwargs.get("session_id") or (prev.get("persist_requested_session_id") if prev else "")),
+        progression_fingerprint=str(kwargs.get("progression_fingerprint") or ""),
+        source_type=str(kwargs.get("source_type") or ""),
+        song_or_session_id=str(kwargs.get("song_or_session_id") or ""),
+        expected_workspace_revision=int(kwargs.get("expected_workspace_revision") or 0),
     )
 
 

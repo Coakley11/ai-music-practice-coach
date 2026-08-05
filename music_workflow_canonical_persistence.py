@@ -26,6 +26,7 @@ WORKFLOW_STATE_SAVE_REASONS: frozenset[str] = frozenset(
         "mission_recording_handoff",
         "pending_upload_analysis_handoff",
         "explicit_user_save",
+        "material_workflow_key_change",
     }
 )
 
@@ -101,29 +102,47 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
     if nested_ws and nested_ws != ws:
         record_compat_fallback(session, "CANONICAL_WORKSPACE_IDENTITY_MISMATCH", nested_ws)
         diag["decision"] = "blocked_workspace"
+        diag["canonical_restore_decision"] = "blocked_workspace"
         return
+
+    try:
+        from music_workflow_persist_confirmed import get_persist_confirmed, has_unconfirmed_local_workflow_changes
+    except ImportError:
+        has_unconfirmed_local_workflow_changes = lambda _s: False  # type: ignore[assignment]
+        get_persist_confirmed = lambda _s: {}  # type: ignore[assignment]
 
     canon_store = nested.get("store") if isinstance(nested.get("store"), dict) else {}
     canon_ptr_raw = nested.get("active_pointer") if isinstance(nested.get("active_pointer"), dict) else {}
-    live_ptr = get_active_workflow_pointer(session)
-    live_rev = int(live_ptr.context_revision if live_ptr else 0)
-    canon_rev = int(canon_ptr_raw.get("context_revision") or nested.get("context_revision") or 0)
-    diag["live_revision"] = live_rev
-    diag["canonical_revision"] = canon_rev
+    canon_ws_rev = int(nested.get("saved_workspace_revision") or 0)
+    canon_saved_fp = str((nested.get("last_confirmed") or {}).get("last_confirmed_material_fingerprint") or "")
+    local_confirmed = get_persist_confirmed(session)
+    local_ws_rev = int(local_confirmed.get("last_confirmed_workspace_revision") or 0)
+    unconfirmed = has_unconfirmed_local_workflow_changes(session)
+    diag["canonical_restore_source"] = "cloud_slice"
+    diag["has_unconfirmed_local_changes"] = unconfirmed
+    diag["last_confirmed_workspace_revision"] = local_ws_rev
+    diag["incoming_saved_workspace_revision"] = canon_ws_rev
 
-    if live_ptr and live_ptr.workflow_owner and canon_ptr_raw:
+    live_ptr = get_active_workflow_pointer(session)
+    if unconfirmed and live_ptr:
+        record_compat_fallback(session, "UNCONFIRMED_LOCAL_CHANGE_OVERWRITE_BLOCKED", str(canon_ws_rev))
+        diag["decision"] = "unconfirmed_local_blocked"
+        diag["canonical_restore_decision"] = "unconfirmed_local_blocked"
+        return
+
+    if canon_ws_rev and local_ws_rev and canon_ws_rev < local_ws_rev:
+        record_compat_fallback(session, "CANONICAL_SAVE_ANCESTRY_CONFLICT", str(canon_ws_rev))
+        diag["decision"] = "local_workspace_newer"
+        diag["canonical_restore_decision"] = "local_workspace_newer"
+        return
+
+    if live_ptr and canon_ptr_raw:
         co = str(canon_ptr_raw.get("workflow_owner") or "")
         cs = str(canon_ptr_raw.get("workflow_session_id") or "")
         if co and cs and (co != live_ptr.workflow_owner or cs != live_ptr.workflow_session_id):
-            if live_rev > canon_rev:
-                record_compat_fallback(session, "CANONICAL_LIVE_REVISION_CONFLICT", co)
-                diag["decision"] = "retain_live_pointer"
-                return
-
-    if live_rev > canon_rev and live_ptr:
-        record_compat_fallback(session, "STALE_CANONICAL_WORKFLOW_RESTORE_BLOCKED", str(canon_rev))
-        diag["decision"] = "live_newer"
-        return
+            record_compat_fallback(session, "CANONICAL_SESSION_IDENTITY_CONFLICT", cs)
+            diag["decision"] = "inactive_session_store_only"
+            diag["canonical_restore_decision"] = "inactive_session_store_only"
 
     blobs_in = (canon_store.get("blobs") or {}) if isinstance(canon_store, dict) else {}
     if not blobs_in and not canon_ptr_raw:
@@ -136,16 +155,19 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
         if not blob or not blob.workflow_owner:
             continue
         live_blob = get_workflow_blob(session, blob.workflow_owner, blob.workflow_session_id)
-        if live_blob is not None and int(live_blob.context_revision or 0) > int(blob.context_revision or 0):
-            record_compat_fallback(session, "STALE_CANONICAL_WORKFLOW_RESTORE_BLOCKED", blob.workflow_owner)
-            continue
         if live_blob is not None and live_blob.material_fingerprint and blob.material_fingerprint:
-            if (
-                live_blob.material_fingerprint != blob.material_fingerprint
-                and int(live_blob.context_revision or 0) >= int(blob.context_revision or 0)
-            ):
-                record_compat_fallback(session, "CANONICAL_WORKFLOW_FINGERPRINT_CONFLICT", blob.workflow_owner)
+            if live_blob.material_fingerprint == blob.material_fingerprint:
                 continue
+            if unconfirmed:
+                record_compat_fallback(session, "UNCONFIRMED_LOCAL_CHANGE_OVERWRITE_BLOCKED", blob.workflow_owner)
+                continue
+        if (
+            live_blob is not None
+            and canon_saved_fp
+            and live_blob.material_fingerprint == canon_saved_fp
+            and canon_ws_rev <= local_ws_rev
+        ):
+            continue
         save_workflow_blob(session, blob, source="canonical_hydrate")
         applied += 1
     diag["blobs_applied"] = applied
@@ -166,7 +188,14 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
                         persist_policy="none",
                     ),
                 )
+                try:
+                    from music_workflow_restore_guard import activate_workflow_restore_guard
+
+                    activate_workflow_restore_guard(session, source="canonical_restore")
+                except ImportError:
+                    pass
                 diag["decision"] = "activated"
+                diag["canonical_restore_decision"] = "activated"
                 return
             except ImportError:
                 pass
@@ -182,11 +211,27 @@ def gather_workflow_state_canonical_slice(session: dict[str, Any]) -> dict[str, 
     ptr = session.get(MUSIC_ACTIVE_WORKFLOW_KEY)
     if not isinstance(store, dict) and not isinstance(ptr, dict):
         return {}
-    return {
-        "schema_version": 1,
+    nested: dict[str, Any] = {
+        "schema_version": 2,
         "store": copy.deepcopy(store) if isinstance(store, dict) else None,
         "active_pointer": copy.deepcopy(ptr) if isinstance(ptr, dict) else None,
     }
+    try:
+        from music_workflow_persist_confirmed import get_persist_confirmed
+        from music_workflow_persist_lifecycle import WORKFLOW_PERSIST_PENDING_KEY
+
+        pend = session.get(WORKFLOW_PERSIST_PENDING_KEY)
+        if isinstance(pend, dict):
+            nested["persist_request"] = copy.deepcopy(pend)
+        confirmed = get_persist_confirmed(session)
+        if confirmed:
+            nested["last_confirmed"] = copy.deepcopy(confirmed)
+        nested["saved_workspace_revision"] = int(session.get("_suite_applied_workspace_revision") or 0)
+        if isinstance(ptr, dict):
+            nested["saved_context_revision"] = int(ptr.get("context_revision") or 0)
+    except ImportError:
+        pass
+    return nested
 
 
 def should_gather_workflow_state_to_canonical(session: dict[str, Any], *, persist_reason: str) -> bool:

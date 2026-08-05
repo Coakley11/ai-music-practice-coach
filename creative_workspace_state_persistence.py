@@ -442,35 +442,51 @@ def apply_creative_workspace_to_session(
     session[CREATIVE_WORKSPACE_RESTORED_KEY] = True
     session.pop(CREATIVE_WORKSPACE_LAST_SKIP_KEY, None)
     try:
-        from creative_tab_tool_persistence import (
-            project_creative_selectors_from_canonical,
-            snapshot_hydrated_creative_selectors,
-        )
-
-        project_creative_selectors_from_canonical(session, overwrite=True)
-        snapshot_hydrated_creative_selectors(session, source=source)
+        from music_workflow_restore_guard import restore_guard_active
     except ImportError:
-        pass
-    try:
-        from creative_mission_config_persistence import (
-            project_mission_config_from_canonical,
-            snapshot_hydrated_mission_config,
-        )
+        restore_guard_active = lambda _s: False  # type: ignore[assignment]
+    if not restore_guard_active(session):
+        try:
+            from creative_tab_tool_persistence import (
+                project_creative_selectors_from_canonical,
+                snapshot_hydrated_creative_selectors,
+            )
 
-        project_mission_config_from_canonical(session, overwrite=True)
-        snapshot_hydrated_mission_config(session, source=source)
-    except ImportError:
-        pass
-    try:
-        from creative_mission_artifact_persistence import (
-            project_mission_artifacts_from_canonical,
-            snapshot_hydrated_mission_artifacts,
-        )
+            project_creative_selectors_from_canonical(session, overwrite=True)
+            snapshot_hydrated_creative_selectors(session, source=source)
+        except ImportError:
+            pass
+        try:
+            from creative_mission_config_persistence import (
+                project_mission_config_from_canonical,
+                snapshot_hydrated_mission_config,
+            )
 
-        project_mission_artifacts_from_canonical(session, overwrite=True)
-        snapshot_hydrated_mission_artifacts(session, source=source)
-    except ImportError:
-        pass
+            project_mission_config_from_canonical(session, overwrite=True)
+            snapshot_hydrated_mission_config(session, source=source)
+        except ImportError:
+            pass
+    else:
+        try:
+            from creative_tab_tool_persistence import snapshot_hydrated_creative_selectors
+            from creative_mission_config_persistence import snapshot_hydrated_mission_config
+
+            snapshot_hydrated_creative_selectors(session, source=source)
+            snapshot_hydrated_mission_config(session, source=source)
+        except ImportError:
+            pass
+    skip_artifact_projection = restore_guard_active(session)
+    if not skip_artifact_projection:
+        try:
+            from creative_mission_artifact_persistence import (
+                project_mission_artifacts_from_canonical,
+                snapshot_hydrated_mission_artifacts,
+            )
+
+            project_mission_artifacts_from_canonical(session, overwrite=True)
+            snapshot_hydrated_mission_artifacts(session, source=source)
+        except ImportError:
+            pass
     try:
         from creative_context_snapshot_persistence import (
             project_context_from_canonical,
@@ -481,7 +497,8 @@ def apply_creative_workspace_to_session(
         snapshot_hydrated_context(session, source=source)
     except ImportError:
         pass
-    project_creative_workspace_to_session(session, overwrite=True)
+    if not restore_guard_active(session):
+        project_creative_workspace_to_session(session, overwrite=True)
     try:
         from creative_selector_hydration_trace import mark_selector_hydration_complete
 

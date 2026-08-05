@@ -30,7 +30,9 @@ def song_based_blob_session_id(session: dict[str, Any]) -> str:
 
 
 def mission_blob_session_id(session: dict[str, Any]) -> str:
-    return f"mission|{song_based_blob_session_id(session)}"
+    from music_workflow_mission_session import mission_blob_session_id as _canonical_mission_sid
+
+    return _canonical_mission_sid(session)
 
 
 def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob: WorkflowStateBlob) -> None:
