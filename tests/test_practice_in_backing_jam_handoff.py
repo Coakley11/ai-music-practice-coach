@@ -12,6 +12,7 @@ from music_workflow_pending_backing_handoff import (
     PENDING_BACKING_WORKFLOW_KEY,
     consume_pending_backing_workflow_handoff,
     queue_pending_backing_workflow_handoff,
+    request_pending_backing_handoff_rerun,
     should_request_backing_handoff_rerun,
 )
 
@@ -149,6 +150,20 @@ class TestPracticeInBackingJamHandoff(unittest.TestCase):
         )
         self.assertTrue(should_request_backing_handoff_rerun(session))
         self.assertFalse(should_request_backing_handoff_rerun(session))
+
+    def test_guard_reject_retains_pending_without_bare_rerun(self) -> None:
+        session: dict = {}
+        queue_pending_backing_workflow_handoff(
+            session,
+            backing_source="mission",
+            workflow_owner="mission_jam",
+            with_practice_lick=True,
+        )
+        st_mock = mock.Mock()
+        with mock.patch("music_app_rerun.request_app_rerun", return_value=False):
+            self.assertFalse(request_pending_backing_handoff_rerun(st_mock, session))
+        st_mock.rerun.assert_not_called()
+        self.assertIsNotNone(session.get(PENDING_BACKING_WORKFLOW_KEY))
 
     def test_open_mission_backing_source_has_no_mutable_align(self) -> None:
         root = Path(__file__).resolve().parents[1] / "improvisation_intelligence_ui.py"

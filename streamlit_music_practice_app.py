@@ -14365,11 +14365,12 @@ elif _studio_page == "creative":
 
         try:
             from music_workflow_pending_backing_handoff import (
+                PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
                 backing_workflow_owner_is_active,
                 queue_pending_backing_workflow_handoff,
+                request_pending_backing_handoff_rerun,
                 resolve_backing_workflow_owner,
                 should_defer_backing_workflow_activation,
-                should_request_backing_handoff_rerun,
             )
 
             defer_wf = should_defer_backing_workflow_activation(st.session_state)
@@ -14393,13 +14394,8 @@ elif _studio_page == "creative":
                     with_lick = handoff_with_practice_lick_pending(st.session_state)
                 except ImportError:
                     pass
-            open_backing_from_creative(
-                st.session_state,
-                source=creative_source,
-                st_like=st,
-                skip_workflow_activation=defer_wf or not needs_activation,
-            )
-            if defer_wf and (creative_source == "mission" or needs_activation):
+
+            if defer_wf and creative_source == "mission":
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
                     backing_source=creative_source,
@@ -14408,36 +14404,33 @@ elif _studio_page == "creative":
                     mission_alignment=mission_align,
                     return_route=str((mission_align or {}).get("return_route") or "creative"),
                 )
-                rerun_sent = False
-                if should_request_backing_handoff_rerun(st.session_state):
-                    try:
-                        from music_app_rerun import request_app_rerun
+                rerun_sent = request_pending_backing_handoff_rerun(st, st.session_state)
+                if not rerun_sent:
+                    handoff_msg = st.session_state.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+                    if handoff_msg:
+                        st.warning(str(handoff_msg))
+                return
 
-                        rerun_sent = bool(
-                            request_app_rerun(
-                                st,
-                                st.session_state,
-                                reason="pending_backing_workflow_handoff",
-                                stage="mission_backing_pre_widget",
-                            )
-                        )
-                    except ImportError:
-                        st.rerun()
-                        rerun_sent = True
-                    try:
-                        from music_mission_backing_handoff_trace import log_rerun_request
-
-                        log_rerun_request(
-                            st.session_state,
-                            allowed=rerun_sent,
-                            reason="pending_backing_workflow_handoff",
-                        )
-                    except ImportError:
-                        pass
-                    if not rerun_sent:
-                        st.rerun()
-                else:
-                    st.rerun()
+            open_backing_from_creative(
+                st.session_state,
+                source=creative_source,
+                st_like=st,
+                skip_workflow_activation=defer_wf or not needs_activation,
+            )
+            if defer_wf and needs_activation:
+                queue_pending_backing_workflow_handoff(
+                    st.session_state,
+                    backing_source=creative_source,
+                    workflow_owner=wf_owner,
+                    with_practice_lick=with_lick,
+                    mission_alignment=mission_align,
+                    return_route=str((mission_align or {}).get("return_route") or "creative"),
+                )
+                rerun_sent = request_pending_backing_handoff_rerun(st, st.session_state)
+                if not rerun_sent:
+                    handoff_msg = st.session_state.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+                    if handoff_msg:
+                        st.warning(str(handoff_msg))
                 return
         except ImportError:
             open_backing_from_creative(st.session_state, source=creative_source, st_like=st)

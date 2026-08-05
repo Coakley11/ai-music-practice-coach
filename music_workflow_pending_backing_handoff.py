@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from typing import Any, Literal
 
 PENDING_BACKING_WORKFLOW_KEY = "_music_pending_backing_workflow_handoff"
@@ -10,6 +12,8 @@ PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY = "_music_pending_backing_workflow_con
 PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY = "_music_pending_backing_workflow_consumed_fp"
 PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY = "_music_pending_backing_workflow_consumed_token"
 PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY = "_music_pending_backing_workflow_rerun_for_seq"
+PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY = "_music_pending_backing_workflow_rerun_diag"
+PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY = "_music_pending_backing_handoff_user_message"
 
 ConsumePhase = Literal["applied", "skipped", "already_consumed"]
 
@@ -100,6 +104,8 @@ def queue_pending_backing_workflow_handoff(
     session[PENDING_BACKING_WORKFLOW_KEY] = req
     session.pop(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY, None)
     session.pop(PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY, None)
+    session.pop(PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY, None)
+    session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
     try:
         from music_mission_backing_handoff_trace import log_pending_queued
 
@@ -120,6 +126,83 @@ def should_request_backing_handoff_rerun(session: dict[str, Any]) -> bool:
         return False
     session[PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY] = seq
     return True
+
+
+def build_backing_handoff_rerun_fingerprint(session: dict[str, Any], pending: dict[str, Any]) -> str:
+    """Semantic rerun identity — new request_seq / consume_token always changes fingerprint."""
+    parts = {
+        "kind": "pending_backing_workflow_handoff",
+        "request_seq": pending.get("request_seq"),
+        "consume_token": str(pending.get("consume_token") or ""),
+        "alignment_fingerprint": str(pending.get("alignment_fingerprint") or ""),
+        "handoff_mode": str(pending.get("handoff_mode") or ""),
+        "with_practice_lick": bool(pending.get("with_practice_lick")),
+        "studio_page": str(session.get("studio_page") or ""),
+    }
+    blob = json.dumps(parts, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def request_pending_backing_handoff_rerun(st_module: Any, session: dict[str, Any]) -> bool:
+    """
+    Request at most one guarded rerun per pending request_seq.
+    Never calls bare st.rerun(); leaves pending retryable when guard rejects.
+    """
+    pending = peek_pending_backing_workflow_handoff(session)
+    if not pending:
+        return False
+    seq = pending.get("request_seq")
+    token = str(pending.get("consume_token") or "")
+    if not should_request_backing_handoff_rerun(session):
+        session[PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY] = {
+            "status": "rerun_already_requested_for_seq",
+            "request_seq": seq,
+            "consume_token": token,
+        }
+        return False
+
+    fp = build_backing_handoff_rerun_fingerprint(session, pending)
+    rerun_sent = False
+    block_status = "rerun_guard_rejected"
+    try:
+        from music_app_rerun import request_app_rerun
+
+        rerun_sent = bool(
+            request_app_rerun(
+                st_module,
+                session,
+                reason="pending_backing_workflow_handoff",
+                stage="mission_backing_pre_widget",
+                fingerprint=fp,
+            )
+        )
+    except ImportError:
+        block_status = "music_app_rerun_unavailable"
+
+    try:
+        from music_mission_backing_handoff_trace import log_rerun_request
+
+        log_rerun_request(
+            session,
+            allowed=rerun_sent,
+            reason="pending_backing_workflow_handoff",
+            fingerprint=fp,
+        )
+    except ImportError:
+        pass
+
+    if not rerun_sent:
+        session[PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY] = {
+            "status": block_status,
+            "request_seq": seq,
+            "consume_token": token,
+            "fingerprint": fp,
+        }
+        session[PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY] = (
+            "Backing handoff is queued but navigation was paused to prevent a rerun loop. "
+            "Refresh the page to continue, or try again."
+        )
+    return rerun_sent
 
 
 def backing_workflow_owner_is_active(session: dict[str, Any], owner: str) -> bool:
@@ -377,16 +460,20 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
 
 
 __all__ = [
+    "PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY",
     "PENDING_BACKING_WORKFLOW_KEY",
+    "PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY",
     "backing_source_from_workflow_owner",
     "backing_workflow_owner_is_active",
+    "build_backing_handoff_rerun_fingerprint",
     "consume_pending_backing_workflow_handoff",
     "mission_backing_click_must_defer",
     "peek_pending_backing_workflow_handoff",
     "queue_pending_backing_workflow_handoff",
+    "request_pending_backing_handoff_rerun",
     "resolve_backing_workflow_owner",
     "should_defer_backing_workflow_activation",
     "should_request_backing_handoff_rerun",

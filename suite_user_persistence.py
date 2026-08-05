@@ -28,6 +28,7 @@ _SESSION_SAVED_FLASH_KEY = "_suite_persist_saved_flash"
 SESSION_USER_OWNED_PAGE_KEY = "_suite_user_owned_page"
 _SESSION_INVALID_WARN_KEY = "_suite_persist_invalid_warn"
 _SESSION_CLOUD_BANNER_KEY = "_suite_persist_cloud_banner"
+SUITE_SESSION_RESTORE_WELCOME_MESSAGE = "Welcome back, we restored your last settings."
 _LOCAL_DIRTY_PREFIX = "_suite_persist_local_dirty::"
 _APPLIED_CLOUD_TS_PREFIX = "_suite_applied_cloud_ts::"
 _RESTORED_FP_PREFIX = "_suite_restored_state_fp::"
@@ -960,7 +961,7 @@ def sync_workspace_protocol(
         st.session_state[_SESSION_CLOUD_BANNER_KEY] = True
     elif picked.source == "disk":
         st.session_state[applied_key] = disk_ts or _utc_now_iso()
-        st.session_state[_SESSION_BANNER_KEY] = "Loaded your last session"
+        st.session_state[_SESSION_BANNER_KEY] = SUITE_SESSION_RESTORE_WELCOME_MESSAGE
 
     _record_workspace_sync_trace(
         st, app_id, cloud_state=cloud_state, cloud_ts=cloud_ts,
@@ -1184,7 +1185,7 @@ def restore_once(
     if from_cloud:
         st.session_state[_SESSION_CLOUD_BANNER_KEY] = True
     else:
-        st.session_state[_SESSION_BANNER_KEY] = "Loaded your last session"
+        st.session_state[_SESSION_BANNER_KEY] = SUITE_SESSION_RESTORE_WELCOME_MESSAGE
     return True
 
 
@@ -1707,7 +1708,7 @@ def show_persistence_messages(st: Any) -> None:
     if warn:
         st.warning(str(warn))
     if st.session_state.pop(_SESSION_CLOUD_BANNER_KEY, None):
-        st.success("Restored your last session from the cloud")
+        st.success(SUITE_SESSION_RESTORE_WELCOME_MESSAGE)
     else:
         banner = st.session_state.pop(_SESSION_BANNER_KEY, None)
         if banner:

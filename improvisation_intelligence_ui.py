@@ -2298,15 +2298,22 @@ def _tab_missions(
             )
             queue_mission_practice_lick_handoff(session_state)
             try:
-                from mission_backing_handoff_persistence import begin_mission_backing_handoff
+                from music_workflow_pending_backing_handoff import mission_backing_click_must_defer
 
-                begin_mission_backing_handoff(
-                    session_state,
-                    navigation_callback="_open_mission_backing",
-                    with_practice_lick=True,
-                )
+                defer_click = mission_backing_click_must_defer(session_state)
             except ImportError:
-                pass
+                defer_click = False
+            if not defer_click:
+                try:
+                    from mission_backing_handoff_persistence import begin_mission_backing_handoff
+
+                    begin_mission_backing_handoff(
+                        session_state,
+                        navigation_callback="_open_mission_backing",
+                        with_practice_lick=True,
+                    )
+                except ImportError:
+                    pass
         elif not with_practice_lick:
             session_state.pop(MISSION_PRACTICE_LICK_KEY, None)
         if build_mission_backing_alignment_payload is not None:
