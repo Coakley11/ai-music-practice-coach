@@ -36,33 +36,68 @@ def _owner_for_tab_and_entry(session: dict[str, Any], tab: str) -> str | None:
     return None
 
 
-def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = None) -> None:
-    """B4 — re-activate musical owner when Creative tab changes (view separate from owner)."""
+def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = None) -> str:
+    """B4 — re-activate musical owner when Creative tab changes (view separate from owner).
+
+    Returns ``done``, ``queued``, ``skipped``, or ``failed``.
+    """
     tab_name = str(tab or session.get("improv_intelligence_tab") or "").strip()
     view = _TAB_TO_VIEW.get(tab_name, tab_name)
     session[ACTIVE_CREATIVE_VIEW_KEY] = view
     owner = _owner_for_tab_and_entry(session, tab_name)
     if not owner:
-        return
+        return "skipped"
     try:
-        from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
+        from music_workflow_pending_activation import request_or_activate_workflow
 
-        activate_workflow(
+        status = request_or_activate_workflow(
             session,
-            ActivateWorkflowRequest(
-                target_owner=owner,
-                activation_source="creative_tab_change",
-                navigation_intent="creative_tab",
-                active_creative_view=view,
-            ),
+            target_owner=owner,
+            activation_source="creative_tab_change",
+            navigation_intent="creative_tab",
+            active_creative_view=view,
         )
+        return status
     except ImportError:
         try:
             from workflow_musical_authority import switch_workflow_owner
 
             switch_workflow_owner(session, owner)  # type: ignore[arg-type]
+            return "done"
         except ImportError:
-            pass
+            return "failed"
 
 
-__all__ = ["sync_workflow_for_creative_tab"]
+def ensure_creative_tab_workflow_before_widgets(session: dict[str, Any]) -> str:
+    """Activate workflow for the current Creative tab before sidebar widgets render."""
+    tab_name = str(session.get("improv_intelligence_tab") or "").strip()
+    if not tab_name:
+        return "skipped"
+    view = _TAB_TO_VIEW.get(tab_name, tab_name)
+    owner = _owner_for_tab_and_entry(session, tab_name)
+    if not owner:
+        return "skipped"
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") == owner:
+            session[ACTIVE_CREATIVE_VIEW_KEY] = view
+            return "skipped"
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_activation import request_or_activate_workflow
+
+        return request_or_activate_workflow(
+            session,
+            target_owner=owner,
+            activation_source="creative_pre_widget",
+            navigation_intent="creative_tab",
+            active_creative_view=view,
+        )
+    except ImportError:
+        return sync_workflow_for_creative_tab(session, tab_name)
+
+
+__all__ = ["sync_workflow_for_creative_tab", "ensure_creative_tab_workflow_before_widgets"]

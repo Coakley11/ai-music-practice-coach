@@ -91,6 +91,30 @@ def clear_incompatible_legacy_fields(session: dict[str, Any], owner: str) -> lis
     return cleared
 
 
+def _project_session_field(session: dict[str, Any], key: str, value: Any) -> None:
+    try:
+        from session_widget_safe import WIDGET_BOUND_KEYS, safe_session_assign, widgets_likely_instantiated
+    except ImportError:
+        session[key] = value
+        return
+    try:
+        from creative_mission_config_persistence import MISSION_WIDGET_SESSION_KEYS
+    except ImportError:
+        MISSION_WIDGET_SESSION_KEYS = frozenset()  # type: ignore[misc,assignment]
+    if key in WIDGET_BOUND_KEYS or key in MISSION_WIDGET_SESSION_KEYS:
+        safe_session_assign(session, key, value)
+        return
+    if key in {"display_key", "concert_key"} and widgets_likely_instantiated(session):
+        try:
+            from session_widget_safe import safe_assign_display_key
+
+            safe_assign_display_key(session, str(value))
+            return
+        except ImportError:
+            pass
+    session[key] = value
+
+
 def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStateBlob) -> None:
     """Apply authoritative blob fields to session (full restore, not display-only)."""
     owner = str(blob.workflow_owner or "").strip()
@@ -106,20 +130,20 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             apply_creative_concert_key(session, key_token, source=f"workflow_restore_{owner}")
         except ImportError:
             pass
-        session["display_key"] = key_token
-        session["concert_key"] = key_token
+        _project_session_field(session, "display_key", key_token)
+        _project_session_field(session, "concert_key", key_token)
         session["_pending_display_key"] = key_token
     if owner == "mission_jam":
-        session["improv_intelligence_tab"] = "Missions"
+        _project_session_field(session, "improv_intelligence_tab", "Missions")
         session["creative_improv_intelligence_tab"] = "Missions"
         if blob.selected_chord_symbol:
-            session["ii_selected_chord"] = blob.selected_chord_symbol
+            _project_session_field(session, "ii_selected_chord", blob.selected_chord_symbol)
         if blob.selected_section:
-            session["ii_selected_section"] = blob.selected_section
-        session["ii_selected_chord_index"] = int(blob.selected_chord_index or 0)
+            _project_session_field(session, "ii_selected_section", blob.selected_section)
+        _project_session_field(session, "ii_selected_chord_index", int(blob.selected_chord_index or 0))
         if blob.mission_type:
-            session["improv_active_mission"] = blob.mission_type
-            session["improv_mission_pick"] = blob.mission_type
+            _project_session_field(session, "improv_active_mission", blob.mission_type)
+            _project_session_field(session, "improv_mission_pick", blob.mission_type)
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 

@@ -9669,6 +9669,20 @@ elif _studio_page_for_hydrate == "backing":
         pass
 elif _studio_page_for_hydrate == "creative":
     try:
+        from music_workflow_pending_activation import consume_pending_workflow_activation
+
+        consume_pending_workflow_activation(st.session_state)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_creative_nav import ensure_creative_tab_workflow_before_widgets
+
+        _pre_wf = ensure_creative_tab_workflow_before_widgets(st.session_state)
+        if _pre_wf == "queued":
+            st.rerun()
+    except ImportError:
+        pass
+    try:
         from backing_source_navigation import (
             CREATIVE_RESTORE_FROM_BACKING_KEY,
             rehydrate_creative_from_backing_context,
@@ -9718,6 +9732,12 @@ try:
     from session_widget_safe import apply_pending_widget_hydrates
 
     apply_pending_widget_hydrates(st.session_state, st_like=st)
+except ImportError:
+    pass
+try:
+    from music_workflow_pending_activation import consume_pending_workflow_activation
+
+    consume_pending_workflow_activation(st.session_state)
 except ImportError:
     pass
 

@@ -127,6 +127,117 @@ def save_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> None:
     session[WORKFLOW_MUSICAL_STATES_KEY] = store
 
 
+def _dev_workflow_restore_diag(session: dict[str, Any]) -> dict[str, Any]:
+    d = session.get("_music_workflow_guarded_restore_diag")
+    if not isinstance(d, dict):
+        d = {}
+        session["_music_workflow_guarded_restore_diag"] = d
+    return d
+
+
+def _guarded_snapshot_assign(
+    session: dict[str, Any],
+    key: str,
+    value: Any,
+    *,
+    wf: WorkflowType,
+    allowlist: frozenset[str],
+) -> None:
+    """Restore one legacy snapshot field — never mutate locked widget keys directly."""
+    if key not in allowlist:
+        _dev_workflow_restore_diag(session).setdefault("refused_keys", []).append(
+            {"key": key, "workflow": wf, "reason": "not_in_allowlist"}
+        )
+        return
+    try:
+        from session_widget_safe import WIDGET_BOUND_KEYS, safe_session_assign, widgets_likely_instantiated
+    except ImportError:
+        session[key] = value
+        return
+    try:
+        from creative_mission_config_persistence import MISSION_WIDGET_SESSION_KEYS
+    except ImportError:
+        MISSION_WIDGET_SESSION_KEYS = frozenset()  # type: ignore[misc,assignment]
+    widget_bound = key in WIDGET_BOUND_KEYS or key in MISSION_WIDGET_SESSION_KEYS
+    locked = widgets_likely_instantiated(session)
+    if widget_bound and locked:
+        safe_session_assign(session, key, value)
+        blocked = session.setdefault("_music_workflow_pending_blocked_restore_keys", [])
+        if isinstance(blocked, list):
+            entry = {"key": key, "workflow": wf, "writer": "restore_workflow_snapshot"}
+            if entry not in blocked:
+                blocked.append(entry)
+        try:
+            import streamlit as st
+
+            if st.query_params.get("dev"):
+                _dev_workflow_restore_diag(session).setdefault("blocked_widget_keys", []).append(entry)
+        except Exception:
+            pass
+        return
+    if widget_bound:
+        safe_session_assign(session, key, value)
+    else:
+        session[key] = value
+
+
+WORKFLOW_SNAPSHOT_RESTORE_ALLOWLIST: dict[str, frozenset[str]] = {
+    "song_based_improvisation": frozenset(
+        {
+            "display_key",
+            "concert_key",
+            "_pending_display_key",
+            "improv_song_concert_sections",
+            ACTIVE_WORKFLOW_OWNER_KEY,
+        }
+    ),
+    "style_jam": frozenset(
+        {
+            "improv_entry_mode",
+            "improv_style_key",
+            "improv_style",
+            "improv_mood",
+            "improv_groove",
+            "improv_style_bpm",
+            "improv_generated_sections",
+            "display_key",
+            "concert_key",
+            "_pending_display_key",
+            ACTIVE_WORKFLOW_OWNER_KEY,
+        }
+    ),
+    "jam_session_generator": frozenset(
+        {
+            "improv_entry_mode",
+            "improv_jam_key",
+            "improv_jam_style",
+            "improv_jam_mood",
+            "improv_jam_bpm",
+            "improv_jam_session",
+            "display_key",
+            "concert_key",
+            ACTIVE_WORKFLOW_OWNER_KEY,
+        }
+    ),
+    "mission_jam": frozenset(
+        {
+            "display_key",
+            "concert_key",
+            "_pending_display_key",
+            "improv_song_concert_sections",
+            "ii_selected_chord",
+            "ii_selected_section",
+            "ii_selected_chord_index",
+            "improv_active_mission",
+            "improv_mission_pick",
+            "improv_intelligence_tab",
+            "creative_improv_intelligence_tab",
+            ACTIVE_WORKFLOW_OWNER_KEY,
+        }
+    ),
+}
+
+
 def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool:
     store = session.get(WORKFLOW_MUSICAL_STATES_KEY)
     if not isinstance(store, dict):
@@ -134,25 +245,26 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
     blob = store.get(wf)
     if not isinstance(blob, dict):
         return False
-    session[ACTIVE_WORKFLOW_OWNER_KEY] = wf
+    allow = WORKFLOW_SNAPSHOT_RESTORE_ALLOWLIST.get(wf, frozenset())
+    _guarded_snapshot_assign(session, ACTIVE_WORKFLOW_OWNER_KEY, wf, wf=wf, allowlist=allow)
     if wf == "song_based_improvisation":
         for k in ("display_key", "concert_key"):
             v = str(blob.get(k) or "").strip()
             if v:
-                session[k] = v
-                session["_pending_display_key"] = v
+                _guarded_snapshot_assign(session, k, v, wf=wf, allowlist=allow)
+                _guarded_snapshot_assign(session, "_pending_display_key", v, wf=wf, allowlist=allow)
         sec = blob.get("sections")
         if isinstance(sec, dict) and sec:
             session["improv_song_concert_sections"] = copy.deepcopy(sec)
         return True
     if wf == "style_jam":
-        session["improv_entry_mode"] = "Style Jam Mode"
+        _guarded_snapshot_assign(session, "improv_entry_mode", "Style Jam Mode", wf=wf, allowlist=allow)
         key = str(blob.get("tonic_key") or "C").strip() or "C"
-        session["improv_style_key"] = key
-        session["improv_style"] = str(blob.get("style") or "").strip()
-        session["improv_mood"] = str(blob.get("mood") or "").strip()
-        session["improv_groove"] = str(blob.get("groove") or "").strip()
-        session["improv_style_bpm"] = int(blob.get("bpm") or 110)
+        _guarded_snapshot_assign(session, "improv_style_key", key, wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_style", str(blob.get("style") or "").strip(), wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_mood", str(blob.get("mood") or "").strip(), wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_groove", str(blob.get("groove") or "").strip(), wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_style_bpm", int(blob.get("bpm") or 110), wf=wf, allowlist=allow)
         sec = blob.get("sections")
         if isinstance(sec, dict):
             session["improv_generated_sections"] = copy.deepcopy(sec)
@@ -163,17 +275,17 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
             session[IMPROV_STYLE_KEY_TRACKER] = key
         except ImportError:
             pass
-        session["display_key"] = key
-        session["concert_key"] = key
-        session["_pending_display_key"] = key
+        _guarded_snapshot_assign(session, "display_key", key, wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "concert_key", key, wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "_pending_display_key", key, wf=wf, allowlist=allow)
         return True
     if wf == "jam_session_generator":
-        session["improv_entry_mode"] = "Jam Session Generator"
+        _guarded_snapshot_assign(session, "improv_entry_mode", "Jam Session Generator", wf=wf, allowlist=allow)
         key = str(blob.get("tonic_key") or "C").strip() or "C"
-        session["improv_jam_key"] = key
-        session["improv_jam_style"] = str(blob.get("style") or "").strip()
-        session["improv_jam_mood"] = str(blob.get("mood") or "").strip()
-        session["improv_jam_bpm"] = int(blob.get("bpm") or 110)
+        _guarded_snapshot_assign(session, "improv_jam_key", key, wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_jam_style", str(blob.get("style") or "").strip(), wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_jam_mood", str(blob.get("mood") or "").strip(), wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "improv_jam_bpm", int(blob.get("bpm") or 110), wf=wf, allowlist=allow)
         jam = blob.get("jam_session")
         if isinstance(jam, dict):
             session["improv_jam_session"] = copy.deepcopy(jam)
@@ -185,17 +297,17 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
             session[IMPROV_JAM_KEY_TRACKER] = key
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:
-            session["display_key"] = key
-            session["concert_key"] = key
+            _guarded_snapshot_assign(session, "display_key", key, wf=wf, allowlist=allow)
+            _guarded_snapshot_assign(session, "concert_key", key, wf=wf, allowlist=allow)
         return True
     if wf == "mission_jam":
-        session["improv_intelligence_tab"] = "Missions"
-        session["creative_improv_intelligence_tab"] = "Missions"
+        _guarded_snapshot_assign(session, "improv_intelligence_tab", "Missions", wf=wf, allowlist=allow)
+        _guarded_snapshot_assign(session, "creative_improv_intelligence_tab", "Missions", wf=wf, allowlist=allow)
         for k in ("display_key", "concert_key"):
             v = str(blob.get(k) or "").strip()
             if v:
-                session[k] = v
-                session["_pending_display_key"] = v
+                _guarded_snapshot_assign(session, k, v, wf=wf, allowlist=allow)
+                _guarded_snapshot_assign(session, "_pending_display_key", v, wf=wf, allowlist=allow)
         sec = blob.get("sections")
         if isinstance(sec, dict) and sec:
             session["improv_song_concert_sections"] = copy.deepcopy(sec)
@@ -207,9 +319,15 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
         ):
             v = blob.get(k)
             if v is not None and str(v).strip() != "":
-                session[k] = v
+                _guarded_snapshot_assign(session, k, v, wf=wf, allowlist=allow)
         if blob.get("ii_selected_chord_index") is not None:
-            session["ii_selected_chord_index"] = int(blob.get("ii_selected_chord_index") or 0)
+            _guarded_snapshot_assign(
+                session,
+                "ii_selected_chord_index",
+                int(blob.get("ii_selected_chord_index") or 0),
+                wf=wf,
+                allowlist=allow,
+            )
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
@@ -222,6 +340,21 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
 
 def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None:
     """Persist outgoing workflow, restore incoming — delegates to activate_workflow."""
+    view = "Missions" if new_wf == "mission_jam" else ""
+    try:
+        from music_workflow_pending_activation import request_or_activate_workflow
+
+        status = request_or_activate_workflow(
+            session,
+            target_owner=str(new_wf),
+            activation_source="switch_workflow_owner",
+            active_creative_view=view,
+            navigation_intent="creative_missions" if new_wf == "mission_jam" else "",
+        )
+        if status in {"done", "queued"}:
+            return
+    except ImportError:
+        pass
     try:
         from music_workflow_activation import activate_workflow_simple
 
@@ -229,6 +362,8 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
             session,
             str(new_wf),
             activation_source="switch_workflow_owner",
+            active_creative_view=view,
+            navigation_intent="creative_missions" if new_wf == "mission_jam" else "",
         )
         return
     except ImportError:
@@ -242,18 +377,15 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
         if inferred:
             save_workflow_snapshot(session, inferred)
     ok = restore_workflow_snapshot(session, new_wf)
-    if new_wf == "mission_jam":
-        if not ok:
-            restore_workflow_snapshot(session, "song_based_improvisation")
-        session["improv_intelligence_tab"] = "Missions"
-        session["creative_improv_intelligence_tab"] = "Missions"
+    if new_wf == "mission_jam" and ok:
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
             deactivate_generated_jam_key_ownership(session)
         except ImportError:
             pass
-    session[ACTIVE_WORKFLOW_OWNER_KEY] = new_wf
+    if ok:
+        session[ACTIVE_WORKFLOW_OWNER_KEY] = new_wf
 
 
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
