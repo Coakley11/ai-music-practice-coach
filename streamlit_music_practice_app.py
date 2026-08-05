@@ -8931,16 +8931,9 @@ def _render_backing_return_source_action() -> None:
             st.rerun()
 
         def _go_mission_detail() -> None:
-            save_page_snapshot(st.session_state, "backing")
-            try:
-                from music_nav_dedupe import save_page_snapshot_deduped
+            from music_workflow_pending_mission_return import handle_return_to_mission_click
 
-                save_page_snapshot_deduped(st.session_state, "creative")
-            except ImportError:
-                save_page_snapshot(st.session_state, "creative")
-            target = prepare_return_to_mission_detail(st.session_state)
-            navigate_studio_page(st.session_state, target)
-            st.rerun()
+            handle_return_to_mission_click(st, st.session_state)
 
         for idx, action in enumerate(actions):
             if action.action_id == "return_creative":
@@ -9607,6 +9600,12 @@ try:
     from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
 
     consume_pending_backing_workflow_handoff(st.session_state, st=st)
+except ImportError:
+    pass
+try:
+    from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
+
+    consume_pending_mission_return_handoff(st.session_state, st=st)
 except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
@@ -12658,13 +12657,9 @@ elif _studio_page == "backing":
         from studio_page_persistence import save_page_snapshot
 
         def _return_to_mission_from_backing() -> None:
-            from backing_source_navigation import prepare_return_to_mission_detail
+            from music_workflow_pending_mission_return import handle_return_to_mission_click
 
-            save_page_snapshot(st.session_state, "backing")
-            save_page_snapshot(st.session_state, "creative")
-            target = prepare_return_to_mission_detail(st.session_state)
-            navigate_studio_page(st.session_state, target)
-            st.rerun()
+            handle_return_to_mission_click(st, st.session_state)
 
         _lick_payload = mission_practice_lick_payload(st.session_state)
         try:

@@ -436,6 +436,13 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     except ImportError:
         pass
 
+    try:
+        from mission_return_destination import seal_mission_return_destination_from_handoff
+
+        seal_mission_return_destination_from_handoff(session, pending)
+    except ImportError:
+        pass
+
     if seq is not None:
         session[PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY] = seq
     if align_fp:
