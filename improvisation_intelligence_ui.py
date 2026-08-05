@@ -2322,6 +2322,36 @@ def _tab_missions(
                 example=example if with_practice_lick else None,
                 with_practice_lick=with_practice_lick,
             )
+        try:
+            from music_mission_backing_handoff_trace import log_mission_backing_click
+            from music_workflow_pending_backing_handoff import (
+                mission_backing_click_must_defer,
+                resolve_backing_workflow_owner,
+            )
+            from session_widget_safe import widgets_likely_instantiated
+
+            mw = False
+            try:
+                from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
+
+                mw = bool(session_state.get(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY))
+            except ImportError:
+                pass
+            align_raw = session_state.get(MISSION_PENDING_BACKING_ALIGNMENT_KEY) or {}
+            log_mission_backing_click(
+                session_state,
+                with_practice_lick=with_practice_lick,
+                mission_id=str(mission or ""),
+                mission_session_id=str((align_raw or {}).get("mission_session_id") or ""),
+                section=str(section_label or ""),
+                chord=str(cur_chord or ""),
+                workflow_owner=resolve_backing_workflow_owner(session_state, backing_source="mission"),
+                widgets_locked=widgets_likely_instantiated(session_state),
+                mission_widgets_instantiated=mw,
+            )
+            session_state["_mission_backing_click_must_defer"] = mission_backing_click_must_defer(session_state)
+        except ImportError:
+            pass
         session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
         on_open_backing()
 

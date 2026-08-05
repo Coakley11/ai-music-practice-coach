@@ -14375,19 +14375,6 @@ elif _studio_page == "creative":
             defer_wf = should_defer_backing_workflow_activation(st.session_state)
             wf_owner = resolve_backing_workflow_owner(st.session_state, backing_source=creative_source)
             needs_activation = not backing_workflow_owner_is_active(st.session_state, wf_owner)
-            with_lick = False
-            try:
-                from mission_backing_handoff_persistence import handoff_with_practice_lick_pending
-
-                with_lick = handoff_with_practice_lick_pending(st.session_state)
-            except ImportError:
-                pass
-            open_backing_from_creative(
-                st.session_state,
-                source=creative_source,
-                st_like=st,
-                skip_workflow_activation=defer_wf or not needs_activation,
-            )
             mission_align = None
             if creative_source == "mission":
                 try:
@@ -14398,6 +14385,20 @@ elif _studio_page == "creative":
                         mission_align = raw_align
                 except ImportError:
                     pass
+            with_lick = bool((mission_align or {}).get("with_practice_lick"))
+            if not with_lick:
+                try:
+                    from mission_backing_handoff_persistence import handoff_with_practice_lick_pending
+
+                    with_lick = handoff_with_practice_lick_pending(st.session_state)
+                except ImportError:
+                    pass
+            open_backing_from_creative(
+                st.session_state,
+                source=creative_source,
+                st_like=st,
+                skip_workflow_activation=defer_wf or not needs_activation,
+            )
             if defer_wf and (creative_source == "mission" or needs_activation):
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
@@ -14407,18 +14408,36 @@ elif _studio_page == "creative":
                     mission_alignment=mission_align,
                     return_route=str((mission_align or {}).get("return_route") or "creative"),
                 )
+                rerun_sent = False
                 if should_request_backing_handoff_rerun(st.session_state):
                     try:
                         from music_app_rerun import request_app_rerun
 
-                        request_app_rerun(
-                            st,
-                            st.session_state,
-                            reason="pending_backing_workflow_handoff",
-                            stage="mission_backing_pre_widget",
+                        rerun_sent = bool(
+                            request_app_rerun(
+                                st,
+                                st.session_state,
+                                reason="pending_backing_workflow_handoff",
+                                stage="mission_backing_pre_widget",
+                            )
                         )
                     except ImportError:
                         st.rerun()
+                        rerun_sent = True
+                    try:
+                        from music_mission_backing_handoff_trace import log_rerun_request
+
+                        log_rerun_request(
+                            st.session_state,
+                            allowed=rerun_sent,
+                            reason="pending_backing_workflow_handoff",
+                        )
+                    except ImportError:
+                        pass
+                    if not rerun_sent:
+                        st.rerun()
+                else:
+                    st.rerun()
                 return
         except ImportError:
             open_backing_from_creative(st.session_state, source=creative_source, st_like=st)

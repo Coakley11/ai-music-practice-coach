@@ -9,6 +9,7 @@ from unittest import mock
 from music_workflow_legacy_projection import RequiresPreWidgetActivation, project_active_blob_to_legacy_session
 from music_workflow_pending_backing_handoff import (
     PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY,
+    PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY,
     PENDING_BACKING_WORKFLOW_KEY,
     PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY,
     consume_pending_backing_workflow_handoff,
@@ -107,9 +108,11 @@ class TestMissionBackingPreWidgetActivation(unittest.TestCase):
             backing_source="mission",
             workflow_owner="mission_jam",
         )
-        seq = session[PENDING_BACKING_WORKFLOW_KEY]["request_seq"]
+        pending = session[PENDING_BACKING_WORKFLOW_KEY]
+        seq = pending["request_seq"]
         session[PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY] = seq
-        session[PENDING_BACKING_WORKFLOW_KEY] = dict(session[PENDING_BACKING_WORKFLOW_KEY])
+        session[PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY] = pending["consume_token"]
+        session[PENDING_BACKING_WORKFLOW_KEY] = dict(pending)
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             phase = consume_pending_backing_workflow_handoff(session)
         self.assertEqual(phase, "already_consumed")

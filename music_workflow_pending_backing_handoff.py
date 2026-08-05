@@ -8,6 +8,7 @@ from typing import Any, Literal
 PENDING_BACKING_WORKFLOW_KEY = "_music_pending_backing_workflow_handoff"
 PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY = "_music_pending_backing_workflow_consumed_seq"
 PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY = "_music_pending_backing_workflow_consumed_fp"
+PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY = "_music_pending_backing_workflow_consumed_token"
 PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY = "_music_pending_backing_workflow_rerun_for_seq"
 
 ConsumePhase = Literal["applied", "skipped", "already_consumed"]
@@ -49,6 +50,14 @@ def clear_pending_backing_workflow_handoff(session: dict[str, Any]) -> None:
     session.pop(PENDING_BACKING_WORKFLOW_KEY, None)
 
 
+def _consume_token(pending: dict[str, Any]) -> str:
+    seq = pending.get("request_seq")
+    align_fp = str(pending.get("alignment_fingerprint") or "")
+    lick = int(bool(pending.get("with_practice_lick")))
+    mode = str(pending.get("handoff_mode") or ("practice_in_jam" if lick else "mission_backing"))
+    return f"{seq}:{align_fp}:lick={lick}:mode={mode}"
+
+
 def queue_pending_backing_workflow_handoff(
     session: dict[str, Any],
     *,
@@ -67,6 +76,9 @@ def queue_pending_backing_workflow_handoff(
     seq = _next_seq(session)
     align = copy.deepcopy(mission_alignment) if isinstance(mission_alignment, dict) else None
     align_fp = str((align or {}).get("alignment_fingerprint") or "")
+    lick = bool(with_practice_lick or (align or {}).get("with_practice_lick"))
+    handoff_mode = "practice_in_jam" if lick else "mission_backing"
+    backing_scope = str((align or {}).get("backing_scope") or "mission_chord")
     req = {
         "request_seq": seq,
         "backing_source": str(backing_source or "").strip(),
@@ -76,14 +88,24 @@ def queue_pending_backing_workflow_handoff(
         "page_route": page_route,
         "return_route": str(return_route or "creative").strip() or "creative",
         "navigation_intent": navigation_intent,
-        "with_practice_lick": bool(with_practice_lick),
+        "with_practice_lick": lick,
+        "handoff_mode": handoff_mode,
+        "backing_scope": backing_scope,
         "navigation_callback": navigation_callback,
         "mission_handoff": str(backing_source or "") == "mission",
         "mission_alignment": align,
         "alignment_fingerprint": align_fp,
     }
+    req["consume_token"] = _consume_token(req)
     session[PENDING_BACKING_WORKFLOW_KEY] = req
     session.pop(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY, None)
+    session.pop(PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY, None)
+    try:
+        from music_mission_backing_handoff_trace import log_pending_queued
+
+        log_pending_queued(session, req)
+    except ImportError:
+        pass
     return req
 
 
@@ -159,14 +181,28 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     """Apply queued workflow activation + backing navigation once, before widgets."""
     pending = session.get(PENDING_BACKING_WORKFLOW_KEY)
     if not isinstance(pending, dict):
+        try:
+            from music_mission_backing_handoff_trace import log_consume
+
+            log_consume(session, phase="skipped", detail={"reason": "no_pending"})
+        except ImportError:
+            pass
         return "skipped"
+    token = str(pending.get("consume_token") or _consume_token(pending))
     seq = pending.get("request_seq")
-    align_fp = str(pending.get("alignment_fingerprint") or "")
-    consumed = session.get(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY)
-    consumed_fp = session.get(PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY)
-    if seq is not None and consumed == seq and (not align_fp or consumed_fp == align_fp):
+    if session.get(PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY) == token or (
+        seq is not None and session.get(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY) == seq
+    ):
         clear_pending_backing_workflow_handoff(session)
+        try:
+            from music_mission_backing_handoff_trace import log_consume
+
+            log_consume(session, phase="already_consumed", detail={"token": token})
+        except ImportError:
+            pass
         return "already_consumed"
+
+    align_fp = str(pending.get("alignment_fingerprint") or "")
 
     owner = str(pending.get("workflow_owner") or "").strip()
     source = str(pending.get("backing_source") or "").strip()
@@ -174,7 +210,31 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
         clear_pending_backing_workflow_handoff(session)
         return "skipped"
 
+    with_lick = bool(pending.get("with_practice_lick"))
+    if with_lick:
+        try:
+            from mission_backing_handoff_persistence import (
+                MISSION_BACKING_HANDOFF_ACTIVE_KEY,
+                MISSION_BACKING_HANDOFF_DIAG_KEY,
+            )
+            from improvisation_missions import IMPROV_MISSION_PRACTICE_LICK_HANDOFF
+
+            session[IMPROV_MISSION_PRACTICE_LICK_HANDOFF] = True
+            session[MISSION_BACKING_HANDOFF_ACTIVE_KEY] = True
+            diag = session.get(MISSION_BACKING_HANDOFF_DIAG_KEY)
+            if not isinstance(diag, dict):
+                diag = {}
+                session[MISSION_BACKING_HANDOFF_DIAG_KEY] = diag
+            diag.setdefault("with_practice_lick", True)
+            diag.setdefault(
+                "navigation_callback",
+                str(pending.get("navigation_callback") or "_improv_open_backing"),
+            )
+        except ImportError:
+            pass
+
     activation_needed = not _owner_already_active(session, owner)
+    activation_ok = True
     if activation_needed:
         try:
             from music_workflow_activation import activate_workflow_simple
@@ -188,20 +248,44 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
                 navigation_intent=str(pending.get("navigation_intent") or "backing_open"),
                 persist_policy=str(pending.get("persist_policy") or "durable_handoff"),  # type: ignore[arg-type]
             )
-            if not result.ok:
+            activation_ok = bool(result.ok)
+            if not activation_ok:
                 session["_music_pending_backing_consume_error"] = dict(getattr(result, "trace", {}) or {})
-                return "skipped"
         except ImportError:
-            return "skipped"
+            activation_ok = False
+    try:
+        from music_mission_backing_handoff_trace import log_consume
 
+        log_consume(
+            session,
+            phase="activation",
+            detail={
+                "needed": activation_needed,
+                "ok": activation_ok,
+                "owner": owner,
+                "with_practice_lick": with_lick,
+            },
+        )
+    except ImportError:
+        pass
+    if activation_needed and not activation_ok:
+        return "skipped"
+
+    alignment_ok = True
     alignment = pending.get("mission_alignment")
     if isinstance(alignment, dict) and str(pending.get("backing_source") or "") == "mission":
         try:
             from mission_backing_alignment import apply_pending_mission_backing_alignment
 
-            apply_pending_mission_backing_alignment(session, alignment)
+            alignment_ok = bool(apply_pending_mission_backing_alignment(session, alignment))
         except ImportError:
-            pass
+            alignment_ok = False
+    try:
+        from music_mission_backing_handoff_trace import log_consume
+
+        log_consume(session, phase="alignment", detail={"ok": alignment_ok})
+    except ImportError:
+        pass
 
     try:
         from backing_context import open_backing_from_creative
@@ -226,7 +310,7 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     except ImportError:
         pass
 
-    if pending.get("with_practice_lick"):
+    if with_lick:
         try:
             from mission_backing_handoff_persistence import arm_mission_backing_handoff_page_change
 
@@ -235,13 +319,28 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
             pass
 
     try:
-        from studio_scroll_anchors import set_pending_anchor, ANCHOR_BACKING_MAIN_CONTROLS
-        from studio_nav_state import navigate_studio_page
+        from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+        from studio_nav_history import navigate_studio_page
 
         set_pending_anchor(session, ANCHOR_BACKING_MAIN_CONTROLS)
         navigate_studio_page(session, "backing")
     except ImportError:
         session["studio_page"] = "backing"
+
+    page_after = str(session.get("studio_page") or "").strip().lower()
+    if page_after != "backing":
+        session["_music_pending_backing_consume_error"] = {
+            "reason": "navigation_incomplete",
+            "studio_page": page_after,
+            "token": token,
+        }
+        try:
+            from music_mission_backing_handoff_trace import log_consume
+
+            log_consume(session, phase="navigation_failed", detail={"studio_page": page_after})
+        except ImportError:
+            pass
+        return "skipped"
 
     try:
         from mission_backing_handoff_persistence import complete_mission_backing_handoff_after_navigation
@@ -258,11 +357,27 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
         session[PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY] = seq
     if align_fp:
         session[PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY] = align_fp
+    session[PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY] = token
     clear_pending_backing_workflow_handoff(session)
+    try:
+        from music_mission_backing_handoff_trace import log_consume
+
+        log_consume(
+            session,
+            phase="applied",
+            detail={
+                "token": token,
+                "with_practice_lick": with_lick,
+                "studio_page": page_after,
+            },
+        )
+    except ImportError:
+        pass
     return "applied"
 
 
 __all__ = [
+    "PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY",
     "PENDING_BACKING_WORKFLOW_KEY",
