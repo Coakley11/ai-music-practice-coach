@@ -261,26 +261,29 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
 def project_active_blob_to_legacy_session(
     session: dict[str, Any],
     blob: WorkflowStateBlob,
+    *,
+    allow_widget_phase_user_key: bool = False,
 ) -> dict[str, Any]:
     """One-way compatibility projection after activation — does not mutate store or pointer."""
     owner = str(blob.workflow_owner or "").strip()
-    try:
-        from session_widget_safe import widgets_likely_instantiated
+    if not allow_widget_phase_user_key:
+        try:
+            from session_widget_safe import widgets_likely_instantiated
 
-        if widgets_likely_instantiated(session) and owner in {
-            "mission_jam",
-            "style_jam",
-            "jam_session_generator",
-            "song_based_improvisation",
-        }:
-            session["_music_workflow_projection_diag"] = {
-                "blocked": True,
-                "reason": "requires_pre_widget_activation",
-                "owner": owner,
-            }
-            raise RequiresPreWidgetActivation(owner)
-    except ImportError:
-        pass
+            if widgets_likely_instantiated(session) and owner in {
+                "mission_jam",
+                "style_jam",
+                "jam_session_generator",
+                "song_based_improvisation",
+            }:
+                session["_music_workflow_projection_diag"] = {
+                    "blocked": True,
+                    "reason": "requires_pre_widget_activation",
+                    "owner": owner,
+                }
+                raise RequiresPreWidgetActivation(owner)
+        except ImportError:
+            pass
     cleared = clear_incompatible_legacy_fields(session, owner)
     restore_workflow_blob_to_session(session, blob)
     projected = list(PROJECTED_LEGACY_KEYS.get(owner, ()))

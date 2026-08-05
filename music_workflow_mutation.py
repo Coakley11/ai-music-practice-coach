@@ -329,7 +329,21 @@ def commit_staged_workflow(
         pass
 
     try:
-        project_active_blob_to_legacy_session(session, staged)
+        allow_user_key_projection = mutation_type == "practice_key_change" and str(
+            staged.workflow_owner or ""
+        ) in {"style_jam", "jam_session_generator"}
+        project_active_blob_to_legacy_session(
+            session,
+            staged,
+            allow_widget_phase_user_key=allow_user_key_projection,
+        )
+        if allow_user_key_projection:
+            try:
+                from music_workflow_restore_guard import complete_workflow_restore_guard
+
+                complete_workflow_restore_guard(session, reason="user_practice_key_change")
+            except ImportError:
+                pass
     except RequiresPreWidgetActivation as exc:
         if ptr_before_commit is not None:
             set_active_workflow_pointer(session, ptr_before_commit, source=f"rollback:{source}")
@@ -681,14 +695,24 @@ def update_active_practice_key(
         return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
     expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
     if expected and ptr.workflow_owner != expected:
-        if source == "sidebar_song_improv" and ptr.workflow_owner in {"mission_jam", "song_based_improvisation"}:
+        if source in {"on_improv_style_key_change", "on_improv_jam_key_change"}:
+            try:
+                from music_workflow_activation import activate_workflow_for_entry_mode
+
+                activate_workflow_for_entry_mode(session)
+                ptr = get_active_workflow_pointer(session)
+            except ImportError:
+                pass
+        if source == "sidebar_song_improv" and ptr and ptr.workflow_owner in {"mission_jam", "song_based_improvisation"}:
             pass
-        else:
+        elif expected and ptr and ptr.workflow_owner != expected:
             return MutationResult(
                 ok=False,
                 error_code="KEY_HANDLER_OWNER_MISMATCH",
                 error_message="Key handler owner does not match active workflow.",
             )
+    if ptr is None:
+        return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
     owner = ptr.workflow_owner
     if owner not in {"song_based_improvisation", "mission_jam", "style_jam", "jam_session_generator"}:
         return MutationResult(ok=False, error_code="UNSUPPORTED_OWNER", error_message="Key change unsupported for owner.")
