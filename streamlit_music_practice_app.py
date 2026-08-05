@@ -47,9 +47,15 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
-    from music_run_lifecycle import begin_script_run_lifecycle, enter_run_phase
+    from music_run_boundary import install_music_run_instrumentation
 
-    begin_script_run_lifecycle(st.session_state, st=st)
+    install_music_run_instrumentation(st)
+except Exception:
+    pass
+
+try:
+    from music_run_lifecycle import enter_run_phase
+
     enter_run_phase(st.session_state, "deploy_verification")
 except ImportError:
     pass
@@ -110,7 +116,17 @@ pp.inject_polish_css(st, app_slug="music")
 try:
     from suite_workspace import bootstrap_suite_workspace
 
+    try:
+        from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+        enter_run_phase(st.session_state, "suite_workspace_bootstrap")
+    except ImportError:
+        pass
     bootstrap_suite_workspace(st)
+    try:
+        exit_run_phase(st.session_state, "suite_workspace_bootstrap")
+    except ImportError:
+        pass
 except Exception:
     pass
 
@@ -1246,11 +1262,21 @@ if hasattr(st, "session_state"):
         from music_perf_diagnostics import perf_span
 
         with perf_span(st, "workspace_sync_early"):
+            try:
+                from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+                enter_run_phase(st.session_state, "workspace_hydration")
+            except ImportError:
+                pass
             prepare_music_workspace(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
             )
+            try:
+                exit_run_phase(st.session_state, "workspace_hydration")
+            except ImportError:
+                pass
         try:
             from music_persistent_state import (
                 maybe_flush_deferred_page_change_save,
@@ -9541,6 +9567,12 @@ except NameError:
 
 # Studio page bootstrap (sidebar order is rendered below Command Center link).
 try:
+    from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+    enter_run_phase(st.session_state, "pending_upload_route")
+except ImportError:
+    pass
+try:
     from mission_pending_upload_persistence import (
         apply_pending_upload_envelope_to_session,
         is_prepared_pending_upload,
@@ -9555,6 +9587,10 @@ try:
         apply_pending_upload_startup_page_if_needed(st.session_state)
     elif is_prepared_pending_upload(st.session_state):
         apply_pending_upload_startup_page_if_needed(st.session_state)
+except ImportError:
+    pass
+try:
+    exit_run_phase(st.session_state, "pending_upload_route")
 except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
@@ -10518,6 +10554,12 @@ except ImportError:
 
 _page_for_chart_gate = str(st.session_state.get("studio_page") or _studio_page or "practice").strip().lower()
 try:
+    from music_run_lifecycle import enter_run_phase
+
+    enter_run_phase(st.session_state, "chart_bundle_gate")
+except ImportError:
+    pass
+try:
     from songs.chart_bundle_startup import studio_page_exempt_from_chart_bundle
 
     _chart_bundle_page_exempt = studio_page_exempt_from_chart_bundle(_page_for_chart_gate)
@@ -10705,6 +10747,13 @@ elif _chart_bundle is None:
         )
     except ImportError:
         st.stop()
+
+try:
+    from music_run_lifecycle import exit_run_phase
+
+    exit_run_phase(st.session_state, "chart_bundle_gate")
+except ImportError:
+    pass
 
 try:
     from songs.chart_bundle_startup import clear_chart_bundle_recovery_state
@@ -10934,6 +10983,13 @@ if _developer_mode_enabled():
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
+
+try:
+    from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+    enter_run_phase(st.session_state, "page_dispatch")
+except ImportError:
+    pass
 
 if _studio_page == "practice":
 
@@ -15241,6 +15297,12 @@ except Exception:
 
 if not pp.skip_background_persistence(st):
     try:
+        from music_run_lifecycle import enter_run_phase
+
+        enter_run_phase(st.session_state, "strict_save_flusher")
+    except ImportError:
+        pass
+    try:
         from music_strict_save_flusher import mount_strict_save_wakeup_flusher
         from music_persistent_state import build_music_disk_state
 
@@ -15280,6 +15342,19 @@ if not pp.skip_background_persistence(st):
         clear_music_workspace_autosave_block(st)
     except Exception:
         pass
+    try:
+        from music_run_lifecycle import exit_run_phase
+
+        exit_run_phase(st.session_state, "strict_save_flusher")
+    except ImportError:
+        pass
+
+try:
+    from music_run_lifecycle import exit_run_phase
+
+    exit_run_phase(st.session_state, "page_dispatch")
+except ImportError:
+    pass
 
 try:
     from app_ui import render_deferred_music_coach_insight

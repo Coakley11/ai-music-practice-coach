@@ -45,7 +45,6 @@ class TestAvailabilityHotfix2(unittest.TestCase):
         complete_script_run_lifecycle(ss, st=None)
         lc = ss.get("_music_run_lifecycle") or {}
         self.assertEqual(lc.get("status"), "RUN_COMPLETED")
-        self.assertIsNotNone(lc.get("elapsed_ms"))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,12 @@ def request_app_rerun(
         fp = build_route_restore_fingerprint(session, reason=reason, stage=stage)
         repeat = int(session.get("_music_rerun_loop_repeat_count") or 0)
     except ImportError:
+        try:
+            from music_run_boundary import schedule_rerun_log
+
+            schedule_rerun_log(session, reason=reason, fingerprint="")
+        except ImportError:
+            pass
         st_module.rerun()
         return True
 
@@ -26,6 +32,13 @@ def request_app_rerun(
         from music_run_lifecycle import note_rerun_requested
 
         note_rerun_requested(session, reason=reason, fingerprint=fp, repeat_count=repeat)
+    except ImportError:
+        pass
+
+    try:
+        from music_run_boundary import schedule_rerun_log
+
+        schedule_rerun_log(session, reason=reason, fingerprint=fp)
     except ImportError:
         pass
 
@@ -49,6 +62,12 @@ def request_app_stop(
             expect_interactive=expect_interactive,
             resumable=resumable,
         )
+    except ImportError:
+        pass
+    try:
+        from music_run_boundary import schedule_stop_log
+
+        schedule_stop_log(session, reason=reason)
     except ImportError:
         pass
     st_module.stop()

@@ -53,6 +53,17 @@ def check_startup_watchdog(session: dict[str, Any], *, st: Any | None = None) ->
         wd["terminal_recovery"] = True
         wd["terminal_reason"] = "rerun_loop_blocked" if blocked else "startup_elapsed_cap"
         out["action"] = "terminal_recovery"
+        try:
+            from music_run_log import emit_music_run, run_summary_fields
+
+            emit_music_run(
+                "WATCHDOG_RECOVERY",
+                session,
+                reason=wd.get("terminal_reason"),
+                **run_summary_fields(session),
+            )
+        except ImportError:
+            pass
         if st is not None and (blocked or elapsed > STARTUP_MAX_ELAPSED_SEC):
             try:
                 st.warning(

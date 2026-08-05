@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from music_run_log import emit_music_run, run_summary_fields
+
 LIFECYCLE_KEY = "_music_run_lifecycle"
 PHASE_STACK_KEY = "_music_run_phase_stack"
 
@@ -78,6 +80,7 @@ def enter_run_phase(session: dict[str, Any], phase: str) -> None:
     session[PHASE_STACK_KEY] = stack[-24:]
     _lifecycle(session)["last_phase_entered"] = phase
     _lifecycle(session)["last_phase_entered_run"] = _run_seq(session)
+    emit_music_run("PHASE_ENTER", session, phase=phase, **run_summary_fields(session))
 
 
 def exit_run_phase(session: dict[str, Any], phase: str) -> None:
@@ -89,6 +92,7 @@ def exit_run_phase(session: dict[str, Any], phase: str) -> None:
             top["run_seq_exit"] = _run_seq(session)
             _lifecycle(session)["last_phase_exited"] = phase
     _lifecycle(session)["last_phase_completed"] = phase
+    emit_music_run("PHASE_EXIT", session, phase=phase, **run_summary_fields(session))
 
 
 def note_rerun_requested(
@@ -139,7 +143,6 @@ def complete_script_run_lifecycle(session: dict[str, Any], *, st: Any | None = N
     lc["completed_at"] = time.time()
     lc["elapsed_ms"] = int((lc["completed_at"] - started) * 1000)
     lc["run_seq_completed"] = _run_seq(session)
-    lc["status"] = "RUN_COMPLETED"
     lc["completed_context"] = {
         "route_lock": bool(session.get("_pending_upload_route_lock")),
         "pending_hydrated_take": session.get("_pending_upload_hydrated_take_id"),
@@ -147,17 +150,16 @@ def complete_script_run_lifecycle(session: dict[str, Any], *, st: Any | None = N
         "rerun_blocked": bool(session.get("_music_rerun_loop_blocked")),
     }
     try:
-        import logging
+        from music_run_boundary import log_run_completed
 
-        logging.getLogger("music_deploy").info(
-            "[music_run] RUN_COMPLETED run_seq=%s elapsed_ms=%s page=%s lock=%s",
-            lc.get("run_seq_completed"),
-            lc.get("elapsed_ms"),
-            session.get("studio_page"),
-            session.get("_pending_upload_route_lock"),
+        log_run_completed(session)
+    except ImportError:
+        emit_music_run(
+            "RUN_COMPLETED",
+            session,
+            elapsed_ms=lc["elapsed_ms"],
+            **run_summary_fields(session),
         )
-    except Exception:
-        pass
 
 
 def render_run_lifecycle_dev_caption(st_module: Any, session: dict[str, Any]) -> None:
@@ -172,7 +174,7 @@ def render_run_lifecycle_dev_caption(st_module: Any, session: dict[str, Any]) ->
     st_module.sidebar.caption(
         "Run lifecycle · "
         f"seq `{_run_seq(session)}` · "
-        f"status `{lc.get('status', 'RUNNING')}` · "
+        f"status `{lc.get('status', lc.get('terminal_outcome', 'RUNNING'))}` · "
         f"phase `{lc.get('last_phase_entered', '—')}` · "
         f"rerun `{last_rr.get('reason', '—')}` · "
         f"fp `{last_rr.get('fingerprint', '—')}` · "

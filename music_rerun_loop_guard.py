@@ -126,6 +126,12 @@ def safe_rerun(st_module: Any, session: dict[str, Any], *, reason: str, fingerpr
     """Request rerun unless an identical loop was detected. Returns True if rerun was invoked."""
     if should_block_rerun(session, reason=reason, fingerprint=fingerprint):
         return False
+    try:
+        from music_run_boundary import schedule_rerun_log
+
+        schedule_rerun_log(session, reason=reason, fingerprint=fingerprint)
+    except ImportError:
+        pass
     st_module.rerun()
     return True
 

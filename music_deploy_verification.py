@@ -29,6 +29,7 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
     "c8131fd",
     "a112506",
     "b3826fc",
+    "da64329",
 )
 
 _PROCESS_DEPLOY_LOGGED = False
