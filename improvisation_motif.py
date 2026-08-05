@@ -907,7 +907,7 @@ def build_motif_abc(
         abc_tokens.append("|")
 
     music = " ".join(abc_tokens)
-    ref_key = str(motif.get("spelling_reference") or key_center or "C").strip() or "C"
+    ref_key = str(key_center or motif.get("spelling_reference") or "C").strip() or "C"
     k = _abc_key_header(ref_key)
 
     return f"""X:1

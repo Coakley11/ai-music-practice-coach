@@ -114,12 +114,50 @@ def snapshot_session_for_rollback(session: dict[str, Any], owner: str) -> dict[s
     return _snapshot_legacy_keys(session, owner)
 
 
-def _restore_legacy_snapshot(session: dict[str, Any], snap: dict[str, Any]) -> None:
+def _widget_bound_session_keys() -> frozenset[str]:
+    try:
+        from session_widget_safe import WIDGET_BOUND_KEYS
+
+        return frozenset(WIDGET_BOUND_KEYS)
+    except ImportError:
+        return frozenset({"display_key"})
+
+
+def _restore_legacy_snapshot(
+    session: dict[str, Any],
+    snap: dict[str, Any],
+    *,
+    widget_safe: bool = False,
+) -> list[str]:
+    """Restore legacy snapshot; skip or defer widget-bound keys when widget_safe."""
+    skipped: list[str] = []
+    bound = _widget_bound_session_keys()
+    locked = widget_safe
+    if widget_safe:
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            locked = widgets_likely_instantiated(session)
+        except ImportError:
+            locked = bool(session.get("_streamlit_widgets_locked_this_run"))
     for k, v in snap.items():
+        if locked and k in bound:
+            skipped.append(k)
+            continue
         if v is None:
             session.pop(k, None)
+        elif locked and k in {"display_key", "concert_key"}:
+            try:
+                from session_widget_safe import safe_assign_display_key
+
+                safe_assign_display_key(session, str(v))
+            except ImportError:
+                skipped.append(k)
         else:
             session[k] = copy.deepcopy(v)
+    if skipped:
+        session["_music_workflow_rollback_skipped_keys"] = list(skipped)
+    return skipped
 
 
 def resolve_workflow_routes(
@@ -294,12 +332,22 @@ def commit_staged_workflow(
             )
         except ImportError:
             pass
-        return _fail_mutation(
-            session,
-            trace,
-            legacy_snapshot,
-            "REQUIRES_PRE_WIDGET_ACTIVATION",
-            str(exc),
+        trace["validation_result"] = "defer"
+        trace["error_code"] = "REQUIRES_PRE_WIDGET_ACTIVATION"
+        trace["rollback_performed"] = True
+        trace["legacy_snapshot_restored"] = False
+        session[WORKFLOW_MUTATION_DIAG_KEY] = trace
+        session[WORKFLOW_MUTATION_LAST_KEY] = trace
+        session["_music_workflow_deferred_legacy_projection"] = {
+            "owner": str(staged.workflow_owner or exc.owner or ""),
+            "source": source,
+        }
+        return MutationResult(
+            ok=False,
+            error_code="REQUIRES_PRE_WIDGET_ACTIVATION",
+            error_message=str(exc),
+            rollback_performed=True,
+            trace=trace,
         )
     set_legacy_owner_compat_hint(session, staged.workflow_owner)
 
@@ -352,9 +400,11 @@ def _fail_mutation(
     violations: list[str] | None = None,
 ) -> MutationResult:
     rollback = False
-    if legacy_snapshot is not None:
-        _restore_legacy_snapshot(session, legacy_snapshot)
+    if legacy_snapshot is not None and code != "REQUIRES_PRE_WIDGET_ACTIVATION":
+        skipped = _restore_legacy_snapshot(session, legacy_snapshot, widget_safe=True)
         rollback = True
+        if skipped:
+            trace["rollback_skipped_widget_keys"] = skipped
     trace["validation_result"] = "fail"
     trace["error_code"] = code
     if violations:

@@ -1940,7 +1940,18 @@ def _maybe_refresh_mission_example_outputs(
     needs = session_state.get("_mission_example_output_fp") != fp or not spell_fp
     if not needs:
         return example
-    refreshed = mission_example_for_display(example, instrument=instrument, bpm=bpm)
+    concert = str(
+        session_state.get("concert_key")
+        or session_state.get("improv_song_concert_key")
+        or example.concert_key
+        or example.display_key
+    )
+    refreshed = mission_example_for_display(
+        example,
+        instrument=instrument,
+        bpm=bpm,
+        song_concert_key=concert,
+    )
     session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
     return refreshed
 
@@ -2250,7 +2261,22 @@ def _tab_missions(
     def _open_mission_backing(*, with_practice_lick: bool = False) -> None:
         if not on_open_backing:
             return
-        if with_practice_lick and example:
+        try:
+            from mission_backing_alignment import (
+                MISSION_PENDING_BACKING_ALIGNMENT_KEY,
+                build_mission_backing_alignment_payload,
+            )
+            from music_workflow_pending_backing_handoff import should_defer_backing_workflow_activation
+
+            defer = should_defer_backing_workflow_activation(session_state)
+        except ImportError:
+            defer = bool(session_state.get("_streamlit_widgets_locked_this_run"))
+            MISSION_PENDING_BACKING_ALIGNMENT_KEY = "_mission_pending_backing_alignment"  # type: ignore[misc]
+            build_mission_backing_alignment_payload = None  # type: ignore[misc,assignment]
+
+        if with_practice_lick and example and defer:
+            pass
+        elif with_practice_lick and example and not defer:
             try:
                 from mission_workflow_context import ensure_mission_handoff_aligned
 
@@ -2266,6 +2292,7 @@ def _tab_missions(
             except (ImportError, ValueError):
                 if with_practice_lick:
                     return
+        if with_practice_lick and example:
             style_meta = session_state.get("improv_style_meta") or {}
             groove = str(
                 session_state.get("improv_groove")
@@ -2304,6 +2331,19 @@ def _tab_missions(
                 pass
         elif not with_practice_lick:
             session_state.pop(MISSION_PRACTICE_LICK_KEY, None)
+        if build_mission_backing_alignment_payload is not None:
+            session_state[MISSION_PENDING_BACKING_ALIGNMENT_KEY] = build_mission_backing_alignment_payload(
+                session_state,
+                mission=mission,
+                cur_chord=cur_chord,
+                section_label=section_label,
+                chord_idx=int(chord_idx),
+                song_title=improv_ctx.song_title,
+                concert_key=improv_ctx.key_center,
+                display_key=improv_ctx.display_key,
+                example=example if with_practice_lick else None,
+                with_practice_lick=with_practice_lick,
+            )
         session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
         on_open_backing()
 

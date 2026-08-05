@@ -14388,12 +14388,24 @@ elif _studio_page == "creative":
                 st_like=st,
                 skip_workflow_activation=defer_wf or not needs_activation,
             )
-            if defer_wf and needs_activation:
+            mission_align = None
+            if creative_source == "mission":
+                try:
+                    from mission_backing_alignment import MISSION_PENDING_BACKING_ALIGNMENT_KEY
+
+                    raw_align = st.session_state.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+                    if isinstance(raw_align, dict):
+                        mission_align = raw_align
+                except ImportError:
+                    pass
+            if defer_wf and (creative_source == "mission" or needs_activation):
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
                     backing_source=creative_source,
                     workflow_owner=wf_owner,
                     with_practice_lick=with_lick,
+                    mission_alignment=mission_align,
+                    return_route=str((mission_align or {}).get("return_route") or "creative"),
                 )
                 if should_request_backing_handoff_rerun(st.session_state):
                     try:

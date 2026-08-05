@@ -92,6 +92,7 @@ class MissionExample:
     insight: ChordCoachInsight
     show_tab: bool
     show_piano: bool
+    concert_key: str = ""
 
 
 def _mission_seed(
@@ -297,31 +298,46 @@ def rebuild_mission_outputs(
     bpm: int,
     mission: str = "",
     song_display_key: str = "",
+    song_concert_key: str = "",
 ) -> dict[str, Any]:
     """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
     motif = sync_motif_midi(dict(motif))
+    spell_ref = str(key_center or song_concert_key or song_display_key or "C")
+    staff_key = str(song_concert_key or key_center or song_display_key or "C")
     try:
-        from harmonic_spelling import apply_motif_chord_spelling, harmonic_reference_for_chord
+        from harmonic_spelling import (
+            apply_motif_chord_spelling,
+            harmonic_reference_for_chord,
+            mission_notation_staff_key,
+        )
 
         spell_ref = harmonic_reference_for_chord(
             chord,
             song_display_key=song_display_key or key_center,
+            song_key_center=song_concert_key or key_center,
         )
-        apply_motif_chord_spelling(motif, chord, song_display_key=song_display_key or key_center)
-        key_center = spell_ref
+        apply_motif_chord_spelling(
+            motif,
+            chord,
+            song_display_key=song_display_key or song_concert_key or key_center,
+        )
+        staff_key = mission_notation_staff_key(
+            song_concert_key=song_concert_key or key_center,
+            song_display_key=song_display_key,
+        )
     except ImportError:
         pass
     family = _instrument_family(instrument)
     abc = build_mission_notation_abc(
-        motif, mission=mission, key_center=key_center, bpm=bpm
+        motif, mission=mission, key_center=staff_key, bpm=bpm
     )
     tab = build_motif_guitar_tab(motif) if family == "guitar" else ""
     piano_html = ""
     if family == "piano":
         piano_html = _piano_keyboard_html(
             list(motif.get("notes") or []),
-            chord_tone_names(chord, reference_key=key_center),
-            reference_key=key_center,
+            chord_tone_names(chord, reference_key=spell_ref),
+            reference_key=spell_ref,
         )
     return {
         "motif": motif,
@@ -339,6 +355,7 @@ def refresh_mission_example(
     *,
     instrument: str | None = None,
     bpm: int | None = None,
+    song_concert_key: str = "",
 ) -> MissionExample:
     """Sync all instrument outputs to the current motif."""
     inst = instrument or example.instrument
@@ -369,6 +386,7 @@ def refresh_mission_example(
         bpm=tempo,
         mission=example.mission,
         song_display_key=example.display_key,
+        song_concert_key=song_concert_key or example.concert_key or example.display_key,
     )
     example.instrument = inst
     example.motif = out["motif"]
@@ -568,6 +586,7 @@ def generate_mission_example(
         bpm=bpm,
         mission=mission,
         song_display_key=improv_ctx.display_key,
+        song_concert_key=improv_ctx.key_center,
     )
     motif = out["motif"]
     family = _instrument_family(instrument)
@@ -589,6 +608,7 @@ def generate_mission_example(
         section=section,
         song_title=improv_ctx.song_title,
         display_key=improv_ctx.display_key,
+        concert_key=improv_ctx.key_center,
         instrument=instrument,
         level=level,
         focus=focus,
@@ -724,6 +744,7 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         section=str(raw.get("section", "")),
         song_title=improv_ctx.song_title,
         display_key=improv_ctx.display_key,
+        concert_key=improv_ctx.key_center,
         instrument=str(session_state.get("instrument", improv_ctx.instrument)),
         level=str(session_state.get("level", improv_ctx.level)),
         focus=str(session_state.get("focus", improv_ctx.focus)),
@@ -744,9 +765,15 @@ def mission_example_for_display(
     *,
     instrument: str,
     bpm: int,
+    song_concert_key: str = "",
 ) -> MissionExample:
     """Always rebuild outputs so sheet music / TAB / piano match the current motif."""
-    return refresh_mission_example(example, instrument=instrument, bpm=bpm)
+    return refresh_mission_example(
+        example,
+        instrument=instrument,
+        bpm=bpm,
+        song_concert_key=song_concert_key,
+    )
 
 
 def store_mission_practice_lick_for_backing(

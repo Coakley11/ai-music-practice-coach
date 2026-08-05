@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 PENDING_BACKING_WORKFLOW_KEY = "_music_pending_backing_workflow_handoff"
 PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY = "_music_pending_backing_workflow_consumed_seq"
+PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY = "_music_pending_backing_workflow_consumed_fp"
 PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY = "_music_pending_backing_workflow_rerun_for_seq"
 
 ConsumePhase = Literal["applied", "skipped", "already_consumed"]
@@ -48,9 +49,12 @@ def queue_pending_backing_workflow_handoff(
     navigation_intent: str = "backing_open",
     with_practice_lick: bool = False,
     navigation_callback: str = "_improv_open_backing",
+    mission_alignment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Queue typed backing activation for the next pre-widget script run."""
     seq = _next_seq(session)
+    align = copy.deepcopy(mission_alignment) if isinstance(mission_alignment, dict) else None
+    align_fp = str((align or {}).get("alignment_fingerprint") or "")
     req = {
         "request_seq": seq,
         "backing_source": str(backing_source or "").strip(),
@@ -58,11 +62,13 @@ def queue_pending_backing_workflow_handoff(
         "activation_source": activation_source,
         "persist_policy": persist_policy,
         "page_route": page_route,
-        "return_route": return_route,
+        "return_route": str(return_route or "creative").strip() or "creative",
         "navigation_intent": navigation_intent,
         "with_practice_lick": bool(with_practice_lick),
         "navigation_callback": navigation_callback,
         "mission_handoff": str(backing_source or "") == "mission",
+        "mission_alignment": align,
+        "alignment_fingerprint": align_fp,
     }
     session[PENDING_BACKING_WORKFLOW_KEY] = req
     session.pop(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY, None)
@@ -143,7 +149,10 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     if not isinstance(pending, dict):
         return "skipped"
     seq = pending.get("request_seq")
-    if seq is not None and session.get(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY) == seq:
+    align_fp = str(pending.get("alignment_fingerprint") or "")
+    consumed = session.get(PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY)
+    consumed_fp = session.get(PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY)
+    if seq is not None and consumed == seq and (not align_fp or consumed_fp == align_fp):
         clear_pending_backing_workflow_handoff(session)
         return "already_consumed"
 
@@ -172,6 +181,15 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
                 return "skipped"
         except ImportError:
             return "skipped"
+
+    alignment = pending.get("mission_alignment")
+    if isinstance(alignment, dict) and str(pending.get("backing_source") or "") == "mission":
+        try:
+            from mission_backing_alignment import apply_pending_mission_backing_alignment
+
+            apply_pending_mission_backing_alignment(session, alignment)
+        except ImportError:
+            pass
 
     try:
         from backing_context import open_backing_from_creative
@@ -226,11 +244,14 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
 
     if seq is not None:
         session[PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY] = seq
+    if align_fp:
+        session[PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY] = align_fp
     clear_pending_backing_workflow_handoff(session)
     return "applied"
 
 
 __all__ = [
+    "PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY",
     "PENDING_BACKING_WORKFLOW_KEY",
     "backing_source_from_workflow_owner",
