@@ -58,7 +58,7 @@ class TestMissionBackingEnvelopeOrchestration(unittest.TestCase):
         )
         st_mock = mock.Mock()
         with mock.patch("music_app_rerun.request_app_rerun", return_value=True):
-            prepare_deferred_mission_backing_handoff(
+            ok = prepare_deferred_mission_backing_handoff(
                 st_mock,
                 session,
                 backing_source="mission",
@@ -66,6 +66,7 @@ class TestMissionBackingEnvelopeOrchestration(unittest.TestCase):
                 with_practice_lick=True,
                 mission_alignment=align,
             )
+        self.assertTrue(ok)
         backing = peek_pending_backing_workflow_handoff(session)
         self.assertIsNotNone(backing)
         assert backing is not None

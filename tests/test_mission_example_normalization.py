@@ -202,8 +202,11 @@ class TestPracticeInJamPreWidgetConsume(unittest.TestCase):
         ) as defer:
             self.assertFalse(apply_mission_backing_click_intent(session, st_module=mock.Mock()))
             defer.assert_not_called()
-        self.assertIsNotNone(peek_mission_backing_click_intent(session))
+        self.assertIsNone(peek_mission_backing_click_intent(session))
         self.assertIn(MISSION_BACKING_EXAMPLE_ERROR_KEY, session)
+        from music_workflow_mission_backing_click import MISSION_BACKING_CLICK_APPLY_FAILURE_KEY
+
+        self.assertIn(MISSION_BACKING_CLICK_APPLY_FAILURE_KEY, session)
         self.assertNotIn(MISSION_PRACTICE_LICK_KEY, session)
 
     def test_plain_mission_backing_without_lick_skips_normalize(self) -> None:

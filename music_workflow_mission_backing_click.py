@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 MISSION_BACKING_CLICK_INTENT_KEY = "_music_mission_backing_click_intent"
+MISSION_BACKING_CLICK_APPLY_FAILURE_KEY = "_music_mission_backing_click_apply_failure"
 
 
 def capture_mission_backing_click_intent(
@@ -31,6 +32,13 @@ def capture_mission_backing_click_intent(
         "concert_key": str(concert_key or ""),
         "display_key": str(display_key or ""),
     }
+    session.pop(MISSION_BACKING_CLICK_APPLY_FAILURE_KEY, None)
+    try:
+        from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
+
+        session.pop(MISSION_BACKING_EXAMPLE_ERROR_KEY, None)
+    except ImportError:
+        pass
     session["improv_mission_backing_handoff"] = True
 
 
@@ -65,6 +73,33 @@ def request_mission_backing_click_rerun(st_module: Any, session: dict[str, Any],
         return False
 
 
+def _record_click_apply_failure(
+    session: dict[str, Any],
+    *,
+    error_code: str,
+    message: str,
+    intent: dict[str, Any],
+) -> bool:
+    try:
+        from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
+    except ImportError:
+        MISSION_BACKING_EXAMPLE_ERROR_KEY = "_music_mission_backing_example_error"  # type: ignore[misc]
+    try:
+        from mission_backing_alignment import MISSION_PENDING_BACKING_ALIGNMENT_KEY
+    except ImportError:
+        MISSION_PENDING_BACKING_ALIGNMENT_KEY = "_mission_pending_backing_alignment"  # type: ignore[misc]
+    session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+    session[MISSION_BACKING_EXAMPLE_ERROR_KEY] = message
+    session[MISSION_BACKING_CLICK_APPLY_FAILURE_KEY] = {
+        "error_code": error_code,
+        "message": message,
+        "with_practice_lick": bool(intent.get("with_practice_lick")),
+        "mission": str(intent.get("mission") or ""),
+        "cur_chord": str(intent.get("cur_chord") or ""),
+    }
+    return False
+
+
 def apply_mission_backing_click_intent(session: dict[str, Any], *, st_module: Any | None = None) -> bool:
     """Expand captured click into alignment + deferred handoff queue (pre-widget or guarded rerun follow-up)."""
     intent = peek_mission_backing_click_intent(session)
@@ -93,14 +128,12 @@ def apply_mission_backing_click_intent(session: dict[str, Any], *, st_module: An
 
             example = session.get(MISSION_EXAMPLE_KEY)
             if example is None:
-                from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
-
-                session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
-                session[MISSION_BACKING_EXAMPLE_ERROR_KEY] = (
-                    "Generate an example on this mission before Practice in Backing Jam."
+                return _record_click_apply_failure(
+                    session,
+                    error_code="MISSION_EXAMPLE_MISSING",
+                    message="Generate an example on this mission before Practice in Backing Jam.",
+                    intent=intent,
                 )
-                session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
-                return False
             stored = store_mission_practice_lick_for_backing(
                 session,
                 example=example,
@@ -116,14 +149,25 @@ def apply_mission_backing_click_intent(session: dict[str, Any], *, st_module: An
                 song_display_key=str(intent.get("display_key") or ""),
             )
             if not stored:
-                session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
-                session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
-                return False
+                try:
+                    from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
+                except ImportError:
+                    MISSION_BACKING_EXAMPLE_ERROR_KEY = "_music_mission_backing_example_error"  # type: ignore[misc]
+                msg = str(session.get(MISSION_BACKING_EXAMPLE_ERROR_KEY) or "Mission example could not be prepared.")
+                return _record_click_apply_failure(
+                    session,
+                    error_code="MISSION_EXAMPLE_NORMALIZE_FAILED",
+                    message=msg,
+                    intent=intent,
+                )
             queue_mission_practice_lick_handoff(session)
         except ImportError:
-            session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
-            session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
-            return False
+            return _record_click_apply_failure(
+                session,
+                error_code="MISSION_BACKING_IMPORT_ERROR",
+                message="Mission backing handoff is unavailable in this build.",
+                intent=intent,
+            )
     try:
         from music_workflow_mission_backing_orchestration import prepare_deferred_mission_backing_handoff
         from music_workflow_pending_backing_handoff import resolve_backing_workflow_owner
@@ -146,6 +190,7 @@ def apply_mission_backing_click_intent(session: dict[str, Any], *, st_module: An
 
 
 __all__ = [
+    "MISSION_BACKING_CLICK_APPLY_FAILURE_KEY",
     "MISSION_BACKING_CLICK_INTENT_KEY",
     "apply_mission_backing_click_intent",
     "capture_mission_backing_click_intent",

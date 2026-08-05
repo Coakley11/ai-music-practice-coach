@@ -134,7 +134,6 @@ def prepare_deferred_mission_backing_handoff(
         from music_workflow_pending_backing_handoff import (
             PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
             queue_pending_backing_workflow_handoff,
-            request_pending_backing_handoff_rerun,
         )
 
         queue_pending_backing_workflow_handoff(
@@ -148,11 +147,17 @@ def prepare_deferred_mission_backing_handoff(
         )
         if env_needed:
             rerun_sent = request_orchestrated_mission_backing_rerun(st_module, session)
-        else:
-            rerun_sent = request_pending_backing_handoff_rerun(st_module, session)
-        if not rerun_sent:
-            session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
-        return rerun_sent
+            if not rerun_sent:
+                session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+            return True
+        try:
+            from music_workflow_pending_backing_handoff import arm_pending_backing_handoff_consume
+
+            arm_pending_backing_handoff_consume(session)
+        except ImportError:
+            pass
+        session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+        return True
     except ImportError:
         return False
 

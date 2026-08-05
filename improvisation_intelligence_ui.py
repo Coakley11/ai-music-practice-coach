@@ -2282,8 +2282,6 @@ def _tab_missions(
 
         from music_workflow_mission_backing_click import (
             capture_mission_backing_click_intent,
-            peek_mission_backing_click_intent,
-            request_mission_backing_click_rerun,
         )
 
         log_widget_callback_enter(widget_key=widget_key, callback=_mission_backing_on_click)
@@ -2324,9 +2322,6 @@ def _tab_missions(
             )
         except ImportError:
             pass
-        intent = peek_mission_backing_click_intent(st.session_state)
-        if intent:
-            request_mission_backing_click_rerun(st, st.session_state, intent)
 
     def _on_plain_mission_backing() -> None:
         _mission_backing_on_click(with_practice_lick=False, widget_key="improv_mission_over_backing")
@@ -2481,6 +2476,22 @@ def _tab_missions(
                 st.markdown(f"- {line}")
 
         st.markdown("---")
+        try:
+            from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
+
+            mission_example_err = str(session_state.get(MISSION_BACKING_EXAMPLE_ERROR_KEY) or "").strip()
+            if mission_example_err:
+                st.error(mission_example_err)
+        except ImportError:
+            mission_example_err = ""
+        try:
+            from music_workflow_pending_backing_handoff import PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY
+
+            handoff_msg = str(session_state.get(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY) or "").strip()
+            if handoff_msg:
+                st.warning(handoff_msg)
+        except ImportError:
+            pass
         practice_in_jam = st.checkbox(
             "Practice this lick in Backing Jam",
             value=True,
