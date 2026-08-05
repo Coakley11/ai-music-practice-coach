@@ -1,13 +1,16 @@
-streamlit>=1.40
-numpy
+streamlit>=1.40,<2
+numpy>=1.26,<3
 pandas
 requests
 openai
-librosa
-soundfile
-scipy
+
+# Audio stack — must match Python 3.12 (.python-version / runtime.txt).
+# Unpinned librosa on unsupported Python (e.g. 3.14) can resolve ancient numba/llvmlite wheels.
+librosa>=0.10.2,<0.12
+soundfile>=0.12.1
+numba>=0.59.1
+llvmlite>=0.42.0
+scipy>=1.11,<2
 imageio-ffmpeg>=0.5.1
 
 supabase>=2.0.0
-
-
