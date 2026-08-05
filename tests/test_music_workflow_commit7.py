@@ -14,10 +14,11 @@ from music_workflow_activation import (
 )
 from music_workflow_canonical_identity import (
     CANONICAL_IDENTITY_CONFLICT,
+    VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT,
     validate_pre_activation_identity,
 )
-from music_workflow_canonical_persistence import note_workflow_persist_performed
-from music_workflow_legacy_projection import _project_session_field
+from music_workflow_canonical_persistence import apply_workflow_state_canonical_slice, note_workflow_persist_performed
+from music_workflow_legacy_projection import _project_session_field, project_active_blob_to_legacy_session
 from music_workflow_mutation import update_active_practice_key
 from music_workflow_persist_lifecycle import (
     WORKFLOW_PERSIST_PENDING_KEY,
@@ -102,12 +103,137 @@ class TestRunScopedRestoreGuard(unittest.TestCase):
         complete_workflow_restore_guard(session)
         self.assertFalse(restore_guard_active(session))
 
-    def test_legacy_projection_blocked_under_guard(self) -> None:
-        session = {"display_key": "G", "concert_key": "G", MUSIC_SCRIPT_RUN_ID_KEY: "run-x"}
+    def test_authoritative_projection_allowed_stale_legacy_blocked(self) -> None:
+        """Guard is direction-aware: blob→legacy F allowed; stale G→session blocked."""
+        session = _session(display_key="G", concert_key="G", **{MUSIC_SCRIPT_RUN_ID_KEY: "run-x"})
+        blob = WorkflowStateBlob(
+            workflow_owner="style_jam",
+            workflow_session_id="Bossa",
+            keys=KeyAuthority(practice_tonic="F", practice_mode="major"),
+        )
+        save_workflow_blob(session, blob, source="t")
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner="style_jam", workflow_session_id="Bossa"),
+            source="t",
+        )
         activate_workflow_restore_guard(session, run_id="run-x")
-        _project_session_field(session, "display_key", "F")
-        self.assertEqual(session.get("display_key"), "G")
-        self.assertTrue(block_legacy_overwrite(session, "display_key", caller="test"))
+        project_active_blob_to_legacy_session(session, blob)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("concert_key"), "F")
+        loaded = get_workflow_blob(session, "style_jam", "Bossa")
+        assert loaded is not None
+        self.assertEqual(loaded.keys.practice_tonic, "F")
+        _project_session_field(session, "display_key", "G", authoritative_projection=False)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertTrue(
+            block_legacy_overwrite(
+                session,
+                "display_key",
+                caller="stale_legacy_adapter",
+                value="G",
+                authoritative_projection=False,
+            )
+        )
+        complete_workflow_restore_guard(session)
+        self.assertFalse(restore_guard_active(session))
+        update_active_practice_key(session, "D", source="on_improv_style_key_change")
+        loaded2 = get_workflow_blob(session, "style_jam", "Bossa")
+        assert loaded2 is not None
+        self.assertEqual(loaded2.keys.practice_tonic, "D")
+
+
+class TestCanonicalRestoreIdentityFailClosed(unittest.TestCase):
+    def test_no_live_pointer_allows_cloud_session_initialize(self) -> None:
+        session = _session()
+        nested = {
+            "schema_version": 2,
+            "saved_workspace_revision": 5,
+            "store": {
+                "schema_version": 1,
+                "blobs": {
+                    "song_based_improvisation|cloud-song": WorkflowStateBlob(
+                        workflow_owner="song_based_improvisation",
+                        workflow_session_id="cloud-song",
+                        keys=KeyAuthority(practice_tonic="F", practice_mode="major"),
+                    ).to_dict(),
+                },
+            },
+            "active_pointer": {
+                "workflow_owner": "song_based_improvisation",
+                "workflow_session_id": "cloud-song",
+                "context_revision": 1,
+            },
+        }
+        apply_workflow_state_canonical_slice(session, nested)
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        self.assertEqual(ptr.workflow_session_id, "cloud-song")
+
+    def test_live_pointer_agrees_allows_canonical_restore(self) -> None:
+        session = _session(active_catalog_pick_key="hevenu")
+        live = WorkflowStateBlob(
+            workflow_owner="mission_jam",
+            workflow_session_id="mission|catalog|hevenu",
+            keys=KeyAuthority(practice_tonic="E", practice_mode="minor"),
+        )
+        save_workflow_blob(session, live, source="t")
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="mission|catalog|hevenu"),
+            source="t",
+        )
+        result = activate_workflow(
+            session,
+            ActivateWorkflowRequest(
+                target_owner="mission_jam",
+                target_session_id="mission|catalog|hevenu",
+                activation_source="canonical_restore",
+            ),
+        )
+        self.assertTrue(result.ok)
+
+    def test_canonical_restore_cannot_bypass_live_session_conflict(self) -> None:
+        session = _session(active_catalog_pick_key="hevenu")
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="mission|catalog|hevenu"),
+            source="t",
+        )
+        result = activate_workflow(
+            session,
+            ActivateWorkflowRequest(
+                target_owner="mission_jam",
+                target_session_id="mission|catalog|other_song",
+                activation_source="canonical_restore",
+            ),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, CANONICAL_IDENTITY_CONFLICT)
+        self.assertIn(
+            VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT,
+            (session.get("_music_workflow_canonical_identity_diag") or {}).get("violations", []),
+        )
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        self.assertEqual(ptr.workflow_session_id, "mission|catalog|hevenu")
+
+    def test_canonical_restore_label_alone_cannot_bypass_owner_conflict(self) -> None:
+        session = _session()
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner="style_jam", workflow_session_id="Bossa"),
+            source="t",
+        )
+        identity = validate_pre_activation_identity(
+            session,
+            target_owner="mission_jam",
+            target_session_id="mission|catalog|hevenu",
+            ptr_before=get_active_workflow_pointer(session),
+            activation_source="canonical_restore",
+        )
+        self.assertFalse(identity.ok)
+        self.assertIn("CANONICAL_RESTORE_LIVE_OWNER_CONFLICT", identity.violations)
 
 
 class TestPersistPendingUntilConfirmed(unittest.TestCase):

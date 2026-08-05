@@ -24,6 +24,25 @@ VIOLATION_LEGACY_OWNER_POINTER_MISMATCH = "LEGACY_OWNER_ACTIVE_POINTER_MISMATCH"
 VIOLATION_PENDING_BACKING_HANDOFF_OWNER_MISMATCH = "PENDING_BACKING_HANDOFF_OWNER_MISMATCH"
 VIOLATION_POINTER_BLOB_OWNER_MISMATCH = "POINTER_BLOB_OWNER_MISMATCH"
 VIOLATION_POINTER_BLOB_SESSION_MISMATCH = "POINTER_BLOB_SESSION_MISMATCH"
+VIOLATION_CANONICAL_RESTORE_LIVE_OWNER_CONFLICT = "CANONICAL_RESTORE_LIVE_OWNER_CONFLICT"
+VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT = "CANONICAL_RESTORE_LIVE_SESSION_CONFLICT"
+
+
+def _live_pointer_binding(ptr: ActiveWorkflowPointer | None) -> bool:
+    if ptr is None:
+        return False
+    return bool(str(ptr.workflow_owner or "").strip()) and bool(str(ptr.workflow_session_id or "").strip())
+
+
+def _should_relax_live_song_session_bind(
+    activation_source: str,
+    ptr_before: ActiveWorkflowPointer | None,
+) -> bool:
+    """Relax song-session binding only when bootstrap/restore has no valid live pointer to contradict cloud."""
+    src = str(activation_source or "").strip()
+    if src not in _ACTIVATION_SOURCES_SKIP_LIVE_SONG_SESSION_BIND:
+        return False
+    return not _live_pointer_binding(ptr_before)
 
 
 @dataclass
@@ -59,7 +78,20 @@ def validate_pre_activation_identity(
     blob_owner = str(target_blob_owner or owner or "").strip()
     blob_sid = str(target_blob_session_id or sid or "").strip()
     src = str(activation_source or "").strip()
-    relax_live_song_bind = src in _ACTIVATION_SOURCES_SKIP_LIVE_SONG_SESSION_BIND
+    relax_live_song_bind = _should_relax_live_song_session_bind(src, ptr_before)
+
+    if src in _ACTIVATION_SOURCES_SKIP_LIVE_SONG_SESSION_BIND and _live_pointer_binding(ptr_before):
+        if owner and ptr_before and ptr_before.workflow_owner and ptr_before.workflow_owner != owner:
+            violations.append(VIOLATION_CANONICAL_RESTORE_LIVE_OWNER_CONFLICT)
+            diag["live_pointer_owner"] = ptr_before.workflow_owner
+        if (
+            sid
+            and ptr_before
+            and ptr_before.workflow_session_id
+            and ptr_before.workflow_session_id != sid
+        ):
+            violations.append(VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT)
+            diag["live_pointer_session_id"] = ptr_before.workflow_session_id
 
     if blob_owner and owner and blob_owner != owner:
         violations.append(VIOLATION_POINTER_BLOB_OWNER_MISMATCH)
@@ -143,11 +175,15 @@ def validate_pre_activation_identity(
 __all__ = [
     "CANONICAL_IDENTITY_CONFLICT",
     "CanonicalIdentityConflictResult",
+    "VIOLATION_CANONICAL_RESTORE_LIVE_OWNER_CONFLICT",
+    "VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT",
     "VIOLATION_LEGACY_OWNER_POINTER_MISMATCH",
     "VIOLATION_MISSION_SESSION_SONG_IDENTITY_MISMATCH",
     "VIOLATION_PENDING_BACKING_HANDOFF_OWNER_MISMATCH",
     "VIOLATION_POINTER_BLOB_OWNER_MISMATCH",
     "VIOLATION_POINTER_BLOB_SESSION_MISMATCH",
     "VIOLATION_SONG_PRACTICE_SESSION_IDENTITY_MISMATCH",
+    "VIOLATION_CANONICAL_RESTORE_LIVE_OWNER_CONFLICT",
+    "VIOLATION_CANONICAL_RESTORE_LIVE_SESSION_CONFLICT",
     "validate_pre_activation_identity",
 ]

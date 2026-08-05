@@ -100,11 +100,23 @@ class RequiresPreWidgetActivation(RuntimeError):
         super().__init__(f"requires_pre_widget_activation:{owner}:{field}")
 
 
-def _project_session_field(session: dict[str, Any], key: str, value: Any) -> None:
+def _project_session_field(
+    session: dict[str, Any],
+    key: str,
+    value: Any,
+    *,
+    authoritative_projection: bool = True,
+) -> None:
     try:
         from music_workflow_restore_guard import block_legacy_overwrite
 
-        if block_legacy_overwrite(session, key, caller="legacy_projection"):
+        if block_legacy_overwrite(
+            session,
+            key,
+            caller="legacy_projection",
+            value=value,
+            authoritative_projection=authoritative_projection,
+        ):
             return
     except ImportError:
         pass
