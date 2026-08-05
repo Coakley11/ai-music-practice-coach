@@ -1161,20 +1161,8 @@ def restore_session_widgets_from_backing_context(
         if ctx.progression:
             chord = str(ctx.progression[0] or "").strip()
             if chord:
-                try:
-                    from music_workflow_mutation import mutate_mission_chord_selection
-
-                    sec = str(ctx.section or "").split("·")[0].strip() if ctx.section else ""
-                    mutate_mission_chord_selection(
-                        session,
-                        chord=chord,
-                        section=sec,
-                        chord_index=0,
-                        chord_label=chord,
-                    )
-                except ImportError:
-                    session["ii_selected_chord"] = chord
-                    session["II_SELECTED_CHORD"] = chord
+                session["ii_selected_chord"] = chord
+                session["II_SELECTED_CHORD"] = chord
         if ctx.section:
             sec = str(ctx.section).split("·")[0].strip()
             if sec:
