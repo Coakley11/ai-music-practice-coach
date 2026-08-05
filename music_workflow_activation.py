@@ -279,6 +279,28 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     trace["incoming_owner"] = target_owner
     trace["incoming_session"] = target_sid
 
+    try:
+        from music_workflow_canonical_identity import validate_pre_activation_identity
+
+        identity = validate_pre_activation_identity(
+            session,
+            target_owner=target_owner,
+            target_session_id=target_sid,
+            ptr_before=ptr_before,
+            activation_source=str(request.activation_source or ""),
+        )
+        trace["canonical_identity"] = identity.diagnostics
+        if not identity.ok:
+            trace["canonical_identity_violations"] = identity.violations
+            return _fail(
+                session,
+                identity.error_code,
+                "Canonical workflow identity conflict — activation aborted with no partial state change.",
+                trace,
+            )
+    except ImportError:
+        pass
+
     if (
         ptr_before
         and ptr_before.workflow_owner == target_owner
@@ -330,10 +352,15 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
             target_blob.workflow_session_id = target_sid
             trace["incoming_blob_built_compat"] = True
         elif target_blob is None and target_owner == "mission_jam":
+            trace["mission_bootstrap_failed"] = True
+            session["WORKFLOW_MISSION_BOOTSTRAP_USER_NOTICE"] = (
+                "This Mission could not be restored from your current song practice state. "
+                "Confirm the active song and practice key, then open Missions again."
+            )
             return _fail(
                 session,
                 "MISSION_BOOTSTRAP_FAILED",
-                "Could not bootstrap mission workflow from song practice state.",
+                str(session["WORKFLOW_MISSION_BOOTSTRAP_USER_NOTICE"]),
                 trace,
             )
         else:
@@ -560,6 +587,12 @@ def activation_user_notice(session: dict[str, Any]) -> str:
     err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
     if isinstance(err, dict) and err.get("message"):
         return str(err["message"])
+    bootstrap = str(session.get("WORKFLOW_MISSION_BOOTSTRAP_USER_NOTICE") or "").strip()
+    if bootstrap:
+        return bootstrap
+    custom = str(session.get("_mission_bootstrap_key_notice") or "").strip()
+    if custom:
+        return custom
     return ""
 
 

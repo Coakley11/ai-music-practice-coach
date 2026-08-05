@@ -102,6 +102,13 @@ class RequiresPreWidgetActivation(RuntimeError):
 
 def _project_session_field(session: dict[str, Any], key: str, value: Any) -> None:
     try:
+        from music_workflow_restore_guard import block_legacy_overwrite
+
+        if block_legacy_overwrite(session, key, caller="legacy_projection"):
+            return
+    except ImportError:
+        pass
+    try:
         from session_widget_safe import WIDGET_BOUND_KEYS, safe_session_assign, widgets_likely_instantiated
     except ImportError:
         session[key] = value

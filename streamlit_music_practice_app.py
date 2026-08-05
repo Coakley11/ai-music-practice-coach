@@ -9780,6 +9780,13 @@ except ImportError:
         pass
 
 _studio_page_for_hydrate = str(st.session_state.get("studio_page") or "practice").strip() or "practice"
+try:
+    from music_workflow_restore_guard import ensure_script_run_scope, expire_stale_workflow_restore_guards
+
+    ensure_script_run_scope(st.session_state, st=st)
+    expire_stale_workflow_restore_guards(st.session_state, st=st)
+except ImportError:
+    pass
 if _studio_page_for_hydrate == "practice":
     try:
         from backing_source_navigation import hydrate_practice_source_for_page

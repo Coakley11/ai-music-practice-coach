@@ -645,6 +645,12 @@ def _reconcile_key_dependent_state(
     session.pop("_mission_exact_backing_armed", None)
     session.pop("improv_mission_backing_handoff", None)
     try:
+        from music_workflow_key_projection_invalidation import invalidate_key_dependent_session_projections
+
+        invalidate_key_dependent_session_projections(session, owner=owner)
+    except ImportError:
+        pass
+    try:
         from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
 
         invalidate_exact_chord_backing_cache(session)

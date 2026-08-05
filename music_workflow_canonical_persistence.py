@@ -68,8 +68,6 @@ def note_workflow_persist_performed(session: dict[str, Any], *, revision: int = 
     s = _persist_stats(session)
     s["workflow_persist_performed"] = int(s.get("workflow_persist_performed") or 0) + 1
     s["persisted_context_revision"] = int(revision or 0)
-    session.pop("_music_workflow_pending_canonical_reason", None)
-    session.pop("_music_workflow_persist_pending", None)
 
 
 def note_workflow_persist_skipped(session: dict[str, Any]) -> None:
@@ -149,6 +147,13 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
         diag["decision"] = "empty_slice"
         return
 
+    try:
+        from music_workflow_restore_guard import activate_workflow_restore_guard
+
+        activate_workflow_restore_guard(session, source="canonical_restore")
+    except ImportError:
+        pass
+
     applied = 0
     for _key, raw in blobs_in.items():
         blob = WorkflowStateBlob.from_dict(raw if isinstance(raw, dict) else None)
@@ -179,7 +184,7 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
             try:
                 from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
 
-                activate_workflow(
+                result = activate_workflow(
                     session,
                     ActivateWorkflowRequest(
                         target_owner=owner,
@@ -188,10 +193,20 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
                         persist_policy="none",
                     ),
                 )
-                try:
-                    from music_workflow_restore_guard import activate_workflow_restore_guard
+                if not result.ok:
+                    diag["decision"] = "activation_blocked"
+                    diag["canonical_restore_decision"] = result.error_code or "activation_failed"
+                    try:
+                        from music_workflow_restore_guard import complete_workflow_restore_guard
 
-                    activate_workflow_restore_guard(session, source="canonical_restore")
+                        complete_workflow_restore_guard(session, reason="canonical_restore_activation_failed")
+                    except ImportError:
+                        pass
+                    return
+                try:
+                    from music_workflow_restore_guard import complete_workflow_restore_guard
+
+                    complete_workflow_restore_guard(session, reason="canonical_restore_activated")
                 except ImportError:
                     pass
                 diag["decision"] = "activated"
@@ -202,6 +217,12 @@ def apply_workflow_state_canonical_slice(session: dict[str, Any], nested: Any) -
             ptr = ActiveWorkflowPointer.from_dict(canon_ptr_raw)
             if ptr:
                 set_active_workflow_pointer(session, ptr, source="canonical_restore")
+                try:
+                    from music_workflow_restore_guard import complete_workflow_restore_guard
+
+                    complete_workflow_restore_guard(session, reason="canonical_restore_pointer_only")
+                except ImportError:
+                    pass
                 diag["decision"] = "pointer_only"
 
 

@@ -92,8 +92,10 @@ def confirm_workflow_persist_after_cloud_save(
     if not saved_cloud:
         pend["persist_error"] = str(error or "cloud_save_failed")[:120]
         pend["persist_cleared_reason"] = "retained_for_retry"
+        pend["persist_confirmed"] = False
         return
 
+    saved_ws = 0
     try:
         from music_workflow_persist_confirmed import extract_workflow_persist_request_from_save_state
         from music_workflow_state_store import record_compat_fallback
@@ -121,9 +123,27 @@ def confirm_workflow_persist_after_cloud_save(
         if sf and pf and sf != pf:
             record_compat_fallback(session, "PERSIST_CONFIRM_FINGERPRINT_MISMATCH", saved_id)
             pend["persist_cleared_reason"] = "fingerprint_mismatch"
+            pend["persist_confirmed"] = False
+            pend["persist_error"] = "fingerprint_mismatch"
+            return
+        saved_ws = 0
+        if isinstance(save_state, dict):
+            saved_ws = int(
+                save_state.get("workspace_revision")
+                or save_state.get("logical_revision")
+                or save_state.get("suite_workspace_revision")
+                or 0
+            )
+        expected_ws = int(pend.get("expected_workspace_base_revision") or 0)
+        if expected_ws and saved_ws and saved_ws < expected_ws:
+            record_compat_fallback(session, "PERSIST_CONFIRM_WORKSPACE_REVISION_REGRESSION", str(saved_ws))
+            pend["persist_cleared_reason"] = "workspace_revision_regression"
+            pend["persist_confirmed"] = False
+            pend["persist_error"] = "cas_workspace_revision_regression"
             return
     except ImportError:
         saved_req = pend
+        saved_ws = 0
 
     pend["persist_confirmed"] = True
     pend["persist_cleared_reason"] = "cloud_save_matched"
@@ -143,7 +163,7 @@ def confirm_workflow_persist_after_cloud_save(
             session_id=str(cleared.get("persist_requested_session_id") or ""),
             context_revision=int(cleared.get("persist_requested_revision") or 0),
             material_fingerprint=str(cleared.get("persist_requested_fingerprint") or ""),
-            workspace_revision=ws_rev,
+            workspace_revision=int(saved_ws or ws_rev),
             reason=str(cleared.get("persist_reason") or ""),
         )
         from music_workflow_canonical_persistence import note_workflow_persist_performed
