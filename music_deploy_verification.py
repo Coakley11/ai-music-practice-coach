@@ -270,6 +270,11 @@ def scan_mission_backing_handoff_in_source() -> dict[str, Any]:
     except Exception as exc:
         return {"present": True, "error": str(exc), "path": "", "findings": ["import_failed"]}
     body = _extract_function_body(text, "_open_mission_backing")
+    if not body:
+        tab_body = _extract_function_body(text, "_tab_missions")
+        match = re.search(r"def _open_mission_backing\(", tab_body)
+        if match:
+            body = _extract_function_body(tab_body[match.start() :], "_open_mission_backing")
     findings: list[str] = []
     if body and re.search(r"ensure_mission_handoff_aligned\s*\(", body):
         findings.append("mutable_ensure_mission_handoff_aligned_in_open_mission_backing")
@@ -307,6 +312,11 @@ def function_source_verification() -> list[dict[str, Any]]:
             path = Path(row["path"])
             text = path.read_text(encoding="utf-8") if path.is_file() else ""
             body = _extract_function_body(text, func_name)
+            if not body and func_name == "_open_mission_backing":
+                tab_body = _extract_function_body(text, "_tab_missions")
+                match = re.search(r"def _open_mission_backing\(", tab_body)
+                if match:
+                    body = _extract_function_body(tab_body[match.start() :], "_open_mission_backing")
             row["line"] = inspect.getsourcelines(getattr(mod, func_name))[1] if hasattr(mod, func_name) else None
             row["source_hash"] = hashlib.sha256(body.encode()).hexdigest()[:12] if body else ""
             if func_name == "_open_mission_backing":
