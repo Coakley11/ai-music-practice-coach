@@ -12,6 +12,7 @@ from music_workflow_pending_backing_handoff import (
     PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY,
     PENDING_BACKING_WORKFLOW_KEY,
     PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY,
+    arm_pending_backing_handoff_consume,
     consume_pending_backing_workflow_handoff,
     peek_pending_backing_workflow_handoff,
     queue_pending_backing_workflow_handoff,
@@ -141,6 +142,7 @@ class TestMissionBackingPreWidgetActivation(unittest.TestCase):
             backing_source="mission",
             workflow_owner="mission_jam",
         )
+        arm_pending_backing_handoff_consume(session)
         seq = session[PENDING_BACKING_WORKFLOW_KEY]["request_seq"]
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             activate.return_value = mock.Mock(ok=True, trace={})

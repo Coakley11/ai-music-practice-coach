@@ -16,6 +16,7 @@ from music_workflow_legacy_projection import RequiresPreWidgetActivation, projec
 from music_workflow_mutation import _restore_legacy_snapshot, commit_staged_workflow
 from music_workflow_pending_backing_handoff import (
     PENDING_BACKING_WORKFLOW_KEY,
+    arm_pending_backing_handoff_consume,
     consume_pending_backing_workflow_handoff,
     queue_pending_backing_workflow_handoff,
 )
@@ -138,6 +139,7 @@ class TestMissionBackingAlignmentAndRollback(unittest.TestCase):
             workflow_owner="mission_jam",
             mission_alignment=align,
         )
+        arm_pending_backing_handoff_consume(session)
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             activate.return_value = mock.Mock(ok=True, trace={})
             with mock.patch("mission_backing_alignment.apply_pending_mission_backing_alignment") as apply_align:

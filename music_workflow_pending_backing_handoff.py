@@ -14,6 +14,7 @@ PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY = "_music_pending_backing_workflow_c
 PENDING_BACKING_WORKFLOW_RERUN_SEQ_KEY = "_music_pending_backing_workflow_rerun_for_seq"
 PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY = "_music_pending_backing_workflow_rerun_diag"
 PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY = "_music_pending_backing_handoff_user_message"
+PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY = "_music_pending_backing_workflow_consume_armed_seq"
 
 ConsumePhase = Literal["applied", "skipped", "already_consumed"]
 
@@ -52,6 +53,43 @@ def peek_pending_backing_workflow_handoff(session: dict[str, Any]) -> dict[str, 
 
 def clear_pending_backing_workflow_handoff(session: dict[str, Any]) -> None:
     session.pop(PENDING_BACKING_WORKFLOW_KEY, None)
+    session.pop(PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY, None)
+
+
+def clear_stale_backing_handoff_for_mission_example_generate(session: dict[str, Any]) -> None:
+    """Mission example generation must never replay a queued backing navigation."""
+    had = peek_pending_backing_workflow_handoff(session) is not None
+    clear_pending_backing_workflow_handoff(session)
+    session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+    try:
+        from mission_backing_alignment import MISSION_PENDING_BACKING_ALIGNMENT_KEY
+    except ImportError:
+        MISSION_PENDING_BACKING_ALIGNMENT_KEY = "_mission_pending_backing_alignment"  # type: ignore[misc]
+    session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+    session.pop("improv_mission_backing_handoff", None)
+    session.pop("_mission_backing_click_must_defer", None)
+    if str(session.get("studio_page") or "").strip().lower() == "backing":
+        try:
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(session, "creative")
+        except ImportError:
+            session["studio_page"] = "creative"
+    try:
+        from creative_tab_tool_persistence import persist_improv_intelligence_tab
+
+        session["improv_intelligence_tab"] = "Missions"
+        persist_improv_intelligence_tab(session)
+    except ImportError:
+        session["improv_intelligence_tab"] = "Missions"
+    if had:
+        try:
+            from music_workflow_state_store import record_compat_fallback
+
+            record_compat_fallback(session, "STALE_BACKING_HANDOFF_CLEARED_FOR_MISSION_EXAMPLE", "generate")
+        except ImportError:
+            pass
+        session["_music_mission_example_backing_handoff_cleared"] = True
 
 
 def _consume_token(pending: dict[str, Any]) -> str:
@@ -202,6 +240,8 @@ def request_pending_backing_handoff_rerun(st_module: Any, session: dict[str, Any
             "Backing handoff is queued but navigation was paused to prevent a rerun loop. "
             "Refresh the page to continue, or try again."
         )
+    else:
+        session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = seq
     return rerun_sent
 
 
@@ -220,6 +260,15 @@ def backing_source_from_workflow_owner(owner: str) -> str:
     if o in {"style_jam", "jam_session_generator", "entry_jam"}:
         return "entry_jam"
     return "entry_jam"
+
+
+def arm_pending_backing_handoff_consume(session: dict[str, Any]) -> bool:
+    """Mark the current pending handoff as eligible for pre-widget consume (after guarded rerun)."""
+    pending = peek_pending_backing_workflow_handoff(session)
+    if not pending:
+        return False
+    session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = pending.get("request_seq")
+    return True
 
 
 def resolve_backing_workflow_owner(session: dict[str, Any], *, backing_source: str) -> str:
@@ -262,6 +311,21 @@ def _owner_already_active(session: dict[str, Any], owner: str) -> bool:
 
 def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any | None = None) -> ConsumePhase:
     """Apply queued workflow activation + backing navigation once, before widgets."""
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_FRESH_RUN_KEY
+
+        if session.get(MISSION_EXAMPLE_FRESH_RUN_KEY):
+            clear_stale_backing_handoff_for_mission_example_generate(session)
+            try:
+                from music_mission_backing_handoff_trace import log_consume
+
+                log_consume(session, phase="skipped", detail={"reason": "mission_example_fresh_run"})
+            except ImportError:
+                pass
+            return "skipped"
+    except ImportError:
+        pass
+
     pending = session.get(PENDING_BACKING_WORKFLOW_KEY)
     if not isinstance(pending, dict):
         try:
@@ -291,6 +355,28 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     source = str(pending.get("backing_source") or "").strip()
     if not owner or not source:
         clear_pending_backing_workflow_handoff(session)
+        return "skipped"
+
+    armed_seq = session.get(PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY)
+    req_seq = pending.get("request_seq")
+    if armed_seq is None or req_seq is None or int(armed_seq) != int(req_seq):
+        try:
+            from music_workflow_state_store import record_compat_fallback
+
+            record_compat_fallback(session, "STALE_PENDING_BACKING_NOT_CONSUME_ARMED", str(req_seq))
+        except ImportError:
+            pass
+        clear_pending_backing_workflow_handoff(session)
+        try:
+            from music_mission_backing_handoff_trace import log_consume
+
+            log_consume(
+                session,
+                phase="skipped",
+                detail={"reason": "not_consume_armed", "request_seq": req_seq, "armed_seq": armed_seq},
+            )
+        except ImportError:
+            pass
         return "skipped"
 
     with_lick = bool(pending.get("with_practice_lick"))
@@ -448,6 +534,7 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     if align_fp:
         session[PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY] = align_fp
     session[PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY] = token
+    session.pop(PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY, None)
     clear_pending_backing_workflow_handoff(session)
     try:
         from music_mission_backing_handoff_trace import log_consume
@@ -467,15 +554,19 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
 
 
 __all__ = [
+    "PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY",
     "PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_FP_KEY",
     "PENDING_BACKING_WORKFLOW_CONSUMED_SEQ_KEY",
     "PENDING_BACKING_WORKFLOW_KEY",
     "PENDING_BACKING_WORKFLOW_RERUN_DIAG_KEY",
+    "arm_pending_backing_handoff_consume",
     "backing_source_from_workflow_owner",
     "backing_workflow_owner_is_active",
     "build_backing_handoff_rerun_fingerprint",
+    "clear_pending_backing_workflow_handoff",
+    "clear_stale_backing_handoff_for_mission_example_generate",
     "consume_pending_backing_workflow_handoff",
     "mission_backing_click_must_defer",
     "peek_pending_backing_workflow_handoff",

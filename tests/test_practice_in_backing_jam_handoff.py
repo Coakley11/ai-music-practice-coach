@@ -11,6 +11,7 @@ from music_workflow_pending_backing_handoff import (
     PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY,
     PENDING_BACKING_WORKFLOW_KEY,
     consume_pending_backing_workflow_handoff,
+    arm_pending_backing_handoff_consume,
     queue_pending_backing_workflow_handoff,
     request_pending_backing_handoff_rerun,
     should_request_backing_handoff_rerun,
@@ -96,6 +97,7 @@ class TestPracticeInBackingJamHandoff(unittest.TestCase):
             with_practice_lick=True,
             mission_alignment=align,
         )
+        arm_pending_backing_handoff_consume(session)
         token = session[PENDING_BACKING_WORKFLOW_KEY]["consume_token"]
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             activate.return_value = mock.Mock(ok=True, trace={})
@@ -130,6 +132,7 @@ class TestPracticeInBackingJamHandoff(unittest.TestCase):
             with_practice_lick=True,
             mission_alignment=align,
         )
+        arm_pending_backing_handoff_consume(session)
         with mock.patch("studio_nav_history.navigate_studio_page", side_effect=_nav):
             with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
                 activate.return_value = mock.Mock(ok=True, trace={})

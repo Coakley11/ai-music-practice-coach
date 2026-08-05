@@ -13,6 +13,7 @@ from mission_return_destination import (
 )
 from music_workflow_pending_backing_handoff import (
     consume_pending_backing_workflow_handoff,
+    arm_pending_backing_handoff_consume,
     queue_pending_backing_workflow_handoff,
 )
 from music_workflow_pending_mission_return import (
@@ -44,6 +45,7 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
             with_practice_lick=True,
             mission_alignment=align,
         )
+        arm_pending_backing_handoff_consume(session)
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             activate.return_value = mock.Mock(ok=True, trace={})
             with mock.patch("mission_backing_alignment.apply_pending_mission_backing_alignment", return_value=True):

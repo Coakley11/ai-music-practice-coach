@@ -1724,6 +1724,12 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
 
 
 def _run_mission_example_generate(session_state: dict, variant: str) -> None:
+    try:
+        from music_workflow_pending_backing_handoff import clear_stale_backing_handoff_for_mission_example_generate
+
+        clear_stale_backing_handoff_for_mission_example_generate(session_state)
+    except ImportError:
+        pass
     from improvisation_motif import flatten_section_map, resolve_improv_sections
     from improvisation_missions import (
         generate_mission_example,

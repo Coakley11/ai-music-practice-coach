@@ -12255,13 +12255,36 @@ elif _studio_page == "picker":
 elif _studio_page == "backing":
 
     try:
-        from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+        from music_workflow_backing_mixed_context_guard import (
+            evaluate_backing_mixed_mission_catalog_context,
+            remediate_mixed_backing_mission_catalog_context,
+        )
 
-        route_perf_begin(st.session_state, "studio.backing", st_module=st)
+        _mixed_backing = evaluate_backing_mixed_mission_catalog_context(st.session_state)
+        if _mixed_backing.blocked:
+            remediate_mixed_backing_mission_catalog_context(st.session_state)
+            st.error(_mixed_backing.message)
+            try:
+                from suite_workspace import is_developer_mode_enabled
+
+                if is_developer_mode_enabled(st=st):
+                    st.warning(f"DEV: {_mixed_backing.code} · {_mixed_backing.diagnostics}")
+            except ImportError:
+                pass
+            _studio_page = str(st.session_state.get("studio_page") or "creative")
+            st.stop()
     except ImportError:
-        route_perf_begin = route_perf_end = render_route_baseline_caption = None  # type: ignore[assignment,misc]
+        pass
 
-    ensure_page_initialized(st.session_state, "backing")
+    if _studio_page == "backing":
+        try:
+            from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
+
+            route_perf_begin(st.session_state, "studio.backing", st_module=st)
+        except ImportError:
+            route_perf_begin = route_perf_end = render_route_baseline_caption = None  # type: ignore[assignment,misc]
+
+        ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     try:
         from backing_source_navigation import hydrate_backing_source_for_page
