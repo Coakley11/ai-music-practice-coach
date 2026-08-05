@@ -1,5 +1,14 @@
 # VERSION: v49_global_transpose_key
 
+import sys
+
+try:
+    from music_deploy_verification import emit_deploy_startup_log
+
+    emit_deploy_startup_log()
+except Exception:
+    pass
+
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd

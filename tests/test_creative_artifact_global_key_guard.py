@@ -151,6 +151,21 @@ class TestCreativeArtifactGlobalKeyGuard(unittest.TestCase):
         )
         self.assertEqual(canonical_global_key_snapshot(ss).get("display_key"), "Cm")
 
+    def test_handoff_arm_does_not_mutate_display_key_when_widgets_locked(self) -> None:
+        ss = self._session_cm_with_stale_dm()
+        ss["_streamlit_widgets_locked_this_run"] = True
+        begin_mission_backing_handoff(
+            ss,
+            navigation_callback="_open_mission_backing",
+            with_practice_lick=True,
+        )
+        arm_mission_backing_handoff_page_change(ss)
+        self.assertEqual(ss.get("display_key"), "Dm")
+        self.assertEqual(
+            (ss.get("_creative_artifact_frozen_global_snapshot") or {}).get("display_key"),
+            "Cm",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

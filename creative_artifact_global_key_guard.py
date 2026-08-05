@@ -209,6 +209,14 @@ def freeze_global_keys_for_creative_artifact_save(
                 save_reason=save_reason,
                 reverted=False,
             )
+            # Never mutate widget-bound global keys mid-run — payload overlay uses frozen snapshot.
+            try:
+                from session_widget_safe import WIDGET_BOUND_KEYS, widgets_likely_instantiated
+            except ImportError:
+                WIDGET_BOUND_KEYS = frozenset({"display_key"})
+                widgets_likely_instantiated = lambda _s: bool(_s.get("_streamlit_widgets_locked_this_run"))  # type: ignore[assignment,misc]
+            if field in WIDGET_BOUND_KEYS or widgets_likely_instantiated(session):
+                continue
     d["session_keys_after_freeze"] = {
         f: str(session.get(f) or "").strip() or None for f in GLOBAL_KEY_GUARD_FIELDS
     }

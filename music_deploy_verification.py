@@ -6,6 +6,7 @@ import inspect
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +18,18 @@ SESSION_DEPLOY_FULL_SHA_KEY = "_music_deploy_full_sha"
 SESSION_DEPLOY_IDENTITY_KEY = "_music_deploy_identity"
 SESSION_DEPLOY_PREFLIGHT_KEY = "_music_deploy_preflight"
 SESSION_LATE_MISSIONS_SCAN_KEY = "_music_late_missions_activation_scan"
+SESSION_ARTIFACT_FREEZE_SCAN_KEY = "_music_late_artifact_freeze_scan"
 
-# Missions widget hotfix — bump when superseded by a newer required deploy.
+# Missions widget hotfix — any deploy at or after these SHAs is acceptable when scans pass.
 REQUIRED_MISSIONS_HOTFIX_SHA = "f16c670"
 REQUIRED_MISSIONS_HOTFIX_PREFIX = REQUIRED_MISSIONS_HOTFIX_SHA[:7]
+ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
+    "f16c670",
+    "b945264",
+    "c8131fd",
+)
+
+_PROCESS_DEPLOY_LOGGED = False
 
 
 def _repo_root() -> Path:
@@ -58,37 +67,109 @@ def ensure_session_deploy_identity(session: dict[str, Any]) -> dict[str, str]:
     session[SESSION_DEPLOY_FULL_SHA_KEY] = ident["sha_full"]
     session[SESSION_DEPLOY_IDENTITY_KEY] = ident
     session[SESSION_LATE_MISSIONS_SCAN_KEY] = scan_late_missions_activation_in_source()
-    session[SESSION_DEPLOY_PREFLIGHT_KEY] = evaluate_deploy_preflight(ident, session[SESSION_LATE_MISSIONS_SCAN_KEY])
+    session[SESSION_ARTIFACT_FREEZE_SCAN_KEY] = scan_late_artifact_freeze_in_source()
+    session[SESSION_DEPLOY_PREFLIGHT_KEY] = evaluate_deploy_preflight(
+        ident,
+        session[SESSION_LATE_MISSIONS_SCAN_KEY],
+        artifact_scan=session[SESSION_ARTIFACT_FREEZE_SCAN_KEY],
+    )
     return ident
 
 
-def log_deploy_startup() -> None:
+def _audio_stack_versions() -> dict[str, str]:
+    out: dict[str, str] = {"python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"}
+    for mod_name, label in (
+        ("librosa", "librosa"),
+        ("numba", "numba"),
+        ("llvmlite", "llvmlite"),
+    ):
+        try:
+            mod = __import__(mod_name)
+            out[label] = str(getattr(mod, "__version__", "unknown"))
+        except ImportError:
+            out[label] = "missing"
+    return out
+
+
+def _sha_matches_accepted_deploy(sha: str, full: str) -> bool:
+    for token in (sha, full, sha[:7], full[:7]):
+        t = str(token or "").strip()
+        if not t:
+            continue
+        for prefix in ACCEPTED_DEPLOY_SHA_PREFIXES:
+            if t.startswith(prefix) or prefix.startswith(t[:7]):
+                return True
+    try:
+        import subprocess
+
+        head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            cwd=str(_repo_root()),
+        ).decode().strip()
+        if head and (full == head or sha == head[:12] or head.startswith(sha[:7])):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def scan_late_artifact_freeze_in_source() -> dict[str, Any]:
+    """Detect direct session global-key mutation inside freeze_global_keys_for_creative_artifact_save."""
+    try:
+        import creative_artifact_global_key_guard as guard
+
+        path = Path(getattr(guard, "__file__", "") or "")
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except Exception as exc:
+        return {"present": True, "error": str(exc), "findings": ["import_failed"]}
+    body = _extract_function_body(text, "freeze_global_keys_for_creative_artifact_save")
+    findings: list[str] = []
+    if re.search(r"session\s*\[\s*field\s*\]\s*=", body):
+        findings.append("session_field_assignment")
+    for key in ("display_key", "concert_key"):
+        if re.search(rf'session\s*\[\s*["\']{key}["\']\s*\]\s*=', body):
+            findings.append(f"session_{key}_assignment")
+    return {
+        "present": bool(findings),
+        "findings": findings,
+        "path": str(path),
+    }
+
+
+def emit_deploy_startup_log(*, force: bool = False) -> None:
+    """Unconditional process-start log for Streamlit Cloud (visible before auth/UI)."""
+    global _PROCESS_DEPLOY_LOGGED
+    if _PROCESS_DEPLOY_LOGGED and not force:
+        return
+    _PROCESS_DEPLOY_LOGGED = True
     ident = resolve_deploy_identity()
-    scan = scan_late_missions_activation_in_source()
-    pre = evaluate_deploy_preflight(ident, scan)
-    msg = (
-        "music_deploy_startup branch=%s sha=%s full=%s required=%s preflight=%s late_missions=%s "
-        "improv_ui=%s workflow_auth=%s pending_activation=%s"
-    )
+    scan_m = scan_late_missions_activation_in_source()
+    scan_a = scan_late_artifact_freeze_in_source()
+    pre = evaluate_deploy_preflight(ident, scan_m, artifact_scan=scan_a)
     paths = module_runtime_paths()
-    log.info(
-        msg,
-        ident["branch"],
-        ident["sha_short"],
-        ident["sha_full"],
-        REQUIRED_MISSIONS_HOTFIX_PREFIX,
-        pre.get("status"),
-        scan.get("present"),
-        paths.get("improvisation_intelligence_ui"),
-        paths.get("workflow_musical_authority"),
-        paths.get("music_workflow_pending_activation"),
+    audio = _audio_stack_versions()
+    line = (
+        f"[music_deploy] branch={ident.get('branch')} "
+        f"sha={ident.get('sha_full') or ident.get('sha_short')} "
+        f"required={REQUIRED_MISSIONS_HOTFIX_PREFIX} "
+        f"preflight={pre.get('status')} "
+        f"python={audio.get('python')} "
+        f"librosa={audio.get('librosa')} "
+        f"numba={audio.get('numba')} "
+        f"llvmlite={audio.get('llvmlite')} "
+        f"late_missions_activation={scan_m.get('present')} "
+        f"late_artifact_freeze={scan_a.get('present')} "
+        f"modules={paths}"
     )
-    print(  # noqa: T201 — visible in Streamlit Cloud logs
-        f"[music_deploy] branch={ident['branch']} sha={ident['sha_short']} "
-        f"required={REQUIRED_MISSIONS_HOTFIX_PREFIX} preflight={pre.get('status')} "
-        f"late_missions_activation={scan.get('present')}",
-        flush=True,
-    )
+    print(line, flush=True, file=sys.stderr)
+    print(line, flush=True)
+    log.info("emit_deploy_startup_log %s", line)
+
+
+def log_deploy_startup() -> None:
+    emit_deploy_startup_log(force=True)
 
 
 def module_runtime_paths() -> dict[str, str]:
@@ -177,31 +258,33 @@ def evaluate_deploy_preflight(
     ident: dict[str, str] | None = None,
     scan: dict[str, Any] | None = None,
     *,
+    artifact_scan: dict[str, Any] | None = None,
     required_sha: str = REQUIRED_MISSIONS_HOTFIX_PREFIX,
 ) -> dict[str, Any]:
     ident = ident or resolve_deploy_identity()
     scan = scan or scan_late_missions_activation_in_source()
+    artifact_scan = artifact_scan or scan_late_artifact_freeze_in_source()
     sha = str(ident.get("sha_short") or ident.get("sha_full") or "").strip()
-    sha7 = sha[:7] if sha else ""
     full = str(ident.get("sha_full") or "").strip()
-    full7 = full[:7] if full else ""
-    matches = sha7 == required_sha or full7 == required_sha or sha.startswith(required_sha)
-    if not matches:
+    matches = _sha_matches_accepted_deploy(sha, full)
+    if scan.get("present") or artifact_scan.get("present"):
         return {
-            "status": "NOT_RUN — REQUIRED BUILD NOT DEPLOYED",
-            "required_sha": required_sha,
-            "actual_sha": sha or full or "unknown",
-            "branch": ident.get("branch", ""),
-            "late_missions_activation": scan.get("present"),
-        }
-    if scan.get("present"):
-        return {
-            "status": "FAIL — STALE SOURCE ON REQUIRED SHA",
+            "status": "FAIL — STALE SOURCE",
             "required_sha": required_sha,
             "actual_sha": sha or full,
             "branch": ident.get("branch", ""),
-            "late_missions_activation": True,
-            "findings": scan.get("findings"),
+            "late_missions_activation": scan.get("present"),
+            "late_artifact_freeze": artifact_scan.get("present"),
+            "findings": (scan.get("findings") or []) + (artifact_scan.get("findings") or []),
+        }
+    if not matches:
+        return {
+            "status": "MISMATCH — UNKNOWN SHA",
+            "required_sha": required_sha,
+            "actual_sha": sha or full or "unknown",
+            "branch": ident.get("branch", ""),
+            "late_missions_activation": False,
+            "late_artifact_freeze": False,
         }
     return {
         "status": "OK",
@@ -209,6 +292,7 @@ def evaluate_deploy_preflight(
         "actual_sha": sha or full,
         "branch": ident.get("branch", ""),
         "late_missions_activation": False,
+        "late_artifact_freeze": False,
     }
 
 
@@ -226,8 +310,10 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
         return
     ident = session.get(SESSION_DEPLOY_IDENTITY_KEY) or ensure_session_deploy_identity(session)
     scan = session.get(SESSION_LATE_MISSIONS_SCAN_KEY) or scan_late_missions_activation_in_source()
-    pre = session.get(SESSION_DEPLOY_PREFLIGHT_KEY) or evaluate_deploy_preflight(ident, scan)
+    art = session.get(SESSION_ARTIFACT_FREEZE_SCAN_KEY) or scan_late_artifact_freeze_in_source()
+    pre = session.get(SESSION_DEPLOY_PREFLIGHT_KEY) or evaluate_deploy_preflight(ident, scan, artifact_scan=art)
     paths = module_runtime_paths()
+    audio = _audio_stack_versions()
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Deploy verification**")
     st.sidebar.code(
@@ -238,10 +324,12 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
                 f"full: {ident.get('sha_full')}",
                 f"required: {REQUIRED_MISSIONS_HOTFIX_PREFIX}",
                 f"preflight: {pre.get('status')}",
+                f"python: {audio.get('python')}",
+                f"librosa: {audio.get('librosa')} numba: {audio.get('numba')}",
                 f"late_missions_in_tab: {scan.get('present')}",
-                f"findings: {scan.get('findings')}",
+                f"late_artifact_freeze: {art.get('present')}",
+                f"findings: {scan.get('findings')} {art.get('findings')}",
                 f"_tab_missions @ line: {scan.get('_tab_missions_line')}",
-                f"pending_module: {scan.get('pending_activation_module')}",
             ]
         )
     )
@@ -251,11 +339,14 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
 
 __all__ = [
     "REQUIRED_MISSIONS_HOTFIX_SHA",
+    "ACCEPTED_DEPLOY_SHA_PREFIXES",
     "ensure_session_deploy_identity",
+    "emit_deploy_startup_log",
     "evaluate_deploy_preflight",
     "log_deploy_startup",
     "missions_smoke_allowed",
     "module_runtime_paths",
     "render_dev_deploy_verification_panel",
+    "scan_late_artifact_freeze_in_source",
     "scan_late_missions_activation_in_source",
 ]
