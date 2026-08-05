@@ -167,13 +167,13 @@ def render_workspace_hydration_wait_or_stop(
                 pass
         st_module.info("Restoring your saved workspace…")
         try:
-            from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+            from music_app_rerun import request_app_rerun
 
-            if not safe_rerun(
+            if not request_app_rerun(
                 st_module,
                 ss,
                 reason="workspace_hydration_wait",
-                fingerprint=build_route_restore_fingerprint(ss, reason="hydration_wait"),
+                stage="hydration_wait",
             ):
                 ss.pop(HYDRATION_UI_WAIT_ATTEMPTS_KEY, None)
                 st_module.warning(

@@ -57,8 +57,6 @@ def build_route_restore_fingerprint(
         "hydrated_take": session.get("_pending_upload_hydrated_take_id"),
         "route_applied_take": session.get("_pending_upload_route_applied_take_id"),
         "suite_sid": str(session.get("_suite_browser_session_id") or "")[:12],
-        "hydration_wait_attempts": session.get("_music_hydration_ui_wait_attempts"),
-        "chart_recovery_attempts": session.get("_chart_bundle_recovery_attempts"),
         "workflow_owner": str(
             session.get("music_workflow_owner")
             or session.get("_music_workflow_owner")

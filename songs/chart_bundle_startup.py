@@ -9,6 +9,43 @@ CHART_BUNDLE_RECOVERY_MAX = 2
 CHART_BUNDLE_RECOVERY_DIAG_KEY = "_chart_bundle_recovery_diag"
 CHART_BUNDLE_RECOVERY_STOP_REASON_KEY = "_chart_bundle_recovery_stop_reason"
 
+# Pages that must reach RUN_COMPLETED without a catalog chart bundle.
+CHART_BUNDLE_EXEMPT_STUDIO_PAGES = frozenset(
+    {
+        "analysis",
+        "openai",
+        "picker",
+        "multitrack",
+        "composition",
+    }
+)
+
+
+def studio_page_exempt_from_chart_bundle(studio_page: str) -> bool:
+    return str(studio_page or "").strip().lower() in CHART_BUNDLE_EXEMPT_STUDIO_PAGES
+
+
+def minimal_chart_bundle_stub(
+    *,
+    genre: str = "",
+    song: str = "",
+    song_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    data = dict(song_data or {})
+    key = str(data.get("key") or "C").strip() or "C"
+    return {
+        "genre": genre or str(data.get("genre") or "Pop"),
+        "song": song or str(data.get("title") or ""),
+        "song_data": data,
+        "original_key": key,
+        "level_source_sections": dict(data.get("sections") or {}),
+        "sections": dict(data.get("sections") or {}),
+        "default_bpm": int(data.get("bpm") or 120),
+        "default_groove": str(data.get("groove") or "Pop Rock"),
+        "cpl_active": None,
+        "chart_bundle_exempt": True,
+    }
+
 
 def clear_chart_bundle_recovery_state(session_state: dict[str, Any]) -> None:
     session_state.pop(CHART_BUNDLE_RECOVERY_ATTEMPTS_KEY, None)

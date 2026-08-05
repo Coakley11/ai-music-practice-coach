@@ -47,11 +47,25 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
+    from music_run_lifecycle import begin_script_run_lifecycle, enter_run_phase
+
+    begin_script_run_lifecycle(st.session_state, st=st)
+    enter_run_phase(st.session_state, "deploy_verification")
+except ImportError:
+    pass
+
+try:
     from music_deploy_verification import ensure_session_deploy_identity, log_deploy_startup
 
     ensure_session_deploy_identity(st.session_state)
     if int(st.session_state.get("_script_run_seq") or 0) <= 1:
         log_deploy_startup()
+except ImportError:
+    pass
+try:
+    from music_run_lifecycle import exit_run_phase
+
+    exit_run_phase(st.session_state, "deploy_verification")
 except ImportError:
     pass
 
@@ -110,7 +124,17 @@ except Exception:
 try:
     from suite_app_shell import apply_suite_auth_gate
 
+    try:
+        from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+        enter_run_phase(st.session_state, "authentication")
+    except ImportError:
+        pass
     apply_suite_auth_gate(st)
+    try:
+        exit_run_phase(st.session_state, "authentication")
+    except ImportError:
+        pass
 except Exception:
     pass
 
@@ -9559,6 +9583,18 @@ try:
 except ImportError:
     pass
 try:
+    from music_availability_watchdog import check_startup_watchdog
+
+    check_startup_watchdog(st.session_state, st=st)
+except ImportError:
+    pass
+try:
+    from music_run_lifecycle import render_run_lifecycle_dev_caption
+
+    render_run_lifecycle_dev_caption(st, st.session_state)
+except ImportError:
+    pass
+try:
     from local_nav_trace import record_local_nav_checkpoint
 
     record_local_nav_checkpoint(st, "post_transition")
@@ -9568,7 +9604,12 @@ note_page_visit(st.session_state, _studio_page)
 
 if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")
-    st.rerun()
+    try:
+        from music_app_rerun import request_app_rerun
+
+        request_app_rerun(st, st.session_state, reason="openai_missing_key", stage="bootstrap")
+    except ImportError:
+        st.rerun()
 
 if not st.session_state.get("_music_sidebar_suite_top_css"):
     st.session_state["_music_sidebar_suite_top_css"] = True
@@ -9715,15 +9756,13 @@ elif _studio_page_for_hydrate == "creative":
         _pre_wf = ensure_creative_tab_workflow_before_widgets(st.session_state)
         if _pre_wf == "queued":
             try:
-                from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+                from music_app_rerun import request_app_rerun
 
-                safe_rerun(
+                request_app_rerun(
                     st,
                     st.session_state,
                     reason="creative_workflow_queued",
-                    fingerprint=build_route_restore_fingerprint(
-                        st.session_state, reason="creative_workflow_queued"
-                    ),
+                    stage="pending_workflow_activation",
                 )
             except ImportError:
                 st.rerun()
@@ -10438,7 +10477,17 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     ):
-        st.stop()
+        try:
+            from music_app_rerun import request_app_stop
+
+            request_app_stop(
+                st,
+                st.session_state,
+                reason="workspace_hydration_failed",
+                expect_interactive=True,
+            )
+        except ImportError:
+            st.stop()
 except ImportError:
     pass
 
@@ -10466,6 +10515,14 @@ try:
     )
 except ImportError:
     pass
+
+_page_for_chart_gate = str(st.session_state.get("studio_page") or _studio_page or "practice").strip().lower()
+try:
+    from songs.chart_bundle_startup import studio_page_exempt_from_chart_bundle
+
+    _chart_bundle_page_exempt = studio_page_exempt_from_chart_bundle(_page_for_chart_gate)
+except ImportError:
+    _chart_bundle_page_exempt = _page_for_chart_gate == "analysis"
 
 _chart_bundle = None
 _chart_bundle_sig = (
@@ -10544,73 +10601,110 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
             st.session_state["_chart_bundle_build_retry"] = True
     if _should_rerun:
         try:
-            from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+            from music_app_rerun import request_app_rerun
 
-            safe_rerun(
+            request_app_rerun(
                 st,
                 st.session_state,
                 reason="chart_bundle_recovery",
-                fingerprint=build_route_restore_fingerprint(st.session_state, reason="chart_bundle_recovery"),
+                stage="chart_recovery",
             )
         except ImportError:
             st.rerun()
     else:
-        try:
-            from music_workspace_hydration import (
-                can_finalize_music_restore,
-                render_workspace_hydration_wait_or_stop,
-            )
+        if not _chart_bundle_page_exempt:
+            try:
+                from music_workspace_hydration import (
+                    can_finalize_music_restore,
+                    render_workspace_hydration_wait_or_stop,
+                )
 
-            if not can_finalize_music_restore(st.session_state):
-                if render_workspace_hydration_wait_or_stop(
-                    st,
-                    song_picker_catalog=SONG_PICKER_CATALOG,
-                    song_library=SONG_LIBRARY,
+                if not can_finalize_music_restore(st.session_state):
+                    if render_workspace_hydration_wait_or_stop(
+                        st,
+                        song_picker_catalog=SONG_PICKER_CATALOG,
+                        song_library=SONG_LIBRARY,
+                    ):
+                        try:
+                            from music_app_rerun import request_app_stop
+
+                            request_app_stop(
+                                st,
+                                st.session_state,
+                                reason="chart_failure_hydration_wait",
+                                expect_interactive=True,
+                            )
+                        except ImportError:
+                            st.stop()
+            except ImportError:
+                pass
+            _choose_song = bool(st.session_state.get("_music_choose_song_restore_state"))
+            try:
+                from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed
+
+                if _choose_song and not (
+                    workspace_empty_confirmed(st.session_state)
+                    or workspace_blob_hydrated(st.session_state)
                 ):
-                    st.stop()
-        except ImportError:
-            pass
-        _choose_song = bool(st.session_state.get("_music_choose_song_restore_state"))
-        try:
-            from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed
+                    _choose_song = False
+            except ImportError:
+                pass
+            _missing_original_key = isinstance(_chart_bundle_exc, MissingOriginalSongKeyError) or bool(
+                st.session_state.get("_chart_song_resolve_diag")
+            )
+            if _choose_song:
+                st.info(
+                    "Your workspace restored, but no active song could be matched from the saved data. "
+                    "Choose a song from Song Selection to continue — your other settings are intact."
+                )
+            elif _missing_original_key:
+                st.warning(
+                    "This song's chart needs an original key before transposition. "
+                    "Choose a song from Song Selection or set the home key for a custom progression."
+                )
+            else:
+                st.warning(
+                    "Your song chart is still syncing from the saved workspace. "
+                    "Refresh once more if this message persists."
+                )
+            try:
+                from music_dev_ui import music_dev_mode_enabled
 
-            if _choose_song and not (
-                workspace_empty_confirmed(st.session_state)
-                or workspace_blob_hydrated(st.session_state)
-            ):
-                _choose_song = False
-        except ImportError:
-            pass
-        _missing_original_key = isinstance(_chart_bundle_exc, MissingOriginalSongKeyError) or bool(
-            st.session_state.get("_chart_song_resolve_diag")
+                if music_dev_mode_enabled(st=st):
+                    with st.expander("Chart restore diagnostics (?dev=1)", expanded=True):
+                        render_chart_bundle_restore_diagnostics(st, st.session_state)
+            except ImportError:
+                pass
+            try:
+                from music_app_rerun import request_app_stop
+
+                request_app_stop(
+                    st,
+                    st.session_state,
+                    reason="chart_bundle_build_failed",
+                    expect_interactive=True,
+                )
+            except ImportError:
+                st.stop()
+
+if _chart_bundle is None and _chart_bundle_page_exempt:
+    _chart_bundle = minimal_chart_bundle_stub(
+        genre=_catalog_genre,
+        song=_catalog_song,
+        song_data=_catalog_song_data,
+    )
+elif _chart_bundle is None:
+    try:
+        from music_app_rerun import request_app_stop
+
+        request_app_stop(
+            st,
+            st.session_state,
+            reason="chart_bundle_unavailable",
+            expect_interactive=True,
         )
-        if _choose_song:
-            st.info(
-                "Your workspace restored, but no active song could be matched from the saved data. "
-                "Choose a song from Song Selection to continue — your other settings are intact."
-            )
-        elif _missing_original_key:
-            st.warning(
-                "This song's chart needs an original key before transposition. "
-                "Choose a song from Song Selection or set the home key for a custom progression."
-            )
-        else:
-            st.warning(
-                "Your song chart is still syncing from the saved workspace. "
-                "Refresh once more if this message persists."
-            )
-        try:
-            from music_dev_ui import music_dev_mode_enabled
-
-            if music_dev_mode_enabled(st=st):
-                with st.expander("Chart restore diagnostics (?dev=1)", expanded=True):
-                    render_chart_bundle_restore_diagnostics(st, st.session_state)
-        except ImportError:
-            pass
+    except ImportError:
         st.stop()
-
-if _chart_bundle is None:
-    st.stop()
 
 try:
     from songs.chart_bundle_startup import clear_chart_bundle_recovery_state
@@ -15196,3 +15290,10 @@ try:
     )
 except Exception as exc:
     st.session_state["_ami_deferred_insight_render_error"] = str(exc)
+
+try:
+    from music_run_lifecycle import complete_script_run_lifecycle
+
+    complete_script_run_lifecycle(st.session_state, st=st)
+except ImportError:
+    pass
