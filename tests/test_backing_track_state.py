@@ -399,6 +399,14 @@ class TestBackingTrackState(unittest.TestCase):
         )
         self.assertNotIn("prepare_backing_scope_for_widget", step2_body)
 
+    def test_bpm_slider_does_not_pass_value_when_key_is_session_backed(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        src = (repo_root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        step2_body = src.split("def _render_backing_step2_playback_action", 1)[1].split("\ndef ", 1)[0]
+        slider_block = step2_body.split("bpm = st.slider(", 1)[1].split(")", 1)[0]
+        self.assertIn("key=slider_key", slider_block)
+        self.assertNotIn("widget_bpm", slider_block)
+
     def test_normalize_legacy_scope_to_selected_sections(self) -> None:
         self.assertEqual(normalize_backing_scope("Single section"), "Selected sections")
         self.assertEqual(normalize_backing_scope("Multiple selected sections"), "Selected sections")

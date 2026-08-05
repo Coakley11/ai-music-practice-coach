@@ -9222,12 +9222,13 @@ def _render_backing_step2_playback_action(
             )
             _on_backing_filter_change()
 
+        if slider_key not in st.session_state:
+            st.session_state[slider_key] = int(widget_bpm)
         bpm = st.slider(
             "Quick BPM",
-            BACKING_BPM_MIN,
-            BACKING_BPM_MAX,
-            widget_bpm,
-            5,
+            min_value=BACKING_BPM_MIN,
+            max_value=BACKING_BPM_MAX,
+            step=5,
             key=slider_key,
             label_visibility="collapsed",
             help="Your tempo is kept until you change songs (20–180 BPM).",
