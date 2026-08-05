@@ -70,13 +70,25 @@ def activate_generated_jam_key_ownership(session: dict[str, Any], *, entry_mode:
         session["_pending_display_key"] = tonic
 
 
-def deactivate_generated_jam_key_ownership(session: dict[str, Any]) -> None:
-    """Restore song practice key when leaving generated jam workflow."""
+def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widget: bool = False) -> bool:
+    """Release generated-jam key ownership and restore song practice key snapshot.
+
+    Returns False when widgets are locked — caller must defer to pre-widget reconciliation.
+    """
+    if not pre_widget:
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            if widgets_likely_instantiated(session):
+                return False
+        except ImportError:
+            if session.get("_streamlit_widgets_locked_this_run"):
+                return False
     snap = session.pop(SONG_PRACTICE_KEY_SNAPSHOT_KEY, None)
     session.pop(GENERATED_JAM_KEY_CONTEXT_KEY, None)
     session.pop("_generated_jam_key_owner_active", None)
     if not isinstance(snap, dict):
-        return
+        return True
     for key in ("display_key", "concert_key", "practice_concert_key"):
         val = str(snap.get(key) or "").strip()
         if val:
@@ -84,6 +96,7 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any]) -> None:
     pending = str(snap.get("display_key") or snap.get("concert_key") or "").strip()
     if pending:
         session["_pending_display_key"] = pending
+    return True
 
 
 def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:

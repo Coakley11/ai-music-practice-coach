@@ -331,7 +331,7 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-            deactivate_generated_jam_key_ownership(session)
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
         except ImportError:
             pass
         return True
@@ -381,7 +381,7 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-            deactivate_generated_jam_key_ownership(session)
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
         except ImportError:
             pass
     if ok:

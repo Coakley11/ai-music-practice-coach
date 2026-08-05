@@ -9608,6 +9608,12 @@ try:
     consume_pending_mission_return_handoff(st.session_state, st=st)
 except ImportError:
     pass
+try:
+    from music_workflow_pending_mission_envelope import consume_pending_mission_envelope_reconciliation
+
+    consume_pending_mission_envelope_reconciliation(st.session_state, st=st)
+except ImportError:
+    pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)
@@ -9806,6 +9812,14 @@ elif _studio_page_for_hydrate == "creative":
         from music_workflow_pending_activation import consume_pending_workflow_activation
 
         consume_pending_workflow_activation(st.session_state)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_mission_envelope import ensure_mission_envelope_reconciliation_before_widgets
+
+        _mission_env = ensure_mission_envelope_reconciliation_before_widgets(st.session_state)
+        if _mission_env == "applied_pending":
+            pass
     except ImportError:
         pass
     try:

@@ -343,12 +343,29 @@ def validate_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any
     return diag
 
 
-def reconcile_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any]:
-    """Clear stale artifacts and realign practice key when validation fails."""
+def inspect_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any]:
+    """Read-only validation for Mission renderers (no session mutations)."""
+    diag = validate_mission_workflow_envelope(session)
+    session[WORKFLOW_ENVELOPE_DIAG_KEY] = diag
+    return diag
+
+
+def apply_mission_workflow_envelope_reconciliation(session: dict[str, Any]) -> dict[str, Any]:
+    """Mutating reconciliation — call only before widget-bound keys are instantiated."""
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        if widgets_likely_instantiated(session):
+            return {"applied": False, "reason": "widgets_locked"}
+    except ImportError:
+        if session.get("_streamlit_widgets_locked_this_run"):
+            return {"applied": False, "reason": "widgets_locked"}
+
     diag = validate_mission_workflow_envelope(session)
     if diag.get("consistent"):
+        session[WORKFLOW_ENVELOPE_DIAG_KEY] = diag
         return diag
-    actions: list[str] = []
+    actions: list[str] = list(diag.get("reconciliation_actions") or [])
     envelope = build_active_workflow_envelope(session)
     sel = envelope.selected_chord_symbol
 
@@ -369,8 +386,8 @@ def reconcile_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, An
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-            deactivate_generated_jam_key_ownership(session)
-            actions.append("released_generated_jam_key")
+            if deactivate_generated_jam_key_ownership(session, pre_widget=True):
+                actions.append("released_generated_jam_key")
         except ImportError:
             pass
         pk = envelope.current_practice_concert_key
@@ -422,6 +439,35 @@ def reconcile_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, An
     diag["consistent"] = not validate_mission_workflow_envelope(session).get("violations")
     session[WORKFLOW_ENVELOPE_DIAG_KEY] = diag
     return diag
+
+
+def reconcile_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any]:
+    """Apply reconciliation when pre-widget; queue deferred work when widgets are locked."""
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        locked = widgets_likely_instantiated(session)
+    except ImportError:
+        locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+    if locked:
+        diag = inspect_mission_workflow_envelope(session)
+        if not diag.get("consistent"):
+            try:
+                from music_workflow_pending_mission_envelope import (
+                    peek_pending_mission_envelope_reconciliation,
+                    queue_pending_mission_envelope_reconciliation,
+                )
+
+                if not peek_pending_mission_envelope_reconciliation(session):
+                    queue_pending_mission_envelope_reconciliation(
+                        session,
+                        reason="reconcile_while_widgets_locked",
+                        violations=list(diag.get("violations") or []),
+                    )
+            except ImportError:
+                pass
+        return diag
+    return apply_mission_workflow_envelope_reconciliation(session)
 
 
 def apply_atomic_mission_chord_selection(
@@ -525,6 +571,8 @@ __all__ = [
     "build_active_workflow_envelope",
     "project_envelope_from_active_store",
     "mission_example_allowed_for_projection",
+    "apply_mission_workflow_envelope_reconciliation",
+    "inspect_mission_workflow_envelope",
     "reconcile_mission_workflow_envelope",
     "render_workflow_envelope_dev_panel",
     "validate_mission_workflow_envelope",

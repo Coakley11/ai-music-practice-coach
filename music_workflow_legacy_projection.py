@@ -78,7 +78,7 @@ def clear_incompatible_legacy_fields(session: dict[str, Any], owner: str) -> lis
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-            deactivate_generated_jam_key_ownership(session)
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
             cleared.append("generated_jam_ownership")
         except ImportError:
             pass
@@ -175,7 +175,7 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-            deactivate_generated_jam_key_ownership(session)
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
         except ImportError:
             pass
         try:
