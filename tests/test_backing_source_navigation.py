@@ -190,42 +190,80 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(current_backing_owner(session), "entry_jam")
         self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_RESTORE_LAST)
 
-    def test_from_creative_hydrate_syncs_sidebar_keys_from_backing_context(self) -> None:
+    def test_from_creative_hydrate_style_jam_concert_key_beats_stale_chart_display(self) -> None:
+        """Style Jam backing concert F must win over stale catalog chart keys (B — authority)."""
         from songs.key_state import PENDING_DISPLAY_KEY
-        from session_widget_safe import PENDING_IMPROV_STYLE_KEY
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            written_key_for_type,
+        )
 
-        session = {
-            "studio_page": "backing",
-            "active_catalog_pick_key": "Rock::Day Tripper",
-            "selected_song": {
-                "title": "Day Tripper",
-                "pick_key": "Rock::Day Tripper",
-                "key": "E",
-                "bpm": 138,
-            },
-            "display_key": "G",
-            "concert_key": "G",
-            "improv_entry_mode": "Style Jam Mode",
-            "improv_style": "Bright Bossa Nova",
-            "improv_style_bpm": 75,
-            "improv_style_key": "F",
-            "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7", "C7", "Fmaj7"]},
-        }
+        def _style_jam_session_with_stale_chart(*, instrument: str, extra: dict | None = None) -> dict:
+            base = {
+                "studio_page": "backing",
+                "instrument": instrument,
+                "active_catalog_pick_key": "Rock::Day Tripper",
+                "selected_song": {
+                    "title": "Day Tripper",
+                    "pick_key": "Rock::Day Tripper",
+                    "key": "E",
+                    "bpm": 138,
+                },
+                "display_key": "G",
+                "concert_key": "G",
+                "improv_entry_mode": "Style Jam Mode",
+                "improv_style": "Bright Bossa Nova",
+                "improv_style_bpm": 75,
+                "improv_style_key": "F",
+                "improv_generated_sections": {"Style Jam": ["Fmaj7", "Bbmaj7", "C7", "Fmaj7"]},
+            }
+            if extra:
+                base.update(extra)
+            return base
+
         try:
             from music_restore_phase import complete_music_restore_phase
-
-            complete_music_restore_phase(session)
         except ImportError:
-            pass
-        st_like = SimpleNamespace(session_state=session)
-        open_backing_from_creative(session, source="entry_jam", st_like=st_like)
-        set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
-        hydrate_backing_source_for_page(session, st_like=st_like)
-        self.assertEqual(session.get("concert_key"), "F")
-        self.assertEqual(session.get("display_key"), "G")
-        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "F")
-        self.assertEqual(session.get("improv_style_key"), "F")
-        self.assertEqual(session.get(PENDING_IMPROV_STYLE_KEY), "F")
+            complete_music_restore_phase = None  # type: ignore[misc,assignment]
+
+        # Concert-pitch instrument: Style Jam F aligns concert and sidebar display; stale chart G must not stick.
+        piano = _style_jam_session_with_stale_chart(instrument="Piano")
+        if complete_music_restore_phase:
+            complete_music_restore_phase(piano)
+        st_like = SimpleNamespace(session_state=piano)
+        open_backing_from_creative(piano, source="entry_jam", st_like=st_like)
+        set_backing_open_intent(piano, BACKING_INTENT_FROM_CREATIVE)
+        hydrate_backing_source_for_page(piano, st_like=st_like)
+        self.assertEqual(piano.get("concert_key"), "F")
+        self.assertEqual(piano.get("display_key"), "F")
+        self.assertNotEqual(piano.get("display_key"), "G")
+        self.assertEqual(piano.get("improv_style_key"), "F")
+        self.assertNotIn(PENDING_DISPLAY_KEY, piano)
+
+        # Transposing instrument: backing still establishes concert F; written chart differs only via transposition authority.
+        alto = _style_jam_session_with_stale_chart(
+            instrument="Saxophone",
+            extra={
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+            },
+        )
+        if complete_music_restore_phase:
+            complete_music_restore_phase(alto)
+        st_alto = SimpleNamespace(session_state=alto)
+        open_backing_from_creative(alto, source="entry_jam", st_like=st_alto)
+        set_backing_open_intent(alto, BACKING_INTENT_FROM_CREATIVE)
+        hydrate_backing_source_for_page(alto, st_like=st_alto)
+        self.assertEqual(alto.get("concert_key"), "F")
+        self.assertNotEqual(alto.get("display_key"), "G")
+        written = written_key_for_type("F", "Alto saxophone (Eb)")
+        from instrument_transposition import effective_chart_key
+
+        chart_key, chart_mode = effective_chart_key("F", "Saxophone", alto)
+        self.assertEqual(chart_key, written)
+        self.assertEqual(chart_mode, "written")
+        self.assertNotEqual("F", written)
 
     def test_practice_page_restores_saved_practice_key(self) -> None:
         session = {
@@ -573,7 +611,7 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(ctx.concert_key, "E")
         self.assertEqual(ctx.bpm, 138)
 
-    def test_sync_song_picker_source_widget_safe_when_locked(self) -> None:
+    def test_sync_song_picker_source_widget_promotes_catalog_when_unlocked(self) -> None:
         from songs.music_source import (
             PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
@@ -594,8 +632,38 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         except ImportError:
             pass
         sync_song_picker_source_widget(session, force=True)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertIsNone(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY))
+
+    def test_sync_song_picker_source_widget_stages_catalog_when_widgets_locked(self) -> None:
+        from session_widget_safe import apply_pending_widget_hydrates
+        from songs.music_source import (
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            sync_song_picker_source_widget,
+        )
+
+        session = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "active_music_source": "catalog",
+            "display_key": "E",
+            "_streamlit_widgets_locked_this_run": True,
+        }
+        try:
+            from music_restore_phase import complete_music_restore_phase
+
+            complete_music_restore_phase(session)
+        except ImportError:
+            pass
+        sync_song_picker_source_widget(session, force=True)
         self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
         self.assertEqual(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        session.pop("_streamlit_widgets_locked_this_run", None)
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertIsNone(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY))
 
     def test_backing_page_transport_defaults_use_catalog_context(self) -> None:
         from backing_context import (
@@ -973,26 +1041,41 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
 
 
-    def test_ensure_improv_entry_mode_restored_from_creative_session(self) -> None:
+    def test_ensure_improv_entry_mode_canonical_selector_precedes_creative_session(self) -> None:
         from creative_session_state import CREATIVE_SESSION_KEY, CreativeSession
+        from creative_tab_tool_persistence import CREATIVE_WORKSPACE_STATE_KEY
         from studio_page_state import ensure_improv_entry_mode_restored
 
-        session = {
+        creative_blob = CreativeSession(
+            session_id="entry-jam",
+            tool_type="entry_style_jam",
+            entry_mode="Style Jam Mode",
+            concert_key="F",
+            display_key="F",
+            style="Bossa Nova",
+            bpm=80,
+            sections={"Style Jam": ["Fmaj7"]},
+        ).to_dict()
+
+        with_canonical = {
+            "studio_page": "creative",
+            "_creative_selector_hydration_complete": True,
             "improv_entry_mode": "Song-Based Improvisation",
-            CREATIVE_SESSION_KEY: CreativeSession(
-                session_id="entry-jam",
-                tool_type="entry_style_jam",
-                entry_mode="Style Jam Mode",
-                concert_key="F",
-                display_key="F",
-                style="Bossa Nova",
-                bpm=80,
-                sections={"Style Jam": ["Fmaj7"]},
-            ).to_dict(),
+            CREATIVE_WORKSPACE_STATE_KEY: {"improv_entry_mode": "Song-Based Improvisation"},
+            CREATIVE_SESSION_KEY: creative_blob,
         }
-        entry = ensure_improv_entry_mode_restored(session)
-        self.assertEqual(entry, "Style Jam Mode")
-        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
+        entry = ensure_improv_entry_mode_restored(with_canonical)
+        self.assertEqual(entry, "Song-Based Improvisation")
+        self.assertEqual(with_canonical.get("improv_entry_mode"), "Song-Based Improvisation")
+
+        without_canonical = {
+            "studio_page": "creative",
+            "_creative_selector_hydration_complete": True,
+            CREATIVE_SESSION_KEY: creative_blob,
+        }
+        entry_fallback = ensure_improv_entry_mode_restored(without_canonical)
+        self.assertEqual(entry_fallback, "Style Jam Mode")
+        self.assertEqual(without_canonical.get("improv_entry_mode"), "Style Jam Mode")
 
     def test_backing_context_overrides_stale_snapshot_entry_mode(self) -> None:
         """entry_jam backing context must win over a stale SBI page-snapshot value."""
@@ -1032,9 +1115,14 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertFalse(session.get("_improv_tab_user_touched"))
 
-    def test_mission_backing_context_respects_user_improv_tab(self) -> None:
-        """Active mission backing must not force Missions on every Creative rerun."""
-        from backing_context import open_backing_from_creative
+    def test_passive_creative_hydrate_keeps_user_live_coach_with_mission_backing(self) -> None:
+        """Mission backing context alone must not clobber a user-selected Live Coach tab (passive rerun)."""
+        from backing_context import (
+            BACKING_CONTEXT_KEY,
+            BACKING_PREF_CREATIVE,
+            build_mission_context,
+            set_backing_source_preference,
+        )
         from music_restore_phase import complete_music_restore_phase
         from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY, ensure_improv_intelligence_tab_restored
 
@@ -1044,18 +1132,66 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
             CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY: "Live Coach",
             "_improv_tab_user_touched": True,
             "improv_mission_progression": ["Em"],
+            "ii_selected_chord": "Em",
             "display_key": "G",
             "concert_key": "G",
             "instrument": "Piano",
             "studio_page": "creative",
             "active_catalog_pick_key": "say|artist",
             "song": "Say",
+            "_creative_selector_hydration_complete": True,
         }
         complete_music_restore_phase(session)
-        open_backing_from_creative(session, source="mission")
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        session[BACKING_CONTEXT_KEY] = build_mission_context(session).to_dict()
         tab = ensure_improv_intelligence_tab_restored(session)
         self.assertEqual(tab, "Live Coach")
         self.assertEqual(session.get("improv_intelligence_tab"), "Live Coach")
+
+    def test_intentional_return_to_mission_selects_missions_tab_and_restores_identity(self) -> None:
+        from unittest import mock
+
+        from mission_backing_alignment import build_mission_backing_alignment_payload
+        from mission_return_destination import MISSION_CANONICAL_RETURN_DESTINATION_KEY, build_mission_return_destination
+        from music_workflow_pending_mission_return import (
+            consume_pending_mission_return_handoff,
+            queue_pending_mission_return_from_backing,
+        )
+        from studio_page_state import ensure_improv_intelligence_tab_restored
+
+        session: dict = {
+            "studio_page": "backing",
+            "improv_intelligence_tab": "Live Coach",
+            "_improv_tab_user_touched": True,
+            MISSION_CANONICAL_RETURN_DESTINATION_KEY: build_mission_return_destination(
+                build_mission_backing_alignment_payload(
+                    {},
+                    mission="Mission A",
+                    cur_chord="Bb",
+                    section_label="Verse",
+                    chord_idx=0,
+                    song_title="Tune",
+                    with_practice_lick=True,
+                ),
+                handoff_mode="practice_in_jam",
+                with_practice_lick=True,
+                request_seq=3,
+            ),
+        }
+        queue_pending_mission_return_from_backing(session)
+        with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
+            activate.return_value = mock.Mock(ok=True, trace={})
+            with mock.patch("mission_backing_alignment.apply_pending_mission_backing_alignment", return_value=True):
+                with mock.patch("backing_context.get_backing_context", return_value=None):
+                    phase = consume_pending_mission_return_handoff(session)
+        self.assertEqual(phase, "applied")
+        self.assertEqual(session.get("studio_page"), "creative")
+        self.assertEqual(session.get("improv_active_mission"), "Mission A")
+        self.assertEqual(session.get("ii_selected_chord"), "Bb")
+        self.assertEqual(session.get("ii_selected_section"), "Verse")
+        tab = ensure_improv_intelligence_tab_restored(session)
+        self.assertEqual(tab, "Missions")
+        self.assertEqual(session.get("improv_intelligence_tab"), "Missions")
 
     def test_song_improv_backing_context_keeps_sbi_entry_mode(self) -> None:
         """song_improv backing context maps to Song-Based Improvisation, not Style Jam."""
@@ -1328,8 +1464,8 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         ctx2 = build_entry_jam_context(session)
         self.assertEqual(ctx2.entry_mode, "Style Jam Mode")
 
-    def test_return_to_creative_trace_widget_values_before_radios(self) -> None:
-        """Trace improv widget keys through the real script-run order on Return to Creative."""
+    def test_return_to_creative_authoritative_style_jam_before_entry_radios(self) -> None:
+        """Return to Creative must land Style Jam Mode on the entry radio before widgets render."""
         from backing_context import open_backing_from_creative
         from backing_source_navigation import (
             CREATIVE_RESTORE_FROM_BACKING_KEY,
@@ -1399,7 +1535,6 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         after_transition = _widget_trace(session, "after_handle_studio_page_transition")
         # Snapshot skip + sync guard: canonical blob must survive transition.
         self.assertEqual(after_transition["creative_session.tool"], "entry_style_jam", after_transition)
-        self.assertEqual(after_transition["_pending_improv_entry_mode"], "Style Jam Mode", after_transition)
 
         rehydrate_creative_from_backing_context(session)
         session.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
