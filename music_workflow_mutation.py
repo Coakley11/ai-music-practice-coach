@@ -123,40 +123,59 @@ def _widget_bound_session_keys() -> frozenset[str]:
         return frozenset({"display_key"})
 
 
+def _session_widgets_locked(session: dict[str, Any]) -> bool:
+    try:
+        from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
+
+        if session.get(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY):
+            return True
+    except ImportError:
+        pass
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        if widgets_likely_instantiated(session):
+            return True
+    except ImportError:
+        pass
+    return bool(session.get("_streamlit_widgets_locked_this_run"))
+
+
 def _restore_legacy_snapshot(
     session: dict[str, Any],
     snap: dict[str, Any],
     *,
     widget_safe: bool = False,
 ) -> list[str]:
-    """Restore legacy snapshot; skip or defer widget-bound keys when widget_safe."""
-    skipped: list[str] = []
-    bound = _widget_bound_session_keys()
-    locked = widget_safe
-    if widget_safe:
+    """Restore legacy snapshot pre-widget only; never assign session keys when locked."""
+    skipped: list[str] = list(snap.keys())
+    locked = widget_safe and _session_widgets_locked(session)
+    if locked:
+        session["_music_workflow_rollback_skipped_keys"] = skipped
+        session.setdefault(
+            "_music_workflow_deferred_legacy_projection",
+            {"reason": "rollback_canonical_only", "keys": skipped[:24]},
+        )
         try:
-            from session_widget_safe import widgets_likely_instantiated
+            from music_workflow_projection_log import log_projection_defer
 
-            locked = widgets_likely_instantiated(session)
+            log_projection_defer(
+                session,
+                result="ROLLBACK_CANONICAL_ONLY",
+                rollback_mode="canonical_only",
+                legacy_restore_attempted=False,
+                deferred_projection=True,
+                widgets_locked=True,
+            )
         except ImportError:
-            locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+            pass
+        return skipped
+    skipped = []
     for k, v in snap.items():
-        if locked and k in bound:
-            skipped.append(k)
-            continue
         if v is None:
             session.pop(k, None)
-        elif locked and k in {"display_key", "concert_key"}:
-            try:
-                from session_widget_safe import safe_assign_display_key
-
-                safe_assign_display_key(session, str(v))
-            except ImportError:
-                skipped.append(k)
         else:
             session[k] = copy.deepcopy(v)
-    if skipped:
-        session["_music_workflow_rollback_skipped_keys"] = list(skipped)
     return skipped
 
 
@@ -342,6 +361,20 @@ def commit_staged_workflow(
             "owner": str(staged.workflow_owner or exc.owner or ""),
             "source": source,
         }
+        try:
+            from music_workflow_projection_log import log_projection_defer
+
+            log_projection_defer(
+                session,
+                result="REQUIRES_PRE_WIDGET_ACTIVATION",
+                rollback_mode="canonical_only",
+                legacy_restore_attempted=False,
+                deferred_projection=True,
+                widgets_locked=_session_widgets_locked(session),
+                extra={"owner": str(staged.workflow_owner or exc.owner or "")},
+            )
+        except ImportError:
+            pass
         return MutationResult(
             ok=False,
             error_code="REQUIRES_PRE_WIDGET_ACTIVATION",
@@ -400,11 +433,32 @@ def _fail_mutation(
     violations: list[str] | None = None,
 ) -> MutationResult:
     rollback = False
+    locked = _session_widgets_locked(session)
     if legacy_snapshot is not None and code != "REQUIRES_PRE_WIDGET_ACTIVATION":
-        skipped = _restore_legacy_snapshot(session, legacy_snapshot, widget_safe=True)
-        rollback = True
-        if skipped:
-            trace["rollback_skipped_widget_keys"] = skipped
+        if locked:
+            trace["rollback_mode"] = "canonical_only"
+            trace["legacy_restore_attempted"] = False
+            trace["rollback_skipped_widget_keys"] = list(legacy_snapshot.keys())
+            session.setdefault(
+                "_music_workflow_deferred_legacy_projection",
+                {"reason": "fail_mutation_canonical_only", "code": code},
+            )
+            try:
+                from music_workflow_projection_log import log_projection_defer
+
+                log_projection_defer(
+                    session,
+                    result=str(code or "MUTATION_FAIL"),
+                    rollback_mode="canonical_only",
+                    legacy_restore_attempted=False,
+                    deferred_projection=True,
+                    widgets_locked=True,
+                )
+            except ImportError:
+                pass
+        else:
+            _restore_legacy_snapshot(session, legacy_snapshot, widget_safe=False)
+            rollback = True
     trace["validation_result"] = "fail"
     trace["error_code"] = code
     if violations:

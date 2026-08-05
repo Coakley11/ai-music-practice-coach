@@ -21,11 +21,23 @@ def _next_seq(session: dict[str, Any]) -> int:
 
 def should_defer_backing_workflow_activation(session: dict[str, Any]) -> bool:
     try:
+        from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
+
+        if session.get(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY):
+            return True
+    except ImportError:
+        pass
+    try:
         from session_widget_safe import widgets_likely_instantiated
 
         return widgets_likely_instantiated(session)
     except ImportError:
         return bool(session.get("_streamlit_widgets_locked_this_run"))
+
+
+def mission_backing_click_must_defer(session: dict[str, Any]) -> bool:
+    """Mission Backing / Practice-in-Jam clicks never mutate workflow when True."""
+    return should_defer_backing_workflow_activation(session)
 
 
 def peek_pending_backing_workflow_handoff(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -257,6 +269,7 @@ __all__ = [
     "backing_source_from_workflow_owner",
     "backing_workflow_owner_is_active",
     "consume_pending_backing_workflow_handoff",
+    "mission_backing_click_must_defer",
     "peek_pending_backing_workflow_handoff",
     "queue_pending_backing_workflow_handoff",
     "resolve_backing_workflow_owner",

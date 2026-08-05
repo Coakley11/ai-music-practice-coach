@@ -56,8 +56,71 @@ MISSIONS_LAST_EXAMPLE_CALLBACK_KEY = "_missions_last_example_callback"
 IMPROV_MISSION_BACKING_HANDOFF = "improv_mission_backing_handoff"
 MISSION_PRACTICE_LICK_KEY = "improv_mission_practice_lick"
 IMPROV_MISSION_PRACTICE_LICK_HANDOFF = "improv_mission_practice_lick_handoff"
+MISSION_NOTATION_STAFF_AUTHORITY_VERSION = 2
 
 _LEVEL_ORDER = ("Beginner", "Intermediate", "Advanced")
+
+
+def parse_abc_k_field(abc: str) -> str:
+    for line in str(abc or "").splitlines():
+        stripped = line.strip()
+        if stripped.upper().startswith("K:"):
+            return stripped[2:].strip()
+    return ""
+
+
+def abc_staff_key_matches_concert(abc: str, song_concert_key: str) -> bool:
+    k = parse_abc_k_field(abc)
+    if not k or not str(song_concert_key or "").strip():
+        return bool(k)
+    try:
+        from improvisation_motif import _abc_key_header
+
+        return _abc_key_header(str(song_concert_key)).lower() == k.lower()
+    except ImportError:
+        return str(song_concert_key).lower().startswith(k.lower())
+
+
+def ensure_mission_sheet_music_authority(
+    session_state: dict,
+    example: MissionExample,
+    *,
+    improv_ctx: ImprovSessionContext,
+    instrument: str,
+    bpm: int,
+) -> MissionExample:
+    """Rebuild visible mission ABC when staff-key authority or concert key is stale."""
+    concert = str(improv_ctx.key_center or session_state.get("concert_key") or "").strip()
+    ver = int(session_state.get("_mission_notation_staff_version") or 0)
+    needs = (
+        ver < MISSION_NOTATION_STAFF_AUTHORITY_VERSION
+        or not abc_staff_key_matches_concert(str(example.abc or ""), concert)
+    )
+    if not needs:
+        return example
+    refreshed = mission_example_for_display(
+        example,
+        instrument=instrument,
+        bpm=bpm,
+        song_concert_key=concert,
+    )
+    session_state["_mission_notation_staff_version"] = MISSION_NOTATION_STAFF_AUTHORITY_VERSION
+    session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
+    raw = session_state.get(MISSION_EXAMPLE_KEY)
+    if isinstance(raw, dict):
+        raw = dict(raw)
+        raw["abc"] = refreshed.abc
+        raw["motif"] = refreshed.motif
+        session_state[MISSION_EXAMPLE_KEY] = raw
+    abc_k = parse_abc_k_field(refreshed.abc or "")
+    session_state["_mission_notation_diag"] = {
+        "concert_key": concert,
+        "written_key": str(improv_ctx.display_key or ""),
+        "chord": str(example.chord or ""),
+        "abc_key": abc_k,
+        "authority_version": MISSION_NOTATION_STAFF_AUTHORITY_VERSION,
+    }
+    return refreshed
 
 
 def _effective_level(level: str, variant: str) -> str:

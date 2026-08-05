@@ -2266,32 +2266,10 @@ def _tab_missions(
                 MISSION_PENDING_BACKING_ALIGNMENT_KEY,
                 build_mission_backing_alignment_payload,
             )
-            from music_workflow_pending_backing_handoff import should_defer_backing_workflow_activation
-
-            defer = should_defer_backing_workflow_activation(session_state)
         except ImportError:
-            defer = bool(session_state.get("_streamlit_widgets_locked_this_run"))
             MISSION_PENDING_BACKING_ALIGNMENT_KEY = "_mission_pending_backing_alignment"  # type: ignore[misc]
             build_mission_backing_alignment_payload = None  # type: ignore[misc,assignment]
 
-        if with_practice_lick and example and defer:
-            pass
-        elif with_practice_lick and example and not defer:
-            try:
-                from mission_workflow_context import ensure_mission_handoff_aligned
-
-                ensure_mission_handoff_aligned(
-                    session_state,
-                    mission=mission,
-                    cur_chord=cur_chord,
-                    section_label=section_label,
-                    chord_idx=int(chord_idx),
-                    song_title=improv_ctx.song_title,
-                    example=example,
-                )
-            except (ImportError, ValueError):
-                if with_practice_lick:
-                    return
         if with_practice_lick and example:
             style_meta = session_state.get("improv_style_meta") or {}
             groove = str(
@@ -2424,6 +2402,18 @@ def _tab_missions(
             example = _maybe_refresh_mission_example_outputs(
                 session_state, example, instrument=live_inst, bpm=bpm
             )
+            try:
+                from improvisation_missions import ensure_mission_sheet_music_authority
+
+                example = ensure_mission_sheet_music_authority(
+                    session_state,
+                    example,
+                    improv_ctx=improv_ctx,
+                    instrument=live_inst,
+                    bpm=bpm,
+                )
+            except ImportError:
+                pass
 
         st.markdown("**Chord tones**")
         st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
@@ -2441,6 +2431,22 @@ def _tab_missions(
             n_notes = len(example.motif.get("notes") or [])
             staff_h = min(720, max(360, 280 + n_notes * 14))
             _render_motif_sheet_music(st, example.abc, height=staff_h)
+            try:
+                from suite_workspace import is_developer_mode_enabled
+
+                if is_developer_mode_enabled(st=st):
+                    diag = dict(session_state.get("_mission_notation_diag") or {})
+                    if diag:
+                        st.caption(
+                            "DEV notation · "
+                            f"concert_key={diag.get('concert_key')} · "
+                            f"written_key={diag.get('written_key')} · "
+                            f"chord={diag.get('chord')} · "
+                            f"abc_key={diag.get('abc_key')} · "
+                            f"authority_v={diag.get('authority_version')}"
+                        )
+            except ImportError:
+                pass
 
         if family == "guitar" and example.tab:
             st.markdown("**Guitar TAB**")

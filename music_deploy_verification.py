@@ -31,6 +31,8 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
     "b3826fc",
     "da64329",
     "04a8c1b",
+    "cf8d8ed",
+    "eeb53c0",
 )
 
 _PROCESS_DEPLOY_LOGGED = False
@@ -258,20 +260,82 @@ def scan_late_missions_activation_in_source() -> dict[str, Any]:
     }
 
 
+def scan_mission_backing_handoff_in_source() -> dict[str, Any]:
+    """Fail if Mission Backing click path still mutates alignment in loaded source."""
+    try:
+        import improvisation_intelligence_ui as improv_ui
+
+        path = Path(getattr(improv_ui, "__file__", "") or "")
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except Exception as exc:
+        return {"present": True, "error": str(exc), "path": "", "findings": ["import_failed"]}
+    body = _extract_function_body(text, "_open_mission_backing")
+    findings: list[str] = []
+    if body and re.search(r"ensure_mission_handoff_aligned\s*\(", body):
+        findings.append("mutable_ensure_mission_handoff_aligned_in_open_mission_backing")
+    defer_branch = "build_mission_backing_alignment_payload" in body if body else False
+    return {
+        "present": bool(findings),
+        "findings": findings,
+        "path": str(path),
+        "defer_branch_present": defer_branch,
+        "_open_mission_backing_line": inspect.getsourcelines(improv_ui._open_mission_backing)[1]
+        if hasattr(improv_ui, "_open_mission_backing")
+        else None,
+    }
+
+
+def function_source_verification() -> list[dict[str, Any]]:
+    """Loaded module paths and source hashes for hotfix-critical functions."""
+    import hashlib
+
+    specs = (
+        ("improvisation_intelligence_ui", "_open_mission_backing"),
+        ("mission_workflow_context", "ensure_mission_handoff_aligned"),
+        ("music_workflow_mutation", "commit_staged_workflow"),
+        ("music_workflow_mutation", "_fail_mutation"),
+        ("music_workflow_mutation", "_restore_legacy_snapshot"),
+        ("improvisation_missions", "ensure_mission_sheet_music_authority"),
+        ("improvisation_missions", "rebuild_mission_outputs"),
+    )
+    rows: list[dict[str, Any]] = []
+    for mod_name, func_name in specs:
+        row: dict[str, Any] = {"module": mod_name, "function": func_name}
+        try:
+            mod = __import__(mod_name)
+            row["path"] = str(getattr(mod, "__file__", "") or "")
+            path = Path(row["path"])
+            text = path.read_text(encoding="utf-8") if path.is_file() else ""
+            body = _extract_function_body(text, func_name)
+            row["line"] = inspect.getsourcelines(getattr(mod, func_name))[1] if hasattr(mod, func_name) else None
+            row["source_hash"] = hashlib.sha256(body.encode()).hexdigest()[:12] if body else ""
+            if func_name == "_open_mission_backing":
+                row["defer_branch"] = "build_mission_backing_alignment_payload" in body
+                row["mutable_align_call"] = "ensure_mission_handoff_aligned" in body
+            if func_name == "_restore_legacy_snapshot":
+                row["canonical_only_when_locked"] = "rollback_canonical_only" in body or "canonical_only" in body
+        except Exception as exc:
+            row["error"] = str(exc)
+        rows.append(row)
+    return rows
+
+
 def evaluate_deploy_preflight(
     ident: dict[str, str] | None = None,
     scan: dict[str, Any] | None = None,
     *,
     artifact_scan: dict[str, Any] | None = None,
+    backing_scan: dict[str, Any] | None = None,
     required_sha: str = REQUIRED_MISSIONS_HOTFIX_PREFIX,
 ) -> dict[str, Any]:
     ident = ident or resolve_deploy_identity()
     scan = scan or scan_late_missions_activation_in_source()
     artifact_scan = artifact_scan or scan_late_artifact_freeze_in_source()
+    backing_scan = backing_scan or scan_mission_backing_handoff_in_source()
     sha = str(ident.get("sha_short") or ident.get("sha_full") or "").strip()
     full = str(ident.get("sha_full") or "").strip()
     matches = _sha_matches_accepted_deploy(sha, full)
-    if scan.get("present") or artifact_scan.get("present"):
+    if scan.get("present") or artifact_scan.get("present") or backing_scan.get("present"):
         return {
             "status": "FAIL — STALE SOURCE",
             "required_sha": required_sha,
@@ -279,7 +343,10 @@ def evaluate_deploy_preflight(
             "branch": ident.get("branch", ""),
             "late_missions_activation": scan.get("present"),
             "late_artifact_freeze": artifact_scan.get("present"),
-            "findings": (scan.get("findings") or []) + (artifact_scan.get("findings") or []),
+            "late_mission_backing_handoff": backing_scan.get("present"),
+            "findings": (scan.get("findings") or [])
+            + (artifact_scan.get("findings") or [])
+            + (backing_scan.get("findings") or []),
         }
     if not matches:
         return {
@@ -315,8 +382,12 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
     ident = session.get(SESSION_DEPLOY_IDENTITY_KEY) or ensure_session_deploy_identity(session)
     scan = session.get(SESSION_LATE_MISSIONS_SCAN_KEY) or scan_late_missions_activation_in_source()
     art = session.get(SESSION_ARTIFACT_FREEZE_SCAN_KEY) or scan_late_artifact_freeze_in_source()
-    pre = session.get(SESSION_DEPLOY_PREFLIGHT_KEY) or evaluate_deploy_preflight(ident, scan, artifact_scan=art)
+    backing = scan_mission_backing_handoff_in_source()
+    pre = session.get(SESSION_DEPLOY_PREFLIGHT_KEY) or evaluate_deploy_preflight(
+        ident, scan, artifact_scan=art, backing_scan=backing
+    )
     paths = module_runtime_paths()
+    fn_verify = function_source_verification()
     audio = _audio_stack_versions()
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Deploy verification**")
@@ -332,11 +403,18 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
                 f"librosa: {audio.get('librosa')} numba: {audio.get('numba')}",
                 f"late_missions_in_tab: {scan.get('present')}",
                 f"late_artifact_freeze: {art.get('present')}",
-                f"findings: {scan.get('findings')} {art.get('findings')}",
+                f"late_mission_backing: {backing.get('present')}",
+                f"findings: {scan.get('findings')} {art.get('findings')} {backing.get('findings')}",
                 f"_tab_missions @ line: {scan.get('_tab_missions_line')}",
+                f"_open_mission_backing @ line: {backing.get('_open_mission_backing_line')}",
             ]
         )
     )
+    for row in fn_verify[:6]:
+        st.sidebar.caption(
+            f"`{row.get('module')}.{row.get('function')}` hash=`{row.get('source_hash')}` "
+            f"defer={row.get('defer_branch')} mutable_align={row.get('mutable_align_call')}"
+        )
     for name, p in paths.items():
         st.sidebar.caption(f"`{name}` → `{p}`")
 
@@ -351,6 +429,7 @@ __all__ = [
     "missions_smoke_allowed",
     "module_runtime_paths",
     "render_dev_deploy_verification_panel",
-    "scan_late_artifact_freeze_in_source",
+    "function_source_verification",
+    "scan_mission_backing_handoff_in_source",
     "scan_late_missions_activation_in_source",
 ]

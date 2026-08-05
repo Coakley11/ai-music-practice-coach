@@ -39,9 +39,8 @@ class TestMissionBackingAlignmentAndRollback(unittest.TestCase):
         start = text.index("def _open_mission_backing")
         end = text.index("\n    if not example:", start)
         body = text[start:end]
-        self.assertIn("should_defer_backing_workflow_activation", body)
+        self.assertNotIn("ensure_mission_handoff_aligned", body)
         self.assertIn("build_mission_backing_alignment_payload", body)
-        self.assertIn("if with_practice_lick and example and defer:", body)
 
     def test_alignment_payload_is_complete(self) -> None:
         session: dict = {
@@ -148,16 +147,20 @@ class TestMissionBackingAlignmentAndRollback(unittest.TestCase):
         self.assertEqual(phase, "applied")
         apply_align.assert_called_once()
 
-    def test_locked_rollback_never_assigns_display_key_directly(self) -> None:
-        session: dict = {"_streamlit_widgets_locked_this_run": True, "display_key": "Dm"}
-        original = copy.deepcopy(session)
+    def test_locked_rollback_never_assigns_session_keys(self) -> None:
+        session: dict = {
+            "_streamlit_widgets_locked_this_run": True,
+            "display_key": "Dm",
+            "improv_active_mission": "old",
+        }
+        before = dict(session)
         _restore_legacy_snapshot(
             session,
-            {"display_key": "A", "improv_active_mission": "Outline"},
+            {"display_key": "A", "improv_active_mission": "Outline", "concert_key": "A"},
             widget_safe=True,
         )
-        self.assertEqual(session.get("display_key"), original["display_key"])
-        self.assertEqual(session.get("improv_active_mission"), "Outline")
+        self.assertEqual(session.get("display_key"), before["display_key"])
+        self.assertEqual(session.get("improv_active_mission"), before["improv_active_mission"])
 
 
 class TestMissionNotationStaffKey(unittest.TestCase):
@@ -186,11 +189,62 @@ class TestMissionNotationStaffKey(unittest.TestCase):
         staff = mission_notation_staff_key(song_concert_key="Dm", song_display_key="Dm")
         self.assertEqual(staff, "Dm")
 
-    def test_chord_tones_bb_d_f(self) -> None:
-        from improvisation_motif import chord_tone_names
+    def test_stale_sharp_abc_rebuilt_for_d_minor(self) -> None:
+        from improvisation_intelligence import ImprovSessionContext
+        from improvisation_missions import MissionExample, ensure_mission_sheet_music_authority
 
-        tones = chord_tone_names("Bb", reference_key="Bb")
-        self.assertEqual([t.replace("♭", "b") for t in tones], ["Bb", "D", "F"])
+        stale_abc = "X:1\nT:t\nM:4/4\nL:1/4\nK:A\nA B c |"
+        motif = {"notes": ["Bb", "D", "F"], "rhythm": "quarter quarter quarter", "chord": "Bb"}
+        example = MissionExample(
+            mission="M",
+            variant="normal",
+            chord="Bb",
+            section="A",
+            song_title="Song",
+            display_key="Dm",
+            instrument="Piano",
+            level="Beginner",
+            focus="",
+            motif=motif,
+            abc=stale_abc,
+            tab="",
+            piano_html="",
+            why="",
+            practice_steps=[],
+            insight=None,  # type: ignore[arg-type]
+            show_tab=False,
+            show_piano=False,
+            concert_key="Dm",
+        )
+        ctx = ImprovSessionContext(
+            song_title="Song",
+            artist="",
+            display_key="Dm",
+            key_center="Dm",
+            instrument="Piano",
+            level="Beginner",
+            focus="",
+            sections={"A": ["Bb"]},
+        )
+        session: dict = {"_mission_notation_staff_version": 0}
+        out = ensure_mission_sheet_music_authority(
+            session, example, improv_ctx=ctx, instrument="Piano", bpm=100
+        )
+        self.assertIn("K:d", str(out.abc or "").replace(" ", ""))
+        self.assertNotIn("K:A", str(out.abc or ""))
+
+
+    def test_defer_when_mission_widgets_instantiated(self) -> None:
+        from music_workflow_pending_backing_handoff import should_defer_backing_workflow_activation
+
+        session: dict = {}
+        try:
+            from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
+
+            session[CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY] = True
+        except ImportError:
+            self.skipTest("creative_mission_config_persistence missing")
+        self.assertTrue(should_defer_backing_workflow_activation(session))
 
 
 if __name__ == "__main__":

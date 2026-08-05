@@ -387,7 +387,7 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     if pre_v:
         from music_workflow_mutation import _restore_legacy_snapshot
 
-        _restore_legacy_snapshot(session, legacy_snap)
+        _restore_legacy_snapshot(session, legacy_snap, widget_safe=True)
         return _fail(session, "STAGED_VALIDATION", "Workflow activation failed validation.", trace)
 
     commit = commit_staged_workflow(
