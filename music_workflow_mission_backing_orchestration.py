@@ -151,12 +151,7 @@ def prepare_deferred_mission_backing_handoff(
         else:
             rerun_sent = request_pending_backing_handoff_rerun(st_module, session)
         if not rerun_sent:
-            msg = session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
-            if msg and st_module is not None:
-                try:
-                    st_module.warning(str(msg))
-                except Exception:
-                    pass
+            session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
         return rerun_sent
     except ImportError:
         return False
@@ -188,8 +183,16 @@ def try_finalize_backing_after_mission_envelope(session: dict[str, Any]) -> bool
 
 
 def run_pre_widget_mission_handoff_consumers(session: dict[str, Any], *, st: Any | None = None) -> dict[str, str]:
-    """Envelope reconciliation first, then deferred Mission backing handoff."""
+    """Mission backing click intent, envelope reconciliation, then deferred backing handoff."""
     phases: dict[str, str] = {}
+    try:
+        from music_workflow_mission_backing_click import apply_mission_backing_click_intent, peek_mission_backing_click_intent
+
+        if peek_mission_backing_click_intent(session):
+            applied = apply_mission_backing_click_intent(session, st_module=st)
+            phases["mission_backing_click_intent"] = "applied" if applied else "failed"
+    except ImportError:
+        phases["mission_backing_click_intent"] = "skipped"
     try:
         from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
 

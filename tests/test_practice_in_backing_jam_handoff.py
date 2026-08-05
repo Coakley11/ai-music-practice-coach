@@ -171,8 +171,11 @@ class TestPracticeInBackingJamHandoff(unittest.TestCase):
     def test_open_mission_backing_source_has_no_mutable_align(self) -> None:
         root = Path(__file__).resolve().parents[1] / "improvisation_intelligence_ui.py"
         text = root.read_text(encoding="utf-8")
-        tab = text[text.index("def _tab_missions(") : text.index("\n    if not example:", text.index("def _open_mission_backing"))]
+        start = text.index("def _mission_backing_on_click")
+        end = text.index("\n    if not example:", start)
+        tab = text[start:end]
         self.assertNotIn("ensure_mission_handoff_aligned", tab)
+        self.assertNotIn("on_open_backing()", tab)
 
 
 if __name__ == "__main__":

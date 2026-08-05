@@ -315,6 +315,16 @@ def render_improvisation_intelligence_lab(
             except ImportError:
                 pass
 
+        try:
+            from widget_callback_diagnostics import log_widget_callback_registration
+
+            log_widget_callback_registration(
+                widget_key="improv_intelligence_tab",
+                callback=_on_improv_tab_change,
+            )
+        except ImportError:
+            pass
+
         active_tab = st.radio(
             "Improvisation section",
             list(IMPROV_TAB_NAMES),
@@ -322,7 +332,6 @@ def render_improvisation_intelligence_lab(
             key="improv_intelligence_tab",
             label_visibility="collapsed",
             on_change=_on_improv_tab_change,
-            kwargs={"session_state": session_state},
         )
         _wf_tab_status = "skipped"
         try:
@@ -2264,77 +2273,31 @@ def _tab_missions(
     if isinstance(raw_example, dict):
         pre_render_mat = str(raw_example.get("material_fp") or "")
 
-    def _open_mission_backing(*, with_practice_lick: bool = False) -> None:
+    def _mission_backing_on_click(*, with_practice_lick: bool, widget_key: str) -> None:
         if not on_open_backing:
             return
-        try:
-            from mission_backing_alignment import (
-                MISSION_PENDING_BACKING_ALIGNMENT_KEY,
-                build_mission_backing_alignment_payload,
-            )
-        except ImportError:
-            MISSION_PENDING_BACKING_ALIGNMENT_KEY = "_mission_pending_backing_alignment"  # type: ignore[misc]
-            build_mission_backing_alignment_payload = None  # type: ignore[misc,assignment]
+        import streamlit as st
 
-        if with_practice_lick and example:
-            style_meta = session_state.get("improv_style_meta") or {}
-            groove = str(
-                session_state.get("improv_groove")
-                or session_state.get("backing_groove_style")
-                or style_meta.get("backing_style")
-                or style_meta.get("style")
-                or "Auto"
-            )
-            meter = str(
-                session_state.get("backing_time_signature")
-                or style_meta.get("meter")
-                or "4/4"
-            )
-            store_mission_practice_lick_for_backing(
-                session_state,
-                example=example,
-                mission_title=mission,
-                instrument=live_inst,
-                bpm=bpm,
-                groove=groove,
-                meter=meter,
-                song_title=improv_ctx.song_title,
-                section_label=section_label,
-                persist_artifact=False,
-            )
-            queue_mission_practice_lick_handoff(session_state)
-            try:
-                from music_workflow_pending_backing_handoff import mission_backing_click_must_defer
+        from widget_callback_diagnostics import log_widget_callback_enter
 
-                defer_click = mission_backing_click_must_defer(session_state)
-            except ImportError:
-                defer_click = False
-            if not defer_click:
-                try:
-                    from mission_backing_handoff_persistence import begin_mission_backing_handoff
+        from music_workflow_mission_backing_click import (
+            capture_mission_backing_click_intent,
+            peek_mission_backing_click_intent,
+            request_mission_backing_click_rerun,
+        )
 
-                    begin_mission_backing_handoff(
-                        session_state,
-                        navigation_callback="_open_mission_backing",
-                        with_practice_lick=True,
-                    )
-                except ImportError:
-                    pass
-        elif not with_practice_lick:
-            session_state.pop(MISSION_PRACTICE_LICK_KEY, None)
-        if build_mission_backing_alignment_payload is not None:
-            session_state[MISSION_PENDING_BACKING_ALIGNMENT_KEY] = build_mission_backing_alignment_payload(
-                session_state,
-                mission=mission,
-                cur_chord=cur_chord,
-                section_label=section_label,
-                chord_idx=int(chord_idx),
-                song_title=improv_ctx.song_title,
-                concert_key=improv_ctx.key_center,
-                display_key=improv_ctx.display_key,
-                example=example if with_practice_lick else None,
-                with_practice_lick=with_practice_lick,
-            )
+        log_widget_callback_enter(widget_key=widget_key, callback=_mission_backing_on_click)
+        capture_mission_backing_click_intent(
+            st.session_state,
+            with_practice_lick=with_practice_lick,
+            mission=str(mission or ""),
+            cur_chord=str(cur_chord or ""),
+            section_label=str(section_label or ""),
+            chord_idx=int(chord_idx),
+            song_title=str(improv_ctx.song_title or ""),
+            concert_key=str(improv_ctx.key_center or ""),
+            display_key=str(improv_ctx.display_key or ""),
+        )
         try:
             from music_mission_backing_handoff_trace import log_mission_backing_click
             from music_workflow_pending_backing_handoff import (
@@ -2343,39 +2306,52 @@ def _tab_missions(
             )
             from session_widget_safe import widgets_likely_instantiated
 
-            mw = False
-            try:
-                from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
-
-                mw = bool(session_state.get(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY))
-            except ImportError:
-                pass
-            align_raw = session_state.get(MISSION_PENDING_BACKING_ALIGNMENT_KEY) or {}
             log_mission_backing_click(
-                session_state,
+                st.session_state,
                 with_practice_lick=with_practice_lick,
                 mission_id=str(mission or ""),
-                mission_session_id=str((align_raw or {}).get("mission_session_id") or ""),
+                mission_session_id="",
                 section=str(section_label or ""),
                 chord=str(cur_chord or ""),
-                workflow_owner=resolve_backing_workflow_owner(session_state, backing_source="mission"),
-                widgets_locked=widgets_likely_instantiated(session_state),
-                mission_widgets_instantiated=mw,
+                workflow_owner=resolve_backing_workflow_owner(st.session_state, backing_source="mission"),
+                widgets_locked=widgets_likely_instantiated(st.session_state),
+                mission_widgets_instantiated=bool(
+                    session_state.get("_creative_mission_widgets_instantiated")
+                ),
             )
-            session_state["_mission_backing_click_must_defer"] = mission_backing_click_must_defer(session_state)
+            st.session_state["_mission_backing_click_must_defer"] = mission_backing_click_must_defer(
+                st.session_state
+            )
         except ImportError:
             pass
-        session_state[IMPROV_MISSION_BACKING_HANDOFF] = True
-        on_open_backing()
+        intent = peek_mission_backing_click_intent(st.session_state)
+        if intent:
+            request_mission_backing_click_rerun(st, st.session_state, intent)
+
+    def _on_plain_mission_backing() -> None:
+        _mission_backing_on_click(with_practice_lick=False, widget_key="improv_mission_over_backing")
+
+    def _on_practice_in_backing_jam() -> None:
+        _mission_backing_on_click(with_practice_lick=True, widget_key="improv_mission_over_backing_bottom")
 
     if not example:
-        if on_open_backing and st.button(
-            nav_icon_button_label("backing") + " Jam",
-            key="improv_mission_over_backing",
-            type="primary",
-            use_container_width=True,
-        ):
-            _open_mission_backing(with_practice_lick=False)
+        if on_open_backing:
+            try:
+                from widget_callback_diagnostics import log_widget_callback_registration
+
+                log_widget_callback_registration(
+                    widget_key="improv_mission_over_backing",
+                    callback=_on_plain_mission_backing,
+                )
+            except ImportError:
+                pass
+            st.button(
+                nav_icon_button_label("backing") + " Jam",
+                key="improv_mission_over_backing",
+                type="primary",
+                use_container_width=True,
+                on_click=_on_plain_mission_backing,
+            )
 
     if on_open_analysis:
         pass  # optional recording expander rendered at bottom
@@ -2511,13 +2487,23 @@ def _tab_missions(
             key="improv_mission_practice_lick_toggle",
             help="Optional: open Backing Jam with this example for reference — not required for scoring.",
         )
-        if on_open_backing and st.button(
-            "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
-            key="improv_mission_over_backing_bottom",
-            type="primary",
-            use_container_width=True,
-        ):
-            _open_mission_backing(with_practice_lick=practice_in_jam)
+        if on_open_backing:
+            try:
+                from widget_callback_diagnostics import log_widget_callback_registration
+
+                log_widget_callback_registration(
+                    widget_key="improv_mission_over_backing_bottom",
+                    callback=_on_practice_in_backing_jam,
+                )
+            except ImportError:
+                pass
+            st.button(
+                "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
+                key="improv_mission_over_backing_bottom",
+                type="primary",
+                use_container_width=True,
+                on_click=_on_practice_in_backing_jam if practice_in_jam else _on_plain_mission_backing,
+            )
 
         st.caption(
             f"Inspiration variant: **{example.variant}** · "

@@ -37,11 +37,12 @@ class TestMissionBackingAlignmentAndRollback(unittest.TestCase):
     def test_open_mission_backing_defers_mutable_alignment_when_locked(self) -> None:
         root = Path(__file__).resolve().parents[1] / "improvisation_intelligence_ui.py"
         text = root.read_text(encoding="utf-8")
-        start = text.index("def _open_mission_backing")
+        start = text.index("def _mission_backing_on_click")
         end = text.index("\n    if not example:", start)
         body = text[start:end]
         self.assertNotIn("ensure_mission_handoff_aligned", body)
-        self.assertIn("build_mission_backing_alignment_payload", body)
+        self.assertNotIn("build_mission_backing_alignment_payload", body)
+        self.assertIn("capture_mission_backing_click_intent", body)
 
     def test_alignment_payload_is_complete(self) -> None:
         session: dict = {
