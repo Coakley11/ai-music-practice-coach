@@ -2105,23 +2105,7 @@ def _tab_missions(
 
         rep = inspect_mission_workflow_envelope(session_state)
         if not rep.get("consistent"):
-            try:
-                from music_workflow_pending_mission_envelope import (
-                    peek_pending_mission_envelope_reconciliation,
-                    queue_pending_mission_envelope_reconciliation,
-                    request_pending_mission_envelope_rerun,
-                )
-
-                if not peek_pending_mission_envelope_reconciliation(session_state):
-                    queue_pending_mission_envelope_reconciliation(
-                        session_state,
-                        reason="missions_tab_late_inspect",
-                        violations=list(rep.get("violations") or []),
-                    )
-                    request_pending_mission_envelope_rerun(st, session_state)
-            except ImportError:
-                pass
-            st.caption("Mission context reconciliation is queued — refreshing once.")
+            st.caption("Mission context is still syncing — use Mission Backing after refresh if navigation fails.")
         render_workflow_envelope_dev_panel(st, session_state)
     except ImportError:
         pass

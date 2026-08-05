@@ -1,0 +1,223 @@
+"""Orchestrate Mission envelope reconciliation before deferred Mission backing handoffs."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY = "_music_orchestrated_mission_backing_rerun_seq"
+
+
+def mission_envelope_reconciliation_required(session: dict[str, Any]) -> bool:
+    if str(session.get("studio_page") or "").strip().lower() != "creative":
+        return False
+    try:
+        from music_workflow_pending_mission_envelope import missions_envelope_reconciliation_target
+
+        if not missions_envelope_reconciliation_target(session):
+            return False
+    except ImportError:
+        tab = str(session.get("improv_intelligence_tab") or "").strip()
+        if tab != "Missions":
+            return False
+    try:
+        from generated_jam_key_context import generated_jam_owns_practice_key
+
+        if generated_jam_owns_practice_key(session):
+            return True
+    except ImportError:
+        pass
+    try:
+        from active_musical_workflow_envelope import validate_mission_workflow_envelope
+
+        return not bool(validate_mission_workflow_envelope(session).get("consistent"))
+    except ImportError:
+        return False
+
+
+def _orchestration_fingerprint(session: dict[str, Any]) -> str:
+    try:
+        from music_workflow_pending_backing_handoff import peek_pending_backing_workflow_handoff
+        from music_workflow_pending_mission_envelope import peek_pending_mission_envelope_reconciliation
+
+        backing = peek_pending_backing_workflow_handoff(session) or {}
+        envelope = peek_pending_mission_envelope_reconciliation(session) or {}
+    except ImportError:
+        backing = {}
+        envelope = {}
+    blob = json.dumps(
+        {
+            "kind": "mission_envelope_then_backing",
+            "backing_seq": backing.get("request_seq"),
+            "backing_token": str(backing.get("consume_token") or ""),
+            "envelope_seq": envelope.get("request_seq"),
+            "waiting": bool(backing.get("waiting_for_mission_envelope")),
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def request_orchestrated_mission_backing_rerun(st_module: Any, session: dict[str, Any]) -> bool:
+    """One guarded rerun for envelope prerequisite + deferred backing intent."""
+    try:
+        from music_workflow_pending_backing_handoff import peek_pending_backing_workflow_handoff
+
+        backing = peek_pending_backing_workflow_handoff(session)
+    except ImportError:
+        return False
+    if not backing or not backing.get("waiting_for_mission_envelope"):
+        return False
+    orch_seq = backing.get("request_seq")
+    if orch_seq is not None and session.get(ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY) == orch_seq:
+        return False
+    fp = _orchestration_fingerprint(session)
+    try:
+        from music_app_rerun import request_app_rerun
+
+        sent = bool(
+            request_app_rerun(
+                st_module,
+                session,
+                reason="mission_envelope_then_backing_handoff",
+                stage="mission_backing_orchestrated_pre_widget",
+                fingerprint=fp,
+            )
+        )
+    except ImportError:
+        return False
+    if sent and orch_seq is not None:
+        session[ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY] = orch_seq
+    if not sent:
+        try:
+            from music_workflow_pending_backing_handoff import PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY
+
+            session[PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY] = (
+                "Mission backing is queued but navigation paused to prevent a rerun loop. Refresh once to continue."
+            )
+        except ImportError:
+            pass
+    return sent
+
+
+def prepare_deferred_mission_backing_handoff(
+    st_module: Any,
+    session: dict[str, Any],
+    *,
+    backing_source: str,
+    workflow_owner: str,
+    with_practice_lick: bool,
+    mission_alignment: dict[str, Any] | None,
+    return_route: str = "creative",
+) -> bool:
+    """Queue backing (and envelope prerequisite if needed); request one rerun."""
+    env_needed = mission_envelope_reconciliation_required(session)
+    if env_needed:
+        try:
+            from music_workflow_pending_mission_envelope import (
+                peek_pending_mission_envelope_reconciliation,
+                queue_pending_mission_envelope_reconciliation,
+            )
+
+            if not peek_pending_mission_envelope_reconciliation(session):
+                queue_pending_mission_envelope_reconciliation(
+                    session,
+                    reason="backing_handoff_prerequisite",
+                    violations=[],
+                )
+        except ImportError:
+            env_needed = False
+
+    try:
+        from music_workflow_pending_backing_handoff import (
+            PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
+            queue_pending_backing_workflow_handoff,
+            request_pending_backing_handoff_rerun,
+        )
+
+        queue_pending_backing_workflow_handoff(
+            session,
+            backing_source=backing_source,
+            workflow_owner=workflow_owner,
+            with_practice_lick=with_practice_lick,
+            mission_alignment=mission_alignment,
+            return_route=return_route,
+            waiting_for_mission_envelope=env_needed,
+        )
+        if env_needed:
+            rerun_sent = request_orchestrated_mission_backing_rerun(st_module, session)
+        else:
+            rerun_sent = request_pending_backing_handoff_rerun(st_module, session)
+        if not rerun_sent:
+            msg = session.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+            if msg and st_module is not None:
+                try:
+                    st_module.warning(str(msg))
+                except Exception:
+                    pass
+        return rerun_sent
+    except ImportError:
+        return False
+
+
+def try_finalize_backing_after_mission_envelope(session: dict[str, Any]) -> bool:
+    """After envelope reconcile, arm and allow backing consume for waiting requests."""
+    try:
+        from music_workflow_pending_backing_handoff import (
+            PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY,
+            PENDING_BACKING_WORKFLOW_KEY,
+            arm_pending_backing_handoff_consume,
+            peek_pending_backing_workflow_handoff,
+        )
+    except ImportError:
+        return False
+    pending = peek_pending_backing_workflow_handoff(session)
+    if not isinstance(pending, dict) or not pending.get("waiting_for_mission_envelope"):
+        return False
+    if mission_envelope_reconciliation_required(session):
+        return False
+    pending = dict(pending)
+    pending["waiting_for_mission_envelope"] = False
+    session[PENDING_BACKING_WORKFLOW_KEY] = pending
+    req_seq = pending.get("request_seq")
+    if req_seq is not None:
+        session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = req_seq
+    return arm_pending_backing_handoff_consume(session)
+
+
+def run_pre_widget_mission_handoff_consumers(session: dict[str, Any], *, st: Any | None = None) -> dict[str, str]:
+    """Envelope reconciliation first, then deferred Mission backing handoff."""
+    phases: dict[str, str] = {}
+    try:
+        from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
+
+        phases["mission_return"] = str(consume_pending_mission_return_handoff(session, st=st))
+    except ImportError:
+        phases["mission_return"] = "skipped"
+    try:
+        from music_workflow_pending_mission_envelope import consume_pending_mission_envelope_reconciliation
+
+        phases["mission_envelope"] = str(consume_pending_mission_envelope_reconciliation(session, st=st))
+    except ImportError:
+        phases["mission_envelope"] = "skipped"
+    if try_finalize_backing_after_mission_envelope(session):
+        phases["backing_armed_after_envelope"] = "yes"
+    try:
+        from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
+
+        phases["backing_handoff"] = str(consume_pending_backing_workflow_handoff(session, st=st))
+    except ImportError:
+        phases["backing_handoff"] = "skipped"
+    return phases
+
+
+__all__ = [
+    "ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY",
+    "mission_envelope_reconciliation_required",
+    "prepare_deferred_mission_backing_handoff",
+    "request_orchestrated_mission_backing_rerun",
+    "run_pre_widget_mission_handoff_consumers",
+    "try_finalize_backing_after_mission_envelope",
+]

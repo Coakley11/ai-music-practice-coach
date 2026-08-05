@@ -113,6 +113,7 @@ def queue_pending_backing_workflow_handoff(
     with_practice_lick: bool = False,
     navigation_callback: str = "_improv_open_backing",
     mission_alignment: dict[str, Any] | None = None,
+    waiting_for_mission_envelope: bool = False,
 ) -> dict[str, Any]:
     """Queue typed backing activation for the next pre-widget script run."""
     seq = _next_seq(session)
@@ -137,6 +138,7 @@ def queue_pending_backing_workflow_handoff(
         "mission_handoff": str(backing_source or "") == "mission",
         "mission_alignment": align,
         "alignment_fingerprint": align_fp,
+        "waiting_for_mission_envelope": bool(waiting_for_mission_envelope),
     }
     req["consume_token"] = _consume_token(req)
     session[PENDING_BACKING_WORKFLOW_KEY] = req
@@ -241,7 +243,8 @@ def request_pending_backing_handoff_rerun(st_module: Any, session: dict[str, Any
             "Refresh the page to continue, or try again."
         )
     else:
-        session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = seq
+        if not bool(pending.get("waiting_for_mission_envelope")):
+            session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = seq
     return rerun_sent
 
 
@@ -360,6 +363,18 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     armed_seq = session.get(PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY)
     req_seq = pending.get("request_seq")
     if armed_seq is None or req_seq is None or int(armed_seq) != int(req_seq):
+        if pending.get("waiting_for_mission_envelope"):
+            try:
+                from music_mission_backing_handoff_trace import log_consume
+
+                log_consume(
+                    session,
+                    phase="skipped",
+                    detail={"reason": "waiting_for_mission_envelope", "request_seq": req_seq},
+                )
+            except ImportError:
+                pass
+            return "skipped"
         try:
             from music_workflow_state_store import record_compat_fallback
 

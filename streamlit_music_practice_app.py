@@ -9597,23 +9597,28 @@ try:
 except ImportError:
     pass
 try:
-    from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
+    from music_workflow_mission_backing_orchestration import run_pre_widget_mission_handoff_consumers
 
-    consume_pending_backing_workflow_handoff(st.session_state, st=st)
+    run_pre_widget_mission_handoff_consumers(st.session_state, st=st)
 except ImportError:
-    pass
-try:
-    from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
+    try:
+        from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
 
-    consume_pending_mission_return_handoff(st.session_state, st=st)
-except ImportError:
-    pass
-try:
-    from music_workflow_pending_mission_envelope import consume_pending_mission_envelope_reconciliation
+        consume_pending_backing_workflow_handoff(st.session_state, st=st)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
 
-    consume_pending_mission_envelope_reconciliation(st.session_state, st=st)
-except ImportError:
-    pass
+        consume_pending_mission_return_handoff(st.session_state, st=st)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_mission_envelope import consume_pending_mission_envelope_reconciliation
+
+        consume_pending_mission_envelope_reconciliation(st.session_state, st=st)
+    except ImportError:
+        pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)
@@ -14445,19 +14450,32 @@ elif _studio_page == "creative":
                     pass
 
             if defer_wf and creative_source == "mission":
-                queue_pending_backing_workflow_handoff(
-                    st.session_state,
-                    backing_source=creative_source,
-                    workflow_owner=wf_owner,
-                    with_practice_lick=with_lick,
-                    mission_alignment=mission_align,
-                    return_route=str((mission_align or {}).get("return_route") or "creative"),
-                )
-                rerun_sent = request_pending_backing_handoff_rerun(st, st.session_state)
-                if not rerun_sent:
-                    handoff_msg = st.session_state.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
-                    if handoff_msg:
-                        st.warning(str(handoff_msg))
+                try:
+                    from music_workflow_mission_backing_orchestration import prepare_deferred_mission_backing_handoff
+
+                    prepare_deferred_mission_backing_handoff(
+                        st,
+                        st.session_state,
+                        backing_source=creative_source,
+                        workflow_owner=wf_owner,
+                        with_practice_lick=with_lick,
+                        mission_alignment=mission_align,
+                        return_route=str((mission_align or {}).get("return_route") or "creative"),
+                    )
+                except ImportError:
+                    queue_pending_backing_workflow_handoff(
+                        st.session_state,
+                        backing_source=creative_source,
+                        workflow_owner=wf_owner,
+                        with_practice_lick=with_lick,
+                        mission_alignment=mission_align,
+                        return_route=str((mission_align or {}).get("return_route") or "creative"),
+                    )
+                    rerun_sent = request_pending_backing_handoff_rerun(st, st.session_state)
+                    if not rerun_sent:
+                        handoff_msg = st.session_state.pop(PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY, None)
+                        if handoff_msg:
+                            st.warning(str(handoff_msg))
                 return
 
             open_backing_from_creative(
