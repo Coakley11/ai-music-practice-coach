@@ -38,6 +38,15 @@ st.set_page_config(
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:
+    from music_deploy_verification import ensure_session_deploy_identity, log_deploy_startup
+
+    ensure_session_deploy_identity(st.session_state)
+    if int(st.session_state.get("_script_run_seq") or 0) <= 1:
+        log_deploy_startup()
+except ImportError:
+    pass
+
+try:
     from music_phase1_write_journal import begin_phase1_write_journal_run
 
     begin_phase1_write_journal_run(st.session_state)
@@ -9277,12 +9286,22 @@ if _developer_mode_enabled():
         from app_ui import STUDIO_UI_RELEASE, use_simple_music_nav
 
         _simple_nav_on = use_simple_music_nav(st.session_state)
+        _deploy_sha = str(st.session_state.get("_studio_ui_release_sha") or "unknown")
+        _deploy_branch = str(st.session_state.get("_music_deploy_branch") or "unknown")
         st.sidebar.caption(
+            f"Deploy · `{_deploy_sha}` · branch `{_deploy_branch}`  \n"
             f"Studio UI · `{STUDIO_UI_RELEASE}`  \n"
             f"Nav UI · `{NAVIGATION_UI_DEPLOY_MARKER}`  \n"
             f"Simple nav · `{'on' if _simple_nav_on else 'off'}`"
         )
     except Exception:
+        pass
+
+    try:
+        from music_deploy_verification import render_dev_deploy_verification_panel
+
+        render_dev_deploy_verification_panel(st, st.session_state)
+    except ImportError:
         pass
 
     try:

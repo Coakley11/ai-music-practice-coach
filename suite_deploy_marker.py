@@ -19,19 +19,26 @@ _COMMIT_ENV_KEYS = (
 
 
 def resolve_git_commit_short() -> str:
+    full = resolve_git_commit_full()
+    if full and full != "unknown":
+        return full[:12]
+    return "unknown"
+
+
+def resolve_git_commit_full() -> str:
     for name in _COMMIT_ENV_KEYS:
         val = str(os.environ.get(name) or "").strip()
         if val:
-            return val[:12]
+            return val
     try:
         out = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "HEAD"],
             stderr=subprocess.DEVNULL,
             timeout=2,
             cwd=str(_REPO_ROOT),
         )
-        short = out.decode().strip()
-        return short or "unknown"
+        full = out.decode().strip()
+        return full or "unknown"
     except Exception:
         return "unknown"
 
@@ -54,4 +61,4 @@ def resolve_git_branch() -> str:
         return "unknown"
 
 
-__all__ = ["resolve_git_branch", "resolve_git_commit_short"]
+__all__ = ["resolve_git_branch", "resolve_git_commit_full", "resolve_git_commit_short"]
