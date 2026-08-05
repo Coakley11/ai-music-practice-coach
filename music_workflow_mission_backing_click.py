@@ -92,22 +92,38 @@ def apply_mission_backing_click_intent(session: dict[str, Any], *, st_module: An
             from improvisation_missions import MISSION_EXAMPLE_KEY, queue_mission_practice_lick_handoff, store_mission_practice_lick_for_backing
 
             example = session.get(MISSION_EXAMPLE_KEY)
-            if isinstance(example, dict):
-                store_mission_practice_lick_for_backing(
-                    session,
-                    example=example,  # type: ignore[arg-type]
-                    mission_title=str(intent.get("mission") or ""),
-                    instrument=str(session.get("instrument") or "Piano"),
-                    bpm=int(session.get("backing_track_bpm") or 100),
-                    groove=str(session.get("improv_groove") or "Auto"),
-                    meter=str(session.get("backing_time_signature") or "4/4"),
-                    song_title=str(intent.get("song_title") or ""),
-                    section_label=str(intent.get("section_label") or ""),
-                    persist_artifact=False,
+            if example is None:
+                from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY
+
+                session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+                session[MISSION_BACKING_EXAMPLE_ERROR_KEY] = (
+                    "Generate an example on this mission before Practice in Backing Jam."
                 )
-                queue_mission_practice_lick_handoff(session)
+                session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
+                return False
+            stored = store_mission_practice_lick_for_backing(
+                session,
+                example=example,
+                mission_title=str(intent.get("mission") or ""),
+                instrument=str(session.get("instrument") or "Piano"),
+                bpm=int(session.get("backing_track_bpm") or 100),
+                groove=str(session.get("improv_groove") or "Auto"),
+                meter=str(session.get("backing_time_signature") or "4/4"),
+                song_title=str(intent.get("song_title") or ""),
+                section_label=str(intent.get("section_label") or ""),
+                persist_artifact=False,
+                song_concert_key=str(intent.get("concert_key") or ""),
+                song_display_key=str(intent.get("display_key") or ""),
+            )
+            if not stored:
+                session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+                session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
+                return False
+            queue_mission_practice_lick_handoff(session)
         except ImportError:
-            pass
+            session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
+            session[MISSION_BACKING_CLICK_INTENT_KEY] = dict(intent)
+            return False
     try:
         from music_workflow_mission_backing_orchestration import prepare_deferred_mission_backing_handoff
         from music_workflow_pending_backing_handoff import resolve_backing_workflow_owner

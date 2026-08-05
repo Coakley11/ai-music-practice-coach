@@ -423,13 +423,17 @@ def refresh_mission_example(
     """Sync all instrument outputs to the current motif."""
     inst = instrument or example.instrument
     tempo = bpm if bpm is not None else 100
-    ref_key = example.display_key
+    concert_auth = str(song_concert_key or example.concert_key or "").strip()
+    spell_display = example.display_key
+    if concert_auth:
+        spell_display = concert_auth
+    ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord
 
         ref_key = harmonic_reference_for_chord(
             example.chord,
-            song_display_key=example.display_key,
+            song_display_key=spell_display,
         )
     except ImportError:
         try:
@@ -437,7 +441,7 @@ def refresh_mission_example(
 
             ref_key = coaching_reference_for_mission_chord(
                 example.chord,
-                song_display_key=example.display_key,
+                song_display_key=spell_display,
             )
         except ImportError:
             pass
@@ -448,8 +452,8 @@ def refresh_mission_example(
         key_center=ref_key,
         bpm=tempo,
         mission=example.mission,
-        song_display_key=example.display_key,
-        song_concert_key=song_concert_key or example.concert_key or example.display_key,
+        song_display_key=spell_display,
+        song_concert_key=concert_auth or example.concert_key or example.display_key,
     )
     example.instrument = inst
     example.motif = out["motif"]
@@ -829,20 +833,36 @@ def mission_example_for_display(
     instrument: str,
     bpm: int,
     song_concert_key: str = "",
+    session_state: dict | None = None,
+    authoritative_concert_key: str = "",
+    authoritative_display_key: str = "",
 ) -> MissionExample:
     """Always rebuild outputs so sheet music / TAB / piano match the current motif."""
-    return refresh_mission_example(
+    from mission_example_normalization import normalize_mission_example_for_display
+
+    norm = normalize_mission_example_for_display(
         example,
+        session_state=session_state,
+        authoritative_concert_key=authoritative_concert_key or song_concert_key,
+        authoritative_display_key=authoritative_display_key,
+        instrument=instrument,
+    )
+    if not norm.ok or norm.example is None:
+        raise ValueError(norm.message or norm.error_code or "MISSION_EXAMPLE_NORMALIZE_FAILED")
+    typed = norm.example
+    concert = str(song_concert_key or norm.authoritative_concert_key or typed.concert_key or "")
+    return refresh_mission_example(
+        typed,
         instrument=instrument,
         bpm=bpm,
-        song_concert_key=song_concert_key,
+        song_concert_key=concert,
     )
 
 
 def store_mission_practice_lick_for_backing(
     session_state: dict,
     *,
-    example: MissionExample,
+    example: MissionExample | dict[str, Any],
     mission_title: str,
     instrument: str,
     bpm: int,
@@ -851,9 +871,40 @@ def store_mission_practice_lick_for_backing(
     song_title: str,
     section_label: str,
     persist_artifact: bool = True,
-) -> None:
+    song_concert_key: str = "",
+    song_display_key: str = "",
+) -> bool:
     """Persist the current mission lick for Mission Backing Jam (single motif source of truth)."""
-    ex = mission_example_for_display(example, instrument=instrument, bpm=bpm)
+    from mission_example_normalization import MISSION_BACKING_EXAMPLE_ERROR_KEY, normalize_mission_example_for_display
+
+    norm = normalize_mission_example_for_display(
+        example,
+        session_state=session_state,
+        authoritative_concert_key=song_concert_key,
+        authoritative_display_key=song_display_key,
+        instrument=instrument,
+        mission=mission_title,
+        song_title=song_title,
+        section=section_label,
+    )
+    if not norm.ok or norm.example is None:
+        session_state[MISSION_BACKING_EXAMPLE_ERROR_KEY] = norm.message or norm.error_code or "MISSION_EXAMPLE_NORMALIZE_FAILED"
+        return False
+    concert = str(song_concert_key or norm.authoritative_concert_key or norm.example.concert_key or "")
+    try:
+        ex = mission_example_for_display(
+            norm.example,
+            instrument=instrument,
+            bpm=bpm,
+            song_concert_key=concert,
+            session_state=session_state,
+            authoritative_concert_key=song_concert_key,
+            authoritative_display_key=song_display_key,
+        )
+    except ValueError as exc:
+        session_state[MISSION_BACKING_EXAMPLE_ERROR_KEY] = str(exc)
+        return False
+    session_state.pop(MISSION_BACKING_EXAMPLE_ERROR_KEY, None)
     payload = {
         "motif": dict(ex.motif),
         "abc": ex.abc,
@@ -899,6 +950,7 @@ def store_mission_practice_lick_for_backing(
             mark_mission_workspace_dirty(session_state)
         except ImportError:
             pass
+    return True
 
 
 def mission_practice_lick_payload(session_state: dict) -> dict[str, Any] | None:

@@ -39,6 +39,25 @@ class TestMissionBackingClickCallback(unittest.TestCase):
             "improv_intelligence_tab": "Missions",
             "instrument": "Piano",
             "backing_track_bpm": 100,
+            "improv_groove": "Auto",
+            "backing_time_signature": "4/4",
+            "improv_mission_example": {
+                "mission": "Outline chord tones",
+                "variant": "normal",
+                "chord": "Bb",
+                "section": "A",
+                "motif": {
+                    "notes": ["Bb", "D", "F"],
+                    "rhythm": "quarter quarter quarter",
+                },
+                "abc": "",
+                "tab": "",
+                "piano_html": "",
+                "why": "",
+                "practice_steps": [],
+                "show_tab": False,
+                "show_piano": True,
+            },
         }
 
         def _on_practice_in_backing_jam() -> None:
