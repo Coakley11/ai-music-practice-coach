@@ -301,7 +301,7 @@ def run_chart_bundle_automatic_recovery(
         ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = ""
         return True
     ss[CHART_BUNDLE_RECOVERY_STOP_REASON_KEY] = "hydrate_still_missing_key_after_recovery"
-    return True
+    return False
 
 
 def stash_chart_bundle_recovery_context(

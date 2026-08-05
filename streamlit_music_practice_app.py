@@ -9552,6 +9552,13 @@ try:
 except ImportError:
     pass
 try:
+    from music_rerun_loop_guard import render_rerun_loop_blocked_notice, render_rerun_loop_dev_notice
+
+    render_rerun_loop_blocked_notice(st, st.session_state)
+    render_rerun_loop_dev_notice(st, st.session_state)
+except ImportError:
+    pass
+try:
     from local_nav_trace import record_local_nav_checkpoint
 
     record_local_nav_checkpoint(st, "post_transition")
@@ -9707,7 +9714,19 @@ elif _studio_page_for_hydrate == "creative":
 
         _pre_wf = ensure_creative_tab_workflow_before_widgets(st.session_state)
         if _pre_wf == "queued":
-            st.rerun()
+            try:
+                from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+
+                safe_rerun(
+                    st,
+                    st.session_state,
+                    reason="creative_workflow_queued",
+                    fingerprint=build_route_restore_fingerprint(
+                        st.session_state, reason="creative_workflow_queued"
+                    ),
+                )
+            except ImportError:
+                st.rerun()
     except ImportError:
         pass
     try:
@@ -10524,7 +10543,17 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
         if _should_rerun:
             st.session_state["_chart_bundle_build_retry"] = True
     if _should_rerun:
-        st.rerun()
+        try:
+            from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+
+            safe_rerun(
+                st,
+                st.session_state,
+                reason="chart_bundle_recovery",
+                fingerprint=build_route_restore_fingerprint(st.session_state, reason="chart_bundle_recovery"),
+            )
+        except ImportError:
+            st.rerun()
     else:
         try:
             from music_workspace_hydration import (

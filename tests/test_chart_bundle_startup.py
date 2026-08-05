@@ -125,12 +125,16 @@ class ChartBundleStartupRecoveryTests(unittest.TestCase):
             song="Not In Catalog",
             song_data=dict(session["selected_song"]),
         )
-        self.assertTrue(
+        self.assertFalse(
             run_chart_bundle_automatic_recovery(
                 st, song_picker_catalog=catalog, song_library=catalog
             )
         )
-        self.assertTrue(
+        self.assertEqual(
+            str(session.get("_chart_bundle_recovery_stop_reason") or ""),
+            "hydrate_still_missing_key_after_recovery",
+        )
+        self.assertFalse(
             run_chart_bundle_automatic_recovery(
                 st, song_picker_catalog=catalog, song_library=catalog
             )

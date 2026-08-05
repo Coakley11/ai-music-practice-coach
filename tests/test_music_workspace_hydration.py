@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import MagicMock
 
 from music_restore_phase import (
     MUSIC_RESTORE_PHASE_COMPLETE_KEY,
@@ -62,6 +63,18 @@ class TestMusicWorkspaceHydration(unittest.TestCase):
         ss: dict = {"_suite_persist_restore_skip_reason": "no workspace blob"}
         record_sync_outcome_after_attempt(ss, sync_applied=False)
         self.assertTrue(can_finalize_music_restore(ss))
+
+    def test_hydration_wait_treats_persist_applied_as_hydrated(self) -> None:
+        from music_workspace_hydration import render_workspace_hydration_wait_or_stop
+
+        ss: dict = {"_suite_persist_restore_applied": True}
+        st = MagicMock()
+        st.session_state = ss
+        st.rerun = MagicMock()
+        out = render_workspace_hydration_wait_or_stop(st, song_picker_catalog={}, song_library={})
+        self.assertFalse(out)
+        self.assertTrue(can_finalize_music_restore(ss))
+        st.rerun.assert_not_called()
 
     def test_finalize_skipped_until_hydration(self) -> None:
         from music_persistent_state import finalize_music_startup_restore

@@ -135,6 +135,15 @@ def render_workspace_hydration_wait_or_stop(
         st_module.session_state.pop(HYDRATION_UI_WAIT_ATTEMPTS_KEY, None)
         return False
     ss = st_module.session_state
+    if ss.get("_suite_persist_restore_applied") or ss.get("_music_workspace_blob_hydrated"):
+        try:
+            from music_workspace_hydration import mark_workspace_blob_hydrated
+
+            mark_workspace_blob_hydrated(ss)
+        except ImportError:
+            ss["_music_workspace_blob_hydrated"] = True
+        ss.pop(HYDRATION_UI_WAIT_ATTEMPTS_KEY, None)
+        return False
     if workspace_hydration_failed(ss):
         reason = str(ss.get(WORKSPACE_HYDRATION_FAILURE_REASON_KEY) or "unknown").strip()
         st_module.warning(
@@ -145,20 +154,47 @@ def render_workspace_hydration_wait_or_stop(
     attempts = int(ss.get(HYDRATION_UI_WAIT_ATTEMPTS_KEY) or 0)
     if attempts < HYDRATION_UI_WAIT_MAX:
         ss[HYDRATION_UI_WAIT_ATTEMPTS_KEY] = attempts + 1
-        try:
-            from music_persistent_state import prepare_music_workspace
+        if attempts == 0:
+            try:
+                from music_persistent_state import prepare_music_workspace
 
-            prepare_music_workspace(
-                st_module,
-                song_picker_catalog=song_picker_catalog,
-                song_library=song_library,
-            )
-        except Exception:
-            pass
+                prepare_music_workspace(
+                    st_module,
+                    song_picker_catalog=song_picker_catalog,
+                    song_library=song_library,
+                )
+            except Exception:
+                pass
         st_module.info("Restoring your saved workspace…")
-        st_module.rerun()
-    st_module.info("Restoring your saved workspace… This is taking longer than usual; refresh once.")
-    return True
+        try:
+            from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
+
+            if not safe_rerun(
+                st_module,
+                ss,
+                reason="workspace_hydration_wait",
+                fingerprint=build_route_restore_fingerprint(ss, reason="hydration_wait"),
+            ):
+                ss.pop(HYDRATION_UI_WAIT_ATTEMPTS_KEY, None)
+                st_module.warning(
+                    "Workspace restore stopped repeating the same step. "
+                    "The app stays interactive — refresh once if something looks missing."
+                )
+                return False
+        except ImportError:
+            st_module.rerun()
+    st_module.warning(
+        "Workspace restore is taking longer than expected. The app will stay interactive; "
+        "refresh once if charts or song data look incomplete."
+    )
+    try:
+        from music_rerun_loop_guard import clear_rerun_loop_block
+
+        clear_rerun_loop_block(ss, reason="hydration_wait_exhausted")
+    except ImportError:
+        pass
+    ss.pop(HYDRATION_UI_WAIT_ATTEMPTS_KEY, None)
+    return False
 
 
 def collect_workspace_hydration_diagnostics(session_state: dict[str, Any]) -> dict[str, Any]:

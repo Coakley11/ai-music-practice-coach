@@ -44,12 +44,13 @@ def observe_item5_session_lifecycle_start(st: Any, session: dict[str, Any]) -> d
     created_stage: str | None = None
     if not qp_marker_before:
         new_marker = uuid.uuid4().hex[:16]
-        try:
-            st.query_params[ITEM5_BROWSER_MARKER_QP] = new_marker
-        except Exception:
-            pass
         session[ITEM5_BROWSER_MARKER_SESSION_KEY] = new_marker
         created_stage = "observe_item5_session_lifecycle_start"
+        if str(session.get(ITEM5_BROWSER_MARKER_SESSION_KEY) or "") != qp_marker_before:
+            try:
+                st.query_params[ITEM5_BROWSER_MARKER_QP] = new_marker
+            except Exception:
+                pass
     else:
         session[ITEM5_BROWSER_MARKER_SESSION_KEY] = qp_marker_before
 

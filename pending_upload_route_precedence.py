@@ -8,6 +8,10 @@ from typing import Any
 PENDING_UPLOAD_ROUTE_DIAG_KEY = "_pending_upload_route_restore_diag"
 PENDING_UPLOAD_ROUTE_LOCK_KEY = "_pending_upload_route_lock"
 PENDING_UPLOAD_ROUTE_TRACE_KEY = "_pending_upload_route_trace"
+PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY = "_pending_upload_hydrated_take_id"
+PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY = "_pending_upload_route_applied_take_id"
+PENDING_UPLOAD_ROUTE_LOCK_ACQUIRED_RUN_KEY = "_pending_upload_route_lock_acquired_run"
+PENDING_UPLOAD_ROUTE_LOCK_RELEASED_RUN_KEY = "_pending_upload_route_lock_released_run"
 
 _USER_NAV_REASONS = frozenset(
     {
@@ -106,10 +110,6 @@ def pending_upload_blocks_passive_creative_sync(session: dict[str, Any], *, reas
     return bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY))
 
 
-def pending_upload_owns_active_destination(session: dict[str, Any], blob: dict[str, Any] | None = None) -> bool:
-    return pending_upload_should_restore_analysis_page(session, blob)
-
-
 def guard_studio_page_write_for_pending_upload(
     session: dict[str, Any],
     page: str,
@@ -152,14 +152,29 @@ def guard_studio_page_write_for_pending_upload(
 
 
 def apply_pending_upload_startup_page_if_needed(session: dict[str, Any]) -> str | None:
-    """Early startup: pending prepared take owns Upload Analysis destination."""
+    """Early startup: pending prepared take owns Upload Analysis destination (once per take)."""
     blob = session.get("_suite_last_cloud_fetch_payload")
     blob_dict = blob if isinstance(blob, dict) else None
     if not pending_upload_should_restore_analysis_page(session, blob_dict):
         return None
+    try:
+        from mission_pending_upload_analysis import envelope_from_session_or_canonical
+
+        env = envelope_from_session_or_canonical(session) or {}
+        take_id = str(env.get("take_id") or "").strip()
+    except ImportError:
+        take_id = ""
+    if take_id and session.get(PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY) == take_id:
+        if str(session.get("studio_page") or "").strip().lower() == "analysis":
+            finalize_pending_upload_session_route_lock(session)
+            return "analysis"
+        return None
     old = str(session.get("studio_page") or "")
     session[PENDING_UPLOAD_ROUTE_LOCK_KEY] = True
+    session[PENDING_UPLOAD_ROUTE_LOCK_ACQUIRED_RUN_KEY] = int(session.get("_script_run_seq") or 0)
     session["_pending_upload_suppresses_mission_backing"] = True
+    if take_id:
+        session[PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY] = take_id
     try:
         from studio_nav_state import write_canonical_studio_nav_state
 
@@ -181,6 +196,38 @@ def apply_pending_upload_startup_page_if_needed(session: dict[str, Any]) -> str 
         reason="pending_upload_analysis",
     )
     return "analysis"
+
+
+def finalize_pending_upload_session_route_lock(session: dict[str, Any]) -> bool:
+    """Drop transient session lock after analysis route + envelope hydrate succeeded (cloud lock may remain)."""
+    if not session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY):
+        return False
+    if str(session.get("studio_page") or "").strip().lower() != "analysis":
+        return False
+    try:
+        from mission_pending_upload_analysis import envelope_from_session_or_canonical
+
+        env = envelope_from_session_or_canonical(session) or {}
+    except ImportError:
+        return False
+    take_id = str(env.get("take_id") or "").strip()
+    if not take_id:
+        return False
+    if session.get(PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY) != take_id:
+        return False
+    if session.get(PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY) != take_id:
+        return False
+    session.pop(PENDING_UPLOAD_ROUTE_LOCK_KEY, None)
+    session[PENDING_UPLOAD_ROUTE_LOCK_RELEASED_RUN_KEY] = int(session.get("_script_run_seq") or 0)
+    record_pending_upload_route_trace(
+        session,
+        stage="release_session_route_lock",
+        old_page="analysis",
+        new_page="analysis",
+        source="finalize_pending_upload_session_route_lock",
+        reason="route_applied_and_hydrated",
+    )
+    return True
 
 
 def _envelope(session: dict[str, Any], blob: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -450,6 +497,7 @@ def enforce_pending_upload_startup_route(session: dict[str, Any], *, st: Any | N
         env = envelope_from_session_or_canonical(session)
     except ImportError:
         env = None
+    take_id = str((env or {}).get("take_id") or "").strip()
     pending_win = pending_upload_should_restore_analysis_page(session, blob_dict)
     diag: dict[str, Any] = {
         "hydrated_take_id": (env or {}).get("take_id"),
@@ -464,24 +512,28 @@ def enforce_pending_upload_startup_route(session: dict[str, Any], *, st: Any | N
         "winning_route_reason": "unchanged",
         "stale_mission_jam_suppressed": bool(session.get("_pending_upload_suppresses_mission_backing")),
         "audio_hydrate": (session.get("_pending_upload_analysis_diag") or {}).get("hydrate"),
+        "route_applied_take_id": session.get(PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY),
+        "hydrated_take_id_session": session.get(PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY),
+        "lock_acquired_run": session.get(PENDING_UPLOAD_ROUTE_LOCK_ACQUIRED_RUN_KEY),
     }
     if pending_win:
-        try:
-            from mission_pending_upload_persistence import apply_pending_upload_envelope_to_session
+        needs_envelope = not take_id or session.get(PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY) != take_id
+        if needs_envelope:
+            try:
+                from mission_pending_upload_persistence import apply_pending_upload_envelope_to_session
 
-            apply_pending_upload_envelope_to_session(session, st=st, source="startup_route_precedence")
-        except ImportError:
-            session["studio_page"] = "analysis"
-        try:
-            from studio_nav_state import write_canonical_studio_nav_state
-
-            write_canonical_studio_nav_state(session, "analysis", reason="pending_upload_route_precedence")
-        except ImportError:
-            session["studio_page"] = "analysis"
+                apply_pending_upload_envelope_to_session(session, st=st, source="startup_route_precedence")
+            except ImportError:
+                session["studio_page"] = "analysis"
+        apply_pending_upload_startup_page_if_needed(session)
         diag["winning_route"] = "analysis"
         diag["winning_route_reason"] = "pending_upload_analysis"
         diag["stale_mission_jam_suppressed"] = True
+        diag["envelope_hydrate_skipped"] = not needs_envelope
+        finalize_pending_upload_session_route_lock(session)
     session[PENDING_UPLOAD_ROUTE_DIAG_KEY] = diag
+    diag["lock_session"] = bool(session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY))
+    diag["lock_released_run"] = session.get(PENDING_UPLOAD_ROUTE_LOCK_RELEASED_RUN_KEY)
     return diag
 
 
@@ -497,13 +549,19 @@ def render_pending_upload_route_dev_diagnostics(st_module: Any, session: dict[st
     diag = dict(session.get(PENDING_UPLOAD_ROUTE_DIAG_KEY) or {})
     deploy = str(session.get("_studio_ui_release_sha") or "—")
     trace_tail = (session.get(PENDING_UPLOAD_ROUTE_TRACE_KEY) or [])[-3:]
+    loop = dict(session.get("_music_rerun_loop_diag") or {})
+    last_loop = loop.get("last") or {}
     st_module.caption(
         "DEV route restore · "
+        f"run `{session.get('_script_run_seq', '—')}` · "
         f"take `{diag.get('hydrated_take_id', '—')}` · "
         f"status `{diag.get('pending_analysis_status', '—')}` · "
         f"dest `{diag.get('persisted_active_destination', '—')}` · "
         f"win `{diag.get('winning_route', '—')}` ({diag.get('winning_route_reason', '—')}) · "
         f"lock `{session.get(PENDING_UPLOAD_ROUTE_LOCK_KEY)}` · "
+        f"lock_rel_run `{diag.get('lock_released_run', '—')}` · "
+        f"hydr_skip `{diag.get('envelope_hydrate_skipped', '—')}` · "
+        f"rerun `{last_loop.get('reason', '—')}` x{last_loop.get('repeat_count', '—')} · "
         f"trace `{trace_tail}` · "
         f"sha `{deploy[:7] if deploy else '—'}`"
     )
