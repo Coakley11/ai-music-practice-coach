@@ -41,6 +41,7 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
     "04290c5",
     "bacf1ed",
     "b87491f",
+    "a9c87f6",
     "1ed5f40",
 )
 
