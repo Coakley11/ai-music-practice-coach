@@ -332,7 +332,24 @@ def render_improvisation_intelligence_lab(
         except ImportError:
             pass
         if _wf_tab_status == "queued":
-            st.rerun()
+            try:
+                from music_app_rerun import request_app_rerun
+                from music_workflow_creative_nav import (
+                    creative_tab_workflow_rerun_fingerprint,
+                    should_request_creative_tab_workflow_rerun,
+                )
+
+                if should_request_creative_tab_workflow_rerun(session_state, str(active_tab or "")):
+                    fp = creative_tab_workflow_rerun_fingerprint(session_state, str(active_tab or ""))
+                    request_app_rerun(
+                        st,
+                        session_state,
+                        reason="creative_tab_workflow_queued",
+                        stage="page_dispatch_creative_tab",
+                        fingerprint=fp,
+                    )
+            except ImportError:
+                st.rerun()
         try:
             from music_workflow_activation import activation_user_notice
 

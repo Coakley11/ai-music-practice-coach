@@ -8,6 +8,7 @@ from typing import Any
 PENDING_RERUN_REASON_KEY = "_music_run_pending_rerun_reason"
 PENDING_RERUN_FP_KEY = "_music_run_pending_rerun_fingerprint"
 PENDING_STOP_REASON_KEY = "_music_run_pending_stop_reason"
+PENDING_STATE_DELTA_KEY = "_music_run_pending_state_delta"
 TERMINAL_LOGGED_KEY = "_music_run_terminal_logged"
 
 
@@ -45,7 +46,9 @@ def emit_music_run(event: str, session: dict[str, Any] | None = None, **fields: 
         pass
 
 
-def run_summary_fields(session: dict[str, Any]) -> dict[str, Any]:
+def run_summary_fields(session: Any) -> dict[str, Any]:
+    if session is None:
+        return {}
     lc = session.get("_music_run_lifecycle")
     lc = lc if isinstance(lc, dict) else {}
     last_rr = lc.get("last_rerun_request") if isinstance(lc.get("last_rerun_request"), dict) else {}
@@ -65,6 +68,7 @@ def run_summary_fields(session: dict[str, Any]) -> dict[str, Any]:
 __all__ = [
     "PENDING_RERUN_FP_KEY",
     "PENDING_RERUN_REASON_KEY",
+    "PENDING_STATE_DELTA_KEY",
     "PENDING_STOP_REASON_KEY",
     "TERMINAL_LOGGED_KEY",
     "emit_music_run",

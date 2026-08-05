@@ -11,18 +11,19 @@ def request_app_rerun(
     *,
     reason: str,
     stage: str = "",
+    fingerprint: str = "",
 ) -> bool:
     """Log + scoped loop guard + rerun. Returns True if rerun was invoked."""
     try:
         from music_rerun_loop_guard import build_route_restore_fingerprint, safe_rerun
 
-        fp = build_route_restore_fingerprint(session, reason=reason, stage=stage)
+        fp = fingerprint or build_route_restore_fingerprint(session, reason=reason, stage=stage)
         repeat = int(session.get("_music_rerun_loop_repeat_count") or 0)
     except ImportError:
         try:
             from music_run_boundary import schedule_rerun_log
 
-            schedule_rerun_log(session, reason=reason, fingerprint="")
+            schedule_rerun_log(session, reason=reason, fingerprint=fingerprint)
         except ImportError:
             pass
         st_module.rerun()
