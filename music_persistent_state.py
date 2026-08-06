@@ -3731,6 +3731,16 @@ def prepare_canonical_music_page_state(
                 session.pop("_catalog_restore_pin_pick", None)
         except ImportError:
             pass
+        try:
+            from music_workflow_catalog_handoff import reconcile_song_based_progression_for_live_catalog_pick
+
+            reconcile_song_based_progression_for_live_catalog_pick(
+                session,
+                source="prepare_canonical",
+                song_picker_catalog=song_picker_catalog if isinstance(song_picker_catalog, dict) else None,
+            )
+        except ImportError:
+            pass
         session.pop("_reconcile_song_picker_catalog", None)
     except ImportError:
         pass

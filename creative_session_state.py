@@ -683,7 +683,25 @@ def apply_creative_session_to_session(
             jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
             session["improv_jam_session"] = jam
     elif sess.tool_type == "song_based_improvisation":
-        if sess.sections:
+        live_sid = ""
+        stale_parent = ""
+        try:
+            from music_workflow_catalog_handoff import (
+                song_based_session_id_for_live_pick,
+                stale_song_based_parent_session_id,
+                sync_song_based_sections_for_live_pick,
+            )
+
+            live_sid = song_based_session_id_for_live_pick(session)
+            stale_parent = stale_song_based_parent_session_id(session, creative_session=sess)
+        except ImportError:
+            pass
+        bound_sid = str(getattr(sess, "bound_song_id", "") or "").strip()
+        if stale_parent and live_sid and stale_parent != live_sid:
+            sync_song_based_sections_for_live_pick(session, source="creative_session_parent_mismatch")
+        elif bound_sid and live_sid and bound_sid != live_sid:
+            sync_song_based_sections_for_live_pick(session, source="creative_session_bound_mismatch")
+        elif sess.sections and (not bound_sid or not live_sid or bound_sid == live_sid):
             session["improv_song_concert_sections"] = {k: list(v) for k, v in sess.sections.items()}
     else:
         _set("improv_style", sess.style)

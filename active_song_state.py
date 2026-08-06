@@ -1363,6 +1363,12 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
             user_chose_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
         except ImportError:
             user_chose_catalog = False
+        if not user_chose_catalog and restore_applying and not is_custom_progression(session):
+            live_probe = gather_active_song_context(session)
+            live_probe_pick = str(live_probe.get("pick_key") or "").strip()
+            canon_probe_pick = str(ctx.get("pick_key") or "").strip()
+            if live_probe_pick and canon_probe_pick and live_probe_pick != canon_probe_pick:
+                user_chose_catalog = True
         if not restore_applying or user_chose_catalog:
             live = gather_active_song_context(session)
             live_pick = str(live.get("pick_key") or "").strip()
@@ -1418,7 +1424,7 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                     )
                     ctx.pop("custom_home_key", None)
                     ctx.pop("custom_progression_name", None)
-            elif live_pick and live_pick != canon_pick and not restore_applying:
+            elif live_pick and live_pick != canon_pick:
                 ctx["pick_key"] = live_pick
                 if live.get("selected_song"):
                     ctx["selected_song"] = live["selected_song"]

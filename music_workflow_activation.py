@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -88,6 +89,11 @@ def _hydrate_blob_from_legacy_musical_snapshot(
             return False
         blob = WorkflowStateBlob(workflow_owner=owner, workflow_session_id=session_id)
         if owner in {"song_based_improvisation", "mission_jam"}:
+            snap_sid = str(snap.get("session_id") or "").strip()
+            if owner == "song_based_improvisation" and snap_sid and str(session_id or "").strip():
+                if snap_sid != str(session_id).strip():
+                    return False
+                blob.song_id = snap_sid
             dk = str(snap.get("display_key") or snap.get("concert_key") or "").strip()
             if dk:
                 from music_workflow_compatibility import _tonic_mode_from_token
@@ -276,6 +282,16 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         return _fail(session, "MISSING_OWNER", "Target workflow owner is required.", trace)
 
     target_sid = str(request.target_session_id or "").strip() or legacy_session_id_for_owner(session, target_owner)
+    try:
+        from music_workflow_catalog_handoff import reconcile_song_based_target_session_id
+
+        target_sid = reconcile_song_based_target_session_id(
+            session,
+            target_owner=target_owner,
+            target_session_id=target_sid,
+        )
+    except ImportError:
+        pass
     trace["incoming_owner"] = target_owner
     trace["incoming_session"] = target_sid
 
@@ -334,6 +350,18 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     target_blob = request.incoming_blob
     if target_blob is None:
         target_blob = get_workflow_blob(session, target_owner, target_sid)
+        try:
+            from music_workflow_catalog_handoff import workflow_blob_matches_live_catalog_parent
+
+            if target_blob is not None and not workflow_blob_matches_live_catalog_parent(session, target_blob):
+                trace["incoming_blob_discarded_parent_mismatch"] = {
+                    "blob_session": str(target_blob.workflow_session_id or ""),
+                    "blob_song_id": str(target_blob.song_id or ""),
+                    "live_pick": str(session.get("active_catalog_pick_key") or ""),
+                }
+                target_blob = None
+        except ImportError:
+            pass
         if target_blob is None and target_owner == "mission_jam":
             try:
                 from music_workflow_mission_bootstrap import ensure_mission_blob_from_song
@@ -346,6 +374,13 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         if target_blob is None:
             _hydrate_blob_from_legacy_musical_snapshot(session, target_owner, target_sid)
             target_blob = get_workflow_blob(session, target_owner, target_sid)
+        if target_blob is None and target_owner == "song_based_improvisation":
+            try:
+                from music_workflow_catalog_handoff import sync_song_based_sections_for_live_pick
+
+                sync_song_based_sections_for_live_pick(session, source="activation_blob_hydrate")
+            except ImportError:
+                pass
         if target_blob is None and target_owner != "mission_jam":
             target_blob = build_workflow_blob_from_legacy(session, target_owner)
             target_blob.workflow_owner = target_owner
@@ -468,6 +503,47 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     session[WORKFLOW_ACTIVATION_DIAG_KEY] = trace
     session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
     session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+    if target_owner == "song_based_improvisation":
+        restored_saved_blob = bool(
+            trace.get("incoming_blob_restored")
+            and not trace.get("incoming_blob_built_compat")
+            and isinstance(target_blob.section_map, dict)
+            and target_blob.section_map
+        )
+        try:
+            from music_workflow_catalog_handoff import workflow_blob_matches_live_catalog_parent
+
+            restored_saved_blob = restored_saved_blob and workflow_blob_matches_live_catalog_parent(
+                session, target_blob
+            )
+        except ImportError:
+            pass
+        skip_legacy_snap_save = str(request.activation_source or "") in {
+            "creative_pre_widget",
+            "creative_tab_change",
+        } or str(request.navigation_intent or "") in {"creative_tab", "creative_missions"}
+        if restored_saved_blob:
+            session["improv_song_concert_sections"] = copy.deepcopy(target_blob.section_map)
+            if not skip_legacy_snap_save:
+                try:
+                    from workflow_musical_authority import save_workflow_snapshot
+
+                    save_workflow_snapshot(session, "song_based_improvisation")
+                except ImportError:
+                    pass
+        else:
+            try:
+                from music_workflow_catalog_handoff import sync_song_based_sections_for_live_pick
+
+                sync_song_based_sections_for_live_pick(session, source="post_workflow_activation")
+            except ImportError:
+                pass
+            try:
+                from workflow_musical_authority import save_workflow_snapshot
+
+                save_workflow_snapshot(session, "song_based_improvisation")
+            except ImportError:
+                pass
     return ActivateWorkflowResult(ok=True, trace=trace)
 
 

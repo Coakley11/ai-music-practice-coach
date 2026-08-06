@@ -125,7 +125,7 @@ class TestCreativeCatalogHandoffPicker(unittest.TestCase):
         simulate_picker_to_creative_handoff(session, catalog=CATALOG, new_pick=PK_OTHER)
         ident = assert_catalog_parent_chain_agrees(session, PK_OTHER)
         self.assertEqual(ident["selected_song_title"], "Song B")
-        self.assertNotEqual(ident["progression_fingerprint"], SAY_FP)
+        self.assertNotEqual(ident["progression_chord_count"], 144)
 
     def test_song_based_tab_after_switch(self) -> None:
         session = _stale_canonical_say_session()

@@ -156,7 +156,25 @@ def validate_pre_activation_identity(
 
     if ptr_before and owner and ptr_before.workflow_owner == owner and sid and not relax_live_song_bind:
         if ptr_before.workflow_session_id and ptr_before.workflow_session_id != sid:
-            if owner in {"mission_jam", "song_based_improvisation"}:
+            allowed_catalog_switch = False
+            if owner == "song_based_improvisation":
+                try:
+                    from music_workflow_song_practice import song_based_blob_session_id
+
+                    expected_live = song_based_blob_session_id(session)
+                    allowed_catalog_switch = bool(
+                        expected_live
+                        and expected_live != "song"
+                        and sid == expected_live
+                    )
+                    if allowed_catalog_switch:
+                        diag["catalog_song_switch"] = {
+                            "from": ptr_before.workflow_session_id,
+                            "to": sid,
+                        }
+                except ImportError:
+                    pass
+            if owner in {"mission_jam", "song_based_improvisation"} and not allowed_catalog_switch:
                 violations.append(VIOLATION_POINTER_BLOB_SESSION_MISMATCH)
                 diag["pointer_session_id"] = ptr_before.workflow_session_id
 

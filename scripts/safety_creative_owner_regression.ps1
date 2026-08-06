@@ -38,6 +38,7 @@ $TestFiles = @(
     "tests/test_display_key_sidebar_creative_projection.py",
     "tests/test_creative_artifact_global_key_guard.py",
     "tests/test_creative_session_state.py",
+    "tests/test_creative_catalog_handoff_picker.py",
     "tests/test_creative_key_sync.py",
     "tests/test_suite_user_persistence.py",
     "tests/test_music_deploy_verification.py"

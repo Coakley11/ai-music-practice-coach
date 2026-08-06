@@ -248,6 +248,22 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
     allow = WORKFLOW_SNAPSHOT_RESTORE_ALLOWLIST.get(wf, frozenset())
     _guarded_snapshot_assign(session, ACTIVE_WORKFLOW_OWNER_KEY, wf, wf=wf, allowlist=allow)
     if wf == "song_based_improvisation":
+        snap_sid = str(blob.get("session_id") or "").strip()
+        live_sid = _state_id_for_workflow(session, wf)
+        if snap_sid and live_sid and snap_sid != live_sid:
+            try:
+                from music_workflow_catalog_handoff import record_catalog_handoff_trace
+
+                record_catalog_handoff_trace(
+                    session,
+                    "skip_stale_workflow_snapshot",
+                    workflow=wf,
+                    snapshot_session_id=snap_sid,
+                    live_session_id=live_sid,
+                )
+            except ImportError:
+                pass
+            return False
         for k in ("display_key", "concert_key"):
             v = str(blob.get(k) or "").strip()
             if v:
@@ -399,11 +415,25 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
         from music_theory import transpose_sections_dict
 
         pick = _current_pick_key(session)
-        selected, ok = resolve_catalog_song_for_pick(session, pick)
-        if not ok or not isinstance(selected, dict):
+        selected, original_key = resolve_catalog_song_for_pick(session, pick)
+        if not isinstance(selected, dict) or not selected:
             return {}
-        original = str(selected.get("key") or selected.get("original_key") or "").strip()
+        original = str(selected.get("key") or selected.get("original_key") or original_key or "").strip()
         sections = selected.get("sections")
+        if not isinstance(sections, dict) or not sections:
+            home = session.get("home_sections")
+            if isinstance(home, dict) and home:
+                sections = home
+            else:
+                try:
+                    from songs.music_source import _catalog_picker_from_session, _catalog_row_for_pick
+
+                    catalog = _catalog_picker_from_session(session)
+                    row = _catalog_row_for_pick(pick, catalog) if catalog else None
+                    if isinstance(row, dict) and isinstance(row.get("sections"), dict):
+                        sections = row["sections"]
+                except ImportError:
+                    sections = None
         if not isinstance(sections, dict) or not sections:
             return {}
         base = {

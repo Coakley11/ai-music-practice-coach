@@ -495,6 +495,16 @@ def simulate_picker_to_creative_handoff(
         )
         if isinstance(_sel, dict) and _sel.get("sections"):
             session["home_sections"] = copy.deepcopy(_sel.get("sections"))
+        elif isinstance(catalog, dict):
+            try:
+                from song_catalog.catalog import parse_pick_key
+
+                genre, label = parse_pick_key(new_pick)
+                row = catalog.get(genre, {}).get(label, {})
+                if isinstance(row.get("sections"), dict):
+                    session["home_sections"] = copy.deepcopy(row["sections"])
+            except ImportError:
+                pass
     except ImportError:
         pass
     session["studio_page"] = "creative"
@@ -510,6 +520,12 @@ def simulate_picker_to_creative_handoff(
         song_library=song_library,
         force=True,
     )
+    try:
+        from music_workflow_catalog_handoff import ensure_song_based_workflow_matches_live_pick
+
+        ensure_song_based_workflow_matches_live_pick(session, source="picker_to_creative_handoff")
+    except ImportError:
+        pass
     try:
         from creative_session_state import (
             apply_creative_session_to_session,

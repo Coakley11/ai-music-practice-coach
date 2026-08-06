@@ -86,6 +86,17 @@ def queue_pending_workflow_activation(
         resolved_sid = str(target_session_id or "").strip() or legacy_session_id_for_owner(session, owner)
     except ImportError:
         resolved_sid = str(target_session_id or "").strip()
+    if owner == "song_based_improvisation":
+        try:
+            from music_workflow_catalog_handoff import reconcile_song_based_target_session_id
+
+            resolved_sid = reconcile_song_based_target_session_id(
+                session,
+                target_owner=owner,
+                target_session_id=resolved_sid,
+            )
+        except ImportError:
+            pass
     entry_mode = str(session.get("improv_entry_mode") or "").strip() if navigation_intent == "creative_entry" else ""
     dedupe = _pending_dedupe_token(owner, resolved_sid, entry_mode=entry_mode)
     existing = peek_pending_workflow_activation(session)
@@ -142,15 +153,25 @@ def consume_pending_workflow_activation(session: dict[str, Any]) -> ActivationPh
     pending = peek_pending_workflow_activation(session)
     if not pending:
         return "skipped"
-    if session.get(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY) == pending.get("request_seq"):
-        clear_pending_workflow_activation(session)
-        return "skipped"
     try:
         from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
         from music_workflow_compatibility import legacy_session_id_for_owner
 
         owner = str(pending.get("target_owner") or "").strip()
         sid = str(pending.get("target_session_id") or "").strip() or legacy_session_id_for_owner(session, owner)
+        if owner == "song_based_improvisation":
+            sid = legacy_session_id_for_owner(session, owner)
+            try:
+                from music_workflow_state_store import get_active_workflow_pointer
+
+                ptr = get_active_workflow_pointer(session)
+                if ptr and str(ptr.workflow_session_id or "") != sid:
+                    session.pop(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY, None)
+            except ImportError:
+                pass
+        if session.get(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY) == pending.get("request_seq"):
+            clear_pending_workflow_activation(session)
+            return "skipped"
         result = activate_workflow(
             session,
             ActivateWorkflowRequest(
