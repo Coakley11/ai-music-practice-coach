@@ -313,6 +313,12 @@ def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None)
         AUTH_CLIENT_KEY,
     ):
         session_state.pop(key, None)
+    try:
+        from music_workflow_pending_intent_scope import quarantine_account_scoped_pending_intents
+
+        quarantine_account_scoped_pending_intents(session_state)
+    except ImportError:
+        pass
     if st is not None:
         try:
             from suite_auth_browser import clear_browser_auth_tokens

@@ -26,6 +26,13 @@ STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY = "_music_studio_page_restore_projec
 def begin_music_script_run(session_state: dict[str, Any]) -> None:
     """Start-of-script hook — reset page tracker only on true new browser session."""
     session_state.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
+    session_state.pop("_music_pre_widget_bootstrap_ran_this_run", None)
+    try:
+        from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY
+
+        session_state.pop(CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY, None)
+    except ImportError:
+        pass
     try:
         from music_workspace_hydration import clear_stale_restore_completion_flags
 

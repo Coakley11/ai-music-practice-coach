@@ -128,9 +128,11 @@ class TestMissionBackingPreWidgetActivation(unittest.TestCase):
     def test_pre_widget_consumer_before_studio_page_routing(self) -> None:
         root = Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
         text = root.read_text(encoding="utf-8")
-        consume_idx = text.index("consume_pending_backing_workflow_handoff(st.session_state")
+        bootstrap_idx = text.index("run_pre_widget_application_consumers(st.session_state")
         page_idx = text.index("_studio_page = ensure_studio_page(st.session_state)")
-        self.assertLess(consume_idx, page_idx)
+        self.assertLess(bootstrap_idx, page_idx)
+        auth_idx = text.index("apply_suite_auth_gate(st)")
+        self.assertLess(bootstrap_idx, auth_idx)
 
     def test_consume_marks_consumed_and_clears_pending(self) -> None:
         session: dict = {

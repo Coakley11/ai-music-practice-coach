@@ -730,6 +730,38 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
 
     try:
+        from sidebar_key_identity import resolve_sidebar_key_identity
+
+        ident = resolve_sidebar_key_identity(session)
+        try:
+            from musical_context_authority import catalog_song_should_own_sidebar_practice_key
+
+            catalog_owns = catalog_song_should_own_sidebar_practice_key(session)
+        except ImportError:
+            catalog_owns = ident.owner in {
+                "song_based_improvisation",
+                "mission_jam",
+                "regular_catalog_backing",
+                "regular_custom_backing",
+            }
+        if catalog_owns or ident.owner in {
+            "song_based_improvisation",
+            "mission_jam",
+            "regular_catalog_backing",
+            "regular_custom_backing",
+        }:
+            token = ident.selector_token
+            options = display_key_options(token)
+            if token not in options:
+                options = [token] + options
+            _apply_display_key_before_widget(st, token, source="catalog_song_sidebar_authority")
+            session["concert_key"] = token
+            session["_sidebar_key_identity_label"] = ident.label
+            return options
+    except ImportError:
+        pass
+
+    try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key, resolve_authoritative_practice_key
 
         if catalog_song_should_own_sidebar_practice_key(session):
@@ -932,24 +964,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         from music_workflow_state_store import get_active_workflow_pointer
 
         ptr = get_active_workflow_pointer(session)
-        if ptr and ptr.workflow_owner == "style_jam":
-            result = update_active_practice_key(
-                session, new, source="on_improv_style_key_change", transpose_progression=True
-            )
-            if not result.ok:
-                return
-            sync_style_jam_legacy_after_authoritative_key(session, new, st_like=st_like)
-            return
-        if ptr and ptr.workflow_owner == "jam_session_generator":
-            result = update_active_practice_key(
-                session, new, source="on_improv_jam_key_change", transpose_progression=True
-            )
-            if not result.ok:
-                return
-            apply_creative_concert_key(session, new, st_like=st_like, source="creative_jam_session")
-            session[IMPROV_JAM_KEY_TRACKER] = new
-            invalidate_creative_backing_context(session)
-            _apply_pending_backing_context_on_page(session, st_like=st_like)
+        if ptr and ptr.workflow_owner in {"style_jam", "jam_session_generator"}:
             return
         if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
             result = update_active_practice_key(

@@ -131,6 +131,25 @@ class TestCatalogSidebarAuthority(unittest.TestCase):
         self.assertEqual(pk.practice_mode, "minor")
         self.assertEqual(pk.practice_tonic, "D")
 
+    def test_resolve_sidebar_identity_hevenu_dm(self) -> None:
+        from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
+        from sidebar_key_identity import resolve_sidebar_key_identity
+
+        session: dict[str, Any] = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Song-Based Improvisation",
+            "active_catalog_pick_key": "Jewish|Hevenu Shalom Aleichem",
+            "selected_song": {"pick_key": "Jewish|Hevenu Shalom Aleichem", "key": "Dm"},
+            "display_key": "D#",
+            "concert_key": "D#",
+            GENERATED_JAM_KEY_CONTEXT_KEY: {"key_owner": "entry_jam", "entry_mode": "Style Jam Mode"},
+        }
+        ident = resolve_sidebar_key_identity(session)
+        self.assertEqual(ident.practice_mode, "minor")
+        self.assertEqual(ident.practice_tonic, "D")
+        self.assertIn(ident.label, {"Dm", "D minor"})
+        self.assertNotIn("#", ident.label)
+
 
 if __name__ == "__main__":
     unittest.main()

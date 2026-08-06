@@ -140,6 +140,28 @@ except Exception:
     pass
 
 try:
+    from music_run_lifecycle import enter_run_phase, exit_run_phase
+
+    enter_run_phase(st.session_state, "pre_widget_bootstrap")
+except ImportError:
+    pass
+try:
+    from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
+
+    run_pre_widget_application_consumers(st.session_state, st=st)
+except RuntimeError as _pre_widget_bootstrap_exc:
+    if st.session_state.get("developer_mode"):
+        st.error(str(_pre_widget_bootstrap_exc))
+    raise
+except Exception as _pre_widget_bootstrap_exc:
+    if st.session_state.get("developer_mode"):
+        st.warning(f"pre_widget_bootstrap: {_pre_widget_bootstrap_exc}")
+try:
+    exit_run_phase(st.session_state, "pre_widget_bootstrap")
+except ImportError:
+    pass
+
+try:
     from suite_resume_launch import apply_suite_resume_launch
 
     apply_suite_resume_launch(st, "music")
@@ -155,6 +177,11 @@ try:
         enter_run_phase(st.session_state, "authentication")
     except ImportError:
         pass
+    if not st.session_state.get("_music_first_streamlit_widget"):
+        st.session_state["_music_first_streamlit_widget"] = {
+            "marker": "apply_suite_auth_gate",
+            "run_seq": st.session_state.get("_script_run_seq"),
+        }
     apply_suite_auth_gate(st)
     try:
         exit_run_phase(st.session_state, "authentication")
@@ -9597,32 +9624,19 @@ try:
 except ImportError:
     pass
 try:
-    from music_workflow_mission_backing_orchestration import run_pre_widget_mission_handoff_consumers
+    from music_workflow_pre_widget_bootstrap import (
+        PRE_WIDGET_BOOTSTRAP_RAN_KEY,
+        run_pre_widget_application_consumers,
+    )
 
-    run_pre_widget_mission_handoff_consumers(st.session_state, st=st)
-except ImportError:
-    try:
-        from music_workflow_pending_backing_handoff import consume_pending_backing_workflow_handoff
-
-        consume_pending_backing_workflow_handoff(st.session_state, st=st)
-    except ImportError:
-        pass
-    try:
-        from music_workflow_pending_mission_return import consume_pending_mission_return_handoff
-
-        consume_pending_mission_return_handoff(st.session_state, st=st)
-    except ImportError:
-        pass
-    try:
-        from music_workflow_pending_mission_envelope import consume_pending_mission_envelope_reconciliation
-
-        consume_pending_mission_envelope_reconciliation(st.session_state, st=st)
-    except ImportError:
-        pass
-try:
-    from music_workflow_pending_generated_key_edit import run_pre_widget_generated_key_edit_consumer
-
-    run_pre_widget_generated_key_edit_consumer(st.session_state, st=st)
+    if not st.session_state.get(PRE_WIDGET_BOOTSTRAP_RAN_KEY):
+        if st.session_state.get("developer_mode"):
+            st.sidebar.warning("Pre-widget bootstrap did not run at script top — running late fallback.")
+        run_pre_widget_application_consumers(st.session_state, st=st)
+except RuntimeError as _late_bootstrap_exc:
+    if st.session_state.get("developer_mode"):
+        st.sidebar.error(str(_late_bootstrap_exc))
+    raise
 except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
@@ -9933,6 +9947,20 @@ try:
 except ImportError:
     pass
 from songs.music_source import cpl_session_is_active as _cpl_session_is_active
+
+try:
+    from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+    prime_sidebar_practice_key_from_identity(st.session_state, st=st)
+except ImportError:
+    pass
+
+try:
+    from music_workflow_deferred_legacy_projection import try_complete_deferred_legacy_projection
+
+    try_complete_deferred_legacy_projection(st.session_state)
+except ImportError:
+    pass
 
 try:
     from backing_musical_state import should_skip_regular_song_defaults

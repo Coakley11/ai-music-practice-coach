@@ -8,7 +8,7 @@ from typing import Any
 
 from generated_jam_key_change import capture_generated_key_edit_intent
 from music_workflow_mutation import update_active_practice_key
-from music_workflow_pending_generated_key_edit import run_pre_widget_generated_key_edit_consumer
+from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
 from music_workflow_state_store import (
     KeyAuthority,
     WorkflowStateBlob,
@@ -81,8 +81,11 @@ def _capture_and_consume(session: dict[str, Any], *, widget_key: str, new_key: s
     self_ok = capture_generated_key_edit_intent(session, widget_key=widget_key)
     assert self_ok
     session.pop("_streamlit_widgets_locked_this_run", None)
-    phase = run_pre_widget_generated_key_edit_consumer(session)
-    assert phase == "applied", phase
+    session.pop("_music_pre_widget_bootstrap_ran_this_run", None)
+    from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
+
+    phases = run_pre_widget_application_consumers(session)
+    assert phases.get("generated_key_edit") == "applied", phases
 
 
 class TestStyleJamGeneratorKeyWidgetMutation(unittest.TestCase):

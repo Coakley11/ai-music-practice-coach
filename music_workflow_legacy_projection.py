@@ -281,6 +281,18 @@ def project_active_blob_to_legacy_session(
                     "reason": "requires_pre_widget_activation",
                     "owner": owner,
                 }
+                try:
+                    from music_workflow_projection_diagnostics import record_requires_pre_widget_activation
+
+                    record_requires_pre_widget_activation(
+                        session,
+                        RequiresPreWidgetActivation(owner),
+                        path_class="legacy_projection",
+                        workflow_owner=owner,
+                        mutation_source=str(session.get("_music_workflow_projection_mutation_source") or ""),
+                    )
+                except ImportError:
+                    pass
                 raise RequiresPreWidgetActivation(owner)
         except ImportError:
             pass

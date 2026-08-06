@@ -9,6 +9,7 @@ _LOG = logging.getLogger("music.generated_key_change")
 
 GENERATED_KEY_CHANGE_DIAG_KEY = "_music_generated_key_change_diag"
 GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY = "_music_generated_key_pending_hydrate_guard"
+GENERATED_KEY_EDIT_OUTCOME_KEY = "_music_generated_key_edit_outcome"
 
 _STYLE_WIDGET = "improv_style_key"
 _GEN_WIDGET = "improv_jam_key"
@@ -200,34 +201,27 @@ def _finalize_generated_key_edit_after_mutation(
     requested: str,
     st_like: Any | None = None,
 ) -> None:
+    """Sync widget-bound session keys only — canonical blob is already committed."""
     session[widget_key] = requested
     if owner == "style_jam":
         try:
-            from creative_key_sync import sync_style_jam_legacy_after_authoritative_key
+            from creative_key_sync import IMPROV_STYLE_KEY_TRACKER, sync_style_jam_legacy_after_authoritative_key
 
             sync_style_jam_legacy_after_authoritative_key(session, requested, st_like=st_like)
+            session[IMPROV_STYLE_KEY_TRACKER] = requested
         except ImportError:
             pass
     else:
         try:
-            from creative_key_sync import (
-                IMPROV_JAM_KEY_TRACKER,
-                apply_creative_concert_key,
-                invalidate_creative_backing_context,
-            )
+            from creative_key_sync import IMPROV_JAM_KEY_TRACKER, invalidate_creative_backing_context
 
-            apply_creative_concert_key(session, requested, st_like=st_like, source="creative_jam_session")
             session[IMPROV_JAM_KEY_TRACKER] = requested
+            meta = dict(session.get("improv_style_meta") or {})
+            meta["key"] = requested
+            session["improv_style_meta"] = meta
             invalidate_creative_backing_context(session)
         except ImportError:
             pass
-    try:
-        from generated_jam_key_context import activate_generated_jam_key_ownership
-
-        entry = "Style Jam Mode" if owner == "style_jam" else "Jam Session Generator"
-        activate_generated_jam_key_ownership(session, entry_mode=entry, practice_key=requested)
-    except ImportError:
-        pass
 
 
 def apply_pending_generated_key_edit_pre_widget(
@@ -279,9 +273,46 @@ def apply_pending_generated_key_edit_pre_widget(
             trace=result.trace,
         )
         if not result.ok:
+            session[GENERATED_KEY_EDIT_OUTCOME_KEY] = {
+                "canonical_commit": "FAIL",
+                "progression_rebuild": "FAIL",
+                "backing_invalidation": "SKIPPED",
+                "compatibility_projection": "SKIPPED",
+                "error_code": result.error_code,
+            }
             return False
     except ImportError:
         return False
+    projection_status = "SUCCESS"
+    if str(getattr(result, "error_code", "") or "") == "PROJECTION_DEFERRED":
+        projection_status = "DEFERRED"
+        try:
+            from music_workflow_deferred_legacy_projection import try_complete_deferred_legacy_projection
+
+            completed = try_complete_deferred_legacy_projection(session)
+            if completed.get("compatibility_projection") == "SUCCESS":
+                projection_status = "SUCCESS"
+        except ImportError:
+            pass
+    ptr_after = None
+    blob_after = None
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr_after = get_active_workflow_pointer(session)
+        if ptr_after:
+            blob_after = get_workflow_blob(session, ptr_after.workflow_owner, ptr_after.workflow_session_id)
+    except ImportError:
+        pass
+    progression_ok = "SUCCESS"
+    if blob_after is not None and old_blob_key and old_blob_key != requested:
+        progression_ok = "SUCCESS" if blob_after.section_map else "FAIL"
+    session[GENERATED_KEY_EDIT_OUTCOME_KEY] = {
+        "canonical_commit": "SUCCESS",
+        "progression_rebuild": progression_ok,
+        "backing_invalidation": "SUCCESS",
+        "compatibility_projection": projection_status,
+    }
     new_blob_key, _ = _blob_key_snapshot(session, owner)
     log_generated_key_change(
         session,
@@ -336,6 +367,7 @@ def apply_pending_generated_key_edit_pre_widget(
 
 __all__ = [
     "GENERATED_KEY_CHANGE_DIAG_KEY",
+    "GENERATED_KEY_EDIT_OUTCOME_KEY",
     "GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY",
     "align_generated_workflow_pointer_for_key_edit",
     "apply_pending_generated_key_edit_pre_widget",

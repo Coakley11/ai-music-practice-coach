@@ -186,6 +186,12 @@ def queue_pending_generated_key_edit(
         "context_revision": rev,
         "identity_fingerprint": _workflow_identity_fingerprint(owner, sid),
     }
+    try:
+        from music_workflow_pending_intent_scope import capture_pending_intent_scope
+
+        payload["scope"] = capture_pending_intent_scope(session)
+    except ImportError:
+        pass
     session[PENDING_GENERATED_KEY_EDIT_KEY] = payload
     session.pop(PENDING_GENERATED_KEY_EDIT_TERMINAL_KEY, None)
     session.pop(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY, None)
@@ -239,6 +245,15 @@ def _validate_pending(session: dict[str, Any], pending: dict[str, Any]) -> tuple
 
 
 def _widgets_locked(session: dict[str, Any]) -> bool:
+    try:
+        from music_workflow_pre_widget_bootstrap import PRE_WIDGET_BOOTSTRAP_ACTIVE_KEY
+
+        if session.get(PRE_WIDGET_BOOTSTRAP_ACTIVE_KEY):
+            return False
+    except ImportError:
+        pass
+    if session.get("_music_first_streamlit_widget"):
+        return True
     try:
         from session_widget_safe import widgets_likely_instantiated
 
@@ -296,6 +311,27 @@ def consume_pending_generated_key_edit(session: dict[str, Any], *, st: Any | Non
     err, diag = _validate_pending(session, pending)
     if err:
         return _fail_consume(session, pending, reason=err, diag=diag)
+    try:
+        from music_workflow_pending_intent_scope import (
+            pending_intent_scope_matches,
+            workflow_mutation_consume_allowed,
+        )
+
+        allowed, auth_reason = workflow_mutation_consume_allowed(session)
+        if not allowed:
+            session[PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY] = {
+                **diag,
+                "failed_predicate": auth_reason,
+                "consume_deferred": True,
+            }
+            return "skipped"
+        scope_ok, scope_reason = pending_intent_scope_matches(session, pending)
+        if not scope_ok:
+            clear_pending_generated_key_edit(session)
+            session[PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY] = {**diag, "failed_predicate": scope_reason}
+            return "invalid"
+    except ImportError:
+        pass
     try:
         from generated_jam_key_change import apply_pending_generated_key_edit_pre_widget
 

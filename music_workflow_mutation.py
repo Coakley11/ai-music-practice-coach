@@ -328,24 +328,81 @@ def commit_staged_workflow(
     elif nav.get("precedence") == "no_studio_page_apply":
         pass
 
+    session["_music_workflow_projection_mutation_source"] = str(source or mutation_type or "")
     try:
         project_active_blob_to_legacy_session(
             session,
             staged,
         )
     except RequiresPreWidgetActivation as exc:
+        owner = str(staged.workflow_owner or exc.owner or "").strip()
+        try:
+            from music_workflow_projection_diagnostics import record_requires_pre_widget_activation
+
+            record_requires_pre_widget_activation(
+                session,
+                exc,
+                workflow_owner=owner,
+                workflow_session_id=str(staged.workflow_session_id or ""),
+                mutation_source=str(source or ""),
+            )
+        except ImportError:
+            pass
+        trace["requires_pre_widget_activation"] = {"owner": exc.owner, "field": exc.field}
+        canonical_keep = mutation_type == "practice_key_change" and owner in {
+            "style_jam",
+            "jam_session_generator",
+        }
+        if not canonical_keep and str(source or "") in {
+            "on_improv_style_key_change",
+            "on_improv_jam_key_change",
+        }:
+            canonical_keep = True
+        if canonical_keep:
+            trace["validation_result"] = "defer"
+            trace["error_code"] = "PROJECTION_DEFERRED"
+            trace["rollback_performed"] = False
+            trace["legacy_snapshot_restored"] = False
+            trace["canonical_blob_retained"] = True
+            set_legacy_owner_compat_hint(session, staged.workflow_owner)
+            session[WORKFLOW_MUTATION_DIAG_KEY] = trace
+            session[WORKFLOW_MUTATION_LAST_KEY] = trace
+            session["_music_workflow_deferred_legacy_projection"] = {
+                "owner": owner,
+                "source": source,
+                "mutation_type": mutation_type,
+            }
+            try:
+                from music_workflow_projection_log import log_projection_defer
+
+                log_projection_defer(
+                    session,
+                    result="PROJECTION_DEFERRED",
+                    rollback_mode="canonical_only",
+                    legacy_restore_attempted=False,
+                    deferred_projection=True,
+                    widgets_locked=_session_widgets_locked(session),
+                    extra={"owner": owner},
+                )
+            except ImportError:
+                pass
+            return MutationResult(
+                ok=True,
+                error_code="PROJECTION_DEFERRED",
+                error_message=str(exc),
+                rollback_performed=False,
+                trace=trace,
+            )
         if ptr_before_commit is not None:
             set_active_workflow_pointer(session, ptr_before_commit, source=f"rollback:{source}")
         if blob_before_commit is not None:
             save_workflow_blob(session, blob_before_commit, source=f"rollback:{source}")
-        trace["requires_pre_widget_activation"] = {"owner": exc.owner, "field": exc.field}
         try:
             from music_workflow_pending_backing_handoff import (
                 backing_source_from_workflow_owner,
                 queue_pending_backing_workflow_handoff,
             )
 
-            owner = str(staged.workflow_owner or exc.owner or "").strip()
             queue_pending_backing_workflow_handoff(
                 session,
                 backing_source=backing_source_from_workflow_owner(owner),
@@ -361,7 +418,7 @@ def commit_staged_workflow(
         session[WORKFLOW_MUTATION_DIAG_KEY] = trace
         session[WORKFLOW_MUTATION_LAST_KEY] = trace
         session["_music_workflow_deferred_legacy_projection"] = {
-            "owner": str(staged.workflow_owner or exc.owner or ""),
+            "owner": owner,
             "source": source,
         }
         try:
@@ -370,11 +427,11 @@ def commit_staged_workflow(
             log_projection_defer(
                 session,
                 result="REQUIRES_PRE_WIDGET_ACTIVATION",
-                rollback_mode="canonical_only",
+                rollback_mode="full",
                 legacy_restore_attempted=False,
                 deferred_projection=True,
                 widgets_locked=_session_widgets_locked(session),
-                extra={"owner": str(staged.workflow_owner or exc.owner or "")},
+                extra={"owner": owner},
             )
         except ImportError:
             pass
@@ -385,6 +442,8 @@ def commit_staged_workflow(
             rollback_performed=True,
             trace=trace,
         )
+    finally:
+        session.pop("_music_workflow_projection_mutation_source", None)
     set_legacy_owner_compat_hint(session, staged.workflow_owner)
 
     try:
