@@ -66,6 +66,11 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["generated_key_edit"] = f"FAIL:{exc}"
     try:
+        consume_wf = _require("music_workflow_pending_activation", "consume_pending_workflow_activation")
+        phases["workflow_activation"] = str(consume_wf(session))
+    except RuntimeError as exc:
+        phases["workflow_activation"] = f"FAIL:{exc}"
+    try:
         from music_workflow_mission_backing_orchestration import try_finalize_backing_after_mission_envelope
 
         if try_finalize_backing_after_mission_envelope(session):
