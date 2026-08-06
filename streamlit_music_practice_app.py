@@ -9619,6 +9619,12 @@ except ImportError:
         consume_pending_mission_envelope_reconciliation(st.session_state, st=st)
     except ImportError:
         pass
+try:
+    from music_workflow_pending_generated_key_edit import run_pre_widget_generated_key_edit_consumer
+
+    run_pre_widget_generated_key_edit_consumer(st.session_state, st=st)
+except ImportError:
+    pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
     ensure_sidebar_nav_defaults(st.session_state)

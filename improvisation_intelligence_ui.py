@@ -584,6 +584,14 @@ def _tab_entry_modes(
         )
 
     elif entry == "Style Jam Mode":
+        try:
+            from music_workflow_pending_generated_key_edit import PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY
+
+            _gen_key_msg = str(session_state.get(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY) or "").strip()
+            if _gen_key_msg:
+                st.warning(_gen_key_msg)
+        except ImportError:
+            pass
         st.markdown('<p class="ui-creative-section-label">Style jam generator</p>', unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -712,6 +720,14 @@ def _tab_entry_modes(
             )
 
     else:
+        try:
+            from music_workflow_pending_generated_key_edit import PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY
+
+            _gen_key_msg = str(session_state.get(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY) or "").strip()
+            if _gen_key_msg:
+                st.warning(_gen_key_msg)
+        except ImportError:
+            pass
         st.markdown("#### 🌙 Jam Session Generator")
         e1, e2 = st.columns(2)
         with e1:

@@ -52,6 +52,13 @@ def has_unconfirmed_local_workflow_changes(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
+    try:
+        from music_workflow_pending_generated_key_edit import peek_pending_generated_key_edit
+
+        if peek_pending_generated_key_edit(session):
+            return True
+    except ImportError:
+        pass
     confirmed = get_persist_confirmed(session)
     if not confirmed.get("last_confirmed_material_fingerprint"):
         return False

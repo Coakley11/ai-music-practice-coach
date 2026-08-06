@@ -329,43 +329,10 @@ def commit_staged_workflow(
         pass
 
     try:
-        from generated_jam_key_change import GENERATED_KEY_USER_EDIT_CTX_KEY
-
-        edit = session.get(GENERATED_KEY_USER_EDIT_CTX_KEY)
-        allow_user_key_projection = False
-        if mutation_type == "practice_key_change" and str(staged.workflow_owner or "") in {
-            "style_jam",
-            "jam_session_generator",
-        }:
-            if isinstance(edit, dict) and str(edit.get("owner") or "") == str(staged.workflow_owner or ""):
-                req = str(edit.get("requested_key") or "").strip()
-                pt, pm = _parse_key_token(req) if req else ("", "")
-                wkey = str(edit.get("widget_key") or "").strip()
-                owner_match = str(staged.workflow_owner or "") == str(edit.get("owner") or "")
-                widget_owner_ok = (
-                    (wkey == "improv_style_key" and str(staged.workflow_owner or "") == "style_jam")
-                    or (wkey == "improv_jam_key" and str(staged.workflow_owner or "") == "jam_session_generator")
-                )
-                allow_user_key_projection = (
-                    req
-                    and owner_match
-                    and widget_owner_ok
-                    and str(staged.keys.practice_tonic or "") == pt
-                    and str(staged.keys.practice_mode or "major").lower() == pm
-                    and str(edit.get("source") or "") in {"on_improv_style_key_change", "on_improv_jam_key_change"}
-                )
         project_active_blob_to_legacy_session(
             session,
             staged,
-            allow_widget_phase_user_key=allow_user_key_projection,
         )
-        if allow_user_key_projection:
-            try:
-                from music_workflow_restore_guard import complete_workflow_restore_guard
-
-                complete_workflow_restore_guard(session, reason="user_practice_key_change")
-            except ImportError:
-                pass
     except RequiresPreWidgetActivation as exc:
         if ptr_before_commit is not None:
             set_active_workflow_pointer(session, ptr_before_commit, source=f"rollback:{source}")

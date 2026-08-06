@@ -1,4 +1,4 @@
-"""Structured trace + user practice-key edits for Style Jam / Jam Session Generator."""
+"""Structured trace + pre-widget apply for Style Jam / Jam Session Generator keys."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import Any
 _LOG = logging.getLogger("music.generated_key_change")
 
 GENERATED_KEY_CHANGE_DIAG_KEY = "_music_generated_key_change_diag"
-GENERATED_KEY_USER_EDIT_CTX_KEY = "_music_generated_key_user_edit"
 GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY = "_music_generated_key_pending_hydrate_guard"
 
 _STYLE_WIDGET = "improv_style_key"
@@ -145,12 +144,8 @@ def align_generated_workflow_pointer_for_key_edit(session: dict[str, Any], owner
     return True
 
 
-def apply_generated_workflow_practice_key_user_edit(
-    session: dict[str, Any],
-    *,
-    widget_key: str,
-    st_like: Any | None = None,
-) -> bool:
+def capture_generated_key_edit_intent(session: dict[str, Any], *, widget_key: str) -> bool:
+    """Widget callback — capture only; mutation runs pre-widget on the next script run."""
     owner = _OWNER_BY_WIDGET.get(str(widget_key or "").strip())
     source = _SOURCE_BY_WIDGET.get(str(widget_key or "").strip())
     if not owner or not source:
@@ -172,17 +167,91 @@ def apply_generated_workflow_practice_key_user_edit(
         widgets_locked=_widgets_locked(session),
         restore_guard_active=_restore_guard_active(session),
         active_pointer=ptr_label,
+        mutation_deferred=True,
+    )
+    try:
+        from music_workflow_pending_generated_key_edit import queue_pending_generated_key_edit
+
+        pending = queue_pending_generated_key_edit(session, widget_key=widget_key, selected_key_token=requested)
+        if not pending:
+            return False
+        log_generated_key_change(
+            session,
+            "intent_captured",
+            request_seq=pending.get("request_seq"),
+            workflow_owner=owner,
+            workflow_session_id=pending.get("workflow_session_id"),
+        )
+        return True
+    except ImportError:
+        return False
+
+
+def _finalize_generated_key_edit_after_mutation(
+    session: dict[str, Any],
+    *,
+    owner: str,
+    widget_key: str,
+    requested: str,
+    st_like: Any | None = None,
+) -> None:
+    session[widget_key] = requested
+    if owner == "style_jam":
+        try:
+            from creative_key_sync import sync_style_jam_legacy_after_authoritative_key
+
+            sync_style_jam_legacy_after_authoritative_key(session, requested, st_like=st_like)
+        except ImportError:
+            pass
+    else:
+        try:
+            from creative_key_sync import (
+                IMPROV_JAM_KEY_TRACKER,
+                apply_creative_concert_key,
+                invalidate_creative_backing_context,
+            )
+
+            apply_creative_concert_key(session, requested, st_like=st_like, source="creative_jam_session")
+            session[IMPROV_JAM_KEY_TRACKER] = requested
+            invalidate_creative_backing_context(session)
+        except ImportError:
+            pass
+    try:
+        from generated_jam_key_context import activate_generated_jam_key_ownership
+
+        entry = "Style Jam Mode" if owner == "style_jam" else "Jam Session Generator"
+        activate_generated_jam_key_ownership(session, entry_mode=entry, practice_key=requested)
+    except ImportError:
+        pass
+
+
+def apply_pending_generated_key_edit_pre_widget(
+    session: dict[str, Any],
+    pending: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> bool:
+    """Apply captured intent while widgets are not instantiated."""
+    owner = str(pending.get("workflow_owner") or "").strip()
+    source = str(pending.get("callback_source") or "").strip()
+    widget_key = str(pending.get("widget_key") or "").strip()
+    requested = str(pending.get("selected_key_token") or "").strip()
+    if not owner or not source or not widget_key or not requested:
+        return False
+    old_blob_key, _ = _blob_key_snapshot(session, owner)
+    log_generated_key_change(
+        session,
+        "pre_widget_consume_start",
+        workflow_owner=owner,
+        widget_key=widget_key,
+        requested_key=requested,
+        old_blob_key=old_blob_key,
+        request_seq=pending.get("request_seq"),
     )
     if not align_generated_workflow_pointer_for_key_edit(session, owner):
         log_generated_key_change(session, "owner_alignment", ok=False, owner=owner)
         return False
     log_generated_key_change(session, "owner_alignment", ok=True, owner=owner)
-    session[GENERATED_KEY_USER_EDIT_CTX_KEY] = {
-        "widget_key": widget_key,
-        "owner": owner,
-        "requested_key": requested,
-        "source": source,
-    }
     try:
         from music_workflow_mutation import update_active_practice_key
 
@@ -201,10 +270,8 @@ def apply_generated_workflow_practice_key_user_edit(
             trace=result.trace,
         )
         if not result.ok:
-            session.pop(GENERATED_KEY_USER_EDIT_CTX_KEY, None)
             return False
     except ImportError:
-        session.pop(GENERATED_KEY_USER_EDIT_CTX_KEY, None)
         return False
     new_blob_key, _ = _blob_key_snapshot(session, owner)
     log_generated_key_change(
@@ -243,59 +310,27 @@ def apply_generated_workflow_practice_key_user_edit(
                 )
     except ImportError:
         pass
-    session[widget_key] = requested
-    if owner == "style_jam":
-        try:
-            from creative_key_sync import sync_style_jam_legacy_after_authoritative_key
-
-            sync_style_jam_legacy_after_authoritative_key(session, requested, st_like=st_like)
-        except ImportError:
-            pass
-    else:
-        try:
-            from creative_key_sync import (
-                IMPROV_JAM_KEY_TRACKER,
-                apply_creative_concert_key,
-                invalidate_creative_backing_context,
-            )
-
-            apply_creative_concert_key(session, requested, st_like=st_like, source="creative_jam_session")
-            session[IMPROV_JAM_KEY_TRACKER] = requested
-            invalidate_creative_backing_context(session)
-        except ImportError:
-            pass
-    try:
-        from generated_jam_key_context import activate_generated_jam_key_ownership
-
-        entry = "Style Jam Mode" if owner == "style_jam" else "Jam Session Generator"
-        activate_generated_jam_key_ownership(session, entry_mode=entry, practice_key=requested)
-    except ImportError:
-        pass
-    log_generated_key_change(
-        session,
-        "after_callback",
-        widget_value=session.get(widget_key),
-        blob_key=new_blob_key,
+    _finalize_generated_key_edit_after_mutation(
+        session, owner=owner, widget_key=widget_key, requested=requested, st_like=st_like
     )
     log_generated_key_change(
         session,
         "next_run_value",
         widget_key=widget_key,
         widget_value=session.get(widget_key),
-        blob_key=_blob_key_snapshot(session, owner)[0],
+        blob_key=new_blob_key,
         concert_key=session.get("concert_key"),
         display_key=session.get("display_key"),
     )
-    session.pop(GENERATED_KEY_USER_EDIT_CTX_KEY, None)
     return True
 
 
 __all__ = [
     "GENERATED_KEY_CHANGE_DIAG_KEY",
     "GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY",
-    "GENERATED_KEY_USER_EDIT_CTX_KEY",
-    "apply_generated_workflow_practice_key_user_edit",
     "align_generated_workflow_pointer_for_key_edit",
+    "apply_pending_generated_key_edit_pre_widget",
+    "capture_generated_key_edit_intent",
     "clear_generated_key_hydrate_guard",
     "generated_key_hydrate_guard_blocks_blob",
     "log_generated_key_change",

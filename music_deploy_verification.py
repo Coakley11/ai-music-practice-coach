@@ -58,6 +58,7 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
     "59a2d48",
     "a0c4b05",
     "550260a",
+    "97ef304",
 )
 
 _PROCESS_DEPLOY_LOGGED = False
@@ -341,8 +342,9 @@ def function_source_verification() -> list[dict[str, Any]]:
         ("music_workflow_legacy_projection", "project_active_blob_to_legacy_session"),
         ("creative_key_sync", "on_improv_style_key_change"),
         ("creative_key_sync", "on_improv_jam_key_change"),
-        ("generated_jam_key_change", "apply_generated_workflow_practice_key_user_edit"),
-        ("generated_jam_key_change", "align_generated_workflow_pointer_for_key_edit"),
+        ("generated_jam_key_change", "capture_generated_key_edit_intent"),
+        ("generated_jam_key_change", "apply_pending_generated_key_edit_pre_widget"),
+        ("music_workflow_pending_generated_key_edit", "run_pre_widget_generated_key_edit_consumer"),
         ("session_widget_safe", "safe_session_assign"),
         ("improvisation_missions", "ensure_mission_sheet_music_authority"),
         ("improvisation_missions", "rebuild_mission_outputs"),
