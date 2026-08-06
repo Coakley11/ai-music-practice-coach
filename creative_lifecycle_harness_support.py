@@ -38,39 +38,54 @@ def append_trace(session: dict[str, Any], step: str, **payload: Any) -> None:
 
 def seed_hevenu_catalog_session(session: dict[str, Any]) -> None:
     """Active catalog song Hevenu D minor with full section map (production keys)."""
-    session.update(
-        {
-            "active_catalog_pick_key": HEVENU_PICK,
-            "selected_song": {
-                "pick_key": HEVENU_PICK,
-                "title": HEVENU_TITLE,
-                "artist": "Traditional",
-                "key": "Dm",
-                "genre": "Jewish",
-                "sections": copy.deepcopy(HEVENU_SECTIONS),
-            },
-            "song": HEVENU_TITLE,
-            "home_sections": copy.deepcopy(HEVENU_SECTIONS),
-            "display_key": "Dm",
-            "concert_key": "Dm",
-            "original_key": "Dm",
-            "studio_page": "creative",
-            "improv_intelligence_tab": "Entry & Jam",
-            "improv_entry_mode": "Song-Based Improvisation",
-            "improv_song_source": "Active song",
-        }
-    )
+    payload = {
+        "active_catalog_pick_key": HEVENU_PICK,
+        "selected_song": {
+            "pick_key": HEVENU_PICK,
+            "title": HEVENU_TITLE,
+            "artist": "Traditional",
+            "key": "Dm",
+            "genre": "Jewish",
+            "sections": copy.deepcopy(HEVENU_SECTIONS),
+        },
+        "song": HEVENU_TITLE,
+        "home_sections": copy.deepcopy(HEVENU_SECTIONS),
+        "original_key": "Dm",
+        "studio_page": "creative",
+        "improv_intelligence_tab": "Entry & Jam",
+        "improv_entry_mode": "Song-Based Improvisation",
+        "improv_song_source": "Active song",
+    }
+    try:
+        from session_widget_safe import safe_session_assign
+
+        for key, value in payload.items():
+            safe_session_assign(session, key, value, widget_safe=True)
+        safe_session_assign(session, "display_key", "Dm", widget_safe=True)
+        safe_session_assign(session, "concert_key", "Dm", widget_safe=True)
+    except ImportError:
+        payload["display_key"] = "Dm"
+        payload["concert_key"] = "Dm"
+        session.update(payload)
     append_trace(session, "seed_hevenu", pick=HEVENU_PICK)
 
 
 def apply_hevenu_practice_eb_minor(session: dict[str, Any]) -> None:
     """Set saved practice key Eb minor via song improv sync (production)."""
-    session["display_key"] = "Ebm"
-    session["concert_key"] = "Ebm"
     try:
+        from session_widget_safe import safe_session_assign
+
+        safe_session_assign(session, "display_key", "Ebm", widget_safe=True)
+        safe_session_assign(session, "concert_key", "Ebm", widget_safe=True)
+    except ImportError:
+        session["display_key"] = "Ebm"
+        session["concert_key"] = "Ebm"
+    try:
+        from workflow_musical_authority import save_workflow_snapshot
         from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
         sections = sync_song_improv_sections_to_practice_key(session)
+        save_workflow_snapshot(session, "song_based_improvisation")
         append_trace(
             session,
             "practice_eb_minor",
@@ -86,13 +101,44 @@ def simulate_style_jam_backing_open_with_entry_widget_lag(session: dict[str, Any
     session["improv_entry_mode"] = "Song-Based Improvisation"
     session["improv_style"] = STYLE_JAM_STYLE
     session["improv_style_key"] = "E"
-    session["improv_mood"] = "Light"
+    session["improv_mood"] = "Bright"
     session["improv_groove"] = "Light"
     session["improv_style_bpm"] = 120
+    style_sections = {
+        f"{STYLE_JAM_STYLE} · A": ["Emaj7", "C#m7", "F#m7", "B7"],
+    }
+    session["improv_generated_sections"] = copy.deepcopy(style_sections)
+    try:
+        from music_workflow_generated_session import commit_style_jam_generation
+
+        commit_style_jam_generation(
+            session,
+            key_center="E",
+            style=STYLE_JAM_STYLE,
+            section_map=style_sections,
+            mood="Bright",
+            groove="Light",
+            tempo_bpm=120,
+            new_session=True,
+        )
+    except ImportError:
+        pass
+    session["improv_mood"] = "Bright"
+    session["improv_groove"] = "Light"
     session.pop("improv_generated_sections", None)
     session["display_key"] = "C"
     session["concert_key"] = "C"
     append_trace(session, "style_jam_entry_lag", display_key="C")
+
+
+def apply_style_jam_backing_open_entry_lag(session: dict[str, Any]) -> None:
+    """Entry-radio / sidebar lag overlay after a successful Style Jam generate (blob already committed)."""
+    session["improv_intelligence_tab"] = "Entry & Jam"
+    session["improv_entry_mode"] = "Song-Based Improvisation"
+    session["display_key"] = "C"
+    session["concert_key"] = "C"
+    session.pop("improv_generated_sections", None)
+    append_trace(session, "style_jam_entry_lag_overlay", display_key="C")
 
 
 def seed_stale_generator_artifact(session: dict[str, Any], *, gen_id: str = "stale-gen-eb-harness") -> None:
@@ -110,6 +156,12 @@ def seed_stale_generator_artifact(session: dict[str, Any], *, gen_id: str = "sta
 
 
 def mission_select_single_chord(session: dict[str, Any], *, chord: str = "Dm", section: str = "Verse") -> None:
+    try:
+        from workflow_musical_authority import save_workflow_snapshot
+
+        save_workflow_snapshot(session, "song_based_improvisation")
+    except ImportError:
+        pass
     session["improv_intelligence_tab"] = "Missions"
     session["ii_selected_chord"] = chord
     session["II_SELECTED_CHORD"] = chord
@@ -137,7 +189,9 @@ def restore_song_based_tab(session: dict[str, Any]) -> None:
     session["improv_entry_mode"] = "Song-Based Improvisation"
     try:
         from music_workflow_creative_nav import sync_workflow_for_creative_tab
+        from workflow_musical_authority import restore_workflow_snapshot
 
+        restore_workflow_snapshot(session, "song_based_improvisation")
         sync_workflow_for_creative_tab(session, "Entry & Jam")
     except ImportError:
         pass

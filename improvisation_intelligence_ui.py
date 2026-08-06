@@ -195,6 +195,18 @@ def _normalize_improv_tab_for_render(radio_value: Any) -> str:
     return IMPROV_TAB_NAMES[0]
 
 
+def _queue_style_jam_generation_intent(session_state: dict[str, Any]) -> None:
+    from music_workflow_pending_generated_progression import queue_generated_progression_intent
+
+    queue_generated_progression_intent(session_state, owner="style_jam")
+
+
+def _queue_jam_session_generation_intent(session_state: dict[str, Any]) -> None:
+    from music_workflow_pending_generated_progression import queue_generated_progression_intent
+
+    queue_generated_progression_intent(session_state, owner="jam_session_generator")
+
+
 def render_improvisation_intelligence_lab(
     st: Any,
     *,
@@ -654,55 +666,14 @@ def _tab_entry_modes(
             placeholder="e.g. medium jazz-funk progression in D minor",
             key="improv_style_prompt",
         )
-        if st.button("Generate progression", type="primary", key="improv_gen_style"):
-            from creative_key_sync import (
-                IMPROV_STYLE_KEY_TRACKER,
-                apply_creative_concert_key,
-                sync_creative_style_jam_meta,
-            )
-
-            k = str(session_state.get("improv_style_key") or "C")
-            style = str(session_state.get("improv_style") or STYLE_JAM_STYLES[0])
-            if "d minor" in (prompt or "").lower():
-                k = "Dm"
-                try:
-                    from session_widget_safe import safe_session_assign
-
-                    safe_session_assign(
-                        session_state, "improv_style_key", k, widget_safe=True
-                    )
-                except ImportError:
-                    session_state["improv_style_key"] = k
-            session_state["improv_generated_sections"] = generate_style_progression(
-                style=style,
-                key_center=k,
-                difficulty=str(session_state.get("improv_difficulty") or "Intermediate"),
-                mood=str(session_state.get("improv_mood") or "Mellow"),
-            )
-            try:
-                from music_workflow_generated_session import commit_style_jam_generation
-
-                commit_style_jam_generation(
-                    session_state,
-                    key_center=k,
-                    style=style,
-                    section_map=dict(session_state.get("improv_generated_sections") or {}),
-                    mood=str(session_state.get("improv_mood") or ""),
-                    groove=str(session_state.get("improv_groove") or ""),
-                    tempo_bpm=int(session_state.get("improv_style_bpm") or 0),
-                )
-            except ImportError:
-                pass
-            sync_creative_style_jam_meta(session_state)
-            apply_creative_concert_key(session_state, k, st_like=st)
-            session_state[IMPROV_STYLE_KEY_TRACKER] = k
-            try:
-                from creative_session_state import sync_creative_session_from_session
-
-                sync_creative_session_from_session(session_state)
-            except ImportError:
-                pass
-            st.rerun()
+        if st.button(
+            "Generate progression",
+            type="primary",
+            key="improv_gen_style",
+            on_click=_queue_style_jam_generation_intent,
+            args=(session_state,),
+        ):
+            pass
 
         gen = session_state.get("improv_generated_sections")
         if gen:
@@ -789,42 +760,14 @@ def _tab_entry_modes(
                 on_change=on_improv_jam_setting_change,
             )
 
-        if st.button("Generate jam session", type="primary", key="improv_gen_jam"):
-            jam = generate_jam_session(
-                ensemble=ensemble,
-                style=style,
-                key_center=key_c,
-                tempo=int(session_state.get("improv_jam_bpm") or 110),
-                mood=str(session_state.get("improv_jam_mood") or "Mellow"),
-            )
-            try:
-                from creative_session_state import capture_jam_session_generator_state
-
-                capture_jam_session_generator_state(
-                    session_state,
-                    ensemble=ensemble,
-                    style=style,
-                    concert_key=str(key_c or "C"),
-                    bpm=int(session_state.get("improv_jam_bpm") or 110),
-                    mood=str(session_state.get("improv_jam_mood") or "Mellow"),
-                    jam_session=jam,
-                    st_like=st,
-                )
-            except ImportError:
-                session_state["improv_jam_session"] = jam
-            try:
-                from music_workflow_generated_session import commit_jam_session_generation
-
-                commit_jam_session_generation(
-                    session_state,
-                    jam if isinstance(jam, dict) else {},
-                    key_center=str(key_c or "C"),
-                    style=str(style or ""),
-                    new_session=True,
-                )
-            except ImportError:
-                pass
-            st.rerun()
+        if st.button(
+            "Generate jam session",
+            type="primary",
+            key="improv_gen_jam",
+            on_click=_queue_jam_session_generation_intent,
+            args=(session_state,),
+        ):
+            pass
 
         jam = session_state.get("improv_jam_session")
         if jam:

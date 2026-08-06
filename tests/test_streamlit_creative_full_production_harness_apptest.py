@@ -194,13 +194,15 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
             "REQUIRES_PRE_WIDGET_ACTIVATION",
         )
 
-    def test_tab_entry_modes_direct_st_rerun_only_on_generate_buttons(self) -> None:
+    def test_tab_entry_modes_generate_uses_pre_widget_intent_callbacks(self) -> None:
         from improvisation_intelligence_ui import _tab_entry_modes
 
         src = inspect.getsource(_tab_entry_modes)
-        self.assertEqual(src.count("st.rerun()"), 2)
-        self.assertIn('key="improv_gen_style"', src)
-        self.assertIn('key="improv_gen_jam"', src)
+        self.assertIn("_queue_style_jam_generation_intent", src)
+        self.assertIn("_queue_jam_session_generation_intent", src)
+        self.assertIn('on_click=_queue_style_jam_generation_intent', src)
+        self.assertIn('on_click=_queue_jam_session_generation_intent', src)
+        self.assertNotIn('if st.button("Generate progression", type="primary", key="improv_gen_style"):', src)
 
     def test_explicit_open_backing_queues_with_arm(self) -> None:
         at = self._run()

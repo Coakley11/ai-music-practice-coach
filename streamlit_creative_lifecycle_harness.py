@@ -74,9 +74,6 @@ def _render_lifecycle_controls(session: dict[str, Any]) -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("1–3 Hevenu + Eb practice", key="lc_hevenu_eb"):
-            if not session.get("_lifecycle_hevenu_seeded"):
-                seed_hevenu_catalog_session(session)
-                session["_lifecycle_hevenu_seeded"] = True
             apply_hevenu_practice_eb_minor(session)
             seed_stale_generator_artifact(session)
             _bump_stage(session, "hevenu_eb_practice")
@@ -131,37 +128,32 @@ st.set_page_config(page_title="Creative lifecycle harness", layout="wide")
 st.title("Creative lifecycle — cross-workflow corruption repro")
 
 bootstrap = _simulate_authenticated_bootstrap(st.session_state)
-if not st.session_state.get("_lifecycle_hevenu_seeded"):
+_run_seq = int(st.session_state.get("_script_run_seq") or 1)
+if not st.session_state.get("_lifecycle_hevenu_seeded") and _run_seq <= 1:
     seed_hevenu_catalog_session(st.session_state)
     seed_stale_generator_artifact(st.session_state)
     st.session_state["_lifecycle_hevenu_seeded"] = True
     _bump_stage(st.session_state, "initial_seed")
-
-if not st.session_state.get("display_key"):
-    st.session_state["display_key"] = str(st.session_state.get("concert_key") or "Dm")
-
-st.sidebar.markdown("### Sidebar (catalog + generated collision)")
-st.sidebar.selectbox("Practice / Concert Key", ENHARMONIC_MAJOR_KEYS, key="display_key")
-_lock_widgets_like_sidebar(st.session_state)
+elif not st.session_state.get("_lifecycle_hevenu_seeded"):
+    st.session_state["_lifecycle_hevenu_seeded"] = True
 
 _render_lifecycle_controls(st.session_state)
+
+if not st.session_state.get("display_key") or str(st.session_state.get("display_key")).endswith("m"):
+    st.session_state["display_key"] = "C"
+
+st.sidebar.markdown("### Sidebar (catalog + generated collision)")
+st.sidebar.selectbox(
+    "Practice / Concert Key (harness collision)",
+    ENHARMONIC_MAJOR_KEYS,
+    key="lifecycle_harness_display_key",
+)
+_lock_widgets_like_sidebar(st.session_state)
 
 try:
     _render_creative_production_shell(st.session_state)
 except Exception as exc:
     st.error(f"Creative panel error: {exc}")
-    from improvisation_intelligence_ui import _tab_entry_modes
-
-    _tab_entry_modes(
-        st,
-        session_state=st.session_state,
-        improv_ctx=_improv_ctx(st.session_state),
-        is_custom=False,
-        on_open_backing=_open_backing_handler(st.session_state),
-        on_open_practice=None,
-        on_song_source_change=None,
-        apply_style_to_playback=None,
-    )
 
 with st.expander("Lifecycle diagnostics"):
     st.json(

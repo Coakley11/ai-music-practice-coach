@@ -404,14 +404,41 @@ def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
     """Authoritative Creative entry mode for Open Backing / return handoff."""
     try:
         from studio_page_state import IMPROV_ENTRY_MODES
+    except ImportError:
+        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+    tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
+    if tab == "Entry & Jam":
+        try:
+            from creative_session_state import get_creative_session
 
+            sess = get_creative_session(session)
+            if sess is not None:
+                if sess.tool_type == "jam_session_generator":
+                    return "Jam Session Generator"
+                if sess.tool_type == "entry_style_jam":
+                    return "Style Jam Mode"
+        except ImportError:
+            pass
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr is not None:
+                owner = str(ptr.workflow_owner or "")
+                if owner == "jam_session_generator":
+                    return "Jam Session Generator"
+                if owner == "style_jam":
+                    return "Style Jam Mode"
+        except ImportError:
+            pass
+    try:
         live = str(
             session.get("improv_entry_mode") or session.get("creative_improv_entry_mode") or ""
         ).strip()
         if live in IMPROV_ENTRY_MODES:
             return live
     except ImportError:
-        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+        pass
     try:
         from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 
@@ -419,7 +446,7 @@ def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
         if pending in IMPROV_ENTRY_MODES:
             return pending
     except ImportError:
-        IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+        pass
     try:
         from creative_session_state import get_creative_session
 
@@ -1008,6 +1035,19 @@ def resolve_entry_jam_entry_mode(
     ctx: BackingContext | None = None,
 ) -> str:
     """Authoritative entry mode for entry_jam — never inherit stale SBI widget state."""
+    handoff = str(session.get("_backing_handoff_entry_mode") or "").strip()
+    if handoff in ("Style Jam Mode", "Jam Session Generator"):
+        return handoff
+    try:
+        from generated_workflow_artifact import BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY
+
+        raw = session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY)
+        if isinstance(raw, dict):
+            snap_entry = str(raw.get("entry_mode") or "").strip()
+            if snap_entry in ("Style Jam Mode", "Jam Session Generator"):
+                return snap_entry
+    except ImportError:
+        pass
     widget = str(session.get("improv_entry_mode") or "").strip()
     if widget == "Style Jam Mode":
         return "Style Jam Mode"
@@ -1017,11 +1057,16 @@ def resolve_entry_jam_entry_mode(
         ctx_entry = str(ctx.entry_mode or "").strip()
         if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
             return ctx_entry
-    jam = session.get("improv_jam_session")
-    if isinstance(jam, dict) and jam.get("sections") and widget != "Style Jam Mode":
-        return "Jam Session Generator"
     if widget == "Jam Session Generator":
         return widget
+    try:
+        from backing_source_navigation import _creative_handoff_entry_mode
+
+        resolved = _creative_handoff_entry_mode(session)
+        if resolved in ("Style Jam Mode", "Jam Session Generator"):
+            return resolved
+    except ImportError:
+        pass
     try:
         from creative_session_state import get_creative_session
         from studio_page_state import IMPROV_ENTRY_MODES

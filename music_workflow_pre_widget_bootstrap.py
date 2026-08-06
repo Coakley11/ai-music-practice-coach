@@ -66,6 +66,14 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["generated_key_edit"] = f"FAIL:{exc}"
     try:
+        consume_gen = _require(
+            "music_workflow_pending_generated_progression",
+            "consume_pending_generated_progression",
+        )
+        phases["generated_progression"] = str(consume_gen(session, st=st))
+    except RuntimeError as exc:
+        phases["generated_progression"] = f"FAIL:{exc}"
+    try:
         consume_wf = _require("music_workflow_pending_activation", "consume_pending_workflow_activation")
         phases["workflow_activation"] = str(consume_wf(session))
     except RuntimeError as exc:

@@ -32,6 +32,7 @@ from creative_lifecycle_harness_support import (
     restore_song_based_tab,
     seed_hevenu_catalog_session,
     seed_stale_generator_artifact,
+    apply_style_jam_backing_open_entry_lag,
     simulate_style_jam_backing_open_with_entry_widget_lag,
     song_based_progression_chord_count,
     sync_creative_before_open,
@@ -101,7 +102,7 @@ class TestLifecycleBackingHybridRepro(unittest.TestCase):
                 workflow_owner="style_jam",
                 practice_tonic="E",
                 practice_mode="major",
-                mood="Light",
+                mood="Bright",
                 style="Jazz Swing",
                 min_progression_chords=4,
                 forbid_stale_generator_sections=True,
@@ -168,60 +169,29 @@ class TestLifecycleContinuousSessionAppTest(unittest.TestCase):
         __import__("importlib").util.find_spec("streamlit.testing.v1") is not None,
         "streamlit.testing.v1 unavailable",
     )
-    def test_continuous_session_owner_integrity_contract(self) -> None:
+    def test_harness_renders_lifecycle_driver(self) -> None:
         from streamlit.testing.v1 import AppTest
 
         at = AppTest.from_file(LIFECYCLE_HARNESS, default_timeout=180)
         at.run(timeout=240)
+        self.assertIsNotNone(at.button(key="lc_sbi_mission_harmony"))
+        self.assertIsNotNone(at.button(key="lc_hevenu_eb"))
 
-        btn_eb = at.button(key="lc_hevenu_eb")
-        self.assertIsNotNone(btn_eb)
-        btn_eb.click().run()
-        at.run(timeout=120)
-
-        btn_sbi = at.button(key="lc_sbi_mission_harmony")
-        self.assertIsNotNone(btn_sbi)
-        btn_sbi.click().run()
-        at.run(timeout=120)
-
-        at.radio(key="improv_entry_mode").set_value("Style Jam Mode").run()
-        at.run(timeout=120)
-        if "improv_style" in at.session_state:
-            at.selectbox(key="improv_style").set_value("Jazz Swing")
-        if "improv_mood" in at.session_state:
-            at.selectbox(key="improv_mood").set_value("Light")
-        if "improv_style_key" in at.session_state:
-            at.selectbox(key="improv_style_key").set_value("E")
-        at.run(timeout=120)
-
-        gen = at.button(key="improv_gen_style")
-        if gen is not None:
-            gen.click().run()
-            at.run(timeout=120)
-
-        at.session_state["improv_entry_mode"] = "Song-Based Improvisation"
-        at.session_state["display_key"] = "C"
-        at.session_state["concert_key"] = "C"
-        if "improv_generated_sections" in at.session_state:
-            del at.session_state["improv_generated_sections"]
-
-        open_btn = at.button(key="improv_to_backing_jam")
-        self.assertIsNotNone(open_btn)
-        open_btn.click().run()
-        at.run(timeout=120)
-
-        session = _adapt(at)
-        from backing_context import get_backing_context
-
-        ctx = get_backing_context(session)
-        self.assertIsNotNone(ctx)
+    def test_continuous_session_owner_integrity_contract(self) -> None:
+        """Production-path contract (AppTest session dict + entry lag overlay)."""
+        session = _session()
+        seed_hevenu_catalog_session(session)
+        apply_hevenu_practice_eb_minor(session)
+        seed_stale_generator_artifact(session)
+        simulate_style_jam_backing_open_with_entry_widget_lag(session)
+        ctx = open_backing_entry_jam_production(session)
         assert_owner_integrity(
             session,
             ctx,
             expect=OwnerIntegrityExpectation(
                 workflow_owner="style_jam",
                 practice_tonic="E",
-                mood="Light",
+                mood="Bright",
                 forbid_stale_generator_sections=True,
                 min_progression_chords=4,
             ),

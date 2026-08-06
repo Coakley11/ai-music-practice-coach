@@ -6,6 +6,7 @@ validate, invalidate, and signature helpers only — no page wiring yet.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
@@ -878,7 +879,92 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
     )
 
 
+def _entry_jam_context_from_owner_snapshot(
+    session: dict[str, Any],
+    snap: Any,
+) -> BackingContext:
+    from generated_workflow_artifact import GeneratedWorkflowArtifactSnapshot, concert_key_from_snapshot
+
+    if not isinstance(snap, GeneratedWorkflowArtifactSnapshot):
+        snap = GeneratedWorkflowArtifactSnapshot.from_dict(snap)
+    if snap is None:
+        return build_entry_jam_context(session)
+    entry_mode = str(snap.entry_mode or "").strip() or "Style Jam Mode"
+    concert_key = concert_key_from_snapshot(snap)
+    key = display_key = concert_key
+    chart_display_key = _resolve_chart_display_key(session, concert_key)
+    style = str(snap.style or "").strip() or "Jazz Swing"
+    groove = str(snap.groove or style).strip()
+    bpm = int(snap.bpm or 110)
+    mood = str(snap.mood or "Mellow").strip()
+    groove_intensity = str(snap.intensity or session.get("improv_groove") or "Medium").strip()
+    from songs.playback_defaults import normalize_groove_label
+
+    backing_style = normalize_groove_label(style or "Pop groove")
+    difficulty = str(snap.level or session.get("improv_difficulty") or "Intermediate").strip()
+    meter = str(snap.meter or "4/4").strip()
+    import hashlib
+
+    jam_id = hashlib.sha256(
+        f"{snap.workflow_owner}|{snap.artifact_id}|{snap.artifact_revision}|{snap.control_fingerprint}".encode()
+    ).hexdigest()[:12]
+    mode_label = entry_mode.replace(" Mode", "").replace(" Generator", "")
+    sections_dict = copy.deepcopy(snap.section_map)
+    progression = list(snap.progression or [])
+    if not progression and sections_dict:
+        try:
+            from improvisation_intelligence import flatten_sections
+
+            progression = flatten_sections(sections_dict)
+        except ImportError:
+            progression = [c for chs in sections_dict.values() for c in chs]
+    section_labels = list(sections_dict.keys())
+    progression_label = section_labels[0] if section_labels else style
+    scope = str(snap.selected_scope or "Full song")
+    section = None
+    selected_sections = list(snap.selected_section_ids or section_labels)
+    jam_title = style or mode_label or "Style jam"
+    gen_song_id = f"generated::{entry_mode}::{snap.artifact_id or jam_id}"
+    return BackingContext(
+        source="entry_jam",
+        source_label=_SOURCE_LABELS["entry_jam"],
+        active_song_id=gen_song_id,
+        song_title=jam_title,
+        key=key,
+        display_key=display_key,
+        concert_key=concert_key,
+        chart_display_key=chart_display_key,
+        bpm=bpm,
+        style=style,
+        groove=backing_style,
+        mood=mood,
+        groove_intensity=groove_intensity,
+        difficulty=difficulty,
+        meter=meter,
+        mode_label=mode_label,
+        section=section,
+        sections=selected_sections or section_labels,
+        scope=scope,
+        loops=int(session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=progression_label or " · ".join(progression[:4]),
+        section_labels=section_labels,
+        loop=True,
+        jam_id=jam_id,
+        entry_mode=entry_mode,
+        bound_pick_key="",
+    )
+
+
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
+    try:
+        from generated_workflow_artifact import peek_backing_owner_artifact_snapshot, validate_owner_artifact_snapshot
+
+        snap = peek_backing_owner_artifact_snapshot(session)
+        if snap is not None and not validate_owner_artifact_snapshot(snap):
+            return _entry_jam_context_from_owner_snapshot(session, snap)
+    except ImportError:
+        pass
     try:
         from studio_page_state import resolve_improv_song_source
     except ImportError:
@@ -1007,7 +1093,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         loop=True,
         jam_id=jam_id,
         entry_mode=entry_mode,
-        bound_pick_key=pick_key,
+        bound_pick_key="" if entry_mode in {"Style Jam Mode", "Jam Session Generator"} else pick_key,
     )
 
 
@@ -1957,6 +2043,13 @@ def open_backing_from_creative(
     elif source == "custom_progression":
         ctx = build_custom_progression_context(session)
     else:
+        if str(source) == "entry_jam":
+            try:
+                from generated_workflow_artifact import seal_backing_handoff_snapshot_for_creative_open
+
+                seal_backing_handoff_snapshot_for_creative_open(session)
+            except ImportError:
+                pass
         ctx = build_entry_jam_context(session)
     try:
         from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source

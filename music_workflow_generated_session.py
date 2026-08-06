@@ -58,6 +58,9 @@ def commit_style_jam_generation(
         section_map=copy.deepcopy(section_map),
         generated_session_id=sid,
         source_type="generated",
+        mood=mood,
+        groove=groove,
+        tempo_bpm=int(tempo_bpm or 0),
     )
     save_workflow_blob(session, blob, source="style_jam_generate")
     act = activate_workflow(
