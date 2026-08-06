@@ -544,18 +544,26 @@ def bootstrap_active_workflow_if_needed(session: dict[str, Any]) -> dict[str, An
 
 
 def activate_workflow_for_entry_mode(session: dict[str, Any]) -> ActivateWorkflowResult | None:
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    mapping = {
-        "Song-Based Improvisation": "song_based_improvisation",
-        "Style Jam Mode": "style_jam",
-        "Jam Session Generator": "jam_session_generator",
-    }
-    owner = mapping.get(entry)
-    if not owner:
+    """Legacy API — queues typed activation; apply via pre-widget consume."""
+    try:
+        from music_workflow_pending_activation import queue_workflow_activation_for_entry_mode
+    except ImportError:
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        mapping = {
+            "Song-Based Improvisation": "song_based_improvisation",
+            "Style Jam Mode": "style_jam",
+            "Jam Session Generator": "jam_session_generator",
+        }
+        owner = mapping.get(entry)
+        if not owner:
+            return None
+        return activate_workflow_simple(
+            session, owner, activation_source="entry_mode_change", navigation_intent="creative_entry"
+        )
+    out = queue_workflow_activation_for_entry_mode(session)
+    if not out.get("queued"):
         return None
-    return activate_workflow_simple(
-        session, owner, activation_source="entry_mode_change", navigation_intent="creative_entry"
-    )
+    return ActivateWorkflowResult(ok=True, skipped=True, trace={"queued_entry_mode_activation": out})
 
 
 def activate_workflow_simple(

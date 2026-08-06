@@ -105,8 +105,7 @@ def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = No
 
         pending = peek_pending_workflow_activation(session)
         if pending and str(pending.get("target_owner") or "") == owner:
-            if str(pending.get("active_creative_view") or "") == view:
-                return "already_queued"
+            return "already_queued"
     except ImportError:
         pass
     try:

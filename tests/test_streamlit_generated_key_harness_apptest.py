@@ -81,7 +81,6 @@ class TestStreamlitGeneratedKeyHarnessAppTest(unittest.TestCase):
         self.assertIsNotNone(blob)
         self.assertEqual(blob.keys.practice_tonic, "A")
 
-    @unittest.expectedFailure
     def test_independent_keys_after_second_style_change(self) -> None:
         """Dual-widget sequencing in one AppTest session — known gap; see isolated tests."""
         from music_workflow_state_store import get_workflow_blob

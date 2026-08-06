@@ -474,9 +474,9 @@ def _tab_entry_modes(
             except ImportError:
                 pass
         try:
-            from music_workflow_activation import activate_workflow_for_entry_mode
+            from music_workflow_pending_activation import queue_workflow_activation_for_entry_mode
 
-            activate_workflow_for_entry_mode(session_state)
+            queue_workflow_activation_for_entry_mode(session_state)
         except ImportError:
             pass
 

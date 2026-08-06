@@ -25,7 +25,7 @@ from music_workflow_state_store import (
 )
 
 HARNESS_RUN_KEY = "_harness_fp_run_seq"
-STYLE_SID = "Pop groove"
+STYLE_SID = "Bossa Nova"
 GEN_SID = "jam-harness-fp-1"
 HARNESS_MISSION_BACKING_CLICKS_KEY = "_harness_fp_mission_backing_clicks"
 HARNESS_TRACE_KEY = "_harness_fp_trace"

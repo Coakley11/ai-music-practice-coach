@@ -397,20 +397,29 @@ def commit_staged_workflow(
             set_active_workflow_pointer(session, ptr_before_commit, source=f"rollback:{source}")
         if blob_before_commit is not None:
             save_workflow_blob(session, blob_before_commit, source=f"rollback:{source}")
-        try:
-            from music_workflow_pending_backing_handoff import (
-                backing_source_from_workflow_owner,
-                queue_pending_backing_workflow_handoff,
-            )
+        if mutation_type == "workflow_activation" or str(source or "") in {
+            "entry_mode_change",
+            "creative_tab_change",
+            "creative_pre_widget",
+            "test_late",
+        }:
+            try:
+                from music_workflow_pending_activation import queue_pending_workflow_activation
+                from music_workflow_compatibility import legacy_session_id_for_owner
 
-            queue_pending_backing_workflow_handoff(
-                session,
-                backing_source=backing_source_from_workflow_owner(owner),
-                workflow_owner=owner,
-                activation_source=str(source or "projection_guard"),
-            )
-        except ImportError:
-            pass
+                queue_pending_workflow_activation(
+                    session,
+                    target_owner=owner,
+                    target_session_id=str(staged.workflow_session_id or "").strip()
+                    or legacy_session_id_for_owner(session, owner),
+                    activation_source=str(source or mutation_type or "projection_guard"),
+                    navigation_intent=str(source or mutation_type or ""),
+                    active_creative_view=str(
+                        staged.active_creative_view or session.get(ACTIVE_CREATIVE_VIEW_KEY) or ""
+                    ),
+                )
+            except ImportError:
+                pass
         trace["validation_result"] = "defer"
         trace["error_code"] = "REQUIRES_PRE_WIDGET_ACTIVATION"
         trace["rollback_performed"] = True

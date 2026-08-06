@@ -12,6 +12,7 @@ _LOG = logging.getLogger("music.generated_key_change")
 
 PENDING_GENERATED_KEY_EDIT_KEY = "_music_pending_generated_key_edit"
 PENDING_GENERATED_KEY_EDIT_CONSUMED_SEQ_KEY = "_music_pending_generated_key_edit_consumed_seq"
+PENDING_GENERATED_KEY_EDIT_CONSUMED_TOKEN_KEY = "_music_pending_generated_key_edit_consumed_token"
 PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY = "_music_pending_generated_key_edit_user_message"
 PENDING_GENERATED_KEY_EDIT_TERMINAL_KEY = "_music_pending_generated_key_edit_terminal"
 PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY = "_music_pending_generated_key_edit_last_diag"
@@ -42,8 +43,10 @@ _USER_MESSAGES = {
 
 
 def _next_seq(session: dict[str, Any]) -> int:
+    prev = int(session.get(PENDING_GENERATED_KEY_EDIT_CONSUMED_SEQ_KEY) or 0)
     raw = session.get(PENDING_GENERATED_KEY_EDIT_KEY)
-    prev = int(raw.get("request_seq") or 0) if isinstance(raw, dict) else 0
+    if isinstance(raw, dict):
+        prev = max(prev, int(raw.get("request_seq") or 0))
     return prev + 1
 
 
@@ -138,6 +141,12 @@ def queue_pending_generated_key_edit(
     selected = str(selected_key_token or session.get(wkey) or "").strip()
     if not owner or not source or not selected:
         return None
+    try:
+        from generated_jam_key_change import clear_generated_key_hydrate_guard
+
+        clear_generated_key_hydrate_guard(session)
+    except ImportError:
+        pass
     try:
         from music_workflow_compatibility import legacy_session_id_for_owner
         from music_workflow_state_store import get_workflow_blob
@@ -303,7 +312,8 @@ def consume_pending_generated_key_edit(session: dict[str, Any], *, st: Any | Non
     if not isinstance(pending, dict):
         return "skipped"
     seq = pending.get("request_seq")
-    if seq is not None and session.get(PENDING_GENERATED_KEY_EDIT_CONSUMED_SEQ_KEY) == seq:
+    token = str(pending.get("request_token") or "").strip()
+    if token and session.get(PENDING_GENERATED_KEY_EDIT_CONSUMED_TOKEN_KEY) == token:
         clear_pending_generated_key_edit(session)
         return "already_consumed"
     if _widgets_locked(session):
@@ -343,6 +353,8 @@ def consume_pending_generated_key_edit(session: dict[str, Any], *, st: Any | Non
         return _fail_consume(session, pending, reason="mutation_or_projection_failed", diag=diag)
     if seq is not None:
         session[PENDING_GENERATED_KEY_EDIT_CONSUMED_SEQ_KEY] = seq
+    if token:
+        session[PENDING_GENERATED_KEY_EDIT_CONSUMED_TOKEN_KEY] = token
     clear_pending_generated_key_edit(session)
     session.pop(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY, None)
     session[PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY] = {**diag, "result": "applied"}
@@ -356,6 +368,7 @@ def run_pre_widget_generated_key_edit_consumer(session: dict[str, Any], *, st: A
 __all__ = [
     "PENDING_GENERATED_KEY_EDIT_KEY",
     "PENDING_GENERATED_KEY_EDIT_CONSUMED_SEQ_KEY",
+    "PENDING_GENERATED_KEY_EDIT_CONSUMED_TOKEN_KEY",
     "PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY",
     "PENDING_GENERATED_KEY_EDIT_TERMINAL_KEY",
     "PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY",
