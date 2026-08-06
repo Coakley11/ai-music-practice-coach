@@ -1,0 +1,324 @@
+"""Shared helpers for Creative lifecycle corruption harness (production paths only)."""
+
+from __future__ import annotations
+
+import copy
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+HEVENU_PICK = "Jewish|Hevenu Shalom Aleichem"
+HEVENU_TITLE = "Hevenu Shalom Aleichem"
+HEVENU_ORIGINAL_TONIC = "D"
+HEVENU_ORIGINAL_MODE = "minor"
+HEVENU_PRACTICE_TONIC = "Eb"
+HEVENU_PRACTICE_MODE = "minor"
+
+HEVENU_SECTIONS: dict[str, list[str]] = {
+    "Verse": ["Dm", "Gm", "A7", "Dm"],
+    "Chorus": ["F", "C", "Dm", "Am"],
+}
+
+STALE_GENERATOR_SECTIONS: dict[str, list[str]] = {
+    "Jewish ballad": ["Fm7", "Bb7", "Ebmaj7", "Ebmaj7"],
+}
+
+STYLE_JAM_STYLE = "Jazz Swing"
+GEN_JAM_STYLE = "Latin Fusion"
+
+HARNESS_TRACE_KEY = "_creative_lifecycle_harness_trace"
+
+
+def append_trace(session: dict[str, Any], step: str, **payload: Any) -> None:
+    bucket = session.get(HARNESS_TRACE_KEY)
+    if not isinstance(bucket, list):
+        bucket = []
+    bucket.append({"step": step, **payload})
+    session[HARNESS_TRACE_KEY] = bucket[-64:]
+
+
+def seed_hevenu_catalog_session(session: dict[str, Any]) -> None:
+    """Active catalog song Hevenu D minor with full section map (production keys)."""
+    session.update(
+        {
+            "active_catalog_pick_key": HEVENU_PICK,
+            "selected_song": {
+                "pick_key": HEVENU_PICK,
+                "title": HEVENU_TITLE,
+                "artist": "Traditional",
+                "key": "Dm",
+                "genre": "Jewish",
+                "sections": copy.deepcopy(HEVENU_SECTIONS),
+            },
+            "song": HEVENU_TITLE,
+            "home_sections": copy.deepcopy(HEVENU_SECTIONS),
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "original_key": "Dm",
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Entry & Jam",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Active song",
+        }
+    )
+    append_trace(session, "seed_hevenu", pick=HEVENU_PICK)
+
+
+def apply_hevenu_practice_eb_minor(session: dict[str, Any]) -> None:
+    """Set saved practice key Eb minor via song improv sync (production)."""
+    session["display_key"] = "Ebm"
+    session["concert_key"] = "Ebm"
+    try:
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        sections = sync_song_improv_sections_to_practice_key(session)
+        append_trace(
+            session,
+            "practice_eb_minor",
+            chord_count=sum(len(v) for v in (sections or {}).values()),
+        )
+    except ImportError:
+        append_trace(session, "practice_eb_minor", error="sync_unavailable")
+
+
+def simulate_style_jam_backing_open_with_entry_widget_lag(session: dict[str, Any]) -> None:
+    """Continuous-session state at Style Jam → Backing click when entry radio lags on Song-Based."""
+    session["improv_intelligence_tab"] = "Entry & Jam"
+    session["improv_entry_mode"] = "Song-Based Improvisation"
+    session["improv_style"] = STYLE_JAM_STYLE
+    session["improv_style_key"] = "E"
+    session["improv_mood"] = "Light"
+    session["improv_groove"] = "Light"
+    session["improv_style_bpm"] = 120
+    session.pop("improv_generated_sections", None)
+    session["display_key"] = "C"
+    session["concert_key"] = "C"
+    append_trace(session, "style_jam_entry_lag", display_key="C")
+
+
+def seed_stale_generator_artifact(session: dict[str, Any], *, gen_id: str = "stale-gen-eb-harness") -> None:
+    """Stale Generator blob + legacy jam session (simulates prior session before Style Jam attempt)."""
+    session["improv_jam_session"] = {
+        "id": gen_id,
+        "sections": copy.deepcopy(STALE_GENERATOR_SECTIONS),
+    }
+    session["improv_jam_key"] = "Eb"
+    session["improv_jam_style"] = "Jewish ballad"
+    session["improv_jam_mood"] = "Mellow"
+    session.setdefault("display_key", "C")
+    session.setdefault("concert_key", "C")
+    append_trace(session, "seed_stale_generator", gen_id=gen_id)
+
+
+def mission_select_single_chord(session: dict[str, Any], *, chord: str = "Dm", section: str = "Verse") -> None:
+    session["improv_intelligence_tab"] = "Missions"
+    session["ii_selected_chord"] = chord
+    session["II_SELECTED_CHORD"] = chord
+    session["ii_selected_section"] = section
+    session["II_SELECTED_SECTION"] = section
+    session["improv_mission_progression"] = [chord]
+    try:
+        from music_workflow_creative_nav import sync_workflow_for_creative_tab
+
+        sync_workflow_for_creative_tab(session, "Missions")
+    except ImportError:
+        pass
+    append_trace(session, "mission_focus", chord=chord, section=section)
+
+
+def harmony_map_focus_chord(session: dict[str, Any], *, chord: str = "Gm", section: str = "Verse") -> None:
+    session["improv_intelligence_tab"] = "Harmony Map"
+    session["harmony_map_chord"] = chord
+    session["harmony_map_section"] = section
+    append_trace(session, "harmony_focus", chord=chord, section=section)
+
+
+def restore_song_based_tab(session: dict[str, Any]) -> None:
+    session["improv_intelligence_tab"] = "Entry & Jam"
+    session["improv_entry_mode"] = "Song-Based Improvisation"
+    try:
+        from music_workflow_creative_nav import sync_workflow_for_creative_tab
+
+        sync_workflow_for_creative_tab(session, "Entry & Jam")
+    except ImportError:
+        pass
+    append_trace(session, "restore_song_based")
+
+
+def song_based_progression_chord_count(session: dict[str, Any]) -> int:
+    try:
+        from backing_context import _song_improv_sections_dict
+
+        sec = _song_improv_sections_dict(session)
+        return sum(len(v) for v in sec.values())
+    except ImportError:
+        raw = session.get("improv_song_concert_sections") or session.get("home_sections") or {}
+        if isinstance(raw, dict):
+            return sum(len(v) for v in raw.values() if isinstance(v, list))
+        return 0
+
+
+def open_backing_entry_jam_production(session: dict[str, Any], *, st_like: Any | None = None) -> Any:
+    from backing_context import open_backing_from_creative
+
+    sync_creative_before_open(session)
+    ctx = open_backing_from_creative(session, source="entry_jam", st_like=st_like)
+    append_trace(session, "open_backing_entry_jam", source=ctx.source, entry_mode=ctx.entry_mode)
+    return ctx
+
+
+def sync_creative_before_open(session: dict[str, Any]) -> None:
+    try:
+        from creative_key_sync import sync_creative_style_jam_meta
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_style_jam_meta(session)
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
+
+
+def return_to_creative_production(session: dict[str, Any], *, st_like: Any | None = None) -> bool:
+    try:
+        from backing_source_navigation import rehydrate_creative_from_backing_context
+
+        session["studio_page"] = "backing"
+        ok = rehydrate_creative_from_backing_context(session, st_like=st_like)
+        session["studio_page"] = "creative"
+        append_trace(session, "return_creative", ok=ok)
+        return ok
+    except ImportError:
+        append_trace(session, "return_creative", ok=False)
+        return False
+
+
+def resolved_backing_workflow_type(session: dict[str, Any], ctx: Any) -> str:
+    try:
+        from workflow_musical_authority import workflow_type_from_backing_source
+
+        return workflow_type_from_backing_source(
+            str(getattr(ctx, "source", "") or ""),
+            entry_mode=str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
+        )
+    except ImportError:
+        return ""
+
+
+def resolve_entry_mode_for_backing(session: dict[str, Any], ctx: Any | None = None) -> str:
+    try:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        return resolve_entry_jam_entry_mode(session, ctx=ctx)
+    except ImportError:
+        return str(session.get("improv_entry_mode") or "")
+
+
+@dataclass
+class OwnerIntegrityExpectation:
+    workflow_owner: Literal["style_jam", "jam_session_generator", "song_based_improvisation"]
+    practice_tonic: str = ""
+    practice_mode: str = ""
+    mood: str = ""
+    style: str = ""
+    min_progression_chords: int = 1
+    forbid_catalog_tokens: tuple[str, ...] = ("jewish", "hevenu", "ballad")
+    forbid_stale_generator_sections: bool = False
+
+
+@dataclass
+class OwnerIntegrityResult:
+    ok: bool
+    violations: list[str] = field(default_factory=list)
+    field_sources: dict[str, str] = field(default_factory=dict)
+
+
+def analyze_backing_context_integrity(
+    session: dict[str, Any],
+    ctx: Any,
+    *,
+    expect: OwnerIntegrityExpectation,
+) -> OwnerIntegrityResult:
+    """Assert single-owner backing card contract (target behavior — fails on current hybrid builds)."""
+    violations: list[str] = []
+    sources: dict[str, str] = {}
+
+    entry_resolved = resolve_entry_mode_for_backing(session, ctx)
+    wf_type = resolved_backing_workflow_type(session, ctx)
+    sources["entry_mode_resolved"] = entry_resolved
+    sources["workflow_type_from_ctx"] = wf_type
+    sources["ctx.entry_mode"] = str(getattr(ctx, "entry_mode", "") or "")
+    sources["ctx.concert_key"] = str(getattr(ctx, "concert_key", "") or "")
+    sources["ctx.display_key"] = str(getattr(ctx, "display_key", "") or "")
+    sources["session.display_key"] = str(session.get("display_key") or "")
+    sources["ctx.mood"] = str(getattr(ctx, "mood", "") or "")
+    sources["ctx.style"] = str(getattr(ctx, "style", "") or "")
+    sources["ctx.groove"] = str(getattr(ctx, "groove", "") or "")
+    sources["ctx.bound_pick_key"] = str(getattr(ctx, "bound_pick_key", "") or "")
+    sources["progression_head"] = ",".join(list(getattr(ctx, "progression", None) or [])[:4])
+    sources["section_labels"] = ",".join(list(getattr(ctx, "section_labels", None) or [])[:3])
+
+    bound_pick = str(getattr(ctx, "bound_pick_key", "") or "")
+    if expect.workflow_owner in {"style_jam", "jam_session_generator"} and bound_pick:
+        if "hevenu" in bound_pick.lower() or bound_pick.startswith("Jewish|"):
+            violations.append(
+                f"bound_pick_owner=catalog_song actual={bound_pick} (build_entry_jam_context._current_pick_key)"
+            )
+
+    if expect.workflow_owner == "style_jam":
+        if wf_type != "style_jam":
+            violations.append(f"WORKFLOW_OWNER_INTEGRITY_FAILURE expected_owner=style_jam actual_card_owner={wf_type}")
+        if entry_resolved != "Style Jam Mode":
+            violations.append(
+                f"entry_mode_resolved={entry_resolved} (stale improv_jam_session heuristic may force Generator)"
+            )
+    elif expect.workflow_owner == "jam_session_generator":
+        if wf_type != "jam_session_generator":
+            violations.append(
+                f"WORKFLOW_OWNER_INTEGRITY_FAILURE expected_owner=jam_session_generator actual_card_owner={wf_type}"
+            )
+
+    concert = str(getattr(ctx, "concert_key", "") or getattr(ctx, "display_key", "") or "")
+    if expect.practice_tonic and expect.practice_tonic.upper() not in concert.upper().replace("M", ""):
+        if concert in {"C", "C major"} or str(session.get("display_key") or "").strip() in {"C", "C major"}:
+            violations.append(
+                f"key_owner=legacy_compatibility/global display_key C actual_concert={concert} expected_tonic={expect.practice_tonic}"
+            )
+
+    if expect.mood and expect.mood.lower() not in str(getattr(ctx, "mood", "") or "").lower():
+        violations.append(f"mood expected={expect.mood} actual={getattr(ctx, 'mood', '')} (default Mellow leak)")
+
+    style_blob = f"{getattr(ctx, 'style', '')}|{getattr(ctx, 'groove', '')}|{sources['section_labels']}".lower()
+    for token in expect.forbid_catalog_tokens:
+        if token in style_blob and token not in str(session.get("improv_style") or "").lower():
+            violations.append(f"metadata_owner=catalog_song token={token} in backing card fields")
+
+    prog = list(getattr(ctx, "progression", None) or [])
+    if expect.forbid_stale_generator_sections and prog:
+        head = " ".join(prog[:4]).upper()
+        if "EBMAJ7" in head or "FM7" in head:
+            violations.append(f"progression_owner=old_generator_artifact chords={head[:40]}")
+
+    if expect.min_progression_chords and len(prog) < expect.min_progression_chords:
+        violations.append(f"progression too short len={len(prog)}")
+
+    try:
+        from workflow_musical_authority import validate_workflow_consistency
+
+        diag = validate_workflow_consistency(session, ctx)
+        for v in diag.get("violations") or []:
+            violations.append(str(v))
+    except ImportError:
+        pass
+
+    return OwnerIntegrityResult(ok=not violations, violations=violations, field_sources=sources)
+
+
+def assert_owner_integrity(
+    session: dict[str, Any],
+    ctx: Any,
+    *,
+    expect: OwnerIntegrityExpectation,
+) -> None:
+    result = analyze_backing_context_integrity(session, ctx, expect=expect)
+    if not result.ok:
+        msg = "\n".join(result.violations + [f"  {k}={v}" for k, v in result.field_sources.items()])
+        raise AssertionError(msg)
