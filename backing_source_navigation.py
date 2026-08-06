@@ -1409,7 +1409,24 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
 
         tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
         entry = str(session.get("improv_entry_mode") or "").strip()
-        if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") in {"mission", "song_improv"}:
+        ctx_source = str(ctx.source or "")
+        ctx_entry = str(ctx.entry_mode or entry or "").strip()
+        if ctx_source == "entry_jam" and ctx_entry in {"Style Jam Mode", "Jam Session Generator"}:
+            if ctx_entry == "Style Jam Mode":
+                activate_workflow_simple(
+                    session,
+                    "style_jam",
+                    activation_source="return_from_backing",
+                    return_route="creative",
+                )
+            else:
+                activate_workflow_simple(
+                    session,
+                    "jam_session_generator",
+                    activation_source="return_from_backing",
+                    return_route="creative",
+                )
+        elif tab in {"Missions", "Song-Based Improvisation"} or ctx_source in {"mission", "song_improv"}:
             if tab == "Missions" or str(ctx.source or "") == "mission":
                 activate_workflow_simple(
                     session,
@@ -1447,7 +1464,14 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
 
             tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
             entry = str(session.get("improv_entry_mode") or "").strip()
-            if tab in {"Missions", "Song-Based Improvisation"} or str(ctx.source or "") in {"mission", "song_improv"}:
+            ctx_source = str(ctx.source or "")
+            ctx_entry = str(ctx.entry_mode or entry or "").strip()
+            if ctx_source == "entry_jam" and ctx_entry in {"Style Jam Mode", "Jam Session Generator"}:
+                if ctx_entry == "Style Jam Mode":
+                    switch_workflow_owner(session, "style_jam")
+                else:
+                    switch_workflow_owner(session, "jam_session_generator")
+            elif tab in {"Missions", "Song-Based Improvisation"} or ctx_source in {"mission", "song_improv"}:
                 if tab == "Missions" or str(ctx.source or "") == "mission":
                     switch_workflow_owner(session, "mission_jam")
                 else:

@@ -179,20 +179,32 @@ def mission_select_single_chord(session: dict[str, Any], *, chord: str = "Dm", s
 
 def harmony_map_focus_chord(session: dict[str, Any], *, chord: str = "Gm", section: str = "Verse") -> None:
     session["improv_intelligence_tab"] = "Harmony Map"
+    session["creative_improv_intelligence_tab"] = "Harmony Map"
     session["harmony_map_chord"] = chord
     session["harmony_map_section"] = section
+    try:
+        from music_workflow_creative_nav import sync_workflow_for_creative_tab
+
+        sync_workflow_for_creative_tab(session, "Harmony Map")
+    except ImportError:
+        pass
     append_trace(session, "harmony_focus", chord=chord, section=section)
 
 
 def restore_song_based_tab(session: dict[str, Any]) -> None:
     session["improv_intelligence_tab"] = "Entry & Jam"
+    session["creative_improv_intelligence_tab"] = "Entry & Jam"
     session["improv_entry_mode"] = "Song-Based Improvisation"
     try:
-        from music_workflow_creative_nav import sync_workflow_for_creative_tab
+        from music_workflow_creative_nav import (
+            ensure_creative_tab_workflow_before_widgets,
+            sync_workflow_for_creative_tab,
+        )
         from workflow_musical_authority import restore_workflow_snapshot
 
-        restore_workflow_snapshot(session, "song_based_improvisation")
         sync_workflow_for_creative_tab(session, "Entry & Jam")
+        restore_workflow_snapshot(session, "song_based_improvisation")
+        ensure_creative_tab_workflow_before_widgets(session)
     except ImportError:
         pass
     append_trace(session, "restore_song_based")
@@ -233,13 +245,25 @@ def sync_creative_before_open(session: dict[str, Any]) -> None:
 
 def return_to_creative_production(session: dict[str, Any], *, st_like: Any | None = None) -> bool:
     try:
-        from backing_source_navigation import rehydrate_creative_from_backing_context
+        from backing_source_navigation import (
+            CREATIVE_RESTORE_FROM_BACKING_KEY,
+            prepare_return_to_backing_source,
+            rehydrate_creative_from_backing_context,
+        )
 
-        session["studio_page"] = "backing"
-        ok = rehydrate_creative_from_backing_context(session, st_like=st_like)
+        session.setdefault("studio_page", "backing")
+        prepare_return_to_backing_source(session)
         session["studio_page"] = "creative"
-        append_trace(session, "return_creative", ok=ok)
-        return ok
+        if session.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
+            rehydrate_creative_from_backing_context(session, st_like=st_like)
+        try:
+            from studio_page_state import ensure_improv_entry_mode_restored
+
+            ensure_improv_entry_mode_restored(session)
+        except ImportError:
+            pass
+        append_trace(session, "return_creative", ok=True)
+        return True
     except ImportError:
         append_trace(session, "return_creative", ok=False)
         return False

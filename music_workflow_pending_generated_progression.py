@@ -79,12 +79,13 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
             ensemble = str(session.get("improv_jam_ensemble") or "Combo")
             style = str(session.get("improv_jam_style") or "Jazz Swing")
             key_c = str(session.get("improv_jam_key") or "C")
+            jam_mood = str(session.get("improv_jam_mood") or "Mellow")
             jam = generate_jam_session(
                 ensemble=ensemble,
                 style=style,
                 key_center=key_c,
                 tempo=int(session.get("improv_jam_bpm") or 110),
-                mood=str(session.get("improv_jam_mood") or "Mellow"),
+                mood=jam_mood,
             )
             session["improv_jam_session"] = jam
             commit_jam_session_generation(
@@ -94,6 +95,9 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
                 style=style,
                 new_session=True,
             )
+            session["improv_jam_mood"] = jam_mood
+            session["improv_jam_style"] = style
+            session["improv_jam_key"] = key_c
             try:
                 from generated_workflow_artifact import commit_generated_artifact_revision
 

@@ -69,6 +69,17 @@ def _open_backing_handler(session: dict[str, Any]) -> Callable[[], None]:
     return _go
 
 
+def _return_from_backing_click() -> None:
+    from backing_source_navigation import prepare_return_to_backing_source
+
+    session = st.session_state
+    session.setdefault("studio_page", "backing")
+    prepare_return_to_backing_source(session)
+    session["studio_page"] = "creative"
+    session["_lifecycle_pending_return_hydrate"] = True
+    _bump_stage(session, "return_creative_queued")
+
+
 def _render_lifecycle_controls(session: dict[str, Any]) -> None:
     st.markdown("### Lifecycle driver (production paths)")
     c1, c2, c3 = st.columns(3)
@@ -88,9 +99,12 @@ def _render_lifecycle_controls(session: dict[str, Any]) -> None:
             restore_song_based_tab(session)
             _bump_stage(session, "after_harmony_return")
     with c3:
-        if st.button("Return from backing", key="lc_return_creative"):
-            return_to_creative_production(session, st_like=st)
-            _bump_stage(session, "return_creative")
+        if st.button(
+            "Return from backing",
+            key="lc_return_creative",
+            on_click=_return_from_backing_click,
+        ):
+            pass
 
 
 def _render_creative_production_shell(session: dict[str, Any]) -> None:
@@ -136,6 +150,17 @@ if not st.session_state.get("_lifecycle_hevenu_seeded") and _run_seq <= 1:
     _bump_stage(st.session_state, "initial_seed")
 elif not st.session_state.get("_lifecycle_hevenu_seeded"):
     st.session_state["_lifecycle_hevenu_seeded"] = True
+
+if st.session_state.pop("_lifecycle_pending_return_hydrate", None):
+    try:
+        from backing_source_navigation import rehydrate_creative_from_backing_context
+        from studio_page_state import ensure_improv_entry_mode_restored
+
+        rehydrate_creative_from_backing_context(st.session_state, st_like=st)
+        ensure_improv_entry_mode_restored(st.session_state)
+        _bump_stage(st.session_state, "return_creative_hydrated")
+    except ImportError:
+        pass
 
 _render_lifecycle_controls(st.session_state)
 

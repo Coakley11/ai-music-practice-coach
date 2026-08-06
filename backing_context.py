@@ -958,13 +958,33 @@ def _entry_jam_context_from_owner_snapshot(
 
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     try:
-        from generated_workflow_artifact import peek_backing_owner_artifact_snapshot, validate_owner_artifact_snapshot
+        from generated_workflow_artifact import (
+            BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY,
+            WorkflowOwnerIntegrityError,
+            WORKFLOW_OWNER_INTEGRITY_FAILURE,
+            WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY,
+            detect_cross_owner_handoff_fields,
+            last_valid_generated_artifact_snapshot,
+            peek_backing_owner_artifact_snapshot,
+            validate_owner_artifact_snapshot,
+        )
 
         snap = peek_backing_owner_artifact_snapshot(session)
-        if snap is not None and not validate_owner_artifact_snapshot(snap):
-            return _entry_jam_context_from_owner_snapshot(session, snap)
+        if snap is not None:
+            violations = validate_owner_artifact_snapshot(snap)
+            violations.extend(detect_cross_owner_handoff_fields(session, snap))
+            if not violations:
+                return _entry_jam_context_from_owner_snapshot(session, snap)
+            session[WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY] = "\n".join(violations)
+            fallback = last_valid_generated_artifact_snapshot(session, snap.workflow_owner)  # type: ignore[arg-type]
+            if fallback is not None:
+                session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = fallback.to_dict()
+                return _entry_jam_context_from_owner_snapshot(session, fallback)
+            raise WorkflowOwnerIntegrityError(violations[0] if violations else WORKFLOW_OWNER_INTEGRITY_FAILURE)
     except ImportError:
         pass
+    except WorkflowOwnerIntegrityError:
+        raise
     try:
         from studio_page_state import resolve_improv_song_source
     except ImportError:

@@ -102,6 +102,7 @@ def commit_jam_session_generation(
         )
         b.generated_session_id = sid
         b.style = str(style or session.get("improv_jam_style") or "")
+        b.mood = str(session.get("improv_jam_mood") or b.mood or "Mellow")
         b.section_map = copy.deepcopy(sections)
         b.source_type = "generated"
 
@@ -116,6 +117,7 @@ def commit_jam_session_generation(
         keys=KeyAuthority(practice_tonic=pt, practice_mode=pm, original_tonic=pt, original_mode=pm),
         generated_session_id=sid,
         style=str(style or ""),
+        mood=str(session.get("improv_jam_mood") or "Mellow"),
         section_map=copy.deepcopy(sections),
         source_type="generated",
     )

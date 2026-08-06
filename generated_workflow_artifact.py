@@ -15,6 +15,11 @@ BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY = "_backing_owner_artifact_snapshot"
 WORKFLOW_OWNER_INTEGRITY_FAILURE = "WORKFLOW_OWNER_INTEGRITY_FAILURE"
 WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY = "_workflow_owner_integrity_user_message"
 
+
+class WorkflowOwnerIntegrityError(RuntimeError):
+    """Raised when backing must not render a hybrid generated card."""
+
+
 _ENTRY_MODE_FOR_OWNER: dict[str, str] = {
     "style_jam": "Style Jam Mode",
     "jam_session_generator": "Jam Session Generator",
@@ -248,8 +253,42 @@ def build_snapshot_from_session(
         if isinstance(jam, dict) and jam.get("id"):
             artifact_id = str(jam.get("id"))
 
+    if owner == "style_jam":
+        sm = str(session.get("improv_mood") or "").strip()
+        if sm:
+            mood = sm
+        sg = str(session.get("improv_groove") or "").strip()
+        if sg:
+            groove = sg
+        ss = str(session.get("improv_style") or "").strip()
+        if ss:
+            style = ss
+    elif owner == "jam_session_generator":
+        jm = str(session.get("improv_jam_mood") or "").strip()
+        if jm:
+            mood = jm
+        js = str(session.get("improv_jam_style") or "").strip()
+        if js:
+            style = js
+        jk = str(session.get("improv_jam_key") or "").strip()
+        if jk:
+            try:
+                from music_workflow_compatibility import _tonic_mode_from_token
+
+                pt, pm = _tonic_mode_from_token(jk)
+            except ImportError:
+                pass
+
     if owner == "style_jam" and not str(mood or "").strip():
         mood = str(session.get("improv_mood") or "")
+
+    last_raw = session.get(f"_generated_artifact_last_{owner}")
+    if isinstance(last_raw, dict):
+        artifact_id = str(last_raw.get("artifact_id") or artifact_id)
+        artifact_rev = int(last_raw.get("artifact_revision") or artifact_rev)
+        gen_seq = int(last_raw.get("generation_sequence") or gen_seq)
+        if not generation_request_token:
+            generation_request_token = str(last_raw.get("generation_request_token") or "")
 
     if not section_map:
         return None
@@ -257,7 +296,13 @@ def build_snapshot_from_session(
     if new_revision:
         gen_seq += 1
         session["_generated_artifact_sequence"] = gen_seq
-        artifact_rev = max(artifact_rev, 0) + 1
+        last_raw = session.get(f"_generated_artifact_last_{owner}")
+        if isinstance(last_raw, dict):
+            artifact_rev = max(artifact_rev, int(last_raw.get("artifact_revision") or 0)) + 1
+            artifact_id = str(uuid.uuid4())
+        else:
+            artifact_rev = max(artifact_rev, 0) + 1
+            artifact_id = str(uuid.uuid4())
 
     progression = _flatten_sections(section_map)
     fp = _control_fingerprint(
@@ -318,6 +363,45 @@ def validate_owner_artifact_snapshot(snapshot: GeneratedWorkflowArtifactSnapshot
     return violations
 
 
+def detect_cross_owner_handoff_fields(
+    session: dict[str, Any],
+    snapshot: GeneratedWorkflowArtifactSnapshot,
+) -> list[str]:
+    """Detect deliberate or accidental mixed-owner handoff payloads."""
+    violations: list[str] = []
+    declared = str(snapshot.workflow_owner or "")
+    entry_owner = owner_for_entry_mode(str(snapshot.entry_mode or ""))
+    if entry_owner and declared and entry_owner != declared:
+        violations.append(
+            f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} owner={declared} entry_mode_owner={entry_owner}"
+        )
+    prog_head = " ".join(list(snapshot.progression or [])[:4]).upper()
+    if declared == "style_jam" and ("EBMAJ7" in prog_head or "JEWISH BALLAD" in snapshot.style.upper()):
+        violations.append(f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} progression_owner=old_generator actual={prog_head[:32]}")
+    if declared == "style_jam" and "jam_session_generator" in str(session.get("_backing_handoff_entry_mode") or ""):
+        violations.append(f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} handoff_entry=jam_session_generator card_owner=style_jam")
+    meta = f"{snapshot.style}|{snapshot.mood}".lower()
+    if declared in {"style_jam", "jam_session_generator"} and any(t in meta for t in ("hevenu", "jewish ballad")):
+        if "jewish" not in str(session.get("improv_jam_style") or session.get("improv_style") or "").lower():
+            violations.append(f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} metadata_owner=catalog_song")
+    return violations
+
+
+def last_valid_generated_artifact_snapshot(
+    session: dict[str, Any],
+    owner: GeneratedOwner,
+) -> GeneratedWorkflowArtifactSnapshot | None:
+    raw = session.get(f"_generated_artifact_last_{owner}")
+    snap = GeneratedWorkflowArtifactSnapshot.from_dict(raw)
+    if snap is None:
+        return None
+    violations = validate_owner_artifact_snapshot(snap)
+    violations.extend(detect_cross_owner_handoff_fields(session, snap))
+    if violations:
+        return None
+    return snap
+
+
 def seal_backing_handoff_snapshot_for_creative_open(session: dict[str, Any]) -> bool:
     """Seal immutable owner snapshot immediately before entry_jam backing_context build."""
     entry = resolve_handoff_entry_mode(session)
@@ -376,6 +460,9 @@ def commit_generated_artifact_revision(
                 blob.artifact_fingerprint = snap.control_fingerprint
                 blob.section_map = copy.deepcopy(snap.section_map)
                 blob.progression = list(snap.progression)
+                blob.mood = snap.mood
+                blob.groove = snap.groove
+                blob.style = snap.style
                 blob.style_owner = owner
                 blob.progression_owner = owner
                 save_workflow_blob(session, blob, source="generated_artifact_revision")
@@ -389,6 +476,13 @@ def commit_generated_artifact_revision(
             jam = copy.deepcopy(jam)
             jam["sections"] = copy.deepcopy(snap.section_map)
             session["improv_jam_session"] = jam
+    if owner == "style_jam":
+        snap.mood = str(session.get("improv_mood") or snap.mood or "Mellow")
+        snap.groove = str(session.get("improv_groove") or snap.groove or snap.intensity)
+        snap.style = str(session.get("improv_style") or snap.style)
+    elif owner == "jam_session_generator":
+        snap.mood = str(session.get("improv_jam_mood") or snap.mood or "Mellow")
+        snap.style = str(session.get("improv_jam_style") or snap.style)
     session[f"_generated_artifact_last_{owner}"] = snap.to_dict()
     return snap
 
