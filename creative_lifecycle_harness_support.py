@@ -6,7 +6,9 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-HEVENU_PICK = "Jewish|Hevenu Shalom Aleichem"
+from song_catalog.catalog import format_pick_key
+
+HEVENU_PICK = format_pick_key("Jewish", "Hevenu Shalom Aleichem — Traditional")
 HEVENU_TITLE = "Hevenu Shalom Aleichem"
 HEVENU_ORIGINAL_TONIC = "D"
 HEVENU_ORIGINAL_MODE = "minor"
@@ -26,6 +28,8 @@ STYLE_JAM_STYLE = "Jazz Swing"
 GEN_JAM_STYLE = "Latin Fusion"
 
 HARNESS_TRACE_KEY = "_creative_lifecycle_harness_trace"
+
+PK_SAY_POP = format_pick_key("Pop", "Say — John Mayer")
 
 
 def append_trace(session: dict[str, Any], step: str, **payload: Any) -> None:
@@ -400,3 +404,130 @@ def assert_owner_integrity(
     if not result.ok:
         msg = "\n".join(result.violations + [f"  {k}={v}" for k, v in result.field_sources.items()])
         raise AssertionError(msg)
+
+
+def seed_say_song_based_creative_state(
+    session: dict[str, Any],
+    *,
+    say_pick: str = PK_SAY_POP,
+    section_count: int = 144,
+) -> None:
+    """Prior Creative session saved on Say — John Mayer (song-based workflow blob + pointer)."""
+    from music_workflow_state_store import (
+        ActiveWorkflowPointer,
+        KeyAuthority,
+        WorkflowStateBlob,
+        save_workflow_blob,
+        set_active_workflow_pointer,
+    )
+
+    sections = {"Full Song": ["G"] * section_count}
+    session.update(
+        {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_intelligence_tab": "Entry & Jam",
+            "active_catalog_pick_key": say_pick,
+            "selected_song": {
+                "pick_key": say_pick,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            "song": "Say",
+            "display_key": "G",
+            "concert_key": "G",
+            "improv_song_concert_sections": copy.deepcopy(sections),
+        }
+    )
+    blob = WorkflowStateBlob(
+        workflow_owner="song_based_improvisation",
+        workflow_session_id=say_pick,
+        keys=KeyAuthority(practice_tonic="G", practice_mode="major", original_tonic="G", original_mode="major"),
+        section_map=copy.deepcopy(sections),
+        song_id=say_pick,
+        song_title="Say",
+    )
+    save_workflow_blob(session, blob, source="harness_say_seed")
+    set_active_workflow_pointer(
+        session,
+        ActiveWorkflowPointer(workflow_owner="song_based_improvisation", workflow_session_id=say_pick),
+        source="harness_say_seed",
+    )
+    try:
+        from workflow_musical_authority import save_workflow_snapshot
+
+        save_workflow_snapshot(session, "song_based_improvisation")
+    except ImportError:
+        pass
+    append_trace(session, "seed_say_creative", pick=say_pick, chords=section_count)
+
+
+def simulate_picker_to_creative_handoff(
+    session: dict[str, Any],
+    *,
+    catalog: dict[str, dict[str, dict]],
+    new_pick: str,
+    song_library: dict | None = None,
+) -> dict[str, Any]:
+    """Production-order path: Song Selection pick → navigate Creative (pre-widget + canonical)."""
+    from unittest.mock import MagicMock, patch
+
+    from music_persistent_state import prepare_canonical_music_page_state
+    from music_workflow_pending_activation import queue_workflow_activation_for_entry_mode
+    from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
+    from songs.state import apply_pick_key
+    from studio_page_persistence import _ACTIVE_PAGE_TRACKER, handle_studio_page_transition
+
+    session["studio_page"] = "picker"
+    session[_ACTIVE_PAGE_TRACKER] = "picker"
+    st = MagicMock(session_state=session)
+    with patch("songs.state.persist_music_local_state"):
+        apply_pick_key(st, new_pick, catalog, song_library=song_library)
+    try:
+        from songs.music_source import resolve_catalog_song_for_pick
+
+        _sel, _ok = resolve_catalog_song_for_pick(
+            session,
+            new_pick,
+            song_picker_catalog=catalog,
+            authoritative_transport=True,
+        )
+        if isinstance(_sel, dict) and _sel.get("sections"):
+            session["home_sections"] = copy.deepcopy(_sel.get("sections"))
+    except ImportError:
+        pass
+    session["studio_page"] = "creative"
+    session["_script_run_seq"] = int(session.get("_script_run_seq") or 0) + 1
+    session.pop("_music_pre_widget_bootstrap_ran_this_run", None)
+    session.pop("_music_canonical_prepared_for_run", None)
+    queue_workflow_activation_for_entry_mode(session)
+    handle_studio_page_transition(session)
+    phases = run_pre_widget_application_consumers(session)
+    prepare_canonical_music_page_state(
+        session,
+        song_picker_catalog=catalog,
+        song_library=song_library,
+        force=True,
+    )
+    try:
+        from creative_session_state import (
+            apply_creative_session_to_session,
+            creative_session_is_active,
+            get_creative_session,
+        )
+
+        sess = get_creative_session(session)
+        if sess is not None and creative_session_is_active(session):
+            apply_creative_session_to_session(session, sess, widget_safe=False)
+    except ImportError:
+        pass
+    append_trace(
+        session,
+        "picker_to_creative",
+        pick=session.get("active_catalog_pick_key"),
+        song=session.get("song"),
+        phases=phases,
+    )
+    return phases
+
