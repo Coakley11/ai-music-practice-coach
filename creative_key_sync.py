@@ -396,9 +396,9 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
     try:
-        from musical_context_authority import song_catalog_context_owns_practice_key
+        from musical_context_authority import catalog_song_should_own_sidebar_practice_key, song_catalog_context_owns_practice_key
 
-        if song_catalog_context_owns_practice_key(session):
+        if catalog_song_should_own_sidebar_practice_key(session) or song_catalog_context_owns_practice_key(session):
             return False
     except ImportError:
         pass
@@ -727,7 +727,22 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
 
 def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
     """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
-    from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+    from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
+
+    try:
+        from musical_context_authority import catalog_song_should_own_sidebar_practice_key, resolve_authoritative_practice_key
+
+        if catalog_song_should_own_sidebar_practice_key(session):
+            pk = resolve_authoritative_practice_key(session)
+            token = pk.practice_key_token
+            options = display_key_options(token)
+            if token not in options:
+                options = [token] + options
+            _apply_display_key_before_widget(st, token, source="catalog_song_sidebar_authority")
+            session["concert_key"] = token
+            return options
+    except ImportError:
+        pass
 
     flush_pending_creative_major_keys(session)
     preserved = _sidebar_preserve_user_display_key_options(

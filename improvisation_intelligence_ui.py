@@ -585,11 +585,17 @@ def _tab_entry_modes(
 
     elif entry == "Style Jam Mode":
         try:
-            from music_workflow_pending_generated_key_edit import PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY
+            from music_workflow_pending_generated_key_edit import (
+                PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY,
+                PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY,
+            )
 
             _gen_key_msg = str(session_state.get(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY) or "").strip()
             if _gen_key_msg:
                 st.warning(_gen_key_msg)
+            _diag = session_state.get(PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY)
+            if isinstance(_diag, dict) and _diag.get("failed_predicate"):
+                st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
         st.markdown('<p class="ui-creative-section-label">Style jam generator</p>', unsafe_allow_html=True)
@@ -721,11 +727,17 @@ def _tab_entry_modes(
 
     else:
         try:
-            from music_workflow_pending_generated_key_edit import PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY
+            from music_workflow_pending_generated_key_edit import (
+                PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY,
+                PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY,
+            )
 
             _gen_key_msg = str(session_state.get(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY) or "").strip()
             if _gen_key_msg:
                 st.warning(_gen_key_msg)
+            _diag = session_state.get(PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY)
+            if isinstance(_diag, dict) and _diag.get("failed_predicate"):
+                st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
         st.markdown("#### 🌙 Jam Session Generator")

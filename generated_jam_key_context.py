@@ -114,6 +114,16 @@ def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
         page = str(session.get("studio_page") or "").strip().lower()
         if page in {"creative", "backing"}:
             try:
+                from musical_context_authority import catalog_song_should_own_sidebar_practice_key
+
+                if catalog_song_should_own_sidebar_practice_key(session):
+                    return False
+            except ImportError:
+                pass
+            entry = str(session.get("improv_entry_mode") or raw.get("entry_mode") or "").strip()
+            if entry not in {"Style Jam Mode", "Jam Session Generator"}:
+                return False
+            try:
                 from backing_workflow_context import workflow_is_generated
 
                 if page == "backing" and not workflow_is_generated(session):

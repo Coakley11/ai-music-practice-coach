@@ -24,6 +24,13 @@ def _read_concert_key(session: dict[str, Any]) -> str:
 
 def _tonic_mode_from_token(key: str) -> tuple[str, str]:
     try:
+        from music_theory import split_key_center
+
+        tonic, mode = split_key_center(str(key or "C"))
+        return tonic, mode
+    except ImportError:
+        pass
+    try:
         from music_theory import key_is_minor, normalize_root, split_chord
 
         text = str(key or "C").strip() or "C"

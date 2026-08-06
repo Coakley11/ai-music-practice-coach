@@ -107,6 +107,63 @@ def split_chord(chord):
     return chord[:1], chord[1:]
 
 
+_KEY_CENTER_RE = re.compile(
+    r"^(?P<root>[A-Ga-g](?:#|b)?)(?:(?P<minor>m(?!aj)|min|minor))?$",
+    re.IGNORECASE,
+)
+
+
+def split_key_center(key: str) -> tuple[str, str]:
+    """Parse a key-center token into (tonic spelling, major|minor) — not a chord quality suffix."""
+    text = str(key or "C").strip() or "C"
+    if text.lower().endswith(" minor"):
+        text = text[: -len(" minor")].strip() or "C"
+        mode = "minor"
+    else:
+        mode = ""
+    compact = text.replace(" ", "")
+    m = _KEY_CENTER_RE.match(compact)
+    if m:
+        root = str(m.group("root") or "C")
+        root = root[0].upper() + root[1:]
+        if not mode:
+            mode = "minor" if m.group("minor") else "major"
+        return root, mode
+    root, suffix = split_chord(compact)
+    root = str(root or "C")
+    root = root[0].upper() + root[1:] if root else "C"
+    sl = str(suffix or "").lower()
+    if not mode:
+        if sl.startswith("maj"):
+            mode = "major"
+        elif sl.startswith("m"):
+            mode = "minor"
+        else:
+            mode = "major"
+    return root, mode
+
+
+def key_center_token(tonic: str, mode: str) -> str:
+    """Structured tonic + mode → sidebar token (Dm, D, etc.)."""
+    t = str(tonic or "C").strip() or "C"
+    t = t[0].upper() + t[1:] if len(t) > 1 else t.upper()
+    if str(mode or "major").lower() == "minor":
+        if t.lower().endswith("m") and "maj" not in t.lower():
+            return t
+        return f"{t}m"
+    return t.rstrip("m") if t.lower().endswith("m") and len(t) > 1 else t
+
+
+def format_key_label_from_parts(tonic: str, mode: str) -> str:
+    """Human label: D + minor → 'Dm' style display for UI (not D#)."""
+    token = key_center_token(tonic, mode)
+    if str(mode or "major").lower() == "minor":
+        root, _ = split_key_center(token)
+        return f"{root} minor"
+    root, _ = split_key_center(token)
+    return f"{root} major"
+
+
 _BAR_WEIGHT_SUFFIX = re.compile(
     r"^(?P<chord>.+):(?P<weight>\d+(?:\.\d+)?)(?P<push>[pP!]?)$"
 )
@@ -206,13 +263,8 @@ def classify_chord_quality(chord: object) -> str:
 
 def key_is_minor(key: str) -> bool:
     """True when the key center is minor (e.g. Dm, F#m), not major or maj7-style."""
-    _, suffix = split_chord(str(key or "").strip() or "C")
-    sl = suffix.lower()
-    if not sl:
-        return False
-    if sl.startswith("maj"):
-        return False
-    return sl.startswith("m")
+    _, mode = split_key_center(str(key or "").strip() or "C")
+    return mode == "minor"
 
 
 def key_mode(key: str) -> str:

@@ -111,7 +111,12 @@ def clear_generated_key_hydrate_guard(session: dict[str, Any]) -> None:
     session.pop(GENERATED_KEY_PENDING_HYDRATE_GUARD_KEY, None)
 
 
-def align_generated_workflow_pointer_for_key_edit(session: dict[str, Any], owner: str) -> bool:
+def align_generated_workflow_pointer_for_key_edit(
+    session: dict[str, Any],
+    owner: str,
+    *,
+    session_id: str = "",
+) -> bool:
     """Point at the generated-workflow blob without activation restore over widget values."""
     try:
         from music_workflow_compatibility import build_workflow_blob_from_legacy, legacy_session_id_for_owner
@@ -124,7 +129,7 @@ def align_generated_workflow_pointer_for_key_edit(session: dict[str, Any], owner
         )
     except ImportError:
         return False
-    sid = str(legacy_session_id_for_owner(session, owner) or "").strip()
+    sid = str(session_id or "").strip() or str(legacy_session_id_for_owner(session, owner) or "").strip()
     if not sid:
         return False
     ptr = get_active_workflow_pointer(session)
@@ -248,7 +253,11 @@ def apply_pending_generated_key_edit_pre_widget(
         old_blob_key=old_blob_key,
         request_seq=pending.get("request_seq"),
     )
-    if not align_generated_workflow_pointer_for_key_edit(session, owner):
+    if not align_generated_workflow_pointer_for_key_edit(
+        session,
+        owner,
+        session_id=str(pending.get("workflow_session_id") or ""),
+    ):
         log_generated_key_change(session, "owner_alignment", ok=False, owner=owner)
         return False
     log_generated_key_change(session, "owner_alignment", ok=True, owner=owner)

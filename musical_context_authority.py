@@ -36,9 +36,9 @@ class AuthoritativePracticeKey:
 
     def practice_label(self) -> str:
         try:
-            from custom_progression_lab import format_key_label
+            from music_theory import format_key_label_from_parts
 
-            return format_key_label(self.practice_key_token)
+            return format_key_label_from_parts(self.practice_tonic, self.practice_mode)
         except ImportError:
             m = self.practice_mode
             return f"{self.practice_tonic} {m}" if m else self.practice_tonic
@@ -53,16 +53,17 @@ class AuthoritativePracticeKey:
 
 
 def _mode_from_key_token(key: str) -> str:
-    from music_theory import key_is_minor
+    from music_theory import split_key_center
 
-    return "minor" if key_is_minor(str(key or "")) else "major"
+    _, mode = split_key_center(str(key or "C"))
+    return mode
 
 
 def _tonic_from_key_token(key: str) -> str:
-    from music_theory import normalize_root, split_chord
+    from music_theory import split_key_center
 
-    root, _ = split_chord(str(key or "C").strip() or "C")
-    return normalize_root(root) if normalize_root(root) else str(root or "C")
+    tonic, _ = split_key_center(str(key or "C"))
+    return str(tonic or "C").strip() or "C"
 
 
 def resolve_authoritative_practice_key(
@@ -114,8 +115,45 @@ def format_practice_concert_key_line(session: dict[str, Any], *, fallback: str =
     return str(fallback or "C major").strip() or "C major"
 
 
+def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> bool:
+    """Catalog / mission song workflows must not inherit Style Jam major-key sidebar projection."""
+    pick = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
+    tab = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    if pick and tab in {"Song-Based Improvisation", "Missions", "Phrase / Motif"}:
+        return True
+    if pick and page in {"practice", "picker"}:
+        return True
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") in {
+            "song_based_improvisation",
+            "mission_jam",
+            "regular_catalog_backing",
+            "regular_custom_backing",
+        }:
+            return True
+    except ImportError:
+        pass
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(ctx.source or "") == "regular_song" and pick:
+            return True
+    except ImportError:
+        pass
+    return False
+
+
 def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
     """True when catalog/custom song (not generated jam) owns sidebar key mode."""
+    if catalog_song_should_own_sidebar_practice_key(session):
+        return True
     try:
         from generated_jam_key_context import generated_jam_owns_practice_key
 

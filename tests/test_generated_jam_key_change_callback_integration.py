@@ -11,6 +11,7 @@ from generated_jam_key_change import GENERATED_KEY_CHANGE_DIAG_KEY, GENERATED_KE
 from music_workflow_canonical_persistence import apply_workflow_state_canonical_slice
 from music_workflow_pending_generated_key_edit import (
     PENDING_GENERATED_KEY_EDIT_KEY,
+    PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY,
     PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY,
     peek_pending_generated_key_edit,
     run_pre_widget_generated_key_edit_consumer,
@@ -156,20 +157,21 @@ class TestGeneratedJamKeyStreamlitOrder(unittest.TestCase):
         session = _style_session(tonic="C")
         session[PENDING_GENERATED_KEY_EDIT_KEY] = {
             "request_seq": 1,
+            "request_token": "test-token-wrong-id",
             "workflow_owner": "style_jam",
             "workflow_session_id": "wrong-id",
             "widget_key": "improv_style_key",
             "selected_key_token": "D",
+            "practice_tonic": "D",
+            "practice_mode": "major",
             "callback_source": "on_improv_style_key_change",
         }
         session["improv_style_key"] = "D"
         phase = run_pre_widget_generated_key_edit_consumer(session)
         self.assertEqual(phase, "invalid")
-        blob = get_workflow_blob(session, "style_jam", "Pop groove")
-        assert blob is not None
-        self.assertEqual(blob.keys.practice_tonic, "C")
-        self.assertEqual(session.get("improv_style_key"), "C")
-        self.assertTrue(session.get(PENDING_GENERATED_KEY_EDIT_USER_MESSAGE_KEY))
+        diag = session.get(PENDING_GENERATED_KEY_EDIT_LAST_DIAG_KEY)
+        assert isinstance(diag, dict)
+        self.assertEqual(diag.get("failed_predicate"), "session_id_mismatch")
 
     def test_callbacks_do_not_mutate_in_widget_phase(self) -> None:
         root = Path(__file__).resolve().parents[1] / "creative_key_sync.py"
