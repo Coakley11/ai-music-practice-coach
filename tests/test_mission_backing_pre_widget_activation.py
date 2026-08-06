@@ -211,7 +211,10 @@ class TestMissionBackingPreWidgetActivation(unittest.TestCase):
             )
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "REQUIRES_PRE_WIDGET_ACTIVATION")
-        self.assertTrue(session.get(PENDING_BACKING_WORKFLOW_KEY))
+        from music_workflow_pending_activation import PENDING_WORKFLOW_ACTIVATION_KEY
+
+        self.assertTrue(session.get(PENDING_WORKFLOW_ACTIVATION_KEY))
+        self.assertIsNone(session.get(PENDING_BACKING_WORKFLOW_KEY))
 
 
 if __name__ == "__main__":
