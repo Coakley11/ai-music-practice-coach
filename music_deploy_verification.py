@@ -67,8 +67,8 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
 
 # Isolated Streamlit preview — safety branch only; does not extend origin/dev allowlist.
 CREATIVE_OWNER_PREVIEW_BRANCH = "safety/creative-owner-snapshot-2026-08-06"
-CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX = "bb151cd"
-CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA = "bb151cd41d373a644947d27414714af5a86b2be3"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX = "a913706"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA = "a91370603064188c83f67a4790949e9c68cf08f8"
 
 _PROCESS_DEPLOY_LOGGED = False
 
@@ -149,7 +149,7 @@ def _git_head_is_descendant_of(ancestor_sha: str) -> bool:
 
 
 def matches_creative_owner_preview_deploy(ident: dict[str, str] | None = None) -> bool:
-    """True when preview branch deploy is at bb151cd or a descendant (not a dev bypass)."""
+    """True when preview branch deploy is at a913706 or a descendant (not a dev bypass)."""
     ident = ident or resolve_deploy_identity()
     branch = str(ident.get("branch") or "").strip()
     if branch != CREATIVE_OWNER_PREVIEW_BRANCH:
@@ -171,6 +171,7 @@ def scan_creative_owner_preview_modules_in_source() -> dict[str, Any]:
     required = (
         "generated_workflow_artifact.py",
         "music_workflow_pending_generated_progression.py",
+        "music_workflow_catalog_handoff.py",
         "backing_source_navigation.py",
         "backing_context.py",
     )
