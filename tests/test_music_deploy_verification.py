@@ -49,6 +49,35 @@ class TestMusicDeployVerification(unittest.TestCase):
         pre = evaluate_deploy_preflight(scan=scan, artifact_scan=art)
         self.assertEqual(pre.get("status"), "OK")
 
+    def test_creative_owner_preview_modules_present(self) -> None:
+        from music_deploy_verification import scan_creative_owner_preview_modules_in_source
+
+        scan = scan_creative_owner_preview_modules_in_source()
+        self.assertFalse(scan.get("present"), msg=f"missing: {scan.get('missing')}")
+
+    def test_preview_branch_accepts_bb151cd_functional_line(self) -> None:
+        from music_deploy_verification import (
+            CREATIVE_OWNER_PREVIEW_BRANCH,
+            CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA,
+            matches_creative_owner_preview_deploy,
+        )
+
+        ident = {
+            "branch": CREATIVE_OWNER_PREVIEW_BRANCH,
+            "sha_short": CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA[:12],
+            "sha_full": CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA,
+        }
+        self.assertTrue(matches_creative_owner_preview_deploy(ident))
+        pre = evaluate_deploy_preflight(ident)
+        self.assertEqual(pre.get("status"), "OK")
+        self.assertTrue(pre.get("creative_owner_preview"))
+
+    def test_dev_branch_does_not_use_preview_bypass(self) -> None:
+        from music_deploy_verification import matches_creative_owner_preview_deploy
+
+        ident = {"branch": "dev", "sha_short": "5049c171771b", "sha_full": "5049c171771b1ecd7d77643a1fa5c292a68a9e55"}
+        self.assertFalse(matches_creative_owner_preview_deploy(ident))
+
 
 if __name__ == "__main__":
     unittest.main()

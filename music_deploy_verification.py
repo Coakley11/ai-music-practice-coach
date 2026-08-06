@@ -65,6 +65,11 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
     "f311b93",
 )
 
+# Isolated Streamlit preview — safety branch only; does not extend origin/dev allowlist.
+CREATIVE_OWNER_PREVIEW_BRANCH = "safety/creative-owner-snapshot-2026-08-06"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX = "bb151cd"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA = "bb151cd41d373a644947d27414714af5a86b2be3"
+
 _PROCESS_DEPLOY_LOGGED = False
 
 
@@ -125,6 +130,55 @@ def _audio_stack_versions() -> dict[str, str]:
         except ImportError:
             out[label] = "missing"
     return out
+
+
+def _git_head_is_descendant_of(ancestor_sha: str) -> bool:
+    try:
+        import subprocess
+
+        subprocess.check_call(
+            ["git", "merge-base", "--is-ancestor", ancestor_sha, "HEAD"],
+            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            timeout=3,
+            cwd=str(_repo_root()),
+        )
+        return True
+    except Exception:
+        return False
+
+
+def matches_creative_owner_preview_deploy(ident: dict[str, str] | None = None) -> bool:
+    """True when preview branch deploy is at bb151cd or a descendant (not a dev bypass)."""
+    ident = ident or resolve_deploy_identity()
+    branch = str(ident.get("branch") or "").strip()
+    if branch != CREATIVE_OWNER_PREVIEW_BRANCH:
+        return False
+    sha = str(ident.get("sha_short") or "").strip()
+    full = str(ident.get("sha_full") or "").strip()
+    for token in (full, sha, full[:12], sha[:7]):
+        t = str(token or "").strip()
+        if t and t.startswith(CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX):
+            return True
+    if full == CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA:
+        return True
+    return _git_head_is_descendant_of(CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA)
+
+
+def scan_creative_owner_preview_modules_in_source() -> dict[str, Any]:
+    """Verify Creative owner snapshot modules present in loaded tree (preview gate)."""
+    root = _repo_root()
+    required = (
+        "generated_workflow_artifact.py",
+        "music_workflow_pending_generated_progression.py",
+        "backing_source_navigation.py",
+        "backing_context.py",
+    )
+    missing: list[str] = []
+    for name in required:
+        if not (root / name).is_file():
+            missing.append(name)
+    return {"present": bool(missing), "missing": missing, "required": list(required)}
 
 
 def _sha_matches_accepted_deploy(sha: str, full: str) -> bool:
@@ -415,7 +469,17 @@ def evaluate_deploy_preflight(
         }
     sha = str(ident.get("sha_short") or ident.get("sha_full") or "").strip()
     full = str(ident.get("sha_full") or "").strip()
-    matches = _sha_matches_accepted_deploy(sha, full)
+    preview = matches_creative_owner_preview_deploy(ident)
+    preview_modules = scan_creative_owner_preview_modules_in_source()
+    matches = _sha_matches_accepted_deploy(sha, full) or preview
+    if preview and preview_modules.get("present"):
+        return {
+            "status": "FAIL — PREVIEW MODULES MISSING",
+            "required_sha": CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX,
+            "actual_sha": sha or full,
+            "branch": ident.get("branch", ""),
+            "preview_modules_missing": preview_modules.get("missing"),
+        }
     if scan.get("present") or artifact_scan.get("present") or backing_scan.get("present"):
         return {
             "status": "FAIL — STALE SOURCE",
@@ -437,15 +501,21 @@ def evaluate_deploy_preflight(
             "branch": ident.get("branch", ""),
             "late_missions_activation": False,
             "late_artifact_freeze": False,
+            "creative_owner_preview": preview,
         }
-    return {
+    out: dict[str, Any] = {
         "status": "OK",
-        "required_sha": required_sha,
+        "required_sha": CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX if preview else required_sha,
         "actual_sha": sha or full,
         "branch": ident.get("branch", ""),
         "late_missions_activation": False,
         "late_artifact_freeze": False,
     }
+    if preview:
+        out["creative_owner_preview"] = True
+        out["preview_functional_prefix"] = CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX
+        out["preview_modules_ok"] = not preview_modules.get("present")
+    return out
 
 
 def missions_smoke_allowed(session: dict[str, Any]) -> bool:
@@ -503,14 +573,19 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
 __all__ = [
     "REQUIRED_MISSIONS_HOTFIX_SHA",
     "ACCEPTED_DEPLOY_SHA_PREFIXES",
+    "CREATIVE_OWNER_PREVIEW_BRANCH",
+    "CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX",
+    "CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA",
     "ensure_session_deploy_identity",
     "emit_deploy_startup_log",
     "evaluate_deploy_preflight",
     "log_deploy_startup",
+    "matches_creative_owner_preview_deploy",
     "missions_smoke_allowed",
     "module_runtime_paths",
     "render_dev_deploy_verification_panel",
     "function_source_verification",
+    "scan_creative_owner_preview_modules_in_source",
     "scan_mission_backing_handoff_in_source",
     "scan_late_missions_activation_in_source",
 ]
