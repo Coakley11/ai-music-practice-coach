@@ -498,19 +498,6 @@ def apply_atomic_mission_chord_selection(
                 st.warning(result.error_message or "Mission chord could not be saved. Reload the page.")
             except ImportError:
                 pass
-        else:
-            try:
-                from song_creative_focus_change import capture_song_creative_focus_intent
-
-                capture_song_creative_focus_intent(
-                    session,
-                    section=section,
-                    concert_chord=chord,
-                    chord_index=int(chord_index),
-                    source_page="Missions",
-                )
-            except ImportError:
-                pass
         return
     except ImportError:
         pass

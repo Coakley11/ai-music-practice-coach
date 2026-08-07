@@ -23,16 +23,13 @@ from music_workflow_pending_creative_return import (
     queue_pending_creative_return_from_backing,
 )
 from music_workflow_practice_key_guard import PracticeKeySnapshot, assert_practice_key_unchanged
-from music_workflow_pre_widget_bootstrap import PRE_WIDGET_BOOTSTRAP_ACTIVE_KEY, run_pre_widget_application_consumers
-from music_workflow_pending_song_creative_focus_edit import consume_pending_song_creative_focus_edit
+from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
 from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated, resolve_song_practice_key_token
 from song_creative_focus import (
     hydrate_creative_pages_from_song_focus,
-    read_harmony_section_selection,
     read_song_creative_focus,
     resolve_focus_against_progression,
 )
-from song_creative_focus_change import capture_song_creative_focus_intent
 from tests.test_creative_catalog_handoff_picker import CATALOG
 from tests.test_song_creative_focus_csharp_parent_gate import (
     LIVE_FOCUS_CHORD,
@@ -124,21 +121,13 @@ class TestCreativeStateBoundaryContinuous(unittest.TestCase):
         self.assertNotEqual(fp1, fp2)
         self.assertEqual(resolve_song_practice_key_token(session), LIVE_PARENT_KEY)
 
-    def test_harmony_melody_b_widget_pending_and_local_selection(self) -> None:
+    def test_harmony_melody_b_updates_canonical_not_dual_highlights(self) -> None:
         session = _c_sharp_minor_hevenu_session()
         _melody_ab_sections(session)
         sections = session["improv_song_concert_sections"]
-        a_chords = list(sections.get("Melody A") or [])
         b_chords = list(sections.get("Melody B") or [])
-        a1 = a_chords[0]
         b2 = b_chords[1] if len(b_chords) > 1 else b_chords[0]
-        mission_select_single_chord(session, chord=a1, section="Melody A")
-        _melody_ab_sections(session)
-        run_pre_widget_application_consumers(session)
-        local_a_after_mission = read_harmony_section_selection(session, "Melody A")
-        self.assertIsNotNone(local_a_after_mission)
-        self.assertEqual(local_a_after_mission[0], a1)
-
+        from improvisation_intelligence_ui import _apply_harmony_map_chord_selection
         from improvisation_motif import global_chord_index
         from song_creative_focus import _section_map_for_focus
 
@@ -147,34 +136,19 @@ class TestCreativeStateBoundaryContinuous(unittest.TestCase):
         sec_i_b = next(i for i, (lab, _) in enumerate(section_map) if lab == "Melody B")
         ci_b = 1 if len(b_chords) > 1 else 0
         gidx_b = global_chord_index(section_map, sec_i_b, ci_b)
-
         session["_streamlit_widgets_locked_this_run"] = True
-        session["_creative_mission_widgets_instantiated"] = True
-        queued = capture_song_creative_focus_intent(
+        _apply_harmony_map_chord_selection(
             session,
+            chord=b2,
             section="Melody B",
-            concert_chord=b2,
             chord_index=gidx_b,
-            source_page="Harmony Map",
+            button_key="test_hm_b",
         )
-        self.assertTrue(queued)
-        session.pop("_streamlit_widgets_locked_this_run", None)
-        session[PRE_WIDGET_BOOTSTRAP_ACTIVE_KEY] = True
-        phase = consume_pending_song_creative_focus_edit(session)
-        session.pop(PRE_WIDGET_BOOTSTRAP_ACTIVE_KEY, None)
-        self.assertEqual(phase, "applied")
-
-        focus_b = read_song_creative_focus(session)
-        assert focus_b is not None
-        self.assertEqual(str(focus_b.get("selected_section_id") or ""), "Melody B")
-        self.assertEqual(str(focus_b.get("selected_concert_chord") or ""), b2)
-        local_a = read_harmony_section_selection(session, "Melody A")
-        local_b = read_harmony_section_selection(session, "Melody B")
-        self.assertEqual(local_a, (a1, 0))
-        self.assertEqual(local_b[0], b2)
+        self.assertEqual(str(session.get("ii_selected_chord") or ""), b2)
+        self.assertEqual(str(session.get("ii_selected_section") or ""), "Melody B")
+        session.pop("harmony_map_section_selections", None)
         hydrate_creative_pages_from_song_focus(session, tab="Harmony Map")
-        self.assertEqual(read_harmony_section_selection(session, "Melody A")[0], a1)
-        self.assertEqual(read_harmony_section_selection(session, "Melody B")[0], b2)
+        self.assertEqual(str(session.get("ii_selected_chord") or ""), b2)
 
     def test_harmony_melody_b_does_not_rebind_melody_a(self) -> None:
         session = _c_sharp_minor_hevenu_session()

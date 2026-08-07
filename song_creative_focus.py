@@ -177,7 +177,7 @@ def project_song_creative_focus_to_pages(session: dict[str, Any], focus: dict[st
     idx = int(focus.get("selected_chord_id") or 0)
     if not chord:
         return
-    record_harmony_section_selection(session, section=section, chord=chord, global_index=idx)
+    session.pop(HARMONY_MAP_SECTION_SELECTIONS_KEY, None)
     session["ii_selected_chord"] = chord
     session["II_SELECTED_CHORD"] = chord
     session["ii_selected_section"] = section
@@ -237,9 +237,7 @@ def harmony_section_display_chord(
     shared_section: str,
     shared_chord: str,
 ) -> str:
-    local = read_harmony_section_selection(session, section_label)
-    if local:
-        return local[0]
+    """Single canonical highlight — only the active section shows the current chord."""
     if shared_section == section_label and shared_chord:
         return shared_chord
     return ""
@@ -264,6 +262,7 @@ def persist_focus_on_song_blob(session: dict[str, Any], focus: dict[str, Any]) -
 
 
 def commit_song_creative_focus(session: dict[str, Any], focus: dict[str, Any]) -> None:
+    session.pop(HARMONY_MAP_SECTION_SELECTIONS_KEY, None)
     session[SONG_CREATIVE_FOCUS_KEY] = copy.deepcopy(focus)
     persist_focus_on_song_blob(session, focus)
     project_song_creative_focus_to_pages(session, focus)

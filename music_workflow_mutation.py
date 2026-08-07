@@ -579,6 +579,34 @@ def mutate_active_workflow(
     )
 
 
+def _invalidate_mission_chord_dependent_session(session: dict[str, Any], *, new_chord: str) -> None:
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY
+
+        ex = session.get(MISSION_EXAMPLE_KEY)
+        if isinstance(ex, dict) and str(ex.get("chord") or "").strip() not in {"", str(new_chord or "").strip()}:
+            session.pop(MISSION_EXAMPLE_KEY, None)
+            session.pop("_mission_example_output_fp", None)
+            session.pop("_mission_example_material_fp", None)
+    except ImportError:
+        session.pop("improv_mission_example", None)
+    session.pop("improv_mission_recording_seal", None)
+    session.pop("_mission_exact_backing_armed", None)
+    session.pop("improv_mission_backing_handoff", None)
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+    try:
+        from mission_practice_context import refresh_mission_practice_context
+
+        refresh_mission_practice_context(session)
+    except ImportError:
+        pass
+
+
 def mutate_mission_chord_selection(
     session: dict[str, Any],
     *,
@@ -642,6 +670,22 @@ def mutate_mission_chord_selection(
         session["ii_selected_chord_index"] = int(chord_index)
         session["ii_selected_chord_label"] = chord_label
 
+    new_sym = str(chord or "").strip()
+    chord_changed = bool(new_sym) and prev_chord != new_sym
+    source_page = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "Missions")
+    try:
+        from song_creative_focus_change import commit_song_creative_focus_selection
+
+        commit_song_creative_focus_selection(
+            session,
+            section=str(section or "").strip(),
+            concert_chord=new_sym,
+            chord_index=int(chord_index),
+            source_page=str(source_page or "Missions"),
+        )
+    except ImportError:
+        pass
+
     def _mut(b: WorkflowStateBlob) -> None:
         b.selected_chord_symbol = str(chord or "").strip()
         b.selected_section = str(section or "").strip()
@@ -669,34 +713,8 @@ def mutate_mission_chord_selection(
         source="apply_atomic_mission_chord",
         expected_owner="mission_jam",
     )
-    if not result.ok:
-        return result
-
-    if prev_chord and prev_chord != str(chord or "").strip():
-        try:
-            from improvisation_missions import MISSION_EXAMPLE_KEY
-
-            ex = session.get(MISSION_EXAMPLE_KEY)
-            if isinstance(ex, dict) and str(ex.get("chord") or "").strip() not in {"", str(chord or "").strip()}:
-                session.pop(MISSION_EXAMPLE_KEY, None)
-                session.pop("_mission_example_output_fp", None)
-        except ImportError:
-            session.pop("improv_mission_example", None)
-    session.pop("improv_mission_recording_seal", None)
-    session.pop("_mission_exact_backing_armed", None)
-    session.pop("improv_mission_backing_handoff", None)
-    try:
-        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
-
-        invalidate_exact_chord_backing_cache(session)
-    except ImportError:
-        pass
-    try:
-        from mission_practice_context import refresh_mission_practice_context
-
-        refresh_mission_practice_context(session)
-    except ImportError:
-        pass
+    if chord_changed:
+        _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
     return result
 
 

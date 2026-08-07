@@ -1206,8 +1206,32 @@ def _ensure_chord_selection(
     chords: list[str],
     section_map: list[tuple[str, list[str]]] | None = None,
 ) -> None:
-    """Keep selection keyed by global chord index (section + position), not chord name."""
+    """Keep one canonical chord index — session target from last click wins over stale focus."""
     _migrate_ii_chord_selection(session_state)
+    if not chords:
+        return
+
+    sym = str(session_state.get(II_SELECTED_CHORD) or "").strip()
+    try:
+        idx = int(session_state.get(II_SELECTED_CHORD_INDEX, -1))
+    except (TypeError, ValueError):
+        idx = -1
+    if sym and 0 <= idx < len(chords) and chords[idx] == sym:
+        sec = str(session_state.get(II_SELECTED_SECTION) or "").strip()
+        if section_map:
+            sec_at, _ = section_and_chord_at_global_index(section_map, idx)
+            if sec_at:
+                sec = sec_at
+                session_state[II_SELECTED_SECTION] = sec
+                session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {sym}"
+        session_state[II_SELECTED_CHORD_INDEX] = idx
+        session_state[II_SELECTED_CHORD] = sym
+        session_state["harmony_map_chord"] = sym
+        session_state["harmony_map_section"] = sec
+        session_state.pop("harmony_map_section_selections", None)
+        session_state["improv_mission_chord_options"] = list(chords)
+        return
+
     try:
         from song_creative_focus import read_song_creative_focus, resolve_focus_against_progression
 
@@ -1220,32 +1244,21 @@ def _ensure_chord_selection(
                 if idx < 0 or idx >= len(chords) or chords[idx] != target:
                     idx = -1
                 if idx < 0:
-                    return
-                session_state[II_SELECTED_CHORD_INDEX] = idx
-                session_state[II_SELECTED_CHORD] = chords[idx]
-                sec, _ = section_and_chord_at_global_index(section_map, idx)
-                if sec:
-                    session_state[II_SELECTED_SECTION] = sec
-                    session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chords[idx]}"
-                try:
-                    from song_creative_focus import record_harmony_section_selection
-
-                    record_harmony_section_selection(
-                        session_state,
-                        section=sec or str(resolved.get("selected_section_id") or ""),
-                        chord=chords[idx],
-                        global_index=idx,
-                    )
-                except ImportError:
                     pass
-                session_state["harmony_map_chord"] = chords[idx]
-                session_state["harmony_map_section"] = sec or str(resolved.get("selected_section_id") or "")
-                session_state["improv_mission_chord_options"] = list(chords)
-                return
+                else:
+                    session_state[II_SELECTED_CHORD_INDEX] = idx
+                    session_state[II_SELECTED_CHORD] = chords[idx]
+                    sec, _ = section_and_chord_at_global_index(section_map, idx)
+                    if sec:
+                        session_state[II_SELECTED_SECTION] = sec
+                        session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chords[idx]}"
+                    session_state["harmony_map_chord"] = chords[idx]
+                    session_state["harmony_map_section"] = sec or str(resolved.get("selected_section_id") or "")
+                    session_state.pop("harmony_map_section_selections", None)
+                    session_state["improv_mission_chord_options"] = list(chords)
+                    return
     except ImportError:
         pass
-    if not chords:
-        return
     try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
@@ -1305,7 +1318,13 @@ def _ensure_chord_selection(
 
 
 def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
-    idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    sym = str(session_state.get(II_SELECTED_CHORD) or "").strip()
+    try:
+        idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+    except (TypeError, ValueError):
+        idx = 0
+    if sym and chords and 0 <= idx < len(chords) and chords[idx] == sym:
+        return sym, idx
     idx = max(0, min(idx, len(chords) - 1))
     return chords[idx], idx
 
@@ -1388,29 +1407,6 @@ def _apply_harmony_map_chord_selection(
             session_state[II_SELECTED_SECTION] = sec
             session_state[II_SELECTED_CHORD_INDEX] = gidx
             session_state[II_SELECTED_CHORD_LABEL] = label
-    try:
-        from song_creative_focus_change import capture_song_creative_focus_intent
-
-        capture_song_creative_focus_intent(
-            session_state,
-            section=sec,
-            concert_chord=ch,
-            chord_index=gidx,
-            source_page="Harmony Map",
-        )
-    except ImportError:
-        pass
-    try:
-        from song_creative_focus import record_harmony_section_selection
-
-        record_harmony_section_selection(
-            session_state,
-            section=sec,
-            chord=ch,
-            global_index=gidx,
-        )
-    except ImportError:
-        pass
     session_state["harmony_map_section"] = sec
     session_state["harmony_map_chord"] = ch
     try:
@@ -2837,8 +2833,8 @@ def _tab_harmony_map(
     chords_flat = flatten_section_map(section_map) if section_map else []
     if section_map and chords_flat:
         _ensure_chord_selection(session_state, chords_flat, section_map)
-        sel_section = str(session_state.get("harmony_map_section") or session_state.get(II_SELECTED_SECTION) or "")
-        sel_chord = str(session_state.get("harmony_map_chord") or session_state.get(II_SELECTED_CHORD) or "")
+        sel_chord, _ = _selected_chord(session_state, chords_flat)
+        sel_section = str(session_state.get(II_SELECTED_SECTION) or "")
     else:
         sel_section = str(session_state.get("harmony_map_section") or "")
         sel_chord = str(session_state.get("harmony_map_chord") or "")
@@ -2850,24 +2846,11 @@ def _tab_harmony_map(
     st.markdown(HARMONY_MAP_CHIP_CSS, unsafe_allow_html=True)
 
     src = _safe_widget_key_part(improv_ctx.song_title or "song")
-    try:
-        from song_creative_focus import harmony_section_display_chord
-    except ImportError:
-        harmony_section_display_chord = None  # type: ignore[misc, assignment]
 
     for sec_i, (sec_label, chords) in enumerate(section_map):
         chips = []
         for ch in chords:
-            if harmony_section_display_chord:
-                display_ch = harmony_section_display_chord(
-                    session_state,
-                    sec_label,
-                    shared_section=sel_section,
-                    shared_chord=sel_chord,
-                )
-            else:
-                display_ch = sel_chord if sel_section == sec_label else ""
-            selected = display_ch == ch
+            selected = sel_section == sec_label and sel_chord == ch
             chips.append(
                 f'<span class="hm-chord-chip{" selected" if selected else ""}">'
                 f"{html.escape(ch)}</span>"
@@ -2882,22 +2865,13 @@ def _tab_harmony_map(
         cols = st.columns(min(len(chords), 8) or 1)
         for i, ch in enumerate(chords):
             with cols[i % len(cols)]:
-                if harmony_section_display_chord:
-                    display_ch = harmony_section_display_chord(
-                        session_state,
-                        sec_label,
-                        shared_section=sel_section,
-                        shared_chord=sel_chord,
-                    )
-                else:
-                    display_ch = sel_chord if sel_section == sec_label else ""
                 button_key = (
                     f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}"
                 )
                 if st.button(
                     ch,
                     key=button_key,
-                    type="primary" if display_ch == ch else "secondary",
+                    type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
                     use_container_width=True,
                     on_click=_harmony_map_chord_on_click,
                     args=(ch, sec_label, global_chord_index(list(section_map), sec_i, i), button_key),

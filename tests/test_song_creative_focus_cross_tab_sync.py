@@ -100,9 +100,6 @@ class TestSongCreativeFocusCrossTabSync(unittest.TestCase):
         session["improv_intelligence_tab"] = "Harmony Map"
         hydrate_creative_pages_from_song_focus(session, tab="Harmony Map")
         self._assert_chord_everywhere(session, "Cmaj7", section="Verse")
-        local = read_harmony_section_selection(session, "Verse")
-        self.assertIsNotNone(local)
-        self.assertEqual(local[0], "Cmaj7")
 
     def test_chord_symbol_preserved_across_tabs(self) -> None:
         session = _hevenu_ebm_session()
