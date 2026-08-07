@@ -46,6 +46,12 @@ def snapshot_route_authorities(session: dict[str, Any], *, dispatch_local: str =
         from music_rerun_loop_guard import RERUN_LOOP_BLOCKED_KEY
     except ImportError:
         RERUN_LOOP_BLOCKED_KEY = "_music_rerun_loop_blocked"
+    try:
+        from music_persistent_state import current_run_user_navigated_page
+
+        scoped_user_nav = current_run_user_navigated_page(session)
+    except ImportError:
+        scoped_user_nav = ""
     return {
         "studio_page": str(session.get("studio_page") or "").strip(),
         "dispatch_local_studio_page": str(dispatch_local or "").strip(),
@@ -56,6 +62,8 @@ def snapshot_route_authorities(session: dict[str, Any], *, dispatch_local: str =
         "navigate_to_studio_page_popped": str(session.get("_navigate_to_studio_page") or "").strip(),
         "nav_target_page": str(session.get("nav_target_page") or "").strip(),
         "user_nav_page_this_run": str(session.get("_music_user_navigated_page_this_run") or "").strip(),
+        "user_nav_page_run_seq": session.get("_music_user_navigated_page_run_seq"),
+        "user_nav_page_this_run_scoped": scoped_user_nav,
         "suite_page_user_nav": bool(session.get("_suite_page_user_nav")),
         "studio_nav_dirty": bool(session.get("studio_nav_state_dirty")),
         "creative_restore_from_backing": bool(session.get("_creative_restore_from_backing")),

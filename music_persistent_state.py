@@ -763,6 +763,7 @@ def _studio_nav_page_from_session(ss: dict[str, Any]) -> str:
 _PAGE_CHANGE_STAMP_TARGET_KEY = "_suite_page_change_stamp_target"
 _PAGE_CHANGE_WRITE_PENDING_KEY = "_suite_page_change_write_pending"
 MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY = "_music_user_navigated_page_this_run"
+MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY = "_music_user_navigated_page_run_seq"
 
 
 def mark_user_navigated_page_this_run(session: dict[str, Any], page: str) -> str:
@@ -771,8 +772,30 @@ def mark_user_navigated_page_this_run(session: dict[str, Any], page: str) -> str
     if not normalized:
         return ""
     session[MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY] = normalized
+    session[MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY] = int(session.get("_script_run_seq") or 0)
     _mark_page_change_write_pending(session, normalized)
     return normalized
+
+
+def current_run_user_navigated_page(session: dict[str, Any]) -> str:
+    """User nav marker only when stamped for the active ``_script_run_seq``."""
+    run_seq = int(session.get("_script_run_seq") or 0)
+    stamp_raw = session.get(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY)
+    if stamp_raw is None:
+        return ""
+    try:
+        stamp = int(stamp_raw)
+    except (TypeError, ValueError):
+        return ""
+    if run_seq <= 0 or stamp != run_seq:
+        return ""
+    return _normalize_studio_page_for_save(session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+
+
+def begin_script_run_navigation_markers(session: dict[str, Any]) -> None:
+    """Clear one-shot user navigation markers at the top of each Streamlit script run."""
+    session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
+    session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
 
 
 def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "") -> None:
@@ -782,6 +805,7 @@ def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "
         return
     if not want or cur == want:
         session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
+        session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
 
 
 def synchronize_page_bearing_state_for_save(session: dict[str, Any], page: str) -> None:
@@ -845,7 +869,7 @@ def _assert_page_change_payload_not_stale(
     if get_page_change_origin(session) != "user_navigation":
         return
     clicked = _normalize_studio_page_for_save(
-        session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY)
+        current_run_user_navigated_page(session)
         or session.get("requested_page")
     )
     if not clicked:
@@ -977,7 +1001,7 @@ def _page_change_write_target(ss: dict[str, Any]) -> tuple[str, str]:
             }
         )
 
-    user_run = _normalize_studio_page_for_save(ss.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+    user_run = current_run_user_navigated_page(ss)
     _cand(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, user_run, eligible=bool(user_run), note="highest_precedence")
     if user_run:
         try:
@@ -3122,7 +3146,7 @@ def apply_music_disk_state(
         except ImportError:
             pass
         old_hydrated = ss.get("_music_hydrated_studio_page")
-        user_nav_page = _normalize_studio_page_for_save(ss.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY))
+        user_nav_page = current_run_user_navigated_page(ss)
         if user_nav_page and active_studio and active_studio != user_nav_page:
             active_studio = user_nav_page
             overwrite_source = "user_nav_this_run"

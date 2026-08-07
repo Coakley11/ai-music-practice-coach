@@ -249,7 +249,12 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     except ImportError:
         pass
 
-    user_run = _normalize_page(session.get("_music_user_navigated_page_this_run"))
+    try:
+        from music_persistent_state import current_run_user_navigated_page
+
+        user_run = _normalize_page(current_run_user_navigated_page(session))
+    except ImportError:
+        user_run = _normalize_page(session.get("_music_user_navigated_page_this_run"))
     if user_run:
         return _finish("user_nav_this_run", user_run, reason="user_nav_this_run", local_edit=True)
     try:
@@ -280,9 +285,13 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     try:
         from music_restore_phase import studio_page_restore_projection_complete
 
-        if studio_page_restore_projection_complete(session) and not session.get(
-            "_music_user_navigated_page_this_run"
-        ):
+        try:
+            from music_persistent_state import current_run_user_navigated_page
+
+            _user_run_marker = current_run_user_navigated_page(session)
+        except ImportError:
+            _user_run_marker = str(session.get("_music_user_navigated_page_this_run") or "").strip()
+        if studio_page_restore_projection_complete(session) and not _user_run_marker:
             canonical = canonical_studio_page(session)
             if canonical:
                 return _finish(
@@ -312,7 +321,13 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                 allow_detail={"restore_source": restore_source, "canonical": canonical, "live": live},
             )
         if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
-            if session.get("_music_user_navigated_page_this_run") or user_nav:
+            try:
+                from music_persistent_state import current_run_user_navigated_page
+
+                _live_user_run = current_run_user_navigated_page(session)
+            except ImportError:
+                _live_user_run = str(session.get("_music_user_navigated_page_this_run") or "").strip()
+            if _live_user_run or user_nav:
                 return _finish(
                     "user_nav_over_stale_blob",
                     live,

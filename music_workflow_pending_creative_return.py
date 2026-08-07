@@ -103,6 +103,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
     except ImportError:
         session["studio_page"] = "creative"
     try:
+        from music_persistent_state import mark_user_navigated_page_this_run
+
+        mark_user_navigated_page_this_run(session, "creative")
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import apply_entry_jam_authoritative_practice_key, entry_jam_practice_key_authority_active
 
         if entry_jam_practice_key_authority_active(session):

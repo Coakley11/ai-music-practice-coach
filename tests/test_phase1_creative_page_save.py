@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from music_persistent_state import (
+    MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY,
     MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY,
     _page_change_write_target,
     build_music_disk_state,
@@ -35,11 +36,13 @@ class TestCreativePageSavePayload(unittest.TestCase):
     def test_page_change_target_prefers_user_nav_over_stale_pending(self) -> None:
         ss: dict = {
             "studio_page": "creative",
+            "_script_run_seq": 5,
             "_suite_page_user_nav": True,
             "music_workspace_state": {"studio_page": "backing", "page": "backing"},
             STUDIO_NAV_STATE_KEY: {"studio_page": "creative", "page": "creative"},
             "_suite_page_change_write_pending": "backing",
             MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY: "creative",
+            MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY: 5,
         }
         page, source = _page_change_write_target(ss)
         self.assertEqual(page, "creative")
@@ -48,10 +51,12 @@ class TestCreativePageSavePayload(unittest.TestCase):
     def test_prepare_studio_nav_keeps_user_nav_this_run(self) -> None:
         ss: dict = {
             "studio_page": "creative",
+            "_script_run_seq": 5,
             STUDIO_NAV_STATE_KEY: {"studio_page": "backing", "page": "backing"},
             "_music_hydrated_studio_page": "backing",
             "_suite_page_overwrite_source": "workspace_blob",
             MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY: "creative",
+            MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY: 5,
             "_music_studio_page_restore_projection_complete": True,
         }
         page = prepare_studio_nav(ss)
@@ -62,8 +67,10 @@ class TestCreativePageSavePayload(unittest.TestCase):
         ss = _FakeSessionState(
             {
                 "studio_page": "creative",
+                "_script_run_seq": 5,
                 "_suite_page_user_nav": True,
                 MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY: "creative",
+                MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY: 5,
                 "music_workspace_state": {"studio_page": "backing", "page": "backing"},
                 STUDIO_NAV_STATE_KEY: {"studio_page": "creative", "page": "creative"},
             }

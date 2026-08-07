@@ -193,6 +193,13 @@ def install_music_run_instrumentation(st_module: Any) -> None:
 
     emit_music_run("RUN_STARTED", session, **run_summary_fields(session))
 
+    try:
+        from music_persistent_state import begin_script_run_navigation_markers
+
+        begin_script_run_navigation_markers(session)
+    except ImportError:
+        pass
+
     if not _HOOKS_INSTALLED:
         _ORIG_RERUN = st_module.rerun
         _ORIG_STOP = st_module.stop
