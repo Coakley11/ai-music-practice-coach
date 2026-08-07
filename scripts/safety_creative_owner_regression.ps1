@@ -25,6 +25,7 @@ $TestFiles = @(
     "tests/test_backing_source_navigation.py",
     "tests/test_backing_track_state.py",
     "tests/test_backing_scope_widget_lifecycle.py",
+    "tests/test_entry_jam_return_submode_lifecycle.py",
     "tests/test_backing_context.py",
     "tests/test_workflow_musical_authority.py",
     "tests/test_mission_backing_pre_widget_activation.py",

@@ -27,16 +27,21 @@ def queue_pending_creative_return_from_backing(session: dict[str, Any]) -> dict[
         return None
     prev = session.get(PENDING_CREATIVE_RETURN_KEY)
     seq = int(prev.get("request_seq") or 0) + 1 if isinstance(prev, dict) else 1
-    sealed = {
-        "source": str(getattr(ctx, "source", "") or ""),
-        "entry_mode": str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
-        "creative_tab": str(
-            session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
-        ),
-        "display_key": str(getattr(ctx, "display_key", "") or getattr(ctx, "concert_key", "") or ""),
-        "concert_key": str(getattr(ctx, "concert_key", "") or ""),
-        "song_pick": str(session.get("active_catalog_pick_key") or ""),
-    }
+    try:
+        from backing_source_navigation import seal_creative_return_context_from_backing
+
+        sealed = seal_creative_return_context_from_backing(session, ctx)
+    except ImportError:
+        sealed = {
+            "source": str(getattr(ctx, "source", "") or ""),
+            "entry_mode": str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
+            "creative_tab": str(
+                session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+            ),
+            "display_key": str(getattr(ctx, "display_key", "") or getattr(ctx, "concert_key", "") or ""),
+            "concert_key": str(getattr(ctx, "concert_key", "") or ""),
+            "song_pick": str(session.get("active_catalog_pick_key") or ""),
+        }
     req = {
         "request_seq": seq,
         "sealed_context": sealed,
@@ -131,12 +136,6 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
         from studio_page_persistence import save_page_snapshot
 
         save_page_snapshot(session, "backing")
-        try:
-            from music_nav_dedupe import save_page_snapshot_deduped
-
-            save_page_snapshot_deduped(session, "creative")
-        except ImportError:
-            save_page_snapshot(session, "creative")
     except ImportError:
         pass
     req = queue_pending_creative_return_from_backing(session)
@@ -153,6 +152,14 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
         except Exception:
             pass
         return
+    try:
+        from music_restore_phase import mark_page_snapshot_hydrated
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session, "creative")
+        mark_page_snapshot_hydrated(session, "creative")
+    except ImportError:
+        pass
     try:
         from music_rerun_loop_guard import clear_rerun_loop_block
 

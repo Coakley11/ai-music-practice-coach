@@ -1108,6 +1108,160 @@ def _clear_creative_page_hydrate_flags(session: dict[str, Any]) -> None:
             session.pop(key, None)
 
 
+def creative_return_identity_from_backing_context(
+    session: dict[str, Any],
+    ctx: BackingContext,
+) -> dict[str, str]:
+    """Authoritative Creative tab + entry submode from backing_context (not stale session widgets)."""
+    source = str(ctx.source or "").strip()
+    if source == "song_improv":
+        return {
+            "backing_source": source,
+            "intelligence_tab": "Entry & Jam",
+            "entry_mode": "Song-Based Improvisation",
+            "workflow_owner": "song_based_improvisation",
+        }
+    if source == "entry_jam":
+        entry = str(ctx.entry_mode or "").strip()
+        if entry not in ("Style Jam Mode", "Jam Session Generator"):
+            entry = resolve_entry_jam_entry_mode(session, ctx=ctx)
+        owner = "jam_session_generator" if entry == "Jam Session Generator" else "style_jam"
+        return {
+            "backing_source": source,
+            "intelligence_tab": "Entry & Jam",
+            "entry_mode": entry,
+            "workflow_owner": owner,
+        }
+    if source == "mission":
+        entry = str(ctx.entry_mode or "Song-Based Improvisation").strip() or "Song-Based Improvisation"
+        return {
+            "backing_source": source,
+            "intelligence_tab": "Missions",
+            "entry_mode": entry,
+            "workflow_owner": "mission_jam",
+        }
+    tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "Entry & Jam").strip()
+    entry = str(session.get("improv_entry_mode") or "").strip() or "Style Jam Mode"
+    return {
+        "backing_source": source or "entry_jam",
+        "intelligence_tab": tab or "Entry & Jam",
+        "entry_mode": entry,
+        "workflow_owner": "style_jam",
+    }
+
+
+def seal_creative_return_context_from_backing(
+    session: dict[str, Any],
+    ctx: BackingContext,
+) -> dict[str, str]:
+    """Payload sealed at Return click — preserves launch submode independent of later session drift."""
+    ident = creative_return_identity_from_backing_context(session, ctx)
+    return {
+        "source": ident["backing_source"],
+        "entry_mode": ident["entry_mode"],
+        "creative_tab": ident["intelligence_tab"],
+        "workflow_owner": ident["workflow_owner"],
+        "display_key": str(getattr(ctx, "display_key", "") or getattr(ctx, "concert_key", "") or ""),
+        "concert_key": str(getattr(ctx, "concert_key", "") or ""),
+        "song_pick": str(session.get("active_catalog_pick_key") or ""),
+    }
+
+
+def apply_creative_return_identity_to_session(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    widget_safe: bool = False,
+) -> dict[str, str]:
+    """Prime improv tab + entry mode from backing_context before workflow activation."""
+    ident = creative_return_identity_from_backing_context(session, ctx)
+    tab = ident["intelligence_tab"]
+    entry = ident["entry_mode"]
+    try:
+        from session_widget_safe import safe_session_assign
+        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY
+
+        safe_session_assign(session, "improv_intelligence_tab", tab, widget_safe=widget_safe)
+        safe_session_assign(session, "improv_entry_mode", entry, widget_safe=widget_safe)
+        session[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = tab
+    except ImportError:
+        session["improv_intelligence_tab"] = tab
+        session["creative_improv_intelligence_tab"] = tab
+        session["improv_entry_mode"] = entry
+    session.pop("_improv_tab_user_touched", None)
+    return ident
+
+
+def _activate_workflow_for_creative_return(session: dict[str, Any], ctx: BackingContext, ident: dict[str, str]) -> None:
+    owner = str(ident.get("workflow_owner") or "").strip()
+    try:
+        from generated_jam_key_context import deactivate_generated_jam_key_ownership
+        from music_workflow_activation import activate_workflow_simple
+
+        if owner == "song_based_improvisation":
+            activate_workflow_simple(
+                session,
+                "song_based_improvisation",
+                activation_source="return_from_backing",
+                return_route="creative",
+            )
+            try:
+                from song_improv_scope_authority import (
+                    apply_song_improv_entry_defaults,
+                    restore_song_improv_creative_navigation,
+                )
+
+                restore_song_improv_creative_navigation(session)
+                apply_song_improv_entry_defaults(session, source="return_from_backing")
+            except ImportError:
+                pass
+            deactivate_generated_jam_key_ownership(session)
+            return
+        if owner == "style_jam":
+            activate_workflow_simple(
+                session,
+                "style_jam",
+                activation_source="return_from_backing",
+                return_route="creative",
+            )
+            return
+        if owner == "jam_session_generator":
+            activate_workflow_simple(
+                session,
+                "jam_session_generator",
+                activation_source="return_from_backing",
+                return_route="creative",
+            )
+            return
+        if owner == "mission_jam":
+            activate_workflow_simple(
+                session,
+                "mission_jam",
+                activation_source="return_from_backing",
+                return_route="creative",
+                navigation_intent="return_from_backing",
+            )
+            return
+        if str(ctx.source or "") == "entry_jam":
+            activate_workflow_simple(
+                session,
+                owner or "style_jam",
+                activation_source="return_from_backing",
+                return_route="creative",
+            )
+    except ImportError:
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+            from workflow_musical_authority import switch_workflow_owner
+
+            if owner in {"style_jam", "jam_session_generator", "song_based_improvisation", "mission_jam"}:
+                switch_workflow_owner(session, owner)
+                if owner == "song_based_improvisation":
+                    deactivate_generated_jam_key_ownership(session)
+        except ImportError:
+            pass
+
+
 def rehydrate_creative_from_backing_context(
     session: dict[str, Any],
     *,
@@ -1410,98 +1564,10 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     page = target_page_for_backing_context(ctx)
     if ctx is None:
         return page
-    try:
-        from generated_jam_key_context import deactivate_generated_jam_key_ownership
-        from music_workflow_activation import activate_workflow_simple
-
-        tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
-        entry = str(session.get("improv_entry_mode") or "").strip()
-        ctx_source = str(ctx.source or "")
-        ctx_entry = str(ctx.entry_mode or entry or "").strip()
-        if ctx_source == "entry_jam" and ctx_entry in {"Style Jam Mode", "Jam Session Generator"}:
-            if ctx_entry == "Style Jam Mode":
-                activate_workflow_simple(
-                    session,
-                    "style_jam",
-                    activation_source="return_from_backing",
-                    return_route="creative",
-                )
-            else:
-                activate_workflow_simple(
-                    session,
-                    "jam_session_generator",
-                    activation_source="return_from_backing",
-                    return_route="creative",
-                )
-        elif ctx_source == "mission" or (ctx_source != "song_improv" and tab == "Missions"):
-            activate_workflow_simple(
-                session,
-                "mission_jam",
-                activation_source="return_from_backing",
-                return_route="creative",
-                navigation_intent="return_from_backing",
-            )
-        elif ctx_source == "song_improv" or entry == "Song-Based Improvisation":
-            activate_workflow_simple(
-                session,
-                "song_based_improvisation",
-                activation_source="return_from_backing",
-                return_route="creative",
-            )
-            try:
-                from song_improv_scope_authority import (
-                    apply_song_improv_entry_defaults,
-                    restore_song_improv_creative_navigation,
-                )
-
-                restore_song_improv_creative_navigation(session)
-                apply_song_improv_entry_defaults(session, source="return_from_backing")
-            except ImportError:
-                pass
-            deactivate_generated_jam_key_ownership(session)
-        elif entry == "Jam Session Generator" or str(ctx.entry_mode or "") == "Jam Session Generator":
-            activate_workflow_simple(
-                session,
-                "jam_session_generator",
-                activation_source="return_from_backing",
-                return_route="creative",
-            )
-        elif entry == "Style Jam Mode" or str(ctx.entry_mode or "") == "Style Jam Mode":
-            activate_workflow_simple(
-                session,
-                "style_jam",
-                activation_source="return_from_backing",
-                return_route="creative",
-            )
-    except ImportError:
-        try:
-            from generated_jam_key_context import deactivate_generated_jam_key_ownership
-            from workflow_musical_authority import switch_workflow_owner, workflow_type_from_entry
-
-            tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
-            entry = str(session.get("improv_entry_mode") or "").strip()
-            ctx_source = str(ctx.source or "")
-            ctx_entry = str(ctx.entry_mode or entry or "").strip()
-            if ctx_source == "entry_jam" and ctx_entry in {"Style Jam Mode", "Jam Session Generator"}:
-                if ctx_entry == "Style Jam Mode":
-                    switch_workflow_owner(session, "style_jam")
-                else:
-                    switch_workflow_owner(session, "jam_session_generator")
-            elif tab in {"Missions", "Song-Based Improvisation"} or ctx_source in {"mission", "song_improv"}:
-                if tab == "Missions" or str(ctx.source or "") == "mission":
-                    switch_workflow_owner(session, "mission_jam")
-                else:
-                    switch_workflow_owner(session, "song_based_improvisation")
-                deactivate_generated_jam_key_ownership(session)
-            elif entry == "Jam Session Generator" or str(ctx.entry_mode or "") == "Jam Session Generator":
-                switch_workflow_owner(session, "jam_session_generator")
-            elif entry == "Style Jam Mode" or str(ctx.entry_mode or "") == "Style Jam Mode":
-                switch_workflow_owner(session, "style_jam")
-        except ImportError:
-            pass
+    ident = apply_creative_return_identity_to_session(session, ctx)
+    _activate_workflow_for_creative_return(session, ctx, ident)
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
-    session.pop("_improv_tab_user_touched", None)
     restore_session_widgets_from_backing_context(session, ctx)
     try:
         from creative_session_state import sync_creative_session_from_session
@@ -1636,8 +1702,10 @@ __all__ = [
     "CreativeReturnPage",
     "PRACTICE_SOURCE_DISPLAY_KEY",
     "CREATIVE_RESTORE_FROM_BACKING_KEY",
+    "apply_creative_return_identity_to_session",
     "consume_backing_open_intent",
     "consume_key_transition_intent",
+    "creative_return_identity_from_backing_context",
     "edit_in_creative_button_label",
     "hydrate_backing_source_for_page",
     "hydrate_picker_source_for_page",
@@ -1656,6 +1724,7 @@ __all__ = [
     "restore_session_widgets_from_backing_context",
     "return_to_catalog_song_backing_label",
     "return_to_source_button_label",
+    "seal_creative_return_context_from_backing",
     "set_backing_open_intent",
     "set_key_transition_intent",
     "peek_key_transition_intent",
