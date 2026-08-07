@@ -35,6 +35,12 @@ CREATIVE_BACKING_RETURN_WIDGET_KEYS: frozenset[str] = frozenset(
         "creative_improv_intelligence_tab",
         "creative_session",
         "_improv_tab_user_touched",
+        "improv_active_mission",
+        "improv_mission_pick",
+        "ii_selected_chord",
+        "II_SELECTED_CHORD",
+        "ii_selected_section",
+        "II_SELECTED_SECTION",
     }
 )
 
@@ -1154,7 +1160,24 @@ def seal_creative_return_context_from_backing(
     session: dict[str, Any],
     ctx: BackingContext,
 ) -> dict[str, str]:
-    """Payload sealed at Return click — preserves launch submode independent of later session drift."""
+    """Return-click payload — mirrors launch-sealed route (no re-inference)."""
+    try:
+        from backing_creative_return_route import get_creative_return_route
+
+        route = get_creative_return_route(session)
+    except ImportError:
+        route = None
+    if isinstance(route, dict):
+        sealed = {
+            "source": str(route.get("backing_source") or getattr(ctx, "source", "") or ""),
+            "entry_mode": str(route.get("entry_mode") or ""),
+            "creative_tab": str(route.get("intelligence_tab") or ""),
+            "workflow_owner": str(route.get("workflow_owner") or ""),
+            "display_key": str(getattr(ctx, "display_key", "") or getattr(ctx, "concert_key", "") or ""),
+            "concert_key": str(getattr(ctx, "concert_key", "") or ""),
+            "song_pick": str(session.get("active_catalog_pick_key") or route.get("song_pick_key") or ""),
+        }
+        return sealed
     ident = creative_return_identity_from_backing_context(session, ctx)
     return {
         "source": ident["backing_source"],
@@ -1559,16 +1582,28 @@ def restore_session_widgets_from_backing_context(
 
 
 def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
-    """Restore Creative/custom/picker widgets from the active backing_context snapshot."""
+    """Restore Creative from launch-sealed return route + backing_context snapshot."""
     ctx = get_backing_context(session)
     page = target_page_for_backing_context(ctx)
     if ctx is None:
         return page
-    ident = apply_creative_return_identity_to_session(session, ctx)
-    _activate_workflow_for_creative_return(session, ctx, ident)
+    route = None
+    try:
+        from backing_creative_return_route import apply_creative_return_route, get_creative_return_route
+
+        route = get_creative_return_route(session)
+        if isinstance(route, dict):
+            apply_creative_return_route(session, route, ctx=ctx)
+        else:
+            ident = apply_creative_return_identity_to_session(session, ctx)
+            _activate_workflow_for_creative_return(session, ctx, ident)
+            restore_session_widgets_from_backing_context(session, ctx)
+    except ImportError:
+        ident = apply_creative_return_identity_to_session(session, ctx)
+        _activate_workflow_for_creative_return(session, ctx, ident)
+        restore_session_widgets_from_backing_context(session, ctx)
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
-    restore_session_widgets_from_backing_context(session, ctx)
     try:
         from creative_session_state import sync_creative_session_from_session
 

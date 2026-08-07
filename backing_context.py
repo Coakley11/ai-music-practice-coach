@@ -179,8 +179,16 @@ def get_backing_context(session: dict[str, Any]) -> BackingContext | None:
     return BackingContext.from_dict(session.get(BACKING_CONTEXT_KEY))
 
 
-def set_backing_context(session: dict[str, Any], ctx: BackingContext) -> None:
-    session[BACKING_CONTEXT_KEY] = refresh_backing_context_timestamps(ctx).to_dict()
+def set_backing_context(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    creative_return_route: dict[str, Any] | None = None,
+) -> None:
+    payload = refresh_backing_context_timestamps(ctx).to_dict()
+    if isinstance(creative_return_route, dict):
+        payload["creative_return_route"] = dict(creative_return_route)
+    session[BACKING_CONTEXT_KEY] = payload
 
 
 def clear_backing_context(session: dict[str, Any]) -> None:
@@ -2044,6 +2052,12 @@ def open_backing_from_creative(
     except ImportError:
         pass
     try:
+        from backing_creative_return_route import read_live_creative_surface_at_backing_launch
+
+        _launch_tab, _launch_entry = read_live_creative_surface_at_backing_launch(session)
+    except ImportError:
+        _launch_tab, _launch_entry = "", ""
+    try:
         from backing_session_route import on_creative_backing_handoff
 
         on_creative_backing_handoff(session, source=str(source))
@@ -2128,7 +2142,31 @@ def open_backing_from_creative(
     if existing and existing.source_signature == ctx.source_signature and existing.source == ctx.source:
         ctx.created_at = existing.created_at
     clear_stale_chart_session_keys(session)
-    set_backing_context(session, ctx)
+    launch_wf = str(session.get("_backing_launch_workflow") or "").strip()
+    owner = launch_wf or "style_jam"
+    if source == "mission":
+        owner = "mission_jam"
+    elif source == "song_improv":
+        owner = "song_based_improvisation"
+    elif source == "custom_progression":
+        owner = "regular_custom_backing"
+    elif str(ctx.source or "") == "entry_jam":
+        owner = launch_wf if launch_wf in {"style_jam", "jam_session_generator"} else "style_jam"
+    creative_return_route = None
+    try:
+        from backing_creative_return_route import capture_creative_return_route_at_backing_launch
+
+        creative_return_route = capture_creative_return_route_at_backing_launch(
+            session,
+            backing_source=str(ctx.source or source),
+            workflow_owner=owner,
+            launch_tab=_launch_tab,
+            launch_entry=_launch_entry,
+            ctx=ctx,
+        )
+    except ImportError:
+        pass
+    set_backing_context(session, ctx, creative_return_route=creative_return_route)
     if source == "mission":
         try:
             from mission_practice_context import (
