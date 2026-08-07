@@ -218,6 +218,9 @@ def hydrate_creative_pages_from_song_focus(session: dict[str, Any], *, tab: str 
     if not focus:
         return False
     resolved = resolve_focus_against_progression(session, focus)
+    if resolved.get("resolve_pending"):
+        project_song_creative_focus_to_pages(session, focus)
+        return True
     commit_song_creative_focus(session, resolved)
     return True
 
@@ -280,6 +283,9 @@ def resolve_focus_against_progression(session: dict[str, Any], focus: dict[str, 
             out["selected_section_id"] = sec or sec_hint
             out["selected_concert_chord"] = ch
             return out
+    if target:
+        out["resolve_pending"] = True
+        return out
     out["selected_chord_id"] = 0
     sec, ch = section_and_chord_at_global_index(section_map, 0)
     out["selected_section_id"] = sec or ""

@@ -174,11 +174,31 @@ def dedupe_sections_for_display(
     return out
 
 
+def concert_song_sections_from_session(session_state: dict) -> dict[str, list[str]] | None:
+    """Transposed catalog progression in concert pitch (Song-Based practice key)."""
+    raw = session_state.get("improv_song_concert_sections")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: dict[str, list[str]] = {}
+    for key, val in raw.items():
+        if isinstance(val, list):
+            clean = [str(c).strip() for c in val if str(c).strip()]
+            if clean:
+                out[str(key)] = clean
+    return out or None
+
+
 def resolve_improv_sections(
     session_state: dict,
     improv_ctx: Any,
 ) -> list[tuple[str, list[str]]]:
     """Section-based chord map (deduped) for Live Coach / Phrase Motif."""
+    concert = concert_song_sections_from_session(session_state)
+    if concert:
+        order = list(getattr(improv_ctx, "section_order", None) or concert.keys())
+        mapped = dedupe_sections_for_display(concert, section_names=order or None)
+        if mapped:
+            return mapped
     gen = session_state.get("improv_generated_sections")
     if gen:
         mapped = dedupe_sections_for_display(gen)

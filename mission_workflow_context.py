@@ -42,8 +42,18 @@ def _catalog_sections_from_session(
     session: dict[str, Any],
     improv_ctx: Any,
 ) -> list[tuple[str, list[str]]]:
-    from improvisation_motif import dedupe_sections_for_display, flatten_sections
+    from improvisation_motif import (
+        concert_song_sections_from_session,
+        dedupe_sections_for_display,
+        flatten_sections,
+    )
 
+    concert = concert_song_sections_from_session(session)
+    if concert:
+        order = list(getattr(improv_ctx, "section_order", None) or concert.keys())
+        mapped = dedupe_sections_for_display(concert, section_names=order or None)
+        if mapped:
+            return mapped
     home = session.get("home_sections")
     if isinstance(home, dict) and home:
         order = list(getattr(improv_ctx, "section_order", None) or home.keys())

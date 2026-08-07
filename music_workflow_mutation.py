@@ -981,20 +981,49 @@ def mission_example_matches_active_blob(session: dict[str, Any], *, chord: str, 
 def should_project_mission_config_from_canonical(session: dict[str, Any]) -> bool:
     """Active blob wins over stale canonical mission config."""
     try:
+        from creative_mission_config_persistence import canonical_mission_config_value
+
+        canon_chord = str(canonical_mission_config_value(session, "ii_selected_chord") or "").strip()
+    except ImportError:
+        canon_chord = ""
+    try:
+        from song_creative_focus import read_song_creative_focus
+
+        focus = read_song_creative_focus(session)
+        if focus and canon_chord:
+            fc = str(focus.get("selected_concert_chord") or "").strip()
+            if fc and fc != canon_chord:
+                record_compat_fallback(session, "canonical_mission_config_stale_focus", canon_chord)
+                return False
+    except ImportError:
+        pass
+    try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
         ptr = get_active_workflow_pointer(session)
-        if not ptr or ptr.workflow_owner != "mission_jam":
+        if not ptr:
             return True
         blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
         if blob is None:
             return True
-        canon_chord = ""
-        try:
-            from creative_mission_config_persistence import canonical_mission_config_value
+        if ptr.workflow_owner == "song_based_improvisation":
+            if canon_chord and blob.selected_chord_symbol and canon_chord != blob.selected_chord_symbol:
+                record_compat_fallback(session, "canonical_mission_config_stale_song_blob", canon_chord)
+                return False
+            try:
+                from musical_context_authority import resolve_authoritative_practice_key
+                from music_theory import key_center_token
 
-            canon_chord = str(canonical_mission_config_value(session, "ii_selected_chord") or "").strip()
-        except ImportError:
+                pk = resolve_authoritative_practice_key(session)
+                live_key = key_center_token(pk.practice_tonic, pk.practice_mode)
+                blob_key = key_center_token(blob.keys.practice_tonic, blob.keys.practice_mode)
+                if live_key and blob_key and live_key != blob_key:
+                    record_compat_fallback(session, "canonical_mission_config_stale_practice_key", live_key)
+                    return False
+            except ImportError:
+                pass
+            return True
+        if ptr.workflow_owner != "mission_jam":
             return True
         if canon_chord and blob.selected_chord_symbol and canon_chord != blob.selected_chord_symbol:
             record_compat_fallback(session, "canonical_mission_config_stale", canon_chord)
