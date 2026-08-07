@@ -581,6 +581,11 @@ def mutate_active_workflow(
 
 def _invalidate_mission_chord_dependent_session(session: dict[str, Any], *, new_chord: str) -> None:
     try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSIONS_GENERATE_CONTEXT_KEY
+    except ImportError:
+        MISSION_EXAMPLE_KEY = "improv_mission_example"  # type: ignore[misc]
+        MISSIONS_GENERATE_CONTEXT_KEY = "_missions_tab_generate_context"  # type: ignore[misc]
+    try:
         from improvisation_missions import MISSION_EXAMPLE_KEY
 
         ex = session.get(MISSION_EXAMPLE_KEY)
@@ -590,6 +595,7 @@ def _invalidate_mission_chord_dependent_session(session: dict[str, Any], *, new_
             session.pop("_mission_example_material_fp", None)
     except ImportError:
         session.pop("improv_mission_example", None)
+    session.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
     session.pop("improv_mission_recording_seal", None)
     session.pop("_mission_exact_backing_armed", None)
     session.pop("improv_mission_backing_handoff", None)
@@ -671,7 +677,11 @@ def mutate_mission_chord_selection(
         session["ii_selected_chord_label"] = chord_label
 
     new_sym = str(chord or "").strip()
-    chord_changed = bool(new_sym) and prev_chord != new_sym
+    new_sec = str(section or "").strip()
+    prev_sec = ""
+    if blob:
+        prev_sec = str(blob.selected_section or "").strip()
+    chord_changed = bool(new_sym) and (prev_chord != new_sym or prev_sec != new_sec)
     source_page = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "Missions")
     try:
         from song_creative_focus_change import commit_song_creative_focus_selection

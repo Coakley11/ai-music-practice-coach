@@ -103,6 +103,16 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["workflow_activation"] = f"FAIL:{exc}"
     try:
+        from music_workflow_mission_backing_click import apply_mission_backing_click_intent, peek_mission_backing_click_intent
+
+        if peek_mission_backing_click_intent(session):
+            applied = apply_mission_backing_click_intent(session, st_module=st)
+            phases["mission_backing_click_intent"] = "applied" if applied else "failed"
+        else:
+            phases["mission_backing_click_intent"] = "none"
+    except ImportError as exc:
+        phases["mission_backing_click_intent"] = f"SKIP:{exc}"
+    try:
         from music_workflow_mission_backing_orchestration import try_finalize_backing_after_mission_envelope
 
         if try_finalize_backing_after_mission_envelope(session):

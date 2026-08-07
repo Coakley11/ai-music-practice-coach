@@ -135,7 +135,7 @@ def _parent_practice_key_label(improv_ctx: ImprovSessionContext) -> str:
 def _target_focus_chord(session_state: dict, chords: list[str]) -> str:
     if not chords:
         return ""
-    cur, _idx = _selected_chord(session_state, chords)
+    cur, _idx = _selected_chord(session_state, chords, section_map)
     return str(cur or "")
 
 
@@ -918,7 +918,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         return
 
     _ensure_chord_selection(session_state, chords, section_map)
-    cur, idx = _selected_chord(session_state, chords)
+    cur, idx = _selected_chord(session_state, chords, section_map)
     parent_key = _parent_practice_key_label(improv_ctx)
     analysis_ref = _motif_notation_reference_key(improv_ctx, cur)
     _render_section_chord_map(
@@ -1030,7 +1030,7 @@ def _tab_motif(
         generate_motif_on_select=True,
     )
 
-    cur, _idx = _selected_chord(session_state, chords)
+    cur, _idx = _selected_chord(session_state, chords, section_map)
     motif_key = _motif_notation_reference_key(improv_ctx, cur)
 
     g0, g1, g2, g3 = st.columns(4)
@@ -1206,31 +1206,50 @@ def _ensure_chord_selection(
     chords: list[str],
     section_map: list[tuple[str, list[str]]] | None = None,
 ) -> None:
-    """Keep one canonical chord index — session target from last click wins over stale focus."""
+    """Keep one canonical chord — (section, symbol) wins; index must match that pair on section_map."""
     _migrate_ii_chord_selection(session_state)
     if not chords:
         return
 
+    try:
+        from creative_chord_selection_authority import (
+            authoritative_pair_matches_index,
+            global_chord_index_for_section_chord,
+            resolve_authoritative_chord_selection,
+            write_authoritative_chord_selection,
+        )
+    except ImportError:
+        authoritative_pair_matches_index = None  # type: ignore[assignment,misc]
+        global_chord_index_for_section_chord = None  # type: ignore[assignment,misc]
+        resolve_authoritative_chord_selection = None  # type: ignore[assignment,misc]
+        write_authoritative_chord_selection = None  # type: ignore[assignment,misc]
+
     sym = str(session_state.get(II_SELECTED_CHORD) or "").strip()
+    sec = str(session_state.get(II_SELECTED_SECTION) or "").strip()
     try:
         idx = int(session_state.get(II_SELECTED_CHORD_INDEX, -1))
     except (TypeError, ValueError):
         idx = -1
-    if sym and 0 <= idx < len(chords) and chords[idx] == sym:
-        sec = str(session_state.get(II_SELECTED_SECTION) or "").strip()
-        if section_map:
-            sec_at, _ = section_and_chord_at_global_index(section_map, idx)
-            if sec_at:
-                sec = sec_at
-                session_state[II_SELECTED_SECTION] = sec
-                session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {sym}"
-        session_state[II_SELECTED_CHORD_INDEX] = idx
-        session_state[II_SELECTED_CHORD] = sym
-        session_state["harmony_map_chord"] = sym
-        session_state["harmony_map_section"] = sec
-        session_state.pop("harmony_map_section_selections", None)
-        session_state["improv_mission_chord_options"] = list(chords)
-        return
+
+    if (
+        section_map
+        and sym
+        and sec
+        and resolve_authoritative_chord_selection is not None
+        and write_authoritative_chord_selection is not None
+    ):
+        rsym, rsec, ridx = resolve_authoritative_chord_selection(session_state, section_map)
+        if rsym and rsec:
+            write_authoritative_chord_selection(
+                session_state,
+                section_map,
+                chord_symbol=rsym,
+                section_label=rsec,
+                chord_index=ridx,
+            )
+            session_state.pop("harmony_map_section_selections", None)
+            session_state["improv_mission_chord_options"] = list(chords)
+            return
 
     try:
         from song_creative_focus import read_song_creative_focus, resolve_focus_against_progression
@@ -1239,21 +1258,42 @@ def _ensure_chord_selection(
         if focus and section_map:
             resolved = resolve_focus_against_progression(session_state, focus)
             target = str(resolved.get("selected_concert_chord") or "").strip()
+            fsec = str(resolved.get("selected_section_id") or "").strip()
+            if target and fsec and global_chord_index_for_section_chord:
+                gidx = global_chord_index_for_section_chord(section_map, fsec, target)
+                if gidx is not None and write_authoritative_chord_selection:
+                    write_authoritative_chord_selection(
+                        session_state,
+                        section_map,
+                        chord_symbol=target,
+                        section_label=fsec,
+                        chord_index=gidx,
+                    )
+                    session_state.pop("harmony_map_section_selections", None)
+                    session_state["improv_mission_chord_options"] = list(chords)
+                    return
             if target and target in chords:
                 idx = int(resolved.get("selected_chord_id") or 0)
                 if idx < 0 or idx >= len(chords) or chords[idx] != target:
                     idx = -1
                 if idx < 0:
                     pass
+                elif authoritative_pair_matches_index and not authoritative_pair_matches_index(
+                    section_map,
+                    section_label=fsec,
+                    chord_symbol=target,
+                    chord_index=idx,
+                ):
+                    pass
                 else:
                     session_state[II_SELECTED_CHORD_INDEX] = idx
                     session_state[II_SELECTED_CHORD] = chords[idx]
-                    sec, _ = section_and_chord_at_global_index(section_map, idx)
-                    if sec:
-                        session_state[II_SELECTED_SECTION] = sec
-                        session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chords[idx]}"
+                    sec_at, _ = section_and_chord_at_global_index(section_map, idx)
+                    if sec_at:
+                        session_state[II_SELECTED_SECTION] = sec_at
+                        session_state[II_SELECTED_CHORD_LABEL] = f"{sec_at} · {chords[idx]}"
                     session_state["harmony_map_chord"] = chords[idx]
-                    session_state["harmony_map_section"] = sec or str(resolved.get("selected_section_id") or "")
+                    session_state["harmony_map_section"] = sec_at or fsec
                     session_state.pop("harmony_map_section_selections", None)
                     session_state["improv_mission_chord_options"] = list(chords)
                     return
@@ -1267,23 +1307,37 @@ def _ensure_chord_selection(
             blob = get_workflow_blob(session_state, ptr.workflow_owner, ptr.workflow_session_id)
             if blob and blob.selected_chord_symbol:
                 sym = str(blob.selected_chord_symbol).strip()
-                if sym in chords:
-                    idx = chords.index(sym)
-                    session_state[II_SELECTED_CHORD_INDEX] = idx
-                    session_state[II_SELECTED_CHORD] = sym
-                    if section_map:
-                        sec, _ = section_and_chord_at_global_index(section_map, idx)
-                        if sec:
-                            session_state[II_SELECTED_SECTION] = sec
-                            session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {sym}"
+                bsec = str(blob.selected_section or "").strip()
+                if sym and section_map and bsec and write_authoritative_chord_selection:
+                    write_authoritative_chord_selection(
+                        session_state,
+                        section_map,
+                        chord_symbol=sym,
+                        section_label=bsec,
+                        chord_index=int(blob.selected_chord_index or 0),
+                    )
                     session_state["improv_mission_chord_options"] = list(chords)
                     return
+                if sym in chords and section_map and bsec and global_chord_index_for_section_chord:
+                    gidx = global_chord_index_for_section_chord(section_map, bsec, sym)
+                    if gidx is not None and write_authoritative_chord_selection:
+                        write_authoritative_chord_selection(
+                            session_state, section_map, chord_symbol=sym, section_label=bsec, chord_index=gidx
+                        )
+                        session_state["improv_mission_chord_options"] = list(chords)
+                        return
     except ImportError:
         pass
     try:
         from music_workflow_mutation import should_project_mission_config_from_canonical
 
         if not should_project_mission_config_from_canonical(session_state):
+            if section_map and resolve_authoritative_chord_selection:
+                sym, sec, idx = resolve_authoritative_chord_selection(session_state, section_map)
+                if sym and write_authoritative_chord_selection:
+                    write_authoritative_chord_selection(
+                        session_state, section_map, chord_symbol=sym, section_label=sec, chord_index=idx
+                    )
             return
     except ImportError:
         pass
@@ -1301,23 +1355,38 @@ def _ensure_chord_selection(
         idx = 0
         session_state[II_SELECTED_CHORD_INDEX] = 0
     chord = chords[idx]
-    session_state[II_SELECTED_CHORD] = chord
     if section_map:
         sec, _ = section_and_chord_at_global_index(section_map, idx)
-        if sec:
+        if sec and write_authoritative_chord_selection:
+            write_authoritative_chord_selection(
+                session_state, section_map, chord_symbol=chord, section_label=sec, chord_index=idx
+            )
+        elif sec:
             session_state[II_SELECTED_SECTION] = sec
             session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chord}"
+            session_state[II_SELECTED_CHORD] = chord
         else:
             session_state.setdefault(II_SELECTED_SECTION, "")
             session_state[II_SELECTED_CHORD_LABEL] = chord
+            session_state[II_SELECTED_CHORD] = chord
     else:
         session_state.setdefault(II_SELECTED_SECTION, "")
         if not str(session_state.get(II_SELECTED_CHORD_LABEL) or "").strip():
             session_state[II_SELECTED_CHORD_LABEL] = chord
+        session_state[II_SELECTED_CHORD] = chord
     session_state["improv_mission_chord_options"] = list(chords)
 
 
-def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
+def _selected_chord(session_state: dict, chords: list[str], section_map: list[tuple[str, list[str]]] | None = None) -> tuple[str, int]:
+    if section_map:
+        try:
+            from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+            sym, sec, idx = resolve_authoritative_chord_selection(session_state, section_map)
+            if sym:
+                return sym, idx
+        except ImportError:
+            pass
     sym = str(session_state.get(II_SELECTED_CHORD) or "").strip()
     try:
         idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
@@ -1325,8 +1394,8 @@ def _selected_chord(session_state: dict, chords: list[str]) -> tuple[str, int]:
         idx = 0
     if sym and chords and 0 <= idx < len(chords) and chords[idx] == sym:
         return sym, idx
-    idx = max(0, min(idx, len(chords) - 1))
-    return chords[idx], idx
+    idx = max(0, min(idx, len(chords) - 1)) if chords else 0
+    return chords[idx], idx if chords else 0
 
 
 def _clear_motif_outputs(session_state: dict) -> None:
@@ -1442,11 +1511,12 @@ def _render_section_chord_map(
     st.markdown("**Chord map by section**")
     _migrate_ii_chord_selection(session_state)
     try:
-        from creative_mission_config_persistence import sync_mission_target_from_canonical
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
 
-        sel_idx = sync_mission_target_from_canonical(session_state)
+        sel_chord, sel_section, _sel_idx = resolve_authoritative_chord_selection(session_state, section_map)
     except ImportError:
-        sel_idx = int(session_state.get(II_SELECTED_CHORD_INDEX, 0))
+        sel_chord = str(session_state.get(II_SELECTED_CHORD) or "")
+        sel_section = str(session_state.get(II_SELECTED_SECTION) or "")
     src = _safe_widget_key_part(source_id)
 
     def _chord_tile_on_click(ch: str, label: str, gidx: int, btn_key: str) -> None:
@@ -1497,7 +1567,7 @@ def _render_section_chord_map(
                     f"ii_chord_tile_{src}_{key_prefix}_{section_slug}_{gidx}_{safe_ch}"
                 )
                 with cols[ci]:
-                    is_sel = gidx == sel_idx
+                    is_sel = sel_section == label and sel_chord == ch
                     st.button(
                         ch,
                         key=button_key,
@@ -1943,7 +2013,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             }
             return
         _ensure_chord_selection(session_state, chords, section_map)
-        cur_chord, chord_idx = _selected_chord(session_state, chords)
+        cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
         section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         mission = str(
             session_state.get("improv_mission_pick")
@@ -1954,6 +2024,26 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         live_level = str(session_state.get("level") or improv_ctx.level)
         live_focus = str(session_state.get("focus") or improv_ctx.focus)
         bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
+
+    try:
+        from mission_workflow_context import resolve_missions_section_map
+
+        auth_section_map, _auth_owner = resolve_missions_section_map(session_state, improv_ctx)
+    except ImportError:
+        auth_section_map = resolve_improv_sections(session_state, improv_ctx)
+    if auth_section_map:
+        auth_chords = flatten_section_map(auth_section_map)
+        if auth_chords:
+            _ensure_chord_selection(session_state, auth_chords, auth_section_map)
+            try:
+                from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+                cur_chord, section_label, chord_idx = resolve_authoritative_chord_selection(
+                    session_state, auth_section_map
+                )
+            except ImportError:
+                cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
+                section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
 
     if not chords or not mission:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
@@ -2311,21 +2401,8 @@ def _tab_missions(
         return
 
     _ensure_chord_selection(session_state, chords, section_map)
-    _render_section_chord_map(
-        st,
-        section_map,
-        session_state,
-        key_prefix="improv_mission",
-        source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.key_center,
-    )
-    cur_chord, chord_idx = _selected_chord(session_state, chords)
+    cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
-    practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
-    st.caption(
-        f"Practice Key: **{html.escape(practice_key)}** · "
-        f"Selected Mission Chord: **{html.escape(cur_chord)}**"
-    )
 
     try:
         from mission_workflow_context import (
@@ -2340,17 +2417,40 @@ def _tab_missions(
             cur_chord=cur_chord,
             section_label=section_label,
         )
+        try:
+            from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
+
+            session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map
+        except ImportError:
+            session_state["_improv_mission_section_map"] = section_map
+        chords = flatten_section_map(section_map)
+        _ensure_chord_selection(session_state, chords, section_map)
+        cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
+        section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         render_mission_context_dev_panel(st, session_state)
         if not ctx_report.ok:
-            chords = flatten_section_map(section_map)
-            _ensure_chord_selection(session_state, chords, section_map)
-            cur_chord, chord_idx = _selected_chord(session_state, chords)
-            section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
             st.caption(
                 "Mission context was reconciled to your active catalog song (stale jam data removed)."
             )
     except ImportError:
         pass
+
+    _render_section_chord_map(
+        st,
+        section_map,
+        session_state,
+        key_prefix="improv_mission",
+        source_id=_improv_source_id(session_state, improv_ctx),
+        key_center=improv_ctx.key_center,
+    )
+    cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
+    section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+    practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+    st.caption(
+        f"Practice Key: **{html.escape(practice_key)}** · "
+        f"Selected Mission Chord: **{html.escape(cur_chord)}** · "
+        f"Section: **{html.escape(section_label)}**"
+    )
 
     _sync_missions_session_from_improv_ctx(session_state, improv_ctx, section_map=section_map)
 
@@ -2462,13 +2562,25 @@ def _tab_missions(
         )
 
         log_widget_callback_enter(widget_key=widget_key, callback=_mission_backing_on_click)
+        ss = st.session_state
+        try:
+            from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+            click_chord, click_section, click_idx = read_authoritative_mission_chord_selection(ss)
+        except ImportError:
+            click_chord = str(ss.get(II_SELECTED_CHORD) or cur_chord or "")
+            click_section = str(ss.get(II_SELECTED_SECTION) or section_label or "")
+            click_idx = int(ss.get(II_SELECTED_CHORD_INDEX, chord_idx))
+        click_mission = str(
+            ss.get("improv_mission_pick") or ss.get("improv_active_mission") or mission or ""
+        ).strip()
         capture_mission_backing_click_intent(
-            st.session_state,
+            ss,
             with_practice_lick=with_practice_lick,
-            mission=str(mission or ""),
-            cur_chord=str(cur_chord or ""),
-            section_label=str(section_label or ""),
-            chord_idx=int(chord_idx),
+            mission=click_mission,
+            cur_chord=str(click_chord or ""),
+            section_label=str(click_section or ""),
+            chord_idx=int(click_idx),
             song_title=str(improv_ctx.song_title or ""),
             concert_key=str(improv_ctx.key_center or ""),
             display_key=str(improv_ctx.display_key or ""),
@@ -2484,10 +2596,10 @@ def _tab_missions(
             log_mission_backing_click(
                 st.session_state,
                 with_practice_lick=with_practice_lick,
-                mission_id=str(mission or ""),
+                mission_id=click_mission,
                 mission_session_id="",
-                section=str(section_label or ""),
-                chord=str(cur_chord or ""),
+                section=str(click_section or ""),
+                chord=str(click_chord or ""),
                 workflow_owner=resolve_backing_workflow_owner(st.session_state, backing_source="mission"),
                 widgets_locked=widgets_likely_instantiated(st.session_state),
                 mission_widgets_instantiated=bool(
@@ -2833,7 +2945,7 @@ def _tab_harmony_map(
     chords_flat = flatten_section_map(section_map) if section_map else []
     if section_map and chords_flat:
         _ensure_chord_selection(session_state, chords_flat, section_map)
-        sel_chord, _ = _selected_chord(session_state, chords_flat)
+        sel_chord, _ = _selected_chord(session_state, chords_flat, section_map)
         sel_section = str(session_state.get(II_SELECTED_SECTION) or "")
     else:
         sel_section = str(session_state.get("harmony_map_section") or "")

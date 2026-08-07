@@ -281,9 +281,26 @@ def hydrate_creative_pages_from_song_focus(session: dict[str, Any], *, tab: str 
 
 
 def _section_map_for_focus(session: dict[str, Any], ctx: Any) -> list[tuple[str, list[str]]]:
+    try:
+        from creative_chord_selection_authority import deduped_section_map_for_focus
+
+        return deduped_section_map_for_focus(session, ctx)
+    except ImportError:
+        pass
     raw = session.get("improv_song_concert_sections") or session.get("home_sections") or {}
     if isinstance(raw, dict) and raw:
-        return [(str(k), [str(c) for c in v if str(c).strip()]) for k, v in raw.items() if isinstance(v, list)]
+        try:
+            from improvisation_motif import dedupe_sections_for_display
+
+            order = list(getattr(ctx, "section_order", None) or raw.keys())
+            mapped = dedupe_sections_for_display(
+                {str(k): [str(c) for c in v if str(c).strip()] for k, v in raw.items() if isinstance(v, list)},
+                section_names=order or None,
+            )
+            if mapped:
+                return mapped
+        except ImportError:
+            return [(str(k), [str(c) for c in v if str(c).strip()]) for k, v in raw.items() if isinstance(v, list)]
     try:
         from improvisation_motif import resolve_improv_sections
 
@@ -325,10 +342,24 @@ def resolve_focus_against_progression(session: dict[str, Any], focus: dict[str, 
     idx = int(out.get("selected_chord_id") or 0)
     if 0 <= idx < len(chords) and chords[idx] == target:
         sec, ch = section_and_chord_at_global_index(section_map, idx)
-        if not sec_hint or sec == sec_hint:
+        if sec_hint and sec != sec_hint:
+            pass
+        elif not sec_hint or sec == sec_hint:
             out["selected_section_id"] = sec or sec_hint
             out["selected_concert_chord"] = ch
-            out["selected_chord_id"] = idx
+            if sec_hint and target:
+                try:
+                    from creative_chord_selection_authority import global_chord_index_for_section_chord
+
+                    mapped = global_chord_index_for_section_chord(section_map, sec_hint, target)
+                    if mapped is not None:
+                        out["selected_chord_id"] = mapped
+                    else:
+                        out["selected_chord_id"] = idx
+                except ImportError:
+                    out["selected_chord_id"] = idx
+            else:
+                out["selected_chord_id"] = idx
             return out
     if sec_hint and target:
         try:
