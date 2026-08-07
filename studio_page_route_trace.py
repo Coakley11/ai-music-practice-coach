@@ -206,11 +206,109 @@ def trace_post_return_stop_guard(session: dict[str, Any]) -> None:
     emit_route_trace(session, "RETURN_POST_RERUN_STOP_GUARD")
 
 
+def should_show_route_trace_ui(session: dict[str, Any], st_module: Any | None = None) -> bool:
+    """Same visibility gate as creative_return_trace (safety preview + ?dev=1)."""
+    try:
+        from creative_return_trace import should_show_trace_ui
+
+        return bool(should_show_trace_ui(session, st_module))
+    except ImportError:
+        pass
+    if session.get("developer_mode"):
+        return True
+    if st_module is not None:
+        try:
+            qp = str(st_module.query_params.get("studio_page_route_trace") or "").strip().lower()
+            if qp in ("1", "true", "yes"):
+                return True
+        except Exception:
+            pass
+    try:
+        from music_deploy_verification import matches_creative_owner_preview_deploy
+
+        return bool(matches_creative_owner_preview_deploy())
+    except ImportError:
+        return False
+
+
+def build_route_trace_journal_payload(session: dict[str, Any]) -> dict[str, Any]:
+    log = session.get(SESSION_LOG_KEY)
+    if not isinstance(log, list):
+        log = []
+    last = session.get(SESSION_LAST_KEY)
+    return {
+        "trace_prefix": TRACE_PREFIX,
+        "event_count": len(log),
+        "last_event": last if isinstance(last, dict) else None,
+        "events": list(log),
+        "authorities_now": snapshot_route_authorities(session),
+    }
+
+
+def _phase_summary_row(record: dict[str, Any]) -> str:
+    phase = str(record.get("phase") or "")
+    run_seq = record.get("run_seq")
+    page = str(record.get("studio_page") or "")
+    dispatch = str(record.get("dispatch_local_studio_page") or "")
+    target = str(record.get("render_target") or "")
+    parts = [f"run={run_seq}", f"phase={phase}"]
+    if page:
+        parts.append(f"session={page}")
+    if dispatch:
+        parts.append(f"dispatch={dispatch}")
+    if target:
+        parts.append(f"render={target}")
+    return " · ".join(parts)
+
+
+def render_studio_page_route_trace_panel(st_module: Any, session: dict[str, Any]) -> None:
+    if not should_show_route_trace_ui(session, st_module):
+        return
+    log = session.get(SESSION_LOG_KEY)
+    if not isinstance(log, list):
+        log = []
+    last = session.get(SESSION_LAST_KEY)
+    count = len(log)
+    expanded = True
+    try:
+        from music_deploy_verification import matches_creative_owner_preview_deploy
+
+        expanded = bool(matches_creative_owner_preview_deploy()) or bool(session.get("developer_mode"))
+    except ImportError:
+        expanded = bool(session.get("developer_mode"))
+    with st_module.sidebar.expander(f"{TRACE_PREFIX} ({count} events)", expanded=expanded):
+        st_module.caption(
+            "Page dispatch vs session after Return — click run + next run. "
+            "Phases include PREPARE_STUDIO_NAV_EXIT, DISPATCH_RESYNC, render branch."
+        )
+        if not log:
+            st_module.info("No route events yet. Open Backing, click Return to Creative, then refresh this panel.")
+        else:
+            st_module.markdown("**Recent phases (newest last)**")
+            for row in log[-16:]:
+                if isinstance(row, dict):
+                    st_module.text(_phase_summary_row(row))
+        if isinstance(last, dict):
+            st_module.markdown("**Last event**")
+            st_module.json(last)
+        payload = build_route_trace_journal_payload(session)
+        st_module.download_button(
+            "Download route trace JSON",
+            data=_safe_json(payload),
+            file_name="studio_page_route_trace.json",
+            mime="application/json",
+            key="studio_page_route_trace_download",
+        )
+
+
 __all__ = [
     "SESSION_LAST_KEY",
     "SESSION_LOG_KEY",
     "TRACE_PREFIX",
+    "build_route_trace_journal_payload",
     "emit_route_trace",
+    "render_studio_page_route_trace_panel",
+    "should_show_route_trace_ui",
     "snapshot_route_authorities",
     "trace_after_page_transition",
     "trace_before_render_backing",

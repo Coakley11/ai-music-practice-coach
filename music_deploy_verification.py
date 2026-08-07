@@ -180,6 +180,7 @@ def scan_creative_owner_preview_modules_in_source() -> dict[str, Any]:
         "backing_source_navigation.py",
         "backing_context.py",
         "creative_return_trace.py",
+        "studio_page_route_trace.py",
         "backing_creative_return_route.py",
     )
     missing: list[str] = []

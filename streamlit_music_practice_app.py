@@ -10482,6 +10482,13 @@ try:
 except Exception:
     pass
 
+try:
+    from studio_page_route_trace import render_studio_page_route_trace_panel
+
+    render_studio_page_route_trace_panel(st, st.session_state)
+except Exception:
+    pass
+
 if _developer_mode_enabled():
     try:
         from app_ui import render_quick_nav_dev_diagnostics

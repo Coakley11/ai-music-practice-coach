@@ -511,6 +511,12 @@ def format_journal_copy_block(session: dict[str, Any]) -> str:
             "error": "no journal — enable ?dev=1",
             "page_cloud_durability_trace_json": _durability_trace_json_for_journal(session),
         }
+        try:
+            from studio_page_route_trace import build_route_trace_journal_payload
+
+            payload["studio_page_route_trace_json"] = build_route_trace_journal_payload(session)
+        except Exception as exc:
+            payload["studio_page_route_trace_json"] = {"status": "unavailable", "error": str(exc)}
         return json.dumps(payload, indent=2, default=str)
     payload = {
         "run_seq": j.get("run_seq"),
@@ -535,6 +541,19 @@ def format_journal_copy_block(session: dict[str, Any]) -> str:
     except Exception:
         payload["page_save_pipeline_trace_json"] = {"status": "pipeline_trace_unavailable"}
     payload["page_cloud_durability_trace_json"] = _durability_trace_json_for_journal(session)
+    try:
+        from studio_page_route_trace import build_route_trace_journal_payload
+
+        payload["studio_page_route_trace_json"] = build_route_trace_journal_payload(session)
+    except Exception as exc:
+        payload["studio_page_route_trace_json"] = {"status": "unavailable", "error": str(exc)}
+    try:
+        from creative_return_trace import SESSION_TRACE_LOG_KEY
+
+        creative_log = session.get(SESSION_TRACE_LOG_KEY)
+        payload["creative_return_trace_json"] = creative_log if isinstance(creative_log, list) else []
+    except Exception:
+        payload["creative_return_trace_json"] = []
     return json.dumps(payload, indent=2, default=str)
 
 
