@@ -406,7 +406,18 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
 
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog song sections transposed to current practice concert key."""
-    practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+
+        song = song_practice_blob(session)
+        if song is not None and isinstance(song.section_map, dict) and song.section_map:
+            session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+            return copy.deepcopy(song.section_map)
+        practice = resolve_song_practice_key_token(session) or str(
+            session.get("display_key") or session.get("concert_key") or ""
+        ).strip()
+    except ImportError:
+        practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
     if not practice:
         return {}
     try:

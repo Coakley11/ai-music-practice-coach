@@ -96,6 +96,14 @@ MOTIF_OUTPUT_TAB = "tab"
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        tok = resolve_song_practice_key_token(session_state)
+        if tok:
+            return tok
+    except ImportError:
+        pass
+    try:
         from musical_context_authority import resolve_authoritative_practice_key
         from music_theory import key_center_token
 
@@ -2162,11 +2170,16 @@ def _tab_missions(
     mission = str(session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or mission_options[mission_idx])
 
     try:
-        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
 
-        sync_song_improv_sections_to_practice_key(session_state)
+        ensure_missions_parent_practice_key_hydrated(session_state)
     except ImportError:
-        pass
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            sync_song_improv_sections_to_practice_key(session_state)
+        except ImportError:
+            pass
     try:
         from active_musical_workflow_envelope import (
             inspect_mission_workflow_envelope,

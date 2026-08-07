@@ -270,9 +270,29 @@ def resolve_focus_against_progression(session: dict[str, Any], focus: dict[str, 
     idx = int(out.get("selected_chord_id") or 0)
     if 0 <= idx < len(chords) and chords[idx] == target:
         sec, ch = section_and_chord_at_global_index(section_map, idx)
-        out["selected_section_id"] = sec or sec_hint
-        out["selected_concert_chord"] = ch
-        out["selected_chord_id"] = idx
+        if not sec_hint or sec == sec_hint:
+            out["selected_section_id"] = sec or sec_hint
+            out["selected_concert_chord"] = ch
+            out["selected_chord_id"] = idx
+            return out
+    if sec_hint and target:
+        try:
+            from improvisation_motif import global_chord_index
+
+            for si, (sec, chs) in enumerate(section_map):
+                if sec != sec_hint:
+                    continue
+                for ci, ch in enumerate(chs):
+                    if ch != target:
+                        continue
+                    gidx = global_chord_index(section_map, si, ci)
+                    out["selected_chord_id"] = gidx
+                    out["selected_section_id"] = sec
+                    out["selected_concert_chord"] = ch
+                    return out
+        except ImportError:
+            pass
+        out["resolve_pending"] = True
         return out
     for i, ch in enumerate(chords):
         if ch == target:

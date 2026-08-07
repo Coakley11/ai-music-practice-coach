@@ -587,6 +587,12 @@ def mutate_mission_chord_selection(
     button_key: str = "",
 ) -> MutationResult:
     """B1 — mission chord updates active mission_jam blob atomically."""
+    try:
+        from music_workflow_song_practice import mirror_mission_keys_from_song_blob
+
+        mirror_mission_keys_from_song_blob(session)
+    except ImportError:
+        pass
     ptr = get_active_workflow_pointer(session)
     if ptr is None or ptr.workflow_owner != "mission_jam":
         try:
@@ -942,6 +948,13 @@ def update_mission_example_on_blob(
     mission_type: str = "",
     section: str = "",
 ) -> MutationResult:
+    try:
+        from music_workflow_song_practice import mirror_mission_keys_from_song_blob
+
+        mirror_mission_keys_from_song_blob(session)
+    except ImportError:
+        pass
+
     def _mut(b: WorkflowStateBlob) -> None:
         b.selected_chord_symbol = str(chord or "").strip()
         b.example_fingerprint = str(example_fingerprint or "")[:24]

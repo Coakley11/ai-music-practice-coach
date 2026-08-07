@@ -8953,9 +8953,14 @@ def _render_backing_return_source_action() -> None:
                     save_page_snapshot_deduped(st.session_state, "creative")
                 except ImportError:
                     save_page_snapshot(st.session_state, "creative")
-            target = prepare_return_to_backing_source(st.session_state)
-            navigate_studio_page(st.session_state, target)
-            st.rerun()
+            try:
+                from music_workflow_pending_creative_return import handle_return_to_creative_click
+
+                handle_return_to_creative_click(st, st.session_state)
+            except ImportError:
+                target = prepare_return_to_backing_source(st.session_state)
+                navigate_studio_page(st.session_state, target)
+                st.rerun()
 
         def _go_mission_detail() -> None:
             from music_workflow_pending_mission_return import handle_return_to_mission_click

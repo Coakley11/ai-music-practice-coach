@@ -82,6 +82,14 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["song_creative_focus_edit"] = f"FAIL:{exc}"
     try:
+        consume_creative_return = _require(
+            "music_workflow_pending_creative_return",
+            "consume_pending_creative_return_handoff",
+        )
+        phases["creative_return"] = str(consume_creative_return(session, st=st))
+    except RuntimeError as exc:
+        phases["creative_return"] = f"FAIL:{exc}"
+    try:
         consume_gen = _require(
             "music_workflow_pending_generated_progression",
             "consume_pending_generated_progression",

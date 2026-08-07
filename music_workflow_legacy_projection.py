@@ -146,21 +146,34 @@ def _project_session_field(
 def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStateBlob) -> None:
     """Apply authoritative blob fields to session (full restore, not display-only)."""
     owner = str(blob.workflow_owner or "").strip()
+    mutation_source = str(session.get("_music_workflow_projection_mutation_source") or "").strip()
+    skip_parent_practice_key = mutation_source in {
+        "apply_atomic_mission_chord",
+        "mission_example_save",
+    }
     key_token = _practice_key_token(blob)
     if owner in {"song_based_improvisation", "mission_jam"}:
-        if blob.section_map:
+        if blob.section_map and not (owner == "mission_jam" and skip_parent_practice_key):
             session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
+        elif owner == "mission_jam" and skip_parent_practice_key:
+            try:
+                from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+
+                sync_session_practice_key_from_song_blob(session, source=f"skip_mission_projection:{mutation_source}")
+            except ImportError:
+                pass
         if blob.song_id:
             record_legacy_field_read(session, "active_catalog_pick_key", adapter="restore")
-        try:
-            from creative_key_sync import apply_creative_concert_key
+        if not (owner == "mission_jam" and skip_parent_practice_key):
+            try:
+                from creative_key_sync import apply_creative_concert_key
 
-            apply_creative_concert_key(session, key_token, source=f"workflow_restore_{owner}")
-        except ImportError:
-            pass
-        _project_session_field(session, "display_key", key_token)
-        _project_session_field(session, "concert_key", key_token)
-        session["_pending_display_key"] = key_token
+                apply_creative_concert_key(session, key_token, source=f"workflow_restore_{owner}")
+            except ImportError:
+                pass
+            _project_session_field(session, "display_key", key_token)
+            _project_session_field(session, "concert_key", key_token)
+            session["_pending_display_key"] = key_token
     if owner == "mission_jam":
         _project_session_field(session, "improv_intelligence_tab", "Missions")
         session["creative_improv_intelligence_tab"] = "Missions"
