@@ -80,6 +80,12 @@ def sync_song_based_sections_for_live_pick(session: dict[str, Any], *, source: s
         from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
         sections = sync_song_improv_sections_to_practice_key(session)
+        try:
+            from song_improv_scope_authority import apply_song_improv_entry_defaults
+
+            apply_song_improv_entry_defaults(session, source="catalog_handoff")
+        except ImportError:
+            pass
         record_catalog_handoff_trace(
             session,
             "sync_sections_for_live_pick",

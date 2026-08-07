@@ -30,6 +30,29 @@ class TestGMMinorSpelling(unittest.TestCase):
         self.assertIn("Bb", " ".join(sug.notes))
 
 
+class TestEMinorDiatonicSpelling(unittest.TestCase):
+    def test_e_dorian(self) -> None:
+        from improvisation_intelligence import build_scale_suggestion
+
+        sug = build_scale_suggestion("E dorian", reference_key="Em")
+        self.assertEqual(sug.notes, ["E", "F#", "G", "A", "B", "C#", "D"])
+
+    def test_e_melodic_minor(self) -> None:
+        from improvisation_intelligence import build_scale_suggestion
+
+        sug = build_scale_suggestion("E melodic minor", reference_key="Em")
+        self.assertEqual(sug.notes[-1], "D#")
+        self.assertNotIn("Eb", sug.notes)
+
+    def test_f_sharp_minor_dorian_uses_sharps(self) -> None:
+        from improvisation_intelligence import build_scale_suggestion
+
+        sug = build_scale_suggestion("F# dorian", reference_key="F#m")
+        joined = " ".join(sug.notes)
+        self.assertIn("F#", joined)
+        self.assertIn("C#", joined)
+
+
 class TestBbSpelling(unittest.TestCase):
     def test_bb7_root_stays_bb(self) -> None:
         self.assertEqual(spelled_chord_root_from_symbol("Bb7"), "Bb")

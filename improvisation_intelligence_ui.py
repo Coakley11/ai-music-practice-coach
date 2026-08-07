@@ -554,6 +554,13 @@ def _tab_entry_modes(
             queue_workflow_activation_for_entry_mode(session_state)
         except ImportError:
             pass
+        if str(session_state.get("improv_entry_mode") or "").strip() == "Song-Based Improvisation":
+            try:
+                from song_improv_scope_authority import apply_song_improv_entry_defaults
+
+                apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
+            except ImportError:
+                pass
 
     ensure_improv_entry_mode_restored(session_state)
     entry = st.radio(
@@ -567,6 +574,12 @@ def _tab_entry_modes(
     st.markdown("</div>", unsafe_allow_html=True)
 
     if entry == "Song-Based Improvisation":
+        try:
+            from song_improv_scope_authority import ensure_song_improv_scope_on_entry_mode
+
+            ensure_song_improv_scope_on_entry_mode(session_state)
+        except ImportError:
+            pass
         def _sync_song_source() -> None:
             if on_song_source_change:
                 on_song_source_change(

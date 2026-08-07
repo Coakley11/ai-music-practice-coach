@@ -1233,7 +1233,14 @@ def restore_session_widgets_from_backing_context(
         session["improv_style_meta"] = meta
     elif ctx.source == "song_improv":
         session["improv_intelligence_tab"] = "Entry & Jam"
+        session["creative_improv_intelligence_tab"] = "Entry & Jam"
         session["improv_entry_mode"] = "Song-Based Improvisation"
+        try:
+            from song_improv_scope_authority import apply_song_improv_entry_defaults
+
+            apply_song_improv_entry_defaults(session, source="restore_from_song_improv_ctx")
+        except ImportError:
+            pass
         custom_improv = bool(
             ctx.custom_revision_id
             or str(ctx.active_song_id or "").startswith("custom::")
@@ -1426,22 +1433,31 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
                     activation_source="return_from_backing",
                     return_route="creative",
                 )
-        elif tab in {"Missions", "Song-Based Improvisation"} or ctx_source in {"mission", "song_improv"}:
-            if tab == "Missions" or str(ctx.source or "") == "mission":
-                activate_workflow_simple(
-                    session,
-                    "mission_jam",
-                    activation_source="return_from_backing",
-                    return_route="creative",
-                    navigation_intent="return_from_backing",
+        elif ctx_source == "mission" or (ctx_source != "song_improv" and tab == "Missions"):
+            activate_workflow_simple(
+                session,
+                "mission_jam",
+                activation_source="return_from_backing",
+                return_route="creative",
+                navigation_intent="return_from_backing",
+            )
+        elif ctx_source == "song_improv" or entry == "Song-Based Improvisation":
+            activate_workflow_simple(
+                session,
+                "song_based_improvisation",
+                activation_source="return_from_backing",
+                return_route="creative",
+            )
+            try:
+                from song_improv_scope_authority import (
+                    apply_song_improv_entry_defaults,
+                    restore_song_improv_creative_navigation,
                 )
-            else:
-                activate_workflow_simple(
-                    session,
-                    "song_based_improvisation",
-                    activation_source="return_from_backing",
-                    return_route="creative",
-                )
+
+                restore_song_improv_creative_navigation(session)
+                apply_song_improv_entry_defaults(session, source="return_from_backing")
+            except ImportError:
+                pass
             deactivate_generated_jam_key_ownership(session)
         elif entry == "Jam Session Generator" or str(ctx.entry_mode or "") == "Jam Session Generator":
             activate_workflow_simple(

@@ -544,6 +544,21 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
                 save_workflow_snapshot(session, "song_based_improvisation")
             except ImportError:
                 pass
+        try:
+            from song_improv_scope_authority import (
+                apply_song_improv_entry_defaults,
+                should_apply_song_improv_entry_defaults,
+            )
+
+            if should_apply_song_improv_entry_defaults(
+                session, activation_source=str(request.activation_source or "")
+            ):
+                apply_song_improv_entry_defaults(
+                    session,
+                    source=str(request.activation_source or "post_workflow_activation"),
+                )
+        except ImportError:
+            pass
     return ActivateWorkflowResult(ok=True, trace=trace)
 
 

@@ -164,9 +164,21 @@ def coaching_reference_key(*, key_center: str = "C", display_key: str = "") -> s
 
 
 def spell_scale_notes(root: str, kind: str, reference_key: str) -> list[str]:
-    """Spell scale degrees from a root and mode name (matches chart/display key)."""
+    """Spell scale degrees from a root and mode name (diatonic letter per degree)."""
     canon = _resolve_scale_kind(kind)
     intervals = _SCALE_INTERVALS[canon]
+    try:
+        from music_theory import spell_diatonic_scale_from_root
+
+        notes = spell_diatonic_scale_from_root(root, intervals)
+        part_root = str(root or "").split()[0]
+        if notes and part_root:
+            from music_theory import respell_note_for_key
+
+            notes[0] = respell_note_for_key(part_root, reference_key or part_root)
+        return notes
+    except ImportError:
+        pass
     return [_note_name_at_semitone(root, i, reference_key) for i in intervals]
 
 

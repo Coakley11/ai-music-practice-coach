@@ -391,6 +391,57 @@ def _spell_letter_to_pitch_class(letter: str, target_pc: int) -> str:
     return spell_pitch_class(int(target_pc) % 12, mode="sharp")
 
 
+_HEPTATONIC_SCALE_TEMPLATES: tuple[tuple[int, ...], ...] = (
+    (0, 2, 4, 5, 7, 9, 11),
+    (0, 2, 3, 5, 7, 8, 10),
+    (0, 2, 3, 5, 7, 9, 10),
+    (0, 2, 3, 5, 7, 9, 11),
+    (0, 2, 4, 5, 7, 9, 10),
+)
+
+
+def _letter_steps_for_scale_intervals(intervals: tuple[int, ...] | list[int]) -> list[int]:
+    if len(intervals) == 7:
+        return list(range(7))
+    ints = tuple(int(i) for i in intervals)
+    for tpl in _HEPTATONIC_SCALE_TEMPLATES:
+        steps: list[int] = []
+        used: set[int] = set()
+        ok = True
+        for semi in ints:
+            found = False
+            for li, tsemi in enumerate(tpl):
+                if tsemi == semi and li not in used:
+                    steps.append(li)
+                    used.add(li)
+                    found = True
+                    break
+            if not found:
+                ok = False
+                break
+        if ok and len(steps) == len(ints):
+            return steps
+    return list(range(len(ints)))
+
+
+def spell_diatonic_scale_from_root(root: str, semitone_intervals: list[int] | tuple[int, ...]) -> list[str]:
+    """Spell each scale degree with consecutive diatonic letters from the root (mode-aware)."""
+    root_spelled = str(root or "C").strip() or "C"
+    root_letter = root_spelled[0].upper()
+    if root_letter not in _DIATONIC_LETTERS:
+        root_letter = "C"
+    root_pc = NOTE_TO_MIDI.get(normalize_root(split_chord(root_spelled)[0]), 60) % 12
+    root_li = _DIATONIC_LETTERS.index(root_letter)
+    letter_steps = _letter_steps_for_scale_intervals(semitone_intervals)
+    out: list[str] = []
+    for i, semi in enumerate(semitone_intervals):
+        li = (root_li + letter_steps[i]) % 7
+        letter = _DIATONIC_LETTERS[li]
+        target_pc = (root_pc + int(semi)) % 12
+        out.append(_spell_letter_to_pitch_class(letter, target_pc))
+    return out
+
+
 def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     """
     Chord tones with correct diatonic letter names (root, third, fifth, seventh).
