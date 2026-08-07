@@ -56,8 +56,28 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
     return ""
 
 
+def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
+    """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam."""
+    tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
+    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+        return True
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and ptr.workflow_owner in {"mission_jam", "song_based_improvisation"}:
+            pick = str(session.get("active_catalog_pick_key") or session.get("_active_pick_key") or "").strip()
+            if pick:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
 def entry_jam_practice_key_authority_active(session: dict[str, Any]) -> bool:
     """Style Jam / Jam Session still owns practice key (including Missions/Harmony on same entry)."""
+    if _catalog_song_workflow_owns_practice_key(session):
+        return False
     page = str(session.get("studio_page") or "").strip().lower()
     if page not in {"creative", "backing"}:
         return False

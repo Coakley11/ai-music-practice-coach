@@ -2037,6 +2037,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         }
         return
 
+    sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     if isinstance(snap, dict) and snap.get("cur_chord"):
         cur_chord = str(snap.get("cur_chord"))
         section_label = str(snap.get("section_label") or "Progression")
@@ -2080,10 +2081,12 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         auth_section_map, _auth_owner = resolve_missions_section_map(session_state, improv_ctx)
     except ImportError:
         auth_section_map = resolve_improv_sections(session_state, improv_ctx)
+    sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     if auth_section_map:
         auth_chords = flatten_section_map(auth_section_map)
         if auth_chords:
-            _ensure_chord_selection(session_state, auth_chords, auth_section_map)
+            if not sealed_from_snap:
+                _ensure_chord_selection(session_state, auth_chords, auth_section_map)
             try:
                 from creative_chord_selection_authority import resolve_authoritative_chord_selection
 
@@ -2091,8 +2094,9 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
                     session_state, auth_section_map
                 )
             except ImportError:
-                cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
-                section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
+                if not sealed_from_snap:
+                    cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
+                    section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
 
     if not chords or not mission:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
@@ -2104,7 +2108,6 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         }
         return
 
-    sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     focus_before = ""
     try:
         from song_creative_focus import read_song_creative_focus

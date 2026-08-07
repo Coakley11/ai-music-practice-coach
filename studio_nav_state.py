@@ -293,6 +293,29 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             _user_run_marker = str(session.get("_music_user_navigated_page_this_run") or "").strip()
         if studio_page_restore_projection_complete(session) and not _user_run_marker:
             canonical = canonical_studio_page(session)
+            hydrated = _normalize_page(str(session.get("_music_hydrated_studio_page") or ""))
+            live = _normalize_page(session.get("studio_page"))
+            preferred = hydrated or live
+            if preferred and canonical and preferred != canonical:
+                restore_source = str(session.get("_suite_page_overwrite_source") or "").strip()
+                if restore_source in (
+                    "workspace_blob",
+                    "cloud_restore",
+                    "session_page",
+                    "session_page_preserved",
+                    "user_nav_this_run",
+                ):
+                    return _finish(
+                        "hydrated_page_over_stale_canonical",
+                        preferred,
+                        reason="hydrated_page_over_stale_canonical",
+                        allow_detail={
+                            "canonical": canonical,
+                            "hydrated": hydrated,
+                            "live": live,
+                            "restore_source": restore_source,
+                        },
+                    )
             if canonical:
                 return _finish(
                     "canonical_post_restore",

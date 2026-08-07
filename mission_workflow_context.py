@@ -92,6 +92,8 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
     cleared: list[str] = []
     session[MISSION_IGNORE_GENERATED_SECTIONS_KEY] = True
     for key in (
+        "improv_jam_key",
+        "improv_style_key",
         "improv_jam_session",
         "improv_mission_backing_handoff",
         "_backing_mission_ui_suppressed",
@@ -111,6 +113,17 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
         on_mission_song_pick_changed(session)
     except ImportError:
         pass
+    try:
+        from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+        deactivate_generated_jam_key_ownership(session, pre_widget=True)
+        cleared.append("_generated_jam_key_context")
+    except ImportError:
+        pass
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry in ("Style Jam Mode", "Jam Session Generator"):
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        cleared.append("improv_entry_mode→Song-Based")
     return cleared
 
 

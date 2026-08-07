@@ -14552,6 +14552,7 @@ elif _studio_page == "creative":
 
         sync_creative_style_jam_meta(st.session_state)
         sync_creative_session_from_session(st.session_state)
+        tab = str(st.session_state.get("improv_intelligence_tab") or "").strip()
         entry = str(st.session_state.get("improv_entry_mode") or "").strip()
         try:
             from backing_source_navigation import _creative_handoff_entry_mode
@@ -14559,9 +14560,17 @@ elif _studio_page == "creative":
             entry = _creative_handoff_entry_mode(st.session_state)
         except ImportError:
             pass
-        if entry in ("Style Jam Mode", "Jam Session Generator"):
-            creative_source = "entry_jam"
-        elif str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(st.session_state)
+            if ptr and ptr.workflow_owner == "song_based_improvisation":
+                entry = "Song-Based Improvisation"
+            elif ptr and ptr.workflow_owner == "mission_jam":
+                tab = "Missions"
+        except ImportError:
+            pass
+        if tab == "Missions":
             creative_source = "mission"
         elif st.session_state.pop("improv_mission_backing_handoff", False):
             creative_source = "mission"

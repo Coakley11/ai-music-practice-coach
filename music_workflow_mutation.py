@@ -994,6 +994,12 @@ def update_mission_example_on_blob(
             b.mission_type = str(mission_type).strip()
         if section:
             b.selected_section = str(section).strip()
+        try:
+            idx_raw = session.get("II_SELECTED_CHORD_INDEX", session.get("ii_selected_chord_index"))
+            if idx_raw is not None and str(idx_raw).strip() != "":
+                b.selected_chord_index = int(idx_raw)
+        except (TypeError, ValueError):
+            pass
         if b.selected_chord_symbol and b.example_fingerprint:
             b.backing_handoff_chord = b.selected_chord_symbol
 

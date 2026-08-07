@@ -796,6 +796,12 @@ def begin_script_run_navigation_markers(session: dict[str, Any]) -> None:
     """Clear one-shot user navigation markers at the top of each Streamlit script run."""
     session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
     session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
+    try:
+        from music_restore_phase import STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY
+
+        session.pop(STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY, None)
+    except ImportError:
+        session.pop("_music_studio_page_restore_projection_complete", None)
 
 
 def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "") -> None:
