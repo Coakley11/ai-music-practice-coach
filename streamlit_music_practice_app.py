@@ -9655,6 +9655,13 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
+if str(st.session_state.get("studio_page") or "") == "creative":
+    try:
+        from creative_return_trace import trace_creative_run_start
+
+        trace_creative_run_start(st.session_state, label="START_AFTER_PAGE_TRANSITION")
+    except ImportError:
+        pass
 try:
     from pending_upload_route_precedence import (
         enforce_pending_upload_startup_route,
@@ -9857,8 +9864,17 @@ elif _studio_page_for_hydrate == "creative":
         pass
     try:
         from music_workflow_creative_nav import ensure_creative_tab_workflow_before_widgets
+        from creative_return_trace import snapshot_return_surface, trace_hydration_step
 
+        _b = snapshot_return_surface(st.session_state)
         _pre_wf = ensure_creative_tab_workflow_before_widgets(st.session_state)
+        if _pre_wf != "queued":
+            trace_hydration_step(
+                st.session_state,
+                f"ensure_creative_tab_workflow_before_widgets:{_pre_wf}",
+                before=_b,
+                after=snapshot_return_surface(st.session_state),
+            )
         if _pre_wf == "queued":
             try:
                 from music_app_rerun import request_app_rerun
@@ -9878,18 +9894,63 @@ elif _studio_page_for_hydrate == "creative":
             CREATIVE_RESTORE_FROM_BACKING_KEY,
             rehydrate_creative_from_backing_context,
         )
+        from creative_return_trace import snapshot_return_surface, trace_hydration_step
+
+        _cr_before = snapshot_return_surface(st.session_state)
+        trace_hydration_step(st.session_state, "creative_pre_widget_block_entry", before=_cr_before)
 
         if st.session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
+            _b = snapshot_return_surface(st.session_state)
             rehydrate_creative_from_backing_context(st.session_state, st_like=st)
+            trace_hydration_step(
+                st.session_state,
+                "rehydrate_creative_from_backing_context",
+                before=_b,
+                after=snapshot_return_surface(st.session_state),
+            )
             st.session_state.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
             st.session_state["_creative_restore_from_backing"] = True
         try:
             from studio_page_state import ensure_creative_widgets_from_backing_context
 
+            _b = snapshot_return_surface(st.session_state)
             ensure_creative_widgets_from_backing_context(
                 st.session_state,
                 restoring_from_backing=bool(st.session_state.pop("_creative_restore_from_backing", False)),
             )
+            trace_hydration_step(
+                st.session_state,
+                "ensure_creative_widgets_from_backing_context",
+                before=_b,
+                after=snapshot_return_surface(st.session_state),
+            )
+        except ImportError:
+            pass
+        trace_hydration_step(
+            st.session_state,
+            "creative_pre_widget_block_exit",
+            after=snapshot_return_surface(st.session_state),
+        )
+    except ImportError:
+        try:
+            from backing_source_navigation import (
+                CREATIVE_RESTORE_FROM_BACKING_KEY,
+                rehydrate_creative_from_backing_context,
+            )
+
+            if st.session_state.get(CREATIVE_RESTORE_FROM_BACKING_KEY):
+                rehydrate_creative_from_backing_context(st.session_state, st_like=st)
+                st.session_state.pop(CREATIVE_RESTORE_FROM_BACKING_KEY, None)
+                st.session_state["_creative_restore_from_backing"] = True
+            try:
+                from studio_page_state import ensure_creative_widgets_from_backing_context
+
+                ensure_creative_widgets_from_backing_context(
+                    st.session_state,
+                    restoring_from_backing=bool(st.session_state.pop("_creative_restore_from_backing", False)),
+                )
+            except ImportError:
+                pass
         except ImportError:
             pass
         try:
@@ -10401,6 +10462,13 @@ try:
     from music_persistence_trace import render_persistence_trace_sidebar
 
     render_persistence_trace_sidebar(st)
+except Exception:
+    pass
+
+try:
+    from creative_return_trace import render_creative_return_trace_panel
+
+    render_creative_return_trace_panel(st, st.session_state)
 except Exception:
     pass
 

@@ -1588,16 +1588,43 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
     if ctx is None:
         return page
     route = None
+    route_source = "none"
     try:
         from backing_creative_return_route import apply_creative_return_route, get_creative_return_route
+        from creative_return_trace import snapshot_return_surface, trace_return_after_apply, trace_return_route_read
 
         route = get_creative_return_route(session)
+        route_source = "blob_sealed" if isinstance(route, dict) else "legacy_inference_fallback"
+        trace_return_route_read(session, route=route, route_source=route_source)
+        before_apply = snapshot_return_surface(session)
         if isinstance(route, dict):
             apply_creative_return_route(session, route, ctx=ctx)
+            requested = dict(route)
         else:
             ident = apply_creative_return_identity_to_session(session, ctx)
             _activate_workflow_for_creative_return(session, ctx, ident)
             restore_session_widgets_from_backing_context(session, ctx)
+            requested = {"legacy": True, "ident": str(ident)}
+        after_apply = snapshot_return_surface(session)
+        trace_return_after_apply(
+            session,
+            requested={
+                "studio_page": "creative",
+                "intelligence_tab": requested.get("intelligence_tab"),
+                "entry_mode": requested.get("entry_mode"),
+                "workflow_owner": requested.get("workflow_owner"),
+                "backing_source": requested.get("backing_source"),
+                "mission_id": requested.get("mission_id"),
+            },
+            written={
+                "studio_page": str(session.get("studio_page") or ""),
+                "improv_intelligence_tab": after_apply.get("improv_intelligence_tab"),
+                "creative_improv_intelligence_tab": after_apply.get("creative_improv_intelligence_tab"),
+                "improv_entry_mode": after_apply.get("improv_entry_mode"),
+                "improv_active_mission": after_apply.get("improv_active_mission"),
+                "before_apply_snapshot": before_apply,
+            },
+        )
     except ImportError:
         ident = apply_creative_return_identity_to_session(session, ctx)
         _activate_workflow_for_creative_return(session, ctx, ident)

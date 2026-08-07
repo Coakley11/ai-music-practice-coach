@@ -179,6 +179,8 @@ def scan_creative_owner_preview_modules_in_source() -> dict[str, Any]:
         "music_workflow_pending_song_creative_focus_edit.py",
         "backing_source_navigation.py",
         "backing_context.py",
+        "creative_return_trace.py",
+        "backing_creative_return_route.py",
     )
     missing: list[str] = []
     for name in required:

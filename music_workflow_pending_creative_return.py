@@ -88,6 +88,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
 
         prepare_return_to_backing_source(session)
         session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
+        try:
+            from creative_return_trace import emit_creative_return_trace
+
+            emit_creative_return_trace(session, "ON_RETURN_AFTER_PREPARE_BEFORE_NAV")
+        except ImportError:
+            pass
     except ImportError:
         return "skipped"
     try:
@@ -118,6 +124,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
 
 
 def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> None:
+    try:
+        from creative_return_trace import trace_return_click_before
+
+        trace_return_click_before(session)
+    except ImportError:
+        pass
     try:
         from studio_page_persistence import save_page_snapshot
 

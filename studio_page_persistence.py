@@ -841,6 +841,12 @@ def handle_studio_page_transition(session_state: dict) -> None:
     last = session_state.get(_ACTIVE_PAGE_TRACKER)
     if last and last != current:
         try:
+            from creative_return_trace import trace_page_transition
+
+            trace_page_transition(session_state, from_page=str(last), to_page=current)
+        except ImportError:
+            pass
+        try:
             from music_nav_dedupe import save_page_snapshot_deduped
 
             save_page_snapshot_deduped(session_state, str(last))

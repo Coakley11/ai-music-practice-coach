@@ -184,11 +184,28 @@ def set_backing_context(
     ctx: BackingContext,
     *,
     creative_return_route: dict[str, Any] | None = None,
+    trace_caller: str = "",
 ) -> None:
+    prev_blob = session.get(BACKING_CONTEXT_KEY)
+    prev_route = prev_blob.get("creative_return_route") if isinstance(prev_blob, dict) else None
     payload = refresh_backing_context_timestamps(ctx).to_dict()
     if isinstance(creative_return_route, dict):
         payload["creative_return_route"] = dict(creative_return_route)
     session[BACKING_CONTEXT_KEY] = payload
+    new_route = payload.get("creative_return_route")
+    try:
+        from creative_return_trace import trace_set_backing_context
+
+        trace_set_backing_context(
+            session,
+            caller=str(trace_caller or "set_backing_context"),
+            prev_route=prev_route,
+            new_route=new_route,
+            ctx_source=str(ctx.source or ""),
+            ctx_signature=str(ctx.source_signature or ""),
+        )
+    except ImportError:
+        pass
 
 
 def clear_backing_context(session: dict[str, Any]) -> None:
@@ -2166,7 +2183,24 @@ def open_backing_from_creative(
         )
     except ImportError:
         pass
-    set_backing_context(session, ctx, creative_return_route=creative_return_route)
+    set_backing_context(
+        session,
+        ctx,
+        creative_return_route=creative_return_route,
+        trace_caller="open_backing_from_creative",
+    )
+    try:
+        from creative_return_trace import trace_backing_launch
+
+        trace_backing_launch(
+            session,
+            launch_tab=_launch_tab,
+            launch_entry=_launch_entry,
+            sealed_route=creative_return_route,
+            backing_source=str(ctx.source or source),
+        )
+    except ImportError:
+        pass
     if source == "mission":
         try:
             from mission_practice_context import (
@@ -2603,7 +2637,11 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
     if existing is not None and existing.source != "regular_song" and is_backing_context_valid(session, existing):
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
-            set_backing_context(session, refreshed)
+            set_backing_context(
+                session,
+                refreshed,
+                trace_caller="ensure_backing_context_from_creative_session:refresh",
+            )
         return refreshed or existing
     try:
         from creative_session_state import creative_session_is_active, get_creative_session
@@ -2621,7 +2659,7 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
             ctx = build_custom_progression_context(session)
         else:
             ctx = build_entry_jam_context(session)
-        set_backing_context(session, ctx)
+        set_backing_context(session, ctx, trace_caller="ensure_backing_context_from_creative_session:build")
         return ctx
     except ImportError:
         return existing
@@ -2673,12 +2711,18 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
         sync_improv_widgets_from_live_concert_key(session)
     refreshed = refresh_backing_context_from_session(session)
     if refreshed is not None:
-        set_backing_context(session, refreshed)
+        set_backing_context(session, refreshed, trace_caller="hydrate_backing_context_after_restore")
     session[PENDING_BACKING_CONTEXT_APPLY] = True
 
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
+    try:
+        from creative_return_trace import emit_creative_return_trace
+
+        emit_creative_return_trace(session, "RECONCILE_BACKING_PAGE_START")
+    except ImportError:
+        pass
     try:
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
@@ -2734,7 +2778,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         set_backing_source_preference(session, BACKING_PREF_CUSTOM)
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
-            set_backing_context(session, refreshed)
+            set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:custom_progression_refresh")
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),
@@ -2755,7 +2799,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         pending_apply = bool(session.get(PENDING_BACKING_CONTEXT_APPLY))
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
-            set_backing_context(session, refreshed)
+            set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:creative_refresh")
             ctx = refreshed
         if pending_apply:
             seeded = (
