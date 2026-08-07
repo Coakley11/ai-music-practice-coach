@@ -156,6 +156,7 @@ __all__ = (
     "normalize_backing_groove",
     "normalize_backing_scope",
     "resolve_selected_section_names",
+    "reset_backing_playback_scope_to_full_song",
     "seed_backing_multi_sections_for_widget",
     "backing_canonical_playback_seed",
     "backing_canonical_meter_seed",
@@ -179,6 +180,7 @@ __all__ = (
     "prepare_backing_scope_for_widget",
     "render_backing_state_debug",
     "strip_durable_backing_snapshot_keys",
+    "sync_backing_scope_widgets_after_user_edit",
     "write_canonical_backing_state",
 )
 
@@ -339,6 +341,56 @@ def seed_backing_multi_sections_for_widget(
     return seed
 
 
+def reset_backing_playback_scope_to_full_song(session: dict[str, Any], *, source: str) -> None:
+    """Reset session + canonical backing scope to Full Song (entry, song change, return handoff)."""
+    session[BACKING_SCOPE_WIDGET_KEY] = "Full song"
+    session.pop(BACKING_SINGLE_SECTION_WIDGET_KEY, None)
+    session.pop(BACKING_MULTI_SECTIONS_WIDGET_KEY, None)
+    session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
+    try:
+        from custom_progression_lab import (
+            PENDING_BACKING_MULTI_SECTIONS,
+            PENDING_BACKING_SCOPE,
+            PENDING_BACKING_SINGLE_SECTION,
+        )
+
+        session.pop(PENDING_BACKING_SCOPE, None)
+        session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+        session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+    except ImportError:
+        pass
+    try:
+        from backing_workflow_context import BACKING_WORKFLOW_SCOPE_OWNER_KEY
+
+        session.pop(BACKING_WORKFLOW_SCOPE_OWNER_KEY, None)
+    except ImportError:
+        session.pop("_backing_workflow_scope_owner", None)
+    canon = dict(canonical_backing_filters(session) or {})
+    merged = {
+        **canon,
+        "backing_track_scope": "Full song",
+        "backing_track_single_section": "",
+        "backing_track_multi_sections": [],
+        "backing_quick_section": "Full song",
+    }
+    normalized = _normalize_filters(merged)
+    session[BACKING_STATE_KEY] = {
+        **normalized,
+        "last_write_reason": f"playback_scope_default:{source}",
+    }
+    session.pop(BACKING_PENDING_SYNC_KEY, None)
+    session.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+
+
+def sync_backing_scope_widgets_after_user_edit(session: dict[str, Any]) -> None:
+    """Keep section widget keys consistent with the scope radio after a user change."""
+    scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY))
+    if scope == "Full song":
+        session.pop(BACKING_SINGLE_SECTION_WIDGET_KEY, None)
+        session.pop(BACKING_MULTI_SECTIONS_WIDGET_KEY, None)
+        session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
+
+
 def normalize_backing_groove(groove: Any) -> str:
     raw = str(groove or "").strip()
     if not raw:
@@ -460,7 +512,15 @@ def strip_durable_backing_snapshot_keys(snapshot: dict[str, Any] | None) -> dict
 def _sync_scope_keys_from_session(session: dict[str, Any]) -> dict[str, Any]:
     """Align scope, selected sections, and legacy quick-section from live widget keys."""
     quick = str(session.get(BACKING_QUICK_SECTION_WIDGET_KEY) or "").strip()
-    scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY))
+    scope_raw = session.get(BACKING_SCOPE_WIDGET_KEY)
+    scope = normalize_backing_scope(scope_raw)
+    if BACKING_SCOPE_WIDGET_KEY in session and scope == "Full song":
+        return {
+            "backing_track_scope": "Full song",
+            "backing_track_single_section": "",
+            "backing_track_multi_sections": [],
+            "backing_quick_section": "Full song",
+        }
     single = str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or "").strip()
     multi = _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
     if scope == "Selected sections":
@@ -691,7 +751,6 @@ def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
     return _normalize_filters(
         {
             **scope_keys,
-            "backing_track_multi_sections": session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY),
             "backing_track_loops": loops_val,
             "backing_track_bpm": bpm_val,
             "backing_groove_style": session.get("backing_groove_style"),
@@ -711,9 +770,12 @@ def canonical_backing_filters(session: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(meta, dict):
         return None
     filters = _normalize_filters(meta)
-    if not _filters_have_content(filters):
-        return None
-    return filters
+    if _filters_have_content(filters):
+        return filters
+    reason = str(meta.get("last_write_reason") or "")
+    if reason.startswith("playback_scope_default:") or reason.startswith("song_improv_scope:"):
+        return filters
+    return None
 
 
 def has_restored_backing_canonical(session: dict[str, Any]) -> bool:
@@ -833,13 +895,23 @@ def _resolve_backing_filters_for_envelope(
 
 
 def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, Any]) -> None:
-    session["backing_track_scope"] = normalize_backing_scope(filters.get("backing_track_scope"))
-    section = str(filters.get("backing_track_single_section") or "").strip()
-    if section:
-        session["backing_track_single_section"] = section
-    multi = _normalize_multi_sections(filters.get("backing_track_multi_sections"))
-    if multi:
-        session["backing_track_multi_sections"] = multi
+    scope = normalize_backing_scope(filters.get("backing_track_scope"))
+    session["backing_track_scope"] = scope
+    if scope == "Full song":
+        session.pop(BACKING_SINGLE_SECTION_WIDGET_KEY, None)
+        session.pop(BACKING_MULTI_SECTIONS_WIDGET_KEY, None)
+        session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
+    else:
+        section = str(filters.get("backing_track_single_section") or "").strip()
+        if section:
+            session[BACKING_SINGLE_SECTION_WIDGET_KEY] = section
+        else:
+            session.pop(BACKING_SINGLE_SECTION_WIDGET_KEY, None)
+        multi = _normalize_multi_sections(filters.get("backing_track_multi_sections"))
+        if multi:
+            session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = multi
+        else:
+            session.pop(BACKING_MULTI_SECTIONS_WIDGET_KEY, None)
     session["backing_track_loops"] = normalize_backing_loops(filters.get("backing_track_loops"))
     bpm = filters.get("backing_track_bpm")
     if bpm is not None:
@@ -855,8 +927,10 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
         session["backing_time_signature"] = meter
     session["backing_time_signature_override"] = bool(filters.get("backing_time_signature_override"))
     quick = str(filters.get("backing_quick_section") or "").strip()
-    if quick:
-        session["backing_quick_section"] = quick
+    if scope == "Full song":
+        session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
+    elif quick:
+        session[BACKING_QUICK_SECTION_WIDGET_KEY] = quick
     if "backing_autoplay" in filters:
         session["_backing_autoplay"] = bool(filters.get("backing_autoplay"))
     transport = str(filters.get("backing_transport_status") or "").strip()

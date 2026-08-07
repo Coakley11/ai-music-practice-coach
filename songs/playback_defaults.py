@@ -403,6 +403,15 @@ def canonicalize_backing_defaults_for_song(
                     st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
                 except ImportError:
                     pass
+                try:
+                    from backing_track_state import reset_backing_playback_scope_to_full_song
+
+                    reset_backing_playback_scope_to_full_song(
+                        st.session_state,
+                        source="creative_backing_sync_id_change",
+                    )
+                except ImportError:
+                    pass
             else:
                 try:
                     from backing_track_state import is_backing_user_dirty
@@ -463,6 +472,12 @@ def canonicalize_backing_defaults_for_song(
             from backing_track_state import BACKING_WIDGETS_SEEDED_KEY
 
             st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+        except ImportError:
+            pass
+        try:
+            from backing_track_state import reset_backing_playback_scope_to_full_song
+
+            reset_backing_playback_scope_to_full_song(st.session_state, source="catalog_song_change")
         except ImportError:
             pass
 

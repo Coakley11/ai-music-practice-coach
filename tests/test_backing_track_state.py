@@ -339,10 +339,19 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(session["backing_track_state"]["backing_track_loops"], 1)
         self.assertEqual(session["backing_track_loops"], 1)
 
-    def test_gather_syncs_quick_section_to_scope(self) -> None:
+    def test_gather_full_song_scope_wins_over_stale_quick_section(self) -> None:
         session = {
             "backing_quick_section": "Chorus",
             "backing_track_scope": "Full song",
+        }
+        filters = gather_backing_filters(session)
+        self.assertEqual(filters["backing_track_scope"], "Full song")
+        self.assertEqual(filters["backing_track_single_section"], "")
+        self.assertEqual(filters["backing_quick_section"], "Full song")
+
+    def test_gather_syncs_quick_section_to_scope_when_scope_unset(self) -> None:
+        session = {
+            "backing_quick_section": "Chorus",
         }
         filters = gather_backing_filters(session)
         self.assertEqual(filters["backing_track_scope"], "Selected sections")

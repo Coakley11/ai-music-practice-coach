@@ -146,9 +146,32 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
         except Exception:
             pass
         return
-    if not request_pending_creative_return_rerun(st_module, session):
+    phase = consume_pending_creative_return_handoff(session, st=st_module)
+    if phase == "skipped":
         try:
-            st_module.warning("Return to Creative is queued — refresh if navigation does not continue.")
+            st_module.warning("Return to Creative could not apply backing context.")
+        except Exception:
+            pass
+        return
+    try:
+        from music_rerun_loop_guard import clear_rerun_loop_block
+
+        clear_rerun_loop_block(session, reason="creative_return_click")
+    except ImportError:
+        pass
+    try:
+        from music_app_rerun import request_app_rerun
+
+        if not request_app_rerun(
+            st_module,
+            session,
+            reason="creative_return_click",
+            stage="post_consume",
+        ):
+            st_module.rerun()
+    except ImportError:
+        try:
+            st_module.rerun()
         except Exception:
             pass
 

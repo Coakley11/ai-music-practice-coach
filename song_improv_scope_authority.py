@@ -47,27 +47,14 @@ def apply_song_improv_entry_defaults(session: dict[str, Any], *, source: str) ->
 
 
 def reset_song_improv_playback_scope(session: dict[str, Any], *, source: str) -> None:
-    session["backing_track_scope"] = SONG_IMPROV_PLAYBACK_FULL
-    session.pop("backing_track_single_section", None)
-    session.pop("backing_track_multi_sections", None)
     try:
-        from custom_progression_lab import (
-            PENDING_BACKING_MULTI_SECTIONS,
-            PENDING_BACKING_SCOPE,
-            PENDING_BACKING_SINGLE_SECTION,
-        )
+        from backing_track_state import reset_backing_playback_scope_to_full_song
 
-        session.pop(PENDING_BACKING_SCOPE, None)
-        session.pop(PENDING_BACKING_SINGLE_SECTION, None)
-        session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+        reset_backing_playback_scope_to_full_song(session, source=source)
     except ImportError:
-        pass
-    try:
-        from backing_workflow_context import BACKING_WORKFLOW_SCOPE_OWNER_KEY
-
-        session.pop(BACKING_WORKFLOW_SCOPE_OWNER_KEY, None)
-    except ImportError:
-        session.pop("_backing_workflow_scope_owner", None)
+        session["backing_track_scope"] = SONG_IMPROV_PLAYBACK_FULL
+        session.pop("backing_track_single_section", None)
+        session.pop("backing_track_multi_sections", None)
     session["_song_improv_scope_last_reset_source"] = str(source or "")
 
 

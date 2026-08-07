@@ -9049,6 +9049,9 @@ def _render_backing_scope_controls(
         st.session_state["backing_track_scope"] = _cur_scope
         if _cur_scope == "Selected sections":
             seed_backing_multi_sections_for_widget(st.session_state, section_names)
+        else:
+            st.session_state.pop("backing_track_single_section", None)
+            st.session_state.pop("backing_track_multi_sections", None)
 
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
         render_backing_field_label(
@@ -10065,10 +10068,15 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
-        from backing_track_state import BACKING_USER_EDITS_ALLOWED_KEY, mark_backing_user_edit
+        from backing_track_state import (
+            BACKING_USER_EDITS_ALLOWED_KEY,
+            mark_backing_user_edit,
+            sync_backing_scope_widgets_after_user_edit,
+        )
 
         if not st.session_state.get(BACKING_USER_EDITS_ALLOWED_KEY):
             return
+        sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
     except Exception:
         return
