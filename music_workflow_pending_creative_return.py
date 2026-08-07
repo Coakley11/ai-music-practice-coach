@@ -165,20 +165,60 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
     except ImportError:
         pass
     try:
+        from studio_page_route_trace import trace_return_before_rerun, trace_return_rerun_outcome
+
+        trace_return_before_rerun(session, dispatch_local="backing")
+    except ImportError:
+        pass
+    rerun_invoked = False
+    fallback_rerun = False
+    try:
         from music_app_rerun import request_app_rerun
 
-        if not request_app_rerun(
-            st_module,
-            session,
-            reason="creative_return_click",
-            stage="post_consume",
-        ):
+        rerun_invoked = bool(
+            request_app_rerun(
+                st_module,
+                session,
+                reason="creative_return_click",
+                stage="post_consume",
+            )
+        )
+        if not rerun_invoked:
+            fallback_rerun = True
             st_module.rerun()
     except ImportError:
         try:
+            fallback_rerun = True
             st_module.rerun()
         except Exception:
             pass
+    try:
+        from studio_page_route_trace import trace_return_rerun_outcome
+
+        trace_return_rerun_outcome(
+            session,
+            rerun_requested=True,
+            rerun_invoked=rerun_invoked,
+            fallback_rerun=fallback_rerun,
+        )
+    except ImportError:
+        pass
+    if str(session.get("studio_page") or "").strip().lower() == "creative":
+        try:
+            from studio_page_route_trace import trace_post_return_stop_guard
+
+            trace_post_return_stop_guard(session)
+        except ImportError:
+            pass
+        try:
+            from music_app_rerun import request_app_stop
+
+            request_app_stop(st_module, session, reason="creative_return_dispatch_guard")
+        except ImportError:
+            try:
+                st_module.stop()
+            except Exception:
+                pass
 
 
 __all__ = [

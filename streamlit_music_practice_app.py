@@ -9649,6 +9649,16 @@ except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
+    from studio_page_route_trace import trace_run_start_after_ensure
+
+    trace_run_start_after_ensure(
+        st.session_state,
+        dispatch_local=_studio_page,
+        ensure_result=_studio_page,
+    )
+except ImportError:
+    pass
+try:
     ensure_sidebar_nav_defaults(st.session_state)
 except Exception:
     pass
@@ -11115,11 +11125,22 @@ except Exception:
     pass
 
 if pp.show_quick_nav(st):
+    _quick_nav_page_before = _studio_page
     _studio_page = render_page_quick_nav(
         st.session_state,
         current_page=_studio_page,
         rerun_fn=st.rerun,
     )
+    try:
+        from studio_page_route_trace import trace_post_quick_nav
+
+        trace_post_quick_nav(
+            st.session_state,
+            before=_quick_nav_page_before,
+            after=_studio_page,
+        )
+    except ImportError:
+        pass
     try:
         from local_nav_trace import record_local_nav_checkpoint
 
@@ -11127,6 +11148,21 @@ if pp.show_quick_nav(st):
     except Exception:
         pass
     _render_workflow_architecture_dev_panel()
+
+_live_dispatch_page = str(st.session_state.get("studio_page") or "").strip() or _studio_page
+if _live_dispatch_page != _studio_page:
+    try:
+        from studio_page_route_trace import trace_dispatch_resync
+
+        trace_dispatch_resync(
+            st.session_state,
+            old_dispatch=_studio_page,
+            new_dispatch=_live_dispatch_page,
+            reason="session_studio_page_before_page_body",
+        )
+    except ImportError:
+        pass
+    _studio_page = _live_dispatch_page
 
 if _developer_mode_enabled():
     try:
@@ -12387,6 +12423,12 @@ elif _studio_page == "picker":
 # -------------------------------------------------
 
 elif _studio_page == "backing":
+    try:
+        from studio_page_route_trace import trace_before_render_backing
+
+        trace_before_render_backing(st.session_state, dispatch_local=_studio_page)
+    except ImportError:
+        pass
 
     try:
         from music_workflow_backing_mixed_context_guard import (
@@ -14391,6 +14433,12 @@ elif _studio_page == "composer":
 # -------------------------------------------------
 
 elif _studio_page == "creative":
+    try:
+        from studio_page_route_trace import trace_before_render_creative
+
+        trace_before_render_creative(st.session_state, dispatch_local=_studio_page)
+    except ImportError:
+        pass
 
     try:
         from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end

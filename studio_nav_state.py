@@ -207,6 +207,20 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
             )
         except ImportError:
             pass
+        try:
+            from studio_page_route_trace import emit_route_trace
+
+            emit_route_trace(
+                session,
+                "PREPARE_STUDIO_NAV_EXIT",
+                extra={
+                    "branch": branch,
+                    "selected_page": page,
+                    "write_reason": reason,
+                },
+            )
+        except ImportError:
+            pass
         return write_canonical_studio_nav_state(session, page, reason=reason, local_edit=local_edit)
 
     try:

@@ -889,6 +889,12 @@ def handle_studio_page_transition(session_state: dict) -> None:
             if mark_page_snapshot_hydrated is not None:
                 mark_page_snapshot_hydrated(session_state, current)
     session_state[_ACTIVE_PAGE_TRACKER] = current
+    try:
+        from studio_page_route_trace import trace_after_page_transition
+
+        trace_after_page_transition(session_state, dispatch_local=current)
+    except ImportError:
+        pass
 
 
 def make_history_entry(session_state: dict, page_id: str) -> dict[str, Any]:
