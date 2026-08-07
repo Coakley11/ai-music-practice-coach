@@ -139,6 +139,12 @@ def apply_pending_song_practice_key_edit_pre_widget(
         return False
     session[SONG_PRACTICE_KEY_EDIT_OUTCOME_KEY] = {"canonical_commit": "SUCCESS"}
     finalize_sidebar_song_practice_key_after_mutation(session, requested, st_like=st_like)
+    try:
+        from song_creative_focus import retarget_song_creative_focus_after_practice_key_change
+
+        retarget_song_creative_focus_after_practice_key_change(session)
+    except ImportError:
+        pass
     return True
 
 

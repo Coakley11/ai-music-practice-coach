@@ -54,3 +54,9 @@ def quarantine_account_scoped_pending_intents(session: dict[str, Any]) -> None:
         clear_pending_song_practice_key_edit(session)
     except ImportError:
         session.pop("_music_pending_song_practice_key_edit", None)
+    try:
+        from music_workflow_pending_song_creative_focus_edit import clear_pending_song_creative_focus_edit
+
+        clear_pending_song_creative_focus_edit(session)
+    except ImportError:
+        session.pop("_music_pending_song_creative_focus_edit", None)

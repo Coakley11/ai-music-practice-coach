@@ -40,6 +40,7 @@ $TestFiles = @(
     "tests/test_creative_session_state.py",
     "tests/test_creative_catalog_handoff_picker.py",
     "tests/test_song_based_minor_practice_key_lifecycle.py",
+    "tests/test_song_creative_focus_cross_tab_sync.py",
     "tests/test_creative_key_sync.py",
     "tests/test_suite_user_persistence.py",
     "tests/test_music_deploy_verification.py"

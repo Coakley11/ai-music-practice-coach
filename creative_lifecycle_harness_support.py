@@ -160,18 +160,58 @@ def seed_stale_generator_artifact(session: dict[str, Any], *, gen_id: str = "sta
 
 
 def mission_select_single_chord(session: dict[str, Any], *, chord: str = "Dm", section: str = "Verse") -> None:
-    try:
-        from workflow_musical_authority import save_workflow_snapshot
-
-        save_workflow_snapshot(session, "song_based_improvisation")
-    except ImportError:
-        pass
     session["improv_intelligence_tab"] = "Missions"
-    session["ii_selected_chord"] = chord
-    session["II_SELECTED_CHORD"] = chord
-    session["ii_selected_section"] = section
-    session["II_SELECTED_SECTION"] = section
-    session["improv_mission_progression"] = [chord]
+    try:
+        from improvisation_intelligence import ImprovSessionContext
+        from improvisation_motif import flatten_section_map, global_chord_index, resolve_improv_sections
+
+        ctx = ImprovSessionContext(
+            song_title=str(session.get("song") or ""),
+            artist="",
+            key_center=str(session.get("concert_key") or "C"),
+            display_key=str(session.get("display_key") or session.get("concert_key") or "C"),
+            instrument="Piano",
+            level="Intermediate",
+            focus="Improvisation",
+            sections=session.get("home_sections") or {},
+            bpm=100,
+            style_label="",
+            progression_flat=[],
+            section_order=[],
+        )
+        from song_creative_focus import _section_map_for_focus
+
+        section_map = _section_map_for_focus(session, ctx)
+        gidx = 0
+        found_section = section
+        for si, (label, chs) in enumerate(section_map):
+            for ci, ch in enumerate(chs):
+                if ch != chord:
+                    continue
+                if section and label != section:
+                    continue
+                gidx = global_chord_index(section_map, si, ci)
+                found_section = label
+                break
+            else:
+                continue
+            break
+        section = found_section
+        from active_musical_workflow_envelope import apply_atomic_mission_chord_selection
+
+        apply_atomic_mission_chord_selection(
+            session,
+            chord=chord,
+            section=section,
+            chord_index=gidx,
+            chord_label=f"{section} · {chord}",
+            button_key="harness_mission_chord",
+        )
+    except ImportError:
+        session["ii_selected_chord"] = chord
+        session["II_SELECTED_CHORD"] = chord
+        session["ii_selected_section"] = section
+        session["II_SELECTED_SECTION"] = section
     try:
         from music_workflow_creative_nav import sync_workflow_for_creative_tab
 
@@ -184,8 +224,45 @@ def mission_select_single_chord(session: dict[str, Any], *, chord: str = "Dm", s
 def harmony_map_focus_chord(session: dict[str, Any], *, chord: str = "Gm", section: str = "Verse") -> None:
     session["improv_intelligence_tab"] = "Harmony Map"
     session["creative_improv_intelligence_tab"] = "Harmony Map"
-    session["harmony_map_chord"] = chord
-    session["harmony_map_section"] = section
+    try:
+        from improvisation_intelligence import ImprovSessionContext
+        from improvisation_motif import global_chord_index, resolve_improv_sections
+        from song_creative_focus_change import commit_song_creative_focus_selection
+
+        ctx = ImprovSessionContext(
+            song_title=str(session.get("song") or ""),
+            artist="",
+            key_center=str(session.get("concert_key") or "C"),
+            display_key=str(session.get("display_key") or session.get("concert_key") or "C"),
+            instrument="Piano",
+            level="Intermediate",
+            focus="Improvisation",
+            sections=session.get("home_sections") or {},
+            bpm=100,
+            style_label="",
+            progression_flat=[],
+            section_order=[],
+        )
+        from song_creative_focus import _section_map_for_focus
+
+        section_map = _section_map_for_focus(session, ctx)
+        gidx = 0
+        for si, (label, chs) in enumerate(section_map):
+            for ci, ch in enumerate(chs):
+                if ch == chord and (not section or label == section):
+                    gidx = global_chord_index(section_map, si, ci)
+                    section = label
+                    break
+        commit_song_creative_focus_selection(
+            session,
+            section=section,
+            concert_chord=chord,
+            chord_index=gidx,
+            source_page="Harmony Map",
+        )
+    except ImportError:
+        session["harmony_map_chord"] = chord
+        session["harmony_map_section"] = section
     try:
         from music_workflow_creative_nav import sync_workflow_for_creative_tab
 

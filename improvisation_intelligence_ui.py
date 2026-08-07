@@ -825,6 +825,12 @@ def _render_open_practice_backing_row(
 
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
+    try:
+        from song_creative_focus import hydrate_creative_pages_from_song_focus
+
+        hydrate_creative_pages_from_song_focus(session_state, tab="Live Coach")
+    except ImportError:
+        pass
     st.markdown("#### Real-time improvisation coach")
     from practice_setup_controls import (
         DEFAULT_INSTRUMENT_OPTIONS,
@@ -934,6 +940,12 @@ def _tab_motif(
     instrument: str,
     bpm: int,
 ) -> None:
+    try:
+        from song_creative_focus import hydrate_creative_pages_from_song_focus
+
+        hydrate_creative_pages_from_song_focus(session_state, tab="Phrase / Motif")
+    except ImportError:
+        pass
     st.markdown("#### Phrase / motif training")
     st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
 
@@ -1146,6 +1158,29 @@ def _ensure_chord_selection(
 ) -> None:
     """Keep selection keyed by global chord index (section + position), not chord name."""
     _migrate_ii_chord_selection(session_state)
+    try:
+        from song_creative_focus import read_song_creative_focus, resolve_focus_against_progression
+
+        focus = read_song_creative_focus(session_state)
+        if focus and section_map:
+            resolved = resolve_focus_against_progression(session_state, focus)
+            target = str(resolved.get("selected_concert_chord") or "").strip()
+            if target and target in chords:
+                idx = int(resolved.get("selected_chord_id") or 0)
+                if idx < 0 or idx >= len(chords) or chords[idx] != target:
+                    idx = chords.index(target)
+                session_state[II_SELECTED_CHORD_INDEX] = idx
+                session_state[II_SELECTED_CHORD] = chords[idx]
+                sec, _ = section_and_chord_at_global_index(section_map, idx)
+                if sec:
+                    session_state[II_SELECTED_SECTION] = sec
+                    session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chords[idx]}"
+                session_state["harmony_map_chord"] = chords[idx]
+                session_state["harmony_map_section"] = sec or str(resolved.get("selected_section_id") or "")
+                session_state["improv_mission_chord_options"] = list(chords)
+                return
+    except ImportError:
+        pass
     if not chords:
         return
     try:
@@ -1998,6 +2033,12 @@ def _tab_missions(
         project_mission_config_from_canonical_before_widgets(session_state)
     except ImportError:
         pass
+    try:
+        from song_creative_focus import hydrate_creative_pages_from_song_focus
+
+        hydrate_creative_pages_from_song_focus(session_state, tab="Missions")
+    except ImportError:
+        pass
 
     try:
         from creative_mission_artifact_persistence import (
@@ -2577,6 +2618,13 @@ def _tab_harmony_map(
         render_setup_quick_controls,
     )
 
+    try:
+        from song_creative_focus import hydrate_creative_pages_from_song_focus
+
+        hydrate_creative_pages_from_song_focus(session_state, tab="Harmony Map")
+    except ImportError:
+        pass
+
     st.markdown("#### Harmony map")
     st.caption(
         f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(improv_ctx.display_key)}** · "
@@ -2620,7 +2668,7 @@ def _tab_harmony_map(
     sel_chord = str(session_state.get("harmony_map_chord") or "")
 
     src = _safe_widget_key_part(improv_ctx.song_title or "song")
-    for sec_label, chords in section_map:
+    for sec_i, (sec_label, chords) in enumerate(section_map):
         chips = []
         for ch in chords:
             selected = sel_section == sec_label and sel_chord == ch
@@ -2644,8 +2692,21 @@ def _tab_harmony_map(
                     type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
                     use_container_width=True,
                 ):
-                    session_state["harmony_map_section"] = sec_label
-                    session_state["harmony_map_chord"] = ch
+                    try:
+                        from improvisation_motif import global_chord_index
+                        from song_creative_focus_change import capture_song_creative_focus_intent
+
+                        gidx = global_chord_index(list(section_map), sec_i, i)
+                        capture_song_creative_focus_intent(
+                            session_state,
+                            section=sec_label,
+                            concert_chord=ch,
+                            chord_index=gidx,
+                            source_page="Harmony Map",
+                        )
+                    except ImportError:
+                        session_state["harmony_map_section"] = sec_label
+                        session_state["harmony_map_chord"] = ch
                     try:
                         from creative_context_snapshot_persistence import handle_user_harmony_map_context_change
 
