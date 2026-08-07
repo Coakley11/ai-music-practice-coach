@@ -1218,13 +1218,26 @@ def _ensure_chord_selection(
             if target and target in chords:
                 idx = int(resolved.get("selected_chord_id") or 0)
                 if idx < 0 or idx >= len(chords) or chords[idx] != target:
-                    idx = chords.index(target)
+                    idx = -1
+                if idx < 0:
+                    return
                 session_state[II_SELECTED_CHORD_INDEX] = idx
                 session_state[II_SELECTED_CHORD] = chords[idx]
                 sec, _ = section_and_chord_at_global_index(section_map, idx)
                 if sec:
                     session_state[II_SELECTED_SECTION] = sec
                     session_state[II_SELECTED_CHORD_LABEL] = f"{sec} · {chords[idx]}"
+                try:
+                    from song_creative_focus import record_harmony_section_selection
+
+                    record_harmony_section_selection(
+                        session_state,
+                        section=sec or str(resolved.get("selected_section_id") or ""),
+                        chord=chords[idx],
+                        global_index=idx,
+                    )
+                except ImportError:
+                    pass
                 session_state["harmony_map_chord"] = chords[idx]
                 session_state["harmony_map_section"] = sec or str(resolved.get("selected_section_id") or "")
                 session_state["improv_mission_chord_options"] = list(chords)
@@ -2748,10 +2761,24 @@ def _tab_harmony_map(
     st.markdown(HARMONY_MAP_CHIP_CSS, unsafe_allow_html=True)
 
     src = _safe_widget_key_part(improv_ctx.song_title or "song")
+    try:
+        from song_creative_focus import harmony_section_display_chord
+    except ImportError:
+        harmony_section_display_chord = None  # type: ignore[misc, assignment]
+
     for sec_i, (sec_label, chords) in enumerate(section_map):
         chips = []
         for ch in chords:
-            selected = sel_section == sec_label and sel_chord == ch
+            if harmony_section_display_chord:
+                display_ch = harmony_section_display_chord(
+                    session_state,
+                    sec_label,
+                    shared_section=sel_section,
+                    shared_chord=sel_chord,
+                )
+            else:
+                display_ch = sel_chord if sel_section == sec_label else ""
+            selected = display_ch == ch
             chips.append(
                 f'<span class="hm-chord-chip{" selected" if selected else ""}">'
                 f"{html.escape(ch)}</span>"
@@ -2766,17 +2793,33 @@ def _tab_harmony_map(
         cols = st.columns(min(len(chords), 8) or 1)
         for i, ch in enumerate(chords):
             with cols[i % len(cols)]:
+                if harmony_section_display_chord:
+                    display_ch = harmony_section_display_chord(
+                        session_state,
+                        sec_label,
+                        shared_section=sel_section,
+                        shared_chord=sel_chord,
+                    )
+                else:
+                    display_ch = sel_chord if sel_section == sec_label else ""
                 if st.button(
                     ch,
                     key=f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}",
-                    type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
+                    type="primary" if display_ch == ch else "secondary",
                     use_container_width=True,
                 ):
                     try:
                         from improvisation_motif import global_chord_index
+                        from song_creative_focus import record_harmony_section_selection
                         from song_creative_focus_change import capture_song_creative_focus_intent
 
                         gidx = global_chord_index(list(section_map), sec_i, i)
+                        record_harmony_section_selection(
+                            session_state,
+                            section=sec_label,
+                            chord=ch,
+                            global_index=gidx,
+                        )
                         capture_song_creative_focus_intent(
                             session_state,
                             section=sec_label,

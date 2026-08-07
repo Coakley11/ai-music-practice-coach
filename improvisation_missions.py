@@ -733,10 +733,12 @@ def store_mission_example(
     }
     session_state[MISSION_VARIANT_KEY] = example.variant
     fp = motif_material_fingerprint(example.motif)
+    blob_mut_ok = True
+    blob_mut_code = ""
     try:
         from music_workflow_mutation import update_mission_example_on_blob
 
-        update_mission_example_on_blob(
+        mut = update_mission_example_on_blob(
             session_state,
             chord=str(example.chord or ""),
             example_fingerprint=fp,
@@ -744,8 +746,12 @@ def store_mission_example(
             mission_type=str(example.mission or ""),
             section=str(example.section or ""),
         )
+        blob_mut_ok = bool(mut.ok)
+        blob_mut_code = str(mut.error_code or "")
     except ImportError:
         pass
+    session_state["_mission_example_blob_mutation_ok"] = blob_mut_ok
+    session_state["_mission_example_blob_mutation_code"] = blob_mut_code
     if persist_artifact:
         try:
             from creative_mission_artifact_persistence import handle_user_mission_example_artifact_saved

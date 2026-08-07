@@ -358,6 +358,8 @@ def commit_staged_workflow(
             "on_improv_jam_key_change",
         }:
             canonical_keep = True
+        if not canonical_keep and mutation_type == "mission_example_artifact":
+            canonical_keep = True
         if canonical_keep:
             trace["validation_result"] = "defer"
             trace["error_code"] = "PROJECTION_DEFERRED"

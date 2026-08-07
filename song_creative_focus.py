@@ -10,6 +10,7 @@ from typing import Any
 
 SONG_CREATIVE_FOCUS_KEY = "_music_song_creative_focus"
 SONG_CREATIVE_FOCUS_REVISION_KEY = "_music_song_creative_focus_revision"
+HARMONY_MAP_SECTION_SELECTIONS_KEY = "harmony_map_section_selections"
 
 _VALID_SOURCE_PAGES = frozenset(
     {
@@ -176,6 +177,7 @@ def project_song_creative_focus_to_pages(session: dict[str, Any], focus: dict[st
     idx = int(focus.get("selected_chord_id") or 0)
     if not chord:
         return
+    record_harmony_section_selection(session, section=section, chord=chord, global_index=idx)
     session["ii_selected_chord"] = chord
     session["II_SELECTED_CHORD"] = chord
     session["ii_selected_section"] = section
@@ -187,6 +189,60 @@ def project_song_creative_focus_to_pages(session: dict[str, Any], focus: dict[st
     session["II_SELECTED_CHORD_LABEL"] = label
     session["harmony_map_chord"] = chord
     session["harmony_map_section"] = section
+
+
+def _harmony_section_selections(session: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw = session.get(HARMONY_MAP_SECTION_SELECTIONS_KEY)
+    if not isinstance(raw, dict):
+        raw = {}
+        session[HARMONY_MAP_SECTION_SELECTIONS_KEY] = raw
+    return raw
+
+
+def record_harmony_section_selection(
+    session: dict[str, Any],
+    *,
+    section: str,
+    chord: str,
+    global_index: int,
+) -> None:
+    sec = str(section or "").strip()
+    ch = str(chord or "").strip()
+    if not sec or not ch:
+        return
+    selections = _harmony_section_selections(session)
+    selections[sec] = {"chord": ch, "global_index": int(global_index)}
+
+
+def read_harmony_section_selection(session: dict[str, Any], section: str) -> tuple[str, int] | None:
+    sec = str(section or "").strip()
+    if not sec:
+        return None
+    raw = session.get(HARMONY_MAP_SECTION_SELECTIONS_KEY)
+    if not isinstance(raw, dict):
+        return None
+    entry = raw.get(sec)
+    if not isinstance(entry, dict):
+        return None
+    ch = str(entry.get("chord") or "").strip()
+    if not ch:
+        return None
+    return ch, int(entry.get("global_index") or 0)
+
+
+def harmony_section_display_chord(
+    session: dict[str, Any],
+    section_label: str,
+    *,
+    shared_section: str,
+    shared_chord: str,
+) -> str:
+    local = read_harmony_section_selection(session, section_label)
+    if local:
+        return local[0]
+    if shared_section == section_label and shared_chord:
+        return shared_chord
+    return ""
 
 
 def persist_focus_on_song_blob(session: dict[str, Any], focus: dict[str, Any]) -> bool:
@@ -328,13 +384,17 @@ def retarget_song_creative_focus_after_practice_key_change(session: dict[str, An
 __all__ = [
     "SONG_CREATIVE_FOCUS_KEY",
     "SONG_CREATIVE_FOCUS_REVISION_KEY",
+    "HARMONY_MAP_SECTION_SELECTIONS_KEY",
     "build_song_creative_focus",
     "commit_song_creative_focus",
     "focus_binding_matches",
+    "harmony_section_display_chord",
     "hydrate_creative_pages_from_song_focus",
     "persist_focus_on_song_blob",
     "project_song_creative_focus_to_pages",
+    "read_harmony_section_selection",
     "read_song_creative_focus",
+    "record_harmony_section_selection",
     "resolve_focus_against_progression",
     "retarget_song_creative_focus_after_practice_key_change",
     "stable_song_id",
