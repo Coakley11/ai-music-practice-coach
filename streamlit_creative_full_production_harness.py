@@ -243,6 +243,25 @@ except ImportError:
 
 _render_creative_shell(st.session_state)
 
+st.markdown("### Song-Based minor practice key (Hevenu)")
+if st.button("Run Hevenu D minor → E♭ minor scenario (headless)"):
+    try:
+        from creative_lifecycle_harness_support import run_song_based_minor_practice_key_harness_scenario
+        from tests.test_creative_catalog_handoff_picker import CATALOG, _stale_canonical_say_session
+
+        result = run_song_based_minor_practice_key_harness_scenario(
+            st.session_state,
+            catalog=CATALOG,
+            stale_say_session_factory=_stale_canonical_say_session,
+        )
+        if result.get("passed"):
+            st.success("Scenario passed — blob, display_key, and sidebar options agree on E♭ minor.")
+        else:
+            st.error("Scenario failed")
+        st.json(result)
+    except Exception as exc:
+        st.exception(exc)
+
 with st.expander("Diagnostics", expanded=False):
     st.json({"bootstrap": bootstrap, "widgets_locked": bool(_lock_after_sidebar)})
     try:

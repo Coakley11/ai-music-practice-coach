@@ -66,6 +66,14 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["generated_key_edit"] = f"FAIL:{exc}"
     try:
+        consume_song_key = _require(
+            "music_workflow_pending_song_practice_key_edit",
+            "consume_pending_song_practice_key_edit",
+        )
+        phases["song_practice_key_edit"] = str(consume_song_key(session, st=st))
+    except RuntimeError as exc:
+        phases["song_practice_key_edit"] = f"FAIL:{exc}"
+    try:
         consume_gen = _require(
             "music_workflow_pending_generated_progression",
             "consume_pending_generated_progression",

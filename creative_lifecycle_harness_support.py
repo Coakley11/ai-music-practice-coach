@@ -547,3 +547,80 @@ def simulate_picker_to_creative_handoff(
     )
     return phases
 
+
+def run_song_based_minor_practice_key_harness_scenario(
+    session: dict[str, Any],
+    *,
+    catalog: dict[str, dict[str, dict]],
+    stale_say_session_factory,
+    new_pick: str = HEVENU_PICK,
+    target_key: str = "Ebm",
+) -> dict[str, Any]:
+    """Headless full-production path: picker handoff → sidebar key → pre-widget consume → canonical."""
+    from unittest.mock import MagicMock, patch
+
+    from creative_key_sync import on_sidebar_practice_concert_key_change, prepare_creative_sidebar_display_key
+    from music_persistent_state import prepare_canonical_music_page_state
+    from music_theory import key_is_minor, split_key_center
+    from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
+    from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+    base = stale_say_session_factory()
+    session.clear()
+    session.update(base)
+    simulate_picker_to_creative_handoff(session, catalog=catalog, new_pick=new_pick)
+    session["improv_entry_mode"] = "Song-Based Improvisation"
+    session["improv_intelligence_tab"] = "Entry & Jam"
+    session["display_key"] = target_key
+    session["_streamlit_widgets_locked_this_run"] = True
+    import streamlit as st_mod
+
+    prior = getattr(st_mod, "session_state", None)
+    st_mod.session_state = session  # type: ignore[misc]
+    outcome: dict[str, Any] = {"target_key": target_key, "steps": []}
+    try:
+        with patch(
+            "display_key_sidebar_save_pipeline.run_explicit_display_key_cloud_save",
+            return_value=True,
+        ):
+            on_sidebar_practice_concert_key_change()
+        outcome["steps"].append("sidebar_callback")
+        pending = session.get("_music_pending_song_practice_key_edit")
+        outcome["pending_queued"] = isinstance(pending, dict)
+        session.pop("_streamlit_widgets_locked_this_run", None)
+        session.pop("_music_pre_widget_bootstrap_ran_this_run", None)
+        phases = run_pre_widget_application_consumers(session)
+        outcome["pre_widget"] = phases.get("song_practice_key_edit")
+        outcome["steps"].append("pre_widget_consume")
+        prepare_canonical_music_page_state(session, song_picker_catalog=catalog, force=True)
+        st = MagicMock(session_state=session)
+        options = prepare_creative_sidebar_display_key(st, session)
+        outcome["steps"].append("canonical_prepare")
+        ptr = get_active_workflow_pointer(session)
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) if ptr else None
+        pt, _pm = split_key_center(target_key)
+        ok = (
+            blob is not None
+            and str(blob.keys.practice_mode or "").lower() == "minor"
+            and str(blob.keys.practice_tonic or "").upper() == pt.upper()
+            and str(blob.keys.original_tonic or "").upper() == "D"
+            and str(session.get("display_key") or "") == target_key
+            and target_key in options
+            and key_is_minor(str(session.get("display_key") or ""))
+            and isinstance(blob.section_map, dict)
+            and sum(len(v) for v in blob.section_map.values() if isinstance(v, list)) >= 4
+        )
+        outcome["passed"] = ok
+        outcome["practice_tonic"] = str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "")
+        outcome["display_key"] = str(session.get("display_key") or "")
+        sections = session.get("improv_song_concert_sections")
+        if isinstance(sections, dict):
+            outcome["progression_section_count"] = len(sections)
+            outcome["progression_chord_count"] = sum(len(v) for v in sections.values() if isinstance(v, list))
+        if blob is not None and isinstance(blob.section_map, dict):
+            outcome["blob_section_count"] = len(blob.section_map)
+    finally:
+        if prior is not None:
+            st_mod.session_state = prior  # type: ignore[misc]
+    append_trace(session, "song_based_minor_practice_key_scenario", **{k: v for k, v in outcome.items() if k != "steps"})
+    return outcome

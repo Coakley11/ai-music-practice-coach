@@ -729,6 +729,15 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
 
+    preserved = _sidebar_preserve_user_display_key_options(
+        st,
+        session,
+        trace_phase="prepare_creative_sidebar:preserve_user_key",
+    )
+    if preserved is not None:
+        session.pop(PENDING_DISPLAY_KEY, None)
+        return preserved
+
     try:
         from sidebar_key_identity import resolve_sidebar_key_identity
 
@@ -967,36 +976,27 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         if ptr and ptr.workflow_owner in {"style_jam", "jam_session_generator"}:
             return
         if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+            try:
+                from song_practice_key_sidebar_change import (
+                    finalize_sidebar_song_practice_key_after_mutation,
+                    sidebar_song_practice_key_mutation_deferred,
+                )
+
+                if sidebar_song_practice_key_mutation_deferred(session):
+                    return
+            except ImportError:
+                pass
             result = update_active_practice_key(
                 session, new, source="sidebar_song_improv", transpose_progression=True
             )
             if not result.ok:
                 return
-            session["concert_key"] = new
             try:
-                from backing_context import sync_improv_widgets_from_live_concert_key
+                from song_practice_key_sidebar_change import finalize_sidebar_song_practice_key_after_mutation
 
-                sync_improv_widgets_from_live_concert_key(session)
+                finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
             except ImportError:
-                pass
-            try:
-                from backing_musical_state import clear_stale_chart_session_keys
-                from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
-
-                clear_stale_chart_session_keys(session)
-                if st_like is not None:
-                    invalidate_backing_cache(st_like)
-                session[BACKING_NEEDS_REGEN] = True
-            except ImportError:
-                pass
-            invalidate_creative_backing_context(session)
-            _apply_pending_backing_context_on_page(session, st_like=st_like)
-            try:
-                from creative_session_state import sync_creative_session_from_session
-
-                sync_creative_session_from_session(session)
-            except ImportError:
-                pass
+                session["concert_key"] = new
             return
     except ImportError:
         pass
@@ -1058,41 +1058,34 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         pass
     if entry == "Song-Based Improvisation":
         try:
+            from song_practice_key_sidebar_change import (
+                finalize_sidebar_song_practice_key_after_mutation,
+                sidebar_song_practice_key_mutation_deferred,
+            )
+
+            if sidebar_song_practice_key_mutation_deferred(session):
+                return
+        except ImportError:
+            pass
+        try:
             from music_workflow_mutation import update_active_practice_key
 
-            update_active_practice_key(
+            result = update_active_practice_key(
                 session,
                 new,
                 source="sidebar_song_improv",
                 transpose_progression=True,
             )
-        except ImportError:
-            pass
-        session["concert_key"] = new
-        try:
-            from backing_context import sync_improv_widgets_from_live_concert_key
-
-            sync_improv_widgets_from_live_concert_key(session)
+            if not result.ok:
+                return
         except ImportError:
             pass
         try:
-            from backing_musical_state import clear_stale_chart_session_keys
-            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+            from song_practice_key_sidebar_change import finalize_sidebar_song_practice_key_after_mutation
 
-            clear_stale_chart_session_keys(session)
-            if st_like is not None:
-                invalidate_backing_cache(st_like)
-            session[BACKING_NEEDS_REGEN] = True
+            finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
         except ImportError:
-            pass
-        invalidate_creative_backing_context(session)
-        _apply_pending_backing_context_on_page(session, st_like=st_like)
-        try:
-            from creative_session_state import sync_creative_session_from_session
-
-            sync_creative_session_from_session(session)
-        except ImportError:
-            pass
+            session["concert_key"] = new
         return
     if not _creative_sidebar_key_sync_active(session):
         return
@@ -1134,8 +1127,26 @@ def on_sidebar_practice_concert_key_change() -> None:
 
     from songs.key_state import mark_display_key_changed
 
+    try:
+        from song_practice_key_change_trace import collect_song_practice_key_snapshot
+
+        collect_song_practice_key_snapshot(st.session_state, phase="sidebar_callback_before")
+    except ImportError:
+        pass
     mark_display_key_changed(st)
+    try:
+        from song_practice_key_sidebar_change import capture_sidebar_song_practice_key_edit_intent
+
+        capture_sidebar_song_practice_key_edit_intent(st.session_state)
+    except ImportError:
+        pass
     sync_sidebar_creative_concert_key(st.session_state, st_like=st)
+    try:
+        from song_practice_key_change_trace import collect_song_practice_key_snapshot
+
+        collect_song_practice_key_snapshot(st.session_state, phase="sidebar_callback_after")
+    except ImportError:
+        pass
 
 
 def on_improv_style_key_change() -> None:
