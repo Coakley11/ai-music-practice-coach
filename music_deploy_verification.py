@@ -67,8 +67,8 @@ ACCEPTED_DEPLOY_SHA_PREFIXES: tuple[str, ...] = (
 
 # Isolated Streamlit preview — safety branch only; does not extend origin/dev allowlist.
 CREATIVE_OWNER_PREVIEW_BRANCH = "safety/creative-owner-snapshot-2026-08-06"
-CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX = "6bc3c2d"
-CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA = "6bc3c2d11e908ae86e23bfe93fa08560cf97807a"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_PREFIX = "e0ec3a5"
+CREATIVE_OWNER_PREVIEW_FUNCTIONAL_SHA = "e0ec3a58c4f714c9dfa6a4dddaadd71f4c91a02f"
 
 _PROCESS_DEPLOY_LOGGED = False
 
