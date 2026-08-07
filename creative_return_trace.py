@@ -11,7 +11,7 @@ TRACE_PREFIX = "[creative_return_trace]"
 SESSION_TRACE_LOG_KEY = "_creative_return_trace_log"
 SESSION_TRACE_LAST_KEY = "_creative_return_trace_last"
 BACKING_CONTEXT_MUTATION_JOURNAL_KEY = "_backing_context_mutation_journal"
-BACKING_CONTEXT_PRESERVE_FIX_ID = "same_sig_v1_11de01d"
+BACKING_CONTEXT_PRESERVE_FIX_ID = "launch_id_v1"
 MAX_TRACE_ENTRIES = 48
 MAX_MUTATION_JOURNAL_ENTRIES = 64
 
@@ -248,6 +248,7 @@ def trace_set_backing_context(
     new_blob: Any = None,
     preservation_reason: str = "",
     explicit_route_arg_present: bool = False,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     dropped = bool(prev_route) and not new_route
     replaced = (
@@ -255,6 +256,21 @@ def trace_set_backing_context(
         and isinstance(new_route, dict)
         and prev_route != new_route
     )
+    trace_extra: dict[str, Any] = {
+        "caller": caller,
+        "route_dropped": dropped,
+        "route_replaced": replaced,
+        "prev_route": prev_route,
+        "new_route": new_route,
+        "ctx_source": ctx_source,
+        "ctx_source_signature": ctx_signature,
+        "prev_source_signature": _blob_signature(prev_blob),
+        "preservation_reason": preservation_reason,
+        "explicit_route_arg_present": explicit_route_arg_present,
+        "preserve_fix_id": BACKING_CONTEXT_PRESERVE_FIX_ID,
+    }
+    if isinstance(extra, dict):
+        trace_extra.update(extra)
     record_backing_context_mutation(
         session,
         phase="SET_BACKING_CONTEXT",
@@ -263,8 +279,8 @@ def trace_set_backing_context(
         caller=caller,
         prev_blob=prev_blob,
         new_blob=new_blob,
-        prev_source_signature=_blob_signature(prev_blob),
-        new_source_signature=str(ctx_signature or _blob_signature(new_blob)),
+        prev_source_signature=str(trace_extra.get("prev_source_signature") or _blob_signature(prev_blob)),
+        new_source_signature=str(trace_extra.get("new_source_signature") or ctx_signature or _blob_signature(new_blob)),
         prev_route_present=_blob_route_present(prev_blob) or bool(prev_route),
         explicit_route_arg_present=explicit_route_arg_present,
         new_route_present=isinstance(new_route, dict),
@@ -274,19 +290,7 @@ def trace_set_backing_context(
     emit_creative_return_trace(
         session,
         "SET_BACKING_CONTEXT",
-        extra={
-            "caller": caller,
-            "route_dropped": dropped,
-            "route_replaced": replaced,
-            "prev_route": prev_route,
-            "new_route": new_route,
-            "ctx_source": ctx_source,
-            "ctx_source_signature": ctx_signature,
-            "prev_source_signature": _blob_signature(prev_blob),
-            "preservation_reason": preservation_reason,
-            "explicit_route_arg_present": explicit_route_arg_present,
-            "preserve_fix_id": BACKING_CONTEXT_PRESERVE_FIX_ID,
-        },
+        extra=trace_extra,
     )
 
 

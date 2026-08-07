@@ -65,7 +65,7 @@ class TestBackingContextMutationTrace(unittest.TestCase):
         assert isinstance(journal, list)
         reasons = [r.get("preservation_reason") for r in journal if r.get("phase") == "SET_BACKING_CONTEXT"]
         self.assertEqual(reasons[0], "explicit_new_route")
-        self.assertEqual(reasons[1], "preserved_same_signature")
+        self.assertEqual(reasons[1], "preserved_same_launch_id")
 
 
 if __name__ == "__main__":

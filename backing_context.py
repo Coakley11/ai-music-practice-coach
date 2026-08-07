@@ -9,11 +9,13 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 BACKING_CONTEXT_KEY = "backing_context"
+BACKING_SESSION_LAUNCH_ID_BLOB_KEY = "backing_session_launch_id"
 PENDING_BACKING_CONTEXT_APPLY = "_pending_backing_context_apply"
 BACKING_CTX_TRANSPORT_APPLIED_SIG = "_backing_ctx_transport_applied_sig"
 _CREATIVE_RETURN_ROUTE_ARG_UNSET: Any = object()
@@ -167,6 +169,50 @@ def compute_source_signature(ctx: BackingContext | dict[str, Any]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+def signature_field_values(ctx: BackingContext | dict[str, Any]) -> dict[str, Any]:
+    """Values participating in ``source_signature`` (for diagnostics)."""
+    if isinstance(ctx, BackingContext):
+        data = ctx.to_dict()
+    else:
+        data = dict(ctx)
+    out: dict[str, Any] = {}
+    for key in _SIGNATURE_FIELDS:
+        val = data.get(key)
+        if key == "progression" and isinstance(val, list):
+            val = "|".join(str(c) for c in val)
+        out[key] = val
+    return out
+
+
+def diff_source_signature_fields(
+    prev_blob: dict[str, Any],
+    ctx: BackingContext,
+) -> list[str]:
+    """Field names whose signature inputs differ between stored blob and new ctx."""
+    old = signature_field_values(prev_blob)
+    new = signature_field_values(ctx)
+    changed: list[str] = []
+    for key in _SIGNATURE_FIELDS:
+        if old.get(key) != new.get(key):
+            changed.append(str(key))
+    return changed
+
+
+def _infer_set_backing_context_caller() -> str:
+    import inspect
+
+    for frame_info in inspect.stack()[2:10]:
+        mod = str(frame_info.frame.f_globals.get("__name__") or "")
+        func = str(frame_info.function or "")
+        if mod == __name__ and func == "set_backing_context":
+            continue
+        if func in {"set_backing_context", "_infer_set_backing_context_caller"}:
+            continue
+        mod_short = mod.rsplit(".", 1)[-1] if mod else "unknown"
+        return f"{mod_short}:{func}"
+    return "set_backing_context"
+
+
 def refresh_backing_context_timestamps(ctx: BackingContext) -> BackingContext:
     now = utc_now_iso()
     if not ctx.created_at:
@@ -189,34 +235,49 @@ def set_backing_context(
 ) -> None:
     prev_blob = session.get(BACKING_CONTEXT_KEY)
     prev_route = prev_blob.get("creative_return_route") if isinstance(prev_blob, dict) else None
+    prev_launch_id = (
+        str(prev_blob.get(BACKING_SESSION_LAUNCH_ID_BLOB_KEY) or "").strip()
+        if isinstance(prev_blob, dict)
+        else ""
+    )
     explicit_route_arg_present = creative_return_route is not _CREATIVE_RETURN_ROUTE_ARG_UNSET
     payload = refresh_backing_context_timestamps(ctx).to_dict()
     preservation_reason = "no_previous_route"
+    signature_fields_changed: list[str] = []
+    if isinstance(prev_blob, dict):
+        signature_fields_changed = diff_source_signature_fields(prev_blob, ctx)
+    prev_sig = str(prev_blob.get("source_signature") or "").strip() if isinstance(prev_blob, dict) else ""
+    new_sig = str(payload.get("source_signature") or "").strip()
+
     if explicit_route_arg_present and isinstance(creative_return_route, dict):
         payload["creative_return_route"] = dict(creative_return_route)
+        payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = uuid.uuid4().hex
         preservation_reason = "explicit_new_route"
-    elif isinstance(prev_route, dict) and isinstance(prev_blob, dict):
-        prev_sig = str(prev_blob.get("source_signature") or "").strip()
-        new_sig = str(ctx.source_signature or "").strip()
-        if not prev_sig:
-            preservation_reason = "previous_signature_missing"
-        elif not new_sig:
-            preservation_reason = "new_signature_missing"
-        elif prev_sig != new_sig:
-            preservation_reason = "signature_changed"
-        else:
+    elif isinstance(prev_blob, dict):
+        if prev_launch_id:
+            payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = prev_launch_id
+        if isinstance(prev_route, dict) and prev_launch_id:
             payload["creative_return_route"] = dict(prev_route)
-            preservation_reason = "preserved_same_signature"
-    elif isinstance(prev_route, dict):
-        preservation_reason = "no_previous_route"
+            preservation_reason = "preserved_same_launch_id"
+        elif isinstance(prev_route, dict):
+            if not prev_sig:
+                preservation_reason = "previous_signature_missing"
+            elif not new_sig:
+                preservation_reason = "new_signature_missing"
+            elif prev_sig != new_sig:
+                preservation_reason = "signature_changed"
+            else:
+                payload["creative_return_route"] = dict(prev_route)
+                preservation_reason = "preserved_same_signature"
     session[BACKING_CONTEXT_KEY] = payload
     new_route = payload.get("creative_return_route")
+    caller = str(trace_caller or "").strip() or _infer_set_backing_context_caller()
     try:
         from creative_return_trace import trace_set_backing_context
 
         trace_set_backing_context(
             session,
-            caller=str(trace_caller or "set_backing_context"),
+            caller=caller,
             prev_route=prev_route,
             new_route=new_route,
             ctx_source=str(ctx.source or ""),
@@ -225,6 +286,13 @@ def set_backing_context(
             new_blob=payload,
             preservation_reason=preservation_reason,
             explicit_route_arg_present=explicit_route_arg_present,
+            extra={
+                "prev_source_signature": prev_sig,
+                "new_source_signature": new_sig,
+                "backing_session_launch_id": str(payload.get(BACKING_SESSION_LAUNCH_ID_BLOB_KEY) or ""),
+                "prev_backing_session_launch_id": prev_launch_id,
+                "signature_fields_changed": signature_fields_changed,
+            },
         )
     except ImportError:
         pass
@@ -1507,7 +1575,7 @@ def reset_backing_on_active_song_change(
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
         ctx = build_regular_song_context(session)
 
-    set_backing_context(session, ctx)
+    set_backing_context(session, ctx, trace_caller="backing_context:reset_backing_on_active_song_change")
     try:
         apply_backing_context_to_session(session, ctx, widget_safe=True)
     except Exception:
@@ -1972,7 +2040,7 @@ def sync_regular_song_backing_context_keys(session: dict[str, Any]) -> None:
         return
     ctx.display_key = practice
     ctx.concert_key = practice
-    set_backing_context(session, ctx)
+    set_backing_context(session, ctx, trace_caller="backing_context:sync_regular_song_backing_context_keys")
 
 
 def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingContext | None:
@@ -2567,7 +2635,7 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         return ctx
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
     ctx = build_regular_song_context(session)
-    set_backing_context(session, ctx)
+    set_backing_context(session, ctx, trace_caller="backing_context:restore_regular_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
     try:
         from studio_page_persistence import save_page_snapshot
@@ -2616,7 +2684,7 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
     if concert:
         _apply_practice_display_key(session, concert, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
-    set_backing_context(session, ctx)
+    set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
     try:
         from songs.key_state import BACKING_NEEDS_REGEN
@@ -2655,7 +2723,7 @@ def _sync_creative_backing_transport_handoff(
         session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
     elif live_bpm > 0 and ctx.bpm != live_bpm:
         ctx.bpm = live_bpm
-        set_backing_context(session, ctx)
+        set_backing_context(session, ctx, trace_caller="backing_context:_sync_creative_backing_transport_handoff:bpm_sync")
     request_backing_groove(st_like, backing_style)
     if ctx.meter:
         session["_pending_backing_meter"] = str(ctx.meter)

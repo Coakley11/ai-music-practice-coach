@@ -87,9 +87,9 @@ class TestCreativeReturnRouteReconcilePreservation(unittest.TestCase):
                 extra.get("route_dropped"),
                 msg=f"route dropped by {extra.get('caller')!r}",
             )
-            self.assertEqual(
+            self.assertIn(
                 extra.get("preservation_reason"),
-                "preserved_same_signature",
+                ("preserved_same_signature", "preserved_same_launch_id"),
                 msg=extra,
             )
 
