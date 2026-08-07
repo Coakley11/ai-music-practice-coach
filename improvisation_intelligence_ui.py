@@ -1344,6 +1344,95 @@ def _refresh_motif_output_after_transform(
         session_state["improv_motif_tab"] = build_motif_guitar_tab(motif)
 
 
+def _apply_harmony_map_chord_selection(
+    session_state: dict,
+    *,
+    chord: str,
+    section: str,
+    chord_index: int,
+    button_key: str = "",
+) -> None:
+    """Harmony Map chord pick — same canonical path as Live Coach / Motif / Missions tiles."""
+    sec = str(section or "").strip()
+    ch = str(chord or "").strip()
+    if not sec or not ch:
+        return
+    gidx = int(chord_index)
+    label = f"{sec} · {ch}"
+    btn = str(button_key or f"harmony_map_{gidx}_{ch}")
+    try:
+        from active_musical_workflow_envelope import apply_atomic_mission_chord_selection
+
+        apply_atomic_mission_chord_selection(
+            session_state,
+            chord=ch,
+            section=sec,
+            chord_index=gidx,
+            chord_label=label,
+            button_key=btn,
+        )
+    except ImportError:
+        try:
+            from creative_mission_config_persistence import handle_user_mission_target_selection
+
+            handle_user_mission_target_selection(
+                session_state,
+                chord=ch,
+                section=sec,
+                chord_index=gidx,
+                chord_label=label,
+                button_key=btn,
+            )
+        except ImportError:
+            session_state[II_SELECTED_CHORD] = ch
+            session_state[II_SELECTED_SECTION] = sec
+            session_state[II_SELECTED_CHORD_INDEX] = gidx
+            session_state[II_SELECTED_CHORD_LABEL] = label
+    try:
+        from song_creative_focus_change import capture_song_creative_focus_intent
+
+        capture_song_creative_focus_intent(
+            session_state,
+            section=sec,
+            concert_chord=ch,
+            chord_index=gidx,
+            source_page="Harmony Map",
+        )
+    except ImportError:
+        pass
+    try:
+        from song_creative_focus import record_harmony_section_selection
+
+        record_harmony_section_selection(
+            session_state,
+            section=sec,
+            chord=ch,
+            global_index=gidx,
+        )
+    except ImportError:
+        pass
+    session_state["harmony_map_section"] = sec
+    session_state["harmony_map_chord"] = ch
+    try:
+        from creative_context_snapshot_persistence import handle_user_harmony_map_context_change
+
+        handle_user_harmony_map_context_change(session_state, section=sec, chord=ch)
+    except ImportError:
+        _touch_creative_workspace(session_state)
+
+
+def _harmony_map_chord_on_click(ch: str, sec_label: str, gidx: int, button_key: str) -> None:
+    import streamlit as st
+
+    _apply_harmony_map_chord_selection(
+        st.session_state,
+        chord=ch,
+        section=sec_label,
+        chord_index=int(gidx),
+        button_key=button_key,
+    )
+
+
 def _render_section_chord_map(
     st: Any,
     section_map: list[tuple[str, list[str]]],
@@ -2802,45 +2891,18 @@ def _tab_harmony_map(
                     )
                 else:
                     display_ch = sel_chord if sel_section == sec_label else ""
+                button_key = (
+                    f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}"
+                )
                 if st.button(
                     ch,
-                    key=f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}",
+                    key=button_key,
                     type="primary" if display_ch == ch else "secondary",
                     use_container_width=True,
+                    on_click=_harmony_map_chord_on_click,
+                    args=(ch, sec_label, global_chord_index(list(section_map), sec_i, i), button_key),
                 ):
-                    try:
-                        from improvisation_motif import global_chord_index
-                        from song_creative_focus import record_harmony_section_selection
-                        from song_creative_focus_change import capture_song_creative_focus_intent
-
-                        gidx = global_chord_index(list(section_map), sec_i, i)
-                        record_harmony_section_selection(
-                            session_state,
-                            section=sec_label,
-                            chord=ch,
-                            global_index=gidx,
-                        )
-                        capture_song_creative_focus_intent(
-                            session_state,
-                            section=sec_label,
-                            concert_chord=ch,
-                            chord_index=gidx,
-                            source_page="Harmony Map",
-                        )
-                    except ImportError:
-                        session_state["harmony_map_section"] = sec_label
-                        session_state["harmony_map_chord"] = ch
-                    try:
-                        from creative_context_snapshot_persistence import handle_user_harmony_map_context_change
-
-                        handle_user_harmony_map_context_change(
-                            session_state,
-                            section=sec_label,
-                            chord=ch,
-                        )
-                    except ImportError:
-                        _touch_creative_workspace(session_state)
-                    st.rerun()
+                    pass
 
     if not sel_chord:
         st.info("Tap a chord above to see stable tones, color tones, and practical improvisation ideas.")

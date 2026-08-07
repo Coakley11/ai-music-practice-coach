@@ -17,7 +17,11 @@ from creative_lifecycle_harness_support import (
 )
 from music_persistent_state import prepare_canonical_music_page_state
 from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
-from song_creative_focus import hydrate_creative_pages_from_song_focus, read_song_creative_focus
+from song_creative_focus import (
+    hydrate_creative_pages_from_song_focus,
+    read_harmony_section_selection,
+    read_song_creative_focus,
+)
 from tests.test_creative_catalog_handoff_picker import CATALOG, _stale_canonical_say_session
 from tests.test_song_based_minor_practice_key_lifecycle import (
     PK_SAY,
@@ -68,6 +72,58 @@ class TestSongCreativeFocusCrossTabSync(unittest.TestCase):
 
         restore_song_based_tab(session)
         self.assertGreaterEqual(song_based_progression_chord_count(session), prog_before)
+
+    def _assert_chord_everywhere(self, session: dict[str, Any], chord: str, *, section: str = "") -> None:
+        self.assertEqual(str(session.get("ii_selected_chord") or ""), chord)
+        self.assertEqual(str(session.get("harmony_map_chord") or ""), chord)
+        focus = read_song_creative_focus(session)
+        self.assertIsNotNone(focus)
+        assert focus is not None
+        self.assertEqual(str(focus.get("selected_concert_chord") or ""), chord)
+        if section:
+            self.assertEqual(str(focus.get("selected_section_id") or ""), section)
+            self.assertEqual(str(session.get("ii_selected_section") or ""), section)
+
+    def test_harmony_map_g7_syncs_live_motif_missions(self) -> None:
+        session = _hevenu_ebm_session()
+        harmony_map_focus_chord(session, chord="G7", section="Verse")
+        self._assert_chord_everywhere(session, "G7", section="Verse")
+
+        for tab in ("Live Coach", "Phrase / Motif", "Missions", "Harmony Map"):
+            session["improv_intelligence_tab"] = tab
+            hydrate_creative_pages_from_song_focus(session, tab=tab)
+            self._assert_chord_everywhere(session, "G7", section="Verse")
+
+    def test_missions_to_harmony_map_reverse_sync(self) -> None:
+        session = _hevenu_ebm_session()
+        mission_select_single_chord(session, chord="Cmaj7", section="Verse")
+        session["improv_intelligence_tab"] = "Harmony Map"
+        hydrate_creative_pages_from_song_focus(session, tab="Harmony Map")
+        self._assert_chord_everywhere(session, "Cmaj7", section="Verse")
+        local = read_harmony_section_selection(session, "Verse")
+        self.assertIsNotNone(local)
+        self.assertEqual(local[0], "Cmaj7")
+
+    def test_chord_symbol_preserved_across_tabs(self) -> None:
+        session = _hevenu_ebm_session()
+        home = dict(session.get("home_sections") or {})
+        home["Slash"] = ["D/F#", "G7"]
+        session["home_sections"] = home
+        session["improv_song_concert_sections"] = home
+        harmony_map_focus_chord(session, chord="D/F#", section="Slash")
+        self._assert_chord_everywhere(session, "D/F#", section="Slash")
+        mission_select_single_chord(session, chord="F#m7", section="Verse")
+        session["improv_intelligence_tab"] = "Harmony Map"
+        hydrate_creative_pages_from_song_focus(session, tab="Harmony Map")
+        self._assert_chord_everywhere(session, "F#m7", section="Verse")
+
+    def test_tab_navigation_does_not_revert_harmony_selection(self) -> None:
+        session = _hevenu_ebm_session()
+        harmony_map_focus_chord(session, chord="Abm", section="Verse")
+        for tab in ("Live Coach", "Missions", "Harmony Map"):
+            session["improv_intelligence_tab"] = tab
+            hydrate_creative_pages_from_song_focus(session, tab=tab)
+        self._assert_chord_everywhere(session, "Abm", section="Verse")
 
     def test_refresh_retains_focus_and_full_progression(self) -> None:
         session = _hevenu_ebm_session()

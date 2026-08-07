@@ -226,8 +226,9 @@ def harmony_map_focus_chord(session: dict[str, Any], *, chord: str = "Gm", secti
     session["creative_improv_intelligence_tab"] = "Harmony Map"
     try:
         from improvisation_intelligence import ImprovSessionContext
-        from improvisation_motif import global_chord_index, resolve_improv_sections
-        from song_creative_focus_change import commit_song_creative_focus_selection
+        from improvisation_motif import global_chord_index
+        from improvisation_intelligence_ui import _apply_harmony_map_chord_selection
+        from song_creative_focus import _section_map_for_focus
 
         ctx = ImprovSessionContext(
             song_title=str(session.get("song") or ""),
@@ -243,22 +244,27 @@ def harmony_map_focus_chord(session: dict[str, Any], *, chord: str = "Gm", secti
             progression_flat=[],
             section_order=[],
         )
-        from song_creative_focus import _section_map_for_focus
-
         section_map = _section_map_for_focus(session, ctx)
         gidx = 0
+        found_section = section
         for si, (label, chs) in enumerate(section_map):
             for ci, ch in enumerate(chs):
-                if ch == chord and (not section or label == section):
-                    gidx = global_chord_index(section_map, si, ci)
-                    section = label
-                    break
-        commit_song_creative_focus_selection(
+                if ch != chord:
+                    continue
+                if section and label != section:
+                    continue
+                gidx = global_chord_index(section_map, si, ci)
+                found_section = label
+                break
+            else:
+                continue
+            break
+        _apply_harmony_map_chord_selection(
             session,
-            section=section,
-            concert_chord=chord,
+            chord=chord,
+            section=found_section,
             chord_index=gidx,
-            source_page="Harmony Map",
+            button_key="harness_harmony_map",
         )
     except ImportError:
         session["harmony_map_chord"] = chord
