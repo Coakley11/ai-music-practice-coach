@@ -172,6 +172,8 @@ def scan_creative_owner_preview_modules_in_source() -> dict[str, Any]:
         "generated_workflow_artifact.py",
         "music_workflow_pending_generated_progression.py",
         "music_workflow_catalog_handoff.py",
+        "music_workflow_pending_song_practice_key_edit.py",
+        "song_practice_key_sidebar_change.py",
         "backing_source_navigation.py",
         "backing_context.py",
     )
