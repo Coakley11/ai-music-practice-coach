@@ -191,6 +191,11 @@ def set_backing_context(
     payload = refresh_backing_context_timestamps(ctx).to_dict()
     if isinstance(creative_return_route, dict):
         payload["creative_return_route"] = dict(creative_return_route)
+    elif isinstance(prev_route, dict) and isinstance(prev_blob, dict):
+        prev_sig = str(prev_blob.get("source_signature") or "").strip()
+        new_sig = str(ctx.source_signature or "").strip()
+        if prev_sig and new_sig and prev_sig == new_sig:
+            payload["creative_return_route"] = dict(prev_route)
     session[BACKING_CONTEXT_KEY] = payload
     new_route = payload.get("creative_return_route")
     try:
