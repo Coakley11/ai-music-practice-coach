@@ -10,6 +10,47 @@ MISSION_BACKING_CLICK_INTENT_KEY = "_music_mission_backing_click_intent"
 MISSION_BACKING_CLICK_APPLY_FAILURE_KEY = "_music_mission_backing_click_apply_failure"
 
 
+def _reset_session_for_fresh_mission_backing_handoff(session: dict[str, Any]) -> None:
+    """Clear one-shot / sealed state so a later mission backing click is not blocked."""
+    try:
+        from mission_backing_handoff_persistence import (
+            MISSION_BACKING_HANDOFF_CONFIRMED_REVISION_KEY,
+            MISSION_BACKING_HANDOFF_CONFIRMED_SNAPSHOT_KEY,
+            clear_handoff_page_change_build_flag,
+        )
+
+        clear_handoff_page_change_build_flag(session)
+        session.pop(MISSION_BACKING_HANDOFF_CONFIRMED_REVISION_KEY, None)
+        session.pop(MISSION_BACKING_HANDOFF_CONFIRMED_SNAPSHOT_KEY, None)
+    except ImportError:
+        session.pop("_mission_backing_handoff_sealed_for_page_change", None)
+    try:
+        from mission_practice_context import mark_mission_practice_context_dirty
+
+        mark_mission_practice_context_dirty(session)
+    except ImportError:
+        pass
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+    session.pop("_mission_exact_backing_armed", None)
+    try:
+        from music_workflow_mission_backing_orchestration import ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY
+
+        session.pop(ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY, None)
+    except ImportError:
+        session.pop("_music_orchestrated_mission_backing_rerun_seq", None)
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_FRESH_RUN_KEY
+
+        session.pop(MISSION_EXAMPLE_FRESH_RUN_KEY, None)
+    except ImportError:
+        pass
+
+
 def capture_mission_backing_click_intent(
     session: dict[str, Any],
     *,
@@ -22,6 +63,7 @@ def capture_mission_backing_click_intent(
     concert_key: str,
     display_key: str,
 ) -> None:
+    _reset_session_for_fresh_mission_backing_handoff(session)
     session[MISSION_BACKING_CLICK_INTENT_KEY] = {
         "with_practice_lick": bool(with_practice_lick),
         "mission": str(mission or ""),

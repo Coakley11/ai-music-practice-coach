@@ -176,8 +176,13 @@ def try_finalize_backing_after_mission_envelope(session: dict[str, Any]) -> bool
     pending = peek_pending_backing_workflow_handoff(session)
     if not isinstance(pending, dict) or not pending.get("waiting_for_mission_envelope"):
         return False
-    if mission_envelope_reconciliation_required(session):
-        return False
+    try:
+        from music_workflow_pending_mission_envelope import peek_pending_mission_envelope_reconciliation
+
+        if peek_pending_mission_envelope_reconciliation(session):
+            return False
+    except ImportError:
+        pass
     pending = dict(pending)
     pending["waiting_for_mission_envelope"] = False
     session[PENDING_BACKING_WORKFLOW_KEY] = pending

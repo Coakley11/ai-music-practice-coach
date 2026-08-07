@@ -117,7 +117,18 @@ def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob:
 
 
 def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str:
-    """Same-run Missions parent key from song blob — never re-transpose from catalog on tab entry."""
+    """Same-run Missions parent key — entry jam wins over catalog song blob when still active."""
+    try:
+        from creative_key_sync import apply_entry_jam_authoritative_practice_key
+
+        jam_tok = apply_entry_jam_authoritative_practice_key(
+            session,
+            source="missions_tab_entry_jam_parent_key",
+        )
+        if jam_tok:
+            return jam_tok
+    except ImportError:
+        pass
     token = resolve_song_practice_key_token(session)
     if not token:
         return ""

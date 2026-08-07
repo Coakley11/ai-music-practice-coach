@@ -96,6 +96,14 @@ MOTIF_OUTPUT_TAB = "tab"
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
+        from creative_key_sync import resolve_creative_tab_practice_key_token
+
+        jam_tok = resolve_creative_tab_practice_key_token(session_state)
+        if jam_tok:
+            return jam_tok
+    except ImportError:
+        pass
+    try:
         from music_workflow_song_practice import resolve_song_practice_key_token
 
         tok = resolve_song_practice_key_token(session_state)
@@ -135,8 +143,15 @@ def _parent_practice_key_label(improv_ctx: ImprovSessionContext) -> str:
 def _target_focus_chord(session_state: dict, chords: list[str]) -> str:
     if not chords:
         return ""
-    cur, _idx = _selected_chord(session_state, chords, section_map)
+    cur, _idx = _selected_chord(session_state, chords)
     return str(cur or "")
+
+
+def _coherent_improv_key_pair(session_state: dict, improv_ctx: ImprovSessionContext) -> tuple[str, str]:
+    """Single practice-key token for key_center and display_key in coach UIs."""
+    fallback = str(improv_ctx.display_key or improv_ctx.key_center or "C")
+    token = _authoritative_practice_chart_key(session_state, fallback)
+    return token, token
 
 
 def _motif_notation_reference_key(improv_ctx: ImprovSessionContext, chord: str = "") -> str:
@@ -2903,8 +2918,9 @@ def _tab_harmony_map(
         pass
 
     st.markdown("#### Harmony map")
+    practice_key_caption, _practice_dup = _coherent_improv_key_pair(session_state, improv_ctx)
     st.caption(
-        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(improv_ctx.display_key)}** · "
+        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(practice_key_caption)}** · "
         "one progression per section — tap a chord for stable & color tones."
     )
 
@@ -2917,11 +2933,11 @@ def _tab_harmony_map(
         show_sync_caption=False,
     )
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
-    practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+    practice_key, key_center = _coherent_improv_key_pair(session_state, improv_ctx)
     improv_ctx = ImprovSessionContext(
         song_title=improv_ctx.song_title,
         artist=improv_ctx.artist,
-        key_center=improv_ctx.key_center,
+        key_center=key_center,
         display_key=practice_key,
         instrument=live_inst,
         level=live_level,

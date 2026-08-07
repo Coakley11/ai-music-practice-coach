@@ -118,7 +118,8 @@ def build_scale_suggestion_for_chord(
     root = scale_root_for_label(text, chord_symbol=chord_symbol, reference_key=reference_key)
     ref = harmonic_reference_for_chord(chord_symbol, song_display_key=reference_key, song_key_center=reference_key)
     patched_label = f"{root} {kind}".strip()
-    return build_scale_suggestion(patched_label, reference_key=ref)
+    spell_key = str(reference_key or ref or "C").strip() or "C"
+    return build_scale_suggestion(patched_label, reference_key=spell_key)
 
 
 def record_spelling_consistency_check(

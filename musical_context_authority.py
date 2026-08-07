@@ -73,6 +73,20 @@ def resolve_authoritative_practice_key(
 ) -> AuthoritativePracticeKey:
     """Current practice transposition vs catalog original — never infer major from bare tonic."""
     try:
+        from creative_key_sync import resolve_creative_tab_practice_key_token
+
+        jam_tok = resolve_creative_tab_practice_key_token(session)
+        if jam_tok:
+            return AuthoritativePracticeKey(
+                original_tonic=_tonic_from_key_token(jam_tok),
+                original_mode=_mode_from_key_token(jam_tok),
+                practice_tonic=_tonic_from_key_token(jam_tok),
+                practice_mode=_mode_from_key_token(jam_tok),
+                source="entry_jam_practice_key",
+            )
+    except ImportError:
+        pass
+    try:
         from songs.key_state import resolve_active_musical_key
 
         ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
@@ -117,6 +131,13 @@ def format_practice_concert_key_line(session: dict[str, Any], *, fallback: str =
 
 def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> bool:
     """Catalog / mission song workflows must not inherit Style Jam major-key sidebar projection."""
+    try:
+        from creative_key_sync import entry_jam_practice_key_authority_active
+
+        if entry_jam_practice_key_authority_active(session):
+            return False
+    except ImportError:
+        pass
     pick = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""

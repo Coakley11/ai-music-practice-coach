@@ -401,8 +401,9 @@ def chord_coach_insight(
     inst_tips = instrument_coaching_lines(instrument, symbol or chord, level, qual, root)
 
     scale_labels = scales[:4]
+    spell_key = str(key_center or ref or "C").strip() or ref
     scale_suggestions = [
-        build_scale_suggestion_for_chord(label, chord_symbol=symbol, reference_key=ref)
+        build_scale_suggestion_for_chord(label, chord_symbol=symbol, reference_key=spell_key)
         for label in scale_labels
     ]
 

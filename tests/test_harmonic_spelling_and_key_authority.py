@@ -18,6 +18,18 @@ from musical_context_authority import (
 )
 
 
+class TestGMMinorSpelling(unittest.TestCase):
+    def test_gm_scales_use_bb_not_a_sharp(self) -> None:
+        insight = chord_coach_insight("Gm", key_center="Gm")
+        joined = " ".join(" ".join(s.notes) for s in insight.scale_suggestions)
+        self.assertIn("Bb", joined)
+        self.assertNotIn("A#", joined)
+
+    def test_g_dorian_spelling(self) -> None:
+        sug = build_scale_suggestion_for_chord("G dorian", chord_symbol="Gm", reference_key="Gm")
+        self.assertIn("Bb", " ".join(sug.notes))
+
+
 class TestBbSpelling(unittest.TestCase):
     def test_bb7_root_stays_bb(self) -> None:
         self.assertEqual(spelled_chord_root_from_symbol("Bb7"), "Bb")

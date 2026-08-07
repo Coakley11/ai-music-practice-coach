@@ -92,11 +92,23 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
     except ImportError:
         session["studio_page"] = "creative"
     try:
-        from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+        from creative_key_sync import apply_entry_jam_authoritative_practice_key, entry_jam_practice_key_authority_active
 
-        sync_session_practice_key_from_song_blob(session, source="creative_return_consume")
+        if entry_jam_practice_key_authority_active(session):
+            from creative_key_sync import apply_entry_jam_authoritative_practice_key
+
+            apply_entry_jam_authoritative_practice_key(session, source="creative_return_entry_jam")
+        else:
+            from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+
+            sync_session_practice_key_from_song_blob(session, source="creative_return_consume")
     except ImportError:
-        pass
+        try:
+            from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+
+            sync_session_practice_key_from_song_blob(session, source="creative_return_consume")
+        except ImportError:
+            pass
     session[PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY] = token
     session.pop(PENDING_CREATIVE_RETURN_KEY, None)
     return "applied"

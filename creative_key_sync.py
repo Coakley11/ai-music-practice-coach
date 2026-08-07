@@ -56,6 +56,74 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
     return ""
 
 
+def entry_jam_practice_key_authority_active(session: dict[str, Any]) -> bool:
+    """Style Jam / Jam Session still owns practice key (including Missions/Harmony on same entry)."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry not in CREATIVE_MAJOR_JAM_MODES:
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is None or str(ctx.source or "") != "entry_jam":
+                return False
+            entry = str(ctx.entry_mode or "").strip()
+            if entry not in CREATIVE_MAJOR_JAM_MODES:
+                return False
+        except ImportError:
+            return False
+    if session.get("improv_generated_sections") or session.get("improv_jam_session"):
+        return True
+    if str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip():
+        return True
+    try:
+        from generated_jam_key_context import generated_jam_owns_practice_key
+
+        return bool(generated_jam_owns_practice_key(session))
+    except ImportError:
+        return False
+
+
+def resolve_creative_tab_practice_key_token(session: dict[str, Any]) -> str:
+    """Authoritative practice key when entry jam owns creative context."""
+    if not entry_jam_practice_key_authority_active(session):
+        return ""
+    try:
+        from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
+
+        raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+        if isinstance(raw, dict) and raw.get("practice_tonic"):
+            tonic = str(raw.get("practice_tonic") or "").strip()
+            if tonic:
+                return to_major_key_preserve_spelling(tonic)
+    except ImportError:
+        pass
+    entry_key = creative_entry_concert_key(session)
+    if entry_key:
+        return to_major_key_preserve_spelling(entry_key)
+    return ""
+
+
+def apply_entry_jam_authoritative_practice_key(session: dict[str, Any], *, source: str) -> str:
+    """Push entry-jam practice key into concert_key and display_key before sidebar widgets."""
+    tok = resolve_creative_tab_practice_key_token(session)
+    if not tok:
+        return ""
+    apply_creative_concert_key(session, tok, source=source)
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+        key = str(session.pop(PENDING_DISPLAY_KEY, None) or session.get("concert_key") or tok).strip()
+        if key:
+            st_like = type("_St", (), {"session_state": session})()
+            _apply_display_key_before_widget(st_like, key, source=source)
+    except ImportError:
+        session["display_key"] = str(session.get("concert_key") or tok)
+    return tok
+
+
 def retranspose_generated_sections(
     sections: dict[str, list[str]],
     *,
@@ -395,6 +463,13 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
+    try:
+        from creative_key_sync import entry_jam_practice_key_authority_active
+
+        if entry_jam_practice_key_authority_active(session):
+            return True
+    except ImportError:
+        pass
     try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key, song_catalog_context_owns_practice_key
 
