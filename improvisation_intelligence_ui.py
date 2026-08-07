@@ -563,6 +563,16 @@ def _tab_entry_modes(
                 pass
 
     ensure_improv_entry_mode_restored(session_state)
+    try:
+        from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+        trace_improv_selector_restore(
+            session_state,
+            "BEFORE_IMPROV_ENTRY_MODE_RADIO",
+            before=snapshot_improv_selector_render_state(session_state),
+        )
+    except ImportError:
+        pass
     entry = st.radio(
         "Improvisation entry mode",
         list(IMPROV_ENTRY_MODES),
@@ -571,6 +581,17 @@ def _tab_entry_modes(
         label_visibility="collapsed",
         on_change=_on_entry_mode_change,
     )
+    try:
+        from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+        trace_improv_selector_restore(
+            session_state,
+            "AFTER_IMPROV_ENTRY_MODE_RADIO",
+            after=snapshot_improv_selector_render_state(session_state),
+            returned=str(entry or ""),
+        )
+    except ImportError:
+        pass
     st.markdown("</div>", unsafe_allow_html=True)
 
     if entry == "Song-Based Improvisation":

@@ -326,6 +326,18 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
 def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
     """Restore Improvisation Intelligence sub-tab before the radio renders."""
+    _tab_trace_before = None
+    try:
+        from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+        _tab_trace_before = snapshot_improv_selector_render_state(session_state)
+        trace_improv_selector_restore(
+            session_state,
+            "BEFORE_ENSURE_IMPROV_INTELLIGENCE_TAB_RESTORED",
+            before=_tab_trace_before,
+        )
+    except ImportError:
+        pass
     try:
         from creative_tab_tool_persistence import (
             canonical_creative_selector_value,
@@ -336,14 +348,51 @@ def ensure_improv_intelligence_tab_restored(session_state: dict) -> str:
 
         canon_tab = hydrate_improv_intelligence_tab_from_canonical(session_state)
         if canon_tab:
+            try:
+                from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+                trace_improv_selector_restore(
+                    session_state,
+                    "AFTER_ENSURE_IMPROV_INTELLIGENCE_TAB_RESTORED",
+                    before=_tab_trace_before,
+                    after=snapshot_improv_selector_render_state(session_state),
+                    returned=canon_tab,
+                )
+            except ImportError:
+                pass
             return canon_tab
         canon = canonical_creative_selector_value(session_state, "improv_intelligence_tab")
         if canon:
             session_state["improv_intelligence_tab"] = canon
             session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY] = canon
+            try:
+                from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+                trace_improv_selector_restore(
+                    session_state,
+                    "AFTER_ENSURE_IMPROV_INTELLIGENCE_TAB_RESTORED",
+                    before=_tab_trace_before,
+                    after=snapshot_improv_selector_render_state(session_state),
+                    returned=canon,
+                )
+            except ImportError:
+                pass
             return canon
         if not selector_hydration_complete(session_state):
-            return str(session_state.get("improv_intelligence_tab") or "").strip()
+            _ret = str(session_state.get("improv_intelligence_tab") or "").strip()
+            try:
+                from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+                trace_improv_selector_restore(
+                    session_state,
+                    "AFTER_ENSURE_IMPROV_INTELLIGENCE_TAB_RESTORED",
+                    before=_tab_trace_before,
+                    after=snapshot_improv_selector_render_state(session_state),
+                    returned=_ret,
+                )
+            except ImportError:
+                pass
+            return _ret
     except ImportError:
         pass
     if session_state.get("_improv_tab_user_touched"):
@@ -482,6 +531,34 @@ def ensure_creative_widgets_from_backing_context(
 
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
+    _entry_before = None
+
+    def _done(result: str) -> str:
+        try:
+            from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+            trace_improv_selector_restore(
+                session_state,
+                "AFTER_ENSURE_IMPROV_ENTRY_MODE_RESTORED",
+                before=_entry_before,
+                after=snapshot_improv_selector_render_state(session_state),
+                returned=result,
+            )
+        except ImportError:
+            pass
+        return result
+
+    try:
+        from creative_return_trace import snapshot_improv_selector_render_state, trace_improv_selector_restore
+
+        _entry_before = snapshot_improv_selector_render_state(session_state)
+        trace_improv_selector_restore(
+            session_state,
+            "BEFORE_ENSURE_IMPROV_ENTRY_MODE_RESTORED",
+            before=_entry_before,
+        )
+    except ImportError:
+        pass
     try:
         from creative_tab_tool_persistence import (
             canonical_creative_selector_value,
@@ -493,15 +570,15 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
         if canon:
             if str(session_state.get("improv_entry_mode") or "").strip() != canon:
                 session_state["improv_entry_mode"] = canon
-            return canon
+            return _done(canon)
         if not selector_hydration_complete(session_state):
-            return str(session_state.get("improv_entry_mode") or "").strip()
+            return _done(str(session_state.get("improv_entry_mode") or "").strip())
     except ImportError:
         pass
     if session_state.get("_improv_tab_user_touched"):
         current = str(session_state.get("improv_entry_mode") or "").strip()
         if current in IMPROV_ENTRY_MODES:
-            return current
+            return _done(current)
     page = str(session_state.get("studio_page") or "").strip().lower()
     if page == "creative" and not session_state.get("_creative_restore_from_backing"):
         try:
@@ -516,7 +593,7 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
                 }:
                     if str(session_state.get("improv_entry_mode") or "").strip() != entry:
                         session_state["improv_entry_mode"] = entry
-                    return entry
+                    return _done(entry)
         except ImportError:
             pass
     backing_entry = _active_creative_backing_entry_mode(session_state)
@@ -529,7 +606,7 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
             session_state.pop("_pending_improv_entry_mode", None)
         if str(session_state.get("improv_entry_mode") or "").strip() != backing_entry:
             session_state["improv_entry_mode"] = backing_entry
-        return backing_entry
+        return _done(backing_entry)
     try:
         from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
     except ImportError:
@@ -537,17 +614,17 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     pending_entry = str(session_state.pop(PENDING_IMPROV_ENTRY_MODE_KEY, None) or "").strip()
     if pending_entry and pending_entry in IMPROV_ENTRY_MODES:
         session_state["improv_entry_mode"] = pending_entry
-        return pending_entry
+        return _done(pending_entry)
     current = str(session_state.get("improv_entry_mode") or "").strip()
     if session_state.get("_improv_tab_user_touched") and current in IMPROV_ENTRY_MODES:
-        return current
+        return _done(current)
     jam = session_state.get("improv_jam_session")
     has_jam_sections = isinstance(jam, dict) and bool(jam.get("sections"))
     if has_jam_sections and current == "Jam Session Generator":
-        return current
+        return _done(current)
     if has_jam_sections and current not in IMPROV_ENTRY_MODES:
         session_state["improv_entry_mode"] = "Jam Session Generator"
-        return "Jam Session Generator"
+        return _done("Jam Session Generator")
     try:
         from creative_session_state import get_creative_session
 
@@ -557,15 +634,15 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
             if entry in IMPROV_ENTRY_MODES:
                 if has_jam_sections and entry == "Style Jam Mode":
                     session_state["improv_entry_mode"] = "Jam Session Generator"
-                    return "Jam Session Generator"
+                    return _done("Jam Session Generator")
                 if current != entry:
                     session_state["improv_entry_mode"] = entry
-                return entry
+                return _done(entry)
     except ImportError:
         pass
     current = str(session_state.get("improv_entry_mode") or "").strip()
     if current in IMPROV_ENTRY_MODES:
-        return current
+        return _done(current)
     try:
         from creative_tab_tool_persistence import project_startup_default_selector, selector_hydration_complete
 
@@ -574,12 +651,12 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
                 session_state, "improv_entry_mode", IMPROV_ENTRY_MODES[0]
             )
             if projected:
-                return projected
+                return _done(projected)
     except ImportError:
         pass
     default = IMPROV_ENTRY_MODES[0]
     session_state["improv_entry_mode"] = default
-    return default
+    return _done(default)
 
 
 def persist_improv_intelligence_tab(session_state: dict) -> str:

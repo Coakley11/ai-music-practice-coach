@@ -214,6 +214,16 @@ def apply_creative_return_route(
             refresh_mission_practice_context(session)
         except ImportError:
             pass
+    try:
+        from backing_source_navigation import project_return_destination_to_canonical_creative_selectors
+
+        project_return_destination_to_canonical_creative_selectors(
+            session,
+            intelligence_tab=tab,
+            entry_mode=entry,
+        )
+    except ImportError:
+        pass
 
 
 __all__ = [

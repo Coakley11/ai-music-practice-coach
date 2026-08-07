@@ -1605,6 +1605,7 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
             _activate_workflow_for_creative_return(session, ctx, ident)
             restore_session_widgets_from_backing_context(session, ctx)
             requested = {"legacy": True, "ident": str(ident)}
+            project_return_destination_to_canonical_creative_selectors(session)
         after_apply = snapshot_return_surface(session)
         trace_return_after_apply(
             session,
@@ -1629,6 +1630,7 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         ident = apply_creative_return_identity_to_session(session, ctx)
         _activate_workflow_for_creative_return(session, ctx, ident)
         restore_session_widgets_from_backing_context(session, ctx)
+        project_return_destination_to_canonical_creative_selectors(session)
     _clear_creative_page_hydrate_flags(session)
     session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
     try:
@@ -1639,6 +1641,39 @@ def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnP
         pass
     merge_live_practice_into_creative_session(session, prefer_backing_context_key=True)
     return page
+
+
+def project_return_destination_to_canonical_creative_selectors(
+    session: dict[str, Any],
+    *,
+    intelligence_tab: str = "",
+    entry_mode: str = "",
+) -> None:
+    """Make sealed Return destination authoritative in canonical Creative selector blob (first widget sync)."""
+    tab = str(intelligence_tab or session.get("improv_intelligence_tab") or "").strip()
+    entry = str(entry_mode or session.get("improv_entry_mode") or "").strip()
+    if not tab and not entry:
+        return
+    try:
+        from creative_tab_tool_persistence import commit_creative_selector_to_canonical
+    except ImportError:
+        return
+    if tab:
+        commit_creative_selector_to_canonical(
+            session,
+            "improv_intelligence_tab",
+            tab,
+            reason="return_from_backing",
+            projection_source="sealed_return_route",
+        )
+    if entry:
+        commit_creative_selector_to_canonical(
+            session,
+            "improv_entry_mode",
+            entry,
+            reason="return_from_backing",
+            projection_source="sealed_return_route",
+        )
 
 
 def prepare_return_to_mission_detail(session: dict[str, Any]) -> CreativeReturnPage:

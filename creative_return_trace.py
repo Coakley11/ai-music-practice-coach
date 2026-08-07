@@ -362,6 +362,66 @@ def trace_page_transition(session: dict[str, Any], *, from_page: str, to_page: s
     )
 
 
+def snapshot_improv_selector_render_state(session: dict[str, Any]) -> dict[str, Any]:
+    """Session + canonical selector fields at Creative II radio render boundary."""
+    try:
+        from studio_page_state import CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY
+    except ImportError:
+        CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY = "creative_improv_intelligence_tab"
+    try:
+        from creative_tab_tool_persistence import (
+            CREATIVE_WORKSPACE_STATE_KEY,
+            canonical_creative_selector_value,
+            selector_hydration_complete,
+        )
+    except ImportError:
+        CREATIVE_WORKSPACE_STATE_KEY = "creative_workspace_state"
+        canonical_creative_selector_value = None  # type: ignore[assignment,misc]
+        selector_hydration_complete = lambda _s: False  # type: ignore[assignment,misc]
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        tool_type = str(getattr(sess, "tool_type", "") or "") if sess is not None else ""
+    except ImportError:
+        tool_type = ""
+    cws = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    cws_entry = cws.get("improv_entry_mode") if isinstance(cws, dict) else None
+    canon_entry = (
+        canonical_creative_selector_value(session, "improv_entry_mode")
+        if canonical_creative_selector_value
+        else ""
+    )
+    return {
+        "improv_entry_mode": str(session.get("improv_entry_mode") or ""),
+        "improv_intelligence_tab": str(session.get("improv_intelligence_tab") or ""),
+        "creative_improv_intelligence_tab": str(session.get(CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY) or ""),
+        "creative_session_tool_type": tool_type,
+        "creative_workspace_improv_entry_mode": cws_entry,
+        "canonical_improv_entry_mode": str(canon_entry or ""),
+        "_creative_restore_from_backing": bool(session.get("_creative_restore_from_backing")),
+        "_creative_selector_hydration_complete": bool(selector_hydration_complete(session)),
+    }
+
+
+def trace_improv_selector_restore(
+    session: dict[str, Any],
+    phase: str,
+    *,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+    returned: str = "",
+) -> None:
+    extra: dict[str, Any] = {}
+    if before is not None:
+        extra["before"] = before
+    if after is not None:
+        extra["after"] = after
+    if returned:
+        extra["returned"] = returned
+    emit_creative_return_trace(session, phase, extra=extra)
+
+
 def should_show_trace_ui(session: dict[str, Any], st_module: Any | None = None) -> bool:
     if session.get("developer_mode"):
         return True
@@ -438,11 +498,13 @@ __all__ = [
     "record_backing_context_mutation",
     "render_creative_return_trace_panel",
     "should_show_trace_ui",
+    "snapshot_improv_selector_render_state",
     "snapshot_return_surface",
     "trace_backing_launch",
     "trace_creative_run_start",
     "trace_direct_backing_context_write",
     "trace_hydration_step",
+    "trace_improv_selector_restore",
     "trace_page_transition",
     "trace_return_after_apply",
     "trace_return_click_before",
