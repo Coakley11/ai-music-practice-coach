@@ -561,6 +561,19 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             except ImportError:
                 session_state[key] = copy.deepcopy(val)
             continue
+        if key == "backing_context":
+            prev_bc = session_state.get("backing_context")
+            try:
+                from creative_return_trace import trace_direct_backing_context_write
+
+                trace_direct_backing_context_write(
+                    session_state,
+                    source="apply_page_snapshot",
+                    prev_blob=prev_bc,
+                    new_blob=val,
+                )
+            except ImportError:
+                pass
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
 

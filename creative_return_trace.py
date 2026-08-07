@@ -10,7 +10,10 @@ _LOG = logging.getLogger("music.creative_return_trace")
 TRACE_PREFIX = "[creative_return_trace]"
 SESSION_TRACE_LOG_KEY = "_creative_return_trace_log"
 SESSION_TRACE_LAST_KEY = "_creative_return_trace_last"
+BACKING_CONTEXT_MUTATION_JOURNAL_KEY = "_backing_context_mutation_journal"
+BACKING_CONTEXT_PRESERVE_FIX_ID = "same_sig_v1_11de01d"
 MAX_TRACE_ENTRIES = 48
+MAX_MUTATION_JOURNAL_ENTRIES = 64
 
 
 def _run_seq(session: dict[str, Any]) -> int:
@@ -123,6 +126,112 @@ def trace_backing_launch(
             "launch_entry_read": launch_entry,
             "sealed_creative_return_route": sealed_route,
             "declared_backing_source": backing_source,
+            "preserve_fix_id": BACKING_CONTEXT_PRESERVE_FIX_ID,
+        },
+    )
+
+
+def _append_mutation_journal(session: dict[str, Any], record: dict[str, Any]) -> None:
+    journal = session.get(BACKING_CONTEXT_MUTATION_JOURNAL_KEY)
+    if not isinstance(journal, list):
+        journal = []
+    journal.append(record)
+    if len(journal) > MAX_MUTATION_JOURNAL_ENTRIES:
+        journal = journal[-MAX_MUTATION_JOURNAL_ENTRIES:]
+    session[BACKING_CONTEXT_MUTATION_JOURNAL_KEY] = journal
+
+
+def _blob_route_present(blob: Any) -> bool:
+    if not isinstance(blob, dict):
+        return False
+    route = blob.get("creative_return_route")
+    return isinstance(route, dict) and bool(route)
+
+
+def _blob_signature(blob: Any) -> str:
+    if not isinstance(blob, dict):
+        return ""
+    return str(blob.get("source_signature") or "").strip()
+
+
+def record_backing_context_mutation(
+    session: dict[str, Any],
+    *,
+    phase: str,
+    write_path: str,
+    uses_set_backing_context: bool,
+    blob_key: str = "backing_context",
+    caller: str = "",
+    prev_blob: Any = None,
+    new_blob: Any = None,
+    prev_source_signature: str = "",
+    new_source_signature: str = "",
+    prev_route_present: bool | None = None,
+    explicit_route_arg_present: bool | None = None,
+    new_route_present: bool | None = None,
+    preservation_reason: str = "",
+    route_dropped: bool | None = None,
+) -> None:
+    """Forensic journal row for backing_context blob mutations (filter by source_signature)."""
+    if prev_route_present is None:
+        prev_route_present = _blob_route_present(prev_blob)
+    if new_route_present is None:
+        new_route_present = _blob_route_present(new_blob)
+    if route_dropped is None:
+        route_dropped = bool(prev_route_present) and not bool(new_route_present)
+    if not prev_source_signature:
+        prev_source_signature = _blob_signature(prev_blob)
+    if not new_source_signature:
+        new_source_signature = _blob_signature(new_blob)
+    row = {
+        "phase": str(phase or "").strip(),
+        "run_seq": _run_seq(session),
+        "caller": str(caller or write_path or "").strip(),
+        "write_path": str(write_path or "").strip(),
+        "uses_set_backing_context": bool(uses_set_backing_context),
+        "blob_key": str(blob_key or "backing_context"),
+        "prev_source_signature": prev_source_signature,
+        "new_source_signature": new_source_signature,
+        "prev_route_present": prev_route_present,
+        "explicit_route_arg_present": explicit_route_arg_present,
+        "new_route_present": new_route_present,
+        "preservation_reason": str(preservation_reason or "").strip(),
+        "route_dropped": route_dropped,
+        "preserve_fix_id": BACKING_CONTEXT_PRESERVE_FIX_ID,
+    }
+    _append_mutation_journal(session, row)
+    line = f"{TRACE_PREFIX} mutation phase={row['phase']} sig={new_source_signature or prev_source_signature} {_safe_json(row)}"
+    _LOG.info(line)
+
+
+def trace_direct_backing_context_write(
+    session: dict[str, Any],
+    *,
+    source: str,
+    prev_blob: Any,
+    new_blob: Any,
+) -> None:
+    """Direct session[backing_context] assignment bypassing set_backing_context()."""
+    record_backing_context_mutation(
+        session,
+        phase="DIRECT_BACKING_CONTEXT_WRITE",
+        write_path=str(source or "direct"),
+        uses_set_backing_context=False,
+        caller=str(source or "direct"),
+        prev_blob=prev_blob,
+        new_blob=new_blob,
+        explicit_route_arg_present=False,
+        preservation_reason="bypass_set_backing_context",
+    )
+    emit_creative_return_trace(
+        session,
+        "DIRECT_BACKING_CONTEXT_WRITE",
+        extra={
+            "source": source,
+            "prev_route_present": _blob_route_present(prev_blob),
+            "new_route_present": _blob_route_present(new_blob),
+            "prev_source_signature": _blob_signature(prev_blob),
+            "new_source_signature": _blob_signature(new_blob),
         },
     )
 
@@ -135,12 +244,32 @@ def trace_set_backing_context(
     new_route: Any,
     ctx_source: str,
     ctx_signature: str,
+    prev_blob: Any = None,
+    new_blob: Any = None,
+    preservation_reason: str = "",
+    explicit_route_arg_present: bool = False,
 ) -> None:
     dropped = bool(prev_route) and not new_route
     replaced = (
         isinstance(prev_route, dict)
         and isinstance(new_route, dict)
         and prev_route != new_route
+    )
+    record_backing_context_mutation(
+        session,
+        phase="SET_BACKING_CONTEXT",
+        write_path="set_backing_context",
+        uses_set_backing_context=True,
+        caller=caller,
+        prev_blob=prev_blob,
+        new_blob=new_blob,
+        prev_source_signature=_blob_signature(prev_blob),
+        new_source_signature=str(ctx_signature or _blob_signature(new_blob)),
+        prev_route_present=_blob_route_present(prev_blob) or bool(prev_route),
+        explicit_route_arg_present=explicit_route_arg_present,
+        new_route_present=isinstance(new_route, dict),
+        preservation_reason=preservation_reason,
+        route_dropped=dropped,
     )
     emit_creative_return_trace(
         session,
@@ -153,6 +282,10 @@ def trace_set_backing_context(
             "new_route": new_route,
             "ctx_source": ctx_source,
             "ctx_source_signature": ctx_signature,
+            "prev_source_signature": _blob_signature(prev_blob),
+            "preservation_reason": preservation_reason,
+            "explicit_route_arg_present": explicit_route_arg_present,
+            "preserve_fix_id": BACKING_CONTEXT_PRESERVE_FIX_ID,
         },
     )
 
@@ -262,17 +395,49 @@ def render_creative_return_trace_panel(st_module: Any, session: dict[str, Any]) 
                 mime="application/json",
                 key="creative_return_trace_download",
             )
+        journal = session.get(BACKING_CONTEXT_MUTATION_JOURNAL_KEY)
+        if isinstance(journal, list) and journal:
+            filter_sig = st_module.text_input(
+                "Filter mutation journal by source_signature",
+                value="",
+                key="creative_return_trace_sig_filter",
+            ).strip()
+            rows = journal
+            if filter_sig:
+                rows = [
+                    r
+                    for r in journal
+                    if isinstance(r, dict)
+                    and (
+                        str(r.get("new_source_signature") or "") == filter_sig
+                        or str(r.get("prev_source_signature") or "") == filter_sig
+                    )
+                ]
+            st_module.caption(f"Backing-context mutation journal ({len(rows)} rows)")
+            if rows:
+                st_module.json(rows[-12:])
+            st_module.download_button(
+                "Download mutation journal JSON",
+                data=_safe_json(journal),
+                file_name="backing_context_mutation_journal.json",
+                mime="application/json",
+                key="creative_return_mutation_download",
+            )
 
 
 __all__ = [
+    "BACKING_CONTEXT_MUTATION_JOURNAL_KEY",
+    "BACKING_CONTEXT_PRESERVE_FIX_ID",
     "SESSION_TRACE_LOG_KEY",
     "TRACE_PREFIX",
     "emit_creative_return_trace",
+    "record_backing_context_mutation",
     "render_creative_return_trace_panel",
     "should_show_trace_ui",
     "snapshot_return_surface",
     "trace_backing_launch",
     "trace_creative_run_start",
+    "trace_direct_backing_context_write",
     "trace_hydration_step",
     "trace_page_transition",
     "trace_return_after_apply",

@@ -87,6 +87,11 @@ class TestCreativeReturnRouteReconcilePreservation(unittest.TestCase):
                 extra.get("route_dropped"),
                 msg=f"route dropped by {extra.get('caller')!r}",
             )
+            self.assertEqual(
+                extra.get("preservation_reason"),
+                "preserved_same_signature",
+                msg=extra,
+            )
 
     def _assert_return_uses_blob_route(self, session: dict[str, Any], sealed: dict[str, Any]) -> None:
         session["improv_entry_mode"] = "Song-Based Improvisation"

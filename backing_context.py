@@ -16,6 +16,7 @@ from typing import Any, Literal
 BACKING_CONTEXT_KEY = "backing_context"
 PENDING_BACKING_CONTEXT_APPLY = "_pending_backing_context_apply"
 BACKING_CTX_TRANSPORT_APPLIED_SIG = "_backing_ctx_transport_applied_sig"
+_CREATIVE_RETURN_ROUTE_ARG_UNSET: Any = object()
 
 BackingSource = Literal[
     "regular_song", "entry_jam", "mission", "custom_progression", "song_improv"
@@ -183,19 +184,31 @@ def set_backing_context(
     session: dict[str, Any],
     ctx: BackingContext,
     *,
-    creative_return_route: dict[str, Any] | None = None,
+    creative_return_route: dict[str, Any] | Any = _CREATIVE_RETURN_ROUTE_ARG_UNSET,
     trace_caller: str = "",
 ) -> None:
     prev_blob = session.get(BACKING_CONTEXT_KEY)
     prev_route = prev_blob.get("creative_return_route") if isinstance(prev_blob, dict) else None
+    explicit_route_arg_present = creative_return_route is not _CREATIVE_RETURN_ROUTE_ARG_UNSET
     payload = refresh_backing_context_timestamps(ctx).to_dict()
-    if isinstance(creative_return_route, dict):
+    preservation_reason = "no_previous_route"
+    if explicit_route_arg_present and isinstance(creative_return_route, dict):
         payload["creative_return_route"] = dict(creative_return_route)
+        preservation_reason = "explicit_new_route"
     elif isinstance(prev_route, dict) and isinstance(prev_blob, dict):
         prev_sig = str(prev_blob.get("source_signature") or "").strip()
         new_sig = str(ctx.source_signature or "").strip()
-        if prev_sig and new_sig and prev_sig == new_sig:
+        if not prev_sig:
+            preservation_reason = "previous_signature_missing"
+        elif not new_sig:
+            preservation_reason = "new_signature_missing"
+        elif prev_sig != new_sig:
+            preservation_reason = "signature_changed"
+        else:
             payload["creative_return_route"] = dict(prev_route)
+            preservation_reason = "preserved_same_signature"
+    elif isinstance(prev_route, dict):
+        preservation_reason = "no_previous_route"
     session[BACKING_CONTEXT_KEY] = payload
     new_route = payload.get("creative_return_route")
     try:
@@ -208,12 +221,28 @@ def set_backing_context(
             new_route=new_route,
             ctx_source=str(ctx.source or ""),
             ctx_signature=str(ctx.source_signature or ""),
+            prev_blob=prev_blob,
+            new_blob=payload,
+            preservation_reason=preservation_reason,
+            explicit_route_arg_present=explicit_route_arg_present,
         )
     except ImportError:
         pass
 
 
 def clear_backing_context(session: dict[str, Any]) -> None:
+    prev_blob = session.get(BACKING_CONTEXT_KEY)
+    try:
+        from creative_return_trace import trace_direct_backing_context_write
+
+        trace_direct_backing_context_write(
+            session,
+            source="clear_backing_context",
+            prev_blob=prev_blob,
+            new_blob=None,
+        )
+    except ImportError:
+        pass
     session.pop(BACKING_CONTEXT_KEY, None)
     session.pop(BACKING_CTX_TRANSPORT_APPLIED_SIG, None)
 
