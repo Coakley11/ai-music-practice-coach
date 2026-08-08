@@ -128,6 +128,20 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
             except ImportError:
                 pass
             try:
+                from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+                sync_improv_jam_session_from_active_blob(
+                    session, writer="post_generate_consume", phase="jam_session_generator"
+                )
+            except ImportError:
+                pass
+            try:
+                from creative_session_state import sync_creative_session_from_session
+
+                sync_creative_session_from_session(session)
+            except ImportError:
+                pass
+            try:
                 from jam_generator_live_runtime_trace import record_jam_post_generate_trace
 
                 record_jam_post_generate_trace(session, key_c=key_c, owner=owner, token=token)

@@ -91,6 +91,14 @@ def finalize_generated_jam_session_key_seal(session: dict[str, Any], key_center:
         )
     session["improv_jam_key"] = k
     try:
+        from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+        sync_improv_jam_session_from_active_blob(
+            session, writer="finalize_generated_jam_session_key_seal", phase="post_seal"
+        )
+    except ImportError:
+        pass
+    try:
         from generated_jam_key_context import activate_generated_jam_key_ownership
 
         activate_generated_jam_key_ownership(
@@ -223,7 +231,12 @@ def commit_jam_session_generation(
 
     ptr = get_active_workflow_pointer(session)
     if ptr and ptr.workflow_owner == "jam_session_generator" and ptr.workflow_session_id == sid and not new_session:
-        session["improv_jam_session"] = jam
+        try:
+            from improv_jam_session_projection import set_improv_jam_session
+
+            set_improv_jam_session(session, jam, writer="commit_jam_session_generation", phase="mutate")
+        except ImportError:
+            session["improv_jam_session"] = jam
         result = mutate_active_workflow(session, _mut, mutation_type="jam_session_generate", source="generate_jam")
         return result.ok
     blob = WorkflowStateBlob(
@@ -237,7 +250,12 @@ def commit_jam_session_generation(
         source_type="generated",
     )
     save_workflow_blob(session, blob, source="jam_session_generate")
-    session["improv_jam_session"] = jam
+    try:
+        from improv_jam_session_projection import set_improv_jam_session
+
+        set_improv_jam_session(session, jam, writer="commit_jam_session_generation", phase="new_session")
+    except ImportError:
+        session["improv_jam_session"] = jam
     act = activate_workflow(
         session,
         ActivateWorkflowRequest(

@@ -323,16 +323,35 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         and ptr_before.workflow_session_id == target_sid
         and not request.incoming_blob
         and not request.mutate_incoming
-        and not request.page_route
-        and not request.return_route
-        and not request.navigation_intent
     ):
-        trace["validation_result"] = "ok_unchanged"
-        trace["skipped"] = True
-        trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-        session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
-        session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
-        return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
+        existing_blob = get_workflow_blob(session, target_owner, target_sid)
+        if existing_blob is not None:
+            if request.page_route == "backing":
+                existing_blob.last_backing_route = "backing"
+                existing_blob.page_route = "backing"
+            elif request.page_route:
+                existing_blob.resumable_route = request.page_route
+            if request.return_route:
+                existing_blob.return_to_source_route = request.return_route
+                existing_blob.return_route = request.return_route
+            if request.page_route or request.return_route or request.navigation_intent:
+                save_workflow_blob(session, existing_blob, source=f"activate_route_only:{request.activation_source}")
+            trace["validation_result"] = "ok_preserve_blob"
+            trace["skipped"] = True
+            trace["route_only_update"] = bool(
+                request.page_route or request.return_route or request.navigation_intent
+            )
+            trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
+            session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
+        if not request.page_route and not request.return_route and not request.navigation_intent:
+            trace["validation_result"] = "ok_unchanged"
+            trace["skipped"] = True
+            trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
+            session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
 
     out_owner, out_sid, outgoing = capture_outgoing_blob(session)
     trace["outgoing_owner"] = out_owner

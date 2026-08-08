@@ -240,6 +240,14 @@ def _mission_sections_from_session(session: dict[str, Any]) -> dict[str, list[st
 
 def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
     if entry_mode == "Jam Session Generator":
+        try:
+            from improv_jam_session_projection import authoritative_jam_section_map
+
+            auth = authoritative_jam_section_map(session)
+            if auth:
+                return auth
+        except ImportError:
+            pass
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict):
             raw = jam.get("sections")
@@ -677,11 +685,30 @@ def apply_creative_session_to_session(
         _set("improv_jam_bpm", int(sess.bpm))
         _set("improv_jam_mood", sess.mood)
         if sess.sections:
-            jam = dict(session.get("improv_jam_session") or {})
-            if not isinstance(jam, dict):
-                jam = {}
-            jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
-            session["improv_jam_session"] = jam
+            try:
+                from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+                if not sync_improv_jam_session_from_active_blob(
+                    session, writer="apply_creative_session_to_session", phase="jam_session_generator"
+                ):
+                    jam = dict(session.get("improv_jam_session") or {})
+                    if not isinstance(jam, dict):
+                        jam = {}
+                    jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
+                    from improv_jam_session_projection import set_improv_jam_session
+
+                    set_improv_jam_session(
+                        session,
+                        jam,
+                        writer="apply_creative_session_to_session",
+                        phase="no_active_blob",
+                    )
+            except ImportError:
+                jam = dict(session.get("improv_jam_session") or {})
+                if not isinstance(jam, dict):
+                    jam = {}
+                jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
+                session["improv_jam_session"] = jam
     elif sess.tool_type == "song_based_improvisation":
         live_sid = ""
         stale_parent = ""
@@ -853,6 +880,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         return
     if session.pop(JAM_SESSION_GENERATE_GUARD_KEY, False):
         sync_creative_session_from_session(session)
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="post_generate_guard"
+            )
+        except ImportError:
+            pass
         session[hydrate_flag] = True
         return
     try:
@@ -884,6 +919,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     ):
         should_apply = False
     if should_apply and sess is not None:
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="before_apply"
+            )
+        except ImportError:
+            pass
         apply_creative_session_to_session(session, sess, widget_safe=True)
         session[hydrate_flag] = True
         return
@@ -905,6 +948,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         except ImportError:
             pass
     if should_apply and sess is not None:
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="before_apply"
+            )
+        except ImportError:
+            pass
         apply_creative_session_to_session(session, sess, widget_safe=True)
         session[hydrate_flag] = True
         return

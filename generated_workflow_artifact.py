@@ -514,7 +514,7 @@ def commit_generated_artifact_revision(
             jam = copy.deepcopy(jam)
             jam["sections"] = copy.deepcopy(snap.section_map)
             try:
-                from music_workflow_generated_session import seal_jam_session_musical_context
+                from generated_workflow_artifact import seal_jam_session_musical_context
 
                 key_label = _practice_key_label(snap.practice_tonic, snap.practice_mode)
                 jam = seal_jam_session_musical_context(
@@ -524,7 +524,17 @@ def commit_generated_artifact_revision(
                 )
             except ImportError:
                 pass
-            session["improv_jam_session"] = jam
+            try:
+                from improv_jam_session_projection import set_improv_jam_session
+
+                set_improv_jam_session(
+                    session,
+                    jam,
+                    writer="commit_generated_artifact_revision",
+                    phase="jam_session_generator",
+                )
+            except ImportError:
+                session["improv_jam_session"] = jam
     if owner == "style_jam":
         snap.mood = str(session.get("improv_mood") or snap.mood or "Mellow")
         snap.groove = str(session.get("improv_groove") or snap.groove or snap.intensity)

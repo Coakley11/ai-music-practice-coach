@@ -270,15 +270,27 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         session["improv_jam_mood"] = str(blob.mood or "").strip()
         if blob.tempo_bpm:
             session["improv_jam_bpm"] = int(blob.tempo_bpm)
-        jam: dict[str, Any] = {}
-        if isinstance(session.get("improv_jam_session"), dict):
-            jam = copy.deepcopy(session["improv_jam_session"])
-        if blob.generated_session_id:
-            jam["id"] = blob.generated_session_id
-        if blob.section_map:
-            jam["sections"] = copy.deepcopy(blob.section_map)
-        if jam:
-            session["improv_jam_session"] = jam
+        try:
+            from improv_jam_session_projection import build_improv_jam_session_from_blob, set_improv_jam_session
+
+            existing = session.get("improv_jam_session") if isinstance(session.get("improv_jam_session"), dict) else {}
+            jam = build_improv_jam_session_from_blob(blob, existing=existing)
+            set_improv_jam_session(
+                session,
+                jam,
+                writer="restore_workflow_blob_to_session",
+                phase="jam_session_generator",
+            )
+        except ImportError:
+            jam: dict[str, Any] = {}
+            if isinstance(session.get("improv_jam_session"), dict):
+                jam = copy.deepcopy(session["improv_jam_session"])
+            if blob.generated_session_id:
+                jam["id"] = blob.generated_session_id
+            if blob.section_map:
+                jam["sections"] = copy.deepcopy(blob.section_map)
+            if jam:
+                session["improv_jam_session"] = jam
         try:
             from creative_key_sync import apply_creative_concert_key, IMPROV_JAM_KEY_TRACKER
             from generated_jam_key_context import activate_generated_jam_key_ownership

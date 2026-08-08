@@ -14638,6 +14638,7 @@ elif _studio_page == "creative":
         except ImportError:
             pass
 
+        handoff_sealed = False
         try:
             from music_workflow_pending_backing_handoff import (
                 PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
@@ -14731,14 +14732,58 @@ elif _studio_page == "creative":
                         creative_backing_handoff_blocked=isinstance(handoff_exc, CreativeBackingHandoffBlocked),
                     )
                 except ImportError:
+                    CreativeBackingHandoffBlocked = type(None)  # type: ignore[misc,assignment]
+                try:
+                    from musical_context_coherence import CreativeBackingHandoffBlocked as _CBB
+
+                    if isinstance(handoff_exc, _CBB):
+                        try:
+                            from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                            integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                            if integrity_msg:
+                                st.warning(str(integrity_msg))
+                            else:
+                                st.warning("Backing handoff blocked — musical context is not coherent.")
+                        except ImportError:
+                            st.warning("Backing handoff blocked — musical context is not coherent.")
+                        return
+                except ImportError:
+                    pass
+                try:
+                    from generated_workflow_artifact import WorkflowOwnerIntegrityError
+
+                    if isinstance(handoff_exc, WorkflowOwnerIntegrityError):
+                        try:
+                            from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                            integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                            if integrity_msg:
+                                st.warning(str(integrity_msg))
+                        except ImportError:
+                            st.warning("Backing handoff blocked — workflow integrity check failed.")
+                        return
+                except ImportError:
                     pass
                 raise
+            try:
+                from backing_context import creative_specialized_backing_handoff_ready
+
+                handoff_sealed, handoff_reason = creative_specialized_backing_handoff_ready(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                handoff_sealed = True
+                handoff_reason = "check_unavailable"
             try:
                 from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
 
                 append_jam_backing_handoff_trace(
                     st.session_state,
                     "after_open_backing_from_creative",
+                    handoff_sealed=handoff_sealed,
+                    handoff_reason=handoff_reason,
                     backing_context_source=str(
                         (st.session_state.get("_backing_context") or {}).get("source")
                         if isinstance(st.session_state.get("_backing_context"), dict)
@@ -14764,6 +14809,38 @@ elif _studio_page == "creative":
                 return
         except ImportError:
             open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
+            try:
+                from backing_context import creative_specialized_backing_handoff_ready
+
+                handoff_sealed, _handoff_reason = creative_specialized_backing_handoff_ready(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                handoff_sealed = True
+
+        if not handoff_sealed:
+            try:
+                from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                if integrity_msg:
+                    st.warning(str(integrity_msg))
+                else:
+                    st.warning("Backing handoff could not be sealed — stay on Creative and fix the jam context.")
+            except ImportError:
+                st.warning("Backing handoff could not be sealed.")
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "handoff_navigation_blocked",
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                pass
+            return
 
         try:
             from backing_source_navigation import mark_specialized_backing_handoff_entry

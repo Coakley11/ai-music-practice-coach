@@ -2220,6 +2220,39 @@ def sync_creative_handoff_keys(session: dict[str, Any], *, st_like: Any | None =
         apply_creative_concert_key(session, key, st_like=st_like)
 
 
+def creative_specialized_backing_handoff_ready(
+    session: dict[str, Any],
+    *,
+    creative_source: str,
+) -> tuple[bool, str]:
+    """True when open_backing_from_creative sealed a valid specialized BackingContext."""
+    try:
+        from musical_context_coherence import MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY
+
+        block = session.get(MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY)
+        if isinstance(block, dict) and block.get("blocked"):
+            return False, "coherence_blocked"
+    except ImportError:
+        pass
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return False, "missing_backing_context"
+    src = str(getattr(ctx, "source", "") or "").strip()
+    if creative_source == "entry_jam":
+        if src != "entry_jam":
+            return False, f"unexpected_source:{src or 'empty'}"
+        prog = list(getattr(ctx, "progression", None) or [])
+        if not prog:
+            return False, "empty_progression"
+    elif creative_source == "mission" and src != "mission":
+        return False, f"unexpected_source:{src or 'empty'}"
+    elif creative_source == "song_improv" and src != "song_improv":
+        return False, f"unexpected_source:{src or 'empty'}"
+    elif creative_source == "custom_progression" and src != "custom_progression":
+        return False, f"unexpected_source:{src or 'empty'}"
+    return True, "ok"
+
+
 def open_backing_from_creative(
     session: dict[str, Any],
     *,
@@ -2250,6 +2283,15 @@ def open_backing_from_creative(
     except ImportError:
         pass
     sync_creative_handoff_keys(session, st_like=st_like)
+    if str(source) == "entry_jam":
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="open_backing_from_creative", phase="pre_build"
+            )
+        except ImportError:
+            pass
     try:
         from creative_session_state import sync_creative_session_from_session
 
@@ -2298,11 +2340,21 @@ def open_backing_from_creative(
     try:
         from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source
         from music_workflow_activation import activate_workflow_simple
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
+        entry_for_wf = str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or "")
         launch_wf = workflow_type_from_backing_source(
             str(ctx.source or source),
-            entry_mode=str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""),
+            entry_mode=entry_for_wf,
         )
+        ptr = get_active_workflow_pointer(session)
+        if (
+            ptr
+            and ptr.workflow_owner in {"jam_session_generator", "style_jam"}
+            and str(source) in {"entry_jam", ""}
+            and str(getattr(ctx, "source", "") or "") == "entry_jam"
+        ):
+            launch_wf = str(ptr.workflow_owner)
         session["_backing_launch_workflow"] = launch_wf
         owner = str(launch_wf)
         if source == "mission":
@@ -2315,6 +2367,12 @@ def open_backing_from_creative(
             owner = launch_wf if launch_wf in {"style_jam", "jam_session_generator"} else "entry_jam"
         else:
             owner = "regular_catalog_backing"
+        if not skip_workflow_activation and ptr and owner in {"jam_session_generator", "style_jam"}:
+            if (
+                str(ptr.workflow_owner or "") == owner
+                and get_workflow_blob(session, str(ptr.workflow_owner), str(ptr.workflow_session_id or "")) is not None
+            ):
+                skip_workflow_activation = True
         if not skip_workflow_activation:
             activate_workflow_simple(
                 session,
@@ -3053,6 +3111,7 @@ __all__ = [
     "backing_page_transport_defaults",
     "sync_creative_handoff_keys",
     "sync_live_keys_from_backing_context",
+    "creative_specialized_backing_handoff_ready",
     "open_backing_from_creative",
     "ensure_backing_context_from_creative_session",
     "PENDING_BACKING_CONTEXT_APPLY",
