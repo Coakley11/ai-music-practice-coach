@@ -488,9 +488,9 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
         pass
 
     try:
-        from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, set_backing_open_intent
+        from backing_source_navigation import mark_specialized_backing_handoff_entry
 
-        set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
+        mark_specialized_backing_handoff_entry(session)
     except ImportError:
         pass
 

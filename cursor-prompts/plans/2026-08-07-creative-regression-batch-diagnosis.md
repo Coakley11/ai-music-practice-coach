@@ -99,5 +99,15 @@ Preview on safety branch only — **do not merge to `origin/dev` until manual de
 
 **Verify on next preview:** After Hevenu hydrate @ Creative → nav Log → boundary trace shows `serialize_payload != NULL`, `save_complete != NULL`, durable page advances to Log at rev > 894.
 
+### H — Specialized vs generic Backing entry (safety @ post-9a3131f)
+
+**Symptom:** Mission / Jam / Style Jam / Song-Based → Backing opened **regular catalog** Backing.
+
+**First incorrect classifier:** `hydrate_backing_source_for_page()` treated `BACKING_INTENT_RESTORE_LAST` the same as explicit generic catalog entry (`generic_entry or intent == restore_last` → `release_specialized_backing_for_generic_navigation`). Streamlit calls hydrate **twice** per Backing run (early app hydrate + backing page render); the first call consumes `from_creative`, the second defaults intent to `restore_last` and **released** sealed mission/jam context before render.
+
+**Fix:** Generic reset only when `BACKING_GENERIC_CATALOG_ENTRY_KEY` / `BACKING_ENTRY_GENERIC_CATALOG` is set (`mark_generic_catalog_backing_entry`). Specialized handoffs use `mark_specialized_backing_handoff_entry` / `from_creative`. `navigate_studio_page` marks generic only for ordinary top-level nav (not in-flight Creative handoff).
+
+**Tests:** `tests/test_backing_entry_classification.py`.
+
 **Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
 

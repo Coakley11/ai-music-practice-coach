@@ -257,13 +257,21 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
                 set_backing_open_intent,
             )
 
+            from backing_source_navigation import explicit_specialized_backing_handoff_pending
+
             if current == "practice":
                 if not session_state.get(BACKING_OPEN_INTENT_KEY):
                     set_backing_open_intent(session_state, BACKING_INTENT_FROM_PRACTICE)
             elif current not in ("creative", "backing"):
-                mark_generic_catalog_backing_entry(session_state)
+                if not explicit_specialized_backing_handoff_pending(session_state):
+                    mark_generic_catalog_backing_entry(session_state)
             elif not session_state.get(BACKING_OPEN_INTENT_KEY):
-                set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+                if explicit_specialized_backing_handoff_pending(session_state):
+                    from backing_source_navigation import mark_specialized_backing_handoff_entry
+
+                    mark_specialized_backing_handoff_entry(session_state)
+                else:
+                    set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
         except ImportError:
             if not session_state.get("improv_mission_backing_handoff"):
                 try:

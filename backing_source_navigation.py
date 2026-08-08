@@ -514,10 +514,52 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
 
 
 BACKING_GENERIC_CATALOG_ENTRY_KEY = "_backing_generic_catalog_entry"
+BACKING_ENTRY_CLASS_KEY = "_backing_entry_class"
+BACKING_ENTRY_GENERIC_CATALOG = "generic_catalog_navigation"
+BACKING_ENTRY_SPECIALIZED_HANDOFF = "specialized_handoff"
+
+
+def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> bool:
+    """Creative/Mission/Jam/SBI → Backing handoff in flight (not ordinary top-level Backing)."""
+    if str(session.get(BACKING_ENTRY_CLASS_KEY) or "").strip() == BACKING_ENTRY_SPECIALIZED_HANDOFF:
+        return True
+    try:
+        from music_workflow_pending_backing_handoff import PENDING_BACKING_WORKFLOW_KEY
+
+        pending = session.get(PENDING_BACKING_WORKFLOW_KEY)
+        if isinstance(pending, dict) and str(pending.get("backing_source") or "").strip():
+            return True
+    except ImportError:
+        pass
+    if session.get("improv_mission_backing_handoff"):
+        return True
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            get_backing_context,
+            get_backing_source_preference,
+        )
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in {"entry_jam", "song_improv", "mission", "custom_progression"}:
+            if get_backing_source_preference(session) != BACKING_PREF_CATALOG:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
+def mark_specialized_backing_handoff_entry(session: dict[str, Any]) -> None:
+    """Seal explicit specialized Backing entry (consumed once on hydrate)."""
+    session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_SPECIALIZED_HANDOFF
+    session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+    set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
 
 
 def mark_generic_catalog_backing_entry(session: dict[str, Any]) -> None:
     """User opened Backing from a top-level page — not an in-flight Creative handoff."""
+    session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_GENERIC_CATALOG
     session[BACKING_GENERIC_CATALOG_ENTRY_KEY] = True
     set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
 
@@ -550,10 +592,11 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
     generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
+    entry_class = str(session.pop(BACKING_ENTRY_CLASS_KEY, "") or "").strip()
     intent = consume_backing_open_intent(session)
-    if generic_entry or intent == BACKING_INTENT_RESTORE_LAST:
+    if generic_entry or entry_class == BACKING_ENTRY_GENERIC_CATALOG:
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
-    if intent == BACKING_INTENT_FROM_CREATIVE:
+    elif intent == BACKING_INTENT_FROM_CREATIVE or entry_class == BACKING_ENTRY_SPECIALIZED_HANDOFF:
         open_backing_for_creative_source(session, st_like=st_like)
         try:
             from backing_context import sync_live_keys_from_backing_context
@@ -1855,6 +1898,7 @@ __all__ = [
     "consume_key_transition_intent",
     "creative_return_identity_from_backing_context",
     "edit_in_creative_button_label",
+    "explicit_specialized_backing_handoff_pending",
     "hydrate_backing_source_for_page",
     "hydrate_picker_source_for_page",
     "hydrate_practice_source_for_page",

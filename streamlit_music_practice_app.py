@@ -11170,10 +11170,7 @@ if pp.show_quick_nav(st):
     _render_workflow_architecture_dev_panel()
 
 try:
-    from music_workspace_boundary_trace import (
-        BOUNDARY_TRACE_MAIN_MARKER,
-        render_workspace_boundary_trace_main,
-    )
+    from music_workspace_boundary_trace import render_workspace_boundary_trace_main
 
     render_workspace_boundary_trace_main(st)
 except Exception as _main_boundary_trace_exc:
@@ -14712,9 +14709,9 @@ elif _studio_page == "creative":
             open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
 
         try:
-            from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, set_backing_open_intent
+            from backing_source_navigation import mark_specialized_backing_handoff_entry
 
-            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_CREATIVE)
+            mark_specialized_backing_handoff_entry(st.session_state)
         except ImportError:
             pass
         try:
