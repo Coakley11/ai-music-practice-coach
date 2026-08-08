@@ -53,6 +53,44 @@ def song_practice_blob(session: dict[str, Any]) -> WorkflowStateBlob | None:
     return get_workflow_blob(session, "song_based_improvisation", sid)
 
 
+def _section_map_total_chords(section_map: dict[str, list[str]] | None) -> int:
+    if not isinstance(section_map, dict) or not section_map:
+        return 0
+    return sum(len(v) for v in section_map.values() if isinstance(v, list))
+
+
+def rehydrate_full_song_concert_sections(session: dict[str, Any], *, source: str = "song_concert_rehydrate") -> dict[str, list[str]]:
+    """Restore full catalog section progression — never a one-chord mission backing slice."""
+    try:
+        from backing_context import _song_improv_sections_dict
+
+        resolved = _song_improv_sections_dict(session)
+        if _section_map_total_chords(resolved) > 1:
+            session["improv_song_concert_sections"] = copy.deepcopy(resolved)
+            session["_music_song_concert_sections_source"] = source
+            return copy.deepcopy(resolved)
+    except ImportError:
+        pass
+    song = song_practice_blob(session)
+    if song is not None and isinstance(song.section_map, dict) and _section_map_total_chords(song.section_map) > 1:
+        session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+        session["_music_song_concert_sections_source"] = source
+        return copy.deepcopy(song.section_map)
+    try:
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        out = sync_song_improv_sections_to_practice_key(session)
+        if _section_map_total_chords(out) > 1:
+            session["_music_song_concert_sections_source"] = source
+            return copy.deepcopy(out)
+    except ImportError:
+        pass
+    raw = session.get("improv_song_concert_sections")
+    if isinstance(raw, dict):
+        return copy.deepcopy(raw)
+    return {}
+
+
 def mirror_mission_keys_from_song_blob(session: dict[str, Any]) -> bool:
     """Before mission chord/example mutations — mission blob must not own practice key."""
     song = song_practice_blob(session)
@@ -123,6 +161,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
 
         if not entry_jam_practice_key_authority_active(session):
             mirror_mission_keys_from_song_blob(session)
+            rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
             song_tok = resolve_song_practice_key_token(session)
             if song_tok:
                 live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -155,7 +194,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
     if live != token:
         sync_session_practice_key_from_song_blob(session, source="missions_tab_parent_key")
     elif blob is not None and isinstance(blob.section_map, dict) and blob.section_map:
-        session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
+        rehydrate_full_song_concert_sections(session, source="missions_tab_parent_key_sections")
     return token
 
 
@@ -163,6 +202,7 @@ __all__ = [
     "mirror_mission_keys_from_song_blob",
     "mirror_song_practice_key_to_mission_blob",
     "mission_blob_session_id",
+    "rehydrate_full_song_concert_sections",
     "resolve_song_practice_key_token",
     "song_based_blob_session_id",
     "song_practice_blob",

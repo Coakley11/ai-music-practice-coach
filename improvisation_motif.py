@@ -176,6 +176,14 @@ def dedupe_sections_for_display(
 
 def concert_song_sections_from_session(session_state: dict) -> dict[str, list[str]] | None:
     """Transposed catalog progression in concert pitch (Song-Based practice key)."""
+    try:
+        from backing_context import _song_improv_sections_dict
+
+        resolved = _song_improv_sections_dict(session_state)
+        if isinstance(resolved, dict) and resolved:
+            return resolved
+    except ImportError:
+        pass
     raw = session_state.get("improv_song_concert_sections")
     if not isinstance(raw, dict) or not raw:
         return None

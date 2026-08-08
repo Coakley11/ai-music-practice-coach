@@ -339,6 +339,76 @@ class SongBlobKeyAuthorityTests(unittest.TestCase):
         self.assertEqual(pk.source, "song_based_blob_practice_key")
 
 
+class MissionProgressionCollapseGuardTests(unittest.TestCase):
+    def test_mission_chord_select_does_not_collapse_full_progression(self) -> None:
+        import copy
+
+        from active_musical_workflow_envelope import apply_atomic_mission_chord_selection
+        from improvisation_motif import flatten_section_map, resolve_improv_sections
+        from music_workflow_state_store import (
+            ActiveWorkflowPointer,
+            KeyAuthority,
+            WorkflowStateBlob,
+            save_workflow_blob,
+            set_active_workflow_pointer,
+        )
+
+        sections = {
+            "Melody A": ["Cm", "G7", "Cm", "Fm", "Bb", "Eb", "Ab", "D"],
+            "Melody B": ["Cm", "G7", "Bb7", "Fm", "Bb", "Eb", "Ab", "D"],
+        }
+        session: dict = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "active_catalog_pick_key": "hevenu_shalom",
+            "song": "Hevenu Shalom Aleichem",
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "improv_song_concert_sections": copy.deepcopy(sections),
+            "home_sections": copy.deepcopy(sections),
+            "improv_mission_progression": ["Cm"],
+            "improv_mission_chord_options": ["Cm"],
+        }
+        save_workflow_blob(
+            session,
+            WorkflowStateBlob(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id="hevenu_shalom",
+                keys=KeyAuthority(practice_tonic="D", practice_mode="minor"),
+                section_map=copy.deepcopy(sections),
+            ),
+        )
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="hevenu_shalom"),
+        )
+        save_workflow_blob(
+            session,
+            WorkflowStateBlob(
+                workflow_owner="mission_jam",
+                workflow_session_id="hevenu_shalom",
+                keys=KeyAuthority(practice_tonic="D", practice_mode="minor"),
+                section_map={"Melody A": ["Cm"]},
+                selected_chord_symbol="Cm",
+                selected_section="Melody A",
+                selected_chord_index=0,
+            ),
+        )
+        ctx = _hevenu_ctx()
+        apply_atomic_mission_chord_selection(
+            session,
+            chord="Fm",
+            section="Melody A",
+            chord_index=3,
+            chord_label="Melody A · Fm",
+        )
+        section_map = resolve_improv_sections(session, ctx)
+        flat = flatten_section_map(section_map) if section_map else []
+        self.assertGreater(len(flat), 1)
+        self.assertIn("Fm", flat)
+        self.assertEqual(str(session.get("ii_selected_chord") or ""), "Fm")
+
+
 class MissionGenerateAuthoritativeChordTests(unittest.TestCase):
     def test_generate_uses_authoritative_chord_over_stale_sealed_snap(self) -> None:
         session = _hevenu_session()

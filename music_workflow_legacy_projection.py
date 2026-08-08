@@ -68,6 +68,36 @@ def _practice_key_token(blob: WorkflowStateBlob) -> str:
     return tonic
 
 
+def _section_map_total_chords(section_map: dict[str, list[str]] | None) -> int:
+    if not isinstance(section_map, dict) or not section_map:
+        return 0
+    return sum(len(v) for v in section_map.values() if isinstance(v, list))
+
+
+def _concert_sections_for_legacy_projection(
+    session: dict[str, Any],
+    blob: WorkflowStateBlob,
+    *,
+    owner: str,
+) -> dict[str, list[str]] | None:
+    """Never project a one-chord mission slice onto improv_song_concert_sections."""
+    if owner == "mission_jam":
+        try:
+            from music_workflow_song_practice import rehydrate_full_song_concert_sections
+
+            full = rehydrate_full_song_concert_sections(
+                session,
+                source="legacy_projection_mission_guard",
+            )
+            if _section_map_total_chords(full) > 1:
+                return full
+        except ImportError:
+            pass
+    if isinstance(blob.section_map, dict) and _section_map_total_chords(blob.section_map) > 1:
+        return copy.deepcopy(blob.section_map)
+    return None
+
+
 def clear_incompatible_legacy_fields(session: dict[str, Any], owner: str) -> list[str]:
     """Remove transient fields that conflict with the active workflow owner."""
     cleared: list[str] = []
@@ -153,15 +183,23 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     }
     key_token = _practice_key_token(blob)
     if owner in {"song_based_improvisation", "mission_jam"}:
-        if blob.section_map and not (owner == "mission_jam" and skip_parent_practice_key):
-            session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
-        elif owner == "mission_jam" and skip_parent_practice_key:
+        projected_sections = _concert_sections_for_legacy_projection(session, blob, owner=owner)
+        if owner == "mission_jam" and skip_parent_practice_key:
             try:
-                from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+                from music_workflow_song_practice import (
+                    rehydrate_full_song_concert_sections,
+                    sync_session_practice_key_from_song_blob,
+                )
 
                 sync_session_practice_key_from_song_blob(session, source=f"skip_mission_projection:{mutation_source}")
+                rehydrate_full_song_concert_sections(
+                    session,
+                    source=f"skip_mission_projection_sections:{mutation_source}",
+                )
             except ImportError:
                 pass
+        elif projected_sections:
+            session["improv_song_concert_sections"] = projected_sections
         if blob.song_id:
             record_legacy_field_read(session, "active_catalog_pick_key", adapter="restore")
         if not (owner == "mission_jam" and skip_parent_practice_key):

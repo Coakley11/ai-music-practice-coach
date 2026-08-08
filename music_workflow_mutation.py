@@ -741,6 +741,13 @@ def mutate_mission_chord_selection(
                 )
         except ImportError:
             pass
+    if result.ok:
+        try:
+            from music_workflow_song_practice import rehydrate_full_song_concert_sections
+
+            rehydrate_full_song_concert_sections(session, source="mission_chord_selection")
+        except ImportError:
+            pass
     if chord_changed:
         _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
     return result
