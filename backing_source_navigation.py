@@ -582,6 +582,12 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         pass
     session["_backing_released_specialized_context"] = True
     try:
+        from backing_track_state import reset_backing_playback_scope_to_full_song
+
+        reset_backing_playback_scope_to_full_song(session, source="generic_catalog_backing_entry")
+    except ImportError:
+        pass
+    try:
         from music_source_ownership import reconcile_source_ownership
 
         reconcile_source_ownership(session, st_like=st_like, reason="generic_backing_entry")
