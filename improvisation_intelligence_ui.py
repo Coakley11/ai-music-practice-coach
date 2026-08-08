@@ -2470,6 +2470,16 @@ def _tab_missions(
             section_label=section_label,
         )
         try:
+            from music_workflow_pending_mission_envelope import (
+                peek_pending_mission_envelope_reconciliation,
+                request_pending_mission_envelope_rerun,
+            )
+
+            if peek_pending_mission_envelope_reconciliation(session_state):
+                request_pending_mission_envelope_rerun(st, session_state)
+        except ImportError:
+            pass
+        try:
             from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
 
             session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map

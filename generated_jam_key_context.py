@@ -82,28 +82,49 @@ def activate_generated_jam_key_ownership(
 def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widget: bool = False) -> bool:
     """Release generated-jam key ownership and restore song practice key snapshot.
 
-    Returns False when widgets are locked — caller must defer to pre-widget reconciliation.
-    """
-    if not pre_widget:
-        try:
-            from session_widget_safe import widgets_likely_instantiated
+    When sidebar widgets are already instantiated, widget-bound keys (``display_key``)
+    are restored via ``_pending_display_key`` / ``concert_key`` — never direct assignment.
 
-            if widgets_likely_instantiated(session):
-                return False
-        except ImportError:
-            if session.get("_streamlit_widgets_locked_this_run"):
-                return False
+    Returns False only when ``pre_widget`` is false and widgets are locked (defer caller).
+    """
+    try:
+        from session_widget_safe import reconcile_practice_key_fields, widgets_likely_instantiated
+
+        locked = widgets_likely_instantiated(session)
+    except ImportError:
+        locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+
+    if locked and not pre_widget:
+        return False
+
     snap = session.pop(SONG_PRACTICE_KEY_SNAPSHOT_KEY, None)
     session.pop(GENERATED_JAM_KEY_CONTEXT_KEY, None)
     session.pop("_generated_jam_key_owner_active", None)
     if not isinstance(snap, dict):
         return True
-    for key in ("display_key", "concert_key", "practice_concert_key"):
-        val = str(snap.get(key) or "").strip()
-        if val:
-            session[key] = val
-    pending = str(snap.get("display_key") or snap.get("concert_key") or "").strip()
-    if pending:
+
+    authoritative = str(snap.get("display_key") or snap.get("concert_key") or "").strip()
+    practice_concert = str(snap.get("practice_concert_key") or authoritative).strip()
+    if authoritative:
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=authoritative)
+        except ImportError:
+            session["concert_key"] = authoritative
+            if not locked:
+                session["display_key"] = authoritative
+            else:
+                try:
+                    from songs.key_state import PENDING_DISPLAY_KEY
+
+                    session[PENDING_DISPLAY_KEY] = authoritative
+                except ImportError:
+                    session["_pending_display_key"] = authoritative
+    if practice_concert:
+        session["practice_concert_key"] = practice_concert
+    pending = authoritative or practice_concert
+    if pending and not locked:
         session["_pending_display_key"] = pending
     return True
 

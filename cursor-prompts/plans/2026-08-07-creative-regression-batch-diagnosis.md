@@ -109,5 +109,19 @@ Preview on safety branch only — **do not merge to `origin/dev` until manual de
 
 **Tests:** `tests/test_backing_entry_classification.py`.
 
+### I — Jam key widget mutation on Missions tab (safety @ post-6bb4f56)
+
+**Symptom:** `StreamlitAPIException` entering Missions after Jam Generator; Practice/Concert Key stuck on Jam tonic (E major); sidebar key changes ignored.
+
+**Widget key(s):** `display_key` (primary stack trace at `generated_jam_key_context.py` ~104); also `improv_entry_mode` in `_deactivate_entry_jam_transient_for_missions`.
+
+**First illegal writer:** `deactivate_generated_jam_key_ownership(..., pre_widget=True)` assigned `session["display_key"]` after sidebar widgets rendered. `pre_widget=True` bypassed the widget lock check.
+
+**Lifecycle:** Sidebar hydrates @ ~10033; user switches Creative tab Jam → Missions same run; `_tab_missions` → `reconcile_missions_workflow_context` → deactivate restored snapshot via direct widget writes.
+
+**Fix:** Deactivate uses `reconcile_practice_key_fields` / `PENDING_DISPLAY_KEY` when widgets locked; mission reconcile uses `safe_session_assign` for jam widget keys; locked path clears `_generated_jam_key_context` without direct `display_key` assignment.
+
+**Tests:** `tests/test_jam_key_missions_widget_safe.py`.
+
 **Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
 

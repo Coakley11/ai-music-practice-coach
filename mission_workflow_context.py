@@ -88,12 +88,27 @@ def resolve_missions_section_map(
     return [], "none"
 
 
+def _clear_jam_widget_keys(session: dict[str, Any]) -> list[str]:
+    cleared: list[str] = []
+    try:
+        from session_widget_safe import safe_session_assign
+
+        for key in ("improv_jam_key", "improv_style_key"):
+            if key in session:
+                safe_session_assign(session, key, "")
+                cleared.append(key)
+    except ImportError:
+        for key in ("improv_jam_key", "improv_style_key"):
+            if key in session:
+                session.pop(key, None)
+                cleared.append(key)
+    return cleared
+
+
 def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> list[str]:
     cleared: list[str] = []
     session[MISSION_IGNORE_GENERATED_SECTIONS_KEY] = True
     for key in (
-        "improv_jam_key",
-        "improv_style_key",
         "improv_jam_session",
         "improv_mission_backing_handoff",
         "_backing_mission_ui_suppressed",
@@ -101,6 +116,7 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
         if key in session:
             session.pop(key, None)
             cleared.append(key)
+    cleared.extend(_clear_jam_widget_keys(session))
     try:
         from backing_session_route import clear_mission_ui_suppression
 
@@ -116,13 +132,18 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
     try:
         from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
-        deactivate_generated_jam_key_ownership(session, pre_widget=True)
-        cleared.append("_generated_jam_key_context")
+        if deactivate_generated_jam_key_ownership(session, pre_widget=True):
+            cleared.append("_generated_jam_key_context")
     except ImportError:
         pass
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry in ("Style Jam Mode", "Jam Session Generator"):
-        session["improv_entry_mode"] = "Song-Based Improvisation"
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(session, "improv_entry_mode", "Song-Based Improvisation")
+        except ImportError:
+            session["improv_entry_mode"] = "Song-Based Improvisation"
         cleared.append("improv_entry_mode→Song-Based")
     return cleared
 
@@ -206,7 +227,38 @@ def reconcile_missions_workflow_context(
     cur_chord: str,
     section_label: str,
 ) -> tuple[list[tuple[str, list[str]]], MissionContextReport]:
-    cleared = _deactivate_entry_jam_transient_for_missions(session)
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        widgets_locked = widgets_likely_instantiated(session)
+    except ImportError:
+        widgets_locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+
+    cleared: list[str] = []
+    if widgets_locked:
+        try:
+            from generated_jam_key_context import (
+                GENERATED_JAM_KEY_CONTEXT_KEY,
+                deactivate_generated_jam_key_ownership,
+            )
+
+            if session.get(GENERATED_JAM_KEY_CONTEXT_KEY) or session.get("_generated_jam_key_owner_active"):
+                deactivate_generated_jam_key_ownership(session, pre_widget=True)
+                cleared.append("_generated_jam_key_context")
+        except ImportError:
+            pass
+        cleared.extend(_clear_jam_widget_keys(session))
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if entry in ("Style Jam Mode", "Jam Session Generator"):
+            try:
+                from session_widget_safe import safe_session_assign
+
+                safe_session_assign(session, "improv_entry_mode", "Song-Based Improvisation")
+            except ImportError:
+                pass
+            cleared.append("improv_entry_mode→Song-Based")
+    else:
+        cleared = _deactivate_entry_jam_transient_for_missions(session)
     try:
         from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
