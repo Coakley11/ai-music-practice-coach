@@ -216,9 +216,14 @@ def _finalize_generated_key_edit_after_mutation(
             from creative_key_sync import IMPROV_JAM_KEY_TRACKER, invalidate_creative_backing_context
 
             session[IMPROV_JAM_KEY_TRACKER] = requested
-            meta = dict(session.get("improv_style_meta") or {})
-            meta["key"] = requested
-            session["improv_style_meta"] = meta
+            try:
+                from music_workflow_generated_session import finalize_generated_jam_session_key_seal
+
+                finalize_generated_jam_session_key_seal(session, requested)
+            except ImportError:
+                meta = dict(session.get("improv_style_meta") or {})
+                meta["key"] = requested
+                session["improv_style_meta"] = meta
             invalidate_creative_backing_context(session)
         except ImportError:
             pass

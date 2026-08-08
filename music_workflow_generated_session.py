@@ -9,7 +9,120 @@ from typing import Any
 from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
 from music_workflow_compatibility import _tonic_mode_from_token
 from music_workflow_mutation import mutate_active_workflow
-from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, get_active_workflow_pointer, save_workflow_blob
+from music_workflow_state_store import (
+    KeyAuthority,
+    WorkflowStateBlob,
+    get_active_workflow_pointer,
+    get_workflow_blob,
+    save_workflow_blob,
+)
+
+
+def resolve_generated_concert_key_for_owner(session: dict[str, Any], owner: str) -> str:
+    """Concert key from live widget / pending hydrate — not stale session defaults."""
+    if owner == "jam_session_generator":
+        try:
+            from creative_session_state import _live_jam_session_fields
+
+            _style, concert, _bpm, _mood = _live_jam_session_fields(session)
+            if concert:
+                return concert
+        except ImportError:
+            pass
+        return str(session.get("improv_jam_key") or "C").strip() or "C"
+    try:
+        from creative_key_sync import PENDING_IMPROV_STYLE_KEY
+
+        pending = session.get(PENDING_IMPROV_STYLE_KEY)
+        if pending is not None:
+            tok = str(pending).strip()
+            if tok:
+                return tok
+    except ImportError:
+        pending = session.get("_pending_improv_style_key")
+        if pending is not None:
+            tok = str(pending).strip()
+            if tok:
+                return tok
+    return str(session.get("improv_style_key") or "C").strip() or "C"
+
+
+def seal_jam_session_musical_context(
+    jam: dict[str, Any],
+    *,
+    key_center: str,
+    sections: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Align jam snapshot metadata with sealed concert key and section progressions."""
+    out = copy.deepcopy(jam)
+    k = str(key_center or out.get("key") or "C").strip() or "C"
+    out["key"] = k
+    if sections is not None:
+        out["sections"] = copy.deepcopy(sections)
+    ensemble = str(out.get("ensemble") or "Jazz trio")
+    style = str(out.get("style") or "Jazz Swing")
+    try:
+        tempo = int(out.get("bpm") or 110)
+    except (TypeError, ValueError):
+        tempo = 110
+    atmosphere = str(out.get("atmosphere") or out.get("mood") or "Mellow")
+    out["prompt"] = f"**{ensemble}** in **{k}** · {style} · ~{tempo} BPM · {atmosphere}."
+    return out
+
+
+def finalize_generated_jam_session_key_seal(session: dict[str, Any], key_center: str) -> None:
+    """After generate or authoritative key change — one sealed jam + sidebar ownership."""
+    k = str(key_center or "C").strip() or "C"
+    sections: dict[str, list[str]] | None = None
+    try:
+        ptr = get_active_workflow_pointer(session)
+        if ptr and ptr.workflow_owner == "jam_session_generator":
+            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+            if blob is not None and isinstance(blob.section_map, dict) and blob.section_map:
+                sections = copy.deepcopy(blob.section_map)
+    except Exception:
+        pass
+    jam = session.get("improv_jam_session")
+    if isinstance(jam, dict):
+        session["improv_jam_session"] = seal_jam_session_musical_context(
+            jam,
+            key_center=k,
+            sections=sections if sections is not None else jam.get("sections"),
+        )
+    session["improv_jam_key"] = k
+    try:
+        from generated_jam_key_context import activate_generated_jam_key_ownership
+
+        activate_generated_jam_key_ownership(
+            session,
+            entry_mode="Jam Session Generator",
+            practice_key=k,
+        )
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import sync_creative_style_jam_meta
+
+        sync_creative_style_jam_meta(session)
+    except ImportError:
+        pass
+
+
+def finalize_generated_style_jam_key_seal(session: dict[str, Any], key_center: str) -> None:
+    k = str(key_center or "C").strip() or "C"
+    session["improv_style_key"] = k
+    try:
+        from generated_jam_key_context import activate_generated_jam_key_ownership
+
+        activate_generated_jam_key_ownership(session, entry_mode="Style Jam Mode", practice_key=k)
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import sync_creative_style_jam_meta
+
+        sync_creative_style_jam_meta(session)
+    except ImportError:
+        pass
 
 
 def commit_style_jam_generation(
@@ -91,6 +204,8 @@ def commit_jam_session_generation(
         jam["id"] = sid
     pt, pm = _tonic_mode_from_token(key_center)
     sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
+    jam = seal_jam_session_musical_context(jam, key_center=key_center, sections=sections)
+    sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
 
     def _mut(b: WorkflowStateBlob) -> None:
         b.keys = KeyAuthority(
@@ -136,4 +251,11 @@ def commit_jam_session_generation(
     return act.ok
 
 
-__all__ = ["commit_jam_session_generation", "commit_style_jam_generation"]
+__all__ = [
+    "commit_jam_session_generation",
+    "commit_style_jam_generation",
+    "finalize_generated_jam_session_key_seal",
+    "finalize_generated_style_jam_key_seal",
+    "resolve_generated_concert_key_for_owner",
+    "seal_jam_session_musical_context",
+]

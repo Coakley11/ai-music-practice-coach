@@ -224,7 +224,9 @@ def build_snapshot_from_session(
         artifact_rev = int(blob.context_revision or 1)
         artifact_id = str(blob.generated_session_id or blob.workflow_session_id or artifact_id)
         sid = str(blob.workflow_session_id or sid)
+        blob_authoritative = True
     elif owner == "style_jam":
+        blob_authoritative = False
         section_map = _legacy_style_jam_section_map(session)
         style = str(session.get("improv_style") or "")
         mood = str(session.get("improv_mood") or "")
@@ -238,6 +240,7 @@ def build_snapshot_from_session(
         except ImportError:
             pt, pm = "C", "major"
     else:
+        blob_authoritative = False
         section_map = _legacy_generator_section_map(session)
         style = str(session.get("improv_jam_style") or "")
         mood = str(session.get("improv_jam_mood") or "")
@@ -271,7 +274,7 @@ def build_snapshot_from_session(
         if js:
             style = js
         jk = str(session.get("improv_jam_key") or "").strip()
-        if jk:
+        if jk and not blob_authoritative:
             try:
                 from music_workflow_compatibility import _tonic_mode_from_token
 
@@ -475,6 +478,17 @@ def commit_generated_artifact_revision(
         if isinstance(jam, dict):
             jam = copy.deepcopy(jam)
             jam["sections"] = copy.deepcopy(snap.section_map)
+            try:
+                from music_workflow_generated_session import seal_jam_session_musical_context
+
+                key_label = _practice_key_label(snap.practice_tonic, snap.practice_mode)
+                jam = seal_jam_session_musical_context(
+                    jam,
+                    key_center=key_label,
+                    sections=snap.section_map,
+                )
+            except ImportError:
+                pass
             session["improv_jam_session"] = jam
     if owner == "style_jam":
         snap.mood = str(session.get("improv_mood") or snap.mood or "Mellow")

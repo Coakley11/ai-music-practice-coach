@@ -204,3 +204,86 @@ Specialized Backing → **Return to Creative** path (no change unless trace prov
 
 **Frozen (unchanged):** `9a3131f`, `6bb4f56`, `74591f6`, `78ff42a`, return-route core.
 
+---
+
+### L — Progression collapse to single chord (live @ `870b594`)
+
+**Symptom:** Sidebar **D minor** correct; all Creative chord surfaces show only **Cm** (one tile / one-chord “progression”).
+
+**Critical distinction:** **Section progression** (N chords) vs **selected target chord** (one highlight). Mission backing may use a one-chord loop; Creative tabs must not.
+
+#### L.1 Trace table — first collapse
+
+| # | Surface | Owner | Collapsed value | First diverging writer |
+|---|---------|--------|-----------------|-------------------------|
+| 1 | Raw catalog progression | `resolve_catalog_song_for_pick` / song row | Full Melody A/B | — |
+| 2 | Before Creative reconcile | `improv_song_concert_sections` / song blob | Full (until corrupt) | — |
+| 3 | **`improv_song_concert_sections`** | Session | **`{section: [Cm]}`** | **`restore_workflow_blob_to_session`** projecting **`mission_jam` blob.section_map** (one-chord mission slice) **or** stale slice already in blob |
+| 4 | `concert_song_sections_from_session` | `improvisation_motif` | Accepts #3 as authoritative | **No degeneracy guard** (unlike `_song_improv_sections_dict`) |
+| 5 | `resolve_improv_sections` / `resolve_missions_section_map` | All Creative tabs | One chord | Reads #3 |
+| 6 | `improv_mission_chord_options` | `_ensure_chord_selection` | Can mirror flat list length | Secondary |
+| 7 | Mission blob `section_map` | `build_mission_context` / backing | One chord for **backing only** | Must not round-trip to #3 |
+
+**A — First collapse to `[Cm]`:** **`improv_song_concert_sections`** (and then every tab via **`concert_song_sections_from_session`**) when a **one-chord mission/backing slice** is written into the field that should hold the **full song progression**. Primary writer: **legacy blob projection** after **`mutate_mission_chord_selection`** (`project_active_blob_to_legacy_session` → `restore_workflow_blob_to_session`). Secondary: **`reconcile_missions_workflow_context`** overwriting **`home_sections`** from stale **`improv_ctx.sections`** before resolving catalog sections.
+
+**Fix (safety branch post-`870b594`):**
+
+- `rehydrate_full_song_concert_sections` — refuse ≤1 total chords; prefer song blob / catalog / `home_sections` (same policy as `_song_improv_sections_dict`).
+- `concert_song_sections_from_session` — route through that guard.
+- `_concert_sections_for_legacy_projection` — never project degenerate mission blob map onto session.
+- Mission chord mutate + Missions hydrate — rehydrate full sections after selection.
+- Reconcile — **`home_sections`** from **`resolve_missions_section_map`**, not stale **`improv_ctx`**.
+
+**Test:** `MissionProgressionCollapseGuardTests.test_mission_chord_select_does_not_collapse_full_progression`.
+
+#### L.2 Return-to-Creative (instrumentation @ `870b594`, no routing change)
+
+Use one failing click; read **`[creative_return_trace]`** then **`[studio_page_route_trace]`** in order:
+
+| Step | Phase | What to verify |
+|------|--------|----------------|
+| 1 | `ON_RETURN_BUTTON_CLICK_RECEIVED` | Click entered |
+| 2 | `ON_RETURN_HANDOFF_QUEUED` | `sealed_creative_tab`, `sealed_source` |
+| 3 | `ON_RETURN_CONSUME_PHASE` | `consume_phase` applied/skipped; `studio_page_after_consume`; `user_nav_marker_*` |
+| 4 | `ON_RETURN_CLICK_AFTER_CONSUME` | `consume_phase` echo |
+| 5 | `RETURN_CLICK_BEFORE_RERUN` | `studio_page`, `user_nav_page_this_run_scoped`, nav/workspace pages |
+| 6 | Next run dispatch | `[studio_page_route_trace]` creative branch / `DISPATCH_RESYNC_*` |
+
+**B — Likely first divergence (code review; confirm on your trace):**
+
+1. **`consume_phase=skipped`** — no backing context / prepare failed (handoff never applied).
+2. **`consume_phase=applied`** but **`RETURN_CLICK_BEFORE_RERUN.studio_page` ≠ `creative`** — consume did not stick before rerun.
+3. **`applied` + `studio_page=creative`** but next-run dispatch shows **`music_workspace_state_page` / hydrated page ≠ creative** — **persistence envelope overwrites run-scoped user nav** (frozen @ `9a3131f` unless trace proves regression).
+4. Same run: **`RETURN_POST_RERUN_STOP_GUARD`** + `request_app_stop` after failed **`rerun_invoked`** — user stays on Backing without a successful rerun (check `RETURN_CLICK_RERUN_OUTCOME.rerun_invoked` / `fallback_st_rerun`).
+
+Do **not** change `creative_return_route` / launch ID until one of the above is confirmed in JSON.
+
+---
+
+### §M — Jam Session Generator / Style Jam sealed key (2026-08-08)
+
+**Symptom (live):** User requests concert key **C**; UI practice labels show **C**; jam **prompt/metadata** still **Eb**; progression **Fm7 · Bb7 · Ebmaj7**; sidebar **Eb**; **Open in Backing Studio** fails (Style Jam: `detect_cross_owner_handoff_fields` rejects **EBMAJ7** on `style_jam` snapshot).
+
+#### M.1 First divergence table
+
+| Step | Expected | Actual (bug) | First bad writer |
+|------|----------|--------------|------------------|
+| 1 | Widget / pending hydrate = **C** | `improv_jam_key` often stale **Eb** (`studio_page_state.setdefault`) | Session default vs widget |
+| 2 | `consume_pending_generated_progression` reads **C** | Used raw `session["improv_jam_key"]` | **`music_workflow_pending_generated_progression`** |
+| 3 | `generate_jam_session(key_center=C)` | OK when #2 correct | — |
+| 4 | Sealed `improv_jam_session.key` + `prompt` + sections | **prompt/key stayed Eb** after key-only edit | **`commit_jam_session_generation`** did not re-seal metadata; **`_finalize_generated_key_edit`** only updated meta label |
+| 5 | Workflow blob `keys` + `section_map` | Sometimes **C** keys + **Eb** chords | **`build_snapshot_from_session`** overwrote `practice_tonic` from widget while **`section_map` came from blob** |
+| 6 | Backing handoff snapshot | Key **C** + progression **Eb** | Snapshot split at #5 → validation / incoherent BackingContext |
+| 7 | Sidebar | **C** while jam owns | **Eb** (song/catalog) when **`activate_generated_jam_key_ownership`** missing after jam generate |
+
+**Root cause (minimal):** Generation and key-change paths did not **seal one musical context** (key + progression + jam prompt + blob + sidebar). Artifact builder **re-labeled** key from widgets without matching blob progression.
+
+#### M.2 Fix (safety branch; not promoted to `dev`)
+
+- **`resolve_generated_concert_key_for_owner`** — pending/widget hydrate before generate.
+- **`seal_jam_session_musical_context`** + **`finalize_generated_*_key_seal`** — on generate, key edit, blob commit.
+- **`build_snapshot_from_session`** — when workflow blob exists, **blob keys are authoritative** (no widget key override).
+- **`detect_cross_owner_handoff_fields`** unchanged — fix upstream coherence instead.
+
+**Tests:** `tests/test_generated_jam_style_key_seal_regression.py` (cases A–D).
+

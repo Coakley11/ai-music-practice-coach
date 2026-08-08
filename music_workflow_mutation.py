@@ -878,11 +878,22 @@ def update_active_practice_key(
                     transposed = transpose_sections_dict(sections_src, old_key, key_token)
                     b.section_map = transposed
                     if isinstance(jam, dict):
-                        session["improv_jam_session"] = {
+                        sealed = {
                             **copy.deepcopy(jam),
                             "sections": copy.deepcopy(transposed),
                             "id": jam_id or jam.get("id"),
                         }
+                        try:
+                            from music_workflow_generated_session import seal_jam_session_musical_context
+
+                            sealed = seal_jam_session_musical_context(
+                                sealed,
+                                key_center=key_token,
+                                sections=transposed,
+                            )
+                        except ImportError:
+                            pass
+                        session["improv_jam_session"] = sealed
                 except ImportError:
                     b.section_map = sections_src
                     record_compat_fallback(session, VIOLATION_GENERATOR_PRETRANSPOSE_SECTIONS_RETAINED, key_token)
