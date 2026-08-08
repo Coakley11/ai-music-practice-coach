@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 BOUNDARY_TRACE_KEY = "_music_workspace_boundary_trace"
+BOUNDARY_TRACE_MAIN_MARKER = "workspace-boundary-main-v2"
 BOUNDARY_TRACE_UI_VERSION = "workspace-boundary-trace-sidebar-v1"
 _MAX_EVENTS = 48
 
@@ -107,7 +108,52 @@ def live_session_snapshot(session: dict[str, Any]) -> dict[str, Any]:
         snap["workspace_id"] = resolve_workspace_id()
     except ImportError:
         snap["workspace_id"] = str(session.get("_suite_workspace_id") or "").strip() or None
+    try:
+        from workspace_revision import (
+            APPLIED_REVISION_KEY,
+            CLOUD_REVISION_KEY,
+            LAST_CONFIRMED_REVISION_KEY,
+        )
+
+        snap["workspace_revision_applied"] = int(session.get(APPLIED_REVISION_KEY) or 0) or None
+        snap["workspace_revision_cloud"] = int(session.get(CLOUD_REVISION_KEY) or 0) or None
+        snap["workspace_revision_confirmed"] = int(session.get(LAST_CONFIRMED_REVISION_KEY) or 0) or None
+    except ImportError:
+        pass
+    snap["startup_revision_loaded"] = session.get("startup_revision_loaded")
     return snap
+
+
+def resolve_deploy_git_sha() -> str:
+    """Short SHA from Streamlit Cloud env or local git (for preview deploy verification)."""
+    try:
+        from suite_deploy_probe import _git_short
+
+        return str(_git_short() or "unknown")
+    except ImportError:
+        return "unknown"
+
+
+def _boundary_events(session: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = session.get(BOUNDARY_TRACE_KEY)
+    if not isinstance(raw, list):
+        return []
+    return [row for row in raw if isinstance(row, dict)]
+
+
+def _latest_boundary_event(events: list[dict[str, Any]], phase: str | tuple[str, ...]) -> dict[str, Any] | None:
+    phases = (phase,) if isinstance(phase, str) else tuple(phase)
+    for row in reversed(events):
+        if str(row.get("phase") or "") in phases:
+            return row
+    return None
+
+
+def _first_boundary_event(events: list[dict[str, Any]], phase: str) -> dict[str, Any] | None:
+    for row in events:
+        if str(row.get("phase") or "") == phase:
+            return row
+    return None
 
 
 def envelope_snapshot(state: dict[str, Any] | None) -> dict[str, Any]:
@@ -329,6 +375,101 @@ def _render_boundary_trace_body(st: Any, session: dict[str, Any]) -> None:
     st.json(verdict)
 
 
+def render_workspace_boundary_trace_main(st: Any) -> None:
+    """
+    Main-column diagnostic banner (?dev=1 only). Renders before studio page body content.
+    """
+    if not boundary_trace_dev_enabled(st=st):
+        return
+    ss = st.session_state
+    events = _boundary_events(ss)
+    live = live_session_snapshot(ss)
+    git_sha = resolve_deploy_git_sha()
+
+    st.markdown(
+        f"""
+<div style="border: 3px solid #c0392b; border-radius: 8px; padding: 12px 16px; margin: 0 0 16px 0;
+background: linear-gradient(180deg, #fff5f5 0%, #ffeaea 100%);">
+<p style="margin:0 0 8px 0;font-size:1.35rem;font-weight:800;color:#922b21;">
+WORKSPACE SAVE / HYDRATE TRACE</p>
+<p style="margin:0;font-family:monospace;font-size:0.95rem;color:#333;">
+Marker: <strong>{BOUNDARY_TRACE_MAIN_MARKER}</strong> &nbsp;|&nbsp;
+Deployed/build Git SHA: <strong>{git_sha}</strong>
+</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(4)
+    cols[0].metric("Live studio_page", str(live.get("studio_page") or "—"))
+    cols[1].metric(
+        "Active song",
+        str(live.get("active_song_title") or live.get("pick_key") or "—")[:40],
+    )
+    cols[2].metric("Workspace ID", str(live.get("workspace_id") or "—"))
+    rev_display = (
+        live.get("workspace_revision_applied")
+        or live.get("workspace_revision_cloud")
+        or live.get("startup_revision_loaded")
+        or "—"
+    )
+    cols[3].metric("Workspace revision", str(rev_display))
+
+    st.write(
+        {
+            "startup_fingerprint_matches": live.get("startup_fingerprint_matches"),
+            "startup_suppression_released": live.get("startup_suppression_released"),
+            "startup_save_suppression_reason": live.get("startup_save_suppression_reason"),
+            "deferred_page_change_save": live.get("deferred_page_change_save"),
+            "page_change_origin": live.get("page_change_origin"),
+        }
+    )
+
+    force_entry = _latest_boundary_event(events, "force_save_entry")
+    serialize_row = _latest_boundary_event(events, "serialize_payload")
+    save_ok = _latest_boundary_event(events, ("save_complete",))
+    save_blocked = _latest_boundary_event(events, ("save_blocked",))
+    hydrate_first = _first_boundary_event(events, "hydrate_raw_picked")
+    hydrate_latest = _latest_boundary_event(events, "hydrate_raw_picked")
+
+    block_reason = None
+    if save_blocked:
+        block_reason = save_blocked.get("block_reason")
+    if not block_reason and isinstance(live.get("last_save_tx"), dict):
+        block_reason = live["last_save_tx"].get("force_save_block_reason") or live["last_save_tx"].get(
+            "force_save_early_return_reason"
+        )
+
+    st.markdown("**Latest pipeline events**")
+    st.json(
+        {
+            "latest_force_save_entry": force_entry,
+            "latest_serialize_payload": serialize_row,
+            "latest_save_complete": save_ok,
+            "latest_save_blocked": save_blocked,
+            "block_reason": block_reason,
+            "first_hydrate_raw_picked": hydrate_first,
+            "latest_hydrate_raw_picked": hydrate_latest,
+            "boundary_event_count": len(events),
+        }
+    )
+
+    disk = read_local_durable_envelope("music")
+    env = disk.get("envelope") if isinstance(disk.get("envelope"), dict) else {}
+    verdict = evaluate_binary_refresh_question(live_before_refresh=live, durable_envelope=env)
+    st.markdown("**Binary question JSON**")
+    st.json(verdict)
+
+    if not events:
+        st.info(
+            "No boundary events recorded yet this session — change song/page, wait for autosave, "
+            "or refresh to populate hydrate_raw_picked."
+        )
+
+    st.divider()
+
+
 def render_workspace_boundary_trace_sidebar(st: Any) -> None:
     """Top-level sidebar panel — visible with ?dev=1 on all studio pages."""
     if not boundary_trace_dev_enabled(st=st):
@@ -349,6 +490,7 @@ def render_boundary_trace_expander(st: Any, session: dict[str, Any]) -> None:
 
 __all__ = [
     "BOUNDARY_TRACE_KEY",
+    "BOUNDARY_TRACE_MAIN_MARKER",
     "append_boundary_event",
     "evaluate_binary_refresh_question",
     "live_session_snapshot",
@@ -358,8 +500,10 @@ __all__ = [
     "record_live_boundary",
     "record_save_outcome_boundary",
     "record_serialize_boundary",
+    "resolve_deploy_git_sha",
     "BOUNDARY_TRACE_UI_VERSION",
     "boundary_trace_dev_enabled",
+    "render_workspace_boundary_trace_main",
     "render_workspace_boundary_trace_sidebar",
     "render_boundary_trace_expander",
 ]

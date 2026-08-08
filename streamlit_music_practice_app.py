@@ -11169,6 +11169,23 @@ if pp.show_quick_nav(st):
         pass
     _render_workflow_architecture_dev_panel()
 
+try:
+    from music_workspace_boundary_trace import (
+        BOUNDARY_TRACE_MAIN_MARKER,
+        render_workspace_boundary_trace_main,
+    )
+
+    render_workspace_boundary_trace_main(st)
+except Exception as _main_boundary_trace_exc:
+    st.markdown("## WORKSPACE SAVE / HYDRATE TRACE")
+    st.error(
+        f"workspace-boundary-main-v2 render failed: "
+        f"{type(_main_boundary_trace_exc).__name__}: {_main_boundary_trace_exc}"
+    )
+    import traceback
+
+    st.code(traceback.format_exc())
+
 _live_dispatch_page = str(st.session_state.get("studio_page") or "").strip() or _studio_page
 if _live_dispatch_page != _studio_page:
     try:
