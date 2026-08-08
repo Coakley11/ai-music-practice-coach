@@ -167,6 +167,17 @@ def _record_force_save_early_return(
         pass
     record_save_transaction(ss, **fields)
     try:
+        from music_workspace_boundary_trace import record_save_outcome_boundary
+
+        record_save_outcome_boundary(
+            ss,
+            save_reason=str(save_reason or fields.get("force_save_reason") or ""),
+            ok=False,
+            block_reason=str(reason or fields.get("force_save_early_return_reason") or ""),
+        )
+    except ImportError:
+        pass
+    try:
         from creative_selector_save_durability_trace import is_selector_save_reason, record_force_save_path
 
         sr = str(save_reason or fields.get("force_save_reason") or "")
@@ -289,6 +300,12 @@ def force_music_workspace_save(
 
     ss = _ss(st)
     r = str(reason or "force_autosave").strip() or "force_autosave"
+    try:
+        from music_workspace_boundary_trace import record_live_boundary
+
+        record_live_boundary(ss, "force_save_entry", save_reason=r)
+    except ImportError:
+        pass
     try:
         from display_key_sidebar_persistence_trace import active_sidebar_display_key_transaction_id
 
@@ -581,6 +598,12 @@ def force_music_workspace_save(
         return False
 
     record_save_transaction(ss, envelope_built=True, envelope_revision_before=rev_before)
+    try:
+        from music_workspace_boundary_trace import record_serialize_boundary
+
+        record_serialize_boundary(ss, state, save_reason=r)
+    except ImportError:
+        pass
 
     from music_workspace_canonical_fingerprint import workspace_canonical_content_fingerprint
 
@@ -1255,6 +1278,12 @@ def force_music_workspace_save(
             pass
         record_save_transaction(ss, suite_persist_last_save_cloud=True, cloud_confirmed=True)
         _snapshot_save_transaction_debug(st, ss, event="cloud_confirmed")
+        try:
+            from music_workspace_boundary_trace import record_save_outcome_boundary
+
+            record_save_outcome_boundary(ss, save_reason=r, ok=True, cloud_ok=True)
+        except ImportError:
+            pass
         return True
 
     if saved_disk or saved_cloud:
@@ -1272,10 +1301,33 @@ def force_music_workspace_save(
         ss["_suite_persist_last_save_at"] = _utc_now_iso()
         record_save_transaction(ss, suite_persist_last_save_cloud=bool(ss.get("_suite_persist_last_save_cloud")))
         _snapshot_save_transaction_debug(st, ss, event="disk_or_cloud_ok_no_strict")
+        try:
+            from music_workspace_boundary_trace import record_save_outcome_boundary
+
+            record_save_outcome_boundary(
+                ss,
+                save_reason=r,
+                ok=True,
+                cloud_ok=bool(ss.get("_suite_persist_last_save_cloud")),
+            )
+        except ImportError:
+            pass
         return True
 
     ss["_music_force_save_ok"] = False
     _snapshot_save_transaction_debug(st, ss, event="save_failed")
+    try:
+        from music_workspace_boundary_trace import record_save_outcome_boundary
+
+        record_save_outcome_boundary(
+            ss,
+            save_reason=r,
+            ok=False,
+            block_reason=str(ss.get("_music_force_save_blocked_reason") or "save_failed"),
+            cloud_ok=bool(ss.get("_suite_persist_last_save_cloud")),
+        )
+    except ImportError:
+        pass
     return False
 
 

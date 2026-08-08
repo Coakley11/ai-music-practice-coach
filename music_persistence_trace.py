@@ -1245,6 +1245,12 @@ def render_persistence_trace_sidebar(st: Any) -> None:
             render_music_workspace_save_transaction_debug(st)
         except ImportError:
             pass
+        try:
+            from music_workspace_boundary_trace import render_boundary_trace_expander
+
+            render_boundary_trace_expander(st, ss)
+        except ImportError:
+            pass
 
 
 

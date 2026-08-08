@@ -919,6 +919,19 @@ def sync_workspace_protocol(
             st.session_state["_music_authoritative_cloud_apply"] = True
         if str(app_id or "").strip().lower() == "music" and isinstance(picked.state, dict):
             try:
+                from music_workspace_boundary_trace import record_hydrate_pick_boundary
+
+                record_hydrate_pick_boundary(
+                    st.session_state,
+                    source=str(picked.source or ""),
+                    pick_reason=str(picked.reason or ""),
+                    state=picked.state,
+                    cloud_ts=cloud_ts,
+                    before_apply=True,
+                )
+            except ImportError:
+                pass
+            try:
                 from music_startup_save_suppression import record_hydrated_canonical_fingerprint
 
                 record_hydrated_canonical_fingerprint(

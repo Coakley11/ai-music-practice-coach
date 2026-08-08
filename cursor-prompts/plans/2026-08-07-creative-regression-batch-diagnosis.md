@@ -23,7 +23,7 @@
 
 ## C / D — Mission → Backing / Return to Mission
 
-**Status:** Existing `tests/test_mission_backing_two_missions_consecutive.py` passes on safety branch. Stale Backing/Return likely downstream of wrong mission chord/key context (B) or handoff not re-sealed when mission pick changes — re-smoke A→B→C on preview after key/generate fixes. Frozen return-route layers unchanged.
+**Fix:** `apply_sealed_mission_return_destination()` applies alignment + session fields from `MISSION_CANONICAL_RETURN_DESTINATION_KEY`; `prepare_return_to_mission_detail()` uses it instead of generic envelope reconcile that could drift chord/mission. Sealed destination still set on each backing handoff consume (`seal_mission_return_destination_from_handoff`).
 
 ## E — Song-Based Open in Backing Studio
 
@@ -46,3 +46,36 @@
 ## Promotion
 
 Preview on safety branch only — **do not merge to `origin/dev` until manual dev smoke passes.**
+
+---
+
+## G — Shared workspace boundary (Hevenu + Log repro, post-`a824bbc`)
+
+**Live symptom:** Active song **and** studio page revert together after browser refresh (e.g. Hevenu + Log → Say + Practice). That pattern points to **one envelope** never reaching durable storage (or hydration loading an older revision), not independent nav vs song projection bugs.
+
+**Binary question (must be answered with trace before the next fix):**
+
+> Immediately before refresh, does durable storage contain **Hevenu + current page**, or still **Say + Practice**?
+
+**Trace tooling (no behavior change):**
+
+- `music_workspace_boundary_trace.py` — append-only `_music_workspace_boundary_trace` events at `force_save_*`, `serialize_payload`, `hydrate_raw_picked`, `save_complete` / `save_blocked`.
+- Dev sidebar: **Workspace boundary trace** expander under `?dev=1` persistence panel (plus existing `_music_workspace_save_transaction` / startup suppression diag).
+
+**Code-backed hypotheses (unit tests in `tests/test_workspace_boundary_hevenu_log_trace.py`):**
+
+| If durable before refresh | Then |
+|---------------------------|------|
+| Still Say + Practice | **A / B / D** — save pipeline: live session diverged but writes blocked or stale envelope materialized (`startup_canonical_unchanged` on `song_edit` while `startup_fingerprint_matches` stays true; deferred `page_change` flush uses `reconciliation` origin → blocked as non–`user_navigation`). |
+| Hevenu + Log | **C** — hydration / workspace id / revision selection (inspect earliest `hydrate_raw_picked` before `prepare_studio_nav`). |
+
+**Manual repro checklist (preview + `?dev=1`):**
+
+1. Hydrate Say + Practice → change song to Hevenu → nav to Log → wait for autosave.
+2. Before refresh: copy **Binary question** JSON from boundary trace + last `serialize_payload` / `save_*` events + `force_save_block_reason`.
+3. Refresh: first `hydrate_raw_picked` payload page/song/rev vs account `workspace_id`.
+
+**Status:** Trace landed on safety branch; **no save/hydration fix** until preview trace confirms which column in the table above applies.
+
+**Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
+
