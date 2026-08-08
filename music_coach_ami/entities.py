@@ -19,8 +19,18 @@ _INSTRUMENT_PATTERNS: tuple[tuple[str, str], ...] = (
 )
 
 
+def normalize_musical_accidentals(text: str) -> str:
+    """Unicode ♭/♯ → ASCII b/# for parsing; preserves letter names."""
+    return (
+        str(text or "")
+        .replace("♭", "b")
+        .replace("♯", "#")
+        .replace("♮", "")
+    )
+
+
 def normalize_question(raw: str) -> str:
-    text = str(raw or "").strip()
+    text = normalize_musical_accidentals(str(raw or "").strip())
     text = re.sub(r"\s+", " ", text)
     return text
 

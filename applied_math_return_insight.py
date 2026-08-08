@@ -59,6 +59,7 @@ INSIGHT_ELIGIBLE_PAGES: dict[str, frozenset[str]] = {
         "Efficient Frontier",
         "⑩ Frontier (Optional)",
     }),
+    "music": frozenset({"practice", "backing", "custom", "karaoke", "log", "upload", "creative"}),
 }
 
 
@@ -71,6 +72,31 @@ def _normalize_insight_page(page: str) -> str:
     if p.startswith("👑 "):
         p = p.replace("👑 ", "", 1)
     return p.strip()
+
+
+def _music_coach_pages_match(current: str, insight_page: str) -> bool:
+    """True when studio/coach page ids refer to the same Music Coach scope (e.g. creative ↔ custom)."""
+    cur = _normalize_insight_page(current).lower()
+    ins = _normalize_insight_page(insight_page).lower()
+    if not cur or not ins:
+        return False
+    if cur == ins:
+        return True
+    try:
+        from music_coach_context import COACH_PAGE_IDS, STUDIO_PAGE_TO_COACH
+    except ImportError:
+        return cur == ins
+
+    def _coach_id(page: str) -> str:
+        p = page.lower()
+        if p in COACH_PAGE_IDS:
+            return p
+        mapped = STUDIO_PAGE_TO_COACH.get(p)
+        if mapped:
+            return mapped
+        return p
+
+    return _coach_id(cur) == _coach_id(ins)
 
 
 def _normalize_investment_tab(page: str) -> str:
@@ -590,6 +616,29 @@ def insight_page_scope_decision(
         }
 
     cur = _normalize_insight_page(current_page)
+    if app == "music":
+        if not isinstance(insight, dict) or not (insight.get("conclusion") or insight.get("question")):
+            return {
+                "should_render_insight_on_page": False,
+                "render_skip_reason": "no_pending_insight",
+            }
+        insight_page = _normalize_insight_page(
+            _resolve_insight_source_page(insight) or str(insight.get("source_page") or "")
+        )
+        if insight.get("canonical_instant") and insight.get("conclusion"):
+            if insight_page and _music_coach_pages_match(cur, insight_page):
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+            if insight_page and not cur:
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+        eligible = INSIGHT_ELIGIBLE_PAGES.get("music", frozenset())
+        if cur in eligible or any(_normalize_insight_page(x) == cur for x in eligible):
+            if insight_page and _music_coach_pages_match(cur, insight_page):
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+        return {
+            "should_render_insight_on_page": False,
+            "render_skip_reason": f"music_page_mismatch (insight={insight_page!r}, current={cur!r})",
+        }
+
     eligible = INSIGHT_ELIGIBLE_PAGES.get(app, frozenset())
     if cur not in eligible and not any(_normalize_insight_page(x) == cur for x in eligible):
         return {
@@ -2091,13 +2140,19 @@ def render_suite_applied_math_insight_for_page(
             str(st.session_state.get("_ami_last_submit_source_page") or "")
         )
         cur_page = _normalize_investment_tab(source_page) if app == "investment" else _normalize_insight_page(source_page)
+        if app == "music":
+            ins_page = _normalize_insight_page(str(insight.get("source_page") or ""))
+            page_match = (
+                _music_coach_pages_match(cur_page, submit_page)
+                or _music_coach_pages_match(cur_page, ins_page)
+            )
+        else:
+            page_match = bool(submit_page and cur_page and submit_page == cur_page)
         force_render = bool(
             st.session_state.get("_ami_force_insight_render")
             or st.session_state.get("_ami_submit_render_insight_this_run")
             or (
-                submit_page
-                and cur_page
-                and submit_page == cur_page
+                page_match
                 and isinstance(insight, dict)
                 and insight.get("conclusion")
             )
@@ -2111,6 +2166,8 @@ def render_suite_applied_math_insight_for_page(
             return False
     rendered = render_applied_math_insight_panel(st, source_app=app, insight=insight)
     st.session_state["_ami_insight_render_success"] = bool(rendered)
+    if rendered and app == "music":
+        st.session_state["_music_coach_diag_insight_rendered"] = True
     if rendered and app == "investment":
         st.session_state["_ami_insight_card_rendered"] = True
         try:

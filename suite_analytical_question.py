@@ -1362,6 +1362,35 @@ def build_submit_context(
     return ctx
 
 
+def _restore_routed_insight_render_flags(session_state: dict[str, Any]) -> None:
+    """Re-arm same-page insight render after duplicate submit or sidebar cooldown."""
+    try:
+        from applied_math_return_insight import SESSION_PENDING_KEY
+    except ImportError:
+        SESSION_PENDING_KEY = "_ami_pending_insight"
+    pending = session_state.get(SESSION_PENDING_KEY)
+    if isinstance(pending, dict) and pending.get("canonical_instant"):
+        session_state["_ami_submit_render_insight_this_run"] = True
+        session_state["_ami_force_insight_render"] = True
+
+
+def _record_music_coach_send(
+    session_state: dict[str, Any],
+    *,
+    question_id: str,
+    question: str,
+    source_app: str,
+    result_path: str,
+) -> None:
+    session_state["_ami_last_send"] = {
+        "question_id": question_id,
+        "question": question,
+        "source_app": source_app,
+        "submitted_at": utc_now_iso(),
+        "result_path": result_path,
+    }
+
+
 def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any]) -> None:
     """Compact dev routing panel for the last Music Coach submit (?dev=1)."""
     diag = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
@@ -1373,7 +1402,9 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
             f"**result_path:** `{diag.get('result_path')}` · "
             f"**coach_intent:** `{diag.get('coach_intent')}` · "
             f"**solver:** `{diag.get('solver') or '—'}` · "
-            f"**confidence:** {diag.get('confidence')}"
+            f"**notation_abc:** `{diag.get('notation_abc_present')}` · "
+            f"**insight staged:** `{diag.get('insight_staged')}` · "
+            f"**rendered:** `{session_state.get('_music_coach_diag_insight_rendered')}`"
         )
         ui.json(diag)
 
@@ -1443,11 +1474,41 @@ def _execute_coach_question_submit(
     question_id = str(pre_payload.get("question_id") or "")
 
     if _recent_duplicate_send(session_state, question_id):
-        ui.info("That question was already sent recently. See your insight below or open Command Center.")
+        last = session_state.get("_ami_last_send")
+        last_path = ""
+        if isinstance(last, dict):
+            last_path = str(last.get("result_path") or "")
+        try:
+            from applied_math_return_insight import SESSION_PENDING_KEY
+        except ImportError:
+            SESSION_PENDING_KEY = "_ami_pending_insight"
+        pending = session_state.get(SESSION_PENDING_KEY)
+        routed_pending = isinstance(pending, dict) and pending.get("canonical_instant")
+        if last_path == "routed_coach" or routed_pending:
+            _restore_routed_insight_render_flags(session_state)
+            dup_msg = (
+                "That question was already sent recently. Your Music Coach insight is shown below."
+            )
+            ui.info(dup_msg)
+            session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+                "kind": "info",
+                "message": dup_msg,
+                "result_path": "routed_coach",
+            }
+            if developer_mode:
+                _render_music_coach_submit_dev_panel(ui, session_state)
+            st.rerun()
+            return {"duplicate": True, "routed": True}
+        dup_msg = (
+            "That question was already sent recently. Open Command Center to continue with the Music Coach."
+            if last_path == "legacy_fallback"
+            else "That question was already sent recently. See your insight below or open Command Center."
+        )
+        ui.info(dup_msg)
         session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
             "kind": "info",
             "message": "Duplicate send skipped.",
-            "result_path": "duplicate",
+            "result_path": last_path or "duplicate",
         }
         return {"duplicate": True, "routed": False}
 
@@ -1478,6 +1539,27 @@ def _execute_coach_question_submit(
             diagnostics=diag,
             question_id=question_id,
             source_state=submit_source_state,
+        )
+        try:
+            from applied_math_return_insight import SESSION_PENDING_KEY
+        except ImportError:
+            SESSION_PENDING_KEY = "_ami_pending_insight"
+        pending = session_state.get(SESSION_PENDING_KEY)
+        diag = {
+            **diag,
+            "notation_abc_present": bool(getattr(coach_resp, "notation_abc", None)),
+            "insight_staged": isinstance(pending, dict) and bool(
+                pending.get("conclusion") or pending.get("question")
+            ),
+            "duplicate_suppressed": False,
+        }
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+        _record_music_coach_send(
+            session_state,
+            question_id=question_id,
+            question=q,
+            source_app=source_app,
+            result_path="routed_coach",
         )
         session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
             "kind": "success",
@@ -1533,6 +1615,13 @@ def _execute_coach_question_submit(
         "result_path": "legacy_fallback",
         "surface": surface_tag,
     }
+    _record_music_coach_send(
+        session_state,
+        question_id=str(result.get("question_id") or question_id),
+        question=q,
+        source_app=source_app,
+        result_path="legacy_fallback",
+    )
     if result.get("duplicate"):
         ui.info("That question was already sent recently. Open Command Center to continue with the Music Coach.")
     else:
@@ -1644,21 +1733,27 @@ def render_analyze_with_applied_math_sidebar(
         submit_label = "Send to Command Center"
 
     last = ss.get("_ami_last_send")
+    fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
     if (
         isinstance(last, dict)
         and last.get("source_app") == source_app
         and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
     ):
-        sent_msg = (
-            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-            if is_music
-            else (
-                "NBA insight request saved. Open Command Center when you're ready to review it."
-                if is_nba
-                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+        result_path = str(last.get("result_path") or (fb or {}).get("result_path") or "")
+        if is_music and result_path == "routed_coach":
+            st.sidebar.success("Music Coach insight is ready below.")
+        elif is_music:
+            st.sidebar.success(
+                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
             )
-        )
-        st.sidebar.success(sent_msg)
+        elif is_nba:
+            st.sidebar.success(
+                "NBA insight request saved. Open Command Center when you're ready to review it."
+            )
+        else:
+            st.sidebar.success(
+                "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+            )
 
     question = st.sidebar.text_area(
         "Question",

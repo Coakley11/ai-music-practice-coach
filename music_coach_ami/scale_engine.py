@@ -34,6 +34,7 @@ _ALL_INTERVAL_LABELS = ("thirds", "fourths", "fifths", "sixths", "sevenths")
 @dataclass
 class ScalePracticeSpec:
     tonic: str = "C"
+    preferred_spelling: str = ""
     scale_type: str = "major"
     interval_patterns: tuple[str, ...] = ("straight",)
     octave_count: int = 1
@@ -66,6 +67,21 @@ def _normalize_tonic(raw: str) -> str:
     if tail in ("#", "b"):
         return head + tail
     return head
+
+
+def _preferred_tonic_spelling(raw: str, tonic_ascii: str) -> str:
+    """Preserve Unicode ♭/♯ in display when the user typed them (same pitch as ASCII)."""
+    letter = tonic_ascii[0].upper() if tonic_ascii else "C"
+    raw_s = str(raw or "")
+    if re.search(rf"{letter}\s*♭", raw_s, re.I):
+        return f"{letter}♭"
+    if re.search(rf"{letter}\s*♯", raw_s, re.I):
+        return f"{letter}♯"
+    if len(tonic_ascii) > 1 and tonic_ascii[1] == "b" and "♭" in raw_s:
+        return f"{letter}♭"
+    if len(tonic_ascii) > 1 and tonic_ascii[1] == "#" and "♯" in raw_s:
+        return f"{letter}♯"
+    return tonic_ascii
 
 
 def _parse_scale_type(text: str) -> str:
@@ -115,11 +131,20 @@ def _parse_interval_patterns(text: str) -> tuple[str, ...]:
 
 
 def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePracticeSpec:
-    low = str(text or "").lower()
+    raw_text = str(text or "")
+    cleaned = raw_text
+    try:
+        from music_coach_ami.entities import normalize_musical_accidentals
+
+        cleaned = normalize_musical_accidentals(cleaned)
+    except ImportError:
+        cleaned = cleaned.replace("♭", "b").replace("♯", "#")
+    low = cleaned.lower()
     tonic = "C"
-    m = _TONIC_RE.search(text or "")
+    m = _TONIC_RE.search(cleaned or text or "")
     if m:
         tonic = _normalize_tonic(m.group(1))
+    preferred = _preferred_tonic_spelling(raw_text, tonic)
     scale_type = _parse_scale_type(text)
     patterns = _parse_interval_patterns(text)
     octaves = 2 if re.search(r"\btwo\s+octaves?\b", low) else 1
@@ -134,6 +159,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
         tempo = int(tm.group(1))
     return ScalePracticeSpec(
         tonic=tonic,
+        preferred_spelling=preferred,
         scale_type=scale_type,
         interval_patterns=patterns,
         octave_count=max(1, min(3, octaves)),

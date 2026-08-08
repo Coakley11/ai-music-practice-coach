@@ -34,6 +34,17 @@ def build_music_coach_submit_diagnostics(
         solver_name = str(response.source_solver or "").strip()
         response_intent = response.intent.value
 
+    scale_fields: dict[str, Any] = {}
+    if response is not None and isinstance(response.diagnostics, dict):
+        for key in (
+            "tonic",
+            "preferred_spelling",
+            "scale_type",
+            "notation_abc_present",
+        ):
+            if key in response.diagnostics:
+                scale_fields[key] = response.diagnostics[key]
+
     return {
         "raw_question": req.raw_question,
         "normalized_question": req.normalized_question,
@@ -55,4 +66,12 @@ def build_music_coach_submit_diagnostics(
         "response_intent": response_intent,
         "coach_context_used": coach_context_fields_available(req.context),
         "legacy_intent_hint": req.legacy_intent_hint,
+        **scale_fields,
+        "notation_abc_present": scale_fields.get(
+            "notation_abc_present",
+            bool(getattr(response, "notation_abc", None)) if response else False,
+        ),
+        "insight_staged": False,
+        "insight_rendered_on_page": False,
+        "duplicate_suppressed": False,
     }

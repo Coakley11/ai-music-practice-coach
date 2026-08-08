@@ -101,7 +101,10 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
             confidence=0.82,
         )
 
-    spec = parse_scale_practice_question(req.normalized_question, instrument=instrument)
+    spec = parse_scale_practice_question(
+        req.raw_question or req.normalized_question,
+        instrument=instrument,
+    )
     result = generate_scale_practice(spec)
 
     steps: list[str] = []
@@ -129,7 +132,9 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         confidence=0.9,
         diagnostics={
             "tonic": result.tonic,
+            "preferred_spelling": spec.preferred_spelling or result.tonic,
             "scale_type": result.scale_type,
+            "notation_abc_present": bool(result.abc),
             "patterns": list(spec.interval_patterns),
             "octaves": spec.octave_count,
             "direction": spec.direction,
