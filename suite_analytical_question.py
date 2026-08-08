@@ -31,6 +31,9 @@ ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
 _SEND_COOLDOWN_SECONDS = 120
 
+_AMI_COACH_SUBMIT_FEEDBACK_KEY = "_music_coach_submit_feedback"
+MUSIC_COACH_SUBMIT_DIAG_KEY = "_music_coach_ami_submit_diag"
+
 _SOURCE_AREA: dict[str, str] = {
     "baseball": "sports",
     "nba": "sports",
@@ -1359,6 +1362,247 @@ def build_submit_context(
     return ctx
 
 
+def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any]) -> None:
+    """Compact dev routing panel for the last Music Coach submit (?dev=1)."""
+    diag = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if not isinstance(diag, dict) or not diag:
+        ui.caption("Music Coach AMI: no submit diagnostics yet this session.")
+        return
+    with ui.expander("Music Coach AMI routing (?dev=1)", expanded=True):
+        ui.markdown(
+            f"**result_path:** `{diag.get('result_path')}` · "
+            f"**coach_intent:** `{diag.get('coach_intent')}` · "
+            f"**solver:** `{diag.get('solver') or '—'}` · "
+            f"**confidence:** {diag.get('confidence')}"
+        )
+        ui.json(diag)
+
+
+def _execute_coach_question_submit(
+    st: Any,
+    ui: Any,
+    session_state: dict[str, Any],
+    *,
+    question_raw: str,
+    source_app: str,
+    source_page: str,
+    page_suffix: str,
+    send_gen: int,
+    surface_tag: str = "sidebar",
+    context: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    context_summary: str = "",
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> dict[str, Any] | None:
+    """Music Coach send: routed AMI pipeline first, else legacy Command Center handoff."""
+    q = str(question_raw or "").strip()
+    if not q:
+        ui.warning("Enter a question first.")
+        return None
+
+    submit_ctx = build_submit_context(
+        source_app,
+        source_page,
+        session_state,
+        context_extra_builder=context_extra_builder,
+        context_extra=context,
+    )
+    submit_ctx = dict(submit_ctx)
+    submit_ctx["question"] = q
+
+    submit_source_state: dict[str, Any] | None = None
+    if source_state_builder is not None:
+        try:
+            submit_source_state = source_state_builder()
+        except Exception:
+            log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+
+    coach_page = str(submit_ctx.get("coach_page") or source_page).strip()
+    try:
+        from music_ami_pages import promote_music_ami_context_at_send
+
+        promote_music_ami_context_at_send(
+            submit_ctx,
+            session_state,
+            source_page=coach_page,
+            question=q,
+        )
+    except ImportError:
+        pass
+
+    pre_payload = build_question_payload(
+        source_app=source_app,
+        source_page=source_page,
+        question=q,
+        context=submit_ctx,
+        context_summary=context_summary,
+        source_state=submit_source_state,
+    )
+    question_id = str(pre_payload.get("question_id") or "")
+
+    if _recent_duplicate_send(session_state, question_id):
+        ui.info("That question was already sent recently. See your insight below or open Command Center.")
+        session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+            "kind": "info",
+            "message": "Duplicate send skipped.",
+            "result_path": "duplicate",
+        }
+        return {"duplicate": True, "routed": False}
+
+    try:
+        from music_coach_ami.pipeline import run_coach_submit
+        from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics
+        from music_coach_ami.submit_integration import stage_routed_music_coach_insight
+
+        coach_req, coach_resp = run_coach_submit(q, session_state, ami_ctx=submit_ctx)
+    except ImportError:
+        coach_req = None
+        coach_resp = None
+
+    if coach_resp is not None and coach_req is not None:
+        diag = build_music_coach_submit_diagnostics(
+            coach_req,
+            coach_resp,
+            result_path="routed_coach",
+        )
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+        stage_routed_music_coach_insight(
+            st,
+            session_state,
+            question=q,
+            source_page=source_page,
+            coach_req=coach_req,
+            coach_resp=coach_resp,
+            diagnostics=diag,
+            question_id=question_id,
+            source_state=submit_source_state,
+        )
+        session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+            "kind": "success",
+            "message": "Music Coach insight is ready below.",
+            "result_path": "routed_coach",
+            "surface": surface_tag,
+        }
+        session_state["_last_analytical_question"] = {
+            **pre_payload,
+            "routed_coach": True,
+            "duplicate": False,
+        }
+        session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+        ui.success("Music Coach insight is ready below.")
+        if on_after_send is not None:
+            try:
+                on_after_send()
+            except Exception:
+                log.exception("on_after_send hook failed for music coach (%s)", source_page)
+        if developer_mode:
+            _render_music_coach_submit_dev_panel(ui, session_state)
+        st.rerun()
+        return {"routed": True, "duplicate": False, "question_id": question_id}
+
+    from music_coach_ami.router import route_question
+
+    fallback_req = coach_req if coach_req is not None else route_question(q, session_state, ami_ctx=submit_ctx)
+    try:
+        from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics
+
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = build_music_coach_submit_diagnostics(
+            fallback_req,
+            None,
+            result_path="legacy_fallback",
+        )
+    except ImportError:
+        pass
+
+    result = submit_analytical_question(
+        source_app=source_app,
+        source_page=source_page,
+        question=q,
+        context=submit_ctx,
+        context_summary=context_summary,
+        source_state=submit_source_state,
+        session_state=session_state,
+    )
+    session_state["_last_analytical_question"] = result
+    session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+    session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+        "kind": "success",
+        "message": "Question sent to Command Center. Open Command Center to continue with the Music Coach.",
+        "result_path": "legacy_fallback",
+        "surface": surface_tag,
+    }
+    if result.get("duplicate"):
+        ui.info("That question was already sent recently. Open Command Center to continue with the Music Coach.")
+    else:
+        ui.success(
+            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+        )
+    if on_after_send is not None and not result.get("duplicate"):
+        try:
+            on_after_send()
+        except Exception:
+            log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
+    if developer_mode:
+        _render_music_coach_submit_dev_panel(ui, session_state)
+    st.rerun()
+    return {**result, "routed": False}
+
+
+def _stage_music_instant_insight(
+    st: Any,
+    session_state: dict[str, Any],
+    *,
+    question: str,
+    source_app: str,
+    source_page: str,
+    submit_ctx: dict[str, Any],
+    submit_source_state: dict[str, Any] | None,
+    pre_payload: dict[str, Any],
+    action_url_pre: str = "",
+) -> bool:
+    """Legacy instant-insight staging (solve_instant_music_insight → pending card)."""
+    try:
+        from applied_math_return_insight import (
+            build_return_insight_payload,
+            stage_pending_insight,
+            store_applied_math_insight,
+        )
+        from music_ami_instant_solver import solve_instant_music_insight
+    except ImportError:
+        return False
+
+    solved = solve_instant_music_insight(question, dict(submit_ctx))
+    if not solved:
+        return False
+    route, result = solved
+    payload = build_return_insight_payload(
+        question=question,
+        source_app=source_app,
+        source_page=source_page,
+        question_id=str(pre_payload.get("question_id") or ""),
+        route=route,
+        result=result,
+        context=submit_ctx,
+    )
+    insight = payload.to_dict()
+    insight["canonical_instant"] = True
+    store_applied_math_insight(
+        insight,
+        source_state=submit_source_state,
+        st=st,
+    )
+    stage_pending_insight(st, insight, return_context=submit_source_state)
+    session_state["_ami_music_instant_canonical"] = {
+        "insight_id": insight.get("insight_id"),
+        "question_id": pre_payload.get("question_id"),
+    }
+    session_state["_ami_submit_render_insight_this_run"] = True
+    session_state["_ami_last_submit_source_page"] = source_page
+    return True
+
+
 def render_analyze_with_applied_math_sidebar(
     st: Any,
     *,
@@ -1442,6 +1686,30 @@ def render_analyze_with_applied_math_sidebar(
         q = str(question or "").strip()
         if not q:
             st.sidebar.warning("Enter a question first.")
+        elif is_music:
+            submit_source_state: dict[str, Any] | None = None
+            if source_state_builder is not None:
+                try:
+                    submit_source_state = source_state_builder()
+                except Exception:
+                    log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+            _execute_coach_question_submit(
+                st,
+                st.sidebar,
+                ss,
+                question_raw=q,
+                source_app=source_app,
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag="sidebar",
+                context=context,
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                context_summary=context_summary,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
         else:
             submit_ctx = build_submit_context(
                 source_app,
@@ -1450,7 +1718,7 @@ def render_analyze_with_applied_math_sidebar(
                 context_extra_builder=context_extra_builder,
                 context_extra=context,
             )
-            submit_source_state: dict[str, Any] | None = None
+            submit_source_state = None
             if source_state_builder is not None:
                 try:
                     submit_source_state = source_state_builder()
@@ -1468,22 +1736,14 @@ def render_analyze_with_applied_math_sidebar(
             ss["_last_analytical_question"] = result
             ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
             dup_msg = (
-                "That question was already sent recently. Open Command Center to continue with the Music Coach."
-                if is_music
-                else (
-                    "That NBA insight was already requested recently. Open Command Center to review it."
-                    if is_nba
-                    else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
-                )
+                "That NBA insight was already requested recently. Open Command Center to review it."
+                if is_nba
+                else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
             )
             ok_msg = (
-                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-                if is_music
-                else (
-                    "NBA insight request saved. Open Command Center when you're ready to review it."
-                    if is_nba
-                    else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
-                )
+                "NBA insight request saved. Open Command Center when you're ready to review it."
+                if is_nba
+                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
             )
             if result.get("duplicate"):
                 st.sidebar.info(dup_msg)
@@ -1495,6 +1755,9 @@ def render_analyze_with_applied_math_sidebar(
                 except Exception:
                     log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
             st.rerun()
+
+    if is_music and developer_mode:
+        _render_music_coach_submit_dev_panel(st.sidebar, ss)
 
     if developer_mode:
         st.sidebar.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
@@ -1826,6 +2089,58 @@ def render_music_coach_sidebar_entry(
         developer_mode=developer_mode,
         on_after_send=on_after_send,
     )
+
+
+def render_music_coach_page_entry(
+    st: Any,
+    *,
+    source_page: str,
+    session_state: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> None:
+    """Practice page main-panel Music Coach ask box (same routed submit path as sidebar)."""
+    ss = session_state if session_state is not None else st.session_state
+    page_suffix = _safe_widget_suffix(source_page)
+    send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
+    question_key = f"ami_question_music_page_{page_suffix}_{send_gen}"
+
+    with st.expander("Ask the Music Coach", expanded=False):
+        st.caption("Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.")
+        question = st.text_area(
+            "Question",
+            value=str(ss.get(question_key) or "").strip(),
+            placeholder=music_coach_question_placeholder(source_page),
+            height=88,
+            key=question_key,
+            label_visibility="collapsed",
+        )
+        if st.button(
+            "Ask the Music Coach",
+            key=f"ami_submit_music_page_{page_suffix}",
+            use_container_width=True,
+            type="primary",
+        ):
+            _execute_coach_question_submit(
+                st,
+                st,
+                ss,
+                question_raw=str(question or ""),
+                source_app="music",
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag="page",
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
+
+    if developer_mode:
+        _render_music_coach_submit_dev_panel(st, ss)
 
 
 def render_suite_applied_math_insight(

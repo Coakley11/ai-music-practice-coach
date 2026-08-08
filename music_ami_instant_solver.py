@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MUSIC_AMI_BUILD_ID = "music-ami-v6-routed-coach-architecture"
+MUSIC_AMI_BUILD_ID = "music-ami-v6-routed-coach-ui-submit"
 
 _MUSIC_SOLVER_INTENTS = frozenset(
     {

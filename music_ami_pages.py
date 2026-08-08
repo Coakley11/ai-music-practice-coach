@@ -29,12 +29,12 @@ def build_music_send_diagnostics(ctx: dict[str, Any], *, question: str = "") -> 
         "practice_snapshot_present": bool(snap),
     }
     try:
-        from music_coach_ami.router import route_question
+        from music_coach_ami.pipeline import run_coach_submit
 
-        req = route_question(question, {}, ami_ctx=ctx)
+        req, resp = run_coach_submit(question, {}, ami_ctx=ctx)
         diag["coach_intent"] = req.intent.value
         diag["coach_confidence"] = req.confidence
-        diag["coach_solver"] = req.legacy_intent_hint
+        diag["coach_solver"] = str(resp.source_solver or "") if resp is not None else req.legacy_intent_hint
         diag["coach_entities"] = {
             "instrument": req.entities.instrument,
             "skill_topic": req.entities.skill_topic,

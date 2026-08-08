@@ -625,6 +625,8 @@ def _insight_panel_title(source_app: str, insight: dict[str, Any] | None = None)
     app = str(source_app or (insight or {}).get("source_app") or "").strip().lower()
     if app == "investment":
         return INVESTMENT_INSIGHT_PANEL_TITLE
+    if app == "music":
+        return "Music Coach Insight"
     return "Applied Math Insight"
 
 
@@ -1964,11 +1966,29 @@ def render_applied_math_insight_panel(
             else:
                 st.markdown(f"**Conclusion:** {data.get('conclusion')}")
         else:
-            st.markdown(f"**Conclusion:** {data.get('conclusion')}")
+            conclusion = str(data.get("conclusion") or "").strip()
+            if app == "music" or data.get("canonical_instant"):
+                if conclusion:
+                    st.markdown(conclusion)
+            else:
+                st.markdown(f"**Conclusion:** {conclusion}")
         show_details = str(source_app or data.get("source_app") or "").strip().lower() != "investment"
+        if app == "music" and isinstance(data.get("coach_submit_diagnostics"), dict):
+            show_details = True
         method = str(data.get("method") or data.get("model_name") or "").strip()
         if show_details and method:
-            st.markdown(f"**Math used:** {method}")
+            label = "Coach" if app == "music" else "Math used"
+            st.markdown(f"**{label}:** {method}")
+        if app == "music" and isinstance(data.get("coach_submit_diagnostics"), dict):
+            diag = data["coach_submit_diagnostics"]
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                if music_developer_mode(st):
+                    with st.expander("Music Coach AMI routing (?dev=1)", expanded=False):
+                        st.json(diag)
+            except ImportError:
+                pass
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
