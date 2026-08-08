@@ -352,7 +352,7 @@ def infer_first_divergence(session: dict[str, Any], *, table: dict[str, Any] | N
     fork_detail = ""
 
     if post:
-        kc = str(post.get("resolve_generated_concert_key") or "")
+        kc = str(post.get("resolve_generated_concert_key_for_owner") or post.get("resolve_generated_concert_key") or "")
         jk = str(post.get("jam_object_key") or "")
         if kc and jk and kc != jk:
             fork = "generate_input_vs_jam_object"
