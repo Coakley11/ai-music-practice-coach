@@ -10,7 +10,23 @@ from datetime import datetime, timezone
 from typing import Any
 
 BOUNDARY_TRACE_KEY = "_music_workspace_boundary_trace"
+BOUNDARY_TRACE_UI_VERSION = "workspace-boundary-trace-sidebar-v1"
 _MAX_EVENTS = 48
+
+
+def boundary_trace_dev_enabled(*, st: Any | None = None) -> bool:
+    """True when ?dev=1 or developer session flags (same gate as other Music dev diagnostics)."""
+    try:
+        from suite_workspace import is_developer_mode_enabled
+
+        return bool(is_developer_mode_enabled(st=st))
+    except ImportError:
+        if st is not None:
+            try:
+                return bool(st.session_state.get("developer_mode"))
+            except Exception:
+                pass
+        return False
 
 
 def _utc_now_iso() -> str:
@@ -254,14 +270,26 @@ def evaluate_binary_refresh_question(
     }
 
 
-def render_boundary_trace_expander(st: Any, session: dict[str, Any]) -> None:
+def _render_boundary_trace_body(st: Any, session: dict[str, Any]) -> None:
+    st.caption(f"Boundary trace UI: {BOUNDARY_TRACE_UI_VERSION}")
+    st.caption(
+        "Before refresh: last serialize_payload + save_complete. "
+        "After refresh: first hydrate_raw_picked."
+    )
+    live = live_session_snapshot(session)
+    st.markdown("**Live session (now)**")
+    st.json(live)
+
     events = session.get(BOUNDARY_TRACE_KEY)
-    if not isinstance(events, list) or not events:
-        return
-    with st.expander("Workspace boundary trace (save vs hydrate)", expanded=True):
-        st.caption(
-            "Capture before refresh: last serialize_payload + save_complete vs hydrate_raw_picked on reload."
+    if not isinstance(events, list):
+        events = []
+    st.markdown(f"**Boundary events** ({len(events)} recorded)")
+    if not events:
+        st.info(
+            "No boundary events yet this browser session. "
+            "Change song or page, wait ~10s for autosave, or refresh to record hydrate_raw_picked."
         )
+    else:
         for row in events[-12:]:
             phase = row.get("phase")
             st.markdown(f"**{phase}** @ {row.get('at')}")
@@ -269,12 +297,12 @@ def render_boundary_trace_expander(st: Any, session: dict[str, Any]) -> None:
                 st.text(f"save_reason: {row.get('save_reason')}")
             if row.get("block_reason"):
                 st.text(f"block_reason: {row.get('block_reason')}")
-            live = row.get("live")
-            if isinstance(live, dict):
+            row_live = row.get("live")
+            if isinstance(row_live, dict):
                 st.text(
-                    f"live: page={live.get('studio_page')} pick={live.get('pick_key')} "
-                    f"ws_page={live.get('music_workspace_studio_page')} "
-                    f"fp_match={live.get('startup_fingerprint_matches')}"
+                    f"live: page={row_live.get('studio_page')} pick={row_live.get('pick_key')} "
+                    f"ws_page={row_live.get('music_workspace_studio_page')} "
+                    f"fp_match={row_live.get('startup_fingerprint_matches')}"
                 )
             payload = row.get("payload")
             if isinstance(payload, dict):
@@ -282,12 +310,41 @@ def render_boundary_trace_expander(st: Any, session: dict[str, Any]) -> None:
                     f"payload: page={payload.get('music_workspace_studio_page')} "
                     f"pick={payload.get('pick_key')} rev={payload.get('workspace_revision')}"
                 )
-        live = live_session_snapshot(session)
-        disk = read_local_durable_envelope("music")
-        env = disk.get("envelope") if isinstance(disk.get("envelope"), dict) else {}
-        verdict = evaluate_binary_refresh_question(live_before_refresh=live, durable_envelope=env)
-        st.markdown("**Binary question (disk readback + live session)**")
-        st.json(verdict)
+
+    try:
+        from music_workspace_cloud_save import collect_save_transaction_diagnostics
+
+        tx = collect_save_transaction_diagnostics(session)
+        if tx:
+            st.markdown("**Last save transaction**")
+            st.json(tx)
+    except ImportError:
+        pass
+
+    disk = read_local_durable_envelope("music")
+    env = disk.get("envelope") if isinstance(disk.get("envelope"), dict) else {}
+    verdict = evaluate_binary_refresh_question(live_before_refresh=live, durable_envelope=env)
+    st.markdown("**Binary question (local disk readback + live session)**")
+    st.caption("Cloud proof: compare hydrate_raw_picked payload after refresh with live session before refresh.")
+    st.json(verdict)
+
+
+def render_workspace_boundary_trace_sidebar(st: Any) -> None:
+    """Top-level sidebar panel — visible with ?dev=1 on all studio pages."""
+    if not boundary_trace_dev_enabled(st=st):
+        return
+    ss = st.session_state
+    with st.sidebar.expander("Workspace boundary trace (save vs hydrate)", expanded=True):
+        _render_boundary_trace_body(st, ss)
+
+
+def render_boundary_trace_expander(st: Any, session: dict[str, Any]) -> None:
+    """Legacy nested panel inside Music persistence trace (prefer sidebar entrypoint)."""
+    if not boundary_trace_dev_enabled(st=st):
+        return
+    with st.expander("Workspace boundary trace (nested copy)", expanded=False):
+        st.caption("Primary panel is at the top of the sidebar (?dev=1).")
+        _render_boundary_trace_body(st, session)
 
 
 __all__ = [
@@ -301,5 +358,8 @@ __all__ = [
     "record_live_boundary",
     "record_save_outcome_boundary",
     "record_serialize_boundary",
+    "BOUNDARY_TRACE_UI_VERSION",
+    "boundary_trace_dev_enabled",
+    "render_workspace_boundary_trace_sidebar",
     "render_boundary_trace_expander",
 ]

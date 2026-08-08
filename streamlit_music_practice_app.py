@@ -10472,8 +10472,21 @@ try:
     from music_persistence_trace import render_persistence_trace_sidebar
 
     render_persistence_trace_sidebar(st)
-except Exception:
-    pass
+except Exception as _persist_trace_exc:
+    if _developer_mode_enabled():
+        st.sidebar.warning(
+            f"Music persistence trace failed: {type(_persist_trace_exc).__name__}: {_persist_trace_exc}"
+        )
+
+try:
+    from music_workspace_boundary_trace import render_workspace_boundary_trace_sidebar
+
+    render_workspace_boundary_trace_sidebar(st)
+except Exception as _boundary_trace_exc:
+    if _developer_mode_enabled():
+        st.sidebar.error(
+            f"Workspace boundary trace failed: {type(_boundary_trace_exc).__name__}: {_boundary_trace_exc}"
+        )
 
 try:
     from creative_return_trace import render_creative_return_trace_panel

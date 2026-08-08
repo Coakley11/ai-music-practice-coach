@@ -186,6 +186,15 @@ class WorkspaceBoundaryHevenuLogTests(unittest.TestCase):
         self.assertTrue(suppress)
         self.assertEqual(why, "startup_canonical_unchanged")
 
+    def test_boundary_trace_dev_enabled_with_dev_query(self) -> None:
+        from music_workspace_boundary_trace import boundary_trace_dev_enabled
+
+        class _St:
+            session_state: dict = {}
+            query_params = {"dev": "1"}
+
+        self.assertTrue(boundary_trace_dev_enabled(st=_St()))  # type: ignore[arg-type]
+
 
 if __name__ == "__main__":
     unittest.main()
