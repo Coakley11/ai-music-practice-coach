@@ -37,6 +37,35 @@ def peek_mission_return_destination(session: dict[str, Any]) -> dict[str, Any] |
     return copy.deepcopy(raw) if isinstance(raw, dict) else None
 
 
+def apply_sealed_mission_return_destination(session: dict[str, Any], dest: dict[str, Any] | None = None) -> bool:
+    """Restore exact mission identity from sealed return destination (Backing → Missions)."""
+    sealed = dest if isinstance(dest, dict) else peek_mission_return_destination(session)
+    if not isinstance(sealed, dict) or not str(sealed.get("mission_id") or "").strip():
+        return False
+    try:
+        from mission_backing_alignment import apply_pending_mission_backing_alignment
+
+        apply_pending_mission_backing_alignment(session, sealed)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_mission_return import _apply_return_destination_session_fields
+
+        _apply_return_destination_session_fields(session, sealed)
+    except ImportError:
+        mission_id = str(sealed.get("mission_id") or "").strip()
+        if mission_id:
+            session["improv_active_mission"] = mission_id
+            session["improv_mission_pick"] = mission_id
+    try:
+        from mission_practice_context import refresh_mission_practice_context
+
+        refresh_mission_practice_context(session)
+    except ImportError:
+        pass
+    return True
+
+
 def seal_mission_return_destination_from_handoff(session: dict[str, Any], pending: dict[str, Any]) -> None:
     align = pending.get("mission_alignment")
     if not isinstance(align, dict):
@@ -52,6 +81,7 @@ def seal_mission_return_destination_from_handoff(session: dict[str, Any], pendin
 
 __all__ = [
     "MISSION_CANONICAL_RETURN_DESTINATION_KEY",
+    "apply_sealed_mission_return_destination",
     "build_mission_return_destination",
     "peek_mission_return_destination",
     "seal_mission_return_destination",

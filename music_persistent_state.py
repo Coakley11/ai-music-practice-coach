@@ -2127,19 +2127,22 @@ def _last_persisted_studio_page_for_save(session: dict[str, Any]) -> str:
 
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
-    if save_reason == "page_change":
-        return _resolve_page_change_stamp_target(ss)
     live = _normalize_studio_page_for_save(ss.get("studio_page"))
+    if save_reason == "page_change":
+        if live:
+            return live, "normalized_studio_page"
+        return _resolve_page_change_stamp_target(ss)
     reason = str(save_reason or "autosave").strip() or "autosave"
     if reason in _PRESERVE_USER_NAV_SAVE_REASONS:
         last = _last_persisted_studio_page_for_save(ss)
         user_nav = bool(ss.get("_suite_page_user_nav"))
-        if last and not user_nav:
-            if not live or live != last:
-                return last, "_suite_last_persisted_page"
-        if last and user_nav and live and live == last:
+        if live:
             return live, "session_state.studio_page"
-    return live, "session_state.studio_page" if live else "missing"
+        if last and not user_nav:
+            return last, "_suite_last_persisted_page"
+    if live:
+        return live, "session_state.studio_page"
+    return _resolve_page_change_stamp_target(ss)
 
 
 def _stamp_live_studio_page_into_save_payload(
@@ -3612,6 +3615,7 @@ def after_studio_page_change(
         pass
     if not _page_change_save_ready(ss, page_id):
         ss["_suite_deferred_page_change_save"] = page_id
+        ss["_suite_last_persisted_page"] = page_id
         return
     ss.pop("_suite_deferred_page_change_save", None)
     _mark_page_change_write_pending(ss, page_id)

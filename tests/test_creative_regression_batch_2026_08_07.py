@@ -218,5 +218,132 @@ class MissionExampleBlobIndexTests(unittest.TestCase):
         self.assertEqual(blob.selected_chord_index, 4)
 
 
+class SidebarKeyAfterJamTests(unittest.TestCase):
+    def test_missions_sidebar_uses_song_authority_not_stale_jam_blob(self) -> None:
+        session: dict = {
+            "improv_intelligence_tab": "Missions",
+            "active_catalog_pick_key": "hevenu",
+            "display_key": "Dm",
+            "concert_key": "Eb",
+        }
+        from music_workflow_state_store import (
+            ActiveWorkflowPointer,
+            KeyAuthority,
+            WorkflowStateBlob,
+            save_workflow_blob,
+            set_active_workflow_pointer,
+        )
+
+        set_active_workflow_pointer(session, ActiveWorkflowPointer(workflow_owner="mission_jam", workflow_session_id="m1"))
+        save_workflow_blob(
+            session,
+            WorkflowStateBlob(
+                workflow_owner="mission_jam",
+                workflow_session_id="m1",
+                keys=KeyAuthority(practice_tonic="Eb", practice_mode="major"),
+            ),
+        )
+        from sidebar_key_identity import resolve_sidebar_key_identity
+
+        class _PK:
+            practice_tonic = "D"
+            practice_mode = "minor"
+
+        with unittest.mock.patch(
+            "musical_context_authority.resolve_authoritative_practice_key",
+            return_value=_PK(),
+        ):
+            ident = resolve_sidebar_key_identity(session)
+        self.assertEqual(ident.selector_token.lower(), "dm")
+
+
+class DurablePageAutosaveTests(unittest.TestCase):
+    def test_autosave_prefers_live_practice_over_stale_last_persisted_creative(self) -> None:
+        from music_persistent_state import _resolve_live_studio_page_for_save
+
+        session: dict = {
+            "studio_page": "practice",
+            "_suite_last_persisted_page": "creative",
+        }
+        page, source = _resolve_live_studio_page_for_save(session, save_reason="autosave")
+        self.assertEqual(page, "practice")
+        self.assertEqual(source, "session_state.studio_page")
+
+    def test_disk_round_trip_preserves_practice_studio_page(self) -> None:
+        from unittest.mock import MagicMock
+
+        from music_persistent_state import apply_music_disk_state, build_music_disk_state
+
+        ss: dict = {"studio_page": "log", "instrument": "Guitar"}
+        st = MagicMock()
+        st.session_state = ss
+        blob = build_music_disk_state(st)
+        fresh: dict = {}
+        st2 = MagicMock()
+        st2.session_state = fresh
+        apply_music_disk_state(st2, blob, song_picker_catalog={}, song_library={})
+        self.assertEqual(str(fresh.get("studio_page") or ""), "log")
+
+
+class MissionReturnChainTests(unittest.TestCase):
+    def test_sealed_destinations_restore_exact_mission_abc(self) -> None:
+        from mission_backing_alignment import build_mission_backing_alignment_payload
+        from mission_return_destination import apply_sealed_mission_return_destination, build_mission_return_destination, seal_mission_return_destination
+
+        def _dest(letter: str, chord: str) -> dict:
+            align = build_mission_backing_alignment_payload(
+                {},
+                mission=f"Mission {letter}",
+                cur_chord=chord,
+                section_label="Melody B",
+                chord_idx=2,
+                song_title="Tune",
+            )
+            return build_mission_return_destination(align, handoff_mode="mission_backing", with_practice_lick=False, request_seq=1)
+
+        session: dict = {"studio_page": "backing"}
+        for letter, chord in (("A", "Bb7"), ("B", "F#m"), ("C", "C7")):
+            seal_mission_return_destination(session, _dest(letter, chord))
+            with unittest.mock.patch(
+                "mission_backing_alignment.apply_pending_mission_backing_alignment",
+                return_value=True,
+            ):
+                apply_sealed_mission_return_destination(session)
+            self.assertEqual(session.get("improv_active_mission"), f"Mission {letter}")
+            self.assertEqual(session.get("ii_selected_chord"), chord)
+
+
+class GenericBackingEntryTests(unittest.TestCase):
+    def test_generic_backing_entry_releases_mission_context(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from backing_source_navigation import hydrate_backing_source_for_page, mark_generic_catalog_backing_entry
+        from music_source_ownership import intentional_creative_backing_active
+
+        session: dict = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": "Pop::Test",
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission",
+                active_song_id="pick",
+                song_title="T",
+                key="C",
+                display_key="C",
+                concert_key="C",
+                bpm=100,
+                style="Pop",
+                groove="Straight",
+                mission_id="Mission A",
+            ),
+        )
+        mark_generic_catalog_backing_entry(session)
+        with unittest.mock.patch("music_source_ownership.reconcile_source_ownership", return_value=True):
+            hydrate_backing_source_for_page(session)
+        self.assertFalse(intentional_creative_backing_active(session))
+
+
 if __name__ == "__main__":
     unittest.main()

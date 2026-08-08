@@ -37,22 +37,17 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
     owner = ""
     pt, pm = "C", "major"
     wt = ""
-    blob = None
+    song_catalog = _song_catalog_owner(session)
     try:
-        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+        from music_workflow_state_store import get_active_workflow_pointer
 
         ptr = get_active_workflow_pointer(session)
         if ptr:
             owner = str(ptr.workflow_owner or "")
-            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
-            if blob is not None:
-                pt = str(blob.keys.practice_tonic or "C").strip() or "C"
-                pm = str(blob.keys.practice_mode or "major").strip().lower() or "major"
-                wt = str(blob.keys.written_tonic or "").strip()
     except ImportError:
         pass
 
-    if _song_catalog_owner(session) or owner in {
+    if song_catalog or owner in {
         "song_based_improvisation",
         "mission_jam",
         "regular_catalog_backing",
@@ -69,6 +64,20 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
         except ImportError:
             live = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
             pt, pm = split_key_center(live)
+    else:
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr:
+                owner = str(ptr.workflow_owner or "")
+                blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+                if blob is not None:
+                    pt = str(blob.keys.practice_tonic or "C").strip() or "C"
+                    pm = str(blob.keys.practice_mode or "major").strip().lower() or "major"
+                    wt = str(blob.keys.written_tonic or "").strip()
+        except ImportError:
+            pass
 
     token = key_center_token(pt, pm)
     label = format_key_label_from_parts(pt, pm)

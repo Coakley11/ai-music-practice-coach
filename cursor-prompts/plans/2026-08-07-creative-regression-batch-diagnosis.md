@@ -33,9 +33,11 @@
 
 ## F — Top-level page lost on browser refresh
 
-**Cause:** ee6b5cb clears run-scoped user nav each RUN_STARTED (correct). `prepare_studio_nav` `canonical_post_restore` / `canonical_after_restore` could re-apply stale `studio_nav_state` over hydrated `studio_page` when projection flag lingered.
+**Answer (trace-proven):** The correct page was often **live in session** (`studio_page=practice`, etc.) but **autosave re-stamped Creative** into the durable payload. `_resolve_live_studio_page_for_save()` treated `_suite_last_persisted_page=creative` as authoritative whenever `_suite_page_user_nav` was cleared after nav save, so passive `autosave`/`practice_edit`/… saves wrote **Creative** into `core` / `music_workspace_state` / `studio_nav_state` even while the user was on Practice/Songs/Backing/Log/Compose. After refresh, hydration faithfully restored **Creative**.
 
-**Fix:** Clear projection flag in `begin_script_run_navigation_markers`; prefer `_music_hydrated_studio_page` over stale canonical when restore source is cloud/workspace.
+**Fix:** Prefer **live** `session["studio_page"]` for all save reasons when set; only fall back to `_suite_last_persisted_page` when live page is empty. Stamp `_suite_last_persisted_page` when page_change save is deferred. Run-scoped user nav marker unchanged.
+
+**Prior hydration tweak** (`hydrated_page_over_stale_canonical`) remains a secondary guard, not the primary fix.
 
 ## Tests
 

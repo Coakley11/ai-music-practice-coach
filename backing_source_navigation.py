@@ -513,9 +513,46 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         return None
 
 
+BACKING_GENERIC_CATALOG_ENTRY_KEY = "_backing_generic_catalog_entry"
+
+
+def mark_generic_catalog_backing_entry(session: dict[str, Any]) -> None:
+    """User opened Backing from a top-level page — not an in-flight Creative handoff."""
+    session[BACKING_GENERIC_CATALOG_ENTRY_KEY] = True
+    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+
+
+def release_specialized_backing_for_generic_navigation(session: dict[str, Any], *, st_like: Any | None = None) -> None:
+    """Drop stale mission/jam backing ownership when entering Backing generically."""
+    session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            get_backing_context,
+            set_backing_source_preference,
+        )
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in {"entry_jam", "song_improv", "mission", "custom_progression"}:
+            set_backing_source_preference(session, BACKING_PREF_CATALOG)
+    except ImportError:
+        pass
+    session["_backing_released_specialized_context"] = True
+    try:
+        from music_source_ownership import reconcile_source_ownership
+
+        reconcile_source_ownership(session, st_like=st_like, reason="generic_backing_entry")
+    except ImportError:
+        pass
+
+
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
     intent = consume_backing_open_intent(session)
+    if generic_entry or intent == BACKING_INTENT_RESTORE_LAST:
+        release_specialized_backing_for_generic_navigation(session, st_like=st_like)
     if intent == BACKING_INTENT_FROM_CREATIVE:
         open_backing_for_creative_source(session, st_like=st_like)
         try:
@@ -617,6 +654,9 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 return
     except ImportError:
         pass
+    if session.get("_backing_released_specialized_context"):
+        session.pop("_backing_released_specialized_context", None)
+        return
     try:
         from backing_context import (
             PENDING_BACKING_CONTEXT_APPLY,
@@ -1680,6 +1720,17 @@ def prepare_return_to_mission_detail(session: dict[str, Any]) -> CreativeReturnP
     """Return to Creative with exact mission section/chord/example context restored."""
     ctx = get_backing_context(session)
     page = prepare_return_to_backing_source(session)
+    try:
+        from mission_return_destination import apply_sealed_mission_return_destination
+
+        if apply_sealed_mission_return_destination(session):
+            session["improv_intelligence_tab"] = "Missions"
+            session["creative_improv_intelligence_tab"] = "Missions"
+            if ctx is not None and str(ctx.source or "") == "mission":
+                restore_session_widgets_from_backing_context(session, ctx)
+            return page
+    except ImportError:
+        pass
     if ctx is not None and str(ctx.source or "") == "mission":
         session["improv_intelligence_tab"] = "Missions"
         session["creative_improv_intelligence_tab"] = "Missions"
@@ -1812,6 +1863,7 @@ __all__ = [
     "queue_backing_scope_from_practice_focus",
     "prepare_return_to_backing_source",
     "prepare_return_to_mission_detail",
+    "project_return_destination_to_canonical_creative_selectors",
     "rehydrate_creative_from_backing_context",
     "resolve_entry_jam_entry_mode",
     "render_source_context_debug",

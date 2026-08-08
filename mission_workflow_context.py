@@ -207,6 +207,12 @@ def reconcile_missions_workflow_context(
     section_label: str,
 ) -> tuple[list[tuple[str, list[str]]], MissionContextReport]:
     cleared = _deactivate_entry_jam_transient_for_missions(session)
+    try:
+        from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+        prime_sidebar_practice_key_from_identity(session)
+    except ImportError:
+        pass
     if improv_ctx.sections and isinstance(improv_ctx.sections, dict):
         session["home_sections"] = {k: list(v) for k, v in improv_ctx.sections.items() if isinstance(v, list)}
     section_map, prog_owner = resolve_missions_section_map(session, improv_ctx)

@@ -154,6 +154,8 @@ def _creative_session_blob_is_active(session: dict[str, Any]) -> bool:
 
 def intentional_creative_backing_active(session: dict[str, Any]) -> bool:
     """True when user explicitly opened Backing from Creative (not stale catalog ctx)."""
+    if session.get("_backing_released_specialized_context"):
+        return False
     try:
         from backing_context import (
             BACKING_PREF_CATALOG,
