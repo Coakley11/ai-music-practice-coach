@@ -276,6 +276,17 @@ def record_coherence_handoff_block(session: dict[str, Any], violations: list[str
     }
 
 
+def clear_coherence_handoff_block(session: dict[str, Any]) -> None:
+    """Remove handoff block after a successful coherent seal or backing context."""
+    session.pop(MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY, None)
+    try:
+        from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+        session.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+    except ImportError:
+        pass
+
+
 def raise_coherence_handoff_blocked(session: dict[str, Any], violations: list[str]) -> None:
     record_coherence_handoff_block(session, violations)
     raise CreativeBackingHandoffBlocked(violations[0] if violations else VIOLATION_UNTRANSPOSED_GENERATED_ARTIFACT)
@@ -382,6 +393,7 @@ __all__ = [
     "VIOLATION_UNTRANSPOSED_GENERATED_ARTIFACT",
     "infer_major_tonic_from_progression",
     "raise_coherence_handoff_blocked",
+    "clear_coherence_handoff_block",
     "record_coherence_handoff_block",
     "resolve_coherent_musical_context",
     "run_musical_context_coherence_checks",

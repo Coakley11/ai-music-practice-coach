@@ -459,6 +459,12 @@ def seal_backing_handoff_snapshot_for_creative_open(session: dict[str, Any]) -> 
     session.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
     session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
     session["_backing_handoff_entry_mode"] = entry
+    try:
+        from musical_context_coherence import clear_coherence_handoff_block
+
+        clear_coherence_handoff_block(session)
+    except ImportError:
+        pass
     return True
 
 

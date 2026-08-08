@@ -138,6 +138,31 @@ class JamPostGenerateBackingRegressionTests(unittest.TestCase):
         head = [c for sec in blob.section_map.values() for c in sec][:3]
         self.assertEqual(head, ["Dm7", "G7", "Cmaj7"])
 
+    def test_stale_coherence_block_cleared_when_context_valid(self) -> None:
+        session, _sid = self._seed_coherent_c_jam()
+        sync_improv_jam_session_from_active_blob(session, writer="test", phase="pre")
+        open_backing_from_creative(session, source="entry_jam")
+        from musical_context_coherence import MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY, record_coherence_handoff_block
+
+        record_coherence_handoff_block(session, ["UNTRANSPOSED_GENERATED_ARTIFACT stale-test"])
+        ok, reason = creative_specialized_backing_handoff_ready(session, creative_source="entry_jam")
+        self.assertTrue(ok, reason)
+        self.assertFalse(session.get(MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY))
+
+    def test_sidebar_mutates_jam_blob_c_to_d(self) -> None:
+        session, _sid = self._seed_coherent_c_jam()
+        session["display_key"] = "D"
+        from generated_jam_key_change import mutate_generated_practice_key_from_control
+
+        self.assertTrue(mutate_generated_practice_key_from_control(session, "D", control="sidebar"))
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        assert blob is not None
+        self.assertEqual(str(blob.keys.practice_tonic), "D")
+        fp = jam_session_fingerprint(session.get("improv_jam_session"))
+        self.assertEqual(fp["key"], "D")
+
     def test_hybrid_blob_blocks_handoff_ready(self) -> None:
         session, _sid = self._seed_coherent_c_jam()
         ptr = get_active_workflow_pointer(session)
@@ -146,7 +171,7 @@ class JamPostGenerateBackingRegressionTests(unittest.TestCase):
         assert blob is not None
         blob.section_map = copy.deepcopy(_bossa_eb())
         save_workflow_blob(session, blob, source="test_hybrid")
-        from musical_context_coherence import MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY, record_coherence_handoff_block
+        from musical_context_coherence import record_coherence_handoff_block
 
         record_coherence_handoff_block(session, ["UNTRANSPOSED_GENERATED_ARTIFACT test"])
         ok, reason = creative_specialized_backing_handoff_ready(session, creative_source="entry_jam")

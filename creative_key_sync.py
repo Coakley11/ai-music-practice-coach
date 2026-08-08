@@ -1070,6 +1070,28 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         ptr = get_active_workflow_pointer(session)
         if ptr and ptr.workflow_owner in {"style_jam", "jam_session_generator"}:
             try:
+                from generated_jam_key_change import mutate_generated_practice_key_from_control
+
+                if mutate_generated_practice_key_from_control(
+                    session, new, control="sidebar", st_like=st_like
+                ):
+                    try:
+                        from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
+
+                        append_jam_sidebar_key_trace(
+                            session,
+                            "sidebar_generated_practice_key_mutated",
+                            new_display_key=new,
+                            workflow_owner=str(ptr.workflow_owner or ""),
+                        )
+                    except ImportError:
+                        pass
+                    invalidate_creative_backing_context(session)
+                    _apply_pending_backing_context_on_page(session, st_like=st_like)
+                return
+            except ImportError:
+                pass
+            try:
                 from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
 
                 append_jam_sidebar_key_trace(

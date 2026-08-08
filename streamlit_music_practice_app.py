@@ -14821,6 +14821,15 @@ elif _studio_page == "creative":
 
         if not handoff_sealed:
             try:
+                from jam_generator_live_runtime_trace import collect_backing_handoff_readiness_trace
+
+                collect_backing_handoff_readiness_trace(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                pass
+            try:
                 from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
 
                 integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)

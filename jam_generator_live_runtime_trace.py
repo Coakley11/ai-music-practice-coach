@@ -301,6 +301,7 @@ def refresh_jam_generator_live_trace_table(session: dict[str, Any]) -> dict[str,
         },
         "backing_handoff": {
             "events": list(session.get(JAM_BACKING_HANDOFF_TRACE_KEY) or [])[-12:],
+            "readiness_trace": session.get(JAM_BACKING_READINESS_TRACE_KEY),
             "backing_entry_class": session.get("_backing_entry_class"),
             "backing_generic_catalog_entry_flag": session.get("_backing_generic_catalog_entry"),
             "backing_open_intent": session.get("_backing_open_intent"),
@@ -432,11 +433,95 @@ def render_jam_generator_live_trace_panel(st_module: Any, session: dict[str, Any
         st_module.json(table)
 
 
+JAM_BACKING_READINESS_TRACE_KEY = "_jam_backing_handoff_readiness_trace"
+
+
+def collect_backing_handoff_readiness_trace(
+    session: dict[str, Any],
+    *,
+    creative_source: str,
+) -> dict[str, Any]:
+    """One-shot diagnostic for failed specialized Backing handoff (read-only)."""
+    ptr, blob = _blob_for_jam_owner(session)
+    jam = session.get("improv_jam_session") if isinstance(session.get("improv_jam_session"), dict) else {}
+    artifact = _artifact_snapshot(session)
+    seal_ok = None
+    try:
+        from generated_workflow_artifact import peek_backing_owner_artifact_snapshot
+
+        seal_ok = peek_backing_owner_artifact_snapshot(session) is not None
+    except ImportError:
+        pass
+    ctx = None
+    ctx_src = ""
+    ctx_prog_head: list[str] = []
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_src = str(getattr(ctx, "source", "") or "")
+            ctx_prog_head = list(getattr(ctx, "progression", None) or [])[:6]
+    except ImportError:
+        pass
+    ready = False
+    ready_reason = ""
+    try:
+        from backing_context import creative_specialized_backing_handoff_ready
+
+        ready, ready_reason = creative_specialized_backing_handoff_ready(session, creative_source=creative_source)
+    except ImportError:
+        pass
+    coherent_dict = None
+    violations: list[str] = []
+    try:
+        from dataclasses import asdict
+
+        from musical_context_coherence import resolve_coherent_musical_context, run_musical_context_coherence_checks
+
+        diag = run_musical_context_coherence_checks(session)
+        violations = list(diag.get("violations") or [])
+        coherent = resolve_coherent_musical_context(session)
+        if coherent is not None:
+            coherent_dict = asdict(coherent)
+            if isinstance(coherent_dict.get("section_map"), dict):
+                coherent_dict["progression_head"] = _progression_head(coherent_dict["section_map"])
+    except ImportError:
+        pass
+    trace = {
+        "workflow_owner": str(getattr(ptr, "workflow_owner", "") or "") if ptr else "",
+        "workflow_session_id": str(getattr(ptr, "workflow_session_id", "") or "") if ptr else "",
+        "blob_practice_tonic": str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "") if blob else "",
+        "blob_practice_mode": str(getattr(getattr(blob, "keys", None), "practice_mode", "") or "") if blob else "",
+        "blob_progression_head": _progression_head(getattr(blob, "section_map", None) if blob else None),
+        "improv_jam_session_key": str(jam.get("key") or ""),
+        "legacy_progression_head": _jam_flat_head(jam),
+        "artifact_practice_tonic": (artifact or {}).get("practice_tonic"),
+        "artifact_progression_head": _progression_head((artifact or {}).get("section_map")),
+        "resolve_coherent_musical_context": coherent_dict,
+        "coherence_violations": violations,
+        "seal_backing_handoff_snapshot_present": seal_ok,
+        "backing_context_source": ctx_src,
+        "backing_context_progression_head": ctx_prog_head,
+        "creative_specialized_backing_handoff_ready": ready,
+        "ready_false_reason": ready_reason if not ready else "",
+        "integrity_user_message": session.get("WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY")
+        or session.get("_workflow_owner_integrity_user_message"),
+        "coherence_handoff_block": session.get("_musical_context_coherence_handoff_block"),
+        "backing_entry_class": session.get("_backing_entry_class"),
+        "mark_specialized_would_run": ready,
+        "navigation_suppressed": not ready,
+    }
+    session[JAM_BACKING_READINESS_TRACE_KEY] = trace
+    return trace
+
+
 __all__ = [
+    "JAM_BACKING_READINESS_TRACE_KEY",
     "JAM_BACKING_HANDOFF_TRACE_KEY",
     "JAM_GENERATOR_LIVE_TRACE_KEY",
     "JAM_SIDEBAR_KEY_TRACE_KEY",
-    "append_jam_backing_handoff_trace",
+    "collect_backing_handoff_readiness_trace",
     "append_jam_sidebar_key_trace",
     "infer_first_divergence",
     "record_jam_pre_generate_trace",

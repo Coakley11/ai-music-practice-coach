@@ -2227,9 +2227,24 @@ def creative_specialized_backing_handoff_ready(
 ) -> tuple[bool, str]:
     """True when open_backing_from_creative sealed a valid specialized BackingContext."""
     try:
-        from musical_context_coherence import MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY
+        from musical_context_coherence import (
+            MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY,
+            clear_coherence_handoff_block,
+            resolve_coherent_musical_context,
+            validate_coherent_musical_context,
+        )
 
         block = session.get(MUSICAL_CONTEXT_COHERENCE_BLOCK_KEY)
+        ctx = get_backing_context(session)
+        if ctx is not None and creative_source == "entry_jam":
+            prog = list(getattr(ctx, "progression", None) or [])
+            coherent = resolve_coherent_musical_context(session)
+            coherence_v: list[str] = []
+            if coherent is not None:
+                coherence_v = validate_coherent_musical_context(coherent)
+            if prog and not coherence_v:
+                clear_coherence_handoff_block(session)
+                block = None
         if isinstance(block, dict) and block.get("blocked"):
             return False, "coherence_blocked"
     except ImportError:
@@ -2327,8 +2342,15 @@ def open_backing_from_creative(
         if str(source) == "entry_jam":
             try:
                 from generated_workflow_artifact import seal_backing_handoff_snapshot_for_creative_open
+                from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+                from musical_context_coherence import CreativeBackingHandoffBlocked
 
-                seal_backing_handoff_snapshot_for_creative_open(session)
+                sealed = seal_backing_handoff_snapshot_for_creative_open(session)
+                if not sealed:
+                    msg = str(session.get(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY) or "").strip()
+                    if not msg:
+                        msg = "Specialized backing handoff could not seal the generated artifact snapshot."
+                    raise CreativeBackingHandoffBlocked(msg)
             except ImportError:
                 pass
         try:
@@ -2440,6 +2462,12 @@ def open_backing_from_creative(
         creative_return_route=creative_return_route,
         trace_caller="open_backing_from_creative",
     )
+    try:
+        from musical_context_coherence import clear_coherence_handoff_block
+
+        clear_coherence_handoff_block(session)
+    except ImportError:
+        session.pop("_musical_context_coherence_handoff_block", None)
     try:
         from creative_return_trace import trace_backing_launch
 

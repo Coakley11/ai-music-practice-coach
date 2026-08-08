@@ -370,6 +370,88 @@ def apply_pending_generated_key_edit_pre_widget(
     return True
 
 
+def mutate_generated_practice_key_from_control(
+    session: dict[str, Any],
+    new_key: str,
+    *,
+    control: str = "sidebar",
+    st_like: Any | None = None,
+) -> bool:
+    """Canonical generated key change — shared by Jam/Style widget and sidebar Practice key."""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+    except ImportError:
+        return False
+    if ptr is None or str(ptr.workflow_owner or "") not in {"style_jam", "jam_session_generator"}:
+        return False
+    owner = str(ptr.workflow_owner or "")
+    source = "on_improv_jam_key_change" if owner == "jam_session_generator" else "on_improv_style_key_change"
+    widget_key = "improv_jam_key" if owner == "jam_session_generator" else "improv_style_key"
+    requested = str(new_key or "").strip()
+    if not requested:
+        return False
+    log_generated_key_change(
+        session,
+        "control_mutation_start",
+        workflow_owner=owner,
+        control=control,
+        requested_key=requested,
+        widget_key=widget_key,
+    )
+    try:
+        from music_workflow_mutation import update_active_practice_key
+
+        result = update_active_practice_key(
+            session,
+            requested,
+            source=source,
+            transpose_progression=True,
+        )
+        if not result.ok:
+            session[GENERATED_KEY_EDIT_OUTCOME_KEY] = {
+                "canonical_commit": "FAIL",
+                "error_code": result.error_code,
+                "control": control,
+            }
+            return False
+    except ImportError:
+        return False
+    _finalize_generated_key_edit_after_mutation(
+        session,
+        owner=owner,
+        widget_key=widget_key,
+        requested=requested,
+        st_like=st_like,
+    )
+    if owner == "jam_session_generator":
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session,
+                writer=f"mutate_generated_practice_key:{control}",
+                phase="post_mutation",
+            )
+        except ImportError:
+            pass
+    try:
+        from musical_context_coherence import clear_coherence_handoff_block
+
+        clear_coherence_handoff_block(session)
+    except ImportError:
+        session.pop("_musical_context_coherence_handoff_block", None)
+    try:
+        from creative_session_state import sync_creative_session_from_session
+
+        sync_creative_session_from_session(session)
+    except ImportError:
+        pass
+    log_generated_key_change(session, "control_mutation_done", workflow_owner=owner, requested_key=requested)
+    return True
+
+
 __all__ = [
     "GENERATED_KEY_CHANGE_DIAG_KEY",
     "GENERATED_KEY_EDIT_OUTCOME_KEY",
@@ -380,5 +462,6 @@ __all__ = [
     "clear_generated_key_hydrate_guard",
     "generated_key_hydrate_guard_blocks_blob",
     "log_generated_key_change",
+    "mutate_generated_practice_key_from_control",
     "mark_generated_key_hydrate_guard",
 ]
