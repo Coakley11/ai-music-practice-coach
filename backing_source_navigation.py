@@ -559,6 +559,12 @@ def mark_specialized_backing_handoff_entry(session: dict[str, Any]) -> None:
 
 def mark_generic_catalog_backing_entry(session: dict[str, Any]) -> None:
     """User opened Backing from a top-level page — not an in-flight Creative handoff."""
+    try:
+        from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+        append_jam_backing_handoff_trace(session, "mark_generic_catalog_backing_entry")
+    except ImportError:
+        pass
     session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_GENERIC_CATALOG
     session[BACKING_GENERIC_CATALOG_ENTRY_KEY] = True
     set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
@@ -566,6 +572,12 @@ def mark_generic_catalog_backing_entry(session: dict[str, Any]) -> None:
 
 def release_specialized_backing_for_generic_navigation(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Drop stale mission/jam backing ownership when entering Backing generically."""
+    try:
+        from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+        append_jam_backing_handoff_trace(session, "release_specialized_backing_for_generic_navigation")
+    except ImportError:
+        pass
     session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
     try:
         from backing_context import (
@@ -600,6 +612,18 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
     entry_class = str(session.pop(BACKING_ENTRY_CLASS_KEY, "") or "").strip()
     intent = consume_backing_open_intent(session)
+    try:
+        from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+        append_jam_backing_handoff_trace(
+            session,
+            "hydrate_backing_source_for_page",
+            generic_entry=generic_entry,
+            entry_class=entry_class,
+            intent=intent,
+        )
+    except ImportError:
+        pass
     if generic_entry or entry_class == BACKING_ENTRY_GENERIC_CATALOG:
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
     elif intent == BACKING_INTENT_FROM_CREATIVE or entry_class == BACKING_ENTRY_SPECIALIZED_HANDOFF:

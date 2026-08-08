@@ -1069,6 +1069,20 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
 
         ptr = get_active_workflow_pointer(session)
         if ptr and ptr.workflow_owner in {"style_jam", "jam_session_generator"}:
+            try:
+                from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
+
+                append_jam_sidebar_key_trace(
+                    session,
+                    "sync_sidebar_early_return_generated_owner",
+                    new_display_key=new,
+                    workflow_owner=str(ptr.workflow_owner or ""),
+                    display_key=str(session.get("display_key") or ""),
+                    concert_key=str(session.get("concert_key") or ""),
+                    improv_jam_key=str(session.get("improv_jam_key") or ""),
+                )
+            except ImportError:
+                pass
             return
         if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
             try:
@@ -1230,12 +1244,34 @@ def on_sidebar_practice_concert_key_change() -> None:
         pass
     mark_display_key_changed(st)
     try:
+        from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
+
+        append_jam_sidebar_key_trace(
+            st.session_state,
+            "sidebar_practice_concert_key_callback_fired",
+            display_key=str(st.session_state.get("display_key") or ""),
+            concert_key=str(st.session_state.get("concert_key") or ""),
+        )
+    except ImportError:
+        pass
+    try:
         from song_practice_key_sidebar_change import capture_sidebar_song_practice_key_edit_intent
 
         capture_sidebar_song_practice_key_edit_intent(st.session_state)
     except ImportError:
         pass
     sync_sidebar_creative_concert_key(st.session_state, st_like=st)
+    try:
+        from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
+
+        append_jam_sidebar_key_trace(
+            st.session_state,
+            "sidebar_callback_after_sync",
+            display_key=str(st.session_state.get("display_key") or ""),
+            concert_key=str(st.session_state.get("concert_key") or ""),
+        )
+    except ImportError:
+        pass
     try:
         from song_practice_key_change_trace import collect_song_practice_key_snapshot
 

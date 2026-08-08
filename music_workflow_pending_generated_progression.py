@@ -88,6 +88,12 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
                 session.get("improv_ensemble") or session.get("improv_jam_ensemble") or "Jazz trio"
             )
             style = str(session.get("improv_jam_style") or "Jazz Swing")
+            try:
+                from jam_generator_live_runtime_trace import record_jam_pre_generate_trace
+
+                record_jam_pre_generate_trace(session, token=token)
+            except ImportError:
+                pass
             key_c = resolve_generated_concert_key_for_owner(session, "jam_session_generator")
             jam_mood = str(session.get("improv_jam_mood") or "Mellow")
             jam = generate_jam_session(
@@ -119,6 +125,12 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
 
                 finalize_generated_jam_session_key_seal(session, key_c)
                 apply_creative_concert_key(session, key_c, st_like=st)
+            except ImportError:
+                pass
+            try:
+                from jam_generator_live_runtime_trace import record_jam_post_generate_trace
+
+                record_jam_post_generate_trace(session, key_c=key_c, owner=owner, token=token)
             except ImportError:
                 pass
         else:

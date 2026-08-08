@@ -14624,6 +14624,21 @@ elif _studio_page == "creative":
         save_page_snapshot(st.session_state, "creative")
 
         try:
+            from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+            append_jam_backing_handoff_trace(
+                st.session_state,
+                "improv_open_backing_click",
+                creative_source=creative_source,
+                entry=entry,
+                tab=tab,
+                backing_entry_class_before=st.session_state.get("_backing_entry_class"),
+                backing_open_intent_before=st.session_state.get("_backing_open_intent"),
+            )
+        except ImportError:
+            pass
+
+        try:
             from music_workflow_pending_backing_handoff import (
                 PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
                 backing_workflow_owner_is_active,
@@ -14684,12 +14699,54 @@ elif _studio_page == "creative":
                             st.warning(str(handoff_msg))
                 return
 
-            open_backing_from_creative(
-                st.session_state,
-                source=creative_source,
-                st_like=st,
-                skip_workflow_activation=defer_wf or not needs_activation,
-            )
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "before_open_backing_from_creative",
+                    defer_wf=defer_wf,
+                    needs_activation=needs_activation,
+                    wf_owner=wf_owner,
+                )
+            except ImportError:
+                pass
+            try:
+                open_backing_from_creative(
+                    st.session_state,
+                    source=creative_source,
+                    st_like=st,
+                    skip_workflow_activation=defer_wf or not needs_activation,
+                )
+            except Exception as handoff_exc:
+                try:
+                    from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+                    from musical_context_coherence import CreativeBackingHandoffBlocked
+
+                    append_jam_backing_handoff_trace(
+                        st.session_state,
+                        "open_backing_from_creative_exception",
+                        exc_type=type(handoff_exc).__name__,
+                        exc_msg=str(handoff_exc)[:240],
+                        creative_backing_handoff_blocked=isinstance(handoff_exc, CreativeBackingHandoffBlocked),
+                    )
+                except ImportError:
+                    pass
+                raise
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "after_open_backing_from_creative",
+                    backing_context_source=str(
+                        (st.session_state.get("_backing_context") or {}).get("source")
+                        if isinstance(st.session_state.get("_backing_context"), dict)
+                        else ""
+                    ),
+                )
+            except ImportError:
+                pass
             if defer_wf and needs_activation:
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
@@ -14712,6 +14769,17 @@ elif _studio_page == "creative":
             from backing_source_navigation import mark_specialized_backing_handoff_entry
 
             mark_specialized_backing_handoff_entry(st.session_state)
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "after_mark_specialized_backing_handoff_entry",
+                    backing_entry_class=st.session_state.get("_backing_entry_class"),
+                    backing_open_intent=st.session_state.get("_backing_open_intent"),
+                )
+            except ImportError:
+                pass
         except ImportError:
             pass
         try:
