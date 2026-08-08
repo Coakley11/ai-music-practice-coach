@@ -1304,6 +1304,12 @@ if hasattr(st, "session_state"):
                 enter_run_phase(st.session_state, "workspace_hydration")
             except ImportError:
                 pass
+            try:
+                from applied_math_return_insight import prime_music_coach_insight_preserve_before_workspace_sync
+
+                prime_music_coach_insight_preserve_before_workspace_sync(st)
+            except Exception:
+                pass
             prepare_music_workspace(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
@@ -11155,6 +11161,17 @@ if pp.show_quick_nav(st):
     except Exception:
         pass
     _render_workflow_architecture_dev_panel()
+
+try:
+    from suite_analytical_question import render_pending_music_coach_insight
+
+    render_pending_music_coach_insight(
+        st,
+        studio_page=_studio_page,
+        developer_mode=_developer_mode_enabled(),
+    )
+except Exception as exc:
+    st.session_state["_music_coach_pending_render_error"] = str(exc)
 
 _live_dispatch_page = str(st.session_state.get("studio_page") or "").strip() or _studio_page
 if _live_dispatch_page != _studio_page:

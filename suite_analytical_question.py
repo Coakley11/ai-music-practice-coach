@@ -1402,10 +1402,19 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
             f"**result_path:** `{diag.get('result_path')}` · "
             f"**coach_intent:** `{diag.get('coach_intent')}` · "
             f"**solver:** `{diag.get('solver') or '—'}` · "
-            f"**notation_abc:** `{diag.get('notation_abc_present')}` · "
-            f"**insight staged:** `{diag.get('insight_staged')}` · "
-            f"**rendered:** `{session_state.get('_music_coach_diag_insight_rendered')}`"
+            f"**staged:** `{diag.get('insight_staged')}` · "
+            f"**markdown:** `{diag.get('insight_markdown_rendered')}` · "
+            f"**staff:** `{diag.get('notation_staff_rendered')}`"
         )
+        try:
+            from applied_math_return_insight import MUSIC_COACH_RENDER_TRACE_KEY
+
+            trace = session_state.get(MUSIC_COACH_RENDER_TRACE_KEY)
+        except ImportError:
+            trace = None
+        if trace:
+            ui.caption("Render trace (last run)")
+            ui.json(trace)
         ui.json(diag)
 
 
@@ -1573,7 +1582,13 @@ def _execute_coach_question_submit(
             "duplicate": False,
         }
         session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
-        ui.success("Music Coach insight is ready below.")
+        if isinstance(pending, dict) and (pending.get("conclusion") or pending.get("question")):
+            ui.success("Music Coach insight is ready below.")
+        else:
+            ui.warning(
+                "Music Coach answered your question, but the insight could not be staged for display. "
+                "Try again or check ?dev=1 diagnostics."
+            )
         if on_after_send is not None:
             try:
                 on_after_send()
@@ -2236,6 +2251,65 @@ def render_music_coach_page_entry(
 
     if developer_mode:
         _render_music_coach_submit_dev_panel(st, ss)
+
+
+def render_pending_music_coach_insight(
+    st: Any,
+    *,
+    studio_page: str = "",
+    developer_mode: bool = False,
+) -> bool:
+    """Canonical same-page render for staged routed Music Coach insights."""
+    import app_ui as _app_ui
+
+    if _app_ui._MUSIC_INSIGHT_RENDERED_THIS_EXEC:
+        return False
+    ss = st.session_state if hasattr(st, "session_state") else st
+    try:
+        from applied_math_return_insight import (
+            MUSIC_COACH_RENDER_TRACE_KEY,
+            SESSION_PENDING_KEY,
+            _pending_insight_valid,
+        )
+        from music_coach_context import resolve_coach_source_page
+    except ImportError:
+        return False
+
+    pending = _pending_insight_valid(st)
+    if not pending:
+        return False
+
+    studio = str(studio_page or ss.get("studio_page") or "practice").strip()
+    coach = resolve_coach_source_page(ss if isinstance(ss, dict) else dict(ss))
+    rendered = False
+    for page in (coach, studio):
+        if not page:
+            continue
+        if render_suite_applied_math_insight(st, source_app="music", source_page=page):
+            rendered = True
+            _app_ui._MUSIC_INSIGHT_RENDERED_THIS_EXEC = True
+            break
+
+    diag = ss.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if isinstance(diag, dict):
+        diag = dict(diag)
+        diag["insight_rendered_on_page"] = bool(ss.get("_music_coach_diag_insight_rendered"))
+        diag["insight_markdown_rendered"] = bool(ss.get("_music_coach_insight_markdown_rendered"))
+        diag["notation_abc_render_attempted"] = bool(
+            ss.get("_music_coach_notation_abc_render_attempted")
+        )
+        diag["notation_staff_rendered"] = bool(ss.get("_music_coach_notation_staff_rendered"))
+        ss[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+
+    if developer_mode and not rendered:
+        staged = bool(pending) and str((diag or {}).get("result_path") or "") == "routed_coach"
+        if staged or pending.get("canonical_instant"):
+            trace = ss.get(MUSIC_COACH_RENDER_TRACE_KEY) or {}
+            st.warning(
+                "Routed Music Coach insight is staged but was not rendered on this page. "
+                f"Scope/trace: `{trace.get('render_blocked_reason') or trace.get('scope_skip_reason') or 'unknown'}`"
+            )
+    return rendered
 
 
 def render_suite_applied_math_insight(

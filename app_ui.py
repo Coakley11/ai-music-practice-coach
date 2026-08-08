@@ -8242,21 +8242,12 @@ def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -
 
 def render_deferred_music_coach_insight(st: Any, *, studio_page: str) -> bool:
     """Render pending insight after page body (main-panel submit runs after quick nav)."""
-    global _MUSIC_INSIGHT_RENDERED_THIS_EXEC
-
-    if _MUSIC_INSIGHT_RENDERED_THIS_EXEC:
-        return False
-    ss = getattr(st, "session_state", st)
-    if ss.get("_ami_insight_card_rendered"):
-        return False
     try:
-        from applied_math_return_insight import _pending_insight_valid
+        from suite_analytical_question import render_pending_music_coach_insight
 
-        if not _pending_insight_valid(st):
-            return False
+        return render_pending_music_coach_insight(st, studio_page=studio_page)
     except Exception:
-        return False
-    return _render_music_coach_insight_below_quick_nav(st, current_page=studio_page)
+        return _render_music_coach_insight_below_quick_nav(st, current_page=studio_page)
 
 
 def render_sidebar_studio_nav(

@@ -78,6 +78,7 @@ def stage_routed_music_coach_insight(
         pass
     stage_pending_insight(st, insight, return_context=source_state)
     session_state[SESSION_PENDING_KEY] = insight
+    session_state["_ami_insight_return_preserve"] = True
     session_state["_ami_music_instant_canonical"] = {
         "insight_id": iid,
         "question_id": question_id,
