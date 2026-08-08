@@ -17,6 +17,46 @@ def _jam_session_id(session: dict[str, Any]) -> str:
     return f"{entry}|{style}" if style or entry else entry or "generated_jam"
 
 
+def _practice_key_from_blob(session: dict[str, Any]) -> tuple[str, str, str]:
+    """Return (tonic, mode, sidebar token) from active generated workflow blob."""
+    try:
+        from music_theory import key_center_token
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        if not ptr or str(ptr.workflow_owner or "") not in {"style_jam", "jam_session_generator"}:
+            return "", "", ""
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        if blob is None:
+            return "", "", ""
+        pt = str(blob.keys.practice_tonic or "C").strip() or "C"
+        pm = str(blob.keys.practice_mode or "major").strip().lower() or "major"
+        return pt, pm, key_center_token(pt, pm)
+    except ImportError:
+        return "", "", ""
+
+
+def refresh_generated_jam_key_context_from_blob(session: dict[str, Any]) -> None:
+    """Keep generated-jam key ownership aligned with authoritative blob keys."""
+    if not session.get(GENERATED_JAM_KEY_CONTEXT_KEY) and not session.get("_generated_jam_key_owner_active"):
+        return
+    pt, pm, token = _practice_key_from_blob(session)
+    if not token:
+        return
+    raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+    entry = str(session.get("improv_entry_mode") or (raw.get("entry_mode") if isinstance(raw, dict) else "") or "").strip()
+    owner = "jam_session_generator" if "Generator" in entry else "entry_jam"
+    session[GENERATED_JAM_KEY_CONTEXT_KEY] = {
+        "generated_session_id": _jam_session_id(session),
+        "practice_tonic": pt,
+        "practice_mode": pm,
+        "practice_key_token": token,
+        "key_owner": owner,
+        "sidebar_key_list_mode": "major" if pm != "minor" else "minor",
+        "entry_mode": entry,
+    }
+
+
 def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
     if isinstance(session.get(SONG_PRACTICE_KEY_SNAPSHOT_KEY), dict):
         return
@@ -49,34 +89,40 @@ def activate_generated_jam_key_ownership(
             return
 
     snapshot_song_practice_key_if_needed(session)
-    try:
-        from creative_key_sync import creative_entry_concert_key, to_major_key_preserve_spelling
-    except ImportError:
-        creative_entry_concert_key = lambda s: str(s.get("improv_jam_key") or s.get("improv_style_key") or "C")  # type: ignore
-        to_major_key_preserve_spelling = lambda k: k  # type: ignore
+    pt, pm, blob_token = _practice_key_from_blob(session)
+    token = blob_token
+    if not token:
+        try:
+            from creative_key_sync import creative_entry_concert_key
+            from music_theory import key_center_token, split_key_center
 
-    tonic = str(practice_key or "").strip()
-    if not tonic:
-        tonic = to_major_key_preserve_spelling(creative_entry_concert_key(session) or "C")
-    else:
-        tonic = to_major_key_preserve_spelling(tonic)
+            raw = str(practice_key or creative_entry_concert_key(session) or "C").strip() or "C"
+            pt, pm = split_key_center(raw)
+            if entry in {"Style Jam Mode", "Jam Session Generator"} and pm != "minor":
+                pm = "major"
+            token = key_center_token(pt, pm)
+        except ImportError:
+            token = str(practice_key or "C").strip() or "C"
+            pt, pm = token, "major"
+
     session[GENERATED_JAM_KEY_CONTEXT_KEY] = {
         "generated_session_id": _jam_session_id(session),
-        "practice_tonic": tonic,
-        "practice_mode": "major",
+        "practice_tonic": pt,
+        "practice_mode": pm,
+        "practice_key_token": token,
         "key_owner": "jam_session_generator" if "Generator" in entry else "entry_jam",
-        "sidebar_key_list_mode": "major",
+        "sidebar_key_list_mode": "major" if pm != "minor" else "minor",
         "entry_mode": entry,
     }
     session["_generated_jam_key_owner_active"] = True
     try:
         from creative_key_sync import apply_creative_concert_key
 
-        apply_creative_concert_key(session, tonic, source="generated_jam_key_owner")
+        apply_creative_concert_key(session, token, source="generated_jam_key_owner")
     except ImportError:
-        session["concert_key"] = tonic
-        session["display_key"] = tonic
-        session["_pending_display_key"] = tonic
+        session["concert_key"] = token
+        session["display_key"] = token
+        session["_pending_display_key"] = token
 
 
 def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widget: bool = False) -> bool:
@@ -161,5 +207,6 @@ __all__ = [
     "activate_generated_jam_key_ownership",
     "deactivate_generated_jam_key_ownership",
     "generated_jam_owns_practice_key",
+    "refresh_generated_jam_key_context_from_blob",
     "snapshot_song_practice_key_if_needed",
 ]

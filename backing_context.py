@@ -32,6 +32,41 @@ _SOURCE_LABELS: dict[BackingSource, str] = {
     "song_improv": "Song-Based Improvisation",
 }
 
+
+def _catalog_groove_label_leak(label: str, style: str) -> bool:
+    g = str(label or "").strip().lower()
+    st = str(style or "").strip().lower()
+    if not g:
+        return False
+    if "jewish" in g and "jewish" not in st:
+        return True
+    return g in {"jewish ballad", "jewish hora", "jewish groove"} and g not in st
+
+
+def _entry_jam_rhythm_groove_label(style: str, snap_groove: str = "") -> str:
+    """Rhythm feel for UI — not catalog default_groove or play-intensity labels."""
+    groove = str(snap_groove or "").strip()
+    if groove and _catalog_groove_label_leak(groove, style):
+        groove = ""
+    try:
+        from backing_musical_profile import normalize_backing_play_intensity
+
+        if groove and normalize_backing_play_intensity(groove).lower() == groove.lower():
+            if groove.lower() in {"light", "medium", "heavy"}:
+                groove = ""
+    except ImportError:
+        pass
+    if not groove:
+        try:
+            from backing_style_recipes import resolve_feel_for_style
+
+            groove = str(resolve_feel_for_style(style, "") or "").strip()
+        except ImportError:
+            groove = ""
+    if groove and _catalog_groove_label_leak(groove, style):
+        return ""
+    return groove
+
 _SIGNATURE_FIELDS = (
     "source",
     "bound_pick_key",
@@ -1060,14 +1095,15 @@ def _entry_jam_context_from_owner_snapshot(
     key = display_key = concert_key
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style = str(snap.style or "").strip() or "Jazz Swing"
-    groove = str(snap.groove or style).strip()
-    bpm = int(snap.bpm or 110)
-    mood = str(snap.mood or "Mellow").strip()
-    groove_intensity = str(snap.intensity or session.get("improv_groove") or "Medium").strip()
+    difficulty = str(snap.level or session.get("improv_difficulty") or "Intermediate").strip()
+    from backing_musical_profile import normalize_backing_play_intensity
     from songs.playback_defaults import normalize_groove_label
 
+    rhythm_groove = _entry_jam_rhythm_groove_label(style, str(snap.groove or ""))
     backing_style = normalize_groove_label(style or "Pop groove")
-    difficulty = str(snap.level or session.get("improv_difficulty") or "Intermediate").strip()
+    groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""), difficulty=difficulty)
+    bpm = int(snap.bpm or 110)
+    mood = str(snap.mood or "Mellow").strip()
     meter = str(snap.meter or "4/4").strip()
     import hashlib
 
@@ -1102,7 +1138,7 @@ def _entry_jam_context_from_owner_snapshot(
         chart_display_key=chart_display_key,
         bpm=bpm,
         style=style,
-        groove=backing_style,
+        groove=rhythm_groove or backing_style,
         mood=mood,
         groove_intensity=groove_intensity,
         difficulty=difficulty,
@@ -1210,10 +1246,18 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         mood = str(session.get("improv_mood") or "Mellow").strip()
 
     groove_intensity = str(session.get("improv_groove") or "Medium").strip()
+    from backing_musical_profile import normalize_backing_play_intensity
     from songs.playback_defaults import normalize_groove_label
 
-    backing_style = normalize_groove_label(style or "Pop groove")
     difficulty = str(session.get("improv_difficulty") or "Intermediate").strip()
+    groove_intensity = normalize_backing_play_intensity(groove_intensity, difficulty=difficulty)
+    if _catalog_groove_label_leak(groove_intensity, style):
+        groove_intensity = normalize_backing_play_intensity("", difficulty=difficulty)
+    rhythm_groove = _entry_jam_rhythm_groove_label(
+        style,
+        str(session.get("improv_groove") or groove if entry_mode == "Jam Session Generator" else session.get("improv_groove") or ""),
+    )
+    backing_style = normalize_groove_label(style or "Pop groove")
     meter = str(
         session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
     ).strip()
@@ -1310,7 +1354,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         chart_display_key=chart_display_key,
         bpm=bpm,
         style=style,
-        groove=backing_style,
+        groove=rhythm_groove or backing_style,
         mood=mood,
         groove_intensity=groove_intensity,
         difficulty=difficulty,

@@ -317,6 +317,10 @@ def build_snapshot_from_session(
         mode=pm,
         section_names=list(section_map.keys()),
     )
+    from backing_musical_profile import normalize_backing_play_intensity
+
+    diff_label = level or str(session.get("improv_difficulty") or "Intermediate")
+    play_intensity = normalize_backing_play_intensity("", difficulty=diff_label)
     return GeneratedWorkflowArtifactSnapshot(
         workflow_owner=owner,
         workflow_session_id=sid or artifact_id,
@@ -330,7 +334,7 @@ def build_snapshot_from_session(
         style=style,
         mood=mood,
         groove=groove,
-        intensity=str(session.get("improv_groove") or groove or "Medium"),
+        intensity=play_intensity,
         bpm=bpm,
         meter=meter,
         level=level or str(session.get("improv_difficulty") or "Intermediate"),
@@ -543,7 +547,10 @@ def commit_generated_artifact_revision(
                 session["improv_jam_session"] = jam
     if owner == "style_jam":
         snap.mood = str(session.get("improv_mood") or snap.mood or "Mellow")
-        snap.groove = str(session.get("improv_groove") or snap.groove or snap.intensity)
+        ig = str(session.get("improv_groove") or "").strip()
+        if ig and "jewish" not in str(snap.style or "").lower() and "jewish" in ig.lower():
+            ig = ""
+        snap.groove = ig or str(snap.groove or "").strip() or str(snap.intensity or "Medium")
         snap.style = str(session.get("improv_style") or snap.style)
     elif owner == "jam_session_generator":
         snap.mood = str(session.get("improv_jam_mood") or snap.mood or "Mellow")

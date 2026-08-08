@@ -40,6 +40,23 @@ def finalize_sidebar_song_practice_key_after_mutation(
     """Legacy session + backing sync after canonical practice key commit."""
     session["concert_key"] = new_key
     try:
+        from mission_practice_context import ensure_mission_practice_context
+
+        ensure_mission_practice_context(session, force=True)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_legacy_projection import project_active_blob_to_legacy_session
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") in {"mission_jam", "song_based_improvisation"}:
+            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+            if blob is not None:
+                project_active_blob_to_legacy_session(session, blob)
+    except ImportError:
+        pass
+    try:
         from backing_context import sync_improv_widgets_from_live_concert_key
 
         sync_improv_widgets_from_live_concert_key(session)

@@ -114,10 +114,27 @@ def resolve_creative_tab_practice_key_token(session: dict[str, Any]) -> str:
         from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
 
         raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
-        if isinstance(raw, dict) and raw.get("practice_tonic"):
+        if isinstance(raw, dict):
+            tok = str(raw.get("practice_key_token") or "").strip()
+            if tok:
+                return tok
             tonic = str(raw.get("practice_tonic") or "").strip()
+            mode = str(raw.get("practice_mode") or "major").strip().lower() or "major"
             if tonic:
-                return to_major_key_preserve_spelling(tonic)
+                from music_theory import key_center_token
+
+                return key_center_token(tonic, mode)
+    except ImportError:
+        pass
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        entry_key = creative_entry_concert_key(session)
+        if entry_key:
+            tonic, mode = split_key_center(entry_key)
+            if is_creative_major_jam_active(session):
+                mode = "major"
+            return key_center_token(tonic, mode)
     except ImportError:
         pass
     entry_key = creative_entry_concert_key(session)
@@ -268,8 +285,16 @@ def apply_creative_concert_key(
         except ImportError:
             pass
     session[CREATIVE_CONCERT_KEY_SOURCE] = source
-    session["concert_key"] = to_major_key_preserve_spelling(key)
-    key = session["concert_key"]
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        tonic, mode = split_key_center(key)
+        if is_creative_major_jam_active(session):
+            mode = "major"
+        key = key_center_token(tonic, mode)
+    except ImportError:
+        key = to_major_key_preserve_spelling(key)
+    session["concert_key"] = key
     if st_like is None:
         st_like = type("_St", (), {"session_state": session})()
     try:

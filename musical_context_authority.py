@@ -118,7 +118,12 @@ def resolve_authoritative_practice_key(
         practice_raw = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
         original_raw = practice_raw
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if live and _mode_from_key_token(live) == "minor" and _mode_from_key_token(practice_raw) != "minor":
+    if (
+        live
+        and _mode_from_key_token(live) == "minor"
+        and _mode_from_key_token(practice_raw) != "minor"
+        and not song_catalog_context_owns_practice_key(session)
+    ):
         practice_raw = live
     return AuthoritativePracticeKey(
         original_tonic=_tonic_from_key_token(original_raw),

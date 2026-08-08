@@ -1414,6 +1414,17 @@ def rehydrate_creative_from_backing_context(
         return False
     restore_session_widgets_from_backing_context(session, ctx, widget_safe=widget_safe)
     try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+        from music_workflow_legacy_projection import restore_workflow_blob_to_session
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") == "jam_session_generator":
+            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+            if blob is not None and blob.section_map:
+                restore_workflow_blob_to_session(session, blob)
+    except ImportError:
+        pass
+    try:
         from backing_context import sync_live_keys_from_backing_context
 
         sync_live_keys_from_backing_context(session, st_like=st_like, widget_safe=widget_safe)
@@ -1623,7 +1634,7 @@ def restore_session_widgets_from_backing_context(
             {
                 "style": str(ctx.style or meta.get("style") or ""),
                 "bpm": int(ctx.bpm or meta.get("bpm") or 100),
-                "groove": str(ctx.groove_intensity or meta.get("groove") or "Medium"),
+                "groove": str(ctx.groove or meta.get("groove") or "Medium"),
                 "groove_intensity": str(ctx.groove_intensity or meta.get("groove_intensity") or "Medium"),
                 "key": concert or str(meta.get("key") or ""),
                 "mood": str(ctx.mood or meta.get("mood") or "Mellow"),

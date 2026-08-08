@@ -492,6 +492,18 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
 
     if target_owner == "mission_jam":
         try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
+        except ImportError:
+            pass
+        try:
+            from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+            prime_sidebar_practice_key_from_identity(session)
+        except ImportError:
+            pass
+        try:
             from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
             sync_song_improv_sections_to_practice_key(session)

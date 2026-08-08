@@ -437,6 +437,12 @@ def mutate_generated_practice_key_from_control(
         except ImportError:
             pass
     try:
+        from generated_jam_key_context import refresh_generated_jam_key_context_from_blob
+
+        refresh_generated_jam_key_context_from_blob(session)
+    except ImportError:
+        pass
+    try:
         from musical_context_coherence import clear_coherence_handoff_block
 
         clear_coherence_handoff_block(session)

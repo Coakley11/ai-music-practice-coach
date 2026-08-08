@@ -222,6 +222,13 @@ def render_backing_creative_context_card(
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
     mood = str(ctx.mood or "").strip()
     groove_intensity = str(ctx.groove_intensity or "").strip()
+    groove_display = str(ctx.groove or "").strip()
+    if groove_display and groove_display.lower() in {"light", "medium", "heavy"}:
+        groove_display = ""
+    st_low = str(ctx.style or "").strip().lower()
+    gd_low = groove_display.lower()
+    if groove_display and "jewish" in gd_low and "jewish" not in st_low:
+        groove_display = ""
     difficulty = str(ctx.difficulty or "").strip()
 
     display_sections = state.chart_sections or state.concert_sections
@@ -245,13 +252,16 @@ def render_backing_creative_context_card(
     badges = [
         _themed_badge("🎷", "Style", style_label, _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style")),
         _themed_badge(mood_icon, "Mood", mood, "badge-mood"),
-        _themed_badge("🔥", "Groove", groove_intensity, groove_class),
+    ]
+    if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
+        badges.append(_themed_badge("🔥", "Groove", groove_display, groove_class))
+    badges.extend([
         _themed_badge("🎯", "Jam level", difficulty, "badge-groove"),
         _themed_badge("🎼", "Concert key", concert, "badge-key"),
         _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
         _themed_badge("𝄞", "Meter", meter, "badge-key"),
         _themed_badge(inst_icon, "Instrument", instrument, "badge-meta"),
-    ]
+    ])
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
         badges.append(_themed_badge("📄", chart_label, chart_key_raw, "badge-key"))
