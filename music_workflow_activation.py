@@ -498,6 +498,16 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         except ImportError:
             pass
         try:
+            from music_workflow_song_practice import (
+                mirror_mission_keys_from_song_blob,
+                sync_session_practice_key_from_song_blob,
+            )
+
+            mirror_mission_keys_from_song_blob(session)
+            sync_session_practice_key_from_song_blob(session, source="mission_jam_activation")
+        except ImportError:
+            pass
+        try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
             prime_sidebar_practice_key_from_identity(session)

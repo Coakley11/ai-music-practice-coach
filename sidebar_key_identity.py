@@ -34,6 +34,25 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
     """Canonical tonic/mode for sidebar — not legacy display_key authority."""
     from music_theory import format_key_label_from_parts, key_center_token, split_key_center
 
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None:
+            return SidebarKeyIdentity(
+                owner=ident.workflow_owner or "unknown",
+                concert_tonic=ident.practice_tonic,
+                concert_mode=ident.practice_mode,
+                practice_tonic=ident.practice_tonic,
+                practice_mode=ident.practice_mode,
+                written_tonic="",
+                written_mode="",
+                selector_token=ident.practice_key_token,
+                label=ident.practice_label,
+            )
+    except ImportError:
+        pass
+
     owner = ""
     pt, pm = "C", "major"
     wt = ""

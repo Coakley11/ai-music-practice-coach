@@ -42,6 +42,15 @@ def _key_steps_to_center(key_center: str) -> int:
 def creative_entry_concert_key(session: dict[str, Any]) -> str:
     """Selected concert key from Creative entry widgets, if any."""
     try:
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+
+        if generated_workflow_owns_practice_key(session):
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None:
+                return ident.practice_key_token
+    except ImportError:
+        pass
+    try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(session):

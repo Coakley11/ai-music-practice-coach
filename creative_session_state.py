@@ -616,10 +616,19 @@ def apply_creative_session_to_session(
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
-        if is_fixed_practice_key_mode(session):
-            fixed_original = "C" if sess.tool_type in {"entry_style_jam", "jam_session_generator"} else concert
-            concert = resolve_practice_concert_key_for_song(session, fixed_original, fallback=concert)
+        if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}:
+                concert = ident.practice_key_token
+                sess.concert_key = concert
+                sess.display_key = concert
+            elif is_fixed_practice_key_mode(session) and not generated_workflow_owns_practice_key(session):
+                concert = resolve_practice_concert_key_for_song(session, "C", fallback=concert)
+                sess.concert_key = concert
+        elif is_fixed_practice_key_mode(session):
+            concert = resolve_practice_concert_key_for_song(session, concert, fallback=concert)
             sess.concert_key = concert
     except ImportError:
         pass

@@ -225,7 +225,19 @@ def resolve_current_backing_musical_state(
 
     creative_selected = str(creative_entry_concert_key(session) or "").strip()
     live_practice = str(session.get("display_key") or "").strip()
+    practice = ""
     if creative_active and creative:
+        try:
+            from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+
+            if generated_workflow_owns_practice_key(session):
+                ident = resolve_active_workflow_key_identity(session)
+                if ident is not None:
+                    practice = ident.practice_key_token
+                    major_jam = ident.practice_mode != "minor"
+        except ImportError:
+            pass
+    if creative_active and creative and not practice:
         practice = _resolve_creative_practice_concert_key(
             session,
             creative=creative,
@@ -243,6 +255,15 @@ def resolve_current_backing_musical_state(
     else:
         practice = ""
     if not practice:
+        try:
+            from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+            ident = resolve_practice_key_identity_for_ui(session)
+            if ident is not None:
+                practice = ident.practice_key_token
+        except ImportError:
+            pass
+    if not practice:
         from songs.key_state import resolve_active_musical_key
 
         mk = resolve_active_musical_key(session, rec=rec, surface="backing_resolver")
@@ -252,8 +273,9 @@ def resolve_current_backing_musical_state(
         practice = to_major_key_preserve_spelling(practice)
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from workflow_key_identity import generated_workflow_owns_practice_key
 
-        if is_fixed_practice_key_mode(session):
+        if is_fixed_practice_key_mode(session) and not generated_workflow_owns_practice_key(session):
             fixed_original = "C"
             if creative:
                 fixed_original = str(getattr(creative, "key", "") or "C").strip() or "C"
@@ -275,6 +297,17 @@ def resolve_current_backing_musical_state(
         pass
     if major_jam and sidebar:
         sidebar = to_major_key_preserve_spelling(sidebar)
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+
+        if generated_workflow_owns_practice_key(session):
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None:
+                practice = ident.practice_key_token
+                sidebar = ident.practice_key_token
+                major_jam = ident.practice_mode != "minor"
+    except ImportError:
+        pass
 
     from instrument_transposition import (
         chart_in_instrument_key,
@@ -389,6 +422,17 @@ def resolve_current_backing_musical_state(
                 concert_key=practice,
             )
 
+    resolved_key_mode = key_mode(practice)
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+
+        if generated_workflow_owns_practice_key(session):
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None:
+                resolved_key_mode = ident.practice_mode
+    except ImportError:
+        pass
+
     return BackingMusicalState(
         source_type=source_type,
         source_signature=source_signature,
@@ -398,7 +442,7 @@ def resolve_current_backing_musical_state(
         practice_concert_key=practice,
         sidebar_display_key=sidebar,
         creative_selected_key=creative_selected,
-        key_mode=key_mode(practice),
+        key_mode=resolved_key_mode,
         chart_mode=chart_mode,
         chart_display_key=chart_display,
         written_charts_on=written_on,

@@ -96,11 +96,20 @@ MOTIF_OUTPUT_TAB = "tab"
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
-        from creative_key_sync import resolve_creative_tab_practice_key_token
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
 
-        jam_tok = resolve_creative_tab_practice_key_token(session_state)
-        if jam_tok:
-            return jam_tok
+        ident = resolve_practice_key_identity_for_ui(session_state)
+        if ident is not None:
+            return ident.practice_key_token
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import entry_jam_practice_key_authority_active, resolve_creative_tab_practice_key_token
+
+        if entry_jam_practice_key_authority_active(session_state):
+            jam_tok = resolve_creative_tab_practice_key_token(session_state)
+            if jam_tok:
+                return jam_tok
     except ImportError:
         pass
     try:
@@ -2036,6 +2045,10 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             "abort": "no_improv_ctx",
         }
         return
+
+    chart_key, key_center = _coherent_improv_key_pair(session_state, improv_ctx)
+    improv_ctx.key_center = key_center
+    improv_ctx.display_key = chart_key
 
     sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     if isinstance(snap, dict) and snap.get("cur_chord"):

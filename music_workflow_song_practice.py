@@ -155,7 +155,34 @@ def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob:
 
 
 def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str:
-    """Same-run Missions parent key — entry jam wins over catalog song blob when still active."""
+    """Missions tab — song practice blob owns parent key; never re-apply entry jam after reclaim."""
+    tab = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        mission_active = tab == "Missions" or (ptr and str(ptr.workflow_owner or "") == "mission_jam")
+    except ImportError:
+        mission_active = tab == "Missions"
+    if mission_active:
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
+        except ImportError:
+            pass
+        mirror_mission_keys_from_song_blob(session)
+        rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
+        token = sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
+        try:
+            from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+            prime_sidebar_practice_key_from_identity(session)
+        except ImportError:
+            pass
+        return token or resolve_song_practice_key_token(session)
     try:
         from creative_key_sync import entry_jam_practice_key_authority_active
 
@@ -173,17 +200,6 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                     prime_sidebar_practice_key_from_identity(session)
                 except ImportError:
                     pass
-    except ImportError:
-        pass
-    try:
-        from creative_key_sync import apply_entry_jam_authoritative_practice_key
-
-        jam_tok = apply_entry_jam_authoritative_practice_key(
-            session,
-            source="missions_tab_entry_jam_parent_key",
-        )
-        if jam_tok:
-            return jam_tok
     except ImportError:
         pass
     token = resolve_song_practice_key_token(session)

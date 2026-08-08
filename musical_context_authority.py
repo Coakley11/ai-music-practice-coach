@@ -72,6 +72,39 @@ def resolve_authoritative_practice_key(
     rec: dict[str, Any] | None = None,
 ) -> AuthoritativePracticeKey:
     """Current practice transposition vs catalog original — never infer major from bare tonic."""
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None:
+            orig_t, orig_m = ident.practice_tonic, ident.practice_mode
+            try:
+                from songs.key_state import resolve_active_musical_key
+
+                ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                orig_t = _tonic_from_key_token(str(ctx.original_key or ident.practice_key_token))
+                orig_m = _mode_from_key_token(str(ctx.original_key or ident.practice_key_token))
+            except ImportError:
+                pass
+            if ident.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+                try:
+                    from songs.key_state import resolve_active_musical_key
+
+                    ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                    original_raw = str(ctx.original_key or ident.practice_key_token).strip()
+                    orig_t = _tonic_from_key_token(original_raw)
+                    orig_m = _mode_from_key_token(original_raw)
+                except ImportError:
+                    pass
+            return AuthoritativePracticeKey(
+                original_tonic=orig_t,
+                original_mode=orig_m,
+                practice_tonic=ident.practice_tonic,
+                practice_mode=ident.practice_mode,
+                source=ident.source,
+            )
+    except ImportError:
+        pass
     if song_catalog_context_owns_practice_key(session):
         try:
             from music_workflow_song_practice import resolve_song_practice_key_token
@@ -149,6 +182,14 @@ def sidebar_key_list_mode(session: dict[str, Any]) -> str:
 
 def format_practice_concert_key_line(session: dict[str, Any], *, fallback: str = "") -> str:
     """Human label including mode, e.g. 'E♭ minor'."""
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None and ident.practice_label:
+            return ident.practice_label
+    except ImportError:
+        pass
     pk = resolve_authoritative_practice_key(session)
     label = pk.practice_label()
     if label:

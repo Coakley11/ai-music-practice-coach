@@ -1422,6 +1422,19 @@ def rehydrate_creative_from_backing_context(
             blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
             if blob is not None and blob.section_map:
                 restore_workflow_blob_to_session(session, blob)
+                try:
+                    from workflow_key_identity import apply_practice_key_identity_to_session, resolve_active_workflow_key_identity
+
+                    ident = resolve_active_workflow_key_identity(session)
+                    if ident is not None:
+                        apply_practice_key_identity_to_session(
+                            session,
+                            ident,
+                            source="return_from_backing_jam_blob",
+                            widget_safe=widget_safe,
+                        )
+                except ImportError:
+                    pass
     except ImportError:
         pass
     try:
