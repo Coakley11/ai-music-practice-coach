@@ -17,6 +17,7 @@ class CoachIntent(str, Enum):
     CREATIVE_FEATURE_HELP = "creative_feature_help"
     APP_FEATURE_RECOMMENDATION = "app_feature_recommendation"
     THEORY_EXPLANATION = "theory_explanation"
+    SCALE_PRACTICE = "scale_practice"
     SONG_COACHING = "song_coaching"
     PRACTICE_HISTORY_ANALYSIS = "practice_history_analysis"
     MUSIC_TRANSPOSITION = "music_transposition"
@@ -91,6 +92,7 @@ class CoachResponse:
     explanation: str = ""
     suggested_next_action: str = ""
     source_solver: str = ""
+    notation_abc: str = ""
     diagnostics: dict[str, Any] = field(default_factory=dict)
     confidence: float = 0.0
 

@@ -16,7 +16,10 @@ def compose_coach_markdown(response: CoachResponse) -> str:
     if response.practice_steps:
         parts.append("**What to do**")
         for step in response.practice_steps:
-            parts.append(f"- {step}")
+            if step.strip().startswith("#"):
+                parts.append(step.strip())
+            else:
+                parts.append(f"- {step}")
     if response.what_to_listen_for:
         parts.append("**What to listen for**")
         for item in response.what_to_listen_for:
@@ -31,4 +34,7 @@ def compose_coach_markdown(response: CoachResponse) -> str:
             parts.append(f"- {step}")
     if response.suggested_next_action:
         parts.append(f"**Next:** {response.suggested_next_action.strip()}")
+    if response.notation_abc:
+        parts.append("**Sheet music (ABC)**")
+        parts.append(f"```abc\n{response.notation_abc.strip()}\n```")
     return "\n\n".join(p for p in parts if p)

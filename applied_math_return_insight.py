@@ -1989,6 +1989,29 @@ def render_applied_math_insight_panel(
                         st.json(diag)
             except ImportError:
                 pass
+        abc_text = str(data.get("notation_abc") or "").strip()
+        if app == "music" and abc_text:
+            try:
+                import streamlit.components.v1 as components
+
+                escaped = (
+                    abc_text.replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("${", "\\${")
+                )
+                components.html(
+                    f"""
+                    <html><head>
+                    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+                    </head><body><div id="coach_abc_paper"></div>
+                    <script>ABCJS.renderAbc("coach_abc_paper", `{escaped}`, {{responsive:"resize", staffwidth:720}});</script>
+                    </body></html>
+                    """,
+                    height=320,
+                    scrolling=True,
+                )
+            except Exception:
+                st.code(abc_text, language="abc")
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")

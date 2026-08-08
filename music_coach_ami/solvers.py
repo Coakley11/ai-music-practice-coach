@@ -35,28 +35,37 @@ def _allocate(total: int, weights: dict[str, float]) -> dict[str, int]:
 
 
 def solve_practice_plan(req: CoachRequest) -> CoachResponse:
-    from music_coach_instrument_voice import instrument_family, practice_plan_profile
+    from music_coach_instrument_voice import instrument_family, practice_plan_profile, tone_focused_practice_plan
 
     minutes = _minutes(req)
     instrument = req.entities.instrument or req.context.instrument or "your instrument"
     tone = req.constraints.tone_focus or "tone" in req.normalized_question.lower()
     chord_focus = "chord" in req.normalized_question.lower()
-    weights, focus_line = practice_plan_profile(instrument, chord_focus=chord_focus and not tone)
-    if tone and instrument_family(instrument) == "wind":
-        weights = {
-            "long tones (mid register)": 0.30,
-            "slow melodic lines": 0.25,
-            "articulation / tonguing": 0.20,
-            "song or etude application": 0.15,
-            "review & notes": 0.10,
-        }
-        focus_line = "Keep tone steady before adding tempo or range."
+
+    if tone:
+        plan = tone_focused_practice_plan(
+            instrument,
+            minutes,
+            level=req.context.level,
+            song_title=req.context.active_song_title,
+            section=req.context.active_section,
+        )
+        steps = list(plan.get("steps") or [])
+        listen = list(plan.get("listen") or [])
+        return CoachResponse(
+            intent=CoachIntent.PRACTICE_PLAN,
+            direct_answer=f"{plan.get('headline', '')}\n\n{plan.get('goal', '')}".strip(),
+            practice_steps=steps,
+            what_to_listen_for=listen,
+            recommendation=str(plan.get("closing") or "").strip(),
+            source_solver="PracticePlanSolver",
+            confidence=0.88,
+            diagnostics={"session_minutes": minutes, "tone_focus": True},
+        )
+
+    weights, focus_line = practice_plan_profile(instrument, chord_focus=chord_focus)
     blocks = _allocate(minutes, weights)
     steps = [f"**{m} min** — {label}" for label, m in blocks.items()]
-    if req.context.active_section:
-        steps.append(f"Anchor section work on **{req.context.active_section}**.")
-    if req.context.active_song_title:
-        steps.append(f"Tie at least one block to **{req.context.active_song_title}**.")
     return CoachResponse(
         intent=CoachIntent.PRACTICE_PLAN,
         direct_answer=f"Here is a **{minutes}-minute** plan for **{instrument}**:",
@@ -68,6 +77,63 @@ def solve_practice_plan(req: CoachRequest) -> CoachResponse:
         source_solver="PracticePlanSolver",
         confidence=0.85,
         diagnostics={"session_minutes": minutes, **blocks},
+    )
+
+
+def solve_scale_practice(req: CoachRequest) -> CoachResponse:
+    from music_coach_ami.scale_engine import generate_scale_practice, parse_scale_practice_question
+
+    low = req.normalized_question.lower()
+    instrument = req.entities.instrument or req.context.instrument or ""
+
+    if "what scales should i practice" in low:
+        return CoachResponse(
+            intent=CoachIntent.SCALE_PRACTICE,
+            direct_answer="**Scale practice priorities for today**",
+            practice_steps=[
+                "Pick **one major and one minor** key you use in repertoire (or your current song's key).",
+                "Run each **one octave straight**, then **in thirds** at 60–72 BPM.",
+                "Add **fourths or sixths** only after thirds are clean three times.",
+                "Log which keys felt unstable in Practice Log.",
+            ],
+            suggested_next_action='Ask: "Show me Eb major in thirds" for notation you can read at the stand.',
+            source_solver="ScalePracticeSolver",
+            confidence=0.82,
+        )
+
+    spec = parse_scale_practice_question(req.normalized_question, instrument=instrument)
+    result = generate_scale_practice(spec)
+
+    steps: list[str] = []
+    if len(spec.interval_patterns) == 1 and spec.interval_patterns[0] in ("straight", "scale", "unison"):
+        steps.append(f"**Scale:** {' '.join(result.scale_notes)}")
+    else:
+        steps.append(f"**Diatonic scale:** {' '.join(result.scale_notes)}")
+    if result.written_sequence:
+        steps.append(f"**Written sequence:** {result.written_sequence}")
+    steps.extend(result.practice_guidance)
+
+    listen = [
+        "Even tone on every note of each interval pair",
+        "Correct spelling / intonation on altered scale degrees (e.g. E♯ in C♯ major)",
+    ]
+
+    return CoachResponse(
+        intent=CoachIntent.SCALE_PRACTICE,
+        direct_answer=f"**{result.label}** — {result.key_signature_hint}",
+        explanation="Use the staff below; key signature follows conventional spelling for this tonic.",
+        practice_steps=steps,
+        what_to_listen_for=listen,
+        notation_abc=result.abc,
+        source_solver="ScalePracticeSolver",
+        confidence=0.9,
+        diagnostics={
+            "tonic": result.tonic,
+            "scale_type": result.scale_type,
+            "patterns": list(spec.interval_patterns),
+            "octaves": spec.octave_count,
+            "direction": spec.direction,
+        },
     )
 
 
@@ -376,5 +442,6 @@ SOLVER_REGISTRY: dict[CoachIntent, SolverFn] = {
     CoachIntent.IMPROVISATION_COACHING: solve_improvisation_coaching,
     CoachIntent.REPERTOIRE_RECOMMENDATION: solve_repertoire_recommendation,
     CoachIntent.THEORY_EXPLANATION: solve_theory_explanation,
+    CoachIntent.SCALE_PRACTICE: solve_scale_practice,
     CoachIntent.SONG_COACHING: solve_song_coaching,
 }

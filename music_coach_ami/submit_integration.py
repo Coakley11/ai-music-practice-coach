@@ -61,6 +61,8 @@ def stage_routed_music_coach_insight(
     insight["coach_submit_diagnostics"] = dict(diagnostics)
     insight["model_name"] = solver_name
     insight["method"] = f"Structured solver: {solver_name}"
+    if getattr(coach_resp, "notation_abc", None):
+        insight["notation_abc"] = str(coach_resp.notation_abc or "")
 
     iid = store_applied_math_insight(
         insight,

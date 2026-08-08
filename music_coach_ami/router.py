@@ -27,6 +27,7 @@ def _legacy_intent_for(coach_intent: CoachIntent) -> str:
         CoachIntent.CREATIVE_FEATURE_HELP: "creative_feature_help",
         CoachIntent.APP_FEATURE_RECOMMENDATION: "app_feature_recommendation",
         CoachIntent.THEORY_EXPLANATION: "music_theory",
+        CoachIntent.SCALE_PRACTICE: "scale_practice",
         CoachIntent.SONG_COACHING: "section_focus",
         CoachIntent.PRACTICE_HISTORY_ANALYSIS: "practice_history_analysis",
         CoachIntent.MUSIC_TRANSPOSITION: "music_transposition",
@@ -81,6 +82,35 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
 
     if any(p in low for p in ("what is a ii-v-i", "what is dorian", "what is a chord tone", "what is syncopation", "what is phrasing", "what does transposition mean")):
         return CoachIntent.THEORY_EXPLANATION, 0.85
+
+    if "what is a major scale" in low or "what is a minor scale" in low:
+        return CoachIntent.THEORY_EXPLANATION, 0.86
+    if re.search(r"\bwhat is .+\bscale\b", low) and not re.search(r"\b(show me|give me|write)\b", low):
+        return CoachIntent.THEORY_EXPLANATION, 0.84
+
+    if re.search(r"\bwhat scales should i practice\b", low):
+        return CoachIntent.SCALE_PRACTICE, 0.88
+
+    if re.search(r"\b(show me|give me|write)\b", low) and any(
+        p in low
+        for p in (
+            "scale",
+            "in thirds",
+            "in fourths",
+            "in fifths",
+            "in sixths",
+            "in sevenths",
+            "interval exercise",
+            "sheet music",
+            "harmonic minor",
+            "melodic minor",
+            " pentatonic",
+            " blues",
+        )
+    ):
+        return CoachIntent.SCALE_PRACTICE, 0.9
+    if "sheet music" in low and any(p in low for p in ("major", "minor", "scale", "thirds", "fourths")):
+        return CoachIntent.SCALE_PRACTICE, 0.88
 
     if any(p in low for p in ("songs should i", "easy jazz songs", "songs good for", "recommend songs", "songs for learning improvisation")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
