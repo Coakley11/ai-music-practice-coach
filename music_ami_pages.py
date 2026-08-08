@@ -18,7 +18,7 @@ def build_music_send_diagnostics(ctx: dict[str, Any], *, question: str = "") -> 
     from music_ami_context import detect_music_send_intent
 
     snap = ctx.get("practice_snapshot") if isinstance(ctx.get("practice_snapshot"), dict) else {}
-    return {
+    diag: dict[str, Any] = {
         "music_send_intent": detect_music_send_intent(question, ctx.get("coach_page") or ctx.get("source_page") or ""),
         "routing_hint": str(ctx.get("routing_hint") or ""),
         "question_song": str(ctx.get("question_song") or ""),
@@ -28,6 +28,21 @@ def build_music_send_diagnostics(ctx: dict[str, Any], *, question: str = "") -> 
         "instrument": str(ctx.get("instrument") or ""),
         "practice_snapshot_present": bool(snap),
     }
+    try:
+        from music_coach_ami.router import route_question
+
+        req = route_question(question, {}, ami_ctx=ctx)
+        diag["coach_intent"] = req.intent.value
+        diag["coach_confidence"] = req.confidence
+        diag["coach_solver"] = req.legacy_intent_hint
+        diag["coach_entities"] = {
+            "instrument": req.entities.instrument,
+            "skill_topic": req.entities.skill_topic,
+            "feature_id": req.entities.feature_id,
+        }
+    except ImportError:
+        pass
+    return diag
 
 
 def promote_music_ami_context_at_send(

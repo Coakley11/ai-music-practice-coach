@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MUSIC_AMI_BUILD_ID = "music-ami-v5-canonical-insight"
+MUSIC_AMI_BUILD_ID = "music-ami-v6-routed-coach-architecture"
 
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
@@ -537,6 +537,32 @@ def solve_instant_music_insight(
     if not q:
         return None
     ctx = dict(context or {})
+
+    try:
+        from music_coach_ami.pipeline import coach_response_to_legacy_route, run_coach_pipeline
+
+        coach_resp = run_coach_pipeline(q, None, ami_ctx=ctx)
+        if coach_resp is not None:
+            problem_type, model_name = coach_response_to_legacy_route(coach_resp)
+            route = MusicSolverRoute(
+                problem_type=problem_type,
+                model_name=model_name,
+                model_rationale=f"Routed coach intent `{coach_resp.intent.value}`.",
+            )
+            result = MusicSolverResult(
+                short_answer=coach_resp.composed_markdown(),
+                math_idea=f"Structured solver: {coach_resp.source_solver}",
+                problem_type=problem_type,
+                model_name=model_name,
+                variables=str(coach_resp.diagnostics),
+                assumptions=[f"Router confidence: {coach_resp.diagnostics.get('router_confidence', coach_resp.confidence)}"],
+                confidence_pct=int(min(95, max(60, coach_resp.confidence * 100))),
+                computed=dict(coach_resp.diagnostics),
+            )
+            return route, result
+    except ImportError:
+        pass
+
     try:
         from music_ami_context import detect_music_send_intent
     except ImportError:
