@@ -40,6 +40,22 @@ def finalize_sidebar_song_practice_key_after_mutation(
     """Legacy session + backing sync after canonical practice key commit."""
     session["concert_key"] = new_key
     try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSIONS_GENERATE_CONTEXT_KEY
+
+        session.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
+        session.pop(MISSION_EXAMPLE_KEY, None)
+        session.pop("_mission_example_output_fp", None)
+        session.pop("_mission_example_material_fp", None)
+    except ImportError:
+        session.pop("_missions_tab_generate_context", None)
+        session.pop("improv_mission_example", None)
+    try:
+        from music_workflow_mutation import _invalidate_mission_chord_dependent_session
+
+        _invalidate_mission_chord_dependent_session(session, new_chord=str(new_key or ""))
+    except ImportError:
+        pass
+    try:
         from mission_practice_context import ensure_mission_practice_context
 
         ensure_mission_practice_context(session, force=True)

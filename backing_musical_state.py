@@ -126,7 +126,17 @@ def _resolve_creative_practice_concert_key(
 
         if is_fixed_practice_key_mode(session):
             original = str(getattr(creative, "key", "") or "C").strip() or "C"
-            return resolve_practice_concert_key_for_song(session, original, fallback=str(creative.concert_key or "C"))
+            try:
+                from workflow_key_identity import fixed_practice_key_projection_blocked
+
+                if not fixed_practice_key_projection_blocked(session):
+                    return resolve_practice_concert_key_for_song(
+                        session, original, fallback=str(creative.concert_key or "C")
+                    )
+            except ImportError:
+                return resolve_practice_concert_key_for_song(
+                    session, original, fallback=str(creative.concert_key or "C")
+                )
     except ImportError:
         pass
 
@@ -273,9 +283,9 @@ def resolve_current_backing_musical_state(
         practice = to_major_key_preserve_spelling(practice)
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
-        from workflow_key_identity import generated_workflow_owns_practice_key
+        from workflow_key_identity import fixed_practice_key_projection_blocked
 
-        if is_fixed_practice_key_mode(session) and not generated_workflow_owns_practice_key(session):
+        if is_fixed_practice_key_mode(session) and not fixed_practice_key_projection_blocked(session):
             fixed_original = "C"
             if creative:
                 fixed_original = str(getattr(creative, "key", "") or "C").strip() or "C"

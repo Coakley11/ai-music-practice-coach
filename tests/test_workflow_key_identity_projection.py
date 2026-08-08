@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import unittest
 import uuid
+from unittest.mock import MagicMock
 
 from backing_musical_state import resolve_current_backing_musical_state
-from creative_key_sync import creative_entry_concert_key
+from creative_key_sync import creative_entry_concert_key, prepare_backing_context_sidebar_display_key
 from generated_workflow_artifact import GeneratedWorkflowArtifactSnapshot, BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY
 from music_workflow_state_store import (
     ActiveWorkflowPointer,
@@ -81,7 +82,34 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
         self.assertEqual(ident.selector_token, "D")
         line = format_practice_concert_key_line(session)
         self.assertIn("major", line.lower())
+        self.assertEqual(ident.practice_mode, "major")
         self.assertNotIn("minor", line.lower())
+
+    def test_jam_c_major_sidebar_not_fixed_catalog_c_minor_on_backing(self) -> None:
+        session: dict = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_intelligence_tab": "Entry & Jam",
+            "active_catalog_pick_key": "Jewish|Hevenu",
+            "display_key": "Eb",
+            "concert_key": "C",
+            "improv_jam_key": "C",
+            "display_key_change_source": "sidebar_practice_key",
+        }
+        session["practice_key_mode"] = "fixed"
+        session["fixed_practice_key"] = "D"
+        _jam_blob(session, tonic="C", mode="major")
+        st = MagicMock()
+        options = prepare_backing_context_sidebar_display_key(st, session)
+        self.assertEqual(session.get("concert_key"), "C")
+        self.assertIn("C", options)
+        ident = resolve_practice_key_identity_for_ui(session)
+        self.assertIsNotNone(ident)
+        assert ident is not None
+        self.assertEqual(ident.practice_mode, "major")
+        self.assertEqual(ident.practice_tonic, "C")
+        state = resolve_current_backing_musical_state(session)
+        self.assertEqual(state.practice_concert_key, "C")
 
     def test_missions_reclaim_song_d_minor_not_generated_eb(self) -> None:
         pick = "Jewish|Hevenu"
@@ -134,7 +162,8 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
 
     def test_mission_notation_staff_key_signatures(self) -> None:
         from harmonic_spelling import mission_notation_staff_key
-        from improvisation_missions import abc_staff_key_matches_concert
+        from improvisation_missions import abc_staff_key_matches_concert, build_mission_notation_abc, parse_abc_k_field
+        from improvisation_motif import _abc_key_header
 
         cases = [
             ("Dm", "Dm"),
@@ -145,6 +174,17 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
         for concert, staff in cases:
             resolved = mission_notation_staff_key(song_concert_key=concert, song_display_key=concert)
             self.assertEqual(resolved, staff, concert)
+
+        empty_motif = {"notes": ["C"], "rhythm": ["q"]}
+        for token in ("C", "D", "Dm", "Bm", "Fm", "Ebm"):
+            k_hdr = _abc_key_header(token)
+            abc = build_mission_notation_abc(empty_motif, mission="t", key_center=token, bpm=100)
+            k_field = parse_abc_k_field(abc)
+            self.assertTrue(
+                abc_staff_key_matches_concert(abc, token),
+                f"abc K mismatch for {token}: {k_field}",
+            )
+            self.assertEqual(k_hdr.lower(), str(k_field or "").lower()[: len(k_hdr)], token)
 
 
 if __name__ == "__main__":

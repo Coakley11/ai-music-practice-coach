@@ -121,6 +121,120 @@ def resolve_active_workflow_key_identity(session: dict[str, Any]) -> WorkflowKey
     return _identity_from_blob(owner, sid, blob, source="active_workflow_blob")
 
 
+def normalize_user_practice_key_selection(raw: str, *, default_mode: str = "major") -> tuple[str, str, str]:
+    """Parse sidebar/control label into (tonic, mode, token) atomically."""
+    from music_theory import format_key_label_from_parts, key_center_token, split_key_center
+
+    text = str(raw or "").strip()
+    if not text:
+        text = "C"
+    if text.lower().endswith(" major"):
+        tonic, _ = split_key_center(text)
+        mode = "major"
+    elif text.lower().endswith(" minor"):
+        tonic, _ = split_key_center(text)
+        mode = "minor"
+    else:
+        tonic, mode = split_key_center(text)
+        if mode not in {"major", "minor"}:
+            mode = str(default_mode or "major").strip().lower() or "major"
+    token = key_center_token(tonic, mode)
+    return tonic, mode, token
+
+
+def song_or_mission_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
+    tab = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+        return True
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(ctx.source or "") in {"mission", "song_improv", "regular_song"}:
+            return True
+    except ImportError:
+        pass
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") in {
+            "mission_jam",
+            "song_based_improvisation",
+            "regular_catalog_backing",
+            "regular_custom_backing",
+        }:
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+def fixed_practice_key_projection_blocked(session: dict[str, Any]) -> bool:
+    """Catalog fixed-key family must not override generated jam / explicit song practice blob."""
+    if generated_workflow_owns_practice_key(session):
+        return True
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(ctx.source or "") == "entry_jam":
+            return True
+    except ImportError:
+        pass
+    if song_or_mission_workflow_owns_practice_key(session):
+        try:
+            if resolve_song_practice_key_token(session):
+                return True
+        except ImportError:
+            pass
+    return False
+
+
+def resolve_song_practice_key_token(session: dict[str, Any]) -> str:
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token as _tok
+
+        return str(_tok(session) or "").strip()
+    except ImportError:
+        ident = resolve_song_practice_key_identity(session)
+        return ident.practice_key_token if ident else ""
+
+
+def diagnose_generated_key_identity_drift(session: dict[str, Any]) -> dict[str, Any]:
+    """Compare generated artifact/snapshot identity vs active blob vs UI projection."""
+    out: dict[str, Any] = {"drift": False, "violations": []}
+    if not generated_workflow_owns_practice_key(session):
+        return out
+    blob_ident = resolve_active_workflow_key_identity(session)
+    ui_ident = resolve_practice_key_identity_for_ui(session)
+    if blob_ident is None:
+        return out
+    if ui_ident and (
+        ui_ident.practice_tonic != blob_ident.practice_tonic
+        or ui_ident.practice_mode != blob_ident.practice_mode
+    ):
+        out["drift"] = True
+        out["violations"].append(
+            f"ui_vs_blob:{ui_ident.practice_key_token}!={blob_ident.practice_key_token}"
+        )
+    try:
+        from generated_workflow_artifact import peek_backing_owner_artifact_snapshot
+
+        snap = peek_backing_owner_artifact_snapshot(session)
+        if snap is not None:
+            st = str(snap.practice_tonic or "")
+            sm = str(snap.practice_mode or "major").strip().lower()
+            if st != blob_ident.practice_tonic or sm != blob_ident.practice_mode:
+                out["drift"] = True
+                out["violations"].append("artifact_vs_blob_mode_tonic_mismatch")
+    except ImportError:
+        pass
+    return out
+
+
 def resolve_song_practice_key_identity(session: dict[str, Any]) -> WorkflowKeyIdentity | None:
     try:
         from music_workflow_song_practice import song_based_blob_session_id, song_practice_blob
@@ -136,24 +250,47 @@ def resolve_song_practice_key_identity(session: dict[str, Any]) -> WorkflowKeyId
 
 def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKeyIdentity | None:
     """Single resolver for sidebar, backing header, missions, and notation consumers."""
+    ctx_source = ""
     try:
-        from music_workflow_state_store import get_active_workflow_pointer
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_source = str(ctx.source or "").strip()
     except ImportError:
-        ptr = None
-    else:
-        ptr = get_active_workflow_pointer(session)
-    owner = str(ptr.workflow_owner or "") if ptr else ""
-    tab = str(
-        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
-    ).strip()
-    if owner == "mission_jam" or tab == "Missions":
+        pass
+    if ctx_source == "mission" or (
+        song_or_mission_workflow_owns_practice_key(session) and ctx_source != "entry_jam"
+    ):
+        if not session.get("_missions_parent_key_hydrate_guard"):
+            session["_missions_parent_key_hydrate_guard"] = True
+            try:
+                from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+
+                ensure_missions_parent_practice_key_hydrated(session)
+            except ImportError:
+                pass
+            finally:
+                session.pop("_missions_parent_key_hydrate_guard", None)
         song_ident = resolve_song_practice_key_identity(session)
         if song_ident is not None:
             return song_ident
-    if generated_workflow_owns_practice_key(session):
+    if generated_workflow_owns_practice_key(session) and ctx_source != "mission":
         gen_ident = resolve_active_workflow_key_identity(session)
-        if gen_ident is not None:
+        if gen_ident is not None and str(gen_ident.workflow_owner or "") in {
+            "style_jam",
+            "jam_session_generator",
+        }:
             return gen_ident
+        if gen_ident is not None and ctx_source == "entry_jam":
+            return gen_ident
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        owner = str(ptr.workflow_owner or "") if ptr else ""
+    except ImportError:
+        owner = ""
     if owner in {"song_based_improvisation", "mission_jam", "regular_catalog_backing", "regular_custom_backing"}:
         song_ident = resolve_song_practice_key_identity(session)
         if song_ident is not None:
@@ -201,8 +338,13 @@ __all__ = [
     "WorkflowKeyIdentity",
     "active_workflow_owns_practice_key",
     "apply_practice_key_identity_to_session",
+    "diagnose_generated_key_identity_drift",
+    "fixed_practice_key_projection_blocked",
     "generated_workflow_owns_practice_key",
+    "normalize_user_practice_key_selection",
     "resolve_active_workflow_key_identity",
     "resolve_practice_key_identity_for_ui",
     "resolve_song_practice_key_identity",
+    "resolve_song_practice_key_token",
+    "song_or_mission_workflow_owns_practice_key",
 ]

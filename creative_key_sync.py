@@ -698,6 +698,50 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+    try:
+        from backing_context import get_backing_context
+        from workflow_key_identity import (
+            generated_workflow_owns_practice_key,
+            resolve_practice_key_identity_for_ui,
+            resolve_song_practice_key_identity,
+        )
+
+        ctx_early = get_backing_context(session)
+        ctx_source_early = str(getattr(ctx_early, "source", "") or "").strip() if ctx_early else ""
+        if ctx_source_early == "mission":
+            try:
+                from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+
+                ensure_missions_parent_practice_key_hydrated(session)
+            except ImportError:
+                pass
+            song_ident = resolve_song_practice_key_identity(session)
+            if song_ident is not None:
+                selected = song_ident.practice_key_token
+                options = practice_keys_for_mode(song_ident.practice_mode)
+                if selected not in options:
+                    options = [selected] + options
+                _apply_display_key_before_widget(
+                    st, selected, source="mission_backing_song_practice_identity"
+                )
+                session["concert_key"] = selected
+                session["_sidebar_key_identity_label"] = song_ident.practice_label
+                return options
+        if generated_workflow_owns_practice_key(session) or ctx_source_early == "entry_jam":
+            ident = resolve_practice_key_identity_for_ui(session)
+            if ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}:
+                selected = ident.practice_key_token
+                options = practice_keys_for_mode(ident.practice_mode)
+                if selected not in options:
+                    options = [selected] + options
+                _apply_display_key_before_widget(
+                    st, selected, source="generated_backing_workflow_identity"
+                )
+                session["concert_key"] = selected
+                session["_sidebar_key_identity_label"] = ident.practice_label
+                return options
+    except ImportError:
+        pass
     preserved = _sidebar_preserve_user_display_key_options(
         st,
         session,
@@ -816,9 +860,19 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         ).strip() or "C"
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from workflow_key_identity import fixed_practice_key_projection_blocked
 
         if is_fixed_practice_key_mode(session) and ctx_source != "custom_progression":
-            selected = resolve_practice_concert_key_for_song(session, selected, fallback=selected)
+            if not fixed_practice_key_projection_blocked(session):
+                selected = resolve_practice_concert_key_for_song(session, selected, fallback=selected)
+    except ImportError:
+        pass
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None:
+            selected = ident.practice_key_token
     except ImportError:
         pass
     options = practice_keys_for_mode(key_mode(selected))
@@ -833,6 +887,15 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         return options
     if user_sidebar_display_key_authoritative(session):
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        try:
+            from workflow_key_identity import active_workflow_owns_practice_key, resolve_practice_key_identity_for_ui
+
+            if active_workflow_owns_practice_key(session):
+                ident = resolve_practice_key_identity_for_ui(session)
+                if ident is not None:
+                    live = ident.practice_key_token
+        except ImportError:
+            pass
         if live:
             options = _sidebar_key_options_including(session, live)
             session["concert_key"] = live
@@ -950,8 +1013,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     ).strip()
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from workflow_key_identity import fixed_practice_key_projection_blocked
 
-        if is_fixed_practice_key_mode(session):
+        if is_fixed_practice_key_mode(session) and not fixed_practice_key_projection_blocked(session):
             selected = resolve_practice_concert_key_for_song(session, "C", fallback=selected or "C")
     except ImportError:
         pass
@@ -1097,6 +1161,48 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     new = str(session.get("display_key") or "").strip()
     if not new:
         return
+    try:
+        from backing_context import get_backing_context
+
+        page = str(session.get("studio_page") or "").strip().lower()
+        ctx = get_backing_context(session)
+        if page == "backing" and ctx is not None and str(ctx.source or "") == "mission":
+            try:
+                from song_practice_key_sidebar_change import (
+                    finalize_sidebar_song_practice_key_after_mutation,
+                    sidebar_song_practice_key_mutation_deferred,
+                )
+                from workflow_key_identity import normalize_user_practice_key_selection, resolve_song_practice_key_identity
+                from music_workflow_mutation import update_active_practice_key
+
+                ident = resolve_song_practice_key_identity(session)
+                default_mode = ident.practice_mode if ident else "minor"
+                _tonic, _mode, new = normalize_user_practice_key_selection(
+                    new,
+                    default_mode=default_mode,
+                )
+                if sidebar_song_practice_key_mutation_deferred(session):
+                    return
+                result = update_active_practice_key(
+                    session, new, source="sidebar_song_improv", transpose_progression=True
+                )
+                if not result.ok:
+                    return
+                finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
+            except ImportError:
+                pass
+            return
+    except ImportError:
+        pass
+    try:
+        from workflow_key_identity import normalize_user_practice_key_selection
+
+        _tonic, _mode, new = normalize_user_practice_key_selection(
+            new,
+            default_mode="major",
+        )
+    except ImportError:
+        pass
     try:
         from music_workflow_mutation import update_active_practice_key
         from music_workflow_state_store import get_active_workflow_pointer

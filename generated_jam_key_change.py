@@ -392,6 +392,19 @@ def mutate_generated_practice_key_from_control(
     requested = str(new_key or "").strip()
     if not requested:
         return False
+    try:
+        from workflow_key_identity import normalize_user_practice_key_selection, resolve_active_workflow_key_identity
+
+        default_mode = "major"
+        cur = resolve_active_workflow_key_identity(session)
+        if cur is not None:
+            default_mode = cur.practice_mode
+        _tonic, _mode, requested = normalize_user_practice_key_selection(
+            requested,
+            default_mode=default_mode,
+        )
+    except ImportError:
+        pass
     log_generated_key_change(
         session,
         "control_mutation_start",

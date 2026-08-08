@@ -1996,7 +1996,7 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
     ctx = ImprovSessionContext(
         song_title=song_title,
         artist=artist,
-        key_center=str(session_state.get("concert_key") or chart_key),
+        key_center=chart_key,
         display_key=chart_key,
         instrument=str(session_state.get("instrument") or "Guitar"),
         level=str(session_state.get("level") or "Intermediate"),
