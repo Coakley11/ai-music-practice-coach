@@ -287,3 +287,35 @@ Do **not** change `creative_return_route` / launch ID until one of the above is 
 
 **Tests:** `tests/test_generated_jam_style_key_seal_regression.py` (cases A–D).
 
+---
+
+### §N — Musical context coherence audit (2026-08-08) — STOP THE LINE
+
+**Problem class:** Multiple parallel “authorities” (widget key, blob key, session jam dict, snapshot override, sidebar `display_key`, notation reference, Backing hybrid builder) reconstruct **tonic**, **mode**, and **progression** independently. Bare tonic tokens (`Eb`, `C`) propagate without mode, enabling `Eb major → Eb → Eb minor` conflation.
+
+#### N.1 Answers to the eight audit questions
+
+| # | Question | Answer (first divergence / source) |
+|---|----------|-------------------------------------|
+| 1 | Canonical context after **Jam C generate** | **Should be:** active `jam_session_generator` **workflow blob** — `keys.practice_tonic/mode` + `section_map` + sealed `improv_jam_session` (post-§M). **Also written:** `_generated_jam_key_context`, `_generated_artifact_last_*`, session widgets. |
+| 2 | Where progression stays **Eb** while key is **C** | **First split on Backing open:** `build_entry_jam_context` **hybrid path** — `concert_key` from `creative_entry_concert_key` / `_live_backing_concert_keys` (**C**) while `progression` from `_entry_jam_sections_dict` → stale `improv_jam_session.sections` (**Eb ii–V–I**). Secondary: invalid handoff snapshot **fallback** to `_generated_artifact_last_*` with mismatched revision. **Not** the Jazz template when `key_center=C` (template yields **Dm7–G7–Cmaj7**). |
+| 3 | Canonical context after **Hevenu Missions** | **Should be:** `mission_jam` / `song_based_improvisation` blob + `resolve_song_practice_key_token` → **Dm minor** + full `improv_song_concert_sections` / song blob `section_map`. **Selected chord** is separate (`selected_chord_symbol` on mission blob). |
+| 4 | Where **Jam Eb** survives Missions transition | **`generated_jam_owns_practice_key`** / `_generated_jam_key_context` / `improv_jam_session` / stale **`improv_style_meta.key`** when `deactivate_generated_jam_key_ownership` did not run or **`resolve_authoritative_practice_key`** still reads **`entry_jam_practice_key`** before song blob. Envelope flag: **`STALE_GENERATED_JAM_KEY_LEAK`**. |
+| 5 | Notation staff key signature source | Missions ABC: **`mission_notation_staff_key(song_concert_key=…)`** ← `build_mission_example` / `reconcile_mission_example_abc` using **`ImprovSessionContext.display_key` / `key_center`**, which are built from **`_authoritative_practice_chart_key`** + **`_motif_notation_reference_key`** (chord-local **`harmonic_reference_for_chord`** when a chord is focused). **Not** the workflow blob unless those builders were fed from blob. |
+| 6 | Sidebar source | **`display_key` / `concert_key`** widgets ← **`resolve_authoritative_practice_key`** chain: song blob when **`song_catalog_context_owns_practice_key`**, else **`resolve_creative_tab_practice_key_token`** (jam widgets / `_generated_jam_key_context`), else **`resolve_active_musical_key`**. Multiple writers: sidebar callback, **`apply_creative_concert_key`**, **`activate_generated_jam_key_ownership`**, song key edits. |
+| 7 | Specialized Backing source | **Preferred:** sealed **`BACKING_OWNER_ARTIFACT_SNAPSHOT`** → `_entry_jam_context_from_owner_snapshot`. **Failure mode:** seal fails → legacy **`build_entry_jam_context`** hybrid (Q2). **Keys** must come from same object as **progression** (snapshot or blob), never widget-only. |
+| 8 | Single context without pairwise sync? | **Yes — target model:** `CoherentMusicalContext` from **`resolve_coherent_musical_context`** (active workflow blob: tonic+mode+section_map+selection). All renderers become **read-only consumers**; validators fail closed on hybrid. **`ActiveMusicalWorkflowEnvelope`** already partial (key without section_map) — coherence layer adds progression + validation. |
+
+#### N.2 Consolidation shipped on safety (post-§M, pre-next-preview)
+
+- New **`musical_context_coherence.py`** — blob-resolved context, **`KEY_PROGRESSION_CENTER_MISMATCH`**, owner-leak checks.
+- **`build_entry_jam_context`** — generated paths use **coherent blob**; hybrid **C key + Eb progression** raises **`WorkflowOwnerIntegrityError`**; removed stale snapshot **fallback**.
+- **`seal_backing_handoff_snapshot_for_creative_open`** — coherence validation before seal.
+- **`musical_context_authority.run_musical_context_consistency_checks`** — merges coherence violations.
+
+**Tests:** `tests/test_musical_context_coherence_invariants.py`.
+
+**Frozen:** persistence envelope (`9a3131f`), specialized vs generic Backing entry (`6bb4f56`), Return routing, `detect_cross_owner_handoff_fields`.
+
+**Return:** unchanged; trace still required for click → consume → `studio_page=creative` → rerun → dispatch.
+

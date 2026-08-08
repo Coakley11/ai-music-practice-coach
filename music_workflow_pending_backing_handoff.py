@@ -473,6 +473,7 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
 
     try:
         from backing_context import open_backing_from_creative
+        from musical_context_coherence import CreativeBackingHandoffBlocked
 
         open_backing_from_creative(
             session,
@@ -480,6 +481,8 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
             st_like=st,
             skip_workflow_activation=True,
         )
+    except CreativeBackingHandoffBlocked:
+        return "coherence_blocked"
     except TypeError:
         from backing_context import open_backing_from_creative
 

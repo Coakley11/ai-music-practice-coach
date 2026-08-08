@@ -250,6 +250,13 @@ def run_musical_context_consistency_checks(session: dict[str, Any]) -> dict[str,
             violations.append("KEY_MODE_OWNER_MISMATCH")
     except ImportError:
         pass
+    try:
+        from musical_context_coherence import run_musical_context_coherence_checks
+
+        coherence = run_musical_context_coherence_checks(session)
+        violations.extend(list(coherence.get("violations") or []))
+    except ImportError:
+        pass
     diag = {
         "practice_key": pk.as_dict() if hasattr(pk, "as_dict") else pk.__dict__,
         "sidebar_key_list_mode": sidebar_key_list_mode(session),

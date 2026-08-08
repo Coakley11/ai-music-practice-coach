@@ -421,6 +421,41 @@ def seal_backing_handoff_snapshot_for_creative_open(session: dict[str, Any]) -> 
         session[WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY] = "\n".join(violations)
         session.pop(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY, None)
         return False
+    try:
+        from musical_context_coherence import (
+            GENERATED_OWNERS,
+            record_coherence_handoff_block,
+            resolve_coherent_musical_context,
+            validate_coherent_musical_context,
+            validate_generated_snapshot_coherence,
+        )
+
+        coherent = resolve_coherent_musical_context(session, prefer_owners=(owner,))
+        if coherent is not None:
+            coherence_v = validate_coherent_musical_context(coherent)
+        else:
+            prog = list(snap.progression or [])
+            if not prog and snap.section_map:
+                try:
+                    from improvisation_intelligence import flatten_sections
+
+                    prog = flatten_sections(snap.section_map)
+                except ImportError:
+                    prog = [c for chs in snap.section_map.values() for c in chs if str(c).strip()]
+            coherence_v = validate_generated_snapshot_coherence(
+                practice_tonic=str(snap.practice_tonic or "C"),
+                practice_mode=str(snap.practice_mode or "major"),
+                progression=prog,
+                style_id=str(snap.style or ""),
+                mood=str(snap.mood or "Mellow"),
+                owner=owner,
+            )
+        if coherence_v:
+            record_coherence_handoff_block(session, coherence_v)
+            session.pop(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY, None)
+            return False
+    except ImportError:
+        pass
     session.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
     session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
     session["_backing_handoff_entry_mode"] = entry

@@ -1018,6 +1018,45 @@ def _entry_jam_context_from_owner_snapshot(
         return build_entry_jam_context(session)
     entry_mode = str(snap.entry_mode or "").strip() or "Style Jam Mode"
     concert_key = concert_key_from_snapshot(snap)
+    try:
+        from musical_context_coherence import (
+            GENERATED_OWNERS,
+            CreativeBackingHandoffBlocked,
+            raise_coherence_handoff_blocked,
+            resolve_coherent_musical_context,
+            validate_coherent_musical_context,
+            validate_generated_snapshot_coherence,
+        )
+
+        owner = str(snap.workflow_owner or "")
+        coherent = resolve_coherent_musical_context(
+            session, prefer_owners=(owner,) if owner in GENERATED_OWNERS else None
+        )
+        if coherent is not None:
+            snap_v = validate_coherent_musical_context(coherent)
+        else:
+            prog = list(snap.progression or [])
+            if not prog and snap.section_map:
+                try:
+                    from improvisation_intelligence import flatten_sections
+
+                    prog = flatten_sections(snap.section_map)
+                except ImportError:
+                    prog = [c for chs in snap.section_map.values() for c in chs if str(c).strip()]
+            snap_v = validate_generated_snapshot_coherence(
+                practice_tonic=str(snap.practice_tonic or "C"),
+                practice_mode=str(snap.practice_mode or "major"),
+                progression=prog,
+                style_id=str(snap.style or ""),
+                mood=str(snap.mood or "Mellow"),
+                owner=owner or "jam_session_generator",
+            )
+        if snap_v:
+            raise_coherence_handoff_blocked(session, snap_v)
+    except CreativeBackingHandoffBlocked:
+        raise
+    except ImportError:
+        pass
     key = display_key = concert_key
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style = str(snap.style or "").strip() or "Jazz Swing"
@@ -1091,7 +1130,6 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             WORKFLOW_OWNER_INTEGRITY_FAILURE,
             WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY,
             detect_cross_owner_handoff_fields,
-            last_valid_generated_artifact_snapshot,
             peek_backing_owner_artifact_snapshot,
             validate_owner_artifact_snapshot,
         )
@@ -1103,10 +1141,6 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             if not violations:
                 return _entry_jam_context_from_owner_snapshot(session, snap)
             session[WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY] = "\n".join(violations)
-            fallback = last_valid_generated_artifact_snapshot(session, snap.workflow_owner)  # type: ignore[arg-type]
-            if fallback is not None:
-                session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = fallback.to_dict()
-                return _entry_jam_context_from_owner_snapshot(session, fallback)
             raise WorkflowOwnerIntegrityError(violations[0] if violations else WORKFLOW_OWNER_INTEGRITY_FAILURE)
     except ImportError:
         pass
@@ -1118,17 +1152,6 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         resolve_improv_song_source = lambda s: str(s.get("improv_song_source") or "Active song")  # type: ignore
 
     pick_key = _current_pick_key(session)
-    key, display_key, concert_key = _live_backing_concert_keys(session)
-    try:
-        from creative_key_sync import creative_entry_concert_key
-
-        creative_sel = str(creative_entry_concert_key(session) or "").strip()
-        entry_for_key = str(session.get("improv_entry_mode") or "").strip()
-        if entry_for_key in {"Style Jam Mode", "Jam Session Generator"} and creative_sel:
-            key = display_key = concert_key = creative_sel
-    except ImportError:
-        pass
-    chart_display_key = _resolve_chart_display_key(session, concert_key)
     try:
         from backing_source_navigation import resolve_entry_jam_entry_mode
 
@@ -1137,6 +1160,44 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         entry_mode = str(session.get("improv_entry_mode") or "Style Jam Mode").strip()
         if entry_mode == "Song-Based Improvisation":
             entry_mode = "Style Jam Mode"
+
+    key, display_key, concert_key = _live_backing_concert_keys(session)
+    sections_dict: dict[str, list[str]] = {}
+    used_coherent_generated = False
+    if entry_mode in {"Style Jam Mode", "Jam Session Generator"}:
+        try:
+            from musical_context_coherence import (
+                GENERATED_OWNERS,
+                CreativeBackingHandoffBlocked,
+                raise_coherence_handoff_blocked,
+                resolve_coherent_musical_context,
+                validate_coherent_musical_context,
+            )
+
+            coherent = resolve_coherent_musical_context(session, prefer_owners=tuple(GENERATED_OWNERS))
+            if coherent is not None:
+                coherence_v = validate_coherent_musical_context(coherent)
+                if coherence_v:
+                    raise_coherence_handoff_blocked(session, coherence_v)
+                key = display_key = concert_key = coherent.key_token
+                sections_dict = copy.deepcopy(coherent.section_map)
+                used_coherent_generated = True
+        except CreativeBackingHandoffBlocked:
+            raise
+        except ImportError:
+            pass
+
+    if not used_coherent_generated:
+        try:
+            from creative_key_sync import creative_entry_concert_key
+
+            creative_sel = str(creative_entry_concert_key(session) or "").strip()
+            entry_for_key = str(session.get("improv_entry_mode") or "").strip()
+            if entry_for_key in {"Style Jam Mode", "Jam Session Generator"} and creative_sel:
+                key = display_key = concert_key = creative_sel
+        except ImportError:
+            pass
+    chart_display_key = _resolve_chart_display_key(session, concert_key)
     if entry_mode == "Jam Session Generator":
         style = str(session.get("improv_jam_style") or "Jazz Swing").strip() or "Jazz Swing"
         groove = str(session.get("improv_groove") or style).strip()
@@ -1161,7 +1222,8 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     jam_id = hashlib.sha256(f"{entry_mode}|{style}|{concert_key}".encode()).hexdigest()[:12]
     mode_label = entry_mode.replace(" Mode", "").replace(" Generator", "")
 
-    sections_dict = _entry_jam_sections_dict(session, entry_mode)
+    if not used_coherent_generated:
+        sections_dict = _entry_jam_sections_dict(session, entry_mode)
 
     progression: list[str] = []
     progression_label = ""
@@ -1213,6 +1275,30 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
     jam_title = style or mode_label or "Style jam"
     gen_song_id = f"generated::{entry_mode}::{jam_id}"
+    if (
+        entry_mode in {"Style Jam Mode", "Jam Session Generator"}
+        and progression
+        and not used_coherent_generated
+    ):
+        try:
+            from musical_context_coherence import (
+                CreativeBackingHandoffBlocked,
+                raise_coherence_handoff_blocked,
+                validate_hybrid_generated_session_split,
+            )
+
+            hybrid_v = validate_hybrid_generated_session_split(
+                session,
+                declared_key=concert_key,
+                progression=progression,
+                style_id=style,
+            )
+            if hybrid_v:
+                raise_coherence_handoff_blocked(session, hybrid_v)
+        except CreativeBackingHandoffBlocked:
+            raise
+        except ImportError:
+            pass
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
@@ -2203,7 +2289,12 @@ def open_backing_from_creative(
                 seal_backing_handoff_snapshot_for_creative_open(session)
             except ImportError:
                 pass
-        ctx = build_entry_jam_context(session)
+        try:
+            from musical_context_coherence import CreativeBackingHandoffBlocked
+
+            ctx = build_entry_jam_context(session)
+        except CreativeBackingHandoffBlocked:
+            raise
     try:
         from workflow_musical_authority import validate_workflow_consistency, workflow_type_from_backing_source
         from music_workflow_activation import activate_workflow_simple
