@@ -2050,6 +2050,12 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     improv_ctx.key_center = key_center
     improv_ctx.display_key = chart_key
 
+    if isinstance(snap, dict):
+        snap_key = str(snap.get("chart_key") or snap.get("key_center") or "").strip()
+        if snap_key and snap_key != chart_key:
+            session_state.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
+            snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+
     sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     if isinstance(snap, dict) and snap.get("cur_chord"):
         cur_chord = str(snap.get("cur_chord"))

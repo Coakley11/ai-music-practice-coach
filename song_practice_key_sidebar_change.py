@@ -62,6 +62,12 @@ def finalize_sidebar_song_practice_key_after_mutation(
     except ImportError:
         pass
     try:
+        from music_workflow_song_practice import rehydrate_full_song_concert_sections
+
+        rehydrate_full_song_concert_sections(session, source="sidebar_song_practice_key_finalize")
+    except ImportError:
+        pass
+    try:
         from music_workflow_legacy_projection import project_active_blob_to_legacy_session
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 

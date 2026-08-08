@@ -120,6 +120,14 @@ def resolve_creative_tab_practice_key_token(session: dict[str, Any]) -> str:
     if not entry_jam_practice_key_authority_active(session):
         return ""
     try:
+        from workflow_key_identity import resolve_active_workflow_key_identity
+
+        ident = resolve_active_workflow_key_identity(session)
+        if ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}:
+            return ident.practice_key_token
+    except ImportError:
+        pass
+    try:
         from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
 
         raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
@@ -154,6 +162,12 @@ def resolve_creative_tab_practice_key_token(session: dict[str, Any]) -> str:
 
 def apply_entry_jam_authoritative_practice_key(session: dict[str, Any], *, source: str) -> str:
     """Push entry-jam practice key into concert_key and display_key before sidebar widgets."""
+    try:
+        from generated_workflow_projection import project_generated_owner_from_active_blob
+
+        project_generated_owner_from_active_blob(session, writer=f"apply_entry_jam:{source}")
+    except ImportError:
+        pass
     tok = resolve_creative_tab_practice_key_token(session)
     if not tok:
         return ""
@@ -433,6 +447,12 @@ def sync_style_jam_legacy_after_authoritative_key(
 
 def sync_creative_style_jam_meta(session: dict[str, Any]) -> None:
     """Keep improv_style_meta aligned with Style Jam widgets."""
+    try:
+        from generated_workflow_projection import project_generated_owner_from_active_blob
+
+        project_generated_owner_from_active_blob(session, writer="sync_creative_style_jam_meta")
+    except ImportError:
+        pass
     from songs.playback_defaults import normalize_groove_label
 
     groove_intensity = str(session.get("improv_groove") or "Medium").strip()
@@ -875,7 +895,16 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             selected = ident.practice_key_token
     except ImportError:
         pass
-    options = practice_keys_for_mode(key_mode(selected))
+    list_mode = "major"
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident_opts = resolve_practice_key_identity_for_ui(session)
+        if ident_opts is not None:
+            list_mode = ident_opts.practice_mode
+    except ImportError:
+        list_mode = key_mode(selected)
+    options = practice_keys_for_mode(list_mode)
     if selected not in options:
         options = [selected] + options
     if ctx_source == "custom_progression":
@@ -977,6 +1006,31 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     except ImportError:
         pass
 
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_practice_key_identity_for_ui
+
+        if generated_workflow_owns_practice_key(session):
+            try:
+                from generated_workflow_projection import project_generated_owner_from_active_blob
+
+                project_generated_owner_from_active_blob(session, writer="prepare_creative_sidebar")
+            except ImportError:
+                pass
+            ident = resolve_practice_key_identity_for_ui(session)
+            if ident is not None:
+                token = ident.practice_key_token
+                from music_theory import practice_keys_for_mode
+
+                options = practice_keys_for_mode(ident.practice_mode)
+                if token not in options:
+                    options = [token] + options
+                _apply_display_key_before_widget(st, token, source="generated_creative_workflow_identity")
+                session["concert_key"] = token
+                session["_sidebar_key_identity_label"] = ident.practice_label
+                return options
+    except ImportError:
+        pass
+
     flush_pending_creative_major_keys(session)
     preserved = _sidebar_preserve_user_display_key_options(
         st,
@@ -1022,6 +1076,15 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     selected = to_major_key_preserve_spelling(selected)
     if user_sidebar_display_key_authoritative(session):
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        try:
+            from workflow_key_identity import generated_workflow_owns_practice_key, resolve_practice_key_identity_for_ui
+
+            if generated_workflow_owns_practice_key(session):
+                ident = resolve_practice_key_identity_for_ui(session)
+                if ident is not None:
+                    live = ident.practice_key_token
+        except ImportError:
+            pass
         if live:
             options = _sidebar_key_options_including(session, live)
             session["concert_key"] = live

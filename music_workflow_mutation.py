@@ -790,7 +790,17 @@ def _reconcile_key_dependent_state(
         pass
 
 
-def _parse_key_token(key: str) -> tuple[str, str]:
+def _parse_key_token(key: str, *, default_mode: str = "major") -> tuple[str, str]:
+    try:
+        from workflow_key_identity import normalize_user_practice_key_selection
+
+        tonic, mode, _token = normalize_user_practice_key_selection(
+            str(key or "C"),
+            default_mode=str(default_mode or "major"),
+        )
+        return tonic, mode
+    except ImportError:
+        pass
     try:
         from music_workflow_compatibility import _tonic_mode_from_token
 
@@ -835,10 +845,14 @@ def update_active_practice_key(
     if owner not in {"song_based_improvisation", "mission_jam", "style_jam", "jam_session_generator"}:
         return MutationResult(ok=False, error_code="UNSUPPORTED_OWNER", error_message="Key change unsupported for owner.")
 
-    new_tonic, new_mode = _parse_key_token(key_token)
     blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
     if blob is None:
         return MutationResult(ok=False, error_code="NO_BLOB", error_message="Active blob missing.")
+
+    new_tonic, new_mode = _parse_key_token(
+        key_token,
+        default_mode=str(blob.keys.practice_mode or "major"),
+    )
 
     prev_token = f"{blob.keys.practice_tonic}{blob.keys.practice_mode}"
     new_token = f"{new_tonic}{new_mode}"

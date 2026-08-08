@@ -413,6 +413,21 @@ def _fixed_practice_key_for_context(
     fallback: str = "",
 ) -> str:
     try:
+        from workflow_key_identity import (
+            fixed_practice_key_projection_blocked,
+            resolve_practice_key_identity_for_ui,
+        )
+
+        if fixed_practice_key_projection_blocked(session):
+            ident = resolve_practice_key_identity_for_ui(session)
+            if ident is not None:
+                return ident.practice_key_token
+            fb = str(fallback or ctx.concert_key or ctx.display_key or "").strip()
+            if fb:
+                return fb
+    except ImportError:
+        pass
+    try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(session):
@@ -1881,6 +1896,19 @@ def apply_backing_context_to_session(
     if ctx.display_key or ctx.concert_key:
         concert = str(ctx.concert_key or ctx.display_key or "").strip()
         concert = _fixed_practice_key_for_context(session, ctx, concert)
+        try:
+            from workflow_key_identity import generated_workflow_owns_practice_key, resolve_practice_key_identity_for_ui
+
+            if generated_workflow_owns_practice_key(session) or str(ctx.source or "") in {
+                "entry_jam",
+                "mission",
+                "song_improv",
+            }:
+                ident = resolve_practice_key_identity_for_ui(session)
+                if ident is not None:
+                    concert = ident.practice_key_token
+        except ImportError:
+            pass
         if concert:
             try:
                 from session_widget_safe import safe_assign_display_key
@@ -1933,11 +1961,34 @@ def apply_backing_context_to_session(
             session["backing_track_scope"] = "Single section"
             session["backing_track_single_section"] = ctx.section
     else:
-        session.pop("backing_track_single_section", None)
-        session[PENDING_BACKING_SCOPE] = str(ctx.scope or "Full song")
-        session.pop(PENDING_BACKING_SINGLE_SECTION, None)
-        if not widget_safe:
-            session["backing_track_scope"] = str(ctx.scope or "Full song")
+        preserve_scope = False
+        scope_filters: dict[str, Any] = {}
+        try:
+            from backing_track_state import canonical_backing_filters, gather_backing_filters, is_backing_user_dirty
+
+            if is_backing_user_dirty(session):
+                preserve_scope = True
+                scope_filters = gather_backing_filters(session) or canonical_backing_filters(session) or {}
+        except ImportError:
+            pass
+        if preserve_scope and scope_filters.get("backing_track_scope"):
+            session.pop("backing_track_single_section", None)
+            session[PENDING_BACKING_SCOPE] = str(scope_filters.get("backing_track_scope") or "Full song")
+            session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+            if not widget_safe:
+                session["backing_track_scope"] = str(scope_filters.get("backing_track_scope") or "Full song")
+                sec = str(scope_filters.get("backing_track_single_section") or "").strip()
+                if sec:
+                    session["backing_track_single_section"] = sec
+                multi = scope_filters.get("backing_track_multi_sections")
+                if isinstance(multi, list) and multi:
+                    session["backing_track_multi_sections"] = list(multi)
+        else:
+            session.pop("backing_track_single_section", None)
+            session[PENDING_BACKING_SCOPE] = str(ctx.scope or "Full song")
+            session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+            if not widget_safe:
+                session["backing_track_scope"] = str(ctx.scope or "Full song")
 
     if widget_safe:
         session[PENDING_BACKING_LOOPS] = int(ctx.loops or 2)
@@ -1948,10 +1999,15 @@ def apply_backing_context_to_session(
         "backing_track_bpm": int(session.get("backing_track_bpm") or ctx.bpm),
         "backing_groove_style": backing_style,
         "backing_time_signature": str(ctx.meter or "4/4"),
-        "backing_track_scope": str(ctx.scope or "Full song"),
-        "backing_track_single_section": str(ctx.section or ""),
+        "backing_track_scope": str(session.get("backing_track_scope") or ctx.scope or "Full song"),
+        "backing_track_single_section": str(
+            session.get("backing_track_single_section") or ctx.section or ""
+        ),
         "backing_track_loops": int(ctx.loops or 2),
     }
+    multi = session.get("backing_track_multi_sections")
+    if isinstance(multi, list) and multi:
+        canonical["backing_track_multi_sections"] = list(multi)
     write_canonical_backing_state(
         session,
         canonical,

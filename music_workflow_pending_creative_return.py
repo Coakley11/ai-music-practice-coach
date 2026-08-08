@@ -108,6 +108,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         prepare_return_to_backing_source(session)
         session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
         try:
+            from generated_workflow_projection import project_generated_owner_from_active_blob
+
+            project_generated_owner_from_active_blob(session, writer="creative_return_consume")
+        except ImportError:
+            pass
+        try:
             from creative_return_trace import emit_creative_return_trace
 
             emit_creative_return_trace(session, "ON_RETURN_AFTER_PREPARE_BEFORE_NAV")

@@ -205,12 +205,21 @@ def _finalize_generated_key_edit_after_mutation(
     session[widget_key] = requested
     if owner == "style_jam":
         try:
-            from creative_key_sync import IMPROV_STYLE_KEY_TRACKER, sync_style_jam_legacy_after_authoritative_key
+            from generated_workflow_projection import sync_style_jam_legacy_from_active_blob
 
-            sync_style_jam_legacy_after_authoritative_key(session, requested, st_like=st_like)
-            session[IMPROV_STYLE_KEY_TRACKER] = requested
+            sync_style_jam_legacy_from_active_blob(
+                session,
+                writer="_finalize_generated_key_edit",
+                phase="post_mutation",
+            )
         except ImportError:
-            pass
+            try:
+                from creative_key_sync import IMPROV_STYLE_KEY_TRACKER, sync_style_jam_legacy_after_authoritative_key
+
+                sync_style_jam_legacy_after_authoritative_key(session, requested, st_like=st_like)
+                session[IMPROV_STYLE_KEY_TRACKER] = requested
+            except ImportError:
+                pass
     else:
         try:
             from creative_key_sync import IMPROV_JAM_KEY_TRACKER, invalidate_creative_backing_context
@@ -438,6 +447,12 @@ def mutate_generated_practice_key_from_control(
         requested=requested,
         st_like=st_like,
     )
+    try:
+        from generated_workflow_projection import project_generated_owner_from_active_blob
+
+        project_generated_owner_from_active_blob(session, writer=f"mutate_generated:{control}")
+    except ImportError:
+        pass
     if owner == "jam_session_generator":
         try:
             from improv_jam_session_projection import sync_improv_jam_session_from_active_blob

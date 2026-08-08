@@ -256,33 +256,34 @@ def build_snapshot_from_session(
         if isinstance(jam, dict) and jam.get("id"):
             artifact_id = str(jam.get("id"))
 
-    if owner == "style_jam":
-        sm = str(session.get("improv_mood") or "").strip()
-        if sm:
-            mood = sm
-        sg = str(session.get("improv_groove") or "").strip()
-        if sg:
-            groove = sg
-        ss = str(session.get("improv_style") or "").strip()
-        if ss:
-            style = ss
-    elif owner == "jam_session_generator":
-        jm = str(session.get("improv_jam_mood") or "").strip()
-        if jm:
-            mood = jm
-        js = str(session.get("improv_jam_style") or "").strip()
-        if js:
-            style = js
-        jk = str(session.get("improv_jam_key") or "").strip()
-        if jk and not blob_authoritative:
-            try:
-                from music_workflow_compatibility import _tonic_mode_from_token
+    if not blob_authoritative:
+        if owner == "style_jam":
+            sm = str(session.get("improv_mood") or "").strip()
+            if sm:
+                mood = sm
+            sg = str(session.get("improv_groove") or "").strip()
+            if sg:
+                groove = sg
+            ss = str(session.get("improv_style") or "").strip()
+            if ss:
+                style = ss
+        elif owner == "jam_session_generator":
+            jm = str(session.get("improv_jam_mood") or "").strip()
+            if jm:
+                mood = jm
+            js = str(session.get("improv_jam_style") or "").strip()
+            if js:
+                style = js
+            jk = str(session.get("improv_jam_key") or "").strip()
+            if jk:
+                try:
+                    from music_workflow_compatibility import _tonic_mode_from_token
 
-                pt, pm = _tonic_mode_from_token(jk)
-            except ImportError:
-                pass
+                    pt, pm = _tonic_mode_from_token(jk)
+                except ImportError:
+                    pass
 
-    if owner == "style_jam" and not str(mood or "").strip():
+    if owner == "style_jam" and not str(mood or "").strip() and not blob_authoritative:
         mood = str(session.get("improv_mood") or "")
 
     last_raw = session.get(f"_generated_artifact_last_{owner}")
