@@ -2094,13 +2094,14 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
     if not deferred:
         return False
+    flush_origin = "user_navigation" if ss.get("_suite_page_user_nav") else "reconciliation"
     try:
         from music_startup_save_suppression import set_page_change_origin
 
-        set_page_change_origin(ss, "reconciliation")
+        set_page_change_origin(ss, flush_origin)
     except ImportError:
         pass
-    prepare_page_change_save_state(ss, deferred, st=st, origin="reconciliation")
+    prepare_page_change_save_state(ss, deferred, st=st, origin=flush_origin)
     if not _page_change_save_ready(ss, deferred):
         return False
     ss.pop("_suite_deferred_page_change_save", None)

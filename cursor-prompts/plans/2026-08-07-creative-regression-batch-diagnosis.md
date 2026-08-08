@@ -75,7 +75,29 @@ Preview on safety branch only — **do not merge to `origin/dev` until manual de
 2. Before refresh: copy **Binary question** JSON from boundary trace + last `serialize_payload` / `save_*` events + `force_save_block_reason`.
 3. Refresh: first `hydrate_raw_picked` payload page/song/rev vs account `workspace_id`.
 
-**Status:** Trace landed on safety branch; **no save/hydration fix** until preview trace confirms which column in the table above applies.
+**Status (trace @ safety `837c800`, preview):** **Column A — save-side startup suppression**, not hydration.
+
+**Trace fingerprint (Hevenu + Log nav before failed save):**
+
+- Live/canonical page = `log`, song = Hevenu, `page_change_origin=user_navigation`, `page_user_nav=true`, rev **894**.
+- Durable cloud rev **894** still **Creative + Hevenu** (hydration faithful).
+- `latest_serialize_payload` / `latest_save_complete` = **NULL**; blocked **before payload build**.
+- `block_reason` / `force_save_early_return_reason` = **`startup_suppression_armed_page_change`**.
+- Simultaneously: `restore_finalized_stage=late_end_of_run`, but **`startup_suppression_released=NULL`**, **`startup_restore_in_progress=true`**, **`startup_suppression_armed=true`**, `startup_fingerprint_matches=false` (post-nav canonical diff — not restore noise).
+
+**First incorrect boundary:** Startup restore reached finalize, but **suppression lifecycle did not release** when canonical fingerprint no longer matched hydrated (legitimate user page nav). Late guard **deferred** full finalize for queued user page without releasing; full finalize **else** branch left restore in progress and suppression armed.
+
+**Fix (this branch, `music_startup_save_suppression.py` + deferred flush origin):**
+
+1. On finalize **mismatch** after restore apply → `_release_startup_suppression_after_restore_mismatch` (release without discarding user edits; queued nav uses `_apply_queued_page_startup_release`).
+2. Late `run_late_startup_restore_guard` **defer** path → mark restore finalized and release for genuine queued user page (no Creative re-stamp via full finalize).
+3. `_release_startup_for_queued_page_change` → post-finalize / page-only / queued-target normalized compare fallbacks.
+4. `should_suppress` `page_change` → auto-release if restore finalized and user nav still blocked.
+5. `maybe_flush_deferred_page_change_save` → **`user_navigation`** when `_suite_page_user_nav` (not `reconciliation`).
+
+**Regression tests:** `tests/test_startup_suppression_release_lifecycle.py` (+ existing queued-page / cold-reboot tests).
+
+**Verify on next preview:** After Hevenu hydrate @ Creative → nav Log → boundary trace shows `serialize_payload != NULL`, `save_complete != NULL`, durable page advances to Log at rev > 894.
 
 **Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
 

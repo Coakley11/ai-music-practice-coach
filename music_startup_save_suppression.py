@@ -337,6 +337,34 @@ def _pre_navigation_startup_alignment_satisfied(session: dict[str, Any]) -> bool
     return False
 
 
+def _startup_restore_pipeline_finalized(session: dict[str, Any]) -> bool:
+    """True once startup restore alignment has run (early or late finalize)."""
+    return bool(str(session.get(RESTORE_FINALIZED_STAGE_KEY) or "").strip())
+
+
+def _release_startup_suppression_after_restore_mismatch(
+    session: dict[str, Any],
+    *,
+    rev_loaded: int,
+    stage: str,
+    queued_page: str,
+) -> None:
+    """
+    Restore apply finished but live canonical differs from hydrated (user edits / nav).
+    Release save suppression without discarding pending user edits or writing autosave payloads.
+    """
+    if queued_page and _genuine_queued_user_navigation(session):
+        _apply_queued_page_startup_release(session, rev_loaded=rev_loaded, stage=stage)
+        return
+    session[STARTUP_SUPPRESSION_RELEASED_KEY] = True
+    session[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
+    session[STARTUP_WRITE_ALLOWED_REASON_KEY] = "restore_finalized_canonical_mismatch"
+    session[STARTUP_REVISION_FINAL_KEY] = int(rev_loaded or 0)
+    session.pop(STARTUP_WRITE_SUPPRESSED_KEY, None)
+    session.pop(STARTUP_SAVE_SUPPRESSED_KEY, None)
+    session.pop(STARTUP_SAVE_SUPPRESSION_REASON_KEY, None)
+
+
 def _canonical_fp_for_startup_release(
     session: dict[str, Any],
     state: dict[str, Any] | None,
@@ -618,11 +646,14 @@ def _release_startup_for_queued_page_change(
         post_state = {}
 
     normalize_page = hydrated_page or "backing"
+    normalize_post_page = _normalize_page_id(queued) or normalize_page
     release_hydrated_fp = _canonical_fp_for_startup_release(
         ss, hydrated_side, normalize_page=normalize_page
     )
     release_post_fp = _canonical_fp_for_startup_release(
-        ss, post_state if isinstance(post_state, dict) else {}, normalize_page=normalize_page
+        ss,
+        post_state if isinstance(post_state, dict) else {},
+        normalize_page=normalize_post_page,
     )
     try:
         from music_workspace_canonical_fingerprint import diff_canonical_paths
@@ -662,6 +693,17 @@ def _release_startup_for_queued_page_change(
     if not matches:
         ss[STARTUP_FINGERPRINT_MATCHES_KEY] = False
         ss[DIFFERING_CANONICAL_PATHS_KEY] = differing or None
+        if _genuine_queued_user_navigation(ss) and (
+            _startup_restore_pipeline_finalized(ss)
+            or page_only
+            or _differing_only_queued_page_navigation(
+                differing, hydrated_page=normalize_page, queued_page=queued
+            )
+        ):
+            _apply_queued_page_startup_release(
+                ss, rev_loaded=rev_loaded, stage="page_change_release_post_finalize"
+            )
+            return True
         ss["queued_page_change_release_blocked_reason"] = suppress_reason or "startup_page_mismatch"
         try:
             from music_page_cloud_durability_trace import record_startup_release_blocked
@@ -915,7 +957,12 @@ def finalize_startup_canonical_alignment(st: Any, *, stage: str = "early_finaliz
         ss[STARTUP_WRITE_ALLOWED_REASON_KEY] = "canonical_match_after_restore"
         ss[STARTUP_RESTORE_IN_PROGRESS_KEY] = False
     else:
-        ss[STARTUP_WRITE_ALLOWED_REASON_KEY] = None
+        _release_startup_suppression_after_restore_mismatch(
+            ss,
+            rev_loaded=rev_loaded,
+            stage=stage,
+            queued_page=queued_page or "",
+        )
 
     try:
         from display_key_startup_save_queue import (
@@ -1082,6 +1129,15 @@ def run_late_startup_restore_guard(st: Any) -> bool:
             pass
         rev_loaded = int(ss.get(STARTUP_REVISION_LOADED_KEY) or 0)
         ss[STARTUP_REVISION_FINAL_KEY] = rev_loaded
+        ss[RESTORE_FINALIZED_STAGE_KEY] = "late_end_of_run"
+        queued = queued_user_page_change_target(ss)
+        if queued and _genuine_queued_user_navigation(ss):
+            _release_startup_suppression_after_restore_mismatch(
+                ss,
+                rev_loaded=rev_loaded,
+                stage="late_end_of_run:queued_page_deferred",
+                queued_page=queued,
+            )
         try:
             from display_key_startup_save_queue import (
                 flush_queued_display_key_change_once,
@@ -1131,6 +1187,18 @@ def should_suppress_music_workspace_save(session: dict[str, Any], save_reason: s
         return False, ""
 
     if reason == "page_change":
+        if (
+            _genuine_queued_user_navigation(session)
+            and _startup_restore_pipeline_finalized(session)
+            and not session.get(STARTUP_SUPPRESSION_RELEASED_KEY)
+        ):
+            rev_loaded = int(session.get(STARTUP_REVISION_LOADED_KEY) or 0)
+            _release_startup_suppression_after_restore_mismatch(
+                session,
+                rev_loaded=rev_loaded,
+                stage=str(session.get(RESTORE_FINALIZED_STAGE_KEY) or "post_finalize_user_nav"),
+                queued_page=queued_user_page_change_target(session),
+            )
         armed = bool(session.get(STARTUP_SUPPRESSION_ARMED_KEY)) and not session.get(
             STARTUP_SUPPRESSION_RELEASED_KEY
         )
