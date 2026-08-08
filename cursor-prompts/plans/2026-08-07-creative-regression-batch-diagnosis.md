@@ -123,5 +123,13 @@ Preview on safety branch only — **do not merge to `origin/dev` until manual de
 
 **Tests:** `tests/test_jam_key_missions_widget_safe.py`.
 
+### J — Song section scope invariants (acceptance, safety branch)
+
+**Invariant:** Fresh song-based / catalog Backing / Entry&Jam / section-capable Jam entry → **Full Song** default; user may select a section for that workflow; switching workflows must not inherit stale section; canonical Full Song must not lose to stale `backing_quick_section` on gather/persist.
+
+**Guard:** `reset_backing_playback_scope_to_full_song` + `song_improv_scope_authority.apply_song_improv_entry_defaults` (existing). **Generic catalog Backing** (`release_specialized_backing_for_generic_navigation`) now also resets playback scope so mission/jam **Bridge** does not leak into top-level catalog Backing.
+
+**Tests:** `tests/test_workflow_section_scope_invariants.py`, `tests/test_backing_scope_widget_lifecycle.py`, `tests/test_song_improv_scope_authority.py`.
+
 **Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
 
