@@ -49,6 +49,12 @@ def queue_pending_creative_return_from_backing(session: dict[str, Any]) -> dict[
     }
     session[PENDING_CREATIVE_RETURN_KEY] = req
     session.pop(PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY, None)
+    try:
+        from creative_return_trace import trace_return_handoff_queued
+
+        trace_return_handoff_queued(session, req)
+    except ImportError:
+        pass
     return req
 
 
@@ -78,10 +84,23 @@ def request_pending_creative_return_rerun(st_module: Any, session: dict[str, Any
 def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any | None = None) -> ConsumePhase:
     pending = session.get(PENDING_CREATIVE_RETURN_KEY)
     if not isinstance(pending, dict):
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "skipped")
+        except ImportError:
+            pass
         return "skipped"
+    sealed = pending.get("sealed_context") if isinstance(pending.get("sealed_context"), dict) else {}
     token = _consume_token(pending)
     if session.get(PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY) == token:
         session.pop(PENDING_CREATIVE_RETURN_KEY, None)
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "already_consumed", sealed=sealed)
+        except ImportError:
+            pass
         return "already_consumed"
     try:
         from backing_source_navigation import CREATIVE_RESTORE_FROM_BACKING_KEY, prepare_return_to_backing_source
@@ -95,6 +114,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         except ImportError:
             pass
     except ImportError:
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "skipped", sealed=sealed)
+        except ImportError:
+            pass
         return "skipped"
     try:
         from studio_nav_history import navigate_studio_page
@@ -126,6 +151,12 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
             pass
     session[PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY] = token
     session.pop(PENDING_CREATIVE_RETURN_KEY, None)
+    try:
+        from creative_return_trace import trace_return_consume_phase
+
+        trace_return_consume_phase(session, "applied", sealed=sealed)
+    except ImportError:
+        pass
     return "applied"
 
 
@@ -150,6 +181,16 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
             pass
         return
     phase = consume_pending_creative_return_handoff(session, st=st_module)
+    try:
+        from creative_return_trace import emit_creative_return_trace
+
+        emit_creative_return_trace(
+            session,
+            "ON_RETURN_CLICK_AFTER_CONSUME",
+            extra={"consume_phase": str(phase or "")},
+        )
+    except ImportError:
+        pass
     if phase == "skipped":
         try:
             st_module.warning("Return to Creative could not apply backing context.")

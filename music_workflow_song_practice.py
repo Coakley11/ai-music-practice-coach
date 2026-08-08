@@ -119,6 +119,24 @@ def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob:
 def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str:
     """Same-run Missions parent key — entry jam wins over catalog song blob when still active."""
     try:
+        from creative_key_sync import entry_jam_practice_key_authority_active
+
+        if not entry_jam_practice_key_authority_active(session):
+            mirror_mission_keys_from_song_blob(session)
+            song_tok = resolve_song_practice_key_token(session)
+            if song_tok:
+                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+                if live != song_tok:
+                    sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
+                try:
+                    from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+                    prime_sidebar_practice_key_from_identity(session)
+                except ImportError:
+                    pass
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import apply_entry_jam_authoritative_practice_key
 
         jam_tok = apply_entry_jam_authoritative_practice_key(

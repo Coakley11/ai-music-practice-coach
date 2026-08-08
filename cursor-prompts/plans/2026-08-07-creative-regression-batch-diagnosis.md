@@ -133,3 +133,74 @@ Preview on safety branch only — **do not merge to `origin/dev` until manual de
 
 **Prior item F (`a824bbc` autosave page):** May still matter for stale Creative in passive autosave, but does **not** explain song + page reverting together unless the whole workspace write never commits.
 
+---
+
+### K — Shared key + chord authority + Return (live @ `99046fa`, diagnosis + targeted fixes)
+
+**Acceptance:** Still **FAIL** on preview @ `99046fa`. **Do not promote to `dev`.** Work stays on `safety/creative-regression-2026-08-07-ee6b5cb`.
+
+#### K.1 Trace table — one Hevenu/Missions run (same session snapshot)
+
+| Surface / field | Live symptom (repro) | Value owner (code) | Typical stale value | First diverging writer |
+|-----------------|----------------------|--------------------|---------------------|----------------------|
+| **Intended canonical** (Hevenu song-based) | D minor everywhere after catalog practice | `song_based_improvisation` blob `keys.*` via `resolve_song_practice_key_token` | — | — |
+| `active_song` original key | (catalog) | `songs.key_state.resolve_active_musical_key` → `original_key` | — | — |
+| Sidebar Practice / Concert Key | **C major** while Missions **Cm** | `display_key` / `concert_key` widgets + `prime_sidebar_practice_key_from_identity` | Jam-era major tonic `"C"` without mode | **`apply_entry_jam_authoritative_practice_key`** / `to_major_key_preserve_spelling` on jam token; or session `display_key` not reconciled from song blob |
+| `resolve_authoritative_practice_key` | Sidebar label mode | `musical_context_authority` (was: jam token **before** song blob when jam fields linger) | `"entry_jam_practice_key"` major projection | **`resolve_creative_tab_practice_key_token`** when `entry_jam_practice_key_authority_active` true; fixed path: **`song_based_blob_practice_key`** when catalog owns |
+| Missions header / progression | **Cm** | `resolve_missions_section_map` + mission blob `keys` + `improv_ctx.key_center` from `_coherent_improv_key_pair` | Jam-generated **Cm** progression frozen on `mission_jam` blob | **Mission blob `keys` / section_map** not mirrored from song blob on Missions entry (`mirror_mission_keys_from_song_blob` only on chord mutate, not tab hydrate) |
+| Mission sealed key | Cm in specialized Backing | mission blob + `mission_practice_context` | Same as mission blob | Same as mission blob |
+| `SongCreativeFocus` | Chord sync | `commit_song_creative_focus` on mission chord mutate | Stale focus if practice-key binding fails | `read_song_creative_focus` → rebuild from **song** blob, not mission |
+| `improv_ctx.key_center` | Missions caption | `_authoritative_practice_chart_key` → jam token **then** song token | Major `"C"` or blob **Cm** | Order in `_authoritative_practice_chart_key`; mission ctx built before song reconcile |
+| Generic catalog Backing | **D minor** (correct) | `sync_session_practice_key_from_song_blob` on generic entry | — | — |
+| Return to Missions after catalog Backing | Missions **Cm**, sidebar **Dm** | Mission blob stale; sidebar synced from song on return | Split authorities | **First:** mission blob not mirrored after song blob updated by catalog Backing |
+
+**A — ONE canonical key for Hevenu/Missions:** **`song_based_improvisation` practice key (e.g. D minor)** when Jam ownership has ended and catalog pick is active. **First writers of wrong C minor / C major:** (1) **mission_jam blob** retaining jam transposition; (2) **sidebar `display_key`** retaining jam **major tonic** (`to_major_key_preserve_spelling`) or unreconciled session fields; (3) **`resolve_authoritative_practice_key`** previously preferring jam tab token over song blob when catalog should own.
+
+**Ownership rule implemented (minimal):** `song_catalog_context_owns_practice_key` → **`resolve_song_practice_key_token`** before jam branch; `ensure_missions_parent_practice_key_hydrated` → **mirror + sync** from song blob when entry jam inactive.
+
+#### K.2 Chord sync matrix (Fm in Missions → Harmony still Cm)
+
+| Step | Owner |
+|------|--------|
+| Missions tile `on_click` | `apply_atomic_mission_chord_selection` → `mutate_mission_chord_selection` |
+| Atomic mutation | mission blob + `commit_song_creative_focus` + `handle_user_mission_target_selection` |
+| Canonical pair | `II_SELECTED_*` + `write_authoritative_chord_selection` (harmony_map_* ) |
+| Harmony tab read | `hydrate_creative_pages_from_song_focus` → `_ensure_chord_selection` → `_selected_chord` |
+
+**B — ONE canonical chord after Fm click:** **`II_SELECTED_*` as validated by `resolve_authoritative_chord_selection` on the active section_map.** **First surface that diverged:** Harmony Map when **`harmony_map_chord` / focus hydrate** lagged mission blob (mission click did not always call `write_authoritative_chord_selection`). **Fix:** `mutate_mission_chord_selection` now calls **`write_authoritative_chord_selection`** after blob commit.
+
+**Do not** add pairwise tab sync — single canonical path only.
+
+#### K.3 Generate Example after Cm → Fm
+
+| Check | Finding |
+|-------|---------|
+| UI selected chord | Missions tiles (post-click rerun) |
+| Sealed `MISSIONS_GENERATE_CONTEXT_KEY` | Stashed at **render** with `cur_chord`; **popped** on chord change via `_invalidate_mission_chord_dependent_session` |
+| Generate callback | `_run_mission_example_generate` |
+| Bug | With **`sealed_from_snap`**, generation params could stay on **stale snap `cur_chord` (Cm)** even when authoritative selection was **Fm** (callback runs before restash / auth block skipped if map empty) |
+| Symptom | Regenerates Cm or aborts silently when example already matches Cm |
+
+**C — Why Fm generate “does nothing”:** **Stale sealed snap + authoritative chord not applied as final generation input.** **Fix:** final **`read_authoritative_mission_chord_selection`** immediately before generate (overrides snap).
+
+#### K.4 Return to Creative (trace only — frozen layers)
+
+Specialized Backing → **Return to Creative** path (no change unless trace proves break):
+
+1. `handle_return_to_creative_click` → `queue_pending_creative_return_from_backing` → **`seal_creative_return_context_from_backing`**
+2. `consume_pending_creative_return_handoff` → **`prepare_return_to_backing_source`** → `CREATIVE_RESTORE_FROM_BACKING_KEY`
+3. **`navigate_studio_page("creative")`** + `mark_user_navigated_page_this_run`
+4. Post-consume: **`apply_entry_jam_authoritative_practice_key`** if jam still active else **`sync_session_practice_key_from_song_blob`**
+5. Rerun: dispatch reads **`studio_page`** + nav history + startup suppression (frozen @ `9a3131f`)
+
+**D — Where to instrument on next failing preview (`?dev=1`):** compare **`sealed_context.creative_tab`**, **`studio_page` after consume**, **`trace_return_before_rerun` dispatch**, and final router page. **First divergence candidates:** (a) consume skipped (`phase=skipped`); (b) **`prepare_return_to_backing_source`** not restoring creative sub-tab; (c) post-rerun dispatch overriding **`creative`** from stale persisted page envelope (persistence frozen unless trace proves regression).
+
+**Return to Mission** (separate): `seal_mission_return_destination` / `apply_sealed_mission_return_destination` — retest after chord/key fixes; not modified in this pass.
+
+#### K.5 Tests added (post-proof)
+
+- `tests/test_creative_regression_batch_2026_08_07.py` — song blob **Dm** vs display **C** authority; generate uses **F#m** over stale snap **C#m**
+- Existing: `test_song_creative_focus_cross_tab_sync.py`, `test_creative_chord_authority_lifecycle.py`, `test_creative_return_from_backing_widget_lifecycle.py`
+
+**Frozen (unchanged):** `9a3131f`, `6bb4f56`, `74591f6`, `78ff42a`, return-route core.
+

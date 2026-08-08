@@ -2098,6 +2098,17 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
                     cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
                     section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
 
+    try:
+        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+        auth_ch, auth_sec, auth_idx = read_authoritative_mission_chord_selection(session_state)
+        if auth_ch:
+            cur_chord = auth_ch
+            section_label = auth_sec or section_label
+            chord_idx = int(auth_idx)
+    except ImportError:
+        pass
+
     if not chords or not mission:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
             "callback": f"mission_example_generate_{variant}",

@@ -72,6 +72,28 @@ def resolve_authoritative_practice_key(
     rec: dict[str, Any] | None = None,
 ) -> AuthoritativePracticeKey:
     """Current practice transposition vs catalog original — never infer major from bare tonic."""
+    if song_catalog_context_owns_practice_key(session):
+        try:
+            from music_workflow_song_practice import resolve_song_practice_key_token
+
+            song_tok = resolve_song_practice_key_token(session)
+            if song_tok:
+                try:
+                    from songs.key_state import resolve_active_musical_key
+
+                    ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                    original_raw = str(ctx.original_key or song_tok).strip() or song_tok
+                except ImportError:
+                    original_raw = song_tok
+                return AuthoritativePracticeKey(
+                    original_tonic=_tonic_from_key_token(original_raw),
+                    original_mode=_mode_from_key_token(original_raw),
+                    practice_tonic=_tonic_from_key_token(song_tok),
+                    practice_mode=_mode_from_key_token(song_tok),
+                    source="song_based_blob_practice_key",
+                )
+        except ImportError:
+            pass
     try:
         from creative_key_sync import resolve_creative_tab_practice_key_token
 

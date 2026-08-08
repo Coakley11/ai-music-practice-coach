@@ -723,6 +723,24 @@ def mutate_mission_chord_selection(
         source="apply_atomic_mission_chord",
         expected_owner="mission_jam",
     )
+    if result.ok and new_sym and new_sec:
+        try:
+            from creative_chord_selection_authority import (
+                read_mission_section_map_from_session,
+                write_authoritative_chord_selection,
+            )
+
+            section_map = read_mission_section_map_from_session(session)
+            if section_map:
+                write_authoritative_chord_selection(
+                    session,
+                    section_map,
+                    chord_symbol=new_sym,
+                    section_label=new_sec,
+                    chord_index=int(chord_index),
+                )
+        except ImportError:
+            pass
     if chord_changed:
         _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
     return result

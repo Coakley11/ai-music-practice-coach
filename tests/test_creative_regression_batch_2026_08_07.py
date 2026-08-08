@@ -313,6 +313,89 @@ class MissionReturnChainTests(unittest.TestCase):
             self.assertEqual(session.get("ii_selected_chord"), chord)
 
 
+class SongBlobKeyAuthorityTests(unittest.TestCase):
+    def test_missions_use_song_blob_not_stale_major_display(self) -> None:
+        from musical_context_authority import resolve_authoritative_practice_key
+        from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, save_workflow_blob
+
+        session: dict = {
+            "improv_intelligence_tab": "Missions",
+            "active_catalog_pick_key": "hevenu_shalom",
+            "display_key": "C",
+            "concert_key": "C",
+            "studio_page": "creative",
+        }
+        save_workflow_blob(
+            session,
+            WorkflowStateBlob(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id="hevenu_shalom",
+                keys=KeyAuthority(practice_tonic="D", practice_mode="minor"),
+            ),
+        )
+        pk = resolve_authoritative_practice_key(session)
+        self.assertEqual(pk.practice_mode, "minor")
+        self.assertEqual(pk.practice_key_token.lower(), "dm")
+        self.assertEqual(pk.source, "song_based_blob_practice_key")
+
+
+class MissionGenerateAuthoritativeChordTests(unittest.TestCase):
+    def test_generate_uses_authoritative_chord_over_stale_sealed_snap(self) -> None:
+        session = _hevenu_session()
+        session["improv_mission_pick"] = "Develop one motif for the entire solo"
+        session["improv_active_mission"] = session["improv_mission_pick"]
+        ctx = _hevenu_ctx()
+        section_map = resolve_improv_sections(session, ctx)
+        gidx = global_chord_index_for_section_chord(section_map, "Melody A", "F#m")
+        assert gidx is not None
+        write_authoritative_chord_selection(
+            session, section_map, chord_symbol="F#m", section_label="Melody A", chord_index=gidx
+        )
+        _stash_missions_generate_context(
+            session,
+            improv_ctx=ctx,
+            section_map=section_map,
+            mission=str(session["improv_mission_pick"]),
+            cur_chord="C#m",
+            section_label="Melody A",
+            chord_idx=0,
+            live_inst="Guitar",
+            live_level="Intermediate",
+            live_focus="Improvisation",
+            bpm=72,
+        )
+        seen: dict[str, str] = {}
+
+        def _fake_generate(*args: Any, **kwargs: Any) -> Any:
+            seen["chord"] = str(kwargs.get("chord") or "")
+            from improvisation_missions import MissionExample
+
+            return MissionExample(
+                mission=str(kwargs.get("mission") or ""),
+                variant="normal",
+                chord=seen["chord"],
+                section=str(kwargs.get("section") or ""),
+                song_title=ctx.song_title,
+                display_key=ctx.display_key,
+                instrument="Guitar",
+                level="Intermediate",
+                focus="Improvisation",
+                motif={"display": "test", "notes": [], "rhythm": ""},
+                abc="",
+                tab="",
+                piano_html="",
+                why="test",
+                practice_steps=[],
+                insight=None,
+                show_tab=False,
+                show_piano=False,
+            )
+
+        with patch("improvisation_missions.generate_mission_example", side_effect=_fake_generate):
+            _run_mission_example_generate(session, "normal")
+        self.assertEqual(seen.get("chord"), "F#m")
+
+
 class GenericBackingEntryTests(unittest.TestCase):
     def test_generic_backing_entry_releases_mission_context(self) -> None:
         from backing_context import BackingContext, set_backing_context
