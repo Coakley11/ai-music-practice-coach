@@ -72,6 +72,7 @@ def read_coach_context(
         active = session_state["active_song"]
     title = str(active.get("title") or snap.get("title") or "").strip()
     pick = str(ctx.get("pick_key") or snap.get("pick_key") or session_state.get("active_catalog_pick_key") or "")
+    progression_summary = str(active.get("progression_summary") or snap.get("progression_summary") or "").strip()
 
     original_key = str(active.get("key") or active.get("default_key") or snap.get("genre") or "").strip()
     if not original_key:
@@ -103,6 +104,8 @@ def read_coach_context(
     except ImportError:
         instrument = ctx_inst or snap_inst or str(session_state.get("instrument") or "").strip()
         prov = {}
+    if not instrument:
+        instrument = str(session_state.get("instrument") or ctx_inst or snap_inst).strip()
 
     level = str(ctx.get("level") or session_state.get("level") or "").strip()
     if not level:
@@ -125,6 +128,7 @@ def read_coach_context(
         current_practice_key=practice_key,
         active_section=section,
         current_chord=chord,
+        progression_summary=progression_summary,
         tempo_bpm=bpm_int,
         active_mission=mission,
         creative_mode=creative_mode,

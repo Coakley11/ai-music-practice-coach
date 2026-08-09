@@ -99,6 +99,13 @@ class ScalePracticeSpec:
     wants_measures: bool = False
     tonic_provenance: str = ""
     exercise_pattern: str = "straight"
+    pattern_id: str = ""
+    pattern_degree_formula: str = ""
+    requested_difficulty: bool = False
+    resolved_difficulty: str = ""
+    player_level: str = ""
+    practice_focus: str = ""
+    pedagogical_goal: str = ""
 
 
 @dataclass
@@ -205,6 +212,12 @@ def _parse_interval_patterns(text: str) -> tuple[str, ...]:
         return tuple(found)
     if any(p in low for p in ("in thirds", "in 3rds")):
         return ("thirds",)
+    if re.search(r"\bscale pattern\b", low):
+        return ("four_note_sequence",)
+    if re.search(r"\b(difficult|challenging|hard|advanced|hardest)\b", low) and re.search(
+        r"\bexercise\b", low
+    ):
+        return ("four_note_sequence",)
     if re.search(r"\bpattern\b", low) and re.search(
         r"\b(difficult|challenging|hard|advanced)\b|\bexercise\b", low
     ):
@@ -350,6 +363,13 @@ def spec_to_dev_dict(spec: ScalePracticeSpec, result: ScalePracticeResult | None
         "instrument": spec.instrument,
         "start_octave": spec.start_octave,
         "tonic_provenance": spec.tonic_provenance,
+        "pattern_id": spec.pattern_id,
+        "pattern_degree_formula": spec.pattern_degree_formula,
+        "requested_difficulty": spec.requested_difficulty,
+        "resolved_difficulty": spec.resolved_difficulty,
+        "player_level": spec.player_level,
+        "practice_focus": spec.practice_focus,
+        "pedagogical_goal": spec.pedagogical_goal,
     }
     if result is not None:
         out["chosen_start_octave"] = result.chosen_start_octave
@@ -374,6 +394,11 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
     exercise_pattern = "four_note_sequence" if "four_note_sequence" in patterns else "straight"
     if exercise_pattern == "four_note_sequence":
         patterns = ("straight",)
+    requested_difficulty = bool(
+        re.search(r"\b(difficult|challenging|hard|advanced|hardest)\b", low)
+    )
+    if requested_difficulty and re.search(r"\bexercise\b", low):
+        exercise_pattern = "four_note_sequence"
     octaves, oct_explicit = _parse_octave_count(text)
     direction = _parse_direction(text)
     note_value, triplet, note_explicit = _parse_note_value(text)
@@ -400,6 +425,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
         wants_measures=wants_measures,
         tonic_provenance=tonic_prov,
         exercise_pattern=exercise_pattern,
+        requested_difficulty=requested_difficulty,
     )
 
 
@@ -530,16 +556,14 @@ def build_four_note_sequence(
     octave_count: int,
     start_octave: int = 4,
 ) -> list[str]:
+    from music_coach_ami.exercise_patterns import build_degree_pattern_sequence
+
     n = len(scale)
     if n < 4:
         return build_straight_sequence(scale, direction="ascending", octave_count=octave_count, start_octave=start_octave)
-    names: list[str] = []
-    for rep in range(max(1, octave_count)):
-        for i in range(n):
-            for j in range(4):
-                names.append(scale[(i + j) % n])
-    pitched = _octave_for_sequence(names, start_octave)
-    return [note for note, _ in pitched]
+    return build_degree_pattern_sequence(
+        scale, (0, 1, 2, 3), octave_count=octave_count, start_octave=start_octave
+    )
 
 
 def build_straight_sequence(
@@ -991,7 +1015,13 @@ def format_scale_request_summary(spec: ScalePracticeSpec) -> list[str]:
         lines.append(f"**Articulation:** {spec.articulation.replace('_', ' ').title()}")
     if spec.meter_explicit or spec.wants_measures:
         lines.append(f"**Meter:** {spec.meter}")
-    if spec.exercise_pattern == "four_note_sequence":
+    if spec.pattern_id:
+        from music_coach_ami.exercise_patterns import PATTERN_LIBRARY
+
+        pat = PATTERN_LIBRARY.get(spec.pattern_id)
+        if pat:
+            lines.append(f"**Pattern:** {pat.display_name}")
+    elif spec.exercise_pattern == "four_note_sequence":
         lines.append("**Pattern:** Four-note ascending sequence")
     return lines
 
@@ -1419,21 +1449,48 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
-            if spec.exercise_pattern == "four_note_sequence":
-                seq = build_four_note_sequence(
+            from music_coach_ami.exercise_patterns import PATTERN_LIBRARY, build_degree_pattern_pitched
+
+            pat_key = spec.pattern_id or (
+                spec.exercise_pattern if spec.exercise_pattern in PATTERN_LIBRARY else ""
+            )
+            pattern_exercise = bool(pat_key) or spec.exercise_pattern == "four_note_sequence"
+            if pattern_exercise:
+                if pat_key in PATTERN_LIBRARY:
+                    offsets = PATTERN_LIBRARY[pat_key].degree_offsets
+                    pat_title = PATTERN_LIBRARY[pat_key].display_name
+                else:
+                    offsets = (0, 1, 2, 3)
+                    pat_title = "Four-note ascending sequence"
+                pitched = build_degree_pattern_pitched(
                     scale,
+                    offsets,
                     octave_count=spec.octave_count,
                     start_octave=start_oct,
                 )
-            else:
-                seq = build_straight_sequence(
-                    scale,
-                    direction=spec.direction,
-                    octave_count=spec.octave_count,
-                    start_octave=start_oct,
-                    scale_type=spec.scale_type,
-                    tonic=spec.tonic,
+                seq = [n for n, _ in pitched]
+                practice_seq = list(seq)
+                exercise_names.extend(seq)
+                per_system = 12 if len(seq) <= 28 else 10
+                abc_sections.append(
+                    build_abc_from_note_names(
+                        seq,
+                        title=f"{display_label} — {pat_title}",
+                        pitched=pitched,
+                        pair_mode=False,
+                        tokens_per_system=per_system,
+                        **abc_kw,
+                    )
                 )
+                continue
+            seq = build_straight_sequence(
+                scale,
+                direction=spec.direction,
+                octave_count=spec.octave_count,
+                start_octave=start_oct,
+                scale_type=spec.scale_type,
+                tonic=spec.tonic,
+            )
             practice_seq = list(seq)
             exercise_names.extend(seq)
             if spec.scale_type == "melodic minor" and spec.direction == "both":
@@ -1580,6 +1637,18 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
         spec=spec,
         tonic=spec.tonic,
     )
+    if spec.pattern_id or spec.exercise_pattern in (
+        "four_note_sequence",
+        "three_note_cell",
+        "broken_thirds_1324",
+        "perm_1342",
+        "triplet_three_note",
+    ):
+        from music_coach_ami.exercise_patterns import enrich_exercise_coaching
+
+        extra_g, extra_l = enrich_exercise_coaching(spec)
+        guidance.extend(extra_g)
+        listen.extend(extra_l)
     notation_sections = [s for s in abc_sections if s]
     abc = notation_sections[0] if notation_sections else ""
 

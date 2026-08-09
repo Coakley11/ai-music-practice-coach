@@ -62,6 +62,17 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     ):
         return CoachIntent.IMPROVISATION_COACHING, 0.91
 
+    if "difference between" in low and "mission" in low and "live coach" in low:
+        return CoachIntent.FEATURE_EXPLANATION, 0.9
+
+    if "should i use" in low and "mission" in low and "live coach" in low:
+        return CoachIntent.FEATURE_EXPLANATION, 0.9
+
+    if any(p in low for p in ("improve my phrasing", "improve my timing")) or (
+        "what should i use" in low and any(p in low for p in ("phrasing", "timing"))
+    ):
+        return CoachIntent.APP_FEATURE_RECOMMENDATION, 0.87
+
     if "what part of the app" in low and any(p in low for p in ("scale", "chord", "theory", "harmony")):
         return CoachIntent.APP_FEATURE_RECOMMENDATION, 0.88
 
@@ -71,8 +82,8 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if "difference between" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
 
-    if re.search(r"\bwhere (?:do i|can i)\b", low) or re.search(r"\bhow do i (log|save|upload|create|change|find)\b", low):
-        if feature_by_question(low) or "log" in low or "upload" in low or "backing" in low:
+    if re.search(r"\bwhere (?:do i|can i|is)\b", low) or re.search(r"\bhow do i (log|save|upload|create|change|find|analyze|record)\b", low):
+        if feature_by_question(low) or "log" in low or "upload" in low or "backing" in low or "record myself" in low:
             return CoachIntent.APP_NAVIGATION, 0.9
 
     if "difference between" in low and ("mission" in low or "jam session" in low):
@@ -81,6 +92,8 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if any(p in low for p in ("what is creative", "what are missions", "what is the jam session", "what is style jam")):
         return CoachIntent.CREATIVE_FEATURE_HELP, 0.88
 
+    if any(p in low for p in ("what does harmony map", "what is harmony map")):
+        return CoachIntent.FEATURE_EXPLANATION, 0.88
     if any(p in low for p in ("what does", "what is a backing", "what is live coach", "what is harmony map")):
         if "backing" in low or "practice log" in low or "upload" in low or "live coach" in low or "harmony map" in low:
             return CoachIntent.FEATURE_EXPLANATION, 0.86
@@ -148,6 +161,10 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
 
     if any(p in low for p in ("songs should i", "easy jazz songs", "songs good for", "recommend songs", "songs for learning improvisation", "what kind of songs")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
+    if "similar to" in low and "song" in low:
+        return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.86
+    if "song should i practice" in low and "improv" in low:
+        return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.86
     if "songs" in low and any(p in low for p in ("good for learning", "good for improvisation", "learning improvisation")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
 

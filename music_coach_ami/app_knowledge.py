@@ -29,9 +29,11 @@ FEATURES: dict[str, AppFeature] = {
         navigation_path="Studio sidebar → **Practice Log** (📓).",
         user_goals=("log practice", "track sessions", "review history", "practice diary"),
         usage_steps=(
-            "Open **Practice Log** from the studio sidebar.",
-            "Add or edit a session with date, duration, instrument, and notes.",
-            "Save the entry — it feeds progress reports and practice-history analysis.",
+            "Use **Quick Save** to log your current song, instrument, key, BPM, and focus, "
+            "or **Add Session Manually** to enter a session in detail.",
+            "Set duration, section practiced, focus area, practice type, notes, and optional 1–5 session ratings.",
+            "Browse, filter, edit, or delete saved entries in the session list.",
+            "Open **Practice Analysis** on this page for a recent-session summary (optional Command Center handoff).",
         ),
         when_not_to_use="When you need live feedback on a take you just played (use Upload Analysis).",
         related_features=("upload_analysis", "backing"),
@@ -67,8 +69,8 @@ FEATURES: dict[str, AppFeature] = {
         ),
         related_features=("practice", "harmony_map"),
         distinctions=(
-            "Music Coach generates scale exercises and explains theory; Harmony Map visualizes relationships "
-            "in the current key during Creative improvisation."
+            "**Music Coach** is best for theory questions, scale exercises with notation, and coaching text. "
+            "**Harmony Map** is best for visually exploring chord relationships in your current practice key."
         ),
         example_questions=(
             "Where can I get scale help?",
@@ -143,8 +145,15 @@ FEATURES: dict[str, AppFeature] = {
             "Choose key, style, mood, and generate.",
             "Practice over the sections; open **Backing** for play-along when ready.",
         ),
+        when_not_to_use=(
+            "When you need to loop the **current song's** progression — use **Backing** instead. "
+            "Matching key alone does not reproduce the song's harmony."
+        ),
         related_features=("style_jam", "backing", "live_coach"),
-        distinctions="Best for open-ended exploration; use **Missions** for a structured song assignment.",
+        distinctions=(
+            "**Jam Session Generator** builds a **new** progression for open-ended jamming. "
+            "**Backing** loops your active song or section at a chosen tempo."
+        ),
         example_questions=("What is the Jam Session Generator?",),
     ),
     "style_jam": AppFeature(
@@ -173,7 +182,10 @@ FEATURES: dict[str, AppFeature] = {
             "Pick a mission, practice key, section, and chord focus.",
             "Use **Generate Example**, notation, and **Mission Backing** as needed.",
         ),
-        when_not_to_use="When you only want a free jam with no assignment (Jam Session Generator).",
+        when_not_to_use=(
+            "When you only want a free jam with no assignment (Jam Session Generator). "
+            "When the mission would not use your current song/section progression."
+        ),
         related_features=("motif", "live_coach", "harmony_map", "backing"),
         distinctions=(
             "**Missions** = structured homework on your song. **Live Coach** = in-the-moment targets while you play."
@@ -210,7 +222,8 @@ FEATURES: dict[str, AppFeature] = {
         ),
         related_features=("live_coach", "motif", "music_coach"),
         distinctions=(
-            "Harmony Map explains relationships in the current key; Music Coach answers theory/scale questions in text."
+            "**Harmony Map** helps you **see** chord relationships and suggested tones in the current key. "
+            "**Music Coach** answers theory questions and generates scale exercises in text and notation."
         ),
         example_questions=("What does Harmony Map do?", "What part of the app helps with chord theory?"),
     ),
