@@ -82,15 +82,28 @@ def read_coach_context(
     if isinstance(summary, dict) and summary.get("session_count"):
         evidence = f"{summary.get('session_count')} recent log sessions (summary available)."
 
-    instrument = str(ctx.get("instrument") or session_state.get("instrument") or "").strip()
+    snap_inst = str(snap.get("instrument") or "").strip()
+    instrument = str(ctx.get("instrument") or snap_inst or "").strip()
     if not instrument:
         try:
-            from practice_setup_globals import GLOBAL_INSTRUMENT_KEY
+            from practice_setup_globals import (
+                DEFAULT_INSTRUMENT,
+                GLOBAL_INSTRUMENT_KEY,
+                INSTRUMENT_CHANGE_SOURCE_KEY,
+                get_active_instrument,
+            )
 
-            if GLOBAL_INSTRUMENT_KEY in session_state:
-                instrument = str(session_state.get(GLOBAL_INSTRUMENT_KEY) or "").strip()
+            active = get_active_instrument(session_state)
+            if active and active != DEFAULT_INSTRUMENT:
+                instrument = active
+            elif session_state.get(INSTRUMENT_CHANGE_SOURCE_KEY):
+                instrument = active
+            elif GLOBAL_INSTRUMENT_KEY in session_state:
+                raw = str(session_state.get(GLOBAL_INSTRUMENT_KEY) or "").strip()
+                if raw and raw != DEFAULT_INSTRUMENT:
+                    instrument = raw
         except ImportError:
-            pass
+            instrument = str(session_state.get("instrument") or "").strip()
 
     level = str(ctx.get("level") or session_state.get("level") or "").strip()
     if not level:

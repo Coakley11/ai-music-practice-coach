@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
-
 # Tonic patterns — longer spellings first
 _TONIC_RE = re.compile(
     r"\b(Eb|Ab|Bb|Db|Gb|F#|C#|G#|D#|A#|[A-Ga-g])(?![A-Za-z#])"
@@ -58,6 +56,8 @@ class ScalePracticeResult:
     interval_pairs: list[tuple[str, str]] = field(default_factory=list)
     abc: str = ""
     written_sequence: str = ""
+    scale_reference: str = ""
+    interval_pairs_display: str = ""
     key_signature_hint: str = ""
     practice_guidance: list[str] = field(default_factory=list)
     what_to_listen_for: list[str] = field(default_factory=list)
@@ -200,9 +200,9 @@ def _scale_type_label(scale_type: str) -> str:
 
 
 def _midi_for_spelled(note: str, octave: int = 4) -> int:
-    root = normalize_root(split_chord(note)[0])
-    base = NOTE_TO_MIDI.get(root, 60)
-    return base + octave * 12
+    from music_theory import midi_from_spelled_note
+
+    return midi_from_spelled_note(note, octave=octave)
 
 
 def _octave_for_sequence(notes: list[str], start_octave: int = 4) -> list[tuple[str, int]]:
@@ -262,29 +262,103 @@ def build_interval_pairs(scale: list[str], step: int) -> list[tuple[str, str]]:
     return pairs
 
 
-def pairs_to_playable_notes(pairs: list[tuple[str, str]], *, direction: str) -> list[str]:
-    flat: list[str] = []
+def _default_start_octave(instrument: str) -> int:
+    low = str(instrument or "").lower()
+    if "flute" in low or "piccolo" in low:
+        return 5
+    if "clarinet" in low or "trumpet" in low or "violin" in low:
+        return 4
+    return 4
+
+
+def _assign_interval_pair_octaves(
+    pairs: list[tuple[str, str]],
+    *,
+    start_octave: int = 4,
+    ascending: bool = True,
+) -> list[tuple[str, int]]:
+    """Assign octaves per pair — target stays in-register until the interval crosses an octave."""
+    if not pairs:
+        return []
+    out: list[tuple[str, int]] = []
+    last_midi: int | None = None
+    cursor_oct = start_octave
     for a, b in pairs:
-        flat.extend([a, b])
-    pitched = _octave_for_sequence(flat)
+        if ascending:
+            a_oct = cursor_oct
+            a_midi = _midi_for_spelled(a, a_oct)
+            if last_midi is not None:
+                while a_midi <= last_midi:
+                    a_oct += 1
+                    a_midi = _midi_for_spelled(a, a_oct)
+            b_oct = a_oct
+            b_midi = _midi_for_spelled(b, b_oct)
+            while b_midi <= a_midi:
+                b_oct += 1
+                b_midi = _midi_for_spelled(b, b_oct)
+            out.append((a, a_oct))
+            out.append((b, b_oct))
+            last_midi = b_midi
+            cursor_oct = b_oct
+        else:
+            a_oct = cursor_oct
+            a_midi = _midi_for_spelled(a, a_oct)
+            if last_midi is not None:
+                while a_midi >= last_midi:
+                    a_oct -= 1
+                    a_midi = _midi_for_spelled(a, a_oct)
+            b_oct = a_oct
+            b_midi = _midi_for_spelled(b, b_oct)
+            while b_midi >= a_midi:
+                b_oct -= 1
+                b_midi = _midi_for_spelled(b, b_oct)
+            out.append((a, a_oct))
+            out.append((b, b_oct))
+            last_midi = b_midi
+            cursor_oct = b_oct
+    return out
+
+
+def pairs_to_playable_notes(
+    pairs: list[tuple[str, str]],
+    *,
+    direction: str,
+    start_octave: int = 4,
+) -> list[str]:
+    if not pairs:
+        return []
+    asc = direction != "descending"
+    pitched = _assign_interval_pair_octaves(pairs, start_octave=start_octave, ascending=asc)
     names = [n for n, _ in pitched]
-    if direction == "descending":
-        rev_pairs = list(reversed(pairs))
-        flat = []
-        for a, b in rev_pairs:
-            flat.extend([a, b])
-        pitched = _octave_for_sequence(flat)
-        names = [n for n, _ in pitched]
-    elif direction == "both":
-        up = names
-        down_pairs = list(reversed(pairs))
-        flat = []
-        for a, b in down_pairs:
-            flat.extend([a, b])
-        pitched_d = _octave_for_sequence(flat)
-        down = [n for n, _ in pitched_d]
-        names = up + down[1:]
+    if direction == "both":
+        down = _assign_interval_pair_octaves(
+            list(reversed(pairs)),
+            start_octave=start_octave,
+            ascending=False,
+        )
+        down_names = [n for n, _ in down]
+        names = names + down_names[1:]
     return names
+
+
+def pairs_to_pitched_notes(
+    pairs: list[tuple[str, str]],
+    *,
+    direction: str,
+    start_octave: int = 4,
+) -> list[tuple[str, int]]:
+    if not pairs:
+        return []
+    asc = direction != "descending"
+    pitched = _assign_interval_pair_octaves(pairs, start_octave=start_octave, ascending=asc)
+    if direction == "both":
+        down = _assign_interval_pair_octaves(
+            list(reversed(pairs)),
+            start_octave=start_octave,
+            ascending=False,
+        )
+        pitched = pitched + down[1:]
+    return pitched
 
 
 def _abc_key_field(tonic: str, scale_type: str) -> str:
@@ -296,10 +370,10 @@ def _abc_key_field(tonic: str, scale_type: str) -> str:
     return abc_key_signature_for_reference(ref, scale_type=scale_type)
 
 
-def _note_to_abc(note: str, octave: int) -> str:
-    from improvisation_motif import _note_name_to_abc_pitch
+def _note_to_abc(note: str, octave: int, *, key_field: str = "C") -> str:
+    from music_theory import abc_pitch_for_spelled_note
 
-    return _note_name_to_abc_pitch(note, octave=octave)
+    return abc_pitch_for_spelled_note(note, octave=octave, k_field=key_field)
 
 
 def _display_tonic(spec: ScalePracticeSpec, reference_key: str) -> str:
@@ -321,52 +395,96 @@ def _straight_scale_only(patterns: tuple[str, ...]) -> bool:
 
 
 def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list[str]:
-    guidance = [
-        "Practice slowly with a metronome (start around 60–72 BPM).",
-        (
-            "Keep each note even in tone and time — smooth transitions between scale degrees."
-            if straight
-            else "Keep each interval pair balanced in tone, time, and intonation."
-        ),
-        "Increase tempo only when the full pattern is accurate three times in a row.",
-    ]
-    if spec.instrument:
-        guidance.insert(0, f"Use a comfortable register on **{spec.instrument}**.")
+    inst = str(spec.instrument or "").strip()
+    guidance: list[str] = []
+    if inst:
+        guidance.append(f"Use a comfortable register on **{inst}**.")
+    else:
+        guidance.append("Use a comfortable register on **your instrument**.")
+    if straight:
+        guidance.extend(
+            [
+                "Start around **60–72 BPM**.",
+                "Keep every note even in tone and time.",
+                "Connect each scale degree smoothly.",
+                "Increase tempo after **three accurate repetitions**.",
+            ]
+        )
+    else:
+        guidance.extend(
+            [
+                "Start slowly with a metronome.",
+                "Keep each pair rhythmically even.",
+                "Match tone between the two notes of each interval.",
+                "Increase tempo after **three accurate repetitions**.",
+            ]
+        )
     return guidance
 
 
-def _build_listen_for(reference_key: str, *, straight: bool, display_tonic: str) -> list[str]:
-    from music_theory import reference_spelling_mode
-
+def _build_listen_for(*, straight: bool, display_tonic: str, scale_type: str) -> list[str]:
     if straight:
-        mode = reference_spelling_mode(reference_key)
-        if mode == "flat":
-            return [
-                "Even tone on every scale degree",
-                f"Stable intonation on flat degrees in {display_tonic} (keep the flat-key spelling consistent)",
-            ]
-        if mode == "sharp":
-            return [
-                "Even tone on every scale degree",
-                f"Clean intonation on sharp degrees in {display_tonic} (watch raised scale degrees like E♯ in sharp keys)",
-            ]
+        low = scale_type.lower()
+        if "major" in low and "minor" not in low:
+            if "b" in display_tonic or "♭" in display_tonic:
+                return [
+                    "Steady tone across the scale",
+                    "Smooth transitions between degrees",
+                    "Secure intonation on E♭, A♭, and B♭",
+                ]
         return [
-            "Even tone on every scale degree",
-            "Smooth pitch centering from note to note",
+            "Steady tone across the scale",
+            "Smooth transitions between degrees",
+            "Secure intonation on every degree",
         ]
     return [
-        "Matching tone between the two notes of each interval pair",
-        "Accurate leaps — land centered on both notes of each pair",
+        "Matching tone between the two notes of each pair",
+        "Clean landing on the second note of each interval",
+        "Even rhythm through the full pattern",
     ]
 
 
-def build_abc_from_note_names(note_names: list[str], *, title: str, key_field: str, bpm: int = 72) -> str:
-    if not note_names:
+def _interval_pattern_title(pattern: str) -> str:
+    label = pattern.rstrip("s")
+    return f"Diatonic {pattern}" if pattern.endswith("s") else f"Diatonic {pattern}s"
+
+
+def _format_scale_reference(scale: list[str], reference_key: str) -> str:
+    from music_theory import format_musician_note_name
+
+    degrees = _format_notes_display(scale, reference_key)
+    upper = format_musician_note_name(scale[0], reference_key) if scale else ""
+    if upper and (not degrees or degrees[-1] != upper):
+        degrees = degrees + [upper]
+    return " ".join(degrees)
+
+
+def _format_interval_pairs_line(pairs: list[tuple[str, str]], reference_key: str) -> str:
+    from music_theory import format_musician_note_name
+
+    chunks: list[str] = []
+    for a, b in pairs:
+        chunks.append(
+            f"{format_musician_note_name(a, reference_key)}–{format_musician_note_name(b, reference_key)}"
+        )
+    return " · ".join(chunks)
+
+
+def build_abc_from_note_names(
+    note_names: list[str],
+    *,
+    title: str,
+    key_field: str,
+    bpm: int = 72,
+    pitched: list[tuple[str, int]] | None = None,
+) -> str:
+    if not note_names and not pitched:
         return ""
-    pitched = _octave_for_sequence(note_names)
+    if pitched is None:
+        pitched = _octave_for_sequence(note_names)
     tokens: list[str] = []
     for name, octv in pitched:
-        tokens.append(_note_to_abc(name, octv))
+        tokens.append(_note_to_abc(name, octv, key_field=key_field))
         tokens.append("2")
     bar_size = 8
     bars: list[str] = []
@@ -388,18 +506,14 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     display_tonic = _display_tonic(spec, ref)
     display_label = f"{display_tonic} {_scale_type_label(spec.scale_type)}"
     straight = _straight_scale_only(spec.interval_patterns)
-    try:
-        from music_theory import reference_spelling_mode
-
-        mode = reference_spelling_mode(ref)
-        key_signature_hint = f"{mode} key spelling ({ref})"
-    except ImportError:
-        key_signature_hint = ref
+    key_signature_hint = ref
+    start_oct = _default_start_octave(spec.instrument)
 
     all_pairs: list[tuple[str, str]] = []
     exercise_names: list[str] = []
     abc_sections: list[str] = []
     practice_seq: list[str] = []
+    interval_line = ""
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
@@ -418,25 +532,35 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
             step = _INTERVAL_STEPS.get(pattern, 2)
             pairs = build_interval_pairs(scale, step)
             all_pairs.extend(pairs)
-            seq = pairs_to_playable_notes(pairs, direction=spec.direction)
+            pitched_pairs = pairs_to_pitched_notes(
+                pairs,
+                direction=spec.direction,
+                start_octave=start_oct,
+            )
+            seq = [n for n, _ in pitched_pairs]
             exercise_names.extend(seq)
+            interval_line = _format_interval_pairs_line(pairs, ref)
             abc_sections.append(
                 build_abc_from_note_names(
                     seq,
                     title=f"{display_label} in {pattern}",
                     key_field=key_field,
                     bpm=spec.tempo_bpm or 60,
+                    pitched=pitched_pairs,
                 )
             )
 
     if not practice_seq and exercise_names:
         practice_seq = list(exercise_names)
 
+    scale_reference = _format_scale_reference(scale, ref)
     display_practice = _format_notes_display(practice_seq or exercise_names, ref)
+    if straight and practice_seq:
+        display_practice = _format_notes_display(practice_seq, ref)
     written = " ".join(display_practice)
 
     guidance = _build_practice_guidance(spec, straight=straight)
-    listen = _build_listen_for(ref, straight=straight, display_tonic=display_label)
+    listen = _build_listen_for(straight=straight, display_tonic=display_tonic, scale_type=spec.scale_type)
     abc = "\n\n".join(s for s in abc_sections if s)
 
     return ScalePracticeResult(
@@ -453,6 +577,8 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
         interval_pairs=all_pairs,
         abc=abc,
         written_sequence=written,
+        scale_reference=scale_reference,
+        interval_pairs_display=interval_line,
         key_signature_hint=key_signature_hint,
         practice_guidance=guidance,
         what_to_listen_for=listen,

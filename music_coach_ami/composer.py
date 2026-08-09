@@ -14,12 +14,17 @@ def compose_coach_markdown(response: CoachResponse) -> str:
     if response.recommendation:
         parts.append(f"**Recommendation:** {response.recommendation.strip()}")
     if response.practice_steps:
-        parts.append("**What to do**")
+        has_practice_header = any(str(s).strip() == "**Practice**" for s in response.practice_steps)
+        if not has_practice_header:
+            parts.append("**What to do**")
         for step in response.practice_steps:
-            if step.strip().startswith("#"):
-                parts.append(step.strip())
+            s = step.strip()
+            if s.startswith("#") or s == "**Practice**" or s == "**Listen for**" or (
+                s.startswith("**") and ":" in s
+            ):
+                parts.append(s)
             else:
-                parts.append(f"- {step}")
+                parts.append(f"- {s}")
     if response.what_to_listen_for:
         parts.append("**What to listen for**")
         for item in response.what_to_listen_for:

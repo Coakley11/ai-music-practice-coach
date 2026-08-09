@@ -9,6 +9,7 @@ from music_coach_ami.router import CoachIntent, route_question
 from music_coach_ami.scale_engine import (
     build_interval_pairs,
     generate_scale_practice,
+    pairs_to_pitched_notes,
     parse_scale_practice_question,
     spell_scale,
 )
@@ -126,7 +127,95 @@ class ScaleGeneratorTests(unittest.TestCase):
         spec = parse_scale_practice_question("Show me Eb major in thirds")
         result = generate_scale_practice(spec)
         joined = " ".join(result.practice_guidance + result.what_to_listen_for).lower()
-        self.assertIn("interval pair", joined)
+        self.assertIn("pair", joined)
+
+    def test_eb_major_abc_no_redundant_flats(self) -> None:
+        spec = parse_scale_practice_question("Show me Eb major scale in sheet music")
+        result = generate_scale_practice(spec)
+        self.assertIn("K:Eb", result.abc)
+        body = result.abc.split("K:Eb", 1)[-1]
+        for token in ("_E", "_e", "_A", "_a", "_B", "_b"):
+            self.assertNotIn(token, body, msg=f"redundant accidental {token} in {body[:120]}")
+
+    def test_c_sharp_major_abc_no_redundant_sharps(self) -> None:
+        spec = parse_scale_practice_question("Show me C# major in sheet music")
+        result = generate_scale_practice(spec)
+        self.assertIn("K:C#", result.abc)
+        body = result.abc.split("K:C#", 1)[-1]
+        for letter in ("C", "D", "E", "F", "G", "A", "B"):
+            self.assertNotIn(f"^{letter}", body)
+            self.assertNotIn(f"^{letter.lower()}", body)
+
+    def test_f_harmonic_minor_raises_seventh_with_natural_sign(self) -> None:
+        spec = parse_scale_practice_question("Show me F harmonic minor scale in sheet music")
+        result = generate_scale_practice(spec)
+        self.assertIn("K:Fm", result.abc)
+        body = result.abc.split("K:Fm", 1)[-1]
+        self.assertTrue("=E" in body or "=e" in body, body)
+
+    def test_c_sharp_major_thirds_pairs_spelling(self) -> None:
+        scale, _, ref = spell_scale("C#", "major")
+        pairs = build_interval_pairs(scale, 2)
+        expected = [
+            ("C#", "E#"),
+            ("D#", "F#"),
+            ("E#", "G#"),
+            ("F#", "A#"),
+            ("G#", "B#"),
+            ("A#", "C#"),
+            ("B#", "D#"),
+        ]
+        self.assertEqual(pairs, expected)
+
+    def test_c_sharp_major_thirds_octave_continuity(self) -> None:
+        scale, _, _ = spell_scale("C#", "major")
+        pairs = build_interval_pairs(scale, 2)
+        pitched = pairs_to_pitched_notes(pairs, direction="ascending", start_octave=4)
+        from music_theory import midi_from_spelled_note
+
+        midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
+        self.assertEqual(len(midis), 14)
+        for i in range(0, 14, 2):
+            self.assertGreater(midis[i + 1], midis[i])
+        # Last two pairs cross into the next octave for A#→C# and B#→D#.
+        self.assertGreater(pitched[-1][1], pitched[-3][1])
+        self.assertGreater(pitched[-3][1], pitched[0][1])
+
+    def test_interval_octave_continuity_fourths_through_sevenths(self) -> None:
+        scale, _, _ = spell_scale("C#", "major")
+        from music_theory import midi_from_spelled_note
+
+        for step, label in ((3, "fourths"), (4, "fifths"), (5, "sixths"), (6, "sevenths")):
+            pairs = build_interval_pairs(scale, step)
+            pitched = pairs_to_pitched_notes(pairs, direction="ascending", start_octave=4)
+            midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
+            for i in range(0, len(midis) - 1):
+                self.assertLess(midis[i], midis[i + 1], msg=label)
+            for i in range(0, len(midis), 2):
+                self.assertGreater(midis[i + 1], midis[i], msg=label)
+
+    def test_scale_reference_includes_upper_tonic(self) -> None:
+        spec = parse_scale_practice_question("Show me C# major in sheet music")
+        result = generate_scale_practice(spec)
+        self.assertTrue(result.scale_reference.endswith("C#") or result.scale_reference.endswith("C\u266f"))
+
+    def test_instrument_flute_from_context(self) -> None:
+        spec = parse_scale_practice_question("Show me Eb major scale", instrument="Flute")
+        result = generate_scale_practice(spec)
+        self.assertIn("Flute", result.practice_guidance[0])
+
+    def test_instrument_fallback_your_instrument(self) -> None:
+        spec = parse_scale_practice_question("Show me Eb major scale", instrument="")
+        result = generate_scale_practice(spec)
+        self.assertIn("your instrument", result.practice_guidance[0].lower())
+
+    def test_solver_markdown_no_diagnostic_spelling_label(self) -> None:
+        _, resp = run_coach_submit("Show me the E\u266d major scale in sheet music.", {})
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertNotIn("flat key spelling", md.lower())
+        self.assertNotIn("Use the staff below", md)
+        self.assertIn("E\u266d major", md)
 
     def test_composed_markdown_omits_raw_abc(self) -> None:
         _, resp = run_coach_submit("Show me the E\u266d major scale in sheet music.", {})
@@ -137,6 +226,14 @@ class ScaleGeneratorTests(unittest.TestCase):
         self.assertNotIn("```abc", md)
         self.assertNotIn("X:1", md)
         self.assertNotIn("interval pair", md.lower())
+
+    def test_submit_uses_flute_not_default_piano(self) -> None:
+        ss = {"instrument": "Flute", "instrument_change_source": "sidebar"}
+        _, resp = run_coach_submit("Show me Eb major scale in sheet music", ss)
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertIn("Flute", md)
+        self.assertNotIn("comfortable register on **Piano**", md)
 
     def test_multiple_interval_patterns(self) -> None:
         spec = parse_scale_practice_question(

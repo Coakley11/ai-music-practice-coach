@@ -82,7 +82,7 @@ def solve_practice_plan(req: CoachRequest) -> CoachResponse:
 
 def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     from music_coach_ami.scale_engine import (
-        _format_notes_display,
+        _interval_pattern_title,
         generate_scale_practice,
         parse_scale_practice_question,
     )
@@ -116,21 +116,28 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         "scale",
         "unison",
     )
-    steps: list[str] = []
+    pattern = spec.interval_patterns[0] if len(spec.interval_patterns) == 1 else ""
     if straight:
-        steps.append(f"**Scale:** {result.written_sequence}")
+        heading = f"## {result.display_label}"
     else:
-        steps.append(f"**Diatonic scale:** {' '.join(_format_notes_display(result.scale_degrees, result.reference_key))}")
-        if result.written_sequence:
-            steps.append(f"**Written sequence:** {result.written_sequence}")
+        interval_title = _interval_pattern_title(pattern) if pattern else "Diatonic intervals"
+        heading = f"## {result.display_label} — {interval_title.lower()}"
+
+    steps: list[str] = [f"**Scale:** {result.scale_reference or result.written_sequence}"]
+    if not straight and result.interval_pairs_display:
+        short = pattern.rstrip("s").capitalize() + "s" if pattern else "Intervals"
+        steps.append(f"**{short}:** {result.interval_pairs_display}")
+    steps.append("**Practice**")
     steps.extend(result.practice_guidance)
+    steps.append("**Listen for**")
+    steps.extend(result.what_to_listen_for)
 
     return CoachResponse(
         intent=CoachIntent.SCALE_PRACTICE,
-        direct_answer=f"**{result.display_label}** — {result.key_signature_hint}",
-        explanation="Use the staff below; key signature follows conventional spelling for this tonic.",
+        direct_answer=heading,
+        explanation="",
         practice_steps=steps,
-        what_to_listen_for=list(result.what_to_listen_for),
+        what_to_listen_for=[],
         notation_abc=result.abc,
         source_solver="ScalePracticeSolver",
         confidence=0.9,
@@ -139,6 +146,8 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
             "preferred_spelling": spec.preferred_spelling or result.display_label.split()[0],
             "scale_type": result.scale_type,
             "abc_key": result.abc_key,
+            "reference_key": result.reference_key,
+            "key_signature_hint": result.key_signature_hint,
             "notation_abc_present": bool(result.abc),
             "patterns": list(spec.interval_patterns),
             "octaves": spec.octave_count,
