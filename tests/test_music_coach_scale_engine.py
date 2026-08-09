@@ -553,6 +553,55 @@ class DescendingIntervalTests(unittest.TestCase):
                 )
 
 
+class ModeParsingTests(unittest.TestCase):
+    def test_e_flat_minor_dorian_phrase(self) -> None:
+        spec = parse_scale_practice_question(
+            "Show me E flat minor dorian scale in 2 octaves with quarter notes, 4/4 with measures."
+        )
+        self.assertEqual(spec.tonic, "Eb")
+        self.assertEqual(spec.scale_type, "dorian")
+        result = generate_scale_practice(spec)
+        self.assertIn("dorian", result.display_label.lower())
+        self.assertIn("Eb", result.scale_degrees[0])
+        self.assertIn("Gb", result.scale_degrees)
+        self.assertIn("Db", result.scale_degrees)
+
+    def test_d_dorian_key_signature_is_c_major(self) -> None:
+        spec = parse_scale_practice_question("Give me D dorian pattern difficult exercise")
+        self.assertEqual(spec.tonic, "D")
+        self.assertEqual(spec.scale_type, "dorian")
+        self.assertEqual(spec.exercise_pattern, "four_note_sequence")
+        result = generate_scale_practice(spec)
+        self.assertIn("K:C", result.abc)
+
+    def test_mode_tonic_spellings(self) -> None:
+        cases = [
+            ("Show me E flat dorian scale.", "Eb", "dorian"),
+            ("Show me B flat dorian scale.", "Bb", "dorian"),
+            ("Give me F sharp dorian scale.", "F#", "dorian"),
+            ("Show me C sharp mixolydian scale.", "C#", "mixolydian"),
+            ("Show me A flat lydian scale.", "Ab", "lydian"),
+        ]
+        for prompt, tonic, stype in cases:
+            spec = parse_scale_practice_question(prompt)
+            self.assertEqual(spec.tonic, tonic, msg=prompt)
+            self.assertEqual(spec.scale_type, stype, msg=prompt)
+
+    def test_melodic_minor_descending_two_octaves_on_staff(self) -> None:
+        spec = parse_scale_practice_question(
+            "Show me D melodic minor, ascending and descending, two octaves, "
+            "in quarter notes. Put it in 4/4 time, with measures."
+        )
+        result = generate_scale_practice(spec)
+        self.assertEqual(len(result.notation_sections), 2)
+        desc = result.notation_sections[1]
+        import music_coach_ami.scale_engine as se
+
+        desc_deg = se.spell_scale_degrees_for_direction("D", "melodic minor", "descending")
+        desc_seq = se._melodic_descending_note_sequence(desc_deg, 2)
+        self.assertEqual(len(desc_seq), 15)
+
+
 class TonicParserTests(unittest.TestCase):
     def test_article_a_d_major_not_a_tonic(self) -> None:
         spec = parse_scale_practice_question(

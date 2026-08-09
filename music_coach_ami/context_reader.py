@@ -68,6 +68,8 @@ def read_coach_context(
     ).strip()
 
     active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
+    if not active and isinstance(session_state.get("active_song"), dict):
+        active = session_state["active_song"]
     title = str(active.get("title") or snap.get("title") or "").strip()
     pick = str(ctx.get("pick_key") or snap.get("pick_key") or session_state.get("active_catalog_pick_key") or "")
 

@@ -50,7 +50,28 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     ):
         return CoachIntent.PRACTICE_HISTORY_ANALYSIS, 0.92
 
-    if re.search(r"\bwhere do i\b", low) or re.search(r"\bhow do i (log|save|upload|create|change)\b", low):
+    if any(
+        p in low
+        for p in (
+            "how can i practice improvising",
+            "practice improvising on this song",
+            "improvise on this song",
+            "improvising over the current chord",
+            "improvising over the current progression",
+        )
+    ):
+        return CoachIntent.IMPROVISATION_COACHING, 0.91
+
+    if "what part of the app" in low and any(p in low for p in ("scale", "chord", "theory", "harmony")):
+        return CoachIntent.APP_FEATURE_RECOMMENDATION, 0.88
+
+    if "difference between" in low and "backing" in low and "jam" in low:
+        return CoachIntent.FEATURE_EXPLANATION, 0.9
+
+    if "difference between" in low and "mission" in low and "live coach" in low:
+        return CoachIntent.FEATURE_EXPLANATION, 0.9
+
+    if re.search(r"\bwhere (?:do i|can i)\b", low) or re.search(r"\bhow do i (log|save|upload|create|change|find)\b", low):
         if feature_by_question(low) or "log" in low or "upload" in low or "backing" in low:
             return CoachIntent.APP_NAVIGATION, 0.9
 
@@ -125,7 +146,7 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if "sheet music" in low and any(p in low for p in ("major", "minor", "scale", "thirds", "fourths")):
         return CoachIntent.SCALE_PRACTICE, 0.88
 
-    if any(p in low for p in ("songs should i", "easy jazz songs", "songs good for", "recommend songs", "songs for learning improvisation")):
+    if any(p in low for p in ("songs should i", "easy jazz songs", "songs good for", "recommend songs", "songs for learning improvisation", "what kind of songs")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
     if "songs" in low and any(p in low for p in ("good for learning", "good for improvisation", "learning improvisation")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
@@ -144,6 +165,7 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
             "practice over the chord",
             "what should i practice over",
             "how should i practice a motif",
+            "how should i practice developing a motif",
         )
     ):
         return CoachIntent.IMPROVISATION_COACHING, 0.86
@@ -173,7 +195,7 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         p in low for p in ("practice", "routine", "plan", "today", "should i")
     ):
         return CoachIntent.PRACTICE_PLAN, 0.9
-    if "what should i practice" in low or "practice plan" in low or "practice today" in low:
+    if ("what should i practice" in low and "what kind of songs" not in low) or "practice plan" in low or "practice today" in low:
         if not any(p in low for p in ("over this chord", "over the chord", "chord progression", "progression?")):
             return CoachIntent.PRACTICE_PLAN, 0.88
 

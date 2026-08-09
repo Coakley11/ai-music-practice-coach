@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Callable
 
-from music_coach_ami.app_knowledge import CREATIVE_COMPARISONS, FEATURES
+from music_coach_ami.app_knowledge import (
+    CREATIVE_COMPARISONS,
+    FEATURES,
+    compare_features,
+    context_completeness,
+    feature_by_question,
+    recommend_feature_for_goal,
+)
 from music_coach_ami.types import CoachIntent, CoachRequest, CoachResponse
 
 SolverFn = Callable[[CoachRequest], CoachResponse | None]
@@ -243,23 +250,53 @@ def solve_technique_problem(req: CoachRequest) -> CoachResponse:
 
 
 def solve_app_navigation(req: CoachRequest) -> CoachResponse:
-    fid = req.entities.feature_id or "practice_log"
+    low = req.normalized_question.lower()
+    fid = req.entities.feature_id or feature_by_question(low) or "practice_log"
     feat = FEATURES.get(fid) or FEATURES["practice_log"]
+    steps = [
+        f"**Use:** {feat.display_name}",
+        f"**Go to:** {feat.navigation_path or feat.display_name}",
+        "**Then:**",
+        *feat.usage_steps,
+    ]
     return CoachResponse(
         intent=CoachIntent.APP_NAVIGATION,
-        direct_answer=f"To use **{feat.display_name}**:",
-        app_navigation_steps=list(feat.usage_steps),
+        direct_answer=f"**Where to go:** {feat.navigation_path or feat.display_name}",
         explanation=feat.purpose,
+        app_navigation_steps=steps,
         suggested_next_action=f"Open **{feat.display_name}** when {feat.when_to_use.lower()}",
         source_solver="AppNavigationSolver",
         confidence=0.9,
-        diagnostics={"feature_id": feat.feature_id},
+        diagnostics={
+            "feature_id": feat.feature_id,
+            "app_knowledge_consulted": feat.feature_id,
+            "context_completeness": context_completeness(req.context),
+        },
     )
 
 
 def solve_feature_explanation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    fid = req.entities.feature_id
+    if "difference between" in low and "backing" in low and "jam" in low:
+        body = compare_features("backing_vs_jam") or CREATIVE_COMPARISONS["missions_vs_jam"]
+        return CoachResponse(
+            intent=CoachIntent.FEATURE_EXPLANATION,
+            direct_answer=body,
+            suggested_next_action="Use **Backing** for your current song; use **Jam Session Generator** for a fresh chart.",
+            source_solver="FeatureExplanationSolver",
+            confidence=0.92,
+            diagnostics={"comparison": "backing_vs_jam", "app_knowledge_consulted": "backing,jam_session_generator"},
+        )
+    if "difference between" in low and "mission" in low and "live coach" in low:
+        body = compare_features("missions_vs_live_coach")
+        return CoachResponse(
+            intent=CoachIntent.FEATURE_EXPLANATION,
+            direct_answer=body,
+            source_solver="FeatureExplanationSolver",
+            confidence=0.92,
+            diagnostics={"comparison": "missions_vs_live_coach"},
+        )
+    fid = req.entities.feature_id or feature_by_question(low)
     if not fid:
         if "backing" in low:
             fid = "backing"
@@ -267,6 +304,8 @@ def solve_feature_explanation(req: CoachRequest) -> CoachResponse:
             fid = "practice_log"
         elif "upload" in low:
             fid = "upload_analysis"
+        elif "harmony map" in low:
+            fid = "harmony_map"
         else:
             fid = "backing"
     feat = FEATURES.get(fid, FEATURES["backing"])
@@ -278,7 +317,7 @@ def solve_feature_explanation(req: CoachRequest) -> CoachResponse:
         suggested_next_action=f"Try **{feat.display_name}** on your current song or practice goal.",
         source_solver="FeatureExplanationSolver",
         confidence=0.88,
-        diagnostics={"feature_id": feat.feature_id},
+        diagnostics={"feature_id": feat.feature_id, "app_knowledge_consulted": feat.feature_id},
     )
 
 
@@ -320,40 +359,53 @@ def solve_creative_feature_help(req: CoachRequest) -> CoachResponse:
 
 def solve_app_feature_recommendation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    if "just want to jam" in low or "just improvise" in low:
-        rec = "**Jam Session Generator** or **Style Jam** (Creative → Entry & Jam)."
-        why = "Both give harmonic context for open-ended improvising without a fixed assignment."
-    elif "structured" in low and "improv" in low:
-        rec = "**Missions** (Creative → Missions) with your active song."
-        why = "Missions set a concrete objective (motif, section, chord) instead of a free jam."
-    elif "feedback" in low and ("record" in low or "take" in low):
-        rec = "**Upload & Analysis**."
-        why = "You get structured feedback on a recording you already made."
-    elif "track" in low and "practiced" in low:
-        rec = "**Practice Log**."
-        why = "Sessions accumulate for progress reports and coaching history."
-    elif "tone" in low or "technique" in low:
-        rec = "**Practice** page with focused technique blocks, then **Upload Analysis** to check tone."
-        why = "Technique needs isolated reps; analysis confirms what changed."
-    elif "current song" in low or "practice my song" in low:
-        rec = "**Practice** for reading/technique, **Backing** for tempo/groove, **Missions** for improv goals."
-        why = "Each tool matches a different layer of song work."
-    else:
-        rec = "**Creative → Entry & Jam** for improv, **Practice Log** to track work."
-        why = "Match the feature to whether you are exploring, structuring, or documenting."
+    if "what part of the app" in low and any(p in low for p in ("scale", "chord", "theory")):
+        steps = [
+            "**Scale exercises & notation:** Music Coach on **Practice** — ask e.g. “Show me B♭ major in thirds.”",
+            "**Chord relationships:** **Harmony Map** in **Creative** for visual harmony in the current key.",
+            "**Theory explanations:** Music Coach text answers (what is a ii-V-I, modes, etc.).",
+        ]
+        return CoachResponse(
+            intent=CoachIntent.APP_FEATURE_RECOMMENDATION,
+            direct_answer="Use **Music Coach** for scale material; use **Harmony Map** for chord relationships.",
+            practice_steps=steps,
+            suggested_next_action="Open **Practice** and ask Music Coach for a scale exercise, or **Creative → Harmony Map** for chords.",
+            source_solver="FeatureRecommendationSolver",
+            confidence=0.9,
+            diagnostics={
+                "selected_features": ["music_coach", "harmony_map"],
+                "app_knowledge_consulted": "music_coach,harmony_map",
+                "context_completeness": context_completeness(req.context),
+            },
+        )
+    fid, why = recommend_feature_for_goal(low)
+    feat = FEATURES.get(fid, FEATURES["practice"])
     return CoachResponse(
         intent=CoachIntent.APP_FEATURE_RECOMMENDATION,
-        direct_answer=f"Based on your goal: {rec}",
+        direct_answer=f"**Best fit:** {feat.display_name}",
         recommendation=why,
-        suggested_next_action="Open the recommended area from the studio sidebar.",
+        app_navigation_steps=[
+            f"**Go to:** {feat.navigation_path or feat.display_name}",
+            *feat.usage_steps[:2],
+        ],
+        suggested_next_action=f"Open **{feat.display_name}** from the studio sidebar.",
         source_solver="FeatureRecommendationSolver",
         confidence=0.84,
+        diagnostics={
+            "feature_id": fid,
+            "app_knowledge_consulted": fid,
+            "context_completeness": context_completeness(req.context),
+        },
     )
 
 
 def solve_improvisation_coaching(req: CoachRequest) -> CoachResponse:
     level = (req.context.level or "Intermediate").lower()
+    completeness = context_completeness(req.context)
+    song = str(req.context.active_song_title or "").strip()
+    section = str(req.context.active_section or "").strip()
     chord = req.context.current_chord or "the current chord"
+    prog = str(req.context.progression_summary or "").strip()
     beginner = "begin" in level or "beginner" in level or "what is improvisation" in req.normalized_question.lower()
 
     if "what is improvisation" in req.normalized_question.lower():
@@ -365,6 +417,27 @@ def solve_improvisation_coaching(req: CoachRequest) -> CoachResponse:
             "Start with **rhythm only** (one pitch) over a backing loop.",
             "Add **chord tones** on strong beats.",
             "Turn a 3-note idea into a **motif** and repeat it with small changes.",
+        ]
+    elif completeness == "none" and ("this song" in req.normalized_question.lower() or "current" in req.normalized_question.lower()):
+        direct = "Choose the **active song and section** you want to work on first, then loop that harmony."
+        steps = [
+            "Open **Practice** or the song picker and set your active song.",
+            "Select the **section** (verse, chorus, etc.) you want to improvise over.",
+            "Open **Creative → Missions** or **Backing** to loop that section at a comfortable tempo.",
+            "Restrict the first pass to **chord tones** on strong beats, then develop one **motif**.",
+        ]
+    elif completeness in ("exact", "partial") and song:
+        ctx_line = f"**{song}**"
+        if section:
+            ctx_line += f" — **{section}**"
+        if prog:
+            ctx_line += f" ({prog})"
+        direct = f"**Goal:** Develop improvisation over {ctx_line}."
+        steps = [
+            "Loop the section slowly in **Backing** (or Mission backing).",
+            "Pass 1: **chord tones** only on beats 1 and 3.",
+            "Pass 2: one **4-note motif** — repeat, then change rhythm.",
+            "Pass 3: add **approach notes** on weak beats only.",
         ]
     elif beginner or "start improvis" in req.normalized_question.lower():
         direct = "Start small: **fewer notes, clearer rhythm**, and repeat one idea."
@@ -392,14 +465,24 @@ def solve_improvisation_coaching(req: CoachRequest) -> CoachResponse:
         "Chord changes feel ‘arrival’ on strong beats",
         "You can hum your motif when you stop playing",
     ]
+    app_steps = [
+        "**Use in the app:** **Backing** to loop the progression; **Missions** for a focused constraint; "
+        "**Upload Analysis** when you want feedback on a recorded take.",
+    ]
     return CoachResponse(
         intent=CoachIntent.IMPROVISATION_COACHING,
         direct_answer=direct,
-        practice_steps=steps,
+        practice_steps=steps + app_steps,
         what_to_listen_for=listen,
-        suggested_next_action="Open **Creative → Missions** or **Jam Session Generator** with the same key as your song.",
+        suggested_next_action="Open **Creative → Missions** or **Jam Session Generator** in the same key as your song.",
         source_solver="ImprovisationCoachSolver",
         confidence=0.83,
+        diagnostics={
+            "context_completeness": completeness,
+            "active_song_title": song,
+            "active_section": section,
+            "app_knowledge_consulted": "backing,missions,upload_analysis",
+        },
     )
 
 
@@ -425,11 +508,18 @@ def solve_repertoire_recommendation(req: CoachRequest) -> CoachResponse | None:
         return CoachResponse(
             intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
             direct_answer=(
-                "Pick 3–5 songs one step below your performance tempo with clear harmony "
-                "(e.g. I–V–vi–IV or ii–V–I forms) and loop one section daily."
+                "Build a balanced repertoire: one **comfortable** song for tone/phrasing, "
+                "one **harmony-rich** song for improvisation, and one **stretch** piece for technique."
             ),
-            source_solver="RepertoireSolver",
-            confidence=0.6,
+            practice_steps=[
+                "Pick a song you can already play slowly in time — focus on **musical phrasing**.",
+                "Add a tune with clear **ii–V–I** or modal harmony for improv study.",
+                "Keep one piece **slightly above** your performance tempo as a growth target.",
+            ],
+            suggested_next_action="Open the **song picker** and tag one song in each category.",
+            source_solver="RepertoireSolver(fallback)",
+            confidence=0.78,
+            diagnostics={"context_completeness": context_completeness(req.context)},
         )
 
 

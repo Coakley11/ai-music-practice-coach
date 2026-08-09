@@ -358,6 +358,31 @@ def abc_key_signature_for_reference(reference_key: str, *, scale_type: str = "ma
     return str(spelled or "C")
 
 
+def parent_major_root_for_mode(tonic: str, scale_type: str) -> str:
+    """Major key whose signature matches the mode's pitch collection."""
+    st = str(scale_type or "major").lower()
+    root = str(tonic or "C").strip() or "C"
+    midi = midi_from_spelled_note(root, octave=4)
+    if st == "dorian":
+        parent_midi = midi - 2
+    elif st == "mixolydian":
+        parent_midi = midi
+    elif st == "lydian":
+        parent_midi = midi - 5
+    elif st == "locrian":
+        parent_midi = midi + 1
+    else:
+        parent_midi = midi
+    mode = reference_spelling_mode(root)
+    return spell_pitch_class(parent_midi % 12, mode=mode)
+
+
+def abc_key_signature_for_mode(tonic: str, scale_type: str) -> str:
+    """ABC ``K:`` field from the parent major key of a mode (D Dorian → ``C``, not ``D``)."""
+    parent = parent_major_root_for_mode(tonic, scale_type)
+    return abc_key_signature_for_reference(parent, scale_type="major")
+
+
 def format_musician_note_name(note: str, reference_key: str) -> str:
     """Musician-facing note with Unicode ♭/♯ when the key family uses accidentals."""
     spelled = respell_note_for_key(str(note or "C").strip() or "C", reference_key)

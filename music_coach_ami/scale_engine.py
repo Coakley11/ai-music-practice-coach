@@ -40,6 +40,25 @@ _BARE_SCALE_PHRASE_RE = re.compile(
     re.I,
 )
 
+_TONIC_MULTIWORD = r"[A-Ga-g]\s+(?:flat|b|♭|sharp|#|♯)"
+
+_MODE_NAMES = r"(?:dorian|mixolydian|lydian|locrian|phrygian)"
+
+_MODE_SCALE_PHRASE_RE = re.compile(
+    rf"\b(?P<tonic>{_TONIC_SPELLING}|{_TONIC_MULTIWORD})\s+"
+    rf"(?:(?:natural|harmonic|melodic)\s+)?(?:minor\s+)?"
+    rf"(?P<mode>{_MODE_NAMES})(?:\s+scale)?\b",
+    re.I,
+)
+
+_MODE_OCTAVES_OF_RE = re.compile(
+    rf"\b(?:one|two|three|\d+)\s+octaves?\s+of\s+"
+    rf"(?P<tonic>{_TONIC_SPELLING}|{_TONIC_MULTIWORD})\s+"
+    rf"(?:(?:natural|harmonic|melodic)\s+)?(?:minor\s+)?"
+    rf"(?P<mode>{_MODE_NAMES})\b",
+    re.I,
+)
+
 _INTERVAL_STEPS: dict[str, int] = {
     "unison": 0,
     "straight": 0,
@@ -79,6 +98,7 @@ class ScalePracticeSpec:
     start_octave: int | None = None
     wants_measures: bool = False
     tonic_provenance: str = ""
+    exercise_pattern: str = "straight"
 
 
 @dataclass
@@ -122,9 +142,9 @@ def _preferred_tonic_spelling(raw: str, tonic_ascii: str) -> str:
     """Preserve Unicode ♭/♯ in display when the user typed them (same pitch as ASCII)."""
     letter = tonic_ascii[0].upper() if tonic_ascii else "C"
     raw_s = str(raw or "")
-    if re.search(rf"{letter}\s*♭", raw_s, re.I):
+    if re.search(rf"{letter}\s+flat", raw_s, re.I) or re.search(rf"{letter}\s*♭", raw_s, re.I):
         return f"{letter}♭"
-    if re.search(rf"{letter}\s*♯", raw_s, re.I):
+    if re.search(rf"{letter}\s+sharp", raw_s, re.I) or re.search(rf"{letter}\s*♯", raw_s, re.I):
         return f"{letter}♯"
     if len(tonic_ascii) > 1 and tonic_ascii[1] == "b" and "♭" in raw_s:
         return f"{letter}♭"
@@ -139,9 +159,7 @@ def _parse_scale_type(text: str) -> str:
         return "harmonic minor"
     if "melodic minor" in low:
         return "melodic minor"
-    if "natural minor" in low or re.search(r"\bminor\b", low) and "harmonic" not in low and "melodic" not in low:
-        if "pentatonic" in low:
-            return "minor pentatonic"
+    if "natural minor" in low:
         return "natural minor"
     if "major pentatonic" in low:
         return "major pentatonic"
@@ -156,10 +174,23 @@ def _parse_scale_type(text: str) -> str:
     if "lydian" in low:
         return "lydian"
     if "phrygian" in low:
-        return "locrian"  # fallback until phrygian added
+        return "locrian"
     if "locrian" in low:
         return "locrian"
+    if re.search(r"\bminor\b", low) and "pentatonic" not in low:
+        return "natural minor"
     return "major"
+
+
+def _tonic_from_phrase_group(raw: str, full_text: str) -> str:
+    token = str(raw or "").strip()
+    if re.fullmatch(_TONIC_MULTIWORD, token, flags=re.I):
+        letter = token[0].upper()
+        if re.search(r"flat|b|♭", token, re.I):
+            return f"{letter}b"
+        if re.search(r"sharp|#|♯", token, re.I):
+            return f"{letter}#"
+    return _normalize_tonic(token)
 
 
 def _parse_interval_patterns(text: str) -> tuple[str, ...]:
@@ -174,6 +205,10 @@ def _parse_interval_patterns(text: str) -> tuple[str, ...]:
         return tuple(found)
     if any(p in low for p in ("in thirds", "in 3rds")):
         return ("thirds",)
+    if re.search(r"\bpattern\b", low) and re.search(
+        r"\b(difficult|challenging|hard|advanced)\b|\bexercise\b", low
+    ):
+        return ("four_note_sequence",)
     if "sheet music" in low or "scale" in low or "show me" in low or "give me" in low:
         return ("straight",)
     return ("straight",)
@@ -250,16 +285,22 @@ def _parse_wants_measures(text: str) -> bool:
 
 def _parse_tonic(text: str, cleaned: str) -> tuple[str, str]:
     """Extract tonic from scale noun phrases before weak letter fallback."""
+    blob = cleaned or text or ""
     for pattern, prov in (
+        (_MODE_OCTAVES_OF_RE, "octaves_of_mode_phrase"),
+        (_MODE_SCALE_PHRASE_RE, "mode_scale_phrase"),
         (_OCTAVES_OF_RE, "octaves_of_scale_phrase"),
         (_SCALE_PHRASE_WITH_SCALE_WORD_RE, "scale_phrase_with_scale_word"),
         (_SCALE_PHRASE_RE, "scale_phrase"),
-        (_BARE_SCALE_PHRASE_RE, "bare_scale_phrase"),
     ):
-        m = pattern.search(cleaned or text or "")
+        m = pattern.search(blob)
         if m:
-            return _normalize_tonic(m.group(1)), prov
-    m = _TONIC_RE.search(cleaned or text or "")
+            tonic_raw = m.groupdict().get("tonic") or m.group(1)
+            return _tonic_from_phrase_group(tonic_raw, text), prov
+    m = _BARE_SCALE_PHRASE_RE.search(blob)
+    if m and not re.search(_MODE_NAMES, blob, re.I):
+        return _tonic_from_phrase_group(m.group(1), text), "bare_scale_phrase"
+    m = _TONIC_RE.search(blob)
     if m:
         return _normalize_tonic(m.group(1)), "standalone_letter_fallback"
     return "C", "default"
@@ -330,6 +371,9 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
     preferred = _preferred_tonic_spelling(raw_text, tonic)
     scale_type = _parse_scale_type(text)
     patterns = _parse_interval_patterns(text)
+    exercise_pattern = "four_note_sequence" if "four_note_sequence" in patterns else "straight"
+    if exercise_pattern == "four_note_sequence":
+        patterns = ("straight",)
     octaves, oct_explicit = _parse_octave_count(text)
     direction = _parse_direction(text)
     note_value, triplet, note_explicit = _parse_note_value(text)
@@ -355,6 +399,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
         tempo_bpm=tempo,
         wants_measures=wants_measures,
         tonic_provenance=tonic_prov,
+        exercise_pattern=exercise_pattern,
     )
 
 
@@ -470,12 +515,31 @@ def _melodic_descending_note_sequence(desc_degrees: list[str], octave_count: int
     n = len(desc_degrees)
     if n < 2:
         return list(desc_degrees)
-    out: list[str] = []
-    for _ in range(octave_count):
-        out.append(desc_degrees[0])
-        for step in range(1, n):
-            out.append(desc_degrees[(n - step) % n])
+    one_oct = [desc_degrees[0]] + [desc_degrees[(n - k) % n] for k in range(1, n)] + [desc_degrees[0]]
+    if octave_count <= 1:
+        return one_oct
+    out = list(one_oct)
+    for _ in range(octave_count - 1):
+        out.extend(one_oct[1:])
     return out
+
+
+def build_four_note_sequence(
+    scale: list[str],
+    *,
+    octave_count: int,
+    start_octave: int = 4,
+) -> list[str]:
+    n = len(scale)
+    if n < 4:
+        return build_straight_sequence(scale, direction="ascending", octave_count=octave_count, start_octave=start_octave)
+    names: list[str] = []
+    for rep in range(max(1, octave_count)):
+        for i in range(n):
+            for j in range(4):
+                names.append(scale[(i + j) % n])
+    pitched = _octave_for_sequence(names, start_octave)
+    return [note for note, _ in pitched]
 
 
 def build_straight_sequence(
@@ -690,8 +754,11 @@ def pairs_to_pitched_notes(
 
 
 def _abc_key_field(tonic: str, scale_type: str) -> str:
-    from music_theory import abc_key_signature_for_reference
+    from music_theory import abc_key_signature_for_mode, abc_key_signature_for_reference
 
+    st = str(scale_type or "major").lower()
+    if st in ("dorian", "mixolydian", "lydian", "locrian"):
+        return abc_key_signature_for_mode(tonic, st)
     ref = tonic
     if "minor" in scale_type and "major" not in scale_type and not str(tonic).endswith("m"):
         ref = f"{tonic}m"
@@ -924,6 +991,8 @@ def format_scale_request_summary(spec: ScalePracticeSpec) -> list[str]:
         lines.append(f"**Articulation:** {spec.articulation.replace('_', ' ').title()}")
     if spec.meter_explicit or spec.wants_measures:
         lines.append(f"**Meter:** {spec.meter}")
+    if spec.exercise_pattern == "four_note_sequence":
+        lines.append("**Pattern:** Four-note ascending sequence")
     return lines
 
 
@@ -1023,13 +1092,13 @@ def _abc_apply_triplet_groups(tokens: list[str]) -> list[str]:
     i = 0
     while i < len(tokens):
         if i + 2 < len(tokens):
-            out.append(f"(3{tokens[i]}{tokens[i + 1]}{tokens[i + 2]})")
+            out.append(f"(3:2:2{tokens[i]}{tokens[i + 1]}{tokens[i + 2]}")
             i += 3
         elif i + 1 < len(tokens):
-            out.append(f"(3{tokens[i]}{tokens[i + 1]}z)")
+            out.append(f"(3:2:2{tokens[i]}{tokens[i + 1]}z")
             i += 2
         else:
-            out.append(f"(3{tokens[i]}zz)")
+            out.append(f"(3:2:2{tokens[i]}zz")
             i += 1
     return out
 
@@ -1086,7 +1155,7 @@ def _abc_pack_measures(
             bar_used = 0.0
 
     for tok in expanded:
-        if tok.startswith("(3") and (tok.endswith(")") or "z" in tok):
+        if tok.startswith("(3"):
             group_q = 1.0
             if bar_used + group_q > bar_cap + 1e-6 and bar_used > 0:
                 flush_bar()
@@ -1350,14 +1419,21 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
-            seq = build_straight_sequence(
-                scale,
-                direction=spec.direction,
-                octave_count=spec.octave_count,
-                start_octave=start_oct,
-                scale_type=spec.scale_type,
-                tonic=spec.tonic,
-            )
+            if spec.exercise_pattern == "four_note_sequence":
+                seq = build_four_note_sequence(
+                    scale,
+                    octave_count=spec.octave_count,
+                    start_octave=start_oct,
+                )
+            else:
+                seq = build_straight_sequence(
+                    scale,
+                    direction=spec.direction,
+                    octave_count=spec.octave_count,
+                    start_octave=start_oct,
+                    scale_type=spec.scale_type,
+                    tonic=spec.tonic,
+                )
             practice_seq = list(seq)
             exercise_names.extend(seq)
             if spec.scale_type == "melodic minor" and spec.direction == "both":
@@ -1386,9 +1462,9 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
                 )
                 abc_sections.append(
                     build_abc_from_note_names(
-                        [n for n, _ in down_pitched[1:]],
+                        [n for n, _ in down_pitched],
                         title=f"{display_label} scale (descending)",
-                        pitched=down_pitched[1:],
+                        pitched=down_pitched,
                         pair_mode=False,
                         tokens_per_system=12,
                         tune_number=1,
