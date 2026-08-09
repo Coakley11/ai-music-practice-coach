@@ -25,6 +25,7 @@ SESSION_SOURCE_INVESTMENT_TAB_KEY = "source_investment_tab"
 INVESTMENT_INSIGHT_PANEL_TITLE = "Applied Investment Insight"
 MUSIC_COACH_INSIGHT_PANEL_KEY = "music_coach_insight_panel"
 MUSIC_COACH_RENDER_TRACE_KEY = "_music_coach_insight_render_trace"
+MUSIC_COACH_LIFECYCLE_TRACE_KEY = "_music_coach_insight_lifecycle_trace"
 
 _INVESTMENT_TAB_CANONICAL: dict[str, str] = {
     "portfolio health": "Portfolio Health",
@@ -878,8 +879,29 @@ def local_ami_insight_should_preserve(st: Any) -> bool:
 
 def prime_music_coach_insight_preserve_before_workspace_sync(st: Any) -> None:
     """Call before ``prepare_music_workspace`` so routed insight is not overwritten by disk/cloud."""
-    if local_ami_insight_should_preserve(st):
+    should = local_ami_insight_should_preserve(st)
+    if should:
         st.session_state["_ami_insight_return_preserve"] = True
+    record_music_coach_lifecycle_trace(
+        st,
+        phase="prime_before_workspace_sync",
+        should_preserve=should,
+        preserve_flag=bool(st.session_state.get("_ami_insight_return_preserve")),
+        pending_id=_pending_insight_id(st) or None,
+        submit_render_flag=bool(st.session_state.get("_ami_submit_render_insight_this_run")),
+    )
+
+
+def record_music_coach_lifecycle_trace(st: Any, **fields: Any) -> None:
+    """Append-only lifecycle log for ?dev=1 (submit → sync → render)."""
+    ss = st.session_state
+    trace = list(ss.get(MUSIC_COACH_LIFECYCLE_TRACE_KEY) or [])
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        **{k: v for k, v in fields.items() if v is not None},
+    }
+    trace.append(entry)
+    ss[MUSIC_COACH_LIFECYCLE_TRACE_KEY] = trace[-32:]
 
 
 def _record_music_coach_render_trace(st: Any, **fields: Any) -> None:
@@ -2034,11 +2056,15 @@ def render_applied_math_insight_panel(
     notation_attempted = False
     notation_staff_rendered = False
 
-    panel_ctx = (
-        st.container(key=MUSIC_COACH_INSIGHT_PANEL_KEY, border=True)
-        if app == "music"
-        else st.container(border=True)
-    )
+    insight_id_suffix = str(data.get("insight_id") or "pending")[:12]
+    try:
+        panel_ctx = (
+            st.container(key=f"{MUSIC_COACH_INSIGHT_PANEL_KEY}_{insight_id_suffix}", border=True)
+            if app == "music"
+            else st.container(border=True)
+        )
+    except TypeError:
+        panel_ctx = st.container(border=True)
     with panel_ctx:
         st.markdown(f"#### {_insight_panel_title(app, data)}")
         q = question
@@ -2291,6 +2317,13 @@ def render_suite_applied_math_insight_for_page(
             render_panel_returned=rendered,
             insight_markdown_rendered=st.session_state.get("_music_coach_insight_markdown_rendered"),
             notation_staff_rendered=st.session_state.get("_music_coach_notation_staff_rendered"),
+        )
+        record_music_coach_lifecycle_trace(
+            st,
+            phase="render_suite_complete",
+            render_panel_returned=rendered,
+            render_source_page=str(source_page or ""),
+            skip_reason=skip_reason or None,
         )
         if rendered:
             st.session_state["_music_coach_latest_insight_id"] = str(

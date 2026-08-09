@@ -1415,6 +1415,15 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
         if trace:
             ui.caption("Render trace (last run)")
             ui.json(trace)
+        try:
+            from applied_math_return_insight import MUSIC_COACH_LIFECYCLE_TRACE_KEY
+
+            life = session_state.get(MUSIC_COACH_LIFECYCLE_TRACE_KEY)
+            if life:
+                ui.caption("Lifecycle trace (?dev=1)")
+                ui.json(life)
+        except ImportError:
+            pass
         ui.json(diag)
 
 
@@ -1562,7 +1571,7 @@ def _execute_coach_question_submit(
             ),
             "duplicate_suppressed": False,
         }
-        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+        st.session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
         _record_music_coach_send(
             session_state,
             question_id=question_id,
@@ -1570,6 +1579,21 @@ def _execute_coach_question_submit(
             source_app=source_app,
             result_path="routed_coach",
         )
+        try:
+            from applied_math_return_insight import record_music_coach_lifecycle_trace
+
+            record_music_coach_lifecycle_trace(
+                st,
+                phase="coach_submit_staged",
+                result_path="routed_coach",
+                coach_intent=diag.get("coach_intent"),
+                solver=diag.get("solver"),
+                insight_id=str((pending or {}).get("insight_id") or "") if isinstance(pending, dict) else None,
+                insight_staged=diag.get("insight_staged"),
+                preserve_flag=bool(session_state.get("_ami_insight_return_preserve")),
+            )
+        except ImportError:
+            pass
         session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
             "kind": "success",
             "message": "Music Coach insight is ready below.",

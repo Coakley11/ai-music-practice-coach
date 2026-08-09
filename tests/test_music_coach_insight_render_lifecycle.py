@@ -48,6 +48,26 @@ class MusicCoachInsightLifecycleTests(unittest.TestCase):
             )
         self.assertEqual(st.session_state[SESSION_PENDING_KEY]["insight_id"], "ins-scale")
 
+    def test_empty_disk_pending_does_not_clobber_staged_insight(self) -> None:
+        st = MagicMock()
+        insight = {
+            "insight_id": "ins-staged",
+            "source_app": "music",
+            "source_page": "practice",
+            "conclusion": "Tone plan ready",
+            "question": "30-minute plan",
+            "canonical_instant": True,
+        }
+        st.session_state = {"_ami_pending_insight": insight, "studio_page": "practice"}
+        payload = {
+            "core": {"studio_page": "practice"},
+            "session": {"_ami_pending_insight": {}},
+            "music_workspace_state": {"studio_page": "practice"},
+        }
+        with patch("music_persistent_state.apply_saved_music_context", return_value=True):
+            apply_music_disk_state(st, payload, song_picker_catalog={}, song_library={})
+        self.assertEqual(st.session_state["_ami_pending_insight"]["insight_id"], "ins-staged")
+
     def test_render_suite_emits_markdown_for_routed_scale(self) -> None:
         st = MagicMock()
         ss: dict = {"studio_page": "practice", "_ami_submit_render_insight_this_run": True}
