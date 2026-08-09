@@ -15,6 +15,7 @@ from music_coach_ami.scale_engine import (
     pairs_to_pitched_notes,
     parse_scale_practice_question,
     spell_scale,
+    straight_scale_degree_count,
 )
 from music_coach_ami.solvers import solve_practice_plan
 from music_coach_ami.types import CoachConstraints, CoachContext, CoachRequest, ExtractedEntities
@@ -297,7 +298,8 @@ class ScaleGeneratorTests(unittest.TestCase):
         )
         self.assertGreater(len(spec.interval_patterns), 3)
         result = generate_scale_practice(spec)
-        self.assertTrue(result.abc.count("X:1") >= 3)
+        joined = "\n".join(result.notation_sections or [result.abc])
+        self.assertTrue(joined.count("X:1") >= 3)
 
 
 class TonePracticePlanTests(unittest.TestCase):
@@ -551,6 +553,84 @@ class DescendingIntervalTests(unittest.TestCase):
                 )
 
 
+class TonicParserTests(unittest.TestCase):
+    def test_article_a_d_major_not_a_tonic(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me a D major scale descending in half notes with measures in 3/4 time."
+        )
+        self.assertEqual(spec.tonic, "D")
+        self.assertIn("scale_phrase", spec.tonic_provenance)
+        result = generate_scale_practice(spec)
+        self.assertIn("D major", result.display_label)
+
+    def test_tonic_phrase_regressions(self) -> None:
+        cases = [
+            ("Give me a C major scale.", "C"),
+            ("Show me a B\u266d major scale.", "Bb"),
+            ("Write a G minor scale.", "G"),
+            ("Give me an A major scale.", "A"),
+            ("Give me A major.", "A"),
+            ("Give me the D major scale.", "D"),
+            ("Give me two octaves of D major.", "D"),
+        ]
+        for prompt, tonic in cases:
+            spec = parse_scale_practice_question(prompt)
+            self.assertEqual(spec.tonic, tonic, msg=prompt)
+
+
+class StraightScaleInvariantTests(unittest.TestCase):
+    def test_two_octaves_heptatonic_is_fifteen_events(self) -> None:
+        spec = parse_scale_practice_question("Show me two octaves of B\u266d major in eighth notes.")
+        result = generate_scale_practice(spec)
+        self.assertEqual(len(result.practice_sequence), 15)
+        self.assertEqual(straight_scale_degree_count(2), 15)
+
+    def test_one_octave_heptatonic_is_eight_events(self) -> None:
+        spec = parse_scale_practice_question("Show me one octave of Eb major in quarter notes.")
+        result = generate_scale_practice(spec)
+        self.assertEqual(len(result.practice_sequence), 8)
+
+    def test_d_melodic_both_notation_sections(self) -> None:
+        spec = parse_scale_practice_question(
+            "Show me D melodic minor, ascending and descending, two octaves, "
+            "in quarter notes. Put it in 4/4 time, with measures."
+        )
+        result = generate_scale_practice(spec)
+        self.assertEqual(len(result.notation_sections), 2)
+        self.assertEqual(len([n for n in result.practice_sequence[:15]]), 15)
+
+    def test_half_notes_3_4_no_double_duration(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me a D major scale descending in half notes with measures in 3/4 time."
+        )
+        result = generate_scale_practice(spec)
+        self.assertIn("L:1/2", result.abc)
+        body = result.abc.split("K:D", 1)[-1]
+        self.assertNotRegex(body, r"[A-Ga-g][^ \n|]*22")
+        self.assertEqual(len(result.practice_sequence), 15)
+
+    def test_bb_68_beams_not_slurs(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me B\u266d major in 6/8, two octaves, eighth notes, at 84 BPM."
+        )
+        result = generate_scale_practice(spec)
+        body = result.abc.split("K:Bb", 1)[-1]
+        self.assertGreaterEqual(body.count("|"), 2)
+        self.assertNotIn("( ", body)
+        self.assertEqual(len(result.practice_sequence), 15)
+
+    def test_eb_triplets_start_with_tuplet(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me E\u266d major in thirds, two octaves, as eighth-note triplets at 72 BPM."
+        )
+        result = generate_scale_practice(spec)
+        joined = "\n".join(result.notation_sections or [result.abc])
+        idx = joined.find("K:Eb")
+        body = joined[idx + 4 :] if idx >= 0 else joined
+        first_music = body.split("\n", 1)[-1].lstrip()
+        self.assertTrue(first_music.startswith("(3"))
+
+
 class LiveAcceptanceRegressionTests(unittest.TestCase):
     _D_MELODIC_PROMPT = (
         "Show me D melodic minor, ascending and descending, two octaves, "
@@ -575,6 +655,9 @@ class LiveAcceptanceRegressionTests(unittest.TestCase):
         self.assertTrue(any("4/4" in line for line in summary))
 
         result = generate_scale_practice(spec)
+        listen = " ".join(result.what_to_listen_for)
+        self.assertIn("way up", listen.lower())
+        self.assertIn("way down", listen.lower())
         self.assertIn("C\u266f", result.scale_reference)
         self.assertNotIn("D\u266d", result.scale_reference)
         self.assertIn("B\u266d", result.scale_reference_descending)
@@ -584,8 +667,6 @@ class LiveAcceptanceRegressionTests(unittest.TestCase):
         asc_deg = se.spell_scale_degrees_for_direction("D", "melodic minor", "ascending")
         desc_deg = se.spell_scale_degrees_for_direction("D", "melodic minor", "descending")
         asc_seq = se.extend_scale_octaves(asc_deg, spec.octave_count)
-        if asc_seq[-1] != asc_deg[0]:
-            asc_seq = asc_seq + [asc_deg[0]]
         up = se._octave_for_sequence(asc_seq, result.chosen_start_octave)
         desc_seq = se._melodic_descending_note_sequence(desc_deg, spec.octave_count)
         down = se._octave_for_sequence_descending(desc_seq, up[-1][1])
@@ -630,9 +711,9 @@ class LiveAcceptanceRegressionTests(unittest.TestCase):
         )
         spec = parse_scale_practice_question(prompt)
         result = generate_scale_practice(spec)
-        self.assertIn("X:1", result.abc)
-        self.assertIn("X:2", result.abc)
-        self.assertIn("descending", result.abc.lower())
+        self.assertEqual(len(result.notation_sections), 2)
+        self.assertIn("ascending", result.notation_sections[0].lower())
+        self.assertIn("descending", result.notation_sections[1].lower())
         scale, _, _ = spell_scale("F", "harmonic minor")
         step = 5
         up = pairs_to_pitched_notes(

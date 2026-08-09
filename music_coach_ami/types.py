@@ -93,6 +93,7 @@ class CoachResponse:
     suggested_next_action: str = ""
     source_solver: str = ""
     notation_abc: str = ""
+    notation_abc_sections: list[str] = field(default_factory=list)
     diagnostics: dict[str, Any] = field(default_factory=dict)
     confidence: float = 0.0
 

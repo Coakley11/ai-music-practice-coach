@@ -158,10 +158,12 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         practice_steps=steps,
         what_to_listen_for=[],
         notation_abc=result.abc,
+        notation_abc_sections=list(result.notation_sections or ([result.abc] if result.abc else [])),
         source_solver="ScalePracticeSolver",
         confidence=0.9,
         diagnostics={
             "tonic": result.tonic,
+            "tonic_provenance": spec.tonic_provenance,
             "preferred_spelling": spec.preferred_spelling or result.display_label.split()[0],
             "scale_type": result.scale_type,
             "abc_key": result.abc_key,

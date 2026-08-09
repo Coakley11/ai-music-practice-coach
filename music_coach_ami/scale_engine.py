@@ -5,9 +5,39 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# Tonic patterns — longer spellings first
+# Tonic patterns — longer spellings first (weak fallback only)
 _TONIC_RE = re.compile(
     r"\b(Eb|Ab|Bb|Db|Gb|F#|C#|G#|D#|A#|[A-Ga-g])(?![A-Za-z#])"
+)
+
+_TONIC_SPELLING = (
+    r"(?:Eb|Ab|Bb|Db|Gb|F#|C#|G#|D#|A#|[A-G](?:#|b|♭|♯)?)"
+)
+
+_SCALE_TYPE_PHRASE = (
+    r"(?:(?:natural|harmonic|melodic)\s+)?(?:major|minor)"
+)
+
+# `[tonic] major/minor` with optional English article/determiner (not pitch A)
+_SCALE_PHRASE_RE = re.compile(
+    rf"(?:\b(?:give|show|write|play)\s+me\s+)?(?:the\s+|an?\s+)?"
+    rf"({_TONIC_SPELLING})\s+{_SCALE_TYPE_PHRASE}\b",
+    re.I,
+)
+
+_SCALE_PHRASE_WITH_SCALE_WORD_RE = re.compile(
+    rf"\b({_TONIC_SPELLING})\s+{_SCALE_TYPE_PHRASE}\s+scale\b",
+    re.I,
+)
+
+_OCTAVES_OF_RE = re.compile(
+    rf"\b(?:one|two|three|\d+)\s+octaves?\s+of\s+({_TONIC_SPELLING})\s+{_SCALE_TYPE_PHRASE}\b",
+    re.I,
+)
+
+_BARE_SCALE_PHRASE_RE = re.compile(
+    rf"\b({_TONIC_SPELLING})\s+{_SCALE_TYPE_PHRASE}\b",
+    re.I,
 )
 
 _INTERVAL_STEPS: dict[str, int] = {
@@ -48,6 +78,7 @@ class ScalePracticeSpec:
     tempo_bpm: int | None = None
     start_octave: int | None = None
     wants_measures: bool = False
+    tonic_provenance: str = ""
 
 
 @dataclass
@@ -64,6 +95,7 @@ class ScalePracticeResult:
     abc_key: str = ""
     interval_pairs: list[tuple[str, str]] = field(default_factory=list)
     abc: str = ""
+    notation_sections: list[str] = field(default_factory=list)
     written_sequence: str = ""
     scale_reference: str = ""
     scale_reference_descending: str = ""
@@ -216,6 +248,23 @@ def _parse_wants_measures(text: str) -> bool:
     return any(p in low for p in ("with measures", "with measure", "in measures", "barlines"))
 
 
+def _parse_tonic(text: str, cleaned: str) -> tuple[str, str]:
+    """Extract tonic from scale noun phrases before weak letter fallback."""
+    for pattern, prov in (
+        (_OCTAVES_OF_RE, "octaves_of_scale_phrase"),
+        (_SCALE_PHRASE_WITH_SCALE_WORD_RE, "scale_phrase_with_scale_word"),
+        (_SCALE_PHRASE_RE, "scale_phrase"),
+        (_BARE_SCALE_PHRASE_RE, "bare_scale_phrase"),
+    ):
+        m = pattern.search(cleaned or text or "")
+        if m:
+            return _normalize_tonic(m.group(1)), prov
+    m = _TONIC_RE.search(cleaned or text or "")
+    if m:
+        return _normalize_tonic(m.group(1)), "standalone_letter_fallback"
+    return "C", "default"
+
+
 def _parse_articulation(text: str) -> str:
     low = text.lower()
     if "staccato" in low:
@@ -259,6 +308,7 @@ def spec_to_dev_dict(spec: ScalePracticeSpec, result: ScalePracticeResult | None
         "tempo_bpm": spec.tempo_bpm,
         "instrument": spec.instrument,
         "start_octave": spec.start_octave,
+        "tonic_provenance": spec.tonic_provenance,
     }
     if result is not None:
         out["chosen_start_octave"] = result.chosen_start_octave
@@ -276,10 +326,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
     except ImportError:
         cleaned = cleaned.replace("♭", "b").replace("♯", "#")
     low = cleaned.lower()
-    tonic = "C"
-    m = _TONIC_RE.search(cleaned or text or "")
-    if m:
-        tonic = _normalize_tonic(m.group(1))
+    tonic, tonic_prov = _parse_tonic(text, cleaned)
     preferred = _preferred_tonic_spelling(raw_text, tonic)
     scale_type = _parse_scale_type(text)
     patterns = _parse_interval_patterns(text)
@@ -307,6 +354,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
         instrument=str(instrument or "").strip(),
         tempo_bpm=tempo,
         wants_measures=wants_measures,
+        tonic_provenance=tonic_prov,
     )
 
 
@@ -387,12 +435,18 @@ def _octave_for_sequence(notes: list[str], start_octave: int = 4) -> list[tuple[
 
 
 def extend_scale_octaves(scale: list[str], octave_count: int) -> list[str]:
-    if octave_count <= 1 or not scale:
+    """Endpoint-inclusive heptatonic run: N octaves => N*7 + 1 sounding degrees."""
+    if not scale or octave_count < 1:
         return list(scale)
-    out = list(scale)
-    for _ in range(octave_count - 1):
-        out.extend(scale[1:])
+    out: list[str] = []
+    for _ in range(octave_count):
+        out.extend(scale)
+    out.append(scale[0])
     return out
+
+
+def straight_scale_degree_count(octave_count: int, degree_count: int = 7) -> int:
+    return max(0, octave_count) * degree_count + 1
 
 
 def _octave_for_sequence_descending(notes: list[str], start_octave: int = 4) -> list[tuple[str, int]]:
@@ -445,19 +499,12 @@ def build_straight_sequence(
             return [n for n, _ in _octave_for_sequence_descending(seq, start_octave + octave_count)]
         up = _names_for_degree_run(asc_deg, octave_count, start_octave, ascending=True)
         asc_seq = extend_scale_octaves(asc_deg, octave_count)
-        if asc_seq[-1] != asc_deg[0]:
-            asc_seq = asc_seq + [asc_deg[0]]
         up_pitched = _octave_for_sequence(asc_seq, start_octave)
         last_o = up_pitched[-1][1]
         desc_seq = _melodic_descending_note_sequence(desc_deg, octave_count)
         down_pitched = _octave_for_sequence_descending(desc_seq, last_o)
         return [n for n, _ in up_pitched] + [n for n, _ in down_pitched[1:]]
-    if octave_count <= 1:
-        seq = list(scale) + [scale[0]]
-    else:
-        seq = extend_scale_octaves(scale, octave_count)
-        if seq and seq[-1] != scale[0]:
-            seq = seq + [scale[0]]
+    seq = extend_scale_octaves(scale, octave_count)
     if direction == "descending":
         pitched = _octave_for_sequence_descending(list(reversed(seq)), start_octave + octave_count)
         return [n for n, _ in reversed(pitched)]
@@ -472,12 +519,7 @@ def build_straight_sequence(
 
 
 def _names_for_degree_run(degrees: list[str], octave_count: int, start_octave: int, *, ascending: bool) -> list[str]:
-    if octave_count <= 1:
-        seq = list(degrees) + [degrees[0]]
-    else:
-        seq = extend_scale_octaves(degrees, octave_count)
-        if seq[-1] != degrees[0]:
-            seq = seq + [degrees[0]]
+    seq = extend_scale_octaves(degrees, octave_count)
     if ascending:
         return [n for n, _ in _octave_for_sequence(seq, start_octave)]
     return [n for n, _ in _octave_for_sequence_descending(list(reversed(seq)), start_octave + octave_count)]
@@ -785,12 +827,51 @@ def _listen_for_intonation_line(scale: list[str], reference_key: str) -> str:
     return f"Keep {', '.join(names[:-1])}, and {names[-1]} secure and in tune."
 
 
-def _build_listen_for(*, straight: bool, scale: list[str], reference_key: str) -> list[str]:
+def _melodic_minor_directional_listen(tonic: str) -> str:
+    asc = spell_scale_degrees_for_direction(tonic, "melodic minor", "ascending")
+    desc = spell_scale_degrees_for_direction(tonic, "melodic minor", "descending")
+    up_parts: list[str] = []
+    down_parts: list[str] = []
+    for i, a in enumerate(asc):
+        d = desc[i] if i < len(desc) else ""
+        if a != d:
+            up_parts.append(format_spelled_note_display(a))
+            down_parts.append(format_spelled_note_display(d))
+    if not up_parts:
+        return _listen_for_intonation_line(asc, f"{tonic}m")
+    up_txt = " and ".join(up_parts[:2]) if len(up_parts) <= 2 else ", ".join(up_parts[:-1]) + f", and {up_parts[-1]}"
+    down_txt = (
+        " and ".join(down_parts[:2])
+        if len(down_parts) <= 2
+        else ", ".join(down_parts[:-1]) + f", and {down_parts[-1]}"
+    )
+    return (
+        f"Keep {up_txt} clear on the way up; "
+        f"return securely to {down_txt} on the way down."
+    )
+
+
+def _build_listen_for(
+    *,
+    straight: bool,
+    scale: list[str],
+    reference_key: str,
+    spec: ScalePracticeSpec | None = None,
+    tonic: str = "",
+) -> list[str]:
     if straight:
+        intonation = _listen_for_intonation_line(scale, reference_key)
+        if (
+            spec
+            and spec.scale_type == "melodic minor"
+            and spec.direction == "both"
+            and tonic
+        ):
+            intonation = _melodic_minor_directional_listen(tonic)
         return [
             "Steady tone across the scale",
             "Smooth transitions between degrees",
-            _listen_for_intonation_line(scale, reference_key),
+            intonation,
         ]
     return [
         "Matching tone between the two notes of each pair",
@@ -889,42 +970,87 @@ def _abc_tempo_line(meter: str, bpm: int) -> str:
 
 
 def _abc_duration_suffix(note_value: str, *, triplet: bool) -> str:
+    """Duration multipliers only when L: differs from the written note value."""
     if triplet:
         return ""
-    if note_value == "half":
-        return "2"
     return ""
 
 
+def _l_unit_quarters(default_len: str) -> float:
+    return {"1/4": 1.0, "1/8": 0.5, "1/2": 2.0, "1/16": 0.25}.get(default_len, 1.0)
+
+
+def _note_quarter_duration(note_value: str, *, rhythm_triplet: bool) -> float:
+    if rhythm_triplet:
+        return 2.0 / 3.0
+    return {"quarter": 1.0, "half": 2.0, "eighth": 0.5, "sixteenth": 0.25}.get(note_value, 1.0)
+
+
+def _meter_capacity_quarters(meter: str) -> float:
+    num, den = meter.split("/")
+    n, d = int(num), int(den)
+    if d == 8:
+        return n * 0.5
+    return n * 4.0 / d
+
+
+def _abc_mult_for_quarters(quarters: float, default_len: str) -> str:
+    unit = _l_unit_quarters(default_len)
+    mult = quarters / unit
+    if abs(mult - 1.0) < 1e-6:
+        return ""
+    if abs(mult - round(mult)) < 1e-6:
+        return str(int(round(mult)))
+    if abs(mult - 0.5) < 1e-6:
+        return "/2"
+    if abs(mult - 2.0) < 1e-6:
+        return "2"
+    return str(round(mult, 3)).rstrip("0").rstrip(".")
+
+
+def _expand_slur_token(tok: str) -> list[str]:
+    if tok.startswith("(") and tok.endswith(")") and not tok.startswith("(3"):
+        inner = tok[1:-1].strip()
+        if inner:
+            return inner.split()
+    return [tok]
+
+
 def _abc_apply_triplet_groups(tokens: list[str]) -> list[str]:
-    """Wrap pitch tokens in ABC (3 …) triplet groups; pad incomplete groups with rests."""
     if not tokens:
         return []
     out: list[str] = []
     i = 0
     while i < len(tokens):
         if i + 2 < len(tokens):
-            out.append(f"(3 {tokens[i]} {tokens[i + 1]} {tokens[i + 2]}")
+            out.append(f"(3{tokens[i]}{tokens[i + 1]}{tokens[i + 2]})")
             i += 3
         elif i + 1 < len(tokens):
-            out.append(f"(3 {tokens[i]} {tokens[i + 1]} z")
+            out.append(f"(3{tokens[i]}{tokens[i + 1]}z)")
             i += 2
         else:
-            out.append(f"(3 {tokens[i]} z z")
+            out.append(f"(3{tokens[i]}zz)")
             i += 1
     return out
 
 
 def _abc_beam_within_measure(chunk: list[str], meter: str, default_len: str) -> str:
-    if meter == "6/8" and default_len == "1/8" and len(chunk) >= 3:
+    if meter == "6/8" and default_len == "1/8":
         parts: list[str] = []
         j = 0
         while j < len(chunk):
             group = chunk[j : j + 3]
-            if len(group) == 3 and all(t.startswith("(3") for t in group):
-                parts.append(" ".join(group))
-            elif len(group) == 3:
-                parts.append(f"({ ' '.join(group) })")
+            if len(group) == 3:
+                merged = []
+                for g in group:
+                    if g.startswith("(3") and g.endswith(")"):
+                        merged.append(g)
+                    else:
+                        merged.append(g)
+                if all(not g.startswith("(3") for g in group):
+                    parts.append("".join(group))
+                else:
+                    parts.append(" ".join(group))
             else:
                 parts.append(" ".join(group))
             j += 3
@@ -939,36 +1065,64 @@ def _abc_pack_measures(
     note_value: str,
     rhythm_triplet: bool,
     pack_measures: bool,
+    default_len: str,
 ) -> list[str]:
-    if not tokens:
-        return []
-    default_len = _abc_default_length(note_value)
-    if not pack_measures:
-        return [" ".join(tokens)]
-    unit = _rhythmic_unit_count(note_value, triplet=rhythm_triplet)
-    cap = _units_per_measure(meter, default_len)
-    lines: list[str] = []
-    measure_buf: list[str] = []
-    measure_units = 0.0
+    if not tokens or not pack_measures:
+        return [" ".join(tokens)] if tokens else []
+    bar_cap = _meter_capacity_quarters(meter)
+    note_q = _note_quarter_duration(note_value, rhythm_triplet=rhythm_triplet)
+    expanded: list[str] = []
     for tok in tokens:
-        measure_buf.append(tok)
-        if tok.startswith("(3"):
-            measure_units += 2.0 if default_len == "1/8" else 2.0 * unit
-        else:
-            measure_units += unit
-        if measure_units >= cap - 1e-6:
-            lines.append(_abc_beam_within_measure(measure_buf, meter, default_len) + " |")
-            measure_buf = []
-            measure_units = 0.0
-    if measure_buf:
-        lines.append(_abc_beam_within_measure(measure_buf, meter, default_len) + " |")
+        expanded.extend(_expand_slur_token(tok))
+    lines: list[str] = []
+    measure_parts: list[str] = []
+    bar_used = 0.0
+
+    def flush_bar() -> None:
+        nonlocal measure_parts, bar_used
+        if measure_parts:
+            lines.append(_abc_beam_within_measure(measure_parts, meter, default_len) + " |")
+            measure_parts = []
+            bar_used = 0.0
+
+    for tok in expanded:
+        if tok.startswith("(3") and (tok.endswith(")") or "z" in tok):
+            group_q = 1.0
+            if bar_used + group_q > bar_cap + 1e-6 and bar_used > 0:
+                flush_bar()
+            measure_parts.append(tok)
+            bar_used += group_q
+            if bar_used >= bar_cap - 1e-6:
+                flush_bar()
+            continue
+        remaining_q = note_q
+        first = True
+        while remaining_q > 1e-6:
+            space = bar_cap - bar_used
+            if space <= 1e-6 and measure_parts:
+                flush_bar()
+                space = bar_cap
+            take = min(remaining_q, space)
+            suffix = _abc_mult_for_quarters(take, default_len)
+            tie = ""
+            if take < remaining_q - 1e-6:
+                tie = "-"
+            elif not first and remaining_q > take:
+                tie = ""
+            measure_parts.append(f"{tok}{suffix}{tie}")
+            bar_used += take
+            remaining_q -= take
+            first = False
+            if bar_used >= bar_cap - 1e-6:
+                flush_bar()
+    flush_bar()
     return lines
 
 
 def _abc_layout_systems_from_lines(
     measure_lines: list[str],
     *,
-    lines_per_system: int = 3,
+    lines_per_system: int = 4,
 ) -> str:
     if not measure_lines:
         return " |"
@@ -982,10 +1136,6 @@ def _abc_layout_systems_from_lines(
     if buf:
         out.append("\n".join(buf))
     return "\n".join(out)
-
-
-def _renumber_abc_tune(abc: str, tune_number: int) -> str:
-    return re.sub(r"^X:\d+", f"X:{tune_number}", abc, count=1, flags=re.MULTILINE)
 
 
 def pairs_to_playable_notes(
@@ -1008,22 +1158,22 @@ def pairs_to_playable_notes(
     return [n for n, _ in pitched]
 
 
-def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> str:
+def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> list[str]:
     if not tokens or articulation not in ("slurred", "slur_two", "alternate_slur_tongue"):
-        return " ".join(tokens)
+        return list(tokens)
     if articulation in ("slur_two", "alternate_slur_tongue") or (articulation == "slurred" and pair_mode):
         chunks: list[str] = []
         i = 0
         while i < len(tokens):
             if i + 1 < len(tokens):
-                chunks.append(f"({tokens[i]} {tokens[i + 1]})")
+                chunks.append(f"({tokens[i]}{tokens[i + 1]})")
                 i += 2
             else:
                 chunks.append(tokens[i])
                 i += 1
-        return " ".join(chunks)
+        return chunks
     if len(tokens) <= 8:
-        return f"({' '.join(tokens)})"
+        return [f"({' '.join(tokens)})"]
     phrase = 4
     chunks = []
     for i in range(0, len(tokens), phrase):
@@ -1032,7 +1182,7 @@ def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -
             chunks.append(f"({' '.join(group)})")
         else:
             chunks.append(group[0])
-    return " ".join(chunks)
+    return chunks
 
 
 def _abc_layout_systems(
@@ -1072,23 +1222,46 @@ def _build_abc_body(
     pack_measures: bool,
     tokens_per_system: int,
 ) -> str:
+    default_len = _abc_default_length(note_value)
     if rhythm_triplet:
         pitch_tokens = _abc_apply_triplet_groups(pitch_tokens)
     slurred = _abc_slur_tokens(pitch_tokens, articulation, pair_mode=pair_mode)
-    flat_tokens = slurred.split()
     if pack_measures:
         measure_lines = _abc_pack_measures(
-            flat_tokens,
+            slurred,
             meter=meter,
             note_value=note_value,
             rhythm_triplet=rhythm_triplet,
             pack_measures=True,
+            default_len=default_len,
         )
-        return _abc_layout_systems_from_lines(measure_lines, lines_per_system=3)
+        return _abc_layout_systems_from_lines(measure_lines, lines_per_system=4)
+    flat = " ".join(slurred)
     per_sys = tokens_per_system
-    if len(flat_tokens) > 14:
+    if len(slurred) > 14:
         per_sys = min(per_sys, 10)
-    return _abc_layout_systems(" ".join(flat_tokens), tokens_per_system=per_sys, pair_mode=pair_mode)
+    return _abc_layout_systems(flat, tokens_per_system=per_sys, pair_mode=pair_mode)
+
+
+def _abc_tune_block(
+    *,
+    tune_number: int,
+    title: str,
+    key_field: str,
+    bpm: int,
+    meter: str,
+    note_value: str,
+    music: str,
+) -> str:
+    default_len = _abc_default_length(note_value)
+    tempo = _abc_tempo_line(meter, bpm)
+    return f"""X:{tune_number}
+T:{title}
+M:{meter}
+L:{default_len}
+{tempo}
+K:{key_field}
+{music}"""
 
 
 def build_abc_from_note_names(
@@ -1103,8 +1276,6 @@ def build_abc_from_note_names(
     meter: str = "4/4",
     articulation: str = "",
     pair_mode: bool = False,
-    pitched_phase_two: list[tuple[str, int]] | None = None,
-    title_phase_two: str = "",
     pack_measures: bool = True,
     tokens_per_system: int = 12,
     tune_number: int = 1,
@@ -1117,18 +1288,15 @@ def build_abc_from_note_names(
     staccato = articulation == "staccato"
     pair_slur = pair_mode
 
-    def _tokens_from_pitched(rows: list[tuple[str, int]]) -> list[str]:
-        pitch_tokens: list[str] = []
-        for name, octv in rows:
-            tok = _note_to_abc(name, octv, key_field=key_field)
-            if staccato:
-                tok = tok + "."
-            if dur:
-                tok = tok + dur
-            pitch_tokens.append(tok)
-        return pitch_tokens
+    pitch_tokens: list[str] = []
+    for name, octv in pitched:
+        tok = _note_to_abc(name, octv, key_field=key_field)
+        if staccato:
+            tok = tok + "."
+        if dur:
+            tok = tok + dur
+        pitch_tokens.append(tok)
 
-    pitch_tokens = _tokens_from_pitched(pitched)
     music = _build_abc_body(
         pitch_tokens,
         articulation=articulation,
@@ -1139,38 +1307,15 @@ def build_abc_from_note_names(
         pack_measures=pack_measures,
         tokens_per_system=tokens_per_system,
     )
-    default_len = _abc_default_length(note_value)
-    tempo = _abc_tempo_line(meter, bpm)
-    header = f"""X:{tune_number}
-T:{title}
-M:{meter}
-L:{default_len}
-{tempo}
-K:{key_field}
-{music}"""
-    if pitched_phase_two:
-        down_tokens = _tokens_from_pitched(pitched_phase_two)
-        down_music = _build_abc_body(
-            down_tokens,
-            articulation=articulation,
-            pair_mode=pair_slur,
-            meter=meter,
-            note_value=note_value,
-            rhythm_triplet=rhythm_triplet,
-            pack_measures=pack_measures,
-            tokens_per_system=tokens_per_system,
-        )
-        t2 = title_phase_two or f"{title} (descending)"
-        header += f"""
-
-X:{tune_number + 1}
-T:{t2}
-M:{meter}
-L:{default_len}
-{tempo}
-K:{key_field}
-{down_music}"""
-    return header
+    return _abc_tune_block(
+        tune_number=tune_number,
+        title=title,
+        key_field=key_field,
+        bpm=bpm,
+        meter=meter,
+        note_value=note_value,
+        music=music,
+    )
 
 
 def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
@@ -1215,7 +1360,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
             )
             practice_seq = list(seq)
             exercise_names.extend(seq)
-            if spec.scale_type == "melodic minor":
+            if spec.scale_type == "melodic minor" and spec.direction == "both":
                 asc_deg = spell_scale_degrees_for_direction(spec.tonic, spec.scale_type, "ascending")
                 desc_deg = spell_scale_degrees_for_direction(spec.tonic, spec.scale_type, "descending")
                 scale_reference = _format_scale_reference(asc_deg, ref)
@@ -1224,15 +1369,52 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
                     + [desc_deg[(len(desc_deg) - k) % len(desc_deg)] for k in range(1, len(desc_deg))],
                     ref,
                 )
-            abc_sections.append(
-                build_abc_from_note_names(
-                    seq,
-                    title=f"{display_label} scale",
-                    pair_mode=False,
-                    tokens_per_system=14 if len(seq) <= 16 else 10,
-                    **abc_kw,
+                asc_seq = extend_scale_octaves(asc_deg, spec.octave_count)
+                up_pitched = _octave_for_sequence(asc_seq, start_oct)
+                desc_seq = _melodic_descending_note_sequence(desc_deg, spec.octave_count)
+                down_pitched = _octave_for_sequence_descending(desc_seq, up_pitched[-1][1])
+                abc_sections.append(
+                    build_abc_from_note_names(
+                        [n for n, _ in up_pitched],
+                        title=f"{display_label} scale (ascending)",
+                        pitched=up_pitched,
+                        pair_mode=False,
+                        tokens_per_system=12,
+                        tune_number=1,
+                        **abc_kw,
+                    )
                 )
-            )
+                abc_sections.append(
+                    build_abc_from_note_names(
+                        [n for n, _ in down_pitched[1:]],
+                        title=f"{display_label} scale (descending)",
+                        pitched=down_pitched[1:],
+                        pair_mode=False,
+                        tokens_per_system=12,
+                        tune_number=1,
+                        **abc_kw,
+                    )
+                )
+            else:
+                if spec.scale_type == "melodic minor":
+                    asc_deg = spell_scale_degrees_for_direction(spec.tonic, spec.scale_type, "ascending")
+                    desc_deg = spell_scale_degrees_for_direction(spec.tonic, spec.scale_type, "descending")
+                    scale_reference = _format_scale_reference(asc_deg, ref)
+                    if spec.direction == "descending":
+                        scale_ref_desc = _format_scale_reference(
+                            [desc_deg[0]]
+                            + [desc_deg[(len(desc_deg) - k) % len(desc_deg)] for k in range(1, len(desc_deg))],
+                            ref,
+                        )
+                abc_sections.append(
+                    build_abc_from_note_names(
+                        seq,
+                        title=f"{display_label} scale",
+                        pair_mode=False,
+                        tokens_per_system=14 if len(seq) <= 16 else 10,
+                        **abc_kw,
+                    )
+                )
         else:
             step = _INTERVAL_STEPS.get(pattern, 2)
             pairs = build_interval_pairs_over_octaves(scale, step, spec.octave_count)
@@ -1263,13 +1445,23 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
                 per_system = 10 if spec.note_value in ("eighth", "sixteenth") else 12
                 abc_sections.append(
                     build_abc_from_note_names(
-                        seq,
+                        [n for n, _ in up_pitched],
                         title=f"{display_label} in {pattern} (ascending)",
                         pitched=up_pitched,
-                        pitched_phase_two=down_pitched,
-                        title_phase_two=f"{display_label} in {pattern} (descending)",
                         pair_mode=True,
                         tokens_per_system=per_system,
+                        tune_number=1,
+                        **abc_kw,
+                    )
+                )
+                abc_sections.append(
+                    build_abc_from_note_names(
+                        [n for n, _ in down_pitched],
+                        title=f"{display_label} in {pattern} (descending)",
+                        pitched=down_pitched,
+                        pair_mode=True,
+                        tokens_per_system=per_system,
+                        tune_number=1,
                         **abc_kw,
                     )
                 )
@@ -1305,8 +1497,15 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     written = " ".join(display_practice)
 
     guidance = _build_practice_guidance(spec, straight=straight)
-    listen = _build_listen_for(straight=straight, scale=scale, reference_key=ref)
-    abc = "\n\n".join(s for s in abc_sections if s)
+    listen = _build_listen_for(
+        straight=straight,
+        scale=scale,
+        reference_key=ref,
+        spec=spec,
+        tonic=spec.tonic,
+    )
+    notation_sections = [s for s in abc_sections if s]
+    abc = notation_sections[0] if notation_sections else ""
 
     return ScalePracticeResult(
         label=label,
@@ -1321,6 +1520,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
         abc_key=key_field,
         interval_pairs=all_pairs,
         abc=abc,
+        notation_sections=notation_sections,
         written_sequence=written,
         scale_reference=scale_reference,
         scale_reference_descending=scale_ref_desc,

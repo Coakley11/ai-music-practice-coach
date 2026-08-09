@@ -63,6 +63,11 @@ def stage_routed_music_coach_insight(
     insight["method"] = f"Structured solver: {solver_name}"
     if getattr(coach_resp, "notation_abc", None):
         insight["notation_abc"] = str(coach_resp.notation_abc or "")
+    sections = getattr(coach_resp, "notation_abc_sections", None) or []
+    if sections:
+        insight["notation_abc_sections"] = [str(s) for s in sections if str(s).strip()]
+    elif insight.get("notation_abc"):
+        insight["notation_abc_sections"] = [str(insight["notation_abc"])]
 
     iid = store_applied_math_insight(
         insight,

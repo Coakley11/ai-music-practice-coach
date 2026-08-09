@@ -2125,7 +2125,61 @@ def render_applied_math_insight_panel(
             except ImportError:
                 pass
         abc_text = str(data.get("notation_abc") or "").strip()
-        if app == "music" and abc_text:
+        abc_sections = data.get("notation_abc_sections")
+        if not isinstance(abc_sections, list) or not abc_sections:
+            abc_sections = [abc_text] if abc_text else []
+        abc_sections = [str(s).strip() for s in abc_sections if str(s).strip()]
+        if app == "music" and abc_sections:
+            notation_attempted = True
+            try:
+                import streamlit.components.v1 as components
+
+                blocks_js = []
+                for idx, section in enumerate(abc_sections):
+                    escaped = (
+                        section.replace("\\", "\\\\")
+                        .replace("`", "\\`")
+                        .replace("${", "\\${")
+                    )
+                    div_id = f"coach_abc_paper_{idx}"
+                    blocks_js.append(
+                        f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});'
+                    )
+                divs = "\n".join(
+                    f'<div id="coach_abc_paper_{idx}" style="margin-bottom:12px;"></div>'
+                    for idx in range(len(abc_sections))
+                )
+                script = "\n".join(blocks_js)
+                panel_height = min(900, 240 + 220 * len(abc_sections))
+                components.html(
+                    f"""
+                    <html><head>
+                    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+                    </head><body>
+                    {divs}
+                    <script>{script}</script>
+                    </body></html>
+                    """,
+                    height=panel_height,
+                    scrolling=True,
+                )
+                notation_staff_rendered = True
+            except Exception:
+                st.code("\n\n".join(abc_sections), language="abc")
+                notation_staff_rendered = True
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                if music_developer_mode(st):
+                    with st.expander("Notation diagnostics (?dev=1)", expanded=False):
+                        st.caption(f"ABC key: `{data.get('coach_submit_diagnostics', {}).get('abc_key', '')}`")
+                        st.caption(f"Notation sections: {len(abc_sections)}")
+                        for idx, section in enumerate(abc_sections):
+                            st.caption(f"Section {idx + 1}")
+                            st.code(section, language="abc")
+            except ImportError:
+                pass
+        elif app == "music" and abc_text:
             notation_attempted = True
             try:
                 import streamlit.components.v1 as components
@@ -2150,15 +2204,6 @@ def render_applied_math_insight_panel(
             except Exception:
                 st.code(abc_text, language="abc")
                 notation_staff_rendered = True
-            try:
-                from music_persistence_trace import music_developer_mode
-
-                if music_developer_mode(st):
-                    with st.expander("Notation diagnostics (?dev=1)", expanded=False):
-                        st.caption(f"ABC key: `{data.get('coach_submit_diagnostics', {}).get('abc_key', '')}`")
-                        st.code(abc_text, language="abc")
-            except ImportError:
-                pass
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
