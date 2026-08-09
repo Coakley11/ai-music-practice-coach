@@ -91,6 +91,19 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if re.search(r"\bwhat scales should i practice\b", low):
         return CoachIntent.SCALE_PRACTICE, 0.88
 
+    if re.search(r"\bwhat is\b", low) and re.search(r"\bscale\b", low):
+        if not re.search(r"\b(show me|give me|write)\b", low):
+            return CoachIntent.THEORY_EXPLANATION, 0.84
+
+    if re.search(r"\b(show me|give me|write)\b", low) and re.search(
+        r"\b("
+        r"major|minor|harmonic minor|melodic minor|natural minor|"
+        r"pentatonic|blues|dorian|mixolydian|lydian|locrian"
+        r")\b",
+        low,
+    ):
+        return CoachIntent.SCALE_PRACTICE, 0.9
+
     if re.search(r"\b(show me|give me|write)\b", low) and any(
         p in low
         for p in (

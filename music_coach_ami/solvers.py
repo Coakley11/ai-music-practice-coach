@@ -83,6 +83,7 @@ def solve_practice_plan(req: CoachRequest) -> CoachResponse:
 def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     from music_coach_ami.scale_engine import (
         _interval_pattern_title,
+        format_scale_request_summary,
         generate_scale_practice,
         parse_scale_practice_question,
         spec_to_dev_dict,
@@ -124,10 +125,14 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         interval_title = _interval_pattern_title(pattern) if pattern else "Diatonic intervals"
         heading = f"## {result.display_label} — {interval_title.lower()}"
 
-    steps: list[str] = [f"**Scale:** {result.scale_reference or result.written_sequence}"]
-    if not straight and result.interval_pairs_display:
-        short = pattern.rstrip("s").capitalize() + "s" if pattern else "Intervals"
-        steps.append(f"**{short}:** {result.interval_pairs_display}")
+    steps: list[str] = list(format_scale_request_summary(spec))
+    if straight:
+        steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
+    else:
+        steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
+        if result.interval_pairs_display:
+            short = pattern.rstrip("s").capitalize() + "s" if pattern else "Intervals"
+            steps.append(f"**{short} pattern:** {result.interval_pairs_display}")
     steps.append("**Practice**")
     steps.extend(result.practice_guidance)
     steps.append("**Listen for**")

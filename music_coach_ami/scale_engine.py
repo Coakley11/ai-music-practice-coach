@@ -473,26 +473,32 @@ def _assign_interval_pair_octaves(
     return out
 
 
-def pairs_to_playable_notes(
-    pairs: list[tuple[str, str]],
-    *,
-    direction: str,
-    start_octave: int = 4,
-) -> list[str]:
-    if not pairs:
+def build_interval_pairs_descending_over_octaves(
+    scale: list[str], step: int, octave_count: int
+) -> list[tuple[str, str]]:
+    """Descending interval pairs: sources follow the scale downward from the tonic (F→E→D♭…)."""
+    if step <= 0 or not scale or octave_count < 1:
         return []
-    asc = direction != "descending"
-    pitched = _assign_interval_pair_octaves(pairs, start_octave=start_octave, ascending=asc)
-    names = [n for n, _ in pitched]
-    if direction == "both":
-        down = _assign_interval_pair_octaves(
-            list(reversed(pairs)),
-            start_octave=start_octave,
-            ascending=False,
-        )
-        down_names = [n for n, _ in down]
-        names = names + down_names[1:]
-    return names
+    n = len(scale)
+    degree_order = [0] + [(n - k) % n for k in range(1, n)]
+    pairs: list[tuple[str, str]] = []
+    for _ in range(octave_count):
+        for i in degree_order:
+            a = scale[i]
+            b = scale[(i - step) % n]
+            pairs.append((a, b))
+    return pairs
+
+
+def interval_pairs_for_direction(
+    scale: list[str],
+    step: int,
+    octave_count: int,
+    direction: str,
+) -> list[tuple[str, str]]:
+    if direction == "descending":
+        return build_interval_pairs_descending_over_octaves(scale, step, octave_count)
+    return build_interval_pairs_over_octaves(scale, step, octave_count)
 
 
 def pairs_to_pitched_notes(
@@ -500,19 +506,30 @@ def pairs_to_pitched_notes(
     *,
     direction: str,
     start_octave: int = 4,
+    scale: list[str] | None = None,
+    step: int = 2,
+    octave_count: int = 1,
 ) -> list[tuple[str, int]]:
+    if scale and step > 0:
+        if direction == "both":
+            up_pairs = build_interval_pairs_over_octaves(scale, step, octave_count)
+            up = _assign_interval_pair_octaves(up_pairs, start_octave=start_octave, ascending=True)
+            top_oct = max((o for _, o in up), default=start_octave)
+            down_pairs = build_interval_pairs_descending_over_octaves(scale, step, octave_count)
+            down = _assign_interval_pair_octaves(
+                down_pairs,
+                start_octave=top_oct,
+                ascending=False,
+            )
+            return up + down
+        if direction == "descending":
+            pairs = build_interval_pairs_descending_over_octaves(scale, step, octave_count)
+            high_start = start_octave + max(0, octave_count)
+            return _assign_interval_pair_octaves(pairs, start_octave=high_start, ascending=False)
     if not pairs:
         return []
     asc = direction != "descending"
-    pitched = _assign_interval_pair_octaves(pairs, start_octave=start_octave, ascending=asc)
-    if direction == "both":
-        down = _assign_interval_pair_octaves(
-            list(reversed(pairs)),
-            start_octave=start_octave,
-            ascending=False,
-        )
-        pitched = pitched + down[1:]
-    return pitched
+    return _assign_interval_pair_octaves(pairs, start_octave=start_octave, ascending=asc)
 
 
 def _abc_key_field(tonic: str, scale_type: str) -> str:
@@ -667,6 +684,33 @@ def _format_interval_pairs_line(pairs: list[tuple[str, str]], reference_key: str
     return " · ".join(chunks)
 
 
+def format_scale_request_summary(spec: ScalePracticeSpec) -> list[str]:
+    lines: list[str] = []
+    if spec.octave_count_explicit:
+        label = {1: "One octave", 2: "Two octaves", 3: "Three octaves"}.get(
+            spec.octave_count, f"{spec.octave_count} octaves"
+        )
+        lines.append(f"**Range:** {label}")
+    elif spec.octave_count >= 2:
+        lines.append("**Range:** Two octaves")
+    if spec.note_value != "quarter":
+        rv = spec.note_value.capitalize() + " notes"
+        if spec.rhythm_triplet:
+            rv = "Triplet " + rv.lower()
+        lines.append(f"**Rhythm:** {rv}")
+    if spec.direction == "descending":
+        lines.append("**Direction:** Descending")
+    elif spec.direction == "both":
+        lines.append("**Direction:** Ascending and descending")
+    if spec.tempo_bpm:
+        lines.append(f"**Tempo:** {spec.tempo_bpm} BPM")
+    if spec.articulation:
+        lines.append(f"**Articulation:** {spec.articulation.replace('_', ' ').title()}")
+    if spec.meter and spec.meter != "4/4":
+        lines.append(f"**Meter:** {spec.meter}")
+    return lines
+
+
 def _abc_default_length(note_value: str) -> str:
     return {
         "quarter": "1/4",
@@ -684,6 +728,26 @@ def _abc_duration_suffix(note_value: str, *, triplet: bool) -> str:
     return ""
 
 
+def pairs_to_playable_notes(
+    pairs: list[tuple[str, str]],
+    *,
+    direction: str,
+    start_octave: int = 4,
+    scale: list[str] | None = None,
+    step: int = 2,
+    octave_count: int = 1,
+) -> list[str]:
+    pitched = pairs_to_pitched_notes(
+        pairs,
+        direction=direction,
+        start_octave=start_octave,
+        scale=scale,
+        step=step,
+        octave_count=octave_count,
+    )
+    return [n for n, _ in pitched]
+
+
 def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> str:
     if articulation != "slurred" or not tokens:
         return " ".join(tokens)
@@ -698,7 +762,47 @@ def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -
                 chunks.append(tokens[i])
                 i += 1
         return " ".join(chunks)
-    return f"({' '.join(tokens)})"
+    phrase = 4
+    chunks = []
+    for i in range(0, len(tokens), phrase):
+        group = tokens[i : i + phrase]
+        if len(group) > 1:
+            chunks.append(f"({' '.join(group)})")
+        else:
+            chunks.append(group[0])
+    return " ".join(chunks)
+
+
+def _abc_layout_systems(
+    body: str,
+    *,
+    tokens_per_system: int = 12,
+    phase_break_token_index: int | None = None,
+    pair_mode: bool = False,
+) -> str:
+    """Wrap ABC music onto multiple systems; optional break between ascending/descending phases."""
+    parts = body.split()
+    if not parts:
+        return " |"
+    stride = 2 if pair_mode else 1
+    safe_per_system = tokens_per_system if not pair_mode else max(2, tokens_per_system - (tokens_per_system % 2))
+    lines: list[str] = []
+    buf: list[str] = []
+    token_i = 0
+    for part in parts:
+        buf.append(part)
+        token_i += 1
+        at_phase_break = phase_break_token_index is not None and token_i == phase_break_token_index
+        if at_phase_break and buf:
+            lines.append(" ".join(buf) + " |")
+            buf = []
+            continue
+        if len(buf) >= safe_per_system:
+            lines.append(" ".join(buf) + " |")
+            buf = []
+    if buf:
+        lines.append(" ".join(buf) + " |")
+    return "\n".join(lines)
 
 
 def build_abc_from_note_names(
@@ -713,6 +817,8 @@ def build_abc_from_note_names(
     meter: str = "4/4",
     articulation: str = "",
     pair_mode: bool = False,
+    phase_break_after_token: int | None = None,
+    tokens_per_system: int = 12,
 ) -> str:
     if not note_names and not pitched:
         return ""
@@ -728,7 +834,35 @@ def build_abc_from_note_names(
         if dur:
             tok = tok + dur
         pitch_tokens.append(tok)
-    music = _abc_slur_tokens(pitch_tokens, articulation, pair_mode=pair_mode) + " |"
+    pair_slur = pair_mode or articulation == "slurred"
+    if phase_break_after_token is not None and 0 < phase_break_after_token < len(pitch_tokens):
+        up_t = pitch_tokens[:phase_break_after_token]
+        down_t = pitch_tokens[phase_break_after_token:]
+        up_body = _abc_slur_tokens(up_t, articulation, pair_mode=pair_mode)
+        down_body = _abc_slur_tokens(down_t, articulation, pair_mode=pair_mode)
+        music = (
+            _abc_layout_systems(
+                up_body,
+                tokens_per_system=tokens_per_system,
+                pair_mode=pair_slur,
+            )
+            + "\n"
+            + _abc_layout_systems(
+                down_body,
+                tokens_per_system=tokens_per_system,
+                pair_mode=pair_slur,
+            )
+        )
+    else:
+        slurred = _abc_slur_tokens(pitch_tokens, articulation, pair_mode=pair_mode)
+        per_sys = tokens_per_system
+        if len(pitch_tokens) > 14:
+            per_sys = min(per_sys, 10)
+        music = _abc_layout_systems(
+            slurred,
+            tokens_per_system=per_sys,
+            pair_mode=pair_slur,
+        )
     default_len = _abc_default_length(note_value)
     return f"""X:1
 T:{title}
@@ -779,6 +913,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
                     seq,
                     title=f"{display_label} scale",
                     pair_mode=False,
+                    tokens_per_system=14 if len(seq) <= 16 else 10,
                     **abc_kw,
                 )
             )
@@ -790,16 +925,33 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
                 pairs,
                 direction=spec.direction,
                 start_octave=start_oct,
+                scale=scale,
+                step=step,
+                octave_count=spec.octave_count,
             )
             seq = [n for n, _ in pitched_pairs]
             exercise_names.extend(seq)
             interval_line = _format_interval_pairs_line(build_interval_pairs(scale, step), ref)
+            phase_break = None
+            if spec.direction == "both":
+                up_only = pairs_to_pitched_notes(
+                    pairs,
+                    direction="ascending",
+                    start_octave=start_oct,
+                    scale=scale,
+                    step=step,
+                    octave_count=spec.octave_count,
+                )
+                phase_break = len(up_only)
+            per_system = 10 if spec.note_value in ("eighth", "sixteenth") else 12
             abc_sections.append(
                 build_abc_from_note_names(
                     seq,
                     title=f"{display_label} in {pattern}",
                     pitched=pitched_pairs,
                     pair_mode=True,
+                    phase_break_after_token=phase_break,
+                    tokens_per_system=per_system,
                     **abc_kw,
                 )
             )

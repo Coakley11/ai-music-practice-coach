@@ -9,6 +9,7 @@ from music_coach_ami.router import CoachIntent, route_question
 from music_coach_ami.coach_instrument import resolve_coach_instrument
 from music_coach_ami.scale_engine import (
     build_interval_pairs,
+    build_interval_pairs_descending_over_octaves,
     build_interval_pairs_over_octaves,
     generate_scale_practice,
     pairs_to_pitched_notes,
@@ -78,6 +79,24 @@ class ScaleRouterTests(unittest.TestCase):
     def test_show_d_major_thirds(self) -> None:
         req = route_question("Show me D major in thirds", {})
         self.assertEqual(req.intent, CoachIntent.SCALE_PRACTICE)
+
+    def test_modifier_prompts_still_scale_practice(self) -> None:
+        prompts = [
+            "Show me one octave of Eb major in quarter notes.",
+            "Show me two octaves of Eb major in eighth notes.",
+            "Give me Bb major, two octaves, slurred eighth notes.",
+            "Show me Eb major descending.",
+            "Give me Eb major, two octaves, slurred eighth notes at 80 BPM.",
+        ]
+        for q in prompts:
+            req = route_question(q, {})
+            self.assertEqual(req.intent, CoachIntent.SCALE_PRACTICE, msg=q)
+
+    def test_pipeline_returns_solver_for_modifier_prompts(self) -> None:
+        _, resp = run_coach_submit("Show me one octave of Eb major in quarter notes.", {})
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        self.assertEqual(resp.source_solver, "ScalePracticeSolver")
 
     def test_harmonic_minor_sixths(self) -> None:
         req = route_question("Write Eb harmonic minor in sixths", {})
@@ -421,6 +440,68 @@ class ScalePracticeRequestTests(unittest.TestCase):
 
         flat = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
         self.assertLess(flat[2], flat[1])
+
+
+class DescendingIntervalTests(unittest.TestCase):
+    def test_f_harmonic_minor_descending_sixths_are_sixths_below(self) -> None:
+        scale, _, _ = spell_scale("F", "harmonic minor")
+        step = 5
+        pairs = build_interval_pairs_descending_over_octaves(scale, step, 1)
+        pitched = pairs_to_pitched_notes(
+            pairs,
+            direction="descending",
+            start_octave=4,
+            scale=scale,
+            step=step,
+            octave_count=1,
+        )
+        from music_theory import midi_from_spelled_note
+
+        for (a, b), (pa, oa), (pb, ob) in zip(
+            pairs, pitched[0::2], pitched[1::2], strict=True
+        ):
+            self.assertEqual(pa, a)
+            self.assertEqual(pb, b)
+            ai, bi = scale.index(a), scale.index(b)
+            self.assertEqual((ai - bi) % len(scale), step)
+            self.assertLess(midi_from_spelled_note(b, octave=ob), midi_from_spelled_note(a, octave=oa))
+
+    def test_both_phases_not_reversed_ascending_stream(self) -> None:
+        scale, _, _ = spell_scale("F", "harmonic minor")
+        step = 5
+        pitched = pairs_to_pitched_notes(
+            [],
+            direction="both",
+            start_octave=4,
+            scale=scale,
+            step=step,
+            octave_count=1,
+        )
+        up_len = len(build_interval_pairs_over_octaves(scale, step, 1)) * 2
+        self.assertEqual(len(pitched), up_len * 2)
+        down_pairs = build_interval_pairs_descending_over_octaves(scale, step, 1)
+        self.assertEqual(down_pairs[0][0], scale[0])
+
+    def test_descending_thirds_through_sevenths(self) -> None:
+        scale, _, _ = spell_scale("C", "major")
+        from music_theory import midi_from_spelled_note
+
+        for step in (2, 3, 4, 6):
+            pairs = build_interval_pairs_descending_over_octaves(scale, step, 1)
+            pitched = pairs_to_pitched_notes(
+                pairs,
+                direction="descending",
+                start_octave=4,
+                scale=scale,
+                step=step,
+                octave_count=1,
+            )
+            for (a, b), (_, oa), (_, ob) in zip(pairs, pitched[0::2], pitched[1::2], strict=True):
+                self.assertEqual((scale.index(a) - scale.index(b)) % len(scale), step)
+                self.assertLess(
+                    midi_from_spelled_note(b, octave=ob),
+                    midi_from_spelled_note(a, octave=oa),
+                )
 
 
 if __name__ == "__main__":
