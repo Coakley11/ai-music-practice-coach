@@ -64,6 +64,7 @@ class ScalePracticeResult:
     written_sequence: str = ""
     scale_reference: str = ""
     interval_pairs_display: str = ""
+    interval_pairs_display_descending: str = ""
     key_signature_hint: str = ""
     practice_guidance: list[str] = field(default_factory=list)
     what_to_listen_for: list[str] = field(default_factory=list)
@@ -204,8 +205,11 @@ def _parse_articulation(text: str) -> str:
     low = text.lower()
     if "staccato" in low:
         return "staccato"
-    if "two slurred two tongued" in low or "slur two" in low or "tongue two" in low:
+    if "two slurred two tongued" in low or "alternate slurred" in low:
         return "alternate_slur_tongue"
+    if re.search(r"\bslur two\b", low) or re.search(r"\btwo slurred\b", low):
+        if "two tongued" not in low:
+            return "slur_two"
     if "slurred" in low or "legato" in low or re.search(r"\bslur(?:red)?\b", low):
         return "slurred"
     if any(p in low for p in ("tongued", "articulated", "tonguing")):
@@ -628,7 +632,16 @@ def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list
             ]
         )
     if spec.articulation == "slurred":
-        guidance.append("Keep **slurred** pairs connected; do not retongue between slurred notes.")
+        if straight:
+            guidance.append("Keep the notes smoothly connected under the slur.")
+        else:
+            guidance.append(
+                "Keep **slurred** interval pairs connected; do not retongue between the two notes of a pair."
+            )
+    elif spec.articulation == "slur_two":
+        guidance.append("Use **two-note slurs** consistently through the pattern.")
+    elif spec.articulation == "alternate_slur_tongue":
+        guidance.append("Alternate **two slurred** and **two tongued** notes as marked.")
     elif spec.articulation == "staccato":
         guidance.append("Keep **staccato** attacks light and rhythm steady.")
     elif spec.articulation == "tongued":
@@ -636,20 +649,35 @@ def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list
     return [g for g in guidance if g]
 
 
-def _build_listen_for(*, straight: bool, display_tonic: str, scale_type: str) -> list[str]:
+def _scale_accidental_display_names(scale: list[str], reference_key: str) -> list[str]:
+    """Musician-facing names for scale degrees that use accidentals (from actual spelling)."""
+    from music_theory import format_musician_note_name
+
+    seen: list[str] = []
+    for note in scale:
+        disp = format_musician_note_name(note, reference_key)
+        if ("♭" in disp or "♯" in disp) and disp not in seen:
+            seen.append(disp)
+    return seen
+
+
+def _listen_for_intonation_line(scale: list[str], reference_key: str) -> str:
+    names = _scale_accidental_display_names(scale, reference_key)
+    if not names:
+        return "Secure intonation on every degree"
+    if len(names) == 1:
+        return f"Keep {names[0]} secure and in tune."
+    if len(names) == 2:
+        return f"Keep {names[0]} and {names[1]} secure and in tune."
+    return f"Keep {', '.join(names[:-1])}, and {names[-1]} secure and in tune."
+
+
+def _build_listen_for(*, straight: bool, scale: list[str], reference_key: str) -> list[str]:
     if straight:
-        low = scale_type.lower()
-        if "major" in low and "minor" not in low:
-            if "b" in display_tonic or "♭" in display_tonic:
-                return [
-                    "Steady tone across the scale",
-                    "Smooth transitions between degrees",
-                    "Secure intonation on E♭, A♭, and B♭",
-                ]
         return [
             "Steady tone across the scale",
             "Smooth transitions between degrees",
-            "Secure intonation on every degree",
+            _listen_for_intonation_line(scale, reference_key),
         ]
     return [
         "Matching tone between the two notes of each pair",
@@ -749,9 +777,9 @@ def pairs_to_playable_notes(
 
 
 def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> str:
-    if articulation != "slurred" or not tokens:
+    if not tokens or articulation not in ("slurred", "slur_two", "alternate_slur_tongue"):
         return " ".join(tokens)
-    if pair_mode:
+    if articulation in ("slur_two", "alternate_slur_tongue") or (articulation == "slurred" and pair_mode):
         chunks: list[str] = []
         i = 0
         while i < len(tokens):
@@ -762,6 +790,8 @@ def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -
                 chunks.append(tokens[i])
                 i += 1
         return " ".join(chunks)
+    if len(tokens) <= 8:
+        return f"({' '.join(tokens)})"
     phrase = 4
     chunks = []
     for i in range(0, len(tokens), phrase):
@@ -897,6 +927,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     abc_sections: list[str] = []
     practice_seq: list[str] = []
     interval_line = ""
+    interval_line_desc = ""
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
@@ -932,6 +963,9 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
             seq = [n for n, _ in pitched_pairs]
             exercise_names.extend(seq)
             interval_line = _format_interval_pairs_line(build_interval_pairs(scale, step), ref)
+            if spec.direction in ("both", "descending"):
+                desc_pairs = build_interval_pairs_descending_over_octaves(scale, step, 1)[: len(scale)]
+                interval_line_desc = _format_interval_pairs_line(desc_pairs, ref)
             phase_break = None
             if spec.direction == "both":
                 up_only = pairs_to_pitched_notes(
@@ -966,7 +1000,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     written = " ".join(display_practice)
 
     guidance = _build_practice_guidance(spec, straight=straight)
-    listen = _build_listen_for(straight=straight, display_tonic=display_tonic, scale_type=spec.scale_type)
+    listen = _build_listen_for(straight=straight, scale=scale, reference_key=ref)
     abc = "\n\n".join(s for s in abc_sections if s)
 
     return ScalePracticeResult(
@@ -985,6 +1019,7 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
         written_sequence=written,
         scale_reference=scale_reference,
         interval_pairs_display=interval_line,
+        interval_pairs_display_descending=interval_line_desc,
         key_signature_hint=key_signature_hint,
         practice_guidance=guidance,
         what_to_listen_for=listen,

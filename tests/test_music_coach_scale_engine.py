@@ -442,6 +442,53 @@ class ScalePracticeRequestTests(unittest.TestCase):
         self.assertLess(flat[2], flat[1])
 
 
+class ScaleCoachingCopyTests(unittest.TestCase):
+    def test_bb_major_listen_for_uses_only_scale_accidentals(self) -> None:
+        spec = parse_scale_practice_question("Give me Bb major, two octaves, slurred eighth notes.")
+        result = generate_scale_practice(spec)
+        from music_theory import format_musician_note_name
+
+        allowed = {format_musician_note_name(n, result.reference_key) for n in result.scale_degrees}
+        joined = " ".join(result.what_to_listen_for)
+        self.assertNotIn("A\u266d", joined)
+        self.assertIn("B\u266d", joined)
+        self.assertIn("E\u266d", joined)
+        for token in joined.replace(",", " ").replace("and ", " ").split():
+            if "\u266d" in token or "\u266f" in token:
+                self.assertIn(token.rstrip("."), allowed, msg=f"{token} not in scale")
+
+    def test_eb_major_listen_for_lists_eb_ab_bb(self) -> None:
+        spec = parse_scale_practice_question("Show me one octave of Eb major.")
+        result = generate_scale_practice(spec)
+        joined = " ".join(result.what_to_listen_for)
+        self.assertIn("E\u266d", joined)
+        self.assertIn("A\u266d", joined)
+        self.assertIn("B\u266d", joined)
+
+    def test_straight_slurred_guidance_not_pair_wording(self) -> None:
+        spec = parse_scale_practice_question("Give me Bb major, two octaves, slurred eighth notes.")
+        result = generate_scale_practice(spec)
+        joined = " ".join(result.practice_guidance).lower()
+        self.assertNotIn("slurred pairs", joined)
+        self.assertIn("smoothly connected", joined)
+
+    def test_interval_both_shows_ascending_and_descending_pattern_labels(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me F harmonic minor in sixths, ascending and descending, in eighth notes at 72 BPM."
+        )
+        result = generate_scale_practice(spec)
+        self.assertTrue(result.interval_pairs_display)
+        self.assertTrue(result.interval_pairs_display_descending)
+        self.assertIn("\u266d", result.interval_pairs_display_descending)
+
+    def test_straight_slurred_abc_uses_phrase_slurs(self) -> None:
+        spec = parse_scale_practice_question("Give me Bb major, two octaves, slurred eighth notes.")
+        result = generate_scale_practice(spec)
+        body = result.abc.split("K:Bb", 1)[-1]
+        self.assertIn("(", body)
+        self.assertRegex(body, r"\([^)]+\s[^)]+\s[^)]+\)")
+
+
 class DescendingIntervalTests(unittest.TestCase):
     def test_f_harmonic_minor_descending_sixths_are_sixths_below(self) -> None:
         scale, _, _ = spell_scale("F", "harmonic minor")

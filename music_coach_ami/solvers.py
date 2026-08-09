@@ -130,9 +130,20 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
     else:
         steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
-        if result.interval_pairs_display:
+        if result.interval_pairs_display or result.interval_pairs_display_descending:
             short = pattern.rstrip("s").capitalize() + "s" if pattern else "Intervals"
-            steps.append(f"**{short} pattern:** {result.interval_pairs_display}")
+            if spec.direction == "both":
+                if result.interval_pairs_display:
+                    steps.append(f"**Ascending {short} pattern:** {result.interval_pairs_display}")
+                if result.interval_pairs_display_descending:
+                    steps.append(
+                        f"**Descending {short} pattern:** {result.interval_pairs_display_descending}"
+                    )
+            elif spec.direction == "descending":
+                line = result.interval_pairs_display_descending or result.interval_pairs_display
+                steps.append(f"**Descending {short} pattern:** {line}")
+            elif result.interval_pairs_display:
+                steps.append(f"**Ascending {short} pattern:** {result.interval_pairs_display}")
     steps.append("**Practice**")
     steps.extend(result.practice_guidance)
     steps.append("**Listen for**")
