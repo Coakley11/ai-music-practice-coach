@@ -551,5 +551,135 @@ class DescendingIntervalTests(unittest.TestCase):
                 )
 
 
+class LiveAcceptanceRegressionTests(unittest.TestCase):
+    _D_MELODIC_PROMPT = (
+        "Show me D melodic minor, ascending and descending, two octaves, "
+        "in quarter notes. Put it in 4/4 time, with measures."
+    )
+
+    def test_d_melodic_minor_spelling_and_display(self) -> None:
+        from music_coach_ami.scale_engine import format_scale_request_summary, spell_scale_degrees_for_direction
+        from music_theory import midi_from_spelled_note
+
+        asc = spell_scale_degrees_for_direction("D", "melodic minor", "ascending")
+        self.assertEqual(asc, ["D", "E", "F", "G", "A", "B", "C#"])
+        self.assertIn("C#", asc)
+        self.assertNotIn("Db", asc)
+
+        spec = parse_scale_practice_question(self._D_MELODIC_PROMPT)
+        self.assertTrue(spec.wants_measures)
+        self.assertEqual(spec.meter, "4/4")
+        self.assertTrue(spec.note_value_explicit)
+        summary = format_scale_request_summary(spec)
+        self.assertTrue(any("Quarter" in line for line in summary))
+        self.assertTrue(any("4/4" in line for line in summary))
+
+        result = generate_scale_practice(spec)
+        self.assertIn("C\u266f", result.scale_reference)
+        self.assertNotIn("D\u266d", result.scale_reference)
+        self.assertIn("B\u266d", result.scale_reference_descending)
+
+        import music_coach_ami.scale_engine as se
+
+        asc_deg = se.spell_scale_degrees_for_direction("D", "melodic minor", "ascending")
+        desc_deg = se.spell_scale_degrees_for_direction("D", "melodic minor", "descending")
+        asc_seq = se.extend_scale_octaves(asc_deg, spec.octave_count)
+        if asc_seq[-1] != asc_deg[0]:
+            asc_seq = asc_seq + [asc_deg[0]]
+        up = se._octave_for_sequence(asc_seq, result.chosen_start_octave)
+        desc_seq = se._melodic_descending_note_sequence(desc_deg, spec.octave_count)
+        down = se._octave_for_sequence_descending(desc_seq, up[-1][1])
+        midis = [se._midi_for_spelled(n, o) for n, o in up + down[1:]]
+        peak = midis.index(max(midis))
+        for i in range(peak, len(midis) - 1):
+            self.assertLess(midis[i + 1], midis[i], msg=(allp := up + down[1:]))
+
+        self.assertIn("M:4/4", result.abc)
+        self.assertIn("L:1/4", result.abc)
+        body = result.abc.split("K:Dm", 1)[-1]
+        self.assertGreaterEqual(body.count("|"), 2)
+
+    def test_a_melodic_minor_directional_degrees(self) -> None:
+        from music_coach_ami.scale_engine import spell_scale_degrees_for_direction
+
+        asc = spell_scale_degrees_for_direction("A", "melodic minor", "ascending")
+        self.assertEqual(asc, ["A", "B", "C", "D", "E", "F#", "G#"])
+        spec = parse_scale_practice_question(
+            "Show me A melodic minor, ascending and descending, two octaves, in quarter notes."
+        )
+        result = generate_scale_practice(spec)
+        self.assertIn("F\u266f", result.scale_reference)
+        self.assertIn("G\u266f", result.scale_reference)
+        self.assertIn("G ", result.scale_reference_descending)
+        self.assertTrue(
+            " B " in result.scale_reference_descending
+            or result.scale_reference_descending.startswith("A G")
+        )
+
+    def test_eb_melodic_minor_flat_spelling(self) -> None:
+        from music_coach_ami.scale_engine import spell_scale_degrees_for_direction
+
+        asc = spell_scale_degrees_for_direction("Eb", "melodic minor", "ascending")
+        self.assertIn("Eb", asc)
+        self.assertTrue(any("b" in n or "#" in n for n in asc))
+
+    def test_f_harmonic_minor_sixths_both_phases_in_abc(self) -> None:
+        prompt = (
+            "Give me F harmonic minor in sixths, ascending and descending, "
+            "in eighth notes at 72 BPM."
+        )
+        spec = parse_scale_practice_question(prompt)
+        result = generate_scale_practice(spec)
+        self.assertIn("X:1", result.abc)
+        self.assertIn("X:2", result.abc)
+        self.assertIn("descending", result.abc.lower())
+        scale, _, _ = spell_scale("F", "harmonic minor")
+        step = 5
+        up = pairs_to_pitched_notes(
+            [],
+            direction="both",
+            start_octave=result.chosen_start_octave,
+            scale=scale,
+            step=step,
+            octave_count=spec.octave_count,
+        )
+        up_count = len(build_interval_pairs_over_octaves(scale, step, spec.octave_count)) * 2
+        self.assertEqual(len(up), up_count * 2)
+        down_body = result.abc.split("X:2", 1)[-1]
+        self.assertIn("|", down_body)
+
+    def test_bb_major_68_measures_and_tempo(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me B\u266d major in 6/8, two octaves, eighth notes, at 84 BPM."
+        )
+        result = generate_scale_practice(spec)
+        self.assertIn("M:6/8", result.abc)
+        self.assertIn("L:1/8", result.abc)
+        self.assertIn("Q:3/8=84", result.abc)
+        body = result.abc.split("K:Bb", 1)[-1]
+        self.assertGreaterEqual(body.count("|"), 2)
+
+    def test_eb_major_thirds_triplet_abc(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me E\u266d major in thirds, two octaves, as eighth-note triplets at 72 BPM."
+        )
+        self.assertTrue(spec.rhythm_triplet)
+        result = generate_scale_practice(spec)
+        self.assertIn("(3", result.abc)
+        body = result.abc.split("K:Eb", 1)[-1]
+        self.assertNotRegex(body, r"[A-Ga-g][^ \n]*3(?!\))")
+        joined = " ".join(result.practice_guidance).lower()
+        self.assertIn("triplet", joined)
+        self.assertNotIn("keep eighth notes even", joined)
+
+    def test_c_sharp_fourths_frozen(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me C# major in fourths, two octaves, as eighth notes."
+        )
+        result = generate_scale_practice(spec)
+        self.assertIn("E\u266f", result.interval_pairs_display or "")
+        self.assertIn("B\u266f", result.interval_pairs_display or "")
+
+
 if __name__ == "__main__":
     unittest.main()

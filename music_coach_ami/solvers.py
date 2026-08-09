@@ -128,6 +128,8 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     steps: list[str] = list(format_scale_request_summary(spec))
     if straight:
         steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
+        if result.scale_reference_descending:
+            steps.append(f"**Descending scale:** {result.scale_reference_descending}")
     else:
         steps.append(f"**Scale:** {result.scale_reference or result.written_sequence}")
         if result.interval_pairs_display or result.interval_pairs_display_descending:
