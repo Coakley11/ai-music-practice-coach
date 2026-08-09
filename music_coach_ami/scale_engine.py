@@ -9,7 +9,7 @@ from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
 
 # Tonic patterns — longer spellings first
 _TONIC_RE = re.compile(
-    r"\b(Eb|Ab|Bb|Db|Gb|F#|C#|G#|D#|A#|[A-Ga-g])\b"
+    r"\b(Eb|Ab|Bb|Db|Gb|F#|C#|G#|D#|A#|[A-Ga-g])(?![A-Za-z#])"
 )
 
 _INTERVAL_STEPS: dict[str, int] = {
@@ -46,16 +46,21 @@ class ScalePracticeSpec:
 @dataclass
 class ScalePracticeResult:
     label: str
+    display_label: str
     tonic: str
     scale_type: str
     reference_key: str
+    scale_degrees: list[str]
     scale_notes: list[str]
+    practice_sequence: list[str]
     exercise_note_names: list[str]
+    abc_key: str = ""
     interval_pairs: list[tuple[str, str]] = field(default_factory=list)
     abc: str = ""
     written_sequence: str = ""
     key_signature_hint: str = ""
     practice_guidance: list[str] = field(default_factory=list)
+    what_to_listen_for: list[str] = field(default_factory=list)
 
 
 def _normalize_tonic(raw: str) -> str:
@@ -227,7 +232,14 @@ def extend_scale_octaves(scale: list[str], octave_count: int) -> list[str]:
 
 
 def build_straight_sequence(scale: list[str], *, direction: str, octave_count: int) -> list[str]:
-    seq = extend_scale_octaves(scale, octave_count)
+    if not scale:
+        return []
+    if octave_count <= 1:
+        seq = list(scale) + [scale[0]]
+    else:
+        seq = extend_scale_octaves(scale, octave_count)
+        if seq and seq[-1] != scale[0]:
+            seq = seq + [scale[0]]
     pitched = _octave_for_sequence(seq)
     names = [n for n, _ in pitched]
     if direction == "descending":
@@ -276,18 +288,76 @@ def pairs_to_playable_notes(pairs: list[tuple[str, str]], *, direction: str) -> 
 
 
 def _abc_key_field(tonic: str, scale_type: str) -> str:
-    from improvisation_motif import _abc_key_header
+    from music_theory import abc_key_signature_for_reference
 
     ref = tonic
     if "minor" in scale_type and "major" not in scale_type and not str(tonic).endswith("m"):
         ref = f"{tonic}m"
-    return _abc_key_header(ref)
+    return abc_key_signature_for_reference(ref, scale_type=scale_type)
 
 
 def _note_to_abc(note: str, octave: int) -> str:
     from improvisation_motif import _note_name_to_abc_pitch
 
     return _note_name_to_abc_pitch(note, octave=octave)
+
+
+def _display_tonic(spec: ScalePracticeSpec, reference_key: str) -> str:
+    from music_theory import format_musician_note_name
+
+    if spec.preferred_spelling and ("♭" in spec.preferred_spelling or "♯" in spec.preferred_spelling):
+        return spec.preferred_spelling.rstrip("mM")
+    return format_musician_note_name(spec.tonic, reference_key)
+
+
+def _format_notes_display(notes: list[str], reference_key: str) -> list[str]:
+    from music_theory import format_musician_note_name
+
+    return [format_musician_note_name(n, reference_key) for n in notes]
+
+
+def _straight_scale_only(patterns: tuple[str, ...]) -> bool:
+    return bool(patterns) and all(p in ("straight", "unison", "scale") for p in patterns)
+
+
+def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list[str]:
+    guidance = [
+        "Practice slowly with a metronome (start around 60–72 BPM).",
+        (
+            "Keep each note even in tone and time — smooth transitions between scale degrees."
+            if straight
+            else "Keep each interval pair balanced in tone, time, and intonation."
+        ),
+        "Increase tempo only when the full pattern is accurate three times in a row.",
+    ]
+    if spec.instrument:
+        guidance.insert(0, f"Use a comfortable register on **{spec.instrument}**.")
+    return guidance
+
+
+def _build_listen_for(reference_key: str, *, straight: bool, display_tonic: str) -> list[str]:
+    from music_theory import reference_spelling_mode
+
+    if straight:
+        mode = reference_spelling_mode(reference_key)
+        if mode == "flat":
+            return [
+                "Even tone on every scale degree",
+                f"Stable intonation on flat degrees in {display_tonic} (keep the flat-key spelling consistent)",
+            ]
+        if mode == "sharp":
+            return [
+                "Even tone on every scale degree",
+                f"Clean intonation on sharp degrees in {display_tonic} (watch raised scale degrees like E♯ in sharp keys)",
+            ]
+        return [
+            "Even tone on every scale degree",
+            "Smooth pitch centering from note to note",
+        ]
+    return [
+        "Matching tone between the two notes of each interval pair",
+        "Accurate leaps — land centered on both notes of each pair",
+    ]
 
 
 def build_abc_from_note_names(note_names: list[str], *, title: str, key_field: str, bpm: int = 72) -> str:
@@ -315,6 +385,9 @@ K:{key_field}
 def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     scale, label, ref = spell_scale(spec.tonic, spec.scale_type)
     key_field = _abc_key_field(spec.tonic, spec.scale_type)
+    display_tonic = _display_tonic(spec, ref)
+    display_label = f"{display_tonic} {_scale_type_label(spec.scale_type)}"
+    straight = _straight_scale_only(spec.interval_patterns)
     try:
         from music_theory import reference_spelling_mode
 
@@ -326,43 +399,61 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     all_pairs: list[tuple[str, str]] = []
     exercise_names: list[str] = []
     abc_sections: list[str] = []
+    practice_seq: list[str] = []
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
             seq = build_straight_sequence(scale, direction=spec.direction, octave_count=spec.octave_count)
+            practice_seq = list(seq)
             exercise_names.extend(seq)
-            title = f"{label} scale"
-            abc_sections.append(build_abc_from_note_names(seq, title=title, key_field=key_field, bpm=spec.tempo_bpm or 72))
+            abc_sections.append(
+                build_abc_from_note_names(
+                    seq,
+                    title=f"{display_label} scale",
+                    key_field=key_field,
+                    bpm=spec.tempo_bpm or 72,
+                )
+            )
         else:
             step = _INTERVAL_STEPS.get(pattern, 2)
             pairs = build_interval_pairs(scale, step)
             all_pairs.extend(pairs)
             seq = pairs_to_playable_notes(pairs, direction=spec.direction)
             exercise_names.extend(seq)
-            title = f"{label} in {pattern}"
-            abc_sections.append(build_abc_from_note_names(seq, title=title, key_field=key_field, bpm=spec.tempo_bpm or 60))
+            abc_sections.append(
+                build_abc_from_note_names(
+                    seq,
+                    title=f"{display_label} in {pattern}",
+                    key_field=key_field,
+                    bpm=spec.tempo_bpm or 60,
+                )
+            )
 
-    written = " ".join(dict.fromkeys(exercise_names))
+    if not practice_seq and exercise_names:
+        practice_seq = list(exercise_names)
+
+    display_practice = _format_notes_display(practice_seq or exercise_names, ref)
+    written = " ".join(display_practice)
+
+    guidance = _build_practice_guidance(spec, straight=straight)
+    listen = _build_listen_for(ref, straight=straight, display_tonic=display_label)
     abc = "\n\n".join(s for s in abc_sections if s)
-
-    guidance = [
-        "Practice slowly with a metronome (start around 60–72 BPM).",
-        "Keep each note centered and even — especially on interval pairs.",
-        "Increase tempo only when the full pattern is accurate three times in a row.",
-    ]
-    if spec.instrument:
-        guidance.insert(0, f"Use a comfortable register on **{spec.instrument}**.")
 
     return ScalePracticeResult(
         label=label,
+        display_label=display_label,
         tonic=spec.tonic,
         scale_type=spec.scale_type,
         reference_key=ref,
+        scale_degrees=list(scale),
         scale_notes=list(scale),
-        exercise_note_names=exercise_names,
+        practice_sequence=practice_seq or list(exercise_names),
+        exercise_note_names=practice_seq or list(exercise_names),
+        abc_key=key_field,
         interval_pairs=all_pairs,
         abc=abc,
         written_sequence=written,
         key_signature_hint=key_signature_hint,
         practice_guidance=guidance,
+        what_to_listen_for=listen,
     )

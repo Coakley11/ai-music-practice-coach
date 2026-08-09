@@ -89,8 +89,54 @@ class ScaleGeneratorTests(unittest.TestCase):
     def test_generates_abc(self) -> None:
         spec = parse_scale_practice_question("Show me the Eb major scale in sheet music.")
         result = generate_scale_practice(spec)
-        self.assertIn("K:", result.abc)
-        self.assertIn("Eb", " ".join(result.scale_notes))
+        self.assertIn("K:Eb", result.abc)
+        self.assertNotIn("K:D\n", result.abc)
+        self.assertEqual(result.abc_key, "Eb")
+
+    def test_eb_major_straight_octave_sequence(self) -> None:
+        spec = parse_scale_practice_question("Show me the E\u266d major scale in sheet music.")
+        result = generate_scale_practice(spec)
+        self.assertEqual(
+            result.practice_sequence,
+            ["Eb", "F", "G", "Ab", "Bb", "C", "D", "Eb"],
+        )
+        self.assertIn("E\u266d", result.written_sequence)
+        self.assertIn("A\u266d", result.written_sequence)
+        self.assertNotIn("interval pair", " ".join(result.practice_guidance).lower())
+        self.assertTrue(all("interval pair" not in x.lower() for x in result.what_to_listen_for))
+
+    def test_c_sharp_major_sequence(self) -> None:
+        spec = parse_scale_practice_question("Show me C# major in sheet music.")
+        result = generate_scale_practice(spec)
+        self.assertEqual(result.practice_sequence[0], "C#")
+        self.assertEqual(result.practice_sequence[-1], "C#")
+        self.assertIn("E#", result.scale_degrees)
+        self.assertIn("K:C#", result.abc)
+
+    def test_g_natural_minor_sequence(self) -> None:
+        spec = parse_scale_practice_question("Show me G minor scale in sheet music.")
+        result = generate_scale_practice(spec)
+        self.assertEqual(
+            result.practice_sequence,
+            ["G", "A", "Bb", "C", "D", "Eb", "F", "G"],
+        )
+        self.assertIn("K:Gm", result.abc)
+
+    def test_thirds_allow_interval_pair_coaching(self) -> None:
+        spec = parse_scale_practice_question("Show me Eb major in thirds")
+        result = generate_scale_practice(spec)
+        joined = " ".join(result.practice_guidance + result.what_to_listen_for).lower()
+        self.assertIn("interval pair", joined)
+
+    def test_composed_markdown_omits_raw_abc(self) -> None:
+        _, resp = run_coach_submit("Show me the E\u266d major scale in sheet music.", {})
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertTrue(resp.notation_abc)
+        self.assertNotIn("Sheet music (ABC)", md)
+        self.assertNotIn("```abc", md)
+        self.assertNotIn("X:1", md)
+        self.assertNotIn("interval pair", md.lower())
 
     def test_multiple_interval_patterns(self) -> None:
         spec = parse_scale_practice_question(

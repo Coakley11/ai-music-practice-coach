@@ -34,7 +34,4 @@ def compose_coach_markdown(response: CoachResponse) -> str:
             parts.append(f"- {step}")
     if response.suggested_next_action:
         parts.append(f"**Next:** {response.suggested_next_action.strip()}")
-    if response.notation_abc:
-        parts.append("**Sheet music (ABC)**")
-        parts.append(f"```abc\n{response.notation_abc.strip()}\n```")
     return "\n\n".join(p for p in parts if p)

@@ -2124,6 +2124,15 @@ def render_applied_math_insight_panel(
             except Exception:
                 st.code(abc_text, language="abc")
                 notation_staff_rendered = True
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                if music_developer_mode(st):
+                    with st.expander("Notation diagnostics (?dev=1)", expanded=False):
+                        st.caption(f"ABC key: `{data.get('coach_submit_diagnostics', {}).get('abc_key', '')}`")
+                        st.code(abc_text, language="abc")
+            except ImportError:
+                pass
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")

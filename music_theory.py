@@ -334,6 +334,40 @@ def respell_notes_for_key(notes: list[str], reference_key: str) -> list[str]:
     return [respell_note_for_key(n, reference_key) for n in notes]
 
 
+def abc_key_signature_for_reference(reference_key: str, *, scale_type: str = "major") -> str:
+    """Conventional ABC ``K:`` token for a reference key (Eb major → ``Eb``, not enharmonic ``D``)."""
+    ref = str(reference_key or "C").strip() or "C"
+    st = str(scale_type or "major").lower()
+    minor = (
+        "minor" in st
+        and "major" not in st
+        and "pentatonic" not in st
+        and "blues" not in st
+        and "dorian" not in st
+        and "mixolydian" not in st
+        and "lydian" not in st
+        and "locrian" not in st
+    )
+    if minor and not ref.lower().endswith("m"):
+        ref = f"{ref}m"
+    root, _ = split_chord(ref)
+    spelled = respell_note_for_key(root, ref)
+    if minor:
+        low = str(spelled or "C")
+        return f"{low}m" if not low.lower().endswith("m") else low
+    return str(spelled or "C")
+
+
+def format_musician_note_name(note: str, reference_key: str) -> str:
+    """Musician-facing note with Unicode ♭/♯ when the key family uses accidentals."""
+    spelled = respell_note_for_key(str(note or "C").strip() or "C", reference_key)
+    if len(spelled) > 1 and spelled[1] == "b":
+        return f"{spelled[0]}♭"
+    if len(spelled) > 1 and spelled[1] == "#":
+        return f"{spelled[0]}♯"
+    return spelled
+
+
 _DIATONIC_LETTERS = "CDEFGAB"
 _NATURAL_LETTER_PC: dict[str, int] = {
     "C": 0,

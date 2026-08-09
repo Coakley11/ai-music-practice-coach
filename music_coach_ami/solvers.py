@@ -81,7 +81,11 @@ def solve_practice_plan(req: CoachRequest) -> CoachResponse:
 
 
 def solve_scale_practice(req: CoachRequest) -> CoachResponse:
-    from music_coach_ami.scale_engine import generate_scale_practice, parse_scale_practice_question
+    from music_coach_ami.scale_engine import (
+        _format_notes_display,
+        generate_scale_practice,
+        parse_scale_practice_question,
+    )
 
     low = req.normalized_question.lower()
     instrument = req.entities.instrument or req.context.instrument or ""
@@ -107,37 +111,39 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     )
     result = generate_scale_practice(spec)
 
+    straight = len(spec.interval_patterns) == 1 and spec.interval_patterns[0] in (
+        "straight",
+        "scale",
+        "unison",
+    )
     steps: list[str] = []
-    if len(spec.interval_patterns) == 1 and spec.interval_patterns[0] in ("straight", "scale", "unison"):
-        steps.append(f"**Scale:** {' '.join(result.scale_notes)}")
+    if straight:
+        steps.append(f"**Scale:** {result.written_sequence}")
     else:
-        steps.append(f"**Diatonic scale:** {' '.join(result.scale_notes)}")
-    if result.written_sequence:
-        steps.append(f"**Written sequence:** {result.written_sequence}")
+        steps.append(f"**Diatonic scale:** {' '.join(_format_notes_display(result.scale_degrees, result.reference_key))}")
+        if result.written_sequence:
+            steps.append(f"**Written sequence:** {result.written_sequence}")
     steps.extend(result.practice_guidance)
-
-    listen = [
-        "Even tone on every note of each interval pair",
-        "Correct spelling / intonation on altered scale degrees (e.g. E♯ in C♯ major)",
-    ]
 
     return CoachResponse(
         intent=CoachIntent.SCALE_PRACTICE,
-        direct_answer=f"**{result.label}** — {result.key_signature_hint}",
+        direct_answer=f"**{result.display_label}** — {result.key_signature_hint}",
         explanation="Use the staff below; key signature follows conventional spelling for this tonic.",
         practice_steps=steps,
-        what_to_listen_for=listen,
+        what_to_listen_for=list(result.what_to_listen_for),
         notation_abc=result.abc,
         source_solver="ScalePracticeSolver",
         confidence=0.9,
         diagnostics={
             "tonic": result.tonic,
-            "preferred_spelling": spec.preferred_spelling or result.tonic,
+            "preferred_spelling": spec.preferred_spelling or result.display_label.split()[0],
             "scale_type": result.scale_type,
+            "abc_key": result.abc_key,
             "notation_abc_present": bool(result.abc),
             "patterns": list(spec.interval_patterns),
             "octaves": spec.octave_count,
             "direction": spec.direction,
+            "practice_sequence": result.practice_sequence,
         },
     )
 
