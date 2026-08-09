@@ -262,6 +262,42 @@ def build_interval_pairs(scale: list[str], step: int) -> list[tuple[str, str]]:
     return pairs
 
 
+_DIATONIC_LETTERS = "CDEFGAB"
+
+
+def _octave_for_diatonic_spellings(notes: list[str], start_octave: int = 4) -> list[tuple[str, int]]:
+    """Assign octaves by ascending letter spellings (B♯ stays in-register before C wraps)."""
+    if not notes:
+        return []
+    out: list[tuple[str, int]] = []
+    octave = start_octave
+    prev_li: int | None = None
+    for n in notes:
+        letter = str(n)[0].upper()
+        li = _DIATONIC_LETTERS.index(letter)
+        if prev_li is not None and li <= prev_li:
+            octave += 1
+        out.append((n, octave))
+        prev_li = li
+    return out
+
+
+def _octave_for_diatonic_spellings_descending(notes: list[str], start_octave: int = 4) -> list[tuple[str, int]]:
+    if not notes:
+        return []
+    out: list[tuple[str, int]] = []
+    octave = start_octave
+    prev_li: int | None = None
+    for n in notes:
+        letter = str(n)[0].upper()
+        li = _DIATONIC_LETTERS.index(letter)
+        if prev_li is not None and li >= prev_li:
+            octave -= 1
+        out.append((n, octave))
+        prev_li = li
+    return out
+
+
 def _default_start_octave(instrument: str) -> int:
     low = str(instrument or "").lower()
     if "flute" in low or "piccolo" in low:
@@ -277,45 +313,30 @@ def _assign_interval_pair_octaves(
     start_octave: int = 4,
     ascending: bool = True,
 ) -> list[tuple[str, int]]:
-    """Assign octaves per pair — target stays in-register until the interval crosses an octave."""
+    """Broken-interval register: sources follow the scale; targets sit above/below each source."""
     if not pairs:
         return []
+    sources = [a for a, _ in pairs]
+    if ascending:
+        source_pitched = _octave_for_diatonic_spellings(sources, start_octave)
+    else:
+        source_pitched = _octave_for_diatonic_spellings_descending(sources, start_octave)
+
     out: list[tuple[str, int]] = []
-    last_midi: int | None = None
-    cursor_oct = start_octave
-    for a, b in pairs:
+    for (a, a_oct), (_, b) in zip(source_pitched, pairs, strict=True):
+        a_midi = _midi_for_spelled(a, a_oct)
+        b_oct = a_oct
+        b_midi = _midi_for_spelled(b, b_oct)
         if ascending:
-            a_oct = cursor_oct
-            a_midi = _midi_for_spelled(a, a_oct)
-            if last_midi is not None:
-                while a_midi <= last_midi:
-                    a_oct += 1
-                    a_midi = _midi_for_spelled(a, a_oct)
-            b_oct = a_oct
-            b_midi = _midi_for_spelled(b, b_oct)
             while b_midi <= a_midi:
                 b_oct += 1
                 b_midi = _midi_for_spelled(b, b_oct)
-            out.append((a, a_oct))
-            out.append((b, b_oct))
-            last_midi = b_midi
-            cursor_oct = b_oct
         else:
-            a_oct = cursor_oct
-            a_midi = _midi_for_spelled(a, a_oct)
-            if last_midi is not None:
-                while a_midi >= last_midi:
-                    a_oct -= 1
-                    a_midi = _midi_for_spelled(a, a_oct)
-            b_oct = a_oct
-            b_midi = _midi_for_spelled(b, b_oct)
             while b_midi >= a_midi:
                 b_oct -= 1
                 b_midi = _midi_for_spelled(b, b_oct)
-            out.append((a, a_oct))
-            out.append((b, b_oct))
-            last_midi = b_midi
-            cursor_oct = b_oct
+        out.append((a, a_oct))
+        out.append((b, b_oct))
     return out
 
 

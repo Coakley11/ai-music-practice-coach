@@ -459,7 +459,9 @@ def pitch_class_from_spelled_note(note: str) -> int:
 
 def midi_from_spelled_note(note: str, *, octave: int = 4) -> int:
     """MIDI number for a spelled note at the given octave (C4 = 60)."""
-    return pitch_class_from_spelled_note(note) + 12 * (int(octave) + 1)
+    letter, alter = spelled_note_letter_alteration(note)
+    base_pc = _NATURAL_LETTER_PC[letter]
+    return base_pc + 12 * (int(octave) + 1) + alter
 
 
 def spelled_note_letter_alteration(note: str) -> tuple[str, int]:

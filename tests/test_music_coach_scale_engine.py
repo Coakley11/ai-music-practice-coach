@@ -173,26 +173,59 @@ class ScaleGeneratorTests(unittest.TestCase):
         pitched = pairs_to_pitched_notes(pairs, direction="ascending", start_octave=4)
         from music_theory import midi_from_spelled_note
 
-        midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
-        self.assertEqual(len(midis), 14)
-        for i in range(0, 14, 2):
-            self.assertGreater(midis[i + 1], midis[i])
-        # Last two pairs cross into the next octave for A#→C# and B#→D#.
-        self.assertGreater(pitched[-1][1], pitched[-3][1])
-        self.assertGreater(pitched[-3][1], pitched[0][1])
+        self.assertEqual(
+            pitched,
+            [
+                ("C#", 4),
+                ("E#", 4),
+                ("D#", 4),
+                ("F#", 4),
+                ("E#", 4),
+                ("G#", 4),
+                ("F#", 4),
+                ("A#", 4),
+                ("G#", 4),
+                ("B#", 4),
+                ("A#", 4),
+                ("C#", 5),
+                ("B#", 4),
+                ("D#", 5),
+            ],
+        )
+        source_midis = [
+            midi_from_spelled_note(n, octave=o) for n, o in pitched[0::2]
+        ]
+        target_midis = [
+            midi_from_spelled_note(n, octave=o) for n, o in pitched[1::2]
+        ]
+        for i in range(len(source_midis) - 1):
+            self.assertLess(source_midis[i], source_midis[i + 1])
+        for src, tgt in zip(source_midis, target_midis):
+            self.assertGreater(tgt, src)
+        # Broken-thirds contour: next source sits below previous target.
+        flat_midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
+        self.assertLess(flat_midis[2], flat_midis[1])
 
     def test_interval_octave_continuity_fourths_through_sevenths(self) -> None:
         scale, _, _ = spell_scale("C#", "major")
         from music_theory import midi_from_spelled_note
 
-        for step, label in ((3, "fourths"), (4, "fifths"), (5, "sixths"), (6, "sevenths")):
+        for step, _label in ((3, "fourths"), (4, "fifths"), (5, "sixths"), (6, "sevenths")):
             pairs = build_interval_pairs(scale, step)
             pitched = pairs_to_pitched_notes(pairs, direction="ascending", start_octave=4)
-            midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
-            for i in range(0, len(midis) - 1):
-                self.assertLess(midis[i], midis[i + 1], msg=label)
-            for i in range(0, len(midis), 2):
-                self.assertGreater(midis[i + 1], midis[i], msg=label)
+            source_midis = [
+                midi_from_spelled_note(n, octave=o) for n, o in pitched[0::2]
+            ]
+            target_midis = [
+                midi_from_spelled_note(n, octave=o) for n, o in pitched[1::2]
+            ]
+            for i in range(len(source_midis) - 1):
+                self.assertLess(source_midis[i], source_midis[i + 1])
+            for src, tgt in zip(source_midis, target_midis):
+                self.assertGreater(tgt, src)
+            flat_midis = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
+            if len(flat_midis) >= 4:
+                self.assertLess(flat_midis[2], flat_midis[1])
 
     def test_scale_reference_includes_upper_tonic(self) -> None:
         spec = parse_scale_practice_question("Show me C# major in sheet music")
