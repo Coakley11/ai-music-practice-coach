@@ -83,27 +83,24 @@ def read_coach_context(
         evidence = f"{summary.get('session_count')} recent log sessions (summary available)."
 
     snap_inst = str(snap.get("instrument") or "").strip()
-    instrument = str(ctx.get("instrument") or snap_inst or "").strip()
-    if not instrument:
-        try:
-            from practice_setup_globals import (
-                DEFAULT_INSTRUMENT,
-                GLOBAL_INSTRUMENT_KEY,
-                INSTRUMENT_CHANGE_SOURCE_KEY,
-                get_active_instrument,
-            )
+    ctx_inst = str(ctx.get("instrument") or "").strip()
+    try:
+        from music_coach_ami.coach_instrument import instrument_provenance_trace, resolve_coach_instrument
 
-            active = get_active_instrument(session_state)
-            if active and active != DEFAULT_INSTRUMENT:
-                instrument = active
-            elif session_state.get(INSTRUMENT_CHANGE_SOURCE_KEY):
-                instrument = active
-            elif GLOBAL_INSTRUMENT_KEY in session_state:
-                raw = str(session_state.get(GLOBAL_INSTRUMENT_KEY) or "").strip()
-                if raw and raw != DEFAULT_INSTRUMENT:
-                    instrument = raw
-        except ImportError:
-            instrument = str(session_state.get("instrument") or "").strip()
+        instrument = resolve_coach_instrument(
+            session_state,
+            ctx_instrument=ctx_inst,
+            snapshot_instrument=snap_inst,
+        )
+        prov = instrument_provenance_trace(
+            session_state,
+            ctx_instrument=ctx_inst,
+            snapshot_instrument=snap_inst,
+            resolved=instrument,
+        )
+    except ImportError:
+        instrument = ctx_inst or snap_inst or str(session_state.get("instrument") or "").strip()
+        prov = {}
 
     level = str(ctx.get("level") or session_state.get("level") or "").strip()
     if not level:
@@ -133,5 +130,9 @@ def read_coach_context(
         studio_page=str(session_state.get("studio_page") or ""),
         coach_page=coach_page,
         recent_practice_evidence=evidence,
-        extra={"routing_hint": str(ctx.get("routing_hint") or "")},
+        extra={
+            "routing_hint": str(ctx.get("routing_hint") or ""),
+            "instrument_provenance": prov,
+            "snapshot_instrument": snap_inst,
+        },
     )

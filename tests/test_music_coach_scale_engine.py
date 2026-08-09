@@ -6,8 +6,10 @@ import unittest
 
 from music_coach_ami.pipeline import run_coach_submit
 from music_coach_ami.router import CoachIntent, route_question
+from music_coach_ami.coach_instrument import resolve_coach_instrument
 from music_coach_ami.scale_engine import (
     build_interval_pairs,
+    build_interval_pairs_over_octaves,
     generate_scale_practice,
     pairs_to_pitched_notes,
     parse_scale_practice_question,
@@ -95,7 +97,9 @@ class ScaleGeneratorTests(unittest.TestCase):
         self.assertEqual(result.abc_key, "Eb")
 
     def test_eb_major_straight_octave_sequence(self) -> None:
-        spec = parse_scale_practice_question("Show me the E\u266d major scale in sheet music.")
+        spec = parse_scale_practice_question(
+            "Show me one octave of the E\u266d major scale in sheet music."
+        )
         result = generate_scale_practice(spec)
         self.assertEqual(
             result.practice_sequence,
@@ -115,7 +119,7 @@ class ScaleGeneratorTests(unittest.TestCase):
         self.assertIn("K:C#", result.abc)
 
     def test_g_natural_minor_sequence(self) -> None:
-        spec = parse_scale_practice_question("Show me G minor scale in sheet music.")
+        spec = parse_scale_practice_question("Show me one octave of G minor scale in sheet music.")
         result = generate_scale_practice(spec)
         self.assertEqual(
             result.practice_sequence,
@@ -321,6 +325,102 @@ class TonePracticePlanTests(unittest.TestCase):
         assert resp is not None
         self.assertEqual(resp.source_solver, "ScalePracticeSolver")
         self.assertTrue(resp.notation_abc)
+
+
+class CoachInstrumentResolutionTests(unittest.TestCase):
+    def test_default_piano_session_is_unknown(self) -> None:
+        ss = {"instrument": "Piano"}
+        self.assertEqual(resolve_coach_instrument(ss), "")
+
+    def test_flute_session_is_used(self) -> None:
+        ss = {"instrument": "Flute", "instrument_change_source": "sidebar"}
+        self.assertEqual(resolve_coach_instrument(ss), "Flute")
+
+    def test_explicit_piano_with_change_source(self) -> None:
+        ss = {"instrument": "Piano", "instrument_change_source": "sidebar"}
+        self.assertEqual(resolve_coach_instrument(ss), "Piano")
+
+    def test_routed_submit_flute_not_piano(self) -> None:
+        ss = {"instrument": "Flute", "instrument_change_source": "sidebar"}
+        _, resp = run_coach_submit("Show me Eb major scale in sheet music", ss)
+        assert resp is not None
+        self.assertIn("Flute", resp.composed_markdown())
+        self.assertNotIn("**Piano**", resp.composed_markdown())
+
+
+class ScalePracticeRequestTests(unittest.TestCase):
+    def test_one_octave_eb_quarters(self) -> None:
+        spec = parse_scale_practice_question("Show me one octave of Eb major in quarter notes.")
+        self.assertEqual(spec.octave_count, 1)
+        self.assertTrue(spec.octave_count_explicit)
+        self.assertEqual(spec.note_value, "quarter")
+        result = generate_scale_practice(spec)
+        self.assertIn("L:1/4", result.abc)
+        self.assertEqual(len(result.practice_sequence), 8)
+
+    def test_two_octaves_eb_eighths(self) -> None:
+        spec = parse_scale_practice_question("Show me two octaves of Eb major in eighth notes.")
+        self.assertEqual(spec.octave_count, 2)
+        self.assertEqual(spec.note_value, "eighth")
+        result = generate_scale_practice(spec)
+        self.assertIn("L:1/8", result.abc)
+        self.assertGreater(len(result.practice_sequence), 10)
+
+    def test_c_sharp_thirds_two_octaves_eighths(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me C# major in thirds, two octaves, as eighth notes."
+        )
+        self.assertEqual(spec.octave_count, 2)
+        self.assertEqual(spec.note_value, "eighth")
+        pairs = build_interval_pairs_over_octaves(spell_scale("C#", "major")[0], 2, 2)
+        self.assertEqual(len(pairs), 14)
+        result = generate_scale_practice(spec)
+        self.assertIn("L:1/8", result.abc)
+        self.assertIn("K:C#", result.abc)
+
+    def test_f_harmonic_minor_sixths_both_eighths_72(self) -> None:
+        spec = parse_scale_practice_question(
+            "Give me F harmonic minor in sixths, ascending and descending, in eighth notes at 72 BPM."
+        )
+        self.assertEqual(spec.direction, "both")
+        self.assertEqual(spec.note_value, "eighth")
+        self.assertEqual(spec.tempo_bpm, 72)
+        result = generate_scale_practice(spec)
+        self.assertIn("=E", result.abc.split("K:Fm", 1)[-1])
+        self.assertIn("Q:1/4=72", result.abc)
+
+    def test_d_major_descending_sixteenths_80(self) -> None:
+        spec = parse_scale_practice_question(
+            "Show me D major descending, one octave, in sixteenth notes at 80 BPM."
+        )
+        self.assertEqual(spec.direction, "descending")
+        self.assertEqual(spec.octave_count, 1)
+        self.assertEqual(spec.note_value, "sixteenth")
+        self.assertEqual(spec.tempo_bpm, 80)
+        result = generate_scale_practice(spec)
+        self.assertIn("L:1/16", result.abc)
+
+    def test_bb_slurred_eighths_two_octaves(self) -> None:
+        spec = parse_scale_practice_question("Give me Bb major, two octaves, slurred eighth notes.")
+        self.assertEqual(spec.articulation, "slurred")
+        self.assertEqual(spec.note_value, "eighth")
+        result = generate_scale_practice(spec)
+        self.assertIn("(", result.abc)
+        self.assertIn("L:1/8", result.abc)
+
+    def test_default_octave_count_is_two(self) -> None:
+        spec = parse_scale_practice_question("Show me Eb major scale")
+        self.assertEqual(spec.octave_count, 2)
+        self.assertFalse(spec.octave_count_explicit)
+
+    def test_thirds_broken_contour_preserved(self) -> None:
+        scale, _, _ = spell_scale("C#", "major")
+        pairs = build_interval_pairs(scale, 2)
+        pitched = pairs_to_pitched_notes(pairs, direction="ascending", start_octave=4)
+        from music_theory import midi_from_spelled_note
+
+        flat = [midi_from_spelled_note(n, octave=o) for n, o in pitched]
+        self.assertLess(flat[2], flat[1])
 
 
 if __name__ == "__main__":

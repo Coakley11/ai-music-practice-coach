@@ -2185,7 +2185,9 @@ def build_context_from_session(
                 artist = str(song.get("artist") or "").strip()
                 if title:
                     ctx["song"] = f"{title} — {artist}" if artist else title
-            instrument = str(session_state.get("instrument") or "").strip()
+            from music_coach_ami.coach_instrument import resolve_coach_instrument
+
+            instrument = resolve_coach_instrument(session_state)
             if instrument:
                 ctx["instrument"] = instrument
             display_key = str(session_state.get("display_key") or "").strip()

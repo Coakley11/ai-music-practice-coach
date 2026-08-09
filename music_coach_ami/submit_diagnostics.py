@@ -41,6 +41,8 @@ def build_music_coach_submit_diagnostics(
             "preferred_spelling",
             "scale_type",
             "notation_abc_present",
+            "scale_practice_spec",
+            "instrument_provenance",
         ):
             if key in response.diagnostics:
                 scale_fields[key] = response.diagnostics[key]

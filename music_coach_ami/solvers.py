@@ -85,10 +85,11 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
         _interval_pattern_title,
         generate_scale_practice,
         parse_scale_practice_question,
+        spec_to_dev_dict,
     )
 
     low = req.normalized_question.lower()
-    instrument = req.entities.instrument or req.context.instrument or ""
+    instrument = (req.entities.instrument or req.context.instrument or "").strip()
 
     if "what scales should i practice" in low:
         return CoachResponse(
@@ -153,6 +154,10 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
             "octaves": spec.octave_count,
             "direction": spec.direction,
             "practice_sequence": result.practice_sequence,
+            "scale_practice_spec": spec_to_dev_dict(spec, result),
+            "instrument_provenance": req.context.extra.get("instrument_provenance")
+            if isinstance(req.context.extra, dict)
+            else {},
         },
     )
 

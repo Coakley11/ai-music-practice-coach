@@ -35,10 +35,16 @@ class ScalePracticeSpec:
     preferred_spelling: str = ""
     scale_type: str = "major"
     interval_patterns: tuple[str, ...] = ("straight",)
-    octave_count: int = 1
+    octave_count: int = 2
+    octave_count_explicit: bool = False
     direction: str = "ascending"  # ascending | descending | both
+    note_value: str = "quarter"
+    rhythm_triplet: bool = False
+    meter: str = "4/4"
+    articulation: str = ""
     instrument: str = ""
     tempo_bpm: int | None = None
+    start_octave: int | None = None
 
 
 @dataclass
@@ -61,6 +67,7 @@ class ScalePracticeResult:
     key_signature_hint: str = ""
     practice_guidance: list[str] = field(default_factory=list)
     what_to_listen_for: list[str] = field(default_factory=list)
+    chosen_start_octave: int = 4
 
 
 def _normalize_tonic(raw: str) -> str:
@@ -135,6 +142,111 @@ def _parse_interval_patterns(text: str) -> tuple[str, ...]:
     return ("straight",)
 
 
+def _parse_octave_count(text: str) -> tuple[int, bool]:
+    low = text.lower()
+    if re.search(r"\b(one|1)\s+octave", low) or "just one octave" in low:
+        return 1, True
+    if re.search(r"\btwo\s+octaves?\b", low) or re.search(r"\b2\s+octaves?\b", low) or "over two octaves" in low:
+        return 2, True
+    if re.search(r"\bthree\s+octaves?\b", low) or re.search(r"\b3\s+octaves?\b", low):
+        return 3, True
+    return 2, False
+
+
+def _parse_direction(text: str) -> str:
+    low = text.lower()
+    if any(
+        p in low
+        for p in (
+            "ascending and descending",
+            "ascending & descending",
+            "up and down",
+            "both directions",
+        )
+    ):
+        return "both"
+    if re.search(r"\bdescending only\b", low) or (
+        "descending" in low and "ascending" not in low
+    ):
+        return "descending"
+    return "ascending"
+
+
+def _parse_note_value(text: str) -> tuple[str, bool]:
+    low = text.lower()
+    triplet = any(p in low for p in ("triplet", "triplets", "triplet eighth", "eighth-note triplet"))
+    if any(p in low for p in ("sixteenth", "16th", "1/16")):
+        return "sixteenth", triplet
+    if any(p in low for p in ("eighth", "8th", "1/8")) or "two notes per beat" in low:
+        return "eighth", triplet
+    if any(p in low for p in ("half note", "half notes", "1/2")) or "one note per beat" in low and "two" not in low:
+        return "half", triplet
+    if "four notes per beat" in low:
+        return "sixteenth", triplet
+    if "quarter" in low or "1/4" in low:
+        return "quarter", triplet
+    return "quarter", False
+
+
+def _parse_meter(text: str) -> str:
+    low = text.lower()
+    m = re.search(r"\bin\s+(4/4|3/4|6/8|2/4|5/4)\b", low)
+    if m:
+        return m.group(1)
+    if "in 3/4" in low:
+        return "3/4"
+    if "in 6/8" in low:
+        return "6/8"
+    return "4/4"
+
+
+def _parse_articulation(text: str) -> str:
+    low = text.lower()
+    if "staccato" in low:
+        return "staccato"
+    if "two slurred two tongued" in low or "slur two" in low or "tongue two" in low:
+        return "alternate_slur_tongue"
+    if "slurred" in low or "legato" in low or re.search(r"\bslur(?:red)?\b", low):
+        return "slurred"
+    if any(p in low for p in ("tongued", "articulated", "tonguing")):
+        return "tongued"
+    return ""
+
+
+def _parse_tempo_bpm(text: str) -> int | None:
+    low = text.lower()
+    tm = re.search(r"\b(\d{2,3})\s*bpm\b", low)
+    if tm:
+        return int(tm.group(1))
+    tm2 = re.search(r"\bat\s+(\d{2,3})\b", low)
+    if tm2:
+        return int(tm2.group(1))
+    return None
+
+
+def spec_to_dev_dict(spec: ScalePracticeSpec, result: ScalePracticeResult | None = None) -> dict[str, object]:
+    out: dict[str, object] = {
+        "tonic": spec.tonic,
+        "preferred_spelling": spec.preferred_spelling,
+        "scale_type": spec.scale_type,
+        "interval_patterns": list(spec.interval_patterns),
+        "octave_count": spec.octave_count,
+        "octave_count_explicit": spec.octave_count_explicit,
+        "direction": spec.direction,
+        "note_value": spec.note_value,
+        "rhythm_triplet": spec.rhythm_triplet,
+        "meter": spec.meter,
+        "articulation": spec.articulation,
+        "tempo_bpm": spec.tempo_bpm,
+        "instrument": spec.instrument,
+        "start_octave": spec.start_octave,
+    }
+    if result is not None:
+        out["chosen_start_octave"] = result.chosen_start_octave
+        out["abc_key"] = result.abc_key
+    return out
+
+
 def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePracticeSpec:
     raw_text = str(text or "")
     cleaned = raw_text
@@ -152,23 +264,24 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
     preferred = _preferred_tonic_spelling(raw_text, tonic)
     scale_type = _parse_scale_type(text)
     patterns = _parse_interval_patterns(text)
-    octaves = 2 if re.search(r"\btwo\s+octaves?\b", low) else 1
-    if re.search(r"\bthree\s+octaves?\b", low):
-        octaves = 3
-    direction = "both" if "ascending and descending" in low or "ascending & descending" in low else "ascending"
-    if "descending" in low and "ascending" not in low:
-        direction = "descending"
-    tempo = None
-    tm = re.search(r"\b(\d{2,3})\s*bpm\b", low)
-    if tm:
-        tempo = int(tm.group(1))
+    octaves, oct_explicit = _parse_octave_count(text)
+    direction = _parse_direction(text)
+    note_value, triplet = _parse_note_value(text)
+    meter = _parse_meter(text)
+    articulation = _parse_articulation(text)
+    tempo = _parse_tempo_bpm(text)
     return ScalePracticeSpec(
         tonic=tonic,
         preferred_spelling=preferred,
         scale_type=scale_type,
         interval_patterns=patterns,
         octave_count=max(1, min(3, octaves)),
+        octave_count_explicit=oct_explicit,
         direction=direction,
+        note_value=note_value,
+        rhythm_triplet=triplet,
+        meter=meter,
+        articulation=articulation,
         instrument=str(instrument or "").strip(),
         tempo_bpm=tempo,
     )
@@ -231,7 +344,13 @@ def extend_scale_octaves(scale: list[str], octave_count: int) -> list[str]:
     return out
 
 
-def build_straight_sequence(scale: list[str], *, direction: str, octave_count: int) -> list[str]:
+def build_straight_sequence(
+    scale: list[str],
+    *,
+    direction: str,
+    octave_count: int,
+    start_octave: int = 4,
+) -> list[str]:
     if not scale:
         return []
     if octave_count <= 1:
@@ -240,7 +359,7 @@ def build_straight_sequence(scale: list[str], *, direction: str, octave_count: i
         seq = extend_scale_octaves(scale, octave_count)
         if seq and seq[-1] != scale[0]:
             seq = seq + [scale[0]]
-    pitched = _octave_for_sequence(seq)
+    pitched = _octave_for_sequence(seq, start_octave)
     names = [n for n, _ in pitched]
     if direction == "descending":
         names = list(reversed(names))
@@ -250,7 +369,7 @@ def build_straight_sequence(scale: list[str], *, direction: str, octave_count: i
 
 
 def build_interval_pairs(scale: list[str], step: int) -> list[tuple[str, str]]:
-    """Diatonic interval pairs (step = scale-degree skip, 2 = thirds)."""
+    """Diatonic interval pairs for one pass through the scale (seven sources in major)."""
     if step <= 0 or len(scale) < 2:
         return []
     n = len(scale)
@@ -259,6 +378,20 @@ def build_interval_pairs(scale: list[str], step: int) -> list[tuple[str, str]]:
         a = scale[i % n]
         b = scale[(i + step) % n]
         pairs.append((a, b))
+    return pairs
+
+
+def build_interval_pairs_over_octaves(scale: list[str], step: int, octave_count: int) -> list[tuple[str, str]]:
+    """Interval pairs for each scale-degree source across ``octave_count`` octave spans."""
+    if step <= 0 or not scale or octave_count < 1:
+        return []
+    n = len(scale)
+    pairs: list[tuple[str, str]] = []
+    for _ in range(octave_count):
+        for i in range(n):
+            a = scale[i]
+            b = scale[(i + step) % n]
+            pairs.append((a, b))
     return pairs
 
 
@@ -422,25 +555,68 @@ def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list
         guidance.append(f"Use a comfortable register on **{inst}**.")
     else:
         guidance.append("Use a comfortable register on **your instrument**.")
+
+    tempo_line = (
+        f"Practice at **{spec.tempo_bpm} BPM**."
+        if spec.tempo_bpm
+        else "Start around **60–72 BPM** with a metronome."
+    )
+    rhythm_hint = ""
+    if spec.note_value == "eighth":
+        rhythm_hint = "Keep **eighth notes** even in tone and time."
+    elif spec.note_value == "sixteenth":
+        rhythm_hint = "Keep **sixteenth notes** clean and even."
+    elif spec.note_value == "half":
+        rhythm_hint = " sustain each **half note** with steady tone."
+
     if straight:
-        guidance.extend(
-            [
-                "Start around **60–72 BPM**.",
-                "Keep every note even in tone and time.",
-                "Connect each scale degree smoothly.",
-                "Increase tempo after **three accurate repetitions**.",
-            ]
-        )
+        if spec.direction == "descending":
+            guidance.extend(
+                [
+                    tempo_line,
+                    rhythm_hint or "Keep every note even as you move **down** the scale.",
+                    "Connect each scale degree smoothly on the way down.",
+                    "Increase tempo after **three accurate repetitions**.",
+                ]
+            )
+        elif spec.direction == "both":
+            guidance.extend(
+                [
+                    tempo_line,
+                    rhythm_hint or "Keep tone and time even ascending and descending.",
+                    "Turn around cleanly at the top and bottom.",
+                    "Increase tempo after **three accurate repetitions**.",
+                ]
+            )
+        else:
+            guidance.extend(
+                [
+                    tempo_line,
+                    rhythm_hint or "Keep every note even in tone and time.",
+                    "Connect each scale degree smoothly.",
+                    "Increase tempo after **three accurate repetitions**.",
+                ]
+            )
+        if spec.octave_count_explicit and spec.octave_count == 1:
+            pass
+        elif spec.octave_count >= 2 and not spec.octave_count_explicit:
+            pass
     else:
         guidance.extend(
             [
-                "Start slowly with a metronome.",
-                "Keep each pair rhythmically even.",
+                tempo_line,
+                rhythm_hint or "Keep each pair rhythmically even.",
                 "Match tone between the two notes of each interval.",
                 "Increase tempo after **three accurate repetitions**.",
             ]
         )
-    return guidance
+    if spec.articulation == "slurred":
+        guidance.append("Keep **slurred** pairs connected; do not retongue between slurred notes.")
+    elif spec.articulation == "staccato":
+        guidance.append("Keep **staccato** attacks light and rhythm steady.")
+    elif spec.articulation == "tongued":
+        guidance.append("Use a clear, consistent **articulation** on each note.")
+    return [g for g in guidance if g]
 
 
 def _build_listen_for(*, straight: bool, display_tonic: str, scale_type: str) -> list[str]:
@@ -491,6 +667,40 @@ def _format_interval_pairs_line(pairs: list[tuple[str, str]], reference_key: str
     return " · ".join(chunks)
 
 
+def _abc_default_length(note_value: str) -> str:
+    return {
+        "quarter": "1/4",
+        "eighth": "1/8",
+        "half": "1/2",
+        "sixteenth": "1/16",
+    }.get(note_value, "1/4")
+
+
+def _abc_duration_suffix(note_value: str, *, triplet: bool) -> str:
+    if triplet and note_value == "eighth":
+        return "3"
+    if note_value == "half":
+        return "2"
+    return ""
+
+
+def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> str:
+    if articulation != "slurred" or not tokens:
+        return " ".join(tokens)
+    if pair_mode:
+        chunks: list[str] = []
+        i = 0
+        while i < len(tokens):
+            if i + 1 < len(tokens):
+                chunks.append(f"({tokens[i]} {tokens[i + 1]})")
+                i += 2
+            else:
+                chunks.append(tokens[i])
+                i += 1
+        return " ".join(chunks)
+    return f"({' '.join(tokens)})"
+
+
 def build_abc_from_note_names(
     note_names: list[str],
     *,
@@ -498,24 +708,32 @@ def build_abc_from_note_names(
     key_field: str,
     bpm: int = 72,
     pitched: list[tuple[str, int]] | None = None,
+    note_value: str = "quarter",
+    rhythm_triplet: bool = False,
+    meter: str = "4/4",
+    articulation: str = "",
+    pair_mode: bool = False,
 ) -> str:
     if not note_names and not pitched:
         return ""
     if pitched is None:
         pitched = _octave_for_sequence(note_names)
-    tokens: list[str] = []
+    dur = _abc_duration_suffix(note_value, triplet=rhythm_triplet)
+    staccato = articulation == "staccato"
+    pitch_tokens: list[str] = []
     for name, octv in pitched:
-        tokens.append(_note_to_abc(name, octv, key_field=key_field))
-        tokens.append("2")
-    bar_size = 8
-    bars: list[str] = []
-    for i in range(0, len(tokens), bar_size):
-        bars.append(" ".join(tokens[i : i + bar_size]))
-    music = " |\n".join(bars) + " |"
+        tok = _note_to_abc(name, octv, key_field=key_field)
+        if staccato:
+            tok = tok + "."
+        if dur:
+            tok = tok + dur
+        pitch_tokens.append(tok)
+    music = _abc_slur_tokens(pitch_tokens, articulation, pair_mode=pair_mode) + " |"
+    default_len = _abc_default_length(note_value)
     return f"""X:1
 T:{title}
-M:4/4
-L:1/4
+M:{meter}
+L:{default_len}
 Q:1/4={bpm}
 K:{key_field}
 {music}"""
@@ -528,7 +746,17 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
     display_label = f"{display_tonic} {_scale_type_label(spec.scale_type)}"
     straight = _straight_scale_only(spec.interval_patterns)
     key_signature_hint = ref
-    start_oct = _default_start_octave(spec.instrument)
+    start_oct = spec.start_octave if spec.start_octave is not None else _default_start_octave(spec.instrument)
+    spec.start_octave = start_oct
+    bpm = spec.tempo_bpm or 72
+    abc_kw = dict(
+        key_field=key_field,
+        bpm=bpm,
+        note_value=spec.note_value,
+        rhythm_triplet=spec.rhythm_triplet,
+        meter=spec.meter,
+        articulation=spec.articulation,
+    )
 
     all_pairs: list[tuple[str, str]] = []
     exercise_names: list[str] = []
@@ -538,20 +766,25 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
 
     for pattern in spec.interval_patterns:
         if pattern in ("straight", "unison", "scale"):
-            seq = build_straight_sequence(scale, direction=spec.direction, octave_count=spec.octave_count)
+            seq = build_straight_sequence(
+                scale,
+                direction=spec.direction,
+                octave_count=spec.octave_count,
+                start_octave=start_oct,
+            )
             practice_seq = list(seq)
             exercise_names.extend(seq)
             abc_sections.append(
                 build_abc_from_note_names(
                     seq,
                     title=f"{display_label} scale",
-                    key_field=key_field,
-                    bpm=spec.tempo_bpm or 72,
+                    pair_mode=False,
+                    **abc_kw,
                 )
             )
         else:
             step = _INTERVAL_STEPS.get(pattern, 2)
-            pairs = build_interval_pairs(scale, step)
+            pairs = build_interval_pairs_over_octaves(scale, step, spec.octave_count)
             all_pairs.extend(pairs)
             pitched_pairs = pairs_to_pitched_notes(
                 pairs,
@@ -560,14 +793,14 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
             )
             seq = [n for n, _ in pitched_pairs]
             exercise_names.extend(seq)
-            interval_line = _format_interval_pairs_line(pairs, ref)
+            interval_line = _format_interval_pairs_line(build_interval_pairs(scale, step), ref)
             abc_sections.append(
                 build_abc_from_note_names(
                     seq,
                     title=f"{display_label} in {pattern}",
-                    key_field=key_field,
-                    bpm=spec.tempo_bpm or 60,
                     pitched=pitched_pairs,
+                    pair_mode=True,
+                    **abc_kw,
                 )
             )
 
@@ -603,4 +836,5 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
         key_signature_hint=key_signature_hint,
         practice_guidance=guidance,
         what_to_listen_for=listen,
+        chosen_start_octave=start_oct,
     )
