@@ -217,8 +217,8 @@ FEATURES: dict[str, AppFeature] = {
         user_goals=("understand chords", "harmonic relationships", "chord theory visual"),
         usage_steps=(
             "Open **Harmony Map** from the Creative improvisation tools.",
-            "Use the current practice key and progression context shown in the UI.",
-            "Try suggested tones/chords over the active harmony.",
+            "Review **stable tones** and **color tones** for each chord in the current section.",
+            "Use the map while you experiment over the active harmony (with Live Coach or backing if enabled).",
         ),
         related_features=("live_coach", "motif", "music_coach"),
         distinctions=(

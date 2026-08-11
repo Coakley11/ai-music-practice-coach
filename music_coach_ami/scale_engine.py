@@ -106,6 +106,8 @@ class ScalePracticeSpec:
     player_level: str = ""
     practice_focus: str = ""
     pedagogical_goal: str = ""
+    wants_structured_exercise: bool = False
+    selection_reason: str = ""
 
 
 @dataclass
@@ -198,6 +200,19 @@ def _tonic_from_phrase_group(raw: str, full_text: str) -> str:
         if re.search(r"sharp|#|♯", token, re.I):
             return f"{letter}#"
     return _normalize_tonic(token)
+
+
+def _wants_structured_exercise(text: str) -> bool:
+    low = str(text or "").lower()
+    if re.search(r"\b(pattern|exercise)\b", low):
+        return True
+    if re.search(r"\b(easy|medium|beginner|intermediate|difficult|hard|advanced)\b", low) and re.search(
+        r"\b(dorian|mixolydian|lydian|locrian|phrygian|major|minor|scale|mode)\b", low
+    ):
+        return True
+    if any(p in low for p in ("build tone", "for tone", "articulation", "finger technique", "short notes")):
+        return True
+    return False
 
 
 def _parse_interval_patterns(text: str) -> tuple[str, ...]:
@@ -321,6 +336,13 @@ def _parse_tonic(text: str, cleaned: str) -> tuple[str, str]:
 
 def _parse_articulation(text: str) -> str:
     low = text.lower()
+    if re.search(r"\bmix\b", low) and ("slur" in low or "slurred" in low) and any(
+        p in low for p in ("short", "staccato", "tongued", "articulated")
+    ):
+        return "slur2_short2"
+    if "staccato" in low or "short notes" in low:
+        if "slur" in low or "slurred" in low:
+            return "slur2_short2"
     if "staccato" in low:
         return "staccato"
     if "two slurred two tongued" in low or "alternate slurred" in low:
@@ -406,6 +428,9 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
     articulation = _parse_articulation(text)
     tempo = _parse_tempo_bpm(text)
     wants_measures = _parse_wants_measures(text)
+    wants_structured = _wants_structured_exercise(text)
+    if wants_structured and exercise_pattern == "straight":
+        exercise_pattern = "four_note_sequence"
     return ScalePracticeSpec(
         tonic=tonic,
         preferred_spelling=preferred,
@@ -426,6 +451,7 @@ def parse_scale_practice_question(text: str, *, instrument: str = "") -> ScalePr
         tonic_provenance=tonic_prov,
         exercise_pattern=exercise_pattern,
         requested_difficulty=requested_difficulty,
+        wants_structured_exercise=wants_structured,
     )
 
 
@@ -816,12 +842,11 @@ def _straight_scale_only(patterns: tuple[str, ...]) -> bool:
 
 
 def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list[str]:
-    inst = str(spec.instrument or "").strip()
+    from music_coach_ami.request_resolution import display_coach_instrument
+
+    inst = display_coach_instrument(spec.instrument)
     guidance: list[str] = []
-    if inst:
-        guidance.append(f"Use a comfortable register on **{inst}**.")
-    else:
-        guidance.append("Use a comfortable register on **your instrument**.")
+    guidance.append(f"Use a comfortable register on **{inst}**.")
 
     tempo_line = (
         f"Practice at **{spec.tempo_bpm} BPM**."
@@ -891,6 +916,8 @@ def _build_practice_guidance(spec: ScalePracticeSpec, *, straight: bool) -> list
         guidance.append("Use **two-note slurs** consistently through the pattern.")
     elif spec.articulation == "alternate_slur_tongue":
         guidance.append("Alternate **two slurred** and **two tongued** notes as marked.")
+    elif spec.articulation == "slur2_short2":
+        guidance.append("Use **two-note slurs** then **two short/tongued** notes in each cell.")
     elif spec.articulation == "staccato":
         guidance.append("Keep **staccato** attacks light and rhythm steady.")
     elif spec.articulation == "tongued":
@@ -1012,7 +1039,15 @@ def format_scale_request_summary(spec: ScalePracticeSpec) -> list[str]:
     if spec.tempo_bpm:
         lines.append(f"**Tempo:** {spec.tempo_bpm} BPM")
     if spec.articulation:
-        lines.append(f"**Articulation:** {spec.articulation.replace('_', ' ').title()}")
+        label = {
+            "slur2_short2": "2 slurred, 2 short",
+            "alternate_slur_tongue": "Alternate slur/tongue groups",
+            "slur_two": "Two-note slurs",
+            "slurred": "Slurred",
+            "staccato": "Staccato",
+            "tongued": "Tongued",
+        }.get(spec.articulation, spec.articulation.replace("_", " ").title())
+        lines.append(f"**Articulation:** {label}")
     if spec.meter_explicit or spec.wants_measures:
         lines.append(f"**Meter:** {spec.meter}")
     if spec.pattern_id:
@@ -1258,7 +1293,26 @@ def pairs_to_playable_notes(
 
 
 def _abc_slur_tokens(tokens: list[str], articulation: str, *, pair_mode: bool) -> list[str]:
-    if not tokens or articulation not in ("slurred", "slur_two", "alternate_slur_tongue"):
+    if not tokens:
+        return []
+    if articulation == "slur2_short2":
+        out: list[str] = []
+        i = 0
+        while i < len(tokens):
+            if i + 3 < len(tokens):
+                a, b, c, d = tokens[i], tokens[i + 1], tokens[i + 2], tokens[i + 3]
+                out.append(f"({a}{b})")
+                out.append(c if c.endswith(".") else f"{c}.")
+                out.append(d if d.endswith(".") else f"{d}.")
+                i += 4
+            elif i + 1 < len(tokens):
+                out.append(f"({tokens[i]}{tokens[i + 1]})")
+                i += 2
+            else:
+                out.append(tokens[i] if tokens[i].endswith(".") else f"{tokens[i]}.")
+                i += 1
+        return out
+    if articulation not in ("slurred", "slur_two", "alternate_slur_tongue"):
         return list(tokens)
     if articulation in ("slur_two", "alternate_slur_tongue") or (articulation == "slurred" and pair_mode):
         chunks: list[str] = []
@@ -1454,8 +1508,16 @@ def generate_scale_practice(spec: ScalePracticeSpec) -> ScalePracticeResult:
             pat_key = spec.pattern_id or (
                 spec.exercise_pattern if spec.exercise_pattern in PATTERN_LIBRARY else ""
             )
-            pattern_exercise = bool(pat_key) or spec.exercise_pattern == "four_note_sequence"
-            if pattern_exercise:
+            pattern_exercise = bool(
+                spec.wants_structured_exercise
+                or pat_key
+                or spec.exercise_pattern == "four_note_sequence"
+            )
+            if pattern_exercise and (
+                pat_key in PATTERN_LIBRARY
+                or spec.exercise_pattern == "four_note_sequence"
+                or spec.pattern_id
+            ):
                 if pat_key in PATTERN_LIBRARY:
                     offsets = PATTERN_LIBRARY[pat_key].degree_offsets
                     pat_title = PATTERN_LIBRARY[pat_key].display_name

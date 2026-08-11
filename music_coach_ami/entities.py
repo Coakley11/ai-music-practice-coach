@@ -46,6 +46,8 @@ def parse_duration_minutes(text: str) -> int | None:
 
 
 def extract_entities(normalized: str, context_instrument: str = "") -> ExtractedEntities:
+    from music_coach_ami.request_resolution import parse_question_focus, parse_question_level
+
     low = normalized.lower()
     instrument = ""
     for pat, name in _INSTRUMENT_PATTERNS:
@@ -55,10 +57,14 @@ def extract_entities(normalized: str, context_instrument: str = "") -> Extracted
     if not instrument:
         instrument = str(context_instrument or "").strip()
 
+    q_level, q_level_explicit = parse_question_level(normalized)
+    q_focus, q_focus_explicit = parse_question_focus(normalized)
+
     skill = ""
     for topic, phrases in (
-        ("tone", ("tone", "airy", "breath support", "sound fuller")),
-        ("articulation", ("articulation", "tonguing", "notes don't come out cleanly")),
+        ("tone", ("build tone", "for tone", "tone exercise", "tone", "airy", "breath support", "sound fuller")),
+        ("articulation", ("articulation", "tonguing", "short notes", "slurs", "notes don't come out cleanly")),
+        ("technique", ("finger technique", "finger speed", "fingerings", "technique")),
         ("transitions", ("transitions smoother", "smooth transitions")),
         ("improvisation", ("improv", "solo", "motif", "chord tone")),
     ):
@@ -77,6 +83,10 @@ def extract_entities(normalized: str, context_instrument: str = "") -> Extracted
         skill_topic=skill,
         feature_id=feature_by_question(low),
         theory_topic=theory,
+        requested_level=q_level,
+        requested_level_explicit=q_level_explicit,
+        practice_focus=q_focus or (skill if skill in ("tone", "articulation", "technique", "rhythm", "harmony") else ""),
+        practice_focus_explicit=q_focus_explicit or bool(skill),
     )
 
 

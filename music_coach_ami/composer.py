@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from music_coach_ami.types import CoachResponse
 
 
@@ -36,7 +38,13 @@ def compose_coach_markdown(response: CoachResponse) -> str:
     if response.app_navigation_steps:
         parts.append("**Steps in the app**")
         for step in response.app_navigation_steps:
-            parts.append(f"- {step}")
+            s = step.strip()
+            if s in ("**Then:**", "**Use:**", "**Go to:**") or s.startswith("**") and s.endswith(":**"):
+                parts.append(s)
+            elif re.match(r"^\d+\.\s", s):
+                parts.append(s)
+            else:
+                parts.append(f"- {s}")
     if response.suggested_next_action:
         parts.append(f"**Next:** {response.suggested_next_action.strip()}")
     return "\n\n".join(p for p in parts if p)

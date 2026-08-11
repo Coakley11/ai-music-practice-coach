@@ -165,6 +165,8 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.86
     if "song should i practice" in low and "improv" in low:
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.86
+    if re.search(r"\bwhat song should i practice\b", low) and "kind of" not in low:
+        return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.86
     if "songs" in low and any(p in low for p in ("good for learning", "good for improvisation", "learning improvisation")):
         return CoachIntent.REPERTOIRE_RECOMMENDATION, 0.84
 
@@ -250,7 +252,11 @@ def route_question(
     session = session_state if isinstance(session_state, dict) else {}
     ctx = read_coach_context(session, ami_ctx=ami_ctx)
     normalized = normalize_question(question)
-    entities = extract_entities(normalized, ctx.instrument)
+    entities = extract_entities(normalized, "")
+    from music_coach_ami.request_resolution import resolve_instrument_for_request
+
+    resolved_inst, inst_trace = resolve_instrument_for_request(session, entities=entities, context=ctx)
+    entities.instrument = resolved_inst
     constraints = extract_constraints(normalized, entities)
     intent, confidence = _rule_route(normalized, ctx.coach_page)
     return CoachRequest(

@@ -114,10 +114,12 @@ class VerticalSliceTests(unittest.TestCase):
         self.assertIn("Comfort piece", text)
         self.assertNotIn("Songs similar to", text)
 
-    def test_c_repertoire_goal_improv(self) -> None:
+    def test_c_repertoire_singular_song(self) -> None:
         resp = run_coach_pipeline("What song should I practice to improve improvisation?", {})
         assert resp is not None
-        self.assertIn("ii–V–I", resp.composed_markdown())
+        text = resp.composed_markdown()
+        self.assertIn("Best choice", text)
+        self.assertNotIn("on **Piano**", text)
 
     def test_d_scale_and_chord_destinations(self) -> None:
         resp = run_coach_pipeline(

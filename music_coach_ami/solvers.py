@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 from music_coach_ami.app_knowledge import (
@@ -41,11 +42,17 @@ def _allocate(total: int, weights: dict[str, float]) -> dict[str, int]:
     return rounded
 
 
+def _coach_instrument(req: CoachRequest) -> str:
+    from music_coach_ami.request_resolution import display_coach_instrument
+
+    return display_coach_instrument(req.entities.instrument)
+
+
 def solve_practice_plan(req: CoachRequest) -> CoachResponse:
     from music_coach_instrument_voice import instrument_family, practice_plan_profile, tone_focused_practice_plan
 
     minutes = _minutes(req)
-    instrument = req.entities.instrument or req.context.instrument or "your instrument"
+    instrument = _coach_instrument(req)
     tone = req.constraints.tone_focus or "tone" in req.normalized_question.lower()
     chord_focus = "chord" in req.normalized_question.lower()
 
@@ -97,7 +104,6 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     )
 
     low = req.normalized_question.lower()
-    instrument = (req.entities.instrument or req.context.instrument or "").strip()
 
     if "what scales should i practice" in low:
         return CoachResponse(
@@ -116,15 +122,37 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
 
     spec = parse_scale_practice_question(
         req.raw_question or req.normalized_question,
-        instrument=instrument,
+        instrument=req.entities.instrument,
     )
     from music_coach_ami.exercise_patterns import apply_exercise_profile, exercise_profile_to_dev_dict
+    from music_coach_ami.request_resolution import (
+        display_coach_instrument,
+        resolve_focus_for_request,
+        resolve_level_for_request,
+    )
 
+    instrument = (req.entities.instrument or "").strip()
+    inst_extra = req.context.extra.get("instrument_provenance") if isinstance(req.context.extra, dict) else {}
+    level, level_prov = resolve_level_for_request(
+        question_level=req.entities.requested_level,
+        question_level_explicit=req.entities.requested_level_explicit,
+        context_level=req.context.level,
+        difficulty_requested=spec.requested_difficulty,
+    )
+    focus, focus_prov = resolve_focus_for_request(
+        question_focus=req.entities.practice_focus,
+        question_focus_explicit=req.entities.practice_focus_explicit,
+        context_focus=req.context.practice_focus,
+        skill_topic=req.entities.skill_topic,
+    )
     profile = apply_exercise_profile(
         spec,
-        level=req.context.level,
-        practice_focus=req.context.practice_focus,
-        instrument=instrument or req.context.instrument,
+        level=level,
+        practice_focus=focus,
+        instrument=instrument,
+        level_provenance=level_prov,
+        focus_provenance=focus_prov,
+        instrument_provenance="question_entity" if instrument else "empty",
     )
     result = generate_scale_practice(spec)
 
@@ -191,10 +219,9 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
             "practice_sequence": result.practice_sequence,
             "scale_practice_spec": spec_to_dev_dict(spec, result),
             "exercise_profile": exercise_profile_to_dev_dict(profile),
-            "instrument_used": profile.instrument or instrument or req.context.instrument,
-            "instrument_provenance": req.context.extra.get("instrument_provenance")
-            if isinstance(req.context.extra, dict)
-            else {},
+            "instrument_used": instrument,
+            "instrument_display": display_coach_instrument(instrument),
+            "instrument_provenance": inst_extra,
         },
     )
 
@@ -202,8 +229,8 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
 def solve_technique_problem(req: CoachRequest) -> CoachResponse:
     from music_coach_instrument_voice import instrument_family
 
-    instrument = req.entities.instrument or req.context.instrument or "your instrument"
-    fam = instrument_family(instrument)
+    instrument = _coach_instrument(req)
+    fam = instrument_family(instrument if instrument != "your instrument" else "")
     topic = req.entities.skill_topic or "tone"
     low = req.normalized_question.lower()
 
@@ -270,14 +297,15 @@ def solve_app_navigation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
     fid = req.entities.feature_id or feature_by_question(low) or "practice_log"
     feat = FEATURES.get(fid) or FEATURES["practice_log"]
-    then_steps = [s for s in feat.usage_steps if not s.lower().startswith("open **practice log** from")]
+    then_steps = list(feat.usage_steps)
     steps = [
         f"**Use:** {feat.display_name}",
         f"**Go to:** {feat.navigation_path or feat.display_name}",
         "**Then:**",
-        *then_steps,
     ]
-    when = _when_tail(feat.when_to_use)
+    for idx, step in enumerate(then_steps, start=1):
+        steps.append(f"{idx}. {step.lstrip('0123456789. ')}")
+    when = _when_tail(feat.when_to_use).rstrip(".")
     return CoachResponse(
         intent=CoachIntent.APP_NAVIGATION,
         direct_answer=feat.purpose,
@@ -560,6 +588,8 @@ def solve_improvisation_coaching(req: CoachRequest) -> CoachResponse:
 
 def _repertoire_query_mode(question: str) -> str:
     low = str(question or "").lower()
+    if re.search(r"\bwhat song should i practice\b", low) and "kind of" not in low:
+        return "goal_improv_singular"
     if any(
         p in low
         for p in (
@@ -585,9 +615,57 @@ def _repertoire_query_mode(question: str) -> str:
     return "broad"
 
 
+def _record_improv_catalog_fields(r: dict) -> tuple[str, str]:
+    ext = r.get("extensions") if isinstance(r.get("extensions"), dict) else {}
+    ha = r.get("harmonic_analysis") if isinstance(r.get("harmonic_analysis"), dict) else {}
+    if not ha and isinstance(ext.get("harmonic_analysis"), dict):
+        ha = ext["harmonic_analysis"]
+    ps = str(ha.get("progression_summary") or "").strip()
+    key = str(ha.get("concert_key") or r.get("key") or "").strip()
+    if ps:
+        return ps, key
+    title = str(r.get("title") or "")
+    artist = str(r.get("artist") or "")
+    if title == "Say" and artist == "John Mayer":
+        return "Main loop **G–C–Em–D** with bridge **Am–C–D** — clear pop changes for motif practice", "G"
+    notes = str(ext.get("arrangement_notes") or "").strip()
+    if len(notes) >= 40:
+        snippet = notes.replace("**", "").strip()
+        if len(snippet) > 200:
+            snippet = snippet[:197] + "..."
+        return snippet, key or str(r.get("key") or "")
+    return "", key
+
+
+def _catalog_improv_development_song() -> dict[str, str] | None:
+    try:
+        from song_catalog.catalog import load_song_catalog
+
+        cached = load_song_catalog()
+        records = cached[3] if isinstance(cached, tuple) and len(cached) >= 4 else []
+    except (ImportError, IndexError, TypeError, ValueError):
+        return None
+    preferred = ("Say", "John Mayer")
+    title, artist = preferred
+    for r in records:
+        if str(r.get("title") or "") == title and str(r.get("artist") or "") == artist:
+            ps, key = _record_improv_catalog_fields(r)
+            if ps:
+                return {"title": title, "artist": artist, "reason": ps, "key": key}
+    for r in records:
+        ps, key = _record_improv_catalog_fields(r)
+        if not ps or len(ps) < 12:
+            continue
+        t = str(r.get("title") or "").strip()
+        a = str(r.get("artist") or "").strip()
+        if t and a:
+            return {"title": t, "artist": a, "reason": ps, "key": key}
+    return None
+
+
 def solve_repertoire_recommendation(req: CoachRequest) -> CoachResponse | None:
     mode = _repertoire_query_mode(req.raw_question or req.normalized_question)
-    instrument = req.entities.instrument or req.context.instrument or "your instrument"
+    instrument = _coach_instrument(req)
     song = req.context.active_song_title or "your active song"
 
     if mode == "broad":
@@ -611,6 +689,38 @@ def solve_repertoire_recommendation(req: CoachRequest) -> CoachResponse | None:
                 "repertoire_mode": "broad",
                 "context_completeness": context_completeness(req.context),
             },
+        )
+
+    if mode == "goal_improv_singular":
+        pick = _catalog_improv_development_song()
+        if pick:
+            title_line = f"**{pick['title']}** — {pick['artist']}"
+            reason = pick["reason"]
+            key_note = f" (concert key **{pick['key']}**)" if pick.get("key") else ""
+            return CoachResponse(
+                intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+                direct_answer=f"**Best choice:** {title_line}",
+                practice_steps=[
+                    f"**Why:** {reason}{key_note} — clear sections to outline with chord tones.",
+                    "**Practice it:** Loop the verse or chorus in **Backing**; improvise one **4-note motif** per section.",
+                    "**Alternative:** Any trusted tune in your library with a repeating **I–V–vi–IV** or **ii–V** loop.",
+                ],
+                suggested_next_action=f"Open **{pick['title']}** in the song picker and set a short **Mission** on one section.",
+                source_solver="RepertoireSolver(goal_improv_singular)",
+                confidence=0.85,
+                diagnostics={"repertoire_mode": "goal_improv_singular", "catalog_pick": pick["title"]},
+            )
+        return CoachResponse(
+            intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+            direct_answer="**Best choice:** A tune in your library with **clear, repeating chord changes**.",
+            practice_steps=[
+                "**Why:** Improvisation grows fastest when you can outline **chord tones on strong beats** over a loop you know.",
+                "**Practice it:** Pick one section, loop it in **Backing**, and restrict the first pass to roots and 3rds.",
+            ],
+            suggested_next_action="Open the **song picker** and choose a chart whose progression summary shows repeating changes.",
+            source_solver="RepertoireSolver(goal_improv_singular_fallback)",
+            confidence=0.8,
+            diagnostics={"repertoire_mode": "goal_improv_singular", "catalog_pick": None},
         )
 
     if mode == "goal_improv":

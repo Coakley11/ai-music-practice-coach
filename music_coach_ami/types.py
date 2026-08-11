@@ -58,6 +58,10 @@ class ExtractedEntities:
     theory_topic: str = ""
     section_name: str = ""
     song_title: str = ""
+    requested_level: str = ""
+    requested_level_explicit: bool = False
+    practice_focus: str = ""
+    practice_focus_explicit: bool = False
 
 
 @dataclass
