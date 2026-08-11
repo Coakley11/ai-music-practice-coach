@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from music_coach_ami.app_knowledge import CREATIVE_COMPARISONS, FEATURES, compare_features
+from music_coach_ami.song_editing_knowledge import is_practice_key_editing_semantics_question
 
 # Longest alias phrases first within each feature.
 _FEATURE_ALIAS_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -277,6 +278,8 @@ def extract_comparison_feature_pair(low: str) -> tuple[str, str] | None:
 
 
 def is_feature_comparison_question(low: str) -> bool:
+    if is_practice_key_editing_semantics_question(low):
+        return False
     return extract_comparison_feature_pair(low) is not None
 
 

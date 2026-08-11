@@ -75,13 +75,13 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if "difference between" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
 
+    if is_song_editing_question(low):
+        return CoachIntent.SONG_EDITING_WORKFLOW, 0.93
+
     if is_feature_comparison_question(low):
         if is_creative_feature_comparison(low):
             return CoachIntent.CREATIVE_FEATURE_HELP, 0.92
         return CoachIntent.FEATURE_EXPLANATION, 0.92
-
-    if is_song_editing_question(low):
-        return CoachIntent.SONG_EDITING_WORKFLOW, 0.91
 
     if "should i use" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
@@ -251,14 +251,17 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if parse_duration_minutes(normalized) and any(
         p in low for p in ("practice", "routine", "plan", "today", "should i", "session")
     ):
-        return CoachIntent.PRACTICE_PLAN, 0.9
+        if not is_song_editing_question(low):
+            return CoachIntent.PRACTICE_PLAN, 0.9
     if re.search(r"\b\d{1,3}\s*[- ]?\s*minute", low) and any(
         p in low for p in ("practice", "routine", "plan", "today", "should i")
     ):
-        return CoachIntent.PRACTICE_PLAN, 0.9
+        if not is_song_editing_question(low):
+            return CoachIntent.PRACTICE_PLAN, 0.9
     if ("what should i practice" in low and "what kind of songs" not in low) or "practice plan" in low or "practice today" in low:
         if not any(p in low for p in ("over this chord", "over the chord", "chord progression", "progression?")):
-            return CoachIntent.PRACTICE_PLAN, 0.88
+            if not is_song_editing_question(low):
+                return CoachIntent.PRACTICE_PLAN, 0.88
 
     if any(p in low for p in ("which section", "work on in this song", "practice melody", "what tempo should i start")):
         return CoachIntent.SONG_COACHING, 0.82
@@ -278,6 +281,8 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
             "section_focus": CoachIntent.SONG_COACHING,
         }
         if legacy in legacy_map:
+            if legacy == "practice_plan" and is_song_editing_question(low):
+                return CoachIntent.SONG_EDITING_WORKFLOW, 0.91
             return legacy_map[legacy], 0.75
     except ImportError:
         pass

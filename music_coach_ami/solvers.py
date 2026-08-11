@@ -865,7 +865,11 @@ def solve_song_editing_workflow(req: CoachRequest) -> CoachResponse:
     )
 
     classification = classify_song_editing_question(req.normalized_question, req.context)
-    payload = compose_song_editing_answer(classification, req.context)
+    payload = compose_song_editing_answer(
+        classification,
+        req.context,
+        question=req.normalized_question,
+    )
     diag = song_editing_diagnostics(classification, req.context)
     return CoachResponse(
         intent=CoachIntent.SONG_EDITING_WORKFLOW,

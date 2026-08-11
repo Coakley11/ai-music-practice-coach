@@ -47,15 +47,57 @@ def extract_song_edit_entities(low: str) -> tuple[str, str]:
     return target, source
 
 
+def is_practice_key_editing_semantics_question(low: str) -> bool:
+    """Temporary Practice Key transposition vs persistent chord/chart editing — not page comparison."""
+    text = str(low or "").lower()
+    if "practice key" in text and any(
+        p in text for p in ("chord", "edit", "chart", "difference", "vs", "versus", "compare", "permanent", "saved")
+    ):
+        return True
+    if any(p in text for p in ("concert key", "transpose for practice", "without changing the song")):
+        return True
+    if any(p in text for p in ("practice in e", "practice in eb", "practice in e-flat", "practice in e flat", "practice in bb", "practice in b flat")):
+        return True
+    if re.search(r"practice (?:this )?song in\b", text) and any(
+        p in text for p in ("chord", "edit", "key", "flat", "sharp", "today", "transpose")
+    ):
+        return True
+    if "practice this song" in text and any(p in text for p in ("chord", "edit", "key", "flat", "today", "transpose")):
+        return True
+    if re.search(r"play this in\b", text) and any(p in text for p in ("chord", "edit", "key", "flat", "today", "transpose", "saved")):
+        return True
+    if "practice key" in text and any(p in text for p in ("permanent", "permanently", "still be transposed", "rewrite")):
+        return True
+    if any(p in text for p in ("should i practice this in", "practice in bb today", "practice in b flat today")) and any(
+        p in text for p in ("edit", "chord", "transpose", "saved song", "without changing")
+    ):
+        return True
+    return False
+
+
 def is_song_editing_question(low: str) -> bool:
     text = str(low or "").lower()
-    if "practice key" in text and any(p in text for p in ("edit", "chord", "difference", "vs", "versus", "compare")):
-        return False
+    if is_practice_key_editing_semantics_question(text):
+        return True
     markers = (
         "edit a song",
         "songs in the catalog",
         "in the catalog",
         "have to edit all the chords",
+        "need to edit the chord",
+        "need to edit the chords",
+        "do i need to edit",
+        "practice this song in",
+        "without changing the song",
+        "permanently replace",
+        "permanently change",
+        "changing the practice key",
+        "change practice key",
+        "haven't pressed save",
+        "haven't saved",
+        "didn't save",
+        "close the app",
+        "still be there if i close",
         "edit song",
         "edit the song",
         "edit my song",
@@ -119,6 +161,25 @@ def classify_song_editing_question(low: str, ctx: CoachContext | None = None) ->
         elif ctx.active_song_title or active_pick:
             source_hint = "catalog"
 
+    if (
+        ("practice key" in text or "concert key" in text)
+        and any(p in text for p in ("chord", "edit", "chart", "changing"))
+        and any(p in text for p in ("difference", " vs ", " versus ", "compare", "what's the difference"))
+    ) or (
+        "practice key" in text
+        and any(p in text for p in ("edit", "chord", "chart"))
+        and any(p in text for p in ("difference", " vs ", " versus ", "compare"))
+    ):
+        return SongEditingClassification(
+            submode="practice_key_vs_chord_edit",
+            song_source=source_hint or "catalog",
+            edit_target="key_vs_chords",
+            save_mode="practice_key_or_explicit_chart_save",
+            persistence_scope="practice_key_by_source_or_chart_override",
+            ownership_model="temporary_transposition_vs_persistent_chart_edit",
+            editor_feature="practice_key,chart_editor",
+        )
+
     if any(p in text for p in ("catalog song", "original or just my", "my version", "change the original", "for everyone", "songs in the catalog", "in the catalog")):
         return SongEditingClassification(
             submode="catalog_ownership",
@@ -130,18 +191,8 @@ def classify_song_editing_question(low: str, ctx: CoachContext | None = None) ->
             editor_feature="chart_editor,lyrics_editor",
         )
 
-    if any(
-        p in text
-        for p in (
-            "have to edit all the chords",
-            "practice in e",
-            "practice in eb",
-            "practice in e b",
-            "practice in e flat",
-        )
-    ) or (
-        "practice key" in text
-        and any(p in text for p in ("permanent", "transpose", "still be transposed"))
+    if is_practice_key_editing_semantics_question(text) and not any(
+        p in text for p in ("difference between", " vs ", " versus ", "compare")
     ):
         return SongEditingClassification(
             submode="practice_key_only",
@@ -186,7 +237,14 @@ def classify_song_editing_question(low: str, ctx: CoachContext | None = None) ->
         )
 
     if edit_target == "chords" or any(
-        p in text for p in ("changed a chord", "save the change", "save chord", "save corrected", "edit song chart")
+        p in text for p in (
+            "changed a chord",
+            "save the change",
+            "save chord",
+            "save corrected",
+            "edit song chart",
+            "permanently replace",
+        )
     ):
         return SongEditingClassification(
             submode="chord_save",
@@ -254,104 +312,164 @@ def _lifecycle_steps(
 def compose_song_editing_answer(
     classification: SongEditingClassification,
     ctx: CoachContext | None = None,
+    *,
+    question: str = "",
 ) -> dict[str, Any]:
     ctx = ctx or CoachContext()
     sub = classification.submode
     song = str(ctx.active_song_title or "").strip()
+    text = str(question or "").lower()
 
     if sub == "catalog_ownership":
         body = (
-            "Editing a **catalog song** does **not** change the shared curated catalog for everyone. "
-            "Your chord and lyric edits are stored in **your workspace sidecar files** and merged when you "
-            "reopen that song."
+            "**No — your saved edits do not change the original catalog song.** "
+            "The curated version stays as it was for everyone. "
+            "Your chord and lyric changes are kept separately and appear again when you reopen that song."
         )
         steps = _lifecycle_steps(
             use="Song Selection editors (catalog songs)",
             go_to="Studio sidebar → **Song Selection** → **Edit Song Chart** or **Lyrics & Cues**",
-            change="Chord edits in **Edit Song Chart**; lyrics/performance cues in **Lyrics & Cues**.",
+            change="Chord edits in **Edit Song Chart**; lyrics and performance cues in **Lyrics & Cues**.",
             save=(
-                "Explicit save only — **Save corrected chart** / **Save as user verified** for chords; "
-                "**Save Lyrics & Cues** for lyrics. Typing alone does not write to disk."
+                "Click **Save corrected chart** or **Save as user verified** for chords; "
+                "**Save Lyrics & Cues** for lyrics. Your changes are not saved until you click Save."
             ),
             important=(
-                "There is no separate “duplicate song” action. You keep the original catalog chart available "
-                "via **Revert to catalog** or **Revert my lyrics**. "
-                "The app does not publish your edits back to the shared catalog."
+                "There is no separate duplicate-song action. "
+                "Use **Revert to catalog** or **Revert my lyrics** to go back to the original catalog version."
             ),
         )
-        nxt = "Open the song in Song Selection, make your edit, then click the explicit Save button for that editor."
+        nxt = "Open the song in Song Selection, make your edit, then click Save in that editor."
+        return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
+
+    if sub == "practice_key_vs_chord_edit":
+        body = (
+            "**Practice Key** changes the key you read and practice the song in. "
+            "The app transposes the working chart and playback without rewriting the stored chord progression.\n\n"
+            "**Editing the song's chords** changes the saved harmony itself. "
+            "For a catalog song, that becomes your saved chart after you click **Save corrected chart** in **Edit Song Chart**.\n\n"
+            "**Use Practice Key when** you only want to play the same song in another key.\n\n"
+            "**Edit the chords when** you want to correct or rewrite the progression permanently.\n\n"
+            "**Important:** Changing Practice Key does **not** permanently rewrite the stored chart."
+        )
+        steps = _lifecycle_steps(
+            use="**Practice / Concert Key** for today's key, or **Edit Song Chart** for permanent harmony changes",
+            go_to=(
+                "Global studio bar → **Practice / Concert Key** for temporary transposition; "
+                "or **Song Selection** → **Edit Song Chart** to change saved chords"
+            ),
+            change="Pick a concert key to read/practice in, or edit bar/section chords in the chart editor.",
+            save=(
+                "Practice Key is remembered for that song when you return. "
+                "Chart edits require **Save corrected chart** or **Save as user verified**."
+            ),
+        )
+        nxt = "Use **Practice / Concert Key** for a different practice key; use **Edit Song Chart** only when the harmony itself should change."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "practice_key_only":
         body = (
-            "You usually **do not** need to rewrite every chord. Change the sidebar **Practice / Concert Key** "
-            "to read and practice in another key without editing the saved chart."
+            "**No — change the Practice / Concert Key instead.** "
+            "You do **not** need to rewrite every chord if you only want to play this song in another key today."
         )
         steps = _lifecycle_steps(
             use="Practice / Concert Key (temporary transposition)",
             go_to="Global studio bar → **Practice / Concert Key** (sidebar when visible)",
-            change="Pick the concert key you want to read/practice in today.",
-            save="Saved per song source in your workspace (`practice_key_by_source`); it transposes display/practice, not the underlying chart.",
+            change="Pick the concert key you want to read and practice in today.",
+            save=(
+                "Your chosen practice key is remembered for that song, so charts and playback read in that key "
+                "when you return — without changing the saved chord progression."
+            ),
             important=(
-                "This is **not** the same as **Edit Song Chart**. Practice Key does not replace saved chord changes. "
-                "Backing uses your practice context; it does not rewrite the stored progression."
+                "This is **not** the same as **Edit Song Chart**. Practice Key transposes what you see and hear "
+                "for practice; it does not replace saved chord changes."
             ),
         )
-        nxt = "Use **Practice / Concert Key** for today’s key; use **Edit Song Chart** only when the harmony itself should change permanently."
+        nxt = "Set **Practice / Concert Key** for today's key; use **Edit Song Chart** only when the harmony itself should change permanently."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "return_later":
-        body = "Your edited material returns through the same place you saved it — custom songs from the Custom Progression library, catalog edits when you reopen that song in Song Selection."
+        body = (
+            "Reopen the song from the same place you saved it — "
+            "your custom songs in **Custom Progression**, or the same catalog song in **Song Selection**."
+        )
         custom_path = (
             "Studio sidebar → **Custom Progression** → **Load saved or demo charts** → "
             "**Saved songs** → **Load selected** → **Set as Active Song** if you want it across Practice/Backing."
         )
         catalog_path = (
             "Studio sidebar → **Song Selection** → choose the same catalog song. "
-            "Saved chart/lyric overrides reload from your workspace automatically."
+            "Your saved chart and lyric changes appear again automatically."
         )
         steps = _lifecycle_steps(
-            use="Saved custom songs or catalog sidecar overrides",
+            use="Saved custom songs or saved catalog edits",
             go_to=custom_path if classification.song_source == "custom" else f"{custom_path}\n\nOr for catalog edits:\n{catalog_path}",
             change="Continue editing chords on **Custom Progression** or **Edit Song Chart** / lyrics in **Lyrics & Cues**.",
-            save="Custom songs: **Save to library**. Catalog edits: explicit chart/lyrics Save buttons you used before.",
+            save="Custom songs: **Save to library**. Catalog edits: the same Save buttons in **Edit Song Chart** or **Lyrics & Cues**.",
             important=(
-                "Workspace/cloud restore brings back your active song, custom library, and saved overrides after refresh. "
-                "There is no separate hidden “Projects” list beyond Song Selection + Custom Progression library."
+                "Saved songs and saved edits are available again when you return to the app. "
+                "There is no separate hidden Projects list beyond Song Selection and your Custom Progression library."
             ),
         )
-        nxt = "Load the saved custom song from Custom Progression, or reopen the catalog song in Song Selection to continue."
+        nxt = "Load your saved custom song from Custom Progression, or reopen the catalog song in Song Selection to continue."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "lyrics_save":
-        body = (
-            "Catalog song lyrics and performance cues live in **Lyrics & Cues** on Song Selection. "
-            "You must click **Save Lyrics & Cues** — lyrics are **not** autosaved to disk while you type."
+        unsaved_close = any(
+            p in text
+            for p in (
+                "haven't pressed save",
+                "haven't saved",
+                "didn't save",
+                "close the app",
+                "still be there if i close",
+                "typed new lyrics but",
+            )
         )
+        if classification.song_source == "custom":
+            body = (
+                "**Custom Progression does not currently expose a lyrics editor in the UI.** "
+                "For catalog songs, use **Lyrics & Cues** on Song Selection."
+            )
+            steps = _lifecycle_steps(
+                use="Lyrics & Cues (catalog songs only today)",
+                go_to=_CATALOG_LYRICS.navigation_path,
+                change="Edit section lyrics and cues in the **Lyrics & Cues** panel.",
+                save="Click **Save Lyrics & Cues** so your lyrics are still there when you return.",
+            )
+            nxt = "Open a catalog song in Song Selection and use **Lyrics & Cues** if you need editable lyrics today."
+            return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
+        if unsaved_close:
+            body = (
+                "**No — don't rely on unsaved lyrics surviving after you leave or close the app.** "
+                "Click **Save Lyrics & Cues** first."
+            )
+        else:
+            body = (
+                "Open **Lyrics & Cues** on Song Selection, edit your lyrics, then click **Save Lyrics & Cues**. "
+                "Lyrics are **not** saved automatically while you type."
+            )
         steps = _lifecycle_steps(
             use=_CATALOG_LYRICS.display_name,
             go_to=_CATALOG_LYRICS.navigation_path,
             change="Edit section lyrics and cues in the **Lyrics & Cues** panel (Karaoke also links here for Voice).",
-            save="Click **Save Lyrics & Cues** (or **Save as user verified**). Status shows **Unsaved changes** until you save.",
-            important=(
-                "Custom Progression lyrics save code exists but the CPL lyrics panel is **not mounted in the current UI** — "
-                "use Song Selection for catalog songs. **Revert my lyrics** restores the catalog text."
-            ),
+            save="Click **Save Lyrics & Cues** (or **Save as user verified**). You'll see **Unsaved changes** until you save.",
+            important="Use **Revert my lyrics** to restore the original catalog lyrics.",
         )
-        nxt = "After editing, click **Save Lyrics & Cues** so the lyrics are still there tomorrow."
+        nxt = "Click **Save Lyrics & Cues** before you leave so the lyrics are still there tomorrow."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "chord_save":
         body = (
-            "There is **no generic Save button** on the song page — chord changes save from **Edit Song Chart** "
-            "after you enable editing."
+            "Chord changes save from **Edit Song Chart** — turn on **Enable editing**, make your change, "
+            "then click **Save corrected chart** or **Save as user verified**."
         )
         steps = _lifecycle_steps(
             use=_CATALOG_CHART.display_name,
             go_to=_CATALOG_CHART.navigation_path,
             change="Turn on **Enable editing**, edit bar/section chords in the song's written key, then review the draft.",
-            save="Click **Save corrected chart** or **Save as user verified**. Use **Revert to catalog** to discard your override.",
-            important="Saved overrides live in your workspace (`user_chart_overrides.json`) and persist when you reopen the song.",
+            save="Click **Save corrected chart** or **Save as user verified**. Use **Revert to catalog** to discard your changes.",
+            important="After you save, your chord changes come back when you reopen that song. The original catalog chart stays available via **Revert to catalog**.",
         )
         nxt = "Enable editing, make the chord change, then click **Save corrected chart**."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
@@ -366,10 +484,10 @@ def compose_song_editing_answer(
             go_to=classification.reopen_path or _CUSTOM.navigation_path,
             change="After loading, edit sections/chords in the Custom Progression builder; set **Original Key**, meter, BPM as needed.",
             save=(
-                "**Save to library** stores a named custom song (session draft also persists across refresh via workspace restore). "
-                "Use **Set as Active Song** to practice/back it elsewhere in the studio."
+                "Click **Save to library** when you're done so you can open this song again later. "
+                "Use **Set as Active Song** to practice or back it elsewhere in the studio."
             ),
-            important="Custom songs are user-owned (`custom::` pick keys). Delete via **More options → Delete saved progression**.",
+            important="Delete a saved custom song via **More options → Delete saved progression**.",
         )
         nxt = "Load your saved song, edit it, click **Save to library**, then **Set as Active Song** if you want to practice it now."
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
