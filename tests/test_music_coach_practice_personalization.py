@@ -217,6 +217,74 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         self.assertNotIn("**Why:**", resp.composed_markdown())
         self.assertFalse(resp.diagnostics.get("history_influenced_plan"))
 
+    def test_fingerstyle_twenty_minute_specific_blocks(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a 20-minute fingerstyle session.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                focus="Fingerstyle",
+                song="Here Comes the Sun",
+            ),
+        )
+        assert resp is not None
+        steps = resp.practice_steps
+        step_text = "\n".join(steps).lower()
+        self.assertEqual(_sum_minutes(steps), 20)
+        self.assertIn("thumb independence", step_text)
+        self.assertIn("picking-pattern consistency", step_text)
+        self.assertNotIn("technique / drills", step_text)
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "fingerstyle")
+        listen = " ".join(resp.what_to_listen_for or []).lower()
+        self.assertIn("bass pulse", listen)
+        self.assertIn("melody", listen)
+
+    def test_rhythm_session_differs_from_fingerstyle(self) -> None:
+        fingerstyle = run_coach_pipeline(
+            "Give me a 20-minute fingerstyle session.",
+            {},
+            ami_ctx=self._ctx(instrument="Guitar", level="Intermediate", focus="Fingerstyle"),
+        )
+        rhythm = run_coach_pipeline(
+            "Give me a 20-minute rhythm session on guitar.",
+            {},
+            ami_ctx=self._ctx(instrument="Guitar", level="Intermediate"),
+        )
+        assert fingerstyle is not None and rhythm is not None
+        fs_steps = "\n".join(fingerstyle.practice_steps).lower()
+        rh_steps = "\n".join(rhythm.practice_steps).lower()
+        self.assertIn("thumb independence", fs_steps)
+        self.assertIn("metronome groove", rh_steps)
+        self.assertNotIn("metronome groove", fs_steps)
+        self.assertNotIn("thumb independence", rh_steps)
+
+    def test_fingerstyle_history_thumb_pulse_specialization(self) -> None:
+        resp = run_coach_pipeline(
+            "What should I work on now?",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                focus="Fingerstyle",
+                song="Here Comes the Sun",
+                log={
+                    "session_count": 3,
+                    "repeated_challenge": "thumb loses steady pulse during chord changes",
+                    "last_session_summary": {
+                        "active_song": "Here Comes the Sun",
+                        "focus_area": "Fingerstyle",
+                        "what_was_hard": "thumb loses steady pulse during chord changes",
+                    },
+                },
+            ),
+        )
+        assert resp is not None
+        step_text = "\n".join(resp.practice_steps).lower()
+        self.assertIn("isolated thumb pulse", step_text)
+        self.assertIn("chord transitions with steady bass", step_text)
+        self.assertNotIn("technique / drills", step_text)
+
     def test_explicit_articulation_sax_regression(self) -> None:
         resp = run_coach_pipeline(
             "Give me a 20-minute articulation session on the sax.",

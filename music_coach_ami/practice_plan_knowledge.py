@@ -48,6 +48,8 @@ def _focus_bucket(focus: str) -> str:
         return "improvisation"
     if "phrasing" in low:
         return "phrasing"
+    if "fingerstyle" in low or "finger style" in low:
+        return "fingerstyle"
     if any(p in low for p in ("sight", "reading")):
         return "sight_reading"
     if "repertoire" in low or "song" in low:
@@ -61,6 +63,8 @@ def _explicit_question_focus(req: CoachRequest) -> tuple[str, bool]:
     low = req.normalized_question.lower()
     if "articulation" in low and any(p in low for p in ("session", "practice", "routine", "work on", "minute")):
         return "articulation", True
+    if "fingerstyle" in low and any(p in low for p in ("session", "practice", "routine", "work on", "minute")):
+        return "fingerstyle", True
     if req.entities.practice_focus_explicit and req.entities.practice_focus:
         return req.entities.practice_focus, True
     if req.constraints.tone_focus or (req.entities.skill_topic == "tone"):
@@ -70,6 +74,7 @@ def _explicit_question_focus(req: CoachRequest) -> tuple[str, bool]:
         ("harmony", ("harmony session", "voicing", "chord voicing")),
         ("improvisation", ("improv session", "improvisation session")),
         ("phrasing", ("phrasing session",)),
+        ("fingerstyle", ("fingerstyle session",)),
     ):
         if any(m in low for m in markers):
             return focus, True
@@ -156,6 +161,205 @@ def _level_label(level: str) -> str:
     return ""
 
 
+def _song_section_phrase(song: str, section: str) -> str:
+    song_title = _clean(song)
+    sec = _usable_section(section)
+    if sec and song_title:
+        return f"the **{sec}** of **{song_title}**"
+    if song_title:
+        return f"**{song_title}**"
+    return "your active song"
+
+
+def _history_thumb_pulse_issue(history: PracticeHistorySnapshot) -> bool:
+    diff = history.recurring_difficulty.lower()
+    step = history.unresolved_next_step.lower()
+    combined = f"{diff} {step}"
+    return any(
+        p in combined
+        for p in ("thumb", "bass pulse", "steady pulse", "loses pulse", "losing pulse", "bass note", "alternating bass")
+    )
+
+
+def _fingerstyle_blocks(
+    *,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+    history: PracticeHistorySnapshot,
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Fingerstyle-specific practice blocks — level, song, and log-aware."""
+    lvl = _level_label(level) or "intermediate"
+    target = _song_section_phrase(song, section)
+    thumb_issue = history.available and _history_thumb_pulse_issue(history)
+
+    if thumb_issue:
+        weights = {
+            "isolated thumb pulse": 0.25,
+            "chord transitions with steady bass": 0.30,
+            "active-song application": 0.25,
+            "melody/bass balance check": 0.10,
+            "review": 0.10,
+        }
+        details = {
+            "isolated thumb pulse": "Play a steady bass note or alternating bass on one chord; keep the pulse even before adding fingers.",
+            "chord transitions with steady bass": "Move chord to chord without letting the thumb pulse collapse or rush.",
+            "active-song application": f"Apply the steady bass pattern to a short loop from {target}.",
+            "melody/bass balance check": "Keep melody notes clear while the thumb stays even and unhurried.",
+            "review": "Play the loop once without stopping and note where the bass pulse breaks down.",
+        }
+        return weights, details
+
+    if lvl == "beginner":
+        weights = {
+            "simple pattern & thumb/finger coordination": 0.30,
+            "slow chord-to-chord changes": 0.25,
+            "short section loop": 0.25,
+            "review": 0.20,
+        }
+        details = {
+            "simple pattern & thumb/finger coordination": (
+                f"On **{instrument}**, hold a fixed thumb-on-bass pattern while fingers pluck one upper-string note at a time."
+            ),
+            "slow chord-to-chord changes": "Move between two or three chords slowly without stopping the picking pattern.",
+            "short section loop": f"Loop a very short passage from {target} at a tempo you can keep clean.",
+            "review": "Replay the loop and note one fingering or thumb placement fix for next time.",
+        }
+    elif lvl == "advanced":
+        weights = {
+            "voice independence": 0.25,
+            "melody projection over accompaniment": 0.25,
+            "pattern variation & rhythmic displacement": 0.20,
+            "musical phrasing with accompaniment": 0.20,
+            "review": 0.10,
+        }
+        details = {
+            "voice independence": "Keep bass, inner voices, and melody independent — no collapsing into block chords.",
+            "melody projection over accompaniment": f"Project the top-line melody clearly over the pattern in {target}.",
+            "pattern variation & rhythmic displacement": "Vary the pattern slightly while keeping time and bass orientation steady.",
+            "musical phrasing with accompaniment": "Shape 2–4 bar phrases without losing the underlying accompaniment.",
+            "review": "Play one musical pass and note where independence or phrasing breaks down.",
+        }
+    else:
+        weights = {
+            "thumb independence": 0.20,
+            "picking-pattern consistency": 0.25,
+            "active-song application": 0.30,
+            "melody/bass balance": 0.15,
+            "review": 0.10,
+        }
+        details = {
+            "thumb independence": "Keep a steady bass pulse while fingers play a simple upper-string pattern.",
+            "picking-pattern consistency": "Loop one fingerstyle pattern slowly through two or three chord changes.",
+            "active-song application": f"Apply that pattern to a short section of {target}.",
+            "melody/bass balance": "Keep melody notes clear while the thumb remains even.",
+            "review": "Play the section once without stopping and note where the pattern breaks down.",
+        }
+    return weights, details
+
+
+def _fretted_phrasing_blocks(*, instrument: str, song: str, section: str) -> tuple[dict[str, float], dict[str, str]]:
+    target = _song_section_phrase(song, section)
+    weights = {
+        "warm-up & tone on single notes": 0.15,
+        "2-bar phrase shaping": 0.30,
+        "dynamic contour through a section": 0.30,
+        "review": 0.25,
+    }
+    details = {
+        "warm-up & tone on single notes": f"Center tone on **{instrument}** with slow single-note or short-phrase attacks.",
+        "2-bar phrase shaping": "Work 2-bar fragments slowly; plan where the line rises and settles.",
+        "dynamic contour through a section": f"Shape longer lines through {target} with clear peaks and releases.",
+        "review": "Replay the hardest 2-bar fragment and note one phrasing fix for next time.",
+    }
+    return weights, details
+
+
+def _fretted_improvisation_blocks(*, instrument: str, song: str) -> tuple[dict[str, float], dict[str, str]]:
+    target = _song_section_phrase(song, "")
+    weights = {
+        "guide-tone / chord-tone targets": 0.25,
+        "motif development": 0.30,
+        "rhythm & articulation in lines": 0.25,
+        "review": 0.20,
+    }
+    details = {
+        "guide-tone / chord-tone targets": f"Outline chord tones on **{instrument}** over a short loop from {target}.",
+        "motif development": "Develop a 3–5 note motif through sequence, rhythm change, or register shift.",
+        "rhythm & articulation in lines": "Keep attacks and note length intentional while improvising.",
+        "review": "Record or replay one chorus and note one line you would keep.",
+    }
+    return weights, details
+
+
+def _fretted_technique_blocks(*, instrument: str, song: str, section: str, level: str) -> tuple[dict[str, float], dict[str, str]]:
+    target = _song_section_phrase(song, section)
+    beginner = _level_label(level) == "beginner"
+    if beginner:
+        weights = {
+            "left-hand fingering clarity": 0.30,
+            "right-hand picking / strumming control": 0.30,
+            "slow section loop": 0.25,
+            "review": 0.15,
+        }
+        details = {
+            "left-hand fingering clarity": f"Practice clean fretting on **{instrument}** with minimal finger lift.",
+            "right-hand picking / strumming control": "Keep attacks even on a simple repeated pattern.",
+            "slow section loop": f"Loop a short passage from {target} slowly and cleanly.",
+            "review": "Note one fingering or picking adjustment for next time.",
+        }
+    else:
+        weights = {
+            "left-hand efficiency & shifts": 0.25,
+            "right-hand accuracy & speed control": 0.30,
+            "technique applied to repertoire": 0.30,
+            "review": 0.15,
+        }
+        details = {
+            "left-hand efficiency & shifts": "Isolate position shifts or stretches; keep motion economical.",
+            "right-hand accuracy & speed control": "Push tempo only where attacks stay clean and even.",
+            "technique applied to repertoire": f"Transfer the drill to a demanding passage from {target}.",
+            "review": "Replay the passage and note what still breaks down.",
+        }
+    return weights, details
+
+
+def _focus_listen_and_progression(bucket: str, *, history: PracticeHistorySnapshot | None = None) -> tuple[list[str], list[str]]:
+    listen: list[str] = []
+    progression: list[str] = [
+        "Move to the next block only when the current one stays clean on most repetitions.",
+    ]
+    if bucket == "fingerstyle":
+        listen = [
+            "Steady bass pulse from the thumb",
+            "Even note attacks across fingers",
+            "Melody audible above accompaniment",
+            "No unwanted string noise on changes",
+            "Smooth transitions without breaking the picking pattern",
+        ]
+        progression.append("Add tempo or chord changes only after the pattern stays even on most repetitions.")
+    elif bucket == "articulation":
+        listen = ["Clear attacks without a thin or explosive start", "Even tone between slurred and tongued notes"]
+    elif bucket == "timing":
+        listen = ["Steady pulse on beat 1", "Clean placement of chord or note changes"]
+        progression.append("Increase tempo only after the current tempo feels reliable.")
+    elif bucket == "harmony":
+        listen = ["Smooth voice-leading between chords", "Steady left-hand pulse while harmony changes"]
+    elif bucket == "tone":
+        listen = ["Centered core tone", "Stable pitch and steady air"]
+    elif bucket == "phrasing":
+        listen = ["Line shape over speed", "Even tone through each 2-bar fragment"]
+        progression.append("Extend phrase length only when 2-bar fragments stay shaped and even.")
+    elif bucket == "improvisation":
+        listen = ["Intentional chord-tone landing", "Rhythmic variety without losing time"]
+    elif bucket == "technique":
+        listen = ["Clean fretting without buzz", "Even right-hand attacks before speed"]
+    if history and history.available and _history_thumb_pulse_issue(history) and bucket == "fingerstyle":
+        listen.insert(0, "Thumb pulse stays even through chord changes")
+    return listen, progression
+
+
 def _instrument_blocks(
     *,
     family: str,
@@ -163,6 +367,8 @@ def _instrument_blocks(
     level: str,
     instrument: str,
     history: PracticeHistorySnapshot,
+    song: str = "",
+    section: str = "",
 ) -> tuple[dict[str, float], dict[str, str]]:
     """Return weight map and block detail text keyed by block label."""
     bucket = _focus_bucket(focus)
@@ -237,6 +443,25 @@ def _instrument_blocks(
                 "full run-through": "Connect the section into a short performance pass.",
             }
     elif family == "fretted":
+        if bucket == "fingerstyle":
+            return _fingerstyle_blocks(
+                level=level,
+                instrument=instrument,
+                song=song,
+                section=section,
+                history=history,
+            )
+        if bucket == "phrasing":
+            return _fretted_phrasing_blocks(instrument=instrument, song=song, section=section)
+        if bucket == "improvisation":
+            return _fretted_improvisation_blocks(instrument=instrument, song=song)
+        if bucket == "technique":
+            return _fretted_technique_blocks(
+                instrument=instrument,
+                song=song,
+                section=section,
+                level=level,
+            )
         if bucket == "harmony":
             weights = {"chord changes": 0.35, "rhythm / strumming or picking": 0.25, "melody / licks": 0.25, "full run-through": 0.15}
             details = {
@@ -296,6 +521,7 @@ def _focus_display_phrase(bucket: str, instrument: str, focus: str) -> str:
         "harmony": "harmony and voicing",
         "improvisation": "improvisation vocabulary",
         "phrasing": "phrasing and line shape",
+        "fingerstyle": "fingerstyle technique",
         "technique": f"{instrument} technique",
         "repertoire": "repertoire work",
     }
@@ -313,7 +539,7 @@ def _format_priority_line(*, focus_phrase: str, song: str = "", section: str = "
     if song_title:
         if focus_phrase.endswith("work"):
             return f"**Today's priority:** {focus_phrase} on **{song_title}**."
-        if focus_phrase in {"harmony and voicing", "phrasing and line shape"}:
+        if focus_phrase in {"harmony and voicing", "phrasing and line shape", "fingerstyle technique"}:
             preposition = "across" if focus_phrase == "harmony and voicing" else "in"
             return f"**Today's priority:** {focus_phrase} {preposition} **{song_title}**."
         return f"**Today's priority:** {focus_phrase} in **{song_title}**."
@@ -638,6 +864,8 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         level=level,
         instrument=instrument,
         history=history,
+        song=song,
+        section=section,
     )
     blocks = _allocate(minutes, weights)
     steps = []
@@ -648,15 +876,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
             line += f": {detail}"
         steps.append(line)
 
-    listen = []
-    if bucket == "articulation":
-        listen = ["Clear attacks without a thin or explosive start", "Even tone between slurred and tongued notes"]
-    elif bucket == "timing":
-        listen = ["Steady pulse on beat 1", "Clean placement of chord or note changes"]
-    elif bucket == "harmony":
-        listen = ["Smooth voice-leading between chords", "Steady left-hand pulse while harmony changes"]
-    elif bucket == "tone":
-        listen = ["Centered core tone", "Stable pitch and steady air"]
+    listen, progression = _focus_listen_and_progression(bucket, history=history)
 
     direct_parts = [priority]
     if why:
@@ -668,12 +888,10 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         "practice_steps": steps,
         "what_to_listen_for": listen,
         "recommendation": "Log what improved and what still feels unstable in **Practice Log** when you finish.",
-        "progression_criteria": [
-            "Move to the next block only when the current one stays clean on most repetitions.",
-            "Increase tempo or range only after the current tempo feels reliable.",
-        ],
+        "progression_criteria": progression,
         "diagnostics": {
             **base_diag,
+            "focus_profile": bucket,
             "block_allocation": blocks,
             **blocks,
         },
