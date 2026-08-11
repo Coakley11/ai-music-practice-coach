@@ -28,6 +28,130 @@ _CUSTOM = FEATURES["custom_progression"]
 _CATALOG = FEATURES["song_catalog"]
 _PRACTICE_KEY = FEATURES["practice_key"]
 
+_NAMED_KEY_IN_RE = re.compile(
+    r"\bin\s+"
+    r"(?:"
+    r"[a-g](?:\s*(?:flat|sharp|b|#|♭|♯))?(?:\s*(?:major|minor|min|maj|m))?"
+    r"|e[\s-]?(?:flat|b)|b[\s-]?(?:flat|b)|a[\s-]?(?:flat|b)|d[\s-]?(?:flat|b)|"
+    r"g[\s-]?(?:flat|b)|f[\s-]?(?:flat|b)|c[\s-]?(?:flat|b)"
+    r")",
+    re.I,
+)
+_PRACTICE_PLAY_IN_KEY_RE = re.compile(
+    r"\b(?:practice|play|rehears(?:e|al)?)\s+.+\s+in\s+",
+    re.I,
+)
+
+
+def _has_named_key_reference(text: str) -> bool:
+    return bool(_NAMED_KEY_IN_RE.search(str(text or "")))
+
+
+def _is_persistent_chord_edit_question(text: str) -> bool:
+    """Persistent chart/harmony rewrite — beats non-destructive Practice Key semantics."""
+    low = str(text or "").lower()
+    if re.search(r"\b(?:do i|should i|have to|need to)\s+(?:rewrite|edit)\b", low):
+        return False
+    if any(
+        p in low
+        for p in (
+            "permanently replace",
+            "permanently rewrite",
+            "permanently change",
+            "from now on",
+            "correct the chord",
+            "replace one chord",
+            "replace the first chord",
+            "replace the chord",
+            "rewrite progression",
+            "rewrite this progression",
+            "rewrite the progression",
+            "rewrite the chords",
+            "saved harmony",
+            "change the actual chart",
+            "saved progression to be",
+            "edit song chart",
+            "save corrected chart",
+        )
+    ):
+        if ("practice key" in low or "concert key" in low) and any(
+            p in low for p in ("permanent", "permanently")
+        ):
+            if not any(
+                p in low
+                for p in (
+                    "replace",
+                    "rewrite",
+                    "correct the chord",
+                    "first chord",
+                    "verse",
+                    "chorus",
+                    "saved progression to be",
+                )
+            ):
+                return False
+        return True
+    return False
+
+
+def _is_practice_in_named_key_question(text: str) -> bool:
+    """Practice/play an existing song in a named key without rewriting the saved chart."""
+    low = str(text or "").lower()
+    if _is_persistent_chord_edit_question(low):
+        return False
+    if not _has_named_key_reference(low):
+        return False
+    practice_play = re.search(r"\b(?:practice|play|rehears(?:e|al))\b", low)
+    scope_markers = (
+        "today",
+        "for practice",
+        "for rehearsal",
+        "without changing the song",
+        "without changing",
+        "do i need to edit",
+        "do i have to edit",
+        "need to edit the chord",
+        "need to edit the chords",
+        "have to edit",
+        "rewrite the chord",
+        "transpose the saved",
+        "only want",
+        "for today's",
+        "for now",
+        "this song",
+    )
+    if _PRACTICE_PLAY_IN_KEY_RE.search(low):
+        return True
+    if re.search(r"\bonly\s+(?:want\s+)?this\s+in\s+", low):
+        return True
+    if practice_play and any(p in low for p in scope_markers):
+        return True
+    if re.search(r"\b(?:want|need)\s+(?:to\s+)?(?:practice|play)\b", low) and any(p in low for p in scope_markers):
+        return True
+    return False
+
+
+def _extract_practice_key_label(text: str) -> str:
+    m = _NAMED_KEY_IN_RE.search(str(text or ""))
+    if not m:
+        return ""
+    return re.sub(r"^\s*in\s+", "", m.group(0).strip(), flags=re.I).strip()
+
+
+def _extract_practice_song_phrase(text: str) -> str:
+    low = str(text or "")
+    m = re.search(
+        r"\b(?:practice|play|rehears(?:e|al)?)\s+(.+?)\s+in\s+",
+        low,
+        flags=re.I,
+    )
+    if not m:
+        return ""
+    phrase = m.group(1).strip(" .,")
+    if phrase.lower() in {"this song", "this", "the song"}:
+        return ""
+    return phrase
+
 
 def extract_song_edit_entities(low: str) -> tuple[str, str]:
     """Return (edit_target, song_source_hint)."""
@@ -48,8 +172,12 @@ def extract_song_edit_entities(low: str) -> tuple[str, str]:
 
 
 def is_practice_key_editing_semantics_question(low: str) -> bool:
-    """Temporary Practice Key transposition vs persistent chord/chart editing — not page comparison."""
+    """Non-destructive Practice Key transposition vs persistent chart editing — not page comparison."""
     text = str(low or "").lower()
+    if _is_persistent_chord_edit_question(text):
+        return False
+    if _is_practice_in_named_key_question(text):
+        return True
     if "practice key" in text and any(
         p in text for p in ("chord", "edit", "chart", "difference", "vs", "versus", "compare", "permanent", "saved")
     ):
@@ -91,6 +219,9 @@ def is_song_editing_question(low: str) -> bool:
         "without changing the song",
         "permanently replace",
         "permanently change",
+        "permanently rewrite",
+        "rewrite this progression",
+        "rewrite the progression",
         "changing the practice key",
         "change practice key",
         "haven't pressed save",
@@ -191,6 +322,18 @@ def classify_song_editing_question(low: str, ctx: CoachContext | None = None) ->
             editor_feature="chart_editor,lyrics_editor",
         )
 
+    if _is_persistent_chord_edit_question(text):
+        return SongEditingClassification(
+            submode="chord_save",
+            song_source=source_hint or "catalog",
+            edit_target="chords",
+            save_mode="explicit_save_button",
+            persistence_scope="user_chart_overrides_json",
+            ownership_model="user_sidecar",
+            editor_feature="chart_editor",
+            reopen_path="Song Selection → select the same song → **Edit Song Chart**",
+        )
+
     if is_practice_key_editing_semantics_question(text) and not any(
         p in text for p in ("difference between", " vs ", " versus ", "compare")
     ):
@@ -243,9 +386,21 @@ def classify_song_editing_question(low: str, ctx: CoachContext | None = None) ->
             "save chord",
             "save corrected",
             "edit song chart",
-            "permanently replace",
         )
     ):
+        if _is_practice_in_named_key_question(text) or (
+            is_practice_key_editing_semantics_question(text)
+            and not _is_persistent_chord_edit_question(text)
+        ):
+            return SongEditingClassification(
+                submode="practice_key_only",
+                song_source=source_hint or "catalog",
+                edit_target="key",
+                save_mode="per_source_practice_key",
+                persistence_scope="workspace_practice_key_by_source",
+                ownership_model="practice_transposition_not_chart_edit",
+                editor_feature="practice_key",
+            )
         return SongEditingClassification(
             submode="chord_save",
             song_source=source_hint or "catalog",
@@ -344,23 +499,22 @@ def compose_song_editing_answer(
 
     if sub == "practice_key_vs_chord_edit":
         body = (
-            "**Practice Key** changes the key you read and practice the song in. "
-            "The app transposes the working chart and playback without rewriting the stored chord progression.\n\n"
+            "**Practice Key** changes how the song is transposed for practice without changing the saved song chart.\n\n"
             "**Editing the song's chords** changes the saved harmony itself. "
             "For a catalog song, that becomes your saved chart after you click **Save corrected chart** in **Edit Song Chart**.\n\n"
             "**Use Practice Key when** you only want to play the same song in another key.\n\n"
             "**Edit the chords when** you want to correct or rewrite the progression permanently.\n\n"
-            "**Important:** Changing Practice Key does **not** permanently rewrite the stored chart."
+            "**Important:** Practice Key may be remembered for that song, but it does **not** rewrite the saved chart."
         )
         steps = _lifecycle_steps(
-            use="**Practice / Concert Key** for today's key, or **Edit Song Chart** for permanent harmony changes",
+            use="**Practice / Concert Key** for practice transposition, or **Edit Song Chart** for permanent harmony changes",
             go_to=(
-                "Global studio bar → **Practice / Concert Key** for temporary transposition; "
+                "Global studio bar → **Practice / Concert Key** for non-destructive practice transposition; "
                 "or **Song Selection** → **Edit Song Chart** to change saved chords"
             ),
             change="Pick a concert key to read/practice in, or edit bar/section chords in the chart editor.",
             save=(
-                "Practice Key is remembered for that song when you return. "
+                "Practice Key can be remembered for that song when you return, without changing the saved chart. "
                 "Chart edits require **Save corrected chart** or **Save as user verified**."
             ),
         )
@@ -368,24 +522,44 @@ def compose_song_editing_answer(
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "practice_key_only":
-        body = (
-            "**No — change the Practice / Concert Key instead.** "
-            "You do **not** need to rewrite every chord if you only want to play this song in another key today."
+        song_phrase = _extract_practice_song_phrase(text) or song
+        key_label = _extract_practice_key_label(text)
+        asking_about_practice_key = ("practice key" in text or "concert key" in text) and any(
+            p in text for p in ("permanent", "permanently", "change the key of my song", "transpose the saved")
         )
+        if asking_about_practice_key:
+            body = (
+                "**No. Changing Practice / Concert Key does not permanently rewrite your song.** "
+                "It changes the key you read and hear for practice while leaving the saved chart unchanged."
+            )
+        elif song_phrase and key_label:
+            body = (
+                f"**No. If you only want to practice {song_phrase} in {key_label}, "
+                "change the Practice / Concert Key instead of editing the song's chords.**"
+            )
+        else:
+            body = (
+                "**No. Change the Practice / Concert Key instead of editing the song's chords.** "
+                "You do **not** need to rewrite every chord if you only want to play this song in another key."
+            )
+        change_line = f"Choose **{key_label}**." if key_label else "Pick the concert key you want to read and practice in."
         steps = _lifecycle_steps(
-            use="Practice / Concert Key (temporary transposition)",
+            use="Practice / Concert Key (non-destructive practice transposition)",
             go_to="Global studio bar → **Practice / Concert Key** (sidebar when visible)",
-            change="Pick the concert key you want to read and practice in today.",
+            change=change_line,
             save=(
-                "Your chosen practice key is remembered for that song, so charts and playback read in that key "
-                "when you return — without changing the saved chord progression."
+                "Your chosen practice key can be remembered for that song, so charts and playback read in that key "
+                "when you return — without changing the saved song chart."
             ),
             important=(
                 "This is **not** the same as **Edit Song Chart**. Practice Key transposes what you see and hear "
-                "for practice; it does not replace saved chord changes."
+                "for practice; it does not replace saved chord edits."
             ),
         )
-        nxt = "Set **Practice / Concert Key** for today's key; use **Edit Song Chart** only when the harmony itself should change permanently."
+        nxt = (
+            "Set **Practice / Concert Key** for your practice key; use **Edit Song Chart** only when you actually "
+            "want to correct or permanently rewrite the song's harmony."
+        )
         return {"direct_answer": body, "app_navigation_steps": steps, "suggested_next_action": nxt}
 
     if sub == "return_later":

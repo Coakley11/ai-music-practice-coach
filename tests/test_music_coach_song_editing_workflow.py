@@ -106,14 +106,80 @@ class SongEditingVerticalSliceTests(unittest.TestCase):
         self.assertEqual(resp.diagnostics.get("song_edit_submode"), "return_later")
 
 
+class PracticeKeyNamedSongTests(unittest.TestCase):
+    def test_shape_of_you_c_minor_today(self) -> None:
+        resp = run_coach_pipeline(
+            "I want to practice Shape of You in C minor today. Do I need to edit the chords?",
+            {},
+        )
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.SONG_EDITING_WORKFLOW)
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "practice_key_only")
+        text = resp.composed_markdown()
+        self.assertIn("Practice / Concert Key", text)
+        self.assertNotIn("Enable editing", text)
+        self.assertIn("shape of you", text.lower())
+        self.assertIn("c minor", text.lower())
+
+    def test_girl_from_ipanema_eb_without_changing_song(self) -> None:
+        resp = run_coach_pipeline(
+            "Can I practice Girl from Ipanema in E-flat without changing the song?",
+            {},
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "practice_key_only")
+        self.assertIn("Practice", resp.composed_markdown())
+
+    def test_bb_rehearsal_rewrite_chords_question(self) -> None:
+        resp = run_coach_pipeline(
+            "I want to play this song in Bb for rehearsal. Do I need to rewrite the chords?",
+            {},
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "practice_key_only")
+        self.assertNotIn("Enable editing", resp.composed_markdown())
+
+    def test_a_minor_today_only(self) -> None:
+        resp = run_coach_pipeline("I only want this in A minor for today's practice.", {})
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "practice_key_only")
+
+    def test_permanent_replace_chord_verse(self) -> None:
+        resp = run_coach_pipeline(
+            "I want to permanently replace the first chord of the verse with Cm7.",
+            {},
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "chord_save")
+        self.assertIn("Edit Song Chart", resp.composed_markdown())
+
+    def test_permanent_rewrite_progression(self) -> None:
+        resp = run_coach_pipeline(
+            "I want to permanently rewrite this progression in C minor.",
+            {},
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("song_edit_submode"), "chord_save")
+        self.assertIn("Edit Song Chart", resp.composed_markdown())
+
+    def test_practice_key_permanent_wording(self) -> None:
+        resp = run_coach_pipeline(
+            "Does changing the Practice Key permanently change the key of my song?",
+            {},
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("does not permanently rewrite", text.lower())
+        self.assertNotIn("change the Practice / Concert Key instead", text)
+
+
 class PracticeKeyRoutingTests(unittest.TestCase):
     def test_practice_key_permanent_semantics(self) -> None:
         resp = run_coach_pipeline("If I change Practice Key, does that permanently change my song?", {})
         assert resp is not None
         self.assertEqual(resp.intent, CoachIntent.SONG_EDITING_WORKFLOW)
         text = resp.composed_markdown()
-        self.assertIn("Practice", text)
-        self.assertIn("Edit Song Chart", text)
+        self.assertIn("does not permanently rewrite", text.lower())
 
     def test_practice_key_transpose_saved_chords(self) -> None:
         resp = run_coach_pipeline(
