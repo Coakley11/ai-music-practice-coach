@@ -928,6 +928,22 @@ def solve_theory_explanation(req: CoachRequest) -> CoachResponse | None:
 
 
 def solve_song_coaching(req: CoachRequest) -> CoachResponse:
+    from music_coach_ami.bass_line_knowledge import compose_bass_line_suggestion, is_bass_line_content_request
+
+    low = req.normalized_question.lower()
+    if is_bass_line_content_request(req.normalized_question, low):
+        payload = compose_bass_line_suggestion(req)
+        return CoachResponse(
+            intent=CoachIntent.SONG_COACHING,
+            direct_answer=str(payload.get("direct_answer") or ""),
+            practice_steps=list(payload.get("practice_steps") or []),
+            what_to_listen_for=list(payload.get("what_to_listen_for") or []),
+            suggested_next_action=str(payload.get("suggested_next_action") or ""),
+            source_solver="SongCoachSolver(bass_line)",
+            confidence=0.88,
+            diagnostics=dict(payload.get("diagnostics") or {}),
+        )
+
     section = req.context.active_section or "the first section that feels shaky"
     song = req.context.active_song_title or "your active song"
     bpm = req.context.tempo_bpm

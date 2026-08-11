@@ -369,6 +369,74 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         self.assertEqual(resp.diagnostics.get("focus_profile"), "fingerstyle")
         self.assertIn("thumb independence", "\n".join(resp.practice_steps).lower())
 
+    def test_baseline_content_suggestion_not_practice_plan(self) -> None:
+        ctx = self._ctx(
+            instrument="Guitar",
+            level="Intermediate",
+            song="All the Things You Are",
+        )
+        ctx["active_song"] = {
+            "title": "All the Things You Are",
+            "progression_summary": "Fm7 | Bbm7 | Eb7 | Abmaj7",
+        }
+        for question in (
+            "Give me a baseline to use for this song.",
+            "Give me a bassline to use for this song.",
+            "Give me a bass-line to use for this song.",
+        ):
+            resp = run_coach_pipeline(question, {}, ami_ctx=ctx)
+            assert resp is not None, question
+            self.assertEqual(resp.intent, CoachIntent.SONG_COACHING)
+            self.assertIn("SongCoachSolver(bass_line)", resp.source_solver)
+            md = resp.composed_markdown()
+            self.assertIn("Try this approach", md)
+            self.assertIn("All the Things You Are", md)
+            self.assertNotIn("**8 min**", md)
+            self.assertNotIn("PracticePlanSolver", resp.source_solver)
+            self.assertTrue(resp.diagnostics.get("bass_line_content"))
+            if "baseline" in question:
+                self.assertIn("baseline -> bass line", resp.diagnostics.get("normalized_phrases") or [])
+
+    def test_baseline_content_uses_chord_context(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a baseline to use for this song.",
+            {},
+            ami_ctx={
+                "instrument": "Guitar",
+                "level": "Intermediate",
+                "active_song": {
+                    "title": "All the Things You Are",
+                    "progression_summary": "Fm7 | Bbm7 | Eb7 | Abmaj7",
+                },
+            },
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertTrue(resp.diagnostics.get("chord_context_available"))
+        self.assertIn("Fm7", text)
+        self.assertIn("Line by chord", text)
+
+    def test_bass_line_session_still_practice_plan(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass line session for this song.",
+            {},
+            ami_ctx=self._ctx(instrument="Guitar", level="Intermediate", song="All the Things You Are"),
+        )
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.PRACTICE_PLAN)
+        self.assertIn("PracticePlanSolver", resp.source_solver)
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "bass_line")
+
+    def test_non_musical_baseline_not_bass_line(self) -> None:
+        for question in (
+            "What is my baseline practice time?",
+            "Use yesterday as a baseline for comparison.",
+        ):
+            resp = run_coach_pipeline(question, {}, ami_ctx=self._ctx(instrument="Guitar"))
+            if resp is not None:
+                self.assertNotIn("SongCoachSolver(bass_line)", resp.source_solver)
+                self.assertNotEqual(resp.diagnostics.get("focus_profile"), "bass_line")
+
     def test_explicit_articulation_sax_regression(self) -> None:
         resp = run_coach_pipeline(
             "Give me a 20-minute articulation session on the sax.",

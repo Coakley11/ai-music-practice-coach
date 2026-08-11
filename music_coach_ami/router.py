@@ -16,6 +16,10 @@ from music_coach_ami.feature_comparison import (
     upload_analysis_intent_in_question,
 )
 from music_coach_ami.song_editing_knowledge import is_song_editing_question
+from music_coach_ami.bass_line_knowledge import (
+    is_bass_line_content_request,
+    normalize_bass_line_phrases,
+)
 from music_coach_ami.entities import (
     extract_constraints,
     extract_entities,
@@ -121,6 +125,9 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
 
     if _is_practice_routine_request(normalized, low):
         return CoachIntent.PRACTICE_PLAN, 0.93
+
+    if is_bass_line_content_request(normalized, low):
+        return CoachIntent.SONG_COACHING, 0.91
 
     if any(
         p in low
@@ -366,6 +373,7 @@ def route_question(
     session = session_state if isinstance(session_state, dict) else {}
     ctx = read_coach_context(session, ami_ctx=ami_ctx)
     normalized = normalize_question(question)
+    normalized, _phrase_norms = normalize_bass_line_phrases(normalized)
     entities = extract_entities(normalized, "")
     from music_coach_ami.request_resolution import resolve_instrument_for_request
 
