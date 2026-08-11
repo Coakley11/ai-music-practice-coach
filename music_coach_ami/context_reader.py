@@ -81,9 +81,13 @@ def read_coach_context(
     practice_key = str(snap.get("display_key") or ctx.get("display_key") or session_state.get("display_key") or "")
 
     evidence = ""
-    summary = snap.get("practice_log_summary")
-    if isinstance(summary, dict) and summary.get("session_count"):
-        evidence = f"{summary.get('session_count')} recent log sessions (summary available)."
+    practice_log_summary: dict[str, Any] = {}
+    if isinstance(ctx.get("practice_log_summary"), dict):
+        practice_log_summary = dict(ctx["practice_log_summary"])
+    elif isinstance(snap.get("practice_log_summary"), dict):
+        practice_log_summary = dict(snap["practice_log_summary"])
+    if isinstance(practice_log_summary, dict) and practice_log_summary.get("session_count"):
+        evidence = f"{practice_log_summary.get('session_count')} recent log sessions (summary available)."
 
     snap_inst = str(snap.get("instrument") or "").strip()
     ctx_inst = str(ctx.get("instrument") or "").strip()
@@ -140,5 +144,6 @@ def read_coach_context(
             "routing_hint": str(ctx.get("routing_hint") or ""),
             "instrument_provenance": prov,
             "snapshot_instrument": snap_inst,
+            "practice_log_summary": practice_log_summary,
         },
     )

@@ -50,52 +50,23 @@ def _allocate(total: int, weights: dict[str, float]) -> dict[str, int]:
 def _coach_instrument(req: CoachRequest) -> str:
     from music_coach_ami.request_resolution import display_coach_instrument
 
-    return display_coach_instrument(req.entities.instrument)
+    return display_coach_instrument(req.context.instrument or req.entities.instrument)
 
 
 def solve_practice_plan(req: CoachRequest) -> CoachResponse:
-    from music_coach_instrument_voice import instrument_family, practice_plan_profile, tone_focused_practice_plan
+    from music_coach_ami.practice_plan_knowledge import compose_personalized_practice_plan
 
-    minutes = _minutes(req)
-    instrument = _coach_instrument(req)
-    tone = req.constraints.tone_focus or "tone" in req.normalized_question.lower()
-    chord_focus = "chord" in req.normalized_question.lower()
-
-    if tone:
-        plan = tone_focused_practice_plan(
-            instrument,
-            minutes,
-            level=req.context.level,
-            song_title=req.context.active_song_title,
-            section=req.context.active_section,
-        )
-        steps = list(plan.get("steps") or [])
-        listen = list(plan.get("listen") or [])
-        return CoachResponse(
-            intent=CoachIntent.PRACTICE_PLAN,
-            direct_answer=f"{plan.get('headline', '')}\n\n{plan.get('goal', '')}".strip(),
-            practice_steps=steps,
-            what_to_listen_for=listen,
-            recommendation=str(plan.get("closing") or "").strip(),
-            source_solver="PracticePlanSolver",
-            confidence=0.88,
-            diagnostics={"session_minutes": minutes, "tone_focus": True},
-        )
-
-    weights, focus_line = practice_plan_profile(instrument, chord_focus=chord_focus)
-    blocks = _allocate(minutes, weights)
-    steps = [f"**{m} min** — {label}" for label, m in blocks.items()]
+    payload = compose_personalized_practice_plan(req)
     return CoachResponse(
         intent=CoachIntent.PRACTICE_PLAN,
-        direct_answer=f"Here is a **{minutes}-minute** plan for **{instrument}**:",
-        practice_steps=steps,
-        recommendation=focus_line,
-        progression_criteria=[
-            "Advance tempo or range only when the current block stays clean 4/5 tries.",
-        ],
+        direct_answer=str(payload.get("direct_answer") or ""),
+        practice_steps=list(payload.get("practice_steps") or []),
+        what_to_listen_for=list(payload.get("what_to_listen_for") or []),
+        recommendation=str(payload.get("recommendation") or ""),
+        progression_criteria=list(payload.get("progression_criteria") or []),
         source_solver="PracticePlanSolver",
-        confidence=0.85,
-        diagnostics={"session_minutes": minutes, **blocks},
+        confidence=0.88,
+        diagnostics=dict(payload.get("diagnostics") or {}),
     )
 
 
@@ -624,7 +595,9 @@ def solve_improvisation_coaching(req: CoachRequest) -> CoachResponse:
 def _repertoire_query_mode(question: str) -> str:
     low = str(question or "").lower()
     if re.search(r"\bwhat song should i practice\b", low) and "kind of" not in low:
-        return "goal_improv_singular"
+        if any(p in low for p in ("improv", "improvisation")):
+            return "goal_improv_singular"
+        return "daily_song"
     if any(
         p in low
         for p in (
@@ -698,10 +671,131 @@ def _catalog_improv_development_song() -> dict[str, str] | None:
     return None
 
 
+def _catalog_practice_song_pick() -> dict[str, str] | None:
+    """Pick a defensible catalog song from metadata — no hard-coded favorite."""
+    try:
+        from song_catalog.catalog import load_song_catalog
+
+        cached = load_song_catalog()
+        records = cached[3] if isinstance(cached, tuple) and len(cached) >= 4 else []
+    except (ImportError, IndexError, TypeError, ValueError):
+        return None
+    best: dict[str, str] | None = None
+    best_score = -1
+    for r in records:
+        ps, key = _record_improv_catalog_fields(r)
+        if not ps or len(ps) < 12:
+            continue
+        t = str(r.get("title") or "").strip()
+        a = str(r.get("artist") or "").strip()
+        if not t or not a:
+            continue
+        score = min(len(ps), 220)
+        if key:
+            score += 5
+        if score > best_score:
+            best_score = score
+            best = {"title": t, "artist": a, "reason": ps, "key": key}
+    return best
+
+
+def _solve_daily_song_recommendation(req: CoachRequest) -> CoachResponse:
+    from music_coach_ami.practice_history_context import snapshot_from_coach_context
+
+    history = snapshot_from_coach_context(req.context)
+    instrument = _coach_instrument(req)
+    active = str(req.context.active_song_title or "").strip()
+    next_step = history.unresolved_next_step
+    song = active or history.last_song
+
+    if song and (next_step or history.last_section or history.available):
+        reason_bits = []
+        if next_step:
+            reason_bits.append(f"Your recent practice notes said: _{next_step}_")
+        elif history.last_section:
+            reason_bits.append(f"Your recent work has centered on the **{history.last_section}**.")
+        elif history.recurring_difficulty:
+            reason_bits.append(f"Recent sessions flagged **{history.recurring_difficulty}** as an area to keep working.")
+        reason = " ".join(reason_bits) or "This song is already part of your recent practice."
+        return CoachResponse(
+            intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+            direct_answer=f"**Best choice today:** keep working on **{song}**.",
+            practice_steps=[
+                f"**Why:** {reason}",
+                f"**Practice it:** Reopen **{song}** in **Song Selection** and continue where your last session left off.",
+                "**Next:** Set a short section loop in **Backing** or **Practice** and log the session when you finish.",
+            ],
+            suggested_next_action=f"Open **{song}** and continue the section or note you flagged last time.",
+            source_solver="RepertoireSolver(daily_continue)",
+            confidence=0.86,
+            diagnostics={
+                "repertoire_mode": "daily_song",
+                "selection_reason": "practice_log_continuation",
+                "selected_song": song,
+                "history_signals_used": list(history.signals_used),
+            },
+        )
+
+    if active:
+        return CoachResponse(
+            intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+            direct_answer=f"**Best choice today:** continue with **{active}**.",
+            practice_steps=[
+                f"**Why:** It is already your active song, so you can go straight into focused work.",
+                f"**Practice it:** Choose one section of **{active}** and loop it in **Practice** or **Backing**.",
+            ],
+            suggested_next_action=f"Stay on **{active}** and pick the section that needs the most work today.",
+            source_solver="RepertoireSolver(daily_active_song)",
+            confidence=0.84,
+            diagnostics={
+                "repertoire_mode": "daily_song",
+                "selection_reason": "active_song",
+                "selected_song": active,
+            },
+        )
+
+    pick = _catalog_practice_song_pick()
+    if pick:
+        title_line = f"**{pick['title']}** — {pick['artist']}"
+        key_note = f" (concert key **{pick['key']}**)" if pick.get("key") else ""
+        return CoachResponse(
+            intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+            direct_answer=f"**Best choice today:** {title_line}",
+            practice_steps=[
+                f"**Why:** {pick['reason']}{key_note} — a clear chart you can work on section by section.",
+                f"**Practice it:** Open **{pick['title']}** in the song picker and choose one section to focus on today.",
+            ],
+            suggested_next_action=f"Open **{pick['title']}** and set it as your active song.",
+            source_solver="RepertoireSolver(daily_catalog)",
+            confidence=0.82,
+            diagnostics={
+                "repertoire_mode": "daily_song",
+                "selection_reason": "catalog_metadata",
+                "selected_song": pick["title"],
+            },
+        )
+
+    return CoachResponse(
+        intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
+        direct_answer="**Best choice today:** pick a song from your library that matches what you want to improve.",
+        practice_steps=[
+            "**Why:** Without recent practice history, choose a song you can practice in focused sections today.",
+            "**Practice it:** Open the **song picker**, select a chart you know, and work one section at a time.",
+        ],
+        suggested_next_action="Open **Song Selection** and choose a song you want to move forward today.",
+        source_solver="RepertoireSolver(daily_fallback)",
+        confidence=0.78,
+        diagnostics={"repertoire_mode": "daily_song", "selection_reason": "insufficient_context"},
+    )
+
+
 def solve_repertoire_recommendation(req: CoachRequest) -> CoachResponse | None:
     mode = _repertoire_query_mode(req.raw_question or req.normalized_question)
     instrument = _coach_instrument(req)
     song = req.context.active_song_title or "your active song"
+
+    if mode == "daily_song":
+        return _solve_daily_song_recommendation(req)
 
     if mode == "broad":
         steps = [

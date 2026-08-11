@@ -46,6 +46,41 @@ def _legacy_intent_for(coach_intent: CoachIntent) -> str:
     return mapping.get(coach_intent, "music_general")
 
 
+def _is_technique_problem_question(low: str) -> bool:
+    return any(
+        p in low
+        for p in (
+            "improve my tone",
+            "tone sounds",
+            "sounds airy",
+            "breath support",
+            "notes don't come out",
+            "fuller sound",
+            "transitions smoother",
+        )
+    )
+
+
+def _is_practice_routine_request(normalized: str, low: str) -> bool:
+    if is_song_editing_question(low):
+        return False
+    if _is_technique_problem_question(low):
+        return False
+    if re.search(r"\bwhat song should i practice\b", low):
+        return False
+    if parse_duration_minutes(normalized) and any(
+        p in low for p in ("practice", "routine", "session", "work on", "minute")
+    ):
+        return True
+    if re.search(r"\bwhat should i (?:practice|work on)\b", low):
+        return True
+    if "practice plan" in low or "practice routine" in low:
+        return True
+    if "practice today" in low and "song" not in low:
+        return True
+    return False
+
+
 def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     low = normalized.lower()
     page = str(coach_page or "").lower()
@@ -59,6 +94,9 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         )
     ):
         return CoachIntent.PRACTICE_HISTORY_ANALYSIS, 0.92
+
+    if _is_practice_routine_request(normalized, low):
+        return CoachIntent.PRACTICE_PLAN, 0.93
 
     if any(
         p in low
@@ -262,6 +300,11 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         if not any(p in low for p in ("over this chord", "over the chord", "chord progression", "progression?")):
             if not is_song_editing_question(low):
                 return CoachIntent.PRACTICE_PLAN, 0.88
+    if re.search(r"\bwhat should i work on\b", low) and any(
+        p in low for p in ("today", "next", "now", "session", "this week")
+    ):
+        if not is_song_editing_question(low):
+            return CoachIntent.PRACTICE_PLAN, 0.88
 
     if any(p in low for p in ("which section", "work on in this song", "practice melody", "what tempo should i start")):
         return CoachIntent.SONG_COACHING, 0.82

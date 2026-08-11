@@ -528,6 +528,14 @@ def _route_for_intent(intent: str) -> MusicSolverRoute:
     )
 
 
+def _coach_result_assumptions(coach_resp: object) -> list[str]:
+    diag = getattr(coach_resp, "diagnostics", {}) or {}
+    mins = diag.get("session_minutes")
+    if mins:
+        return [f"Planning around **{mins} minutes** available."]
+    return [f"Router confidence: {diag.get('router_confidence', getattr(coach_resp, 'confidence', 0))}"]
+
+
 def solve_instant_music_insight(
     question: str,
     context: dict[str, Any] | None,
@@ -544,6 +552,12 @@ def solve_instant_music_insight(
         coach_resp = run_coach_pipeline(q, None, ami_ctx=ctx)
         if coach_resp is not None:
             problem_type, model_name = coach_response_to_legacy_route(coach_resp)
+            if (
+                problem_type == "repertoire_recommendation"
+                and str(coach_resp.diagnostics.get("repertoire_mode") or "") == "similar"
+            ):
+                problem_type = "similar_songs"
+                model_name = "Music Coach repertoire"
             route = MusicSolverRoute(
                 problem_type=problem_type,
                 model_name=model_name,
@@ -555,7 +569,7 @@ def solve_instant_music_insight(
                 problem_type=problem_type,
                 model_name=model_name,
                 variables=str(coach_resp.diagnostics),
-                assumptions=[f"Router confidence: {coach_resp.diagnostics.get('router_confidence', coach_resp.confidence)}"],
+                assumptions=_coach_result_assumptions(coach_resp),
                 confidence_pct=int(min(95, max(60, coach_resp.confidence * 100))),
                 computed=dict(coach_resp.diagnostics),
             )

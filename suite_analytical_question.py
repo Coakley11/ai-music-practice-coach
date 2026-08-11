@@ -1596,7 +1596,7 @@ def _execute_coach_question_submit(
             pass
         session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
             "kind": "success",
-            "message": "Music Coach insight is ready below.",
+            "message": "Music Coach insight is ready on this page.",
             "result_path": "routed_coach",
             "surface": surface_tag,
         }
@@ -1607,7 +1607,7 @@ def _execute_coach_question_submit(
         }
         session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
         if isinstance(pending, dict) and (pending.get("conclusion") or pending.get("question")):
-            ui.success("Music Coach insight is ready below.")
+            ui.success("Music Coach insight is ready on this page.")
         else:
             ui.warning(
                 "Music Coach answered your question, but the insight could not be staged for display. "
@@ -1780,7 +1780,7 @@ def render_analyze_with_applied_math_sidebar(
     ):
         result_path = str(last.get("result_path") or (fb or {}).get("result_path") or "")
         if is_music and result_path == "routed_coach":
-            st.sidebar.success("Music Coach insight is ready below.")
+            st.sidebar.success("Music Coach insight is ready on this page.")
         elif is_music:
             st.sidebar.success(
                 "Question sent to Command Center. Open Command Center to continue with the Music Coach."

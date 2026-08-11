@@ -97,6 +97,21 @@ def _is_persistent_chord_edit_question(text: str) -> bool:
 def _is_practice_in_named_key_question(text: str) -> bool:
     """Practice/play an existing song in a named key without rewriting the saved chart."""
     low = str(text or "").lower()
+    if any(
+        p in low
+        for p in (
+            "what notes would",
+            "which notes would",
+            "what notes do",
+            "what note would",
+            "notes would i use",
+            "written pitch",
+            "concert pitch",
+        )
+    ):
+        return False
+    if "instead of" in low and "note" in low:
+        return False
     if _is_persistent_chord_edit_question(low):
         return False
     if not _has_named_key_reference(low):
