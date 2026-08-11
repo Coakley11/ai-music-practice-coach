@@ -53,6 +53,10 @@ def parse_question_level(normalized: str) -> tuple[str, bool]:
 
 def parse_question_focus(normalized: str) -> tuple[str, bool]:
     low = str(normalized or "").lower()
+    if re.search(r"\bbass line\b|\bbass-line\b|\bwalking bass\b", low):
+        return "bass line", True
+    if re.search(r"\bfingerstyle\b|\bfinger style\b", low):
+        return "fingerstyle", True
     if any(p in low for p in ("build tone", "for tone", "good to build tone", "tone exercise")):
         return "tone", True
     if "articulation" in low or ("slur" in low and "short" in low):

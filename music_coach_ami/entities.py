@@ -15,6 +15,7 @@ _INSTRUMENT_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bclarinet\b", "Clarinet"),
     (r"\btrumpet\b", "Trumpet"),
     (r"\bpiano\b", "Piano"),
+    (r"\bbass guitar\b", "Bass"),
     (r"\bguitar\b", "Guitar"),
     (r"\bvoice\b|\bvocal\b", "Voice"),
 )

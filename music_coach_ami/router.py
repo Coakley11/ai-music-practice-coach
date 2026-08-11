@@ -69,7 +69,7 @@ def _is_practice_routine_request(normalized: str, low: str) -> bool:
     if re.search(r"\bwhat song should i practice\b", low):
         return False
     if parse_duration_minutes(normalized) and any(
-        p in low for p in ("practice", "routine", "session", "work on", "minute")
+        p in low for p in ("practice", "routine", "session", "work on", "workout", "minute")
     ):
         return True
     if re.search(r"\bwhat should i (?:practice|work on)\b", low):
@@ -77,6 +77,30 @@ def _is_practice_routine_request(normalized: str, low: str) -> bool:
     if "practice plan" in low or "practice routine" in low:
         return True
     if "practice today" in low and "song" not in low:
+        return True
+    focus_session_markers = (
+        "fingerstyle",
+        "bass line",
+        "bass-line",
+        "articulation",
+        "rhythm",
+        "harmony",
+        "phrasing",
+        "tone",
+        "improv",
+        "technique",
+        "timing",
+        "metronome",
+        "voicing",
+        "walking bass",
+    )
+    if re.search(r"\bgive me (?:a |an )?(?:\d{1,3}[- ]?minute )?(?:\w+[- ]?){0,6}(?:session|workout|routine)\b", low):
+        return True
+    if ("session" in low or "workout" in low or "routine" in low) and (
+        "for this song" in low
+        or "practice" in low
+        or any(marker in low for marker in focus_session_markers)
+    ):
         return True
     return False
 

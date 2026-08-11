@@ -285,6 +285,90 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         self.assertIn("chord transitions with steady bass", step_text)
         self.assertNotIn("technique / drills", step_text)
 
+    def test_bass_line_session_routes_and_specializes(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass line session for this song.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                song="All the Things You Are",
+            ),
+        )
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.PRACTICE_PLAN)
+        self.assertIn("PracticePlanSolver", resp.source_solver)
+        md = resp.composed_markdown()
+        self.assertIn("bass-line development", md.lower())
+        self.assertIn("All the Things You Are", md)
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "bass_line")
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Guitar")
+        step_text = "\n".join(resp.practice_steps).lower()
+        self.assertTrue(
+            any(p in step_text for p in ("bass-string root", "alternating bass", "connect roots"))
+        )
+        self.assertNotIn("technique / drills", step_text)
+        listen = " ".join(resp.what_to_listen_for or []).lower()
+        self.assertIn("chord changes", listen)
+
+    def test_bass_line_twenty_minutes_exact(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a 20-minute bass line session for this song.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                song="All the Things You Are",
+            ),
+        )
+        assert resp is not None
+        self.assertEqual(_sum_minutes(resp.practice_steps), 20)
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "bass_line")
+
+    def test_bass_guitar_session_uses_bass_instrument_not_bass_line_focus(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass guitar practice session.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                song="All the Things You Are",
+            ),
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Bass")
+        self.assertNotEqual(resp.diagnostics.get("focus_profile"), "bass_line")
+        step_text = "\n".join(resp.practice_steps).lower()
+        self.assertIn("groove", step_text)
+        self.assertIn("root movement", step_text)
+
+    def test_rhythm_session_includes_metronome_app_hint(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a 30-minute rhythm session on guitar.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Guitar",
+                level="Intermediate",
+                song="Here Comes the Sun",
+            ),
+        )
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertIn("metronome groove", md.lower())
+        self.assertIn("Practice tools → Metronome, Tuner & Tone", md)
+        self.assertEqual(_sum_minutes(resp.practice_steps), 30)
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "timing")
+
+    def test_fingerstyle_session_still_fingerstyle_profile(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a fingerstyle session.",
+            {},
+            ami_ctx=self._ctx(instrument="Guitar", level="Intermediate", focus="Fingerstyle"),
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("focus_profile"), "fingerstyle")
+        self.assertIn("thumb independence", "\n".join(resp.practice_steps).lower())
+
     def test_explicit_articulation_sax_regression(self) -> None:
         resp = run_coach_pipeline(
             "Give me a 20-minute articulation session on the sax.",

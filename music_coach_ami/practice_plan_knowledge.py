@@ -9,6 +9,8 @@ from music_coach_ami.practice_history_context import PracticeHistorySnapshot, sn
 from music_coach_ami.types import CoachRequest
 from music_coach_instrument_voice import instrument_family, tone_focused_practice_plan
 
+METRONOME_APP_NAV_HINT = "**In the app:** Open **Practice tools → Metronome, Tuner & Tone**."
+
 
 def _minutes(req: CoachRequest) -> int:
     if req.constraints.requested_duration_minutes:
@@ -50,6 +52,8 @@ def _focus_bucket(focus: str) -> str:
         return "phrasing"
     if "fingerstyle" in low or "finger style" in low:
         return "fingerstyle"
+    if "bass line" in low or "bass-line" in low or "walking bass" in low:
+        return "bass_line"
     if any(p in low for p in ("sight", "reading")):
         return "sight_reading"
     if "repertoire" in low or "song" in low:
@@ -63,8 +67,12 @@ def _explicit_question_focus(req: CoachRequest) -> tuple[str, bool]:
     low = req.normalized_question.lower()
     if "articulation" in low and any(p in low for p in ("session", "practice", "routine", "work on", "minute")):
         return "articulation", True
-    if "fingerstyle" in low and any(p in low for p in ("session", "practice", "routine", "work on", "minute")):
+    if "fingerstyle" in low and any(p in low for p in ("session", "practice", "routine", "work on", "minute", "workout")):
         return "fingerstyle", True
+    if re.search(r"\bbass line\b|\bbass-line\b", low) and any(
+        p in low for p in ("session", "practice", "routine", "work on", "minute", "workout", "for this song")
+    ):
+        return "bass line", True
     if req.entities.practice_focus_explicit and req.entities.practice_focus:
         return req.entities.practice_focus, True
     if req.constraints.tone_focus or (req.entities.skill_topic == "tone"):
@@ -179,6 +187,170 @@ def _history_thumb_pulse_issue(history: PracticeHistorySnapshot) -> bool:
         p in combined
         for p in ("thumb", "bass pulse", "steady pulse", "loses pulse", "losing pulse", "bass note", "alternating bass")
     )
+
+
+def _bass_line_blocks(
+    *,
+    family: str,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Bass-line focus — instrument family and level shape the work."""
+    lvl = _level_label(level) or "intermediate"
+    target = _song_section_phrase(song, section)
+
+    if family == "bass":
+        if lvl == "beginner":
+            weights = {
+                "roots on strong beats": 0.30,
+                "root–fifth movement": 0.30,
+                "short progression loop": 0.25,
+                "review": 0.15,
+            }
+            details = {
+                "roots on strong beats": f"Play each chord root on beat 1 on **{instrument}**; keep note length even.",
+                "root–fifth movement": "Add the fifth above each root on a simple two-chord loop.",
+                "short progression loop": f"Loop a short progression from {target} with roots only.",
+                "review": "Replay the loop and note where roots land late or early.",
+            }
+        elif lvl == "advanced":
+            weights = {
+                "progression root map": 0.15,
+                "approach notes into roots": 0.25,
+                "walking / connecting between chords": 0.30,
+                "section application": 0.20,
+                "review": 0.10,
+            }
+            details = {
+                "progression root map": f"Name each root through {target} before playing.",
+                "approach notes into roots": "Use one approach tone into each new root without losing time.",
+                "walking / connecting between chords": "Connect chord to chord with a simple walking line that lands on roots.",
+                "section application": f"Apply the line to one section of {target}.",
+                "review": "Play the section once and note where the line fights the harmony.",
+            }
+        else:
+            weights = {
+                "progression root map": 0.15,
+                "roots in time": 0.25,
+                "chord-tone connection": 0.25,
+                "section application": 0.25,
+                "review": 0.10,
+            }
+            details = {
+                "progression root map": f"Identify each root in {target} before playing.",
+                "roots in time": "Play roots on strong beats with a steady pulse.",
+                "chord-tone connection": "Connect roots with chord tones or simple approach notes.",
+                "section application": f"Apply the line to one section of {target}.",
+                "review": "Play the section once and note where changes feel late.",
+            }
+    elif family == "keyboard":
+        if lvl == "beginner":
+            weights = {
+                "left-hand roots on strong beats": 0.30,
+                "root–fifth left-hand pattern": 0.30,
+                "short progression loop": 0.25,
+                "review": 0.15,
+            }
+            details = {
+                "left-hand roots on strong beats": "Play left-hand roots on beat 1 only; keep them even.",
+                "root–fifth left-hand pattern": "Add a fifth above each root in a simple two-chord loop.",
+                "short progression loop": f"Loop a short progression from {target} with left-hand roots only.",
+                "review": "Replay and note where the bass hand arrives late.",
+            }
+        elif lvl == "advanced":
+            weights = {
+                "walking bass in left hand": 0.30,
+                "approach tones & voice leading": 0.25,
+                "rhythmic bass patterns": 0.20,
+                "section application": 0.15,
+                "review": 0.10,
+            }
+            details = {
+                "walking bass in left hand": "Connect chord to chord with a simple walking bass under the harmony.",
+                "approach tones & voice leading": "Use smooth bass motion into each new root.",
+                "rhythmic bass patterns": "Keep a repeating bass rhythm while harmony changes.",
+                "section application": f"Apply the bass movement beneath one section of {target}.",
+                "review": "Play once and note where bass and harmony disagree.",
+            }
+        else:
+            weights = {
+                "left-hand root movement": 0.25,
+                "smooth bass voice leading": 0.30,
+                "rhythmic bass patterns": 0.20,
+                "section application": 0.25,
+            }
+            details = {
+                "left-hand root movement": "Move left-hand roots on strong beats through the progression.",
+                "smooth bass voice leading": "Connect each bass note to the next with minimal jump.",
+                "rhythmic bass patterns": "Keep a steady left-hand pulse while chords change.",
+                "section application": f"Apply the bass movement beneath one section of {target}.",
+            }
+    elif family == "fretted":
+        if lvl == "beginner":
+            weights = {
+                "bass-string roots": 0.30,
+                "simple alternating bass": 0.30,
+                "short progression loop": 0.25,
+                "review": 0.15,
+            }
+            details = {
+                "bass-string roots": f"Play each chord root on the bass strings of **{instrument}** on beat 1.",
+                "simple alternating bass": "Alternate bass-string roots on two chords slowly.",
+                "short progression loop": f"Loop a short progression from {target} with bass-string roots.",
+                "review": "Replay and note where the bass pulse breaks.",
+            }
+        elif lvl == "advanced":
+            weights = {
+                "independent thumb bass line": 0.25,
+                "approach notes on bass strings": 0.25,
+                "melody over steady bass": 0.25,
+                "section application": 0.15,
+                "review": 0.10,
+            }
+            details = {
+                "independent thumb bass line": "Keep a bass line steady while upper voices move independently.",
+                "approach notes on bass strings": "Connect roots with simple approach tones on the bass strings.",
+                "melody over steady bass": f"Keep melody clear over the bass line in {target}.",
+                "section application": f"Apply the bass movement to one section of {target}.",
+                "review": "Play once and note where bass and upper voices collide.",
+            }
+        else:
+            weights = {
+                "bass-string root movement": 0.25,
+                "alternating bass through changes": 0.25,
+                "connect roots with chord tones": 0.25,
+                "section application": 0.25,
+            }
+            details = {
+                "bass-string root movement": "Play roots on the bass strings on strong beats.",
+                "alternating bass through changes": "Keep an alternating bass pattern through two or three chord changes.",
+                "connect roots with chord tones": "Move between roots using chord tones or simple approaches.",
+                "section application": f"Apply the bass movement to one section of {target}.",
+            }
+    else:
+        weights = {
+            "hear / map the roots": 0.25,
+            "roots in time": 0.25,
+            "simple connecting notes": 0.25,
+            "section application": 0.15,
+            "review": 0.10,
+        }
+        details = {
+            "hear / map the roots": f"Identify each chord root in {target} before playing.",
+            "roots in time": f"Play or sing roots on strong beats on **{instrument}** with steady time.",
+            "simple connecting notes": "Connect roots with one simple passing or approach note.",
+            "section application": f"Apply the bass-line idea to one section of {target}.",
+            "review": "Replay and note where the line loses the harmony.",
+        }
+    return weights, details
+
+
+def _plan_uses_metronome(*, steps: list[str], bucket: str) -> bool:
+    if bucket == "timing":
+        return True
+    return "metronome" in " ".join(steps).lower()
 
 
 def _fingerstyle_blocks(
@@ -339,6 +511,14 @@ def _focus_listen_and_progression(bucket: str, *, history: PracticeHistorySnapsh
             "Smooth transitions without breaking the picking pattern",
         ]
         progression.append("Add tempo or chord changes only after the pattern stays even on most repetitions.")
+    elif bucket == "bass_line":
+        listen = [
+            "Bass notes line up with chord changes",
+            "Steady pulse through the line",
+            "Clean movement between roots",
+            "The line supports rather than fights the harmony",
+        ]
+        progression.append("Add connecting notes or tempo only after roots land cleanly on most repetitions.")
     elif bucket == "articulation":
         listen = ["Clear attacks without a thin or explosive start", "Even tone between slurred and tongued notes"]
     elif bucket == "timing":
@@ -376,6 +556,15 @@ def _instrument_blocks(
     beginner = _level_label(level) == "beginner"
     upper_register = any(p in history.recurring_difficulty.lower() for p in ("upper register", "high register", "top register"))
     voicing_issue = any(p in history.recurring_difficulty.lower() for p in ("voicing", "voice leading", "chord change"))
+
+    if bucket == "bass_line":
+        return _bass_line_blocks(
+            family=family,
+            level=level,
+            instrument=instrument,
+            song=song,
+            section=section,
+        )
 
     if family == "wind":
         if bucket == "articulation":
@@ -485,6 +674,20 @@ def _instrument_blocks(
                 "repertoire section": "Apply technique work to a real song section.",
                 "full run-through": "Play through the section with musical intent.",
             }
+    elif family == "bass":
+        weights = {
+            "groove & note length": 0.30,
+            "root movement & chord tones": 0.30,
+            "lock with pulse / harmony": 0.25,
+            "section application": 0.15,
+        }
+        target = _song_section_phrase(song, section)
+        details = {
+            "groove & note length": f"Keep note length even on **{instrument}** before adding faster lines.",
+            "root movement & chord tones": "Outline roots and chord tones through the progression.",
+            "lock with pulse / harmony": "Keep the line aligned with the harmony and a steady pulse.",
+            "section application": f"Apply the line to one section of {target}.",
+        }
     else:
         weights = {"technique / drills": 0.35, "rhythm / groove": 0.25, "repertoire section": 0.25, "full run-through": 0.15}
         details = {
@@ -522,6 +725,7 @@ def _focus_display_phrase(bucket: str, instrument: str, focus: str) -> str:
         "improvisation": "improvisation vocabulary",
         "phrasing": "phrasing and line shape",
         "fingerstyle": "fingerstyle technique",
+        "bass_line": "bass-line development",
         "technique": f"{instrument} technique",
         "repertoire": "repertoire work",
     }
@@ -539,7 +743,7 @@ def _format_priority_line(*, focus_phrase: str, song: str = "", section: str = "
     if song_title:
         if focus_phrase.endswith("work"):
             return f"**Today's priority:** {focus_phrase} on **{song_title}**."
-        if focus_phrase in {"harmony and voicing", "phrasing and line shape", "fingerstyle technique"}:
+        if focus_phrase in {"harmony and voicing", "phrasing and line shape", "fingerstyle technique", "bass-line development"}:
             preposition = "across" if focus_phrase == "harmony and voicing" else "in"
             return f"**Today's priority:** {focus_phrase} {preposition} **{song_title}**."
         return f"**Today's priority:** {focus_phrase} in **{song_title}**."
@@ -714,11 +918,16 @@ def _priority_lines(
     return priority, why, signals_used
 
 
+def _append_practice_app_hints(direct_parts: list[str], *, steps: list[str], bucket: str) -> None:
+    if _plan_uses_metronome(steps=steps, bucket=bucket):
+        direct_parts.append(METRONOME_APP_NAV_HINT)
+
+
 def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
     from music_coach_ami.request_resolution import display_coach_instrument
 
     minutes = _minutes(req)
-    instrument = display_coach_instrument(req.context.instrument or req.entities.instrument)
+    instrument = display_coach_instrument(req.entities.instrument or req.context.instrument)
     family = instrument_family(instrument)
     level, level_prov = _resolve_plan_level(req)
     history = snapshot_from_coach_context(req.context)
@@ -781,6 +990,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         if why:
             direct_parts.append(why)
         direct_parts.append(f"Here is a **{minutes}-minute** plan for **{instrument}**:")
+        _append_practice_app_hints(direct_parts, steps=steps, bucket=bucket)
         listen = ["Musical shape over speed", "Clean phrasing at a controlled tempo"]
         if bucket == "phrasing":
             listen = ["Line shape over speed", "Even tone through each 2-bar fragment"]
@@ -813,9 +1023,11 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
             direct_parts.append(why)
         direct_parts.append(headline)
         direct_parts.append(str(plan.get("goal") or "").strip())
+        tone_steps = list(plan.get("steps") or [])
+        _append_practice_app_hints(direct_parts, steps=tone_steps, bucket=bucket)
         return {
             "direct_answer": "\n\n".join(p for p in direct_parts if p),
-            "practice_steps": list(plan.get("steps") or []),
+            "practice_steps": tone_steps,
             "what_to_listen_for": list(plan.get("listen") or []),
             "recommendation": str(plan.get("closing") or "").strip(),
             "progression_criteria": [
@@ -882,6 +1094,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
     if why:
         direct_parts.append(why)
     direct_parts.append(f"Here is a **{minutes}-minute** plan for **{instrument}**:")
+    _append_practice_app_hints(direct_parts, steps=steps, bucket=bucket)
 
     return {
         "direct_answer": "\n\n".join(direct_parts),
@@ -892,6 +1105,9 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         "diagnostics": {
             **base_diag,
             "focus_profile": bucket,
+            "history_specialized_blocks": bool(
+                history.available and bucket == "fingerstyle" and _history_thumb_pulse_issue(history)
+            ),
             "block_allocation": blocks,
             **blocks,
         },
