@@ -294,6 +294,84 @@ class NavigationPipelineTests(unittest.TestCase):
         self.assertIn("**Then:**", text)
 
 
+class RecordingIntentTests(unittest.TestCase):
+    def test_log_practice_routes_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I log my practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Practice Log", text)
+        self.assertIn("Quick Save", text)
+
+    def test_record_what_practiced_routes_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I record what I practiced today?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Practice Log", text)
+        self.assertNotIn("Multitrack", text.split("Practice Log")[0])
+
+    def test_record_myself_playing_not_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I record myself playing?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertNotIn("**Use:** Practice Log", text)
+        self.assertIn("Upload", text)
+        self.assertIn("Multitrack", text)
+
+    def test_make_audio_recording_upload(self) -> None:
+        resp = run_coach_pipeline("Where can I make an audio recording?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_record_and_feedback_upload(self) -> None:
+        resp = run_coach_pipeline("How do I record myself and get feedback?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_overdub_flute_multitrack(self) -> None:
+        resp = run_coach_pipeline("How do I overdub another flute part?", {})
+        assert resp is not None
+        self.assertIn("Multitrack", resp.composed_markdown())
+
+    def test_layer_recordings_multitrack(self) -> None:
+        resp = run_coach_pipeline("How do I layer recordings?", {})
+        assert resp is not None
+        self.assertIn("Multitrack", resp.composed_markdown())
+
+
+class ComparisonNavigationTests(unittest.TestCase):
+    def test_missions_live_coach_includes_paths(self) -> None:
+        resp = run_coach_pipeline("Which is better for improvisation? Missions or Live Coach?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Missions", text)
+        self.assertIn("Live Coach", text)
+        self.assertIn("Find it:", text)
+        self.assertIn("Creative", text)
+
+    def test_style_jam_vs_jam_includes_paths(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Style Jam and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Style Jam", text)
+        self.assertIn("Jam Session Generator", text)
+        self.assertIn("Entry & Jam", text)
+        self.assertIn("Find it:", text)
+
+    def test_backing_vs_jam_includes_paths(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Backing and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Backing", text)
+        self.assertIn("Jam", text)
+        self.assertIn("Find it:", text)
+
+
 class ExerciseFocusPipelineTests(unittest.TestCase):
     def test_tone_vs_articulation_different_patterns(self) -> None:
         tone = run_coach_pipeline(

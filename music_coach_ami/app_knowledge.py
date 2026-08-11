@@ -152,7 +152,7 @@ FEATURES: dict[str, AppFeature] = {
             "**Monitor backing**, and **Loop selected section** while recording.",
             "**Step 3 — Transport & mixer:** Use transport controls for playback/monitor behavior — loop section, "
             "metronome click, hear backing while recording, and include backing in the final mix when enabled.",
-            "Play back all layers together; save the project or export a mix when ready.",
+            "Play back all layers together; save the project to the library or use **Step 4 — Save Export** when your mix is ready.",
         ),
         when_not_to_use=(
             "When you only want feedback on one finished take without layering (use **Upload & Analysis**)."
@@ -356,10 +356,13 @@ def feature_by_question(low: str) -> str:
     """Best-effort feature_id from question text."""
     from music_coach_ami.feature_comparison import (
         multitrack_intent_in_question,
+        practice_log_intent_in_question,
         upload_analysis_intent_in_question,
     )
 
     text = str(low or "").lower()
+    if practice_log_intent_in_question(text):
+        return "practice_log"
     if multitrack_intent_in_question(text):
         return "multitrack"
     if upload_analysis_intent_in_question(text):

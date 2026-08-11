@@ -107,11 +107,71 @@ _COMPARISON_MARKERS = (
 )
 
 
-def _when_short(when_to_use: str) -> str:
-    text = str(when_to_use or "").strip()
-    if text.lower().startswith("when "):
-        return text[5:].strip().rstrip(".")
+def _normalize_when_clause(when_to_use: str) -> str:
+    """Return a natural 'best for' fragment without duplicated when/during/you want."""
+    text = str(when_to_use or "").strip().rstrip(".")
+    low = text.lower()
+    for prefix in (
+        "when you want ",
+        "when you need ",
+        "when ",
+        "during ",
+    ):
+        if low.startswith(prefix):
+            text = text[len(prefix) :].strip()
+            low = text.lower()
+    if low.startswith("you want "):
+        text = text[9:].strip()
     return text.rstrip(".")
+
+
+def _find_it_line(feat: object) -> str:
+    path = str(getattr(feat, "navigation_path", "") or "").strip()
+    if not path:
+        return ""
+    return f"**Find it:** {path}"
+
+
+def _feature_comparison_block(feat: object) -> list[str]:
+    lines = [f"**{feat.display_name}**", str(feat.purpose).strip()]
+    when = _normalize_when_clause(str(feat.when_to_use or ""))
+    if when:
+        lines.append(f"Best for: {when}.")
+    find_it = _find_it_line(feat)
+    if find_it:
+        lines.append(find_it)
+    return lines
+
+
+def _comparison_best_choice(pair_key: str, fa: object, fb: object) -> str:
+    templates = {
+        "missions_vs_live_coach": (
+            "Choose **Missions** if you want a structured assignment; "
+            "choose **Live Coach** if you want immediate guidance while playing."
+        ),
+        "style_jam_vs_jam": (
+            "Choose **Style Jam** when style, mood, and groove matter; "
+            "choose **Jam Session Generator** when you want a fresh progression to explore."
+        ),
+        "backing_vs_jam": (
+            "Choose **Backing Track Studio** to loop your current song; "
+            "choose **Jam Session Generator** for a newly generated chart."
+        ),
+        "entry_jam_vs_jam": (
+            "Open **Creative → Entry & Jam** for jam tools; use **Jam Session Generator** "
+            "when you want a standalone generated progression."
+        ),
+        "multitrack_vs_upload": (
+            "Choose **Multitrack** to layer parts; choose **Upload & Analysis** "
+            "when you want feedback on one finished take."
+        ),
+    }
+    if pair_key in templates:
+        return templates[pair_key]
+    return (
+        f"Choose **{fa.display_name}** or **{fb.display_name}** based on which job "
+        f"matches what you need right now."
+    )
 
 
 def _match_feature_in_fragment(fragment: str) -> str:
@@ -210,32 +270,17 @@ def compose_feature_comparison(fid_a: str, fid_b: str, *, low: str = "") -> str:
         main = fa.distinctions or fb.distinctions or (
             f"**{fa.display_name}** and **{fb.display_name}** solve different jobs in the studio."
         )
-    parts = [
-        f"**{fa.display_name}**",
-        fa.purpose,
-        f"Use it when { _when_short(fa.when_to_use).lower() }.",
-        "",
-        f"**{fb.display_name}**",
-        fb.purpose,
-        f"Use it when { _when_short(fb.when_to_use).lower() }.",
-        "",
-        "**Main difference**",
-        main,
-        "",
-        f"**Use {fa.display_name} when** {_when_short(fa.when_to_use).lower()}.",
-        f"**Use {fb.display_name} when** {_when_short(fb.when_to_use).lower()}.",
-    ]
-    if pair_key == "missions_vs_live_coach":
-        parts.append(
-            "You can use **Missions** to define the task, then **Live Coach** while practicing "
-            "when you want immediate guidance."
-        )
+    parts: list[str] = []
+    parts.extend(_feature_comparison_block(fa))
+    parts.append("")
     if pair_key == "entry_jam_vs_jam" and "entry" in str(low or "").lower():
-        parts.insert(
-            4,
-            "**Entry & Jam** is the Creative workflow area that contains tools like **Style Jam** "
-            "and **Jam Session Generator** — not the same kind of thing as a single generator mode.",
+        parts.append(
+            "**Entry & Jam** is the Creative workflow area that contains jam tools such as "
+            "**Style Jam** and **Jam Session Generator**."
         )
+        parts.append("")
+    parts.extend(_feature_comparison_block(fb))
+    parts.extend(["", "**Main difference**", main])
     return "\n".join(parts)
 
 
@@ -248,17 +293,92 @@ def try_comparison_response(low: str) -> dict[str, Any] | None:
     if not body:
         return None
     pair_key = _pair_key_for(a, b)
+    fa = FEATURES[a]
+    fb = FEATURES[b]
     return {
         "body": body,
         "feature_a": a,
         "feature_b": b,
         "pair_key": pair_key,
-        "suggested_next_action": (
-            f"Try **{FEATURES[a].display_name}** or **{FEATURES[b].display_name}** "
-            f"based on whether you need {_when_short(FEATURES[a].when_to_use).lower()} "
-            f"or {_when_short(FEATURES[b].when_to_use).lower()}."
-        ),
+        "suggested_next_action": _comparison_best_choice(pair_key, fa, fb),
     }
+
+
+def _practice_log_phrases_match(text: str) -> bool:
+    return any(
+        p in text
+        for p in (
+            "log my practice",
+            "practice log",
+            "log practice",
+            "log today's session",
+            "log todays session",
+            "keep track of my practice",
+            "track what i practiced",
+            "record what i practiced",
+            "record what i practice",
+            "save a practice session",
+            "how do i log",
+            "where do i log",
+        )
+    )
+
+
+def practice_log_intent_in_question(low: str) -> bool:
+    """Record/log practice history — not audio capture."""
+    return _practice_log_phrases_match(str(low or "").lower())
+
+
+def audio_recording_intent_in_question(low: str) -> bool:
+    """Single-part audio capture — not practice logging or multitrack layering."""
+    text = str(low or "").lower()
+    if _practice_log_phrases_match(text):
+        return False
+    if multitrack_intent_in_question(text):
+        return False
+    if any(
+        p in text
+        for p in (
+            "record myself",
+            "recording of myself",
+            "audio recording",
+            "record a take",
+            "record myself playing",
+            "make a recording",
+            "make an audio recording",
+            "record my playing",
+            "can i record myself",
+        )
+    ):
+        return True
+    if "record" not in text:
+        return False
+    if any(p in text for p in ("what i practiced", "what i practice", "practice log")):
+        return False
+    return any(
+        p in text
+        for p in (
+            "myself",
+            "my playing",
+            "a take",
+            "audio",
+            "flute",
+            "guitar",
+            "piano",
+            "sax",
+            "vocals",
+            "playing",
+        )
+    )
+
+
+def is_ambiguous_single_audio_recording_question(low: str) -> bool:
+    text = str(low or "").lower()
+    return (
+        audio_recording_intent_in_question(text)
+        and not upload_analysis_intent_in_question(text)
+        and not multitrack_intent_in_question(text)
+    )
 
 
 def multitrack_intent_in_question(low: str) -> bool:
@@ -296,6 +416,7 @@ def multitrack_intent_in_question(low: str) -> bool:
             "record several parts",
             "record multiple",
             "overdub",
+            "overdub another",
             "record a harmony",
             "loop the chorus while",
             "without a backing track",
@@ -320,23 +441,36 @@ def upload_analysis_intent_in_question(low: str) -> bool:
         for p in (
             "analyze my take",
             "analyze a recording",
+            "analyze the take",
             "feedback on my recording",
             "feedback on recording",
             "get feedback",
             "analyze myself",
             "upload analysis",
             "already recorded",
+            "record myself and get feedback",
+            "record myself playing and get feedback",
+            "record a take and have",
+            "have the app analyze",
         )
     )
 
 
 def resolve_recording_navigation_feature(low: str) -> str:
-    """Prefer multitrack vs upload for recording-related navigation."""
+    """Prefer practice log vs multitrack vs upload for recording-related navigation."""
     text = str(low or "").lower()
-    if upload_analysis_intent_in_question(text) and not multitrack_intent_in_question(text):
-        return "upload_analysis"
+    if practice_log_intent_in_question(text):
+        return "practice_log"
     if multitrack_intent_in_question(text):
         return "multitrack"
+    if upload_analysis_intent_in_question(text):
+        return "upload_analysis"
+    if re.search(r"\bwhere\b", text) and any(
+        p in text for p in ("make an audio recording", "audio recording")
+    ):
+        return "upload_analysis"
+    if audio_recording_intent_in_question(text):
+        return ""
     if "feedback" in text and "record" in text:
         return "upload_analysis"
     return ""
@@ -346,9 +480,13 @@ def compose_ambiguous_record_yourself_answer() -> str:
     up = FEATURES["upload_analysis"]
     mt = FEATURES["multitrack"]
     return (
-        "You have two real recording paths in the studio:\n\n"
-        f"**For a quick single take you want analyzed:** **{up.display_name}** can capture live audio "
-        "or accept a file, then run coach analysis on that take.\n\n"
-        f"**For building or layering recordings:** **{mt.display_name}** ({mt.navigation_path}) "
-        "lets you record or upload separate instrument slots, align them, and mix them together."
+        "**For a single take:** **Upload & Analysis** — record live or upload a file, "
+        "then analyze the take.\n\n"
+        "**For several layers/overdubs:** **Multitrack** — record or upload separate parts "
+        "and mix them together.\n\n"
+        "**Find them:**\n"
+        f"- **Upload & Analysis:** {up.navigation_path}\n"
+        f"- **Multitrack:** {mt.navigation_path}\n\n"
+        "If you just want to record yourself once, start with **Upload & Analysis**. "
+        "If you want to build multiple parts, use **Multitrack**."
     )

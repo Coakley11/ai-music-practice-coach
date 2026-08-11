@@ -13,6 +13,8 @@ from music_coach_ami.app_knowledge import (
 )
 from music_coach_ami.feature_comparison import (
     compose_ambiguous_record_yourself_answer,
+    is_ambiguous_single_audio_recording_question,
+    practice_log_intent_in_question,
     resolve_recording_navigation_feature,
     try_comparison_response,
 )
@@ -317,25 +319,36 @@ def _comparison_coach_response(req: CoachRequest, *, intent: CoachIntent) -> Coa
 
 def solve_app_navigation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    if re.search(r"\bwhere\b", low) and "record" in low and "myself" in low:
-        if not resolve_recording_navigation_feature(low):
-            return CoachResponse(
-                intent=CoachIntent.APP_NAVIGATION,
-                direct_answer=compose_ambiguous_record_yourself_answer(),
-                suggested_next_action=(
-                    "Use **Upload & Analysis** for a single take you want analyzed; "
-                    "use **Multitrack** when you need separate layers."
-                ),
-                source_solver="AppNavigationSolver",
-                confidence=0.9,
-                diagnostics={
-                    "feature_id": "upload_analysis,multitrack",
-                    "app_knowledge_consulted": "upload_analysis,multitrack",
-                    "context_completeness": context_completeness(req.context),
-                },
-            )
-    fid = resolve_recording_navigation_feature(low) or req.entities.feature_id or feature_by_question(low) or "practice_log"
-    feat = FEATURES.get(fid) or FEATURES["practice_log"]
+    if is_ambiguous_single_audio_recording_question(low) or (
+        re.search(r"\bwhere\b", low)
+        and "record" in low
+        and "myself" in low
+        and not resolve_recording_navigation_feature(low)
+    ):
+        return CoachResponse(
+            intent=CoachIntent.APP_NAVIGATION,
+            direct_answer=compose_ambiguous_record_yourself_answer(),
+            suggested_next_action=(
+                "Start with **Upload & Analysis** for one take; use **Multitrack** when you need layers."
+            ),
+            source_solver="AppNavigationSolver",
+            confidence=0.9,
+            diagnostics={
+                "feature_id": "upload_analysis,multitrack",
+                "app_knowledge_consulted": "upload_analysis,multitrack",
+                "context_completeness": context_completeness(req.context),
+            },
+        )
+    fid = (
+        resolve_recording_navigation_feature(low)
+        or req.entities.feature_id
+        or feature_by_question(low)
+    )
+    if not fid and practice_log_intent_in_question(low):
+        fid = "practice_log"
+    if not fid:
+        fid = "practice"
+    feat = FEATURES.get(fid) or FEATURES["practice"]
     then_steps = list(feat.usage_steps)
     steps = [
         f"**Use:** {feat.display_name}",

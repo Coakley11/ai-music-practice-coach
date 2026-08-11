@@ -8,9 +8,11 @@ from typing import Any
 from music_coach_ami.app_knowledge import feature_by_question
 from music_coach_ami.context_reader import read_coach_context
 from music_coach_ami.feature_comparison import (
+    is_ambiguous_single_audio_recording_question,
     is_creative_feature_comparison,
     is_feature_comparison_question,
     multitrack_intent_in_question,
+    practice_log_intent_in_question,
     upload_analysis_intent_in_question,
 )
 from music_coach_ami.entities import (
@@ -92,6 +94,12 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
 
     if "difference between" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
+
+    if practice_log_intent_in_question(low) and re.search(r"\b(how|where)\b", low):
+        return CoachIntent.APP_NAVIGATION, 0.92
+
+    if is_ambiguous_single_audio_recording_question(low):
+        return CoachIntent.APP_NAVIGATION, 0.92
 
     if multitrack_intent_in_question(low):
         if re.search(r"\b(how|where|can i)\b", low):
