@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 # Tonic patterns — longer spellings first (weak fallback only)
 _TONIC_RE = re.compile(
@@ -1405,15 +1406,19 @@ def _abc_tune_block(
     meter: str,
     note_value: str,
     music: str,
+    clef: str = "",
 ) -> str:
     default_len = _abc_default_length(note_value)
     tempo = _abc_tempo_line(meter, bpm)
+    key_line = f"K:{key_field}"
+    if clef:
+        key_line = f"{key_line} clef={clef}"
     return f"""X:{tune_number}
 T:{title}
 M:{meter}
 L:{default_len}
 {tempo}
-K:{key_field}
+{key_line}
 {music}"""
 
 
@@ -1468,6 +1473,48 @@ def build_abc_from_note_names(
         meter=meter,
         note_value=note_value,
         music=music,
+    )
+
+
+def build_abc_from_chord_bass_line(
+    composition: Any,
+    *,
+    title: str = "Bass line",
+    bpm: int = 84,
+    tune_number: int = 1,
+) -> str:
+    """Serialize a BassLineComposition to ABC with chord symbols and clef."""
+    from music_theory import abc_key_signature_for_reference
+
+    ref = str(getattr(composition, "reference_key", "") or "C")
+    meter = str(getattr(composition, "meter", "") or "4/4")
+    profile = getattr(composition, "notation_profile")
+    clef = str(getattr(profile, "clef", "") or "")
+    octave = int(getattr(profile, "default_octave", 3) or 3)
+    key_field = abc_key_signature_for_reference(ref, scale_type="major")
+    measure_lines: list[str] = []
+    for bar in getattr(composition, "bars", ()) or ():
+        parts: list[str] = []
+        chord_label = str(getattr(bar, "chord", "") or "").replace('"', "'")
+        for idx, item in enumerate(getattr(bar, "notes", ()) or ()):
+            note, dur = item
+            tok = _note_to_abc(str(note), octave, key_field=key_field)
+            suffix = _abc_duration_suffix(str(dur), triplet=False)
+            if idx == 0:
+                parts.append(f'"{chord_label}" {tok}{suffix}')
+            else:
+                parts.append(f"{tok}{suffix}")
+        measure_lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
+    music = _abc_layout_systems_from_lines(measure_lines, lines_per_system=4)
+    return _abc_tune_block(
+        tune_number=tune_number,
+        title=title,
+        key_field=key_field,
+        bpm=bpm,
+        meter=meter,
+        note_value="quarter",
+        music=music,
+        clef=clef,
     )
 
 

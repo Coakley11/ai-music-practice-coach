@@ -65,6 +65,30 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             ami["practice_focus_section"] = section
         return ami
 
+    def _bass_line_chart_ctx(
+        self,
+        *,
+        instrument: str = "Guitar",
+        level: str = "Intermediate",
+        song: str = "Test Song",
+        section: str = "Verse",
+        display_key: str = "Ab",
+        original_key: str = "Ab",
+        chart_sections: dict[str, list[str]] | None = None,
+    ) -> dict:
+        sections = chart_sections or {
+            "Verse": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
+            "Chorus": ["Dbmaj7", "Eb7", "Fm7", "Bbm7"],
+        }
+        return {
+            "instrument": instrument,
+            "level": level,
+            "display_key": display_key,
+            "chart_sections": sections,
+            "practice_focus_section": section,
+            "active_song": {"title": song, "key": original_key},
+        }
+
     def test_flute_tone_history_personalized(self) -> None:
         resp = run_coach_pipeline(
             "What should I practice today?",
@@ -370,15 +394,12 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         self.assertIn("thumb independence", "\n".join(resp.practice_steps).lower())
 
     def test_baseline_content_suggestion_not_practice_plan(self) -> None:
-        ctx = self._ctx(
+        ctx = self._bass_line_chart_ctx(
             instrument="Guitar",
             level="Intermediate",
             song="All the Things You Are",
         )
-        ctx["active_song"] = {
-            "title": "All the Things You Are",
-            "progression_summary": "Fm7 | Bbm7 | Eb7 | Abmaj7",
-        }
+        ctx["active_song"]["progression_summary"] = "Fm7 | Bbm7 | Eb7 | Abmaj7"
         for question in (
             "Give me a baseline to use for this song.",
             "Give me a bassline to use for this song.",
@@ -389,11 +410,14 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             self.assertEqual(resp.intent, CoachIntent.SONG_COACHING)
             self.assertIn("SongCoachSolver(bass_line)", resp.source_solver)
             md = resp.composed_markdown()
-            self.assertIn("Try this approach", md)
+            self.assertIn("Try this bass line", md)
             self.assertIn("All the Things You Are", md)
             self.assertNotIn("**8 min**", md)
             self.assertNotIn("PracticePlanSolver", resp.source_solver)
             self.assertTrue(resp.diagnostics.get("bass_line_content"))
+            self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+            self.assertTrue(resp.notation_abc)
+            self.assertIn("clef=treble", resp.notation_abc)
             if "baseline" in question:
                 self.assertIn("baseline -> bass line", resp.diagnostics.get("normalized_phrases") or [])
 
@@ -404,6 +428,7 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             ami_ctx={
                 "instrument": "Guitar",
                 "level": "Intermediate",
+                "display_key": "Ab",
                 "active_song": {
                     "title": "All the Things You Are",
                     "progression_summary": "Fm7 | Bbm7 | Eb7 | Abmaj7",
@@ -413,8 +438,87 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         assert resp is not None
         text = resp.composed_markdown()
         self.assertTrue(resp.diagnostics.get("chord_context_available"))
+        self.assertTrue(resp.diagnostics.get("notation_abc_present"))
         self.assertIn("Fm7", text)
-        self.assertIn("Line by chord", text)
+        self.assertIn("**Fm7:**", text)
+        self.assertIn("K:Ab", resp.notation_abc)
+        self.assertIn('"Fm7"', resp.notation_abc)
+
+    def test_bass_line_notation_clef_by_instrument(self) -> None:
+        question = "Give me a bass line to use for this song."
+        expectations = {
+            "Bass": "clef=bass",
+            "Piano": "clef=bass",
+            "Guitar": "clef=treble",
+        }
+        for instrument, clef_token in expectations.items():
+            resp = run_coach_pipeline(
+                question,
+                {},
+                ami_ctx=self._bass_line_chart_ctx(instrument=instrument),
+            )
+            assert resp is not None, instrument
+            self.assertEqual(resp.diagnostics.get("notation_clef"), clef_token.split("=")[1])
+            self.assertIn(clef_token, resp.notation_abc)
+            self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+
+    def test_bass_line_practice_key_transposition(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass line to use for this song.",
+            {},
+            ami_ctx=self._bass_line_chart_ctx(
+                instrument="Bass",
+                display_key="Bb",
+                original_key="Ab",
+            ),
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("practice_key"), "Bb")
+        self.assertEqual(
+            resp.diagnostics.get("chord_timeline_used"),
+            ["Gm7", "Cm7", "F7", "Bbmaj7"],
+        )
+        self.assertIn("K:Bb", resp.notation_abc)
+        self.assertIn('"Gm7"', resp.notation_abc)
+        self.assertNotIn("K:Ab", resp.notation_abc)
+
+    def test_bass_line_selected_section(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass line to use for this song.",
+            {},
+            ami_ctx=self._bass_line_chart_ctx(instrument="Bass", section="Chorus"),
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("active_section"), "Chorus")
+        self.assertEqual(
+            resp.diagnostics.get("chord_timeline_used"),
+            ["Dbmaj7", "Eb7", "Fm7", "Bbm7"],
+        )
+        self.assertIn("Chorus", resp.composed_markdown())
+        self.assertIn('"Dbmaj7"', resp.notation_abc)
+
+    def test_bass_line_fixture_chart_source(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a baseline to use for this song.",
+            {},
+            ami_ctx=self._bass_line_chart_ctx(instrument="Bass"),
+        )
+        assert resp is not None
+        self.assertTrue(resp.diagnostics.get("chart_available"))
+        self.assertEqual(resp.diagnostics.get("chart_source"), "ami_ctx.chart_sections")
+        self.assertFalse(resp.diagnostics.get("fallback_reason"))
+
+    def test_bass_line_no_chart_fallback(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a bass line to use for this song.",
+            {},
+            ami_ctx=self._ctx(instrument="Guitar", song="Mystery Song"),
+        )
+        assert resp is not None
+        md = resp.composed_markdown().lower()
+        self.assertIn("do not have the song's chord changes", md)
+        self.assertFalse(resp.diagnostics.get("notation_abc_present"))
+        self.assertEqual(resp.diagnostics.get("fallback_reason"), "no_trustworthy_active_chart")
 
     def test_bass_line_session_still_practice_plan(self) -> None:
         resp = run_coach_pipeline(

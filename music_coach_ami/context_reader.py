@@ -121,6 +121,23 @@ def read_coach_context(
         except ImportError:
             pass
 
+    try:
+        from music_coach_ami.chart_context_reader import resolve_coach_chart_snapshot
+
+        chart_snapshot = resolve_coach_chart_snapshot(
+            session_state,
+            ami_ctx=ctx,
+            active_section=section,
+            pick_key=pick,
+            song_original_key=original_key,
+            practice_key=practice_key,
+        )
+    except ImportError:
+        chart_snapshot = {}
+
+    if chart_snapshot.get("practice_key"):
+        practice_key = str(chart_snapshot.get("practice_key") or practice_key)
+
     return CoachContext(
         instrument=instrument,
         level=level,
@@ -145,5 +162,6 @@ def read_coach_context(
             "instrument_provenance": prov,
             "snapshot_instrument": snap_inst,
             "practice_log_summary": practice_log_summary,
+            "chart_snapshot": chart_snapshot,
         },
     )

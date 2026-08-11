@@ -939,6 +939,8 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
             practice_steps=list(payload.get("practice_steps") or []),
             what_to_listen_for=list(payload.get("what_to_listen_for") or []),
             suggested_next_action=str(payload.get("suggested_next_action") or ""),
+            notation_abc=str(payload.get("notation_abc") or ""),
+            notation_abc_sections=list(payload.get("notation_abc_sections") or []),
             source_solver="SongCoachSolver(bass_line)",
             confidence=0.88,
             diagnostics=dict(payload.get("diagnostics") or {}),

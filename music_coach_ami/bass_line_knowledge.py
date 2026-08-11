@@ -190,12 +190,15 @@ def _level_label(level: str) -> str:
 
 def _spell_root(chord: str, reference_key: str) -> str:
     try:
-        from music_theory import chord_root_for_theory, spell_note_in_key
+        from music_theory import chord_root_for_theory, pitch_class_from_spelled_note, spell_note_in_key
 
-        root = chord_root_for_theory(chord)
+        root_name = chord_root_for_theory(chord)
+        if not root_name:
+            return "?"
+        pc = pitch_class_from_spelled_note(root_name)
         if reference_key:
-            return spell_note_in_key(root, reference_key)
-        return root
+            return spell_note_in_key(pc, reference_key)
+        return root_name
     except ImportError:
         return chord[:1] if chord else "?"
 
@@ -233,10 +236,16 @@ def _instrument_playing_guidance(family: str, instrument: str) -> str:
 
 
 def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
+    from music_coach_ami.bass_line_engine import (
+        bass_line_play_summary,
+        build_bass_line_abc,
+        compose_bass_line_from_chords,
+        composition_to_diagnostics,
+    )
     from music_coach_instrument_voice import instrument_family
     from music_coach_ami.request_resolution import display_coach_instrument
 
-    normalized, phrase_norms = normalize_bass_line_phrases(req.raw_question or req.normalized_question)
+    _, phrase_norms = normalize_bass_line_phrases(req.raw_question or req.normalized_question)
     if not phrase_norms:
         _, phrase_norms = normalize_bass_line_phrases(req.normalized_question)
     instrument = display_coach_instrument(req.entities.instrument or req.context.instrument)
@@ -244,58 +253,65 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
     level = _clean(req.context.level) or "Intermediate"
     song = _clean(req.context.active_song_title)
     section = _usable_section(req.context.active_section)
-    chords = _parse_progression_chords(req.context.progression_summary)
+
+    extra = req.context.extra if isinstance(req.context.extra, dict) else {}
+    chart = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
+
+    chords = list(chart.get("active_section_chords") or [])
+    if not chords:
+        chords = _parse_progression_chords(req.context.progression_summary)
     if not chords and req.context.current_chord:
         chords = _parse_progression_chords(req.context.current_chord)
-    reference_key = _clean(req.context.current_practice_key or req.context.song_original_key)
 
-    if section and song:
-        target = f"the **{section}** of **{song}**"
+    section_label = _clean(chart.get("active_section")) or section
+    reference_key = _clean(chart.get("practice_key") or req.context.current_practice_key or req.context.song_original_key)
+    meter = _clean(chart.get("chart_meter") or "4/4")
+    bpm = int(chart.get("bpm") or req.context.tempo_bpm or 84)
+
+    if section_label and song:
+        target = f"the **{section_label}** of **{song}**"
     elif song:
         target = f"**{song}**"
     else:
         target = "your active song"
 
-    direct = (
-        f"**Try this approach:** a playable bass line for {target}."
-        if song
-        else "**Try this approach:** a simple bass line you can apply once your active song is set."
-    )
-
-    steps: list[str] = []
-    steps.append(_instrument_playing_guidance(family, instrument))
+    notation_abc = ""
+    notation_sections: list[str] = []
+    composition = None
+    fallback_reason = ""
 
     if chords:
-        prog_label = " → ".join(f"**{c}**" for c in chords[:4])
-        if len(chords) > 4:
-            prog_label += " → …"
-        steps.append(
-            f"**Harmony in context:** {prog_label}"
-            + (f" (concert key **{reference_key}**)" if reference_key else "")
-            + "."
+        composition = compose_bass_line_from_chords(
+            chords,
+            reference_key=reference_key or "C",
+            level=level,
+            instrument=instrument,
+            meter=meter,
+            section_label=section_label,
         )
-        lvl = _level_label(level)
-        if lvl == "beginner":
-            steps.append(
-                "**Rhythm:** start with **quarter notes** or **half notes** — one bass note per chord on beat 1."
-            )
-        elif lvl == "advanced":
-            steps.append(
-                "**Rhythm:** keep beat 1 anchored; vary beats 2–4 with chord tones, approaches, or short rests."
-            )
-        else:
-            steps.append(
-                "**Rhythm:** root on beat 1; use beats 2–3 for a chord tone or simple stepwise connection."
-            )
-        steps.append("**Line by chord:**")
-        for chord in chords[:4]:
-            steps.append(f"- {_chord_line_hint(chord, reference_key=reference_key, level=level)}")
-        if len(chords) > 4:
-            steps.append("- Continue the same root–connection pattern through the rest of the progression.")
+        abc_title = f"Bass line — {section_label or song or 'active song'}"
+        notation_abc = build_bass_line_abc(composition, title=abc_title, bpm=bpm)
+        notation_sections = [notation_abc] if notation_abc else []
+        direct = f"**Try this bass line for {target}:**"
     else:
+        fallback_reason = "no_trustworthy_active_chart"
+        direct = (
+            f"**Try this approach:** a general bass-line pattern for {target}."
+            if song
+            else "**Try this approach:** a simple bass line you can apply once your active song is set."
+        )
+
+    steps: list[str] = []
+    if composition and notation_abc:
+        steps.append("**Bass line** — read the staff notation below.")
+        steps.append("**How to play it**")
+        steps.extend(bass_line_play_summary(composition))
+        steps.append(_instrument_playing_guidance(family, instrument))
+    else:
+        steps.append(_instrument_playing_guidance(family, instrument))
         steps.append(
-            "**Note:** I do not have a trustworthy chord chart for this song in the current Coach context, "
-            "so this is a safe pattern rather than song-specific notes."
+            "**Note:** I can give you a general bass-line pattern, but I do not have the song's chord changes "
+            "available in the current Coach context."
         )
         steps.append(
             "**Pattern:** play each chord root on beat 1, then add one chord tone before moving to the next root."
@@ -311,23 +327,35 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "The line supports the harmony instead of fighting it",
     ]
 
+    diag = {
+        "bass_line_content": True,
+        "normalized_phrases": phrase_norms,
+        "chord_context_available": bool(chords),
+        "chord_count": len(chords),
+        "resolved_instrument": instrument,
+        "instrument_family": family,
+        "resolved_level": level,
+        "progression_summary_used": bool(req.context.progression_summary),
+        "notation_abc_present": bool(notation_abc),
+        "fallback_reason": fallback_reason or None,
+    }
+    if composition is not None:
+        diag.update(composition_to_diagnostics(composition, chart))
+
     return {
         "direct_answer": direct,
         "practice_steps": steps,
         "what_to_listen_for": listen,
+        "notation_abc": notation_abc,
+        "notation_abc_sections": notation_sections,
         "suggested_next_action": (
-            f"Loop one section of **{song}** in **Backing** and play the line slowly before adding fills."
-            if song
-            else "Set your active song, then loop one section in **Backing** and apply the pattern."
+            f"Loop {target} in **Backing** and play the written line with the track."
+            if composition
+            else (
+                f"Loop one section of **{song}** in **Backing** once the chart is loaded."
+                if song
+                else "Set your active song, then loop one section in **Backing** and apply the pattern."
+            )
         ),
-        "diagnostics": {
-            "bass_line_content": True,
-            "normalized_phrases": phrase_norms,
-            "chord_context_available": bool(chords),
-            "chord_count": len(chords),
-            "resolved_instrument": instrument,
-            "instrument_family": family,
-            "resolved_level": level,
-            "progression_summary_used": bool(req.context.progression_summary),
-        },
+        "diagnostics": diag,
     }
