@@ -71,7 +71,23 @@ def read_coach_context(
     if not active and isinstance(session_state.get("active_song"), dict):
         active = session_state["active_song"]
     title = str(active.get("title") or snap.get("title") or "").strip()
-    pick = str(ctx.get("pick_key") or snap.get("pick_key") or session_state.get("active_catalog_pick_key") or "")
+    pick = str(ctx.get("pick_key") or snap.get("pick_key") or "").strip()
+    if not pick:
+        try:
+            from music_coach_ami.chart_context_reader import resolve_authoritative_pick_key
+
+            pick, _ = resolve_authoritative_pick_key(session_state, ami_ctx=ctx, pick_key_hint="")
+        except ImportError:
+            try:
+                from songs.state import ACTIVE_CATALOG_PICK_KEY, reconcile_active_pick_key
+
+                pick = str(
+                    session_state.get(ACTIVE_CATALOG_PICK_KEY)
+                    or reconcile_active_pick_key(session_state)
+                    or ""
+                ).strip()
+            except ImportError:
+                pick = str(session_state.get("active_catalog_pick_key") or "").strip()
     progression_summary = str(active.get("progression_summary") or snap.get("progression_summary") or "").strip()
 
     original_key = str(active.get("key") or active.get("default_key") or snap.get("genre") or "").strip()

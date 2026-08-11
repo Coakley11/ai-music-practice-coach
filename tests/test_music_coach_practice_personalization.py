@@ -651,5 +651,134 @@ class RepertoirePersonalizationTests(unittest.TestCase):
         self.assertIn("goal_improv", resp.source_solver)
 
 
+class CoachChartContextTransportTests(unittest.TestCase):
+    @staticmethod
+    def _two_of_us_catalog() -> tuple[str, dict, dict]:
+        from song_catalog.catalog import format_pick_key
+
+        label = "Just the Two of Us — Grover Washington Jr. / Bill Withers"
+        pick_key = format_pick_key("Soul", label)
+        sections = {
+            "Verse": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
+            "Chorus": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
+        }
+        row = {
+            "title": "Just the Two of Us",
+            "artist": "Grover Washington Jr. / Bill Withers",
+            "genre": "Soul",
+            "key": "Db",
+            "sections": sections,
+        }
+        catalog = {"Soul": {label: row}}
+        return pick_key, catalog, row
+
+    def test_read_coach_context_resolves_pick_from_active_song_state(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from music_coach_ami.context_reader import read_coach_context
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        pick_key, catalog, row = self._two_of_us_catalog()
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "",
+            SELECTED_SONG_STATE_KEY: {
+                "title": row["title"],
+                "artist": row["artist"],
+                "genre": row["genre"],
+            },
+            ACTIVE_SONG_STATE_KEY: {"pick_key": pick_key},
+            "_reconcile_song_picker_catalog": catalog,
+            "_reconcile_song_library": catalog,
+            "display_key": "Db",
+            "instrument": "Bass",
+            "level": "Intermediate",
+            "practice_focus_section": "Verse",
+        }
+        coach_ctx = read_coach_context(
+            session,
+            ami_ctx={
+                "instrument": "Bass",
+                "level": "Intermediate",
+                "display_key": "Db",
+                "practice_focus_section": "Verse",
+                "active_song": {"title": row["title"], "artist": row["artist"]},
+            },
+        )
+        snap = coach_ctx.extra.get("chart_snapshot") if isinstance(coach_ctx.extra, dict) else {}
+        assert isinstance(snap, dict)
+        self.assertEqual(coach_ctx.active_song_title, "Just the Two of Us")
+        self.assertEqual(coach_ctx.active_song_pick_key, pick_key)
+        self.assertTrue(snap.get("chart_available"))
+        self.assertEqual(snap.get("resolved_pick_key"), pick_key)
+        self.assertTrue(str(snap.get("chart_source") or "").startswith("catalog.resolve_catalog_song_for_chart"))
+        self.assertGreaterEqual(int(snap.get("active_section_chord_count") or 0), 4)
+        self.assertIn("Dbmaj7", snap.get("active_section_chords") or [])
+
+    def test_read_coach_context_uses_improv_concert_sections(self) -> None:
+        from music_coach_ami.context_reader import read_coach_context
+
+        session = {
+            "improv_song_concert_sections": {
+                "Verse": ["Gm7", "Cm7", "F7", "Bbmaj7"],
+            },
+            "display_key": "Bb",
+            "instrument": "Bass",
+            "level": "Intermediate",
+            "practice_focus_section": "Verse",
+        }
+        coach_ctx = read_coach_context(
+            session,
+            ami_ctx={
+                "instrument": "Bass",
+                "level": "Intermediate",
+                "display_key": "Bb",
+                "practice_focus_section": "Verse",
+                "active_song": {"title": "Practice Song"},
+            },
+        )
+        snap = coach_ctx.extra.get("chart_snapshot") if isinstance(coach_ctx.extra, dict) else {}
+        assert isinstance(snap, dict)
+        self.assertTrue(snap.get("chart_available"))
+        self.assertEqual(snap.get("chart_source"), "session.improv_song_concert_sections")
+        self.assertEqual(snap.get("active_section_chords"), ["Gm7", "Cm7", "F7", "Bbmaj7"])
+
+    def test_live_shape_bass_line_notation_from_catalog_session(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        pick_key, catalog, row = self._two_of_us_catalog()
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "",
+            SELECTED_SONG_STATE_KEY: {
+                "title": row["title"],
+                "artist": row["artist"],
+                "genre": row["genre"],
+            },
+            ACTIVE_SONG_STATE_KEY: {"pick_key": pick_key},
+            "_reconcile_song_picker_catalog": catalog,
+            "_reconcile_song_library": catalog,
+            "display_key": "Db",
+            "instrument": "Bass",
+            "level": "Intermediate",
+            "practice_focus_section": "Verse",
+        }
+        resp = run_coach_pipeline(
+            "Give me a good baseline to use for this song.",
+            session,
+            ami_ctx={
+                "instrument": "Bass",
+                "level": "Intermediate",
+                "display_key": "Db",
+                "practice_focus_section": "Verse",
+                "active_song": {"title": row["title"], "artist": row["artist"]},
+            },
+        )
+        assert resp is not None
+        self.assertIn("SongCoachSolver(bass_line)", resp.source_solver)
+        self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+        self.assertIn("clef=bass", resp.notation_abc)
+        self.assertIn('"Dbmaj7"', resp.notation_abc)
+        self.assertNotIn("do not have the song's chord changes", resp.composed_markdown().lower())
+
+
 if __name__ == "__main__":
     unittest.main()
