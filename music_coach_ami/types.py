@@ -19,6 +19,7 @@ class CoachIntent(str, Enum):
     THEORY_EXPLANATION = "theory_explanation"
     SCALE_PRACTICE = "scale_practice"
     SONG_COACHING = "song_coaching"
+    SONG_EDITING_WORKFLOW = "song_editing_workflow"
     PRACTICE_HISTORY_ANALYSIS = "practice_history_analysis"
     MUSIC_TRANSPOSITION = "music_transposition"
     FALLBACK = "music_general"
@@ -58,6 +59,8 @@ class ExtractedEntities:
     theory_topic: str = ""
     section_name: str = ""
     song_title: str = ""
+    song_edit_target: str = ""
+    song_source_hint: str = ""
     requested_level: str = ""
     requested_level_explicit: bool = False
     practice_focus: str = ""

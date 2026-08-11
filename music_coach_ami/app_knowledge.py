@@ -305,6 +305,103 @@ FEATURES: dict[str, AppFeature] = {
         ),
         example_questions=("Where can I find the songs I'm working on?",),
     ),
+    "song_catalog": AppFeature(
+        feature_id="song_catalog",
+        display_name="Song Catalog",
+        purpose="Curated songs shipped with the app — browse and set an active catalog song for practice.",
+        when_to_use="When you want repertoire from the built-in library rather than a song you composed.",
+        navigation_path="Studio sidebar → **Song Selection** → choose **Song Selection (catalog song)**.",
+        user_goals=("catalog song", "curated song", "library song"),
+        usage_steps=(
+            "Open **Song Selection** and keep the source on **Song Selection (catalog song)**.",
+            "Pick a song from the library filters to set it active.",
+            "Practice, Backing, and chart/lyrics editors use that catalog song as the base chart.",
+        ),
+        when_not_to_use="When you are editing a song you built yourself (use **Custom Progression**).",
+        related_features=("chart_editor", "lyrics_editor", "custom_progression", "practice_key"),
+        distinctions=(
+            "The shared **catalog** record is read-only at runtime. Your chart/lyric edits are stored in "
+            "**workspace sidecar files**, not written back to the curated catalog."
+        ),
+        example_questions=("Can I edit a catalog song?", "If I edit a catalog song, does it change the original?"),
+    ),
+    "chart_editor": AppFeature(
+        feature_id="chart_editor",
+        display_name="Edit Song Chart",
+        purpose="Edit the chord chart/progression for the active catalog song in its written key.",
+        when_to_use="When the harmony in the chart itself should change — not just the key you read/practice in.",
+        navigation_path="Studio sidebar → **Song Selection** → **Edit Song Chart**.",
+        user_goals=("edit chords", "change progression", "correct chart", "save chord changes"),
+        usage_steps=(
+            "On **Song Selection**, open **Edit Song Chart** (or the **Edit Song Chart** tab in the picker editor).",
+            "Turn on **Enable editing**.",
+            "Edit bar/section chords, then click **Save corrected chart** or **Save as user verified**.",
+            "Use **Revert to catalog** to remove your override.",
+        ),
+        when_not_to_use="When you only want to practice in another key today (use **Practice / Concert Key**).",
+        related_features=("song_catalog", "practice_key", "lyrics_editor"),
+        distinctions="Chart edits persist in `user_chart_overrides.json` for your workspace; they do not mutate the shared catalog.",
+        example_questions=("I changed a chord in this song. How do I save the change?", "Where do I change the chords?"),
+    ),
+    "lyrics_editor": AppFeature(
+        feature_id="lyrics_editor",
+        display_name="Lyrics & Cues",
+        purpose="Edit lyrics and performance cues for the active catalog song.",
+        when_to_use="When you want your own lyrics text or section cues saved with the song.",
+        navigation_path="Studio sidebar → **Song Selection** → **Lyrics & Cues**.",
+        user_goals=("add lyrics", "edit lyrics", "save lyrics", "performance cues"),
+        usage_steps=(
+            "Open **Song Selection** and expand/open **Lyrics & Cues** (Voice/Karaoke can link here).",
+            "Edit section lyrics/cues — the panel shows **Unsaved changes** while you type.",
+            "Click **Save Lyrics & Cues** (or **Save as user verified**).",
+            "Use **Revert my lyrics** to restore the catalog lyrics.",
+        ),
+        when_not_to_use="When editing a custom progression you composed (Custom Progression lyrics UI is not mounted today).",
+        related_features=("song_catalog", "chart_editor"),
+        distinctions="Lyrics save explicitly to `user_song_content.json`; typing alone does not autosave to disk.",
+        example_questions=("How do I add lyrics to a song and save them?", "Are lyrics saved automatically?"),
+    ),
+    "custom_progression": AppFeature(
+        feature_id="custom_progression",
+        display_name="Custom Progression",
+        purpose="Create, edit, save, and reload your own songs/progressions outside the curated catalog.",
+        when_to_use="When you are writing or revisiting a custom song you created.",
+        navigation_path="Studio sidebar → **Custom Progression** (✏️).",
+        user_goals=("custom song", "create your own song", "my custom songs", "save to library"),
+        usage_steps=(
+            "Open **Custom Progression** and build/edit sections and chords.",
+            "Click **Save to library** to store a named custom song.",
+            "Reopen later via **Load saved or demo charts** → **Saved songs** → **Load selected**.",
+            "Use **Set as Active Song** to practice/back the custom song across the studio.",
+        ),
+        when_not_to_use="When you only need to tweak a curated catalog chart (use **Edit Song Chart** on Song Selection).",
+        related_features=("song_catalog", "chart_editor", "practice_key"),
+        distinctions="Custom songs are user-owned (`custom::` keys) in `cpl_saved_progressions` + cloud library — not catalog sidecars.",
+        example_questions=("I created a custom song before. How do I edit it now?", "Where are my custom songs?"),
+    ),
+    "practice_key": AppFeature(
+        feature_id="practice_key",
+        display_name="Practice / Concert Key",
+        purpose="Transpose how you read and practice the current song without rewriting the saved chart.",
+        when_to_use="When you want to practice in another key today but keep the underlying harmony unchanged.",
+        navigation_path="Global studio bar / sidebar → **Practice / Concert Key**.",
+        user_goals=("practice key", "transpose for practice", "concert key", "read in another key"),
+        usage_steps=(
+            "Select **Practice / Concert Key** in the studio bar (when Fixed Practice Key mode is off).",
+            "Choose the concert key you want charts/backing to follow for this song source.",
+            "Practice and Backing use this transposed context; the stored chart progression stays as written unless you edit it.",
+        ),
+        when_not_to_use="When the chord progression itself must change permanently (use **Edit Song Chart** or **Custom Progression**).",
+        related_features=("chart_editor", "backing", "song_catalog"),
+        distinctions=(
+            "**Practice Key** = temporary/read/practice transposition. "
+            "**Edit Song Chart** = persistent change to saved harmony."
+        ),
+        example_questions=(
+            "Does changing Practice Key permanently transpose my song?",
+            "I only want to practice in Eb today. Do I need to edit all the chords?",
+        ),
+    ),
 }
 
 
@@ -345,9 +442,9 @@ CREATIVE_COMPARISONS: dict[str, str] = {
         "getting coaching feedback — not layering parts."
     ),
     "practice_key_vs_chord_edit": (
-        "**Practice Key** transposes how you read/practice the song without rewriting the chart. "
-        "**Editing song chords** changes the underlying progression/chart itself. "
-        "Use Practice Key for performance comfort; edit chords when the harmony itself needs to change."
+        "**Practice / Concert Key** transposes how you read and practice the current song — it does not rewrite "
+        "the saved chart. **Edit Song Chart** (or **Custom Progression** for your own songs) changes the actual "
+        "stored harmony that comes back next time."
     ),
 }
 
@@ -381,6 +478,11 @@ def feature_by_question(low: str) -> str:
         ("harmony_map", ("harmony map", "understand chords")),
         ("motif", ("what is a motif", "practice a motif", "phrase / motif", "improve my phrasing")),
         ("creative", ("what is creative", "improvisation studio")),
+        ("practice_key", ("practice key", "concert key", "transpose for practice")),
+        ("chart_editor", ("edit song chart", "save corrected chart", "change the chords", "edit chords", "save chord")),
+        ("lyrics_editor", ("lyrics & cues", "save lyrics", "add lyrics", "edit lyrics")),
+        ("custom_progression", ("custom progression", "custom song", "save to library", "my custom songs")),
+        ("song_catalog", ("catalog song", "song catalog", "edit a catalog", "curated song")),
         ("songs", ("see my songs", "where are my songs", "song list", "songs i'm working")),
         ("practice", ("where can i practice", "practice scales")),
     )

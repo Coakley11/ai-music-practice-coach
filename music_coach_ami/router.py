@@ -15,6 +15,7 @@ from music_coach_ami.feature_comparison import (
     practice_log_intent_in_question,
     upload_analysis_intent_in_question,
 )
+from music_coach_ami.song_editing_knowledge import is_song_editing_question
 from music_coach_ami.entities import (
     extract_constraints,
     extract_entities,
@@ -39,6 +40,7 @@ def _legacy_intent_for(coach_intent: CoachIntent) -> str:
         CoachIntent.SONG_COACHING: "section_focus",
         CoachIntent.PRACTICE_HISTORY_ANALYSIS: "practice_history_analysis",
         CoachIntent.MUSIC_TRANSPOSITION: "music_transposition",
+        CoachIntent.SONG_EDITING_WORKFLOW: "song_editing_workflow",
         CoachIntent.FALLBACK: "music_general",
     }
     return mapping.get(coach_intent, "music_general")
@@ -77,6 +79,9 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         if is_creative_feature_comparison(low):
             return CoachIntent.CREATIVE_FEATURE_HELP, 0.92
         return CoachIntent.FEATURE_EXPLANATION, 0.92
+
+    if is_song_editing_question(low):
+        return CoachIntent.SONG_EDITING_WORKFLOW, 0.91
 
     if "should i use" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9

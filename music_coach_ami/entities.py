@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from music_coach_ami.app_knowledge import feature_by_question
+from music_coach_ami.song_editing_knowledge import extract_song_edit_entities
 from music_coach_ami.types import CoachConstraints, ExtractedEntities
 
 
@@ -78,6 +79,8 @@ def extract_entities(normalized: str, context_instrument: str = "") -> Extracted
             theory = tok
             break
 
+    song_edit_target, song_source_hint = extract_song_edit_entities(low)
+
     return ExtractedEntities(
         instrument=instrument,
         skill_topic=skill,
@@ -87,6 +90,8 @@ def extract_entities(normalized: str, context_instrument: str = "") -> Extracted
         requested_level_explicit=q_level_explicit,
         practice_focus=q_focus or (skill if skill in ("tone", "articulation", "technique", "rhythm", "harmony") else ""),
         practice_focus_explicit=q_focus_explicit or bool(skill),
+        song_edit_target=song_edit_target,
+        song_source_hint=song_source_hint,
     )
 
 

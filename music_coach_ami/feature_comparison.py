@@ -122,7 +122,29 @@ def _normalize_when_clause(when_to_use: str) -> str:
             low = text.lower()
     if low.startswith("you want "):
         text = text[9:].strip()
+        low = text.lower()
+    if low.startswith("to "):
+        text = text[3:].strip()
+        low = text.lower()
     return text.rstrip(".")
+
+
+def _best_for_phrase(when_to_use: str, *, purpose: str = "") -> str:
+    clause = _normalize_when_clause(when_to_use)
+    low = clause.lower()
+    if low.startswith("improvise freely with a generated harmonic setting"):
+        clause = "open-ended improvisation over a newly generated harmonic setting"
+    elif low.startswith("improvise freely"):
+        clause = "open-ended improvisation over a generated harmonic setting"
+    elif low.startswith("improvise"):
+        clause = f"open-ended {clause}"
+    elif low.startswith("a structured challenge"):
+        clause = "structured practice challenges on your active song"
+    elif low.startswith("during creative practice when you want in-the-moment targets"):
+        clause = "in-the-moment targets while you play"
+    elif not clause and purpose:
+        clause = purpose.strip().rstrip(".")
+    return clause.rstrip(".")
 
 
 def _find_it_line(feat: object) -> str:
@@ -134,9 +156,9 @@ def _find_it_line(feat: object) -> str:
 
 def _feature_comparison_block(feat: object) -> list[str]:
     lines = [f"**{feat.display_name}**", str(feat.purpose).strip()]
-    when = _normalize_when_clause(str(feat.when_to_use or ""))
-    if when:
-        lines.append(f"Best for: {when}.")
+    best = _best_for_phrase(str(getattr(feat, "when_to_use", "") or ""), purpose=str(feat.purpose or ""))
+    if best:
+        lines.append(f"**Best for:** {best}.")
     find_it = _find_it_line(feat)
     if find_it:
         lines.append(find_it)
@@ -174,8 +196,16 @@ def _comparison_best_choice(pair_key: str, fa: object, fb: object) -> str:
     )
 
 
+def _normalize_match_fragment(fragment: str) -> str:
+    text = str(fragment or "").lower().strip()
+    text = re.sub(r"'s\b", "s", text)
+    text = text.replace("'", "")
+    text = re.sub(r"\bsongs\b", "song", text)
+    return text
+
+
 def _match_feature_in_fragment(fragment: str) -> str:
-    frag = str(fragment or "").lower().strip()
+    frag = _normalize_match_fragment(fragment)
     if not frag:
         return ""
     best_fid = ""

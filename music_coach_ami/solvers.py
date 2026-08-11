@@ -857,6 +857,27 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
     )
 
 
+def solve_song_editing_workflow(req: CoachRequest) -> CoachResponse:
+    from music_coach_ami.song_editing_knowledge import (
+        classify_song_editing_question,
+        compose_song_editing_answer,
+        song_editing_diagnostics,
+    )
+
+    classification = classify_song_editing_question(req.normalized_question, req.context)
+    payload = compose_song_editing_answer(classification, req.context)
+    diag = song_editing_diagnostics(classification, req.context)
+    return CoachResponse(
+        intent=CoachIntent.SONG_EDITING_WORKFLOW,
+        direct_answer=payload["direct_answer"],
+        app_navigation_steps=list(payload.get("app_navigation_steps") or []),
+        suggested_next_action=str(payload.get("suggested_next_action") or ""),
+        source_solver="SongEditingWorkflowSolver",
+        confidence=0.9,
+        diagnostics=diag,
+    )
+
+
 SOLVER_REGISTRY: dict[CoachIntent, SolverFn] = {
     CoachIntent.PRACTICE_PLAN: solve_practice_plan,
     CoachIntent.TECHNIQUE_PROBLEM: solve_technique_problem,
@@ -869,4 +890,5 @@ SOLVER_REGISTRY: dict[CoachIntent, SolverFn] = {
     CoachIntent.THEORY_EXPLANATION: solve_theory_explanation,
     CoachIntent.SCALE_PRACTICE: solve_scale_practice,
     CoachIntent.SONG_COACHING: solve_song_coaching,
+    CoachIntent.SONG_EDITING_WORKFLOW: solve_song_editing_workflow,
 }
