@@ -181,6 +181,88 @@ class ExpandedRoutingTests(unittest.TestCase):
             CoachIntent.REPERTOIRE_RECOMMENDATION,
         )
 
+    def test_record_myself_playing_navigation(self) -> None:
+        self.assertEqual(
+            route_question("Where can I record myself playing?", {}).intent,
+            CoachIntent.APP_NAVIGATION,
+        )
+
+
+class NavigationPipelineTests(unittest.TestCase):
+    """End-to-end smoke for expanded navigation / recommendation prompts."""
+
+    def test_upload_analyze_navigation(self) -> None:
+        resp = run_coach_pipeline("How do I analyze a recording?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        self.assertIn("Upload", resp.composed_markdown())
+
+    def test_record_myself_navigation(self) -> None:
+        resp = run_coach_pipeline("Where can I record myself playing?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_harmony_map_feature_explanation(self) -> None:
+        resp = run_coach_pipeline("What does Harmony Map do?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
+        self.assertIn("Harmony Map", resp.composed_markdown())
+
+    def test_backing_vs_jam_explanation(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Backing and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
+        text = resp.composed_markdown()
+        self.assertIn("Backing", text)
+        self.assertIn("Jam", text)
+
+    def test_missions_vs_live_coach_explanation(self) -> None:
+        resp = run_coach_pipeline("Should I use Missions or Live Coach?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
+
+    def test_phrasing_recommendation_pipeline(self) -> None:
+        resp = run_coach_pipeline("I want to improve my phrasing. What should I use?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_FEATURE_RECOMMENDATION)
+
+    def test_timing_recommendation_pipeline(self) -> None:
+        resp = run_coach_pipeline("I want to improve my timing. What should I use?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_FEATURE_RECOMMENDATION)
+
+    def test_practice_log_numbered_then_steps(self) -> None:
+        resp = run_coach_pipeline("How do I log my practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("1.", text)
+        self.assertIn("**Then:**", text)
+
+
+class ExerciseFocusPipelineTests(unittest.TestCase):
+    def test_tone_vs_articulation_different_patterns(self) -> None:
+        tone = run_coach_pipeline(
+            "Give me a medium E Dorian exercise for tone on the flute",
+            {},
+        )
+        artic = run_coach_pipeline(
+            "Give me a medium E Dorian exercise for articulation on the flute",
+            {},
+        )
+        assert tone is not None and artic is not None
+        t_id = (tone.diagnostics.get("exercise_profile") or {}).get("selected_pattern_id")
+        a_id = (artic.diagnostics.get("exercise_profile") or {}).get("selected_pattern_id")
+        self.assertTrue(t_id)
+        self.assertTrue(a_id)
+        self.assertNotEqual(t_id, a_id)
+        self.assertIn("slurred", tone.composed_markdown().lower())
+        art = artic.diagnostics.get("exercise_profile") or {}
+        self.assertIn(art.get("notation_articulation"), ("slur2_short2", "tongued", "alternate_slur_tongue"))
+
 
 if __name__ == "__main__":
     unittest.main()

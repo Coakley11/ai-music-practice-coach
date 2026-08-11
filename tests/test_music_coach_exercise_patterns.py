@@ -91,9 +91,9 @@ class DifficultyProfileTests(unittest.TestCase):
         self.assertEqual(spec.pattern_id, "four_note_sequence")
 
     def test_flute_articulation_focus(self) -> None:
-        spec = parse_scale_practice_question("Give me a difficult D dorian exercise")
-        apply_exercise_profile(spec, level="Intermediate", practice_focus="Articulation", instrument="Flute")
-        self.assertEqual(spec.pattern_id, "four_note_sequence")
+        spec = parse_scale_practice_question("Give me a medium D dorian exercise for articulation on the flute")
+        apply_exercise_profile(spec, level="intermediate", practice_focus="articulation", instrument="Flute")
+        self.assertEqual(spec.pattern_id, "broken_thirds_1324")
 
     def test_piano_harmony_focus(self) -> None:
         spec = parse_scale_practice_question("Give me a difficult D dorian exercise")

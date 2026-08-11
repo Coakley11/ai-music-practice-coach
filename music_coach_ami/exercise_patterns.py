@@ -166,6 +166,8 @@ def select_pattern_for_profile(profile: ExerciseProfile) -> tuple[PracticePatter
     if focus == "articulation" and fam == "wind":
         if resolved == "advanced":
             return PATTERN_LIBRARY["perm_1342"], "wind articulation: advanced permutation cells"
+        if resolved in ("intermediate", "intermediate_plus"):
+            return PATTERN_LIBRARY["broken_thirds_1324"], "wind articulation: broken-third cells"
         return PATTERN_LIBRARY["four_note_sequence"], "wind articulation: four-note cells for tonguing"
 
     if focus == "technique" and fam == "wind":
