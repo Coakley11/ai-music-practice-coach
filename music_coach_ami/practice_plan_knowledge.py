@@ -76,6 +76,10 @@ def _explicit_question_focus(req: CoachRequest) -> tuple[str, bool]:
     return "", False
 
 
+def _clean(text: object) -> str:
+    return str(text or "").strip()
+
+
 def _resolve_plan_focus(req: CoachRequest, history: PracticeHistorySnapshot) -> tuple[str, str]:
     q_focus, q_explicit = _explicit_question_focus(req)
     if q_explicit and q_focus:
@@ -89,11 +93,17 @@ def _resolve_plan_focus(req: CoachRequest, history: PracticeHistorySnapshot) -> 
         context_focus=req.context.practice_focus,
         skill_topic=req.entities.skill_topic,
     )
-    if focus:
+    if focus and prov in {"question", "coach_context"}:
         return focus, prov
 
     if history.unresolved_next_step:
-        sec = history.last_section.lower()
+        step_low = history.unresolved_next_step.lower()
+        if any(p in step_low for p in ("phrase", "phrasing", "line shape")):
+            return "phrasing", "history_next_step"
+        if "bridge" in step_low or _usable_section(history.last_section):
+            if history.last_focus:
+                return history.last_focus, "history_next_step"
+            return "repertoire", "history_next_step"
         diff = history.recurring_difficulty.lower()
         if "articulation" in diff or "tongue" in diff:
             return "articulation", "history_difficulty"
@@ -101,8 +111,10 @@ def _resolve_plan_focus(req: CoachRequest, history: PracticeHistorySnapshot) -> 
             return "timing", "history_difficulty"
         if any(p in diff for p in ("tone", "air", "register", "breath")):
             return "tone", "history_difficulty"
-        if sec:
-            return "repertoire", "history_next_step"
+        if "voicing" in diff or "voice leading" in diff:
+            return "harmony", "history_difficulty"
+        if history.last_focus:
+            return history.last_focus, "history_next_step"
     if history.recurring_difficulty:
         diff = history.recurring_difficulty.lower()
         if "articulation" in diff:
@@ -111,8 +123,14 @@ def _resolve_plan_focus(req: CoachRequest, history: PracticeHistorySnapshot) -> 
             return "tone", "history_difficulty"
         if any(p in diff for p in ("timing", "rhythm")):
             return "timing", "history_difficulty"
+        if "voicing" in diff:
+            return "harmony", "history_difficulty"
+        if "phrasing" in diff or "phrase" in diff:
+            return "phrasing", "history_difficulty"
     if history.last_focus:
         return history.last_focus, "history_last_focus"
+    if focus:
+        return focus, prov
     return "general", "default"
 
 
@@ -260,6 +278,188 @@ def _instrument_blocks(
     return weights, details
 
 
+def _usable_section(section: str) -> str:
+    text = _clean(section)
+    if not text:
+        return ""
+    low = text.lower()
+    if low in {"full song", "full", "all", "song", "entire song"}:
+        return ""
+    return text
+
+
+def _focus_display_phrase(bucket: str, instrument: str, focus: str) -> str:
+    phrases = {
+        "tone": f"{instrument} tone",
+        "articulation": f"{instrument} articulation",
+        "timing": "timing and rhythmic control",
+        "harmony": "harmony and voicing",
+        "improvisation": "improvisation vocabulary",
+        "phrasing": "phrasing and line shape",
+        "technique": f"{instrument} technique",
+        "repertoire": "repertoire work",
+    }
+    if bucket in phrases:
+        return phrases[bucket]
+    cleaned = _clean(focus)
+    return cleaned or "balanced technique"
+
+
+def _format_priority_line(*, focus_phrase: str, song: str = "", section: str = "") -> str:
+    sec = _usable_section(section)
+    song_title = _clean(song)
+    if sec and song_title:
+        return f"**Today's priority:** {focus_phrase} in the **{sec}** of **{song_title}**."
+    if song_title:
+        if focus_phrase.endswith("work"):
+            return f"**Today's priority:** {focus_phrase} on **{song_title}**."
+        if focus_phrase in {"harmony and voicing", "phrasing and line shape"}:
+            preposition = "across" if focus_phrase == "harmony and voicing" else "in"
+            return f"**Today's priority:** {focus_phrase} {preposition} **{song_title}**."
+        return f"**Today's priority:** {focus_phrase} in **{song_title}**."
+    return f"**Today's priority:** {focus_phrase}."
+
+
+def _history_why_line(history: PracticeHistorySnapshot, *, focus_prov: str) -> str:
+    if not history.available or not focus_prov.startswith("history"):
+        return ""
+    if history.unresolved_next_step:
+        step = history.unresolved_next_step
+        sec = _usable_section(history.last_section)
+        if sec and sec.lower() in step.lower():
+            return f"**Why:** Your recent practice note says the **{sec}** still needs slow, focused work."
+        if "phrase" in step.lower() or "phrasing" in step.lower():
+            return "**Why:** Your last practice note says phrasing there still needs slow, shaped work."
+        return f"**Why:** Your last practice note says: _{step}_."
+    if history.recurring_difficulty:
+        diff = history.recurring_difficulty
+        if "upper register" in diff.lower() or "register" in diff.lower():
+            return "**Why:** Upper-register tone has come up repeatedly in your recent sessions."
+        if "voicing" in diff.lower():
+            return "**Why:** Voicing transitions have been a recurring challenge in recent sessions."
+        return f"**Why:** **{diff}** has come up repeatedly in your recent sessions."
+    if history.last_focus and focus_prov == "history_last_focus":
+        return f"**Why:** **{history.last_focus}** has been your most recent practice focus."
+    return ""
+
+
+def _resolve_plan_song_section(
+    req: CoachRequest,
+    history: PracticeHistorySnapshot,
+    focus_prov: str,
+) -> tuple[str, str]:
+    active_song = _clean(req.context.active_song_title)
+    active_section = _usable_section(req.context.active_section)
+    if focus_prov.startswith("history"):
+        song = _clean(history.last_song) or active_song
+        section = _usable_section(history.last_section) or active_section
+        if history.unresolved_next_step and _usable_section(history.last_section):
+            section = _usable_section(history.last_section)
+        return song, section
+    song = active_song or _clean(history.last_song)
+    section = active_section or _usable_section(history.last_section)
+    return song, section
+
+
+def _history_drives_continuity(history: PracticeHistorySnapshot, focus_prov: str) -> bool:
+    if not history.available or not focus_prov.startswith("history"):
+        return False
+    return bool(history.unresolved_next_step or history.recurring_difficulty or history.last_focus)
+
+
+def _history_continuity_blocks(
+    *,
+    family: str,
+    instrument: str,
+    song: str,
+    section: str,
+    focus_bucket: str,
+    history: PracticeHistorySnapshot,
+) -> tuple[dict[str, float], dict[str, str]] | None:
+    sec = _usable_section(section)
+    song_title = _clean(song)
+    if focus_bucket == "phrasing" and sec:
+        sec_label = sec
+        weights = {
+            "warm-up / tone centering": 0.15,
+            "slow 2-bar phrase shaping": 0.25,
+            f"{sec_label.lower()} at controlled tempo": 0.35,
+            "section-to-song application": 0.15,
+            "review": 0.10,
+        }
+        details = {
+            "warm-up / tone centering": f"Center tone and air on **{instrument}** before shaping lines.",
+            "slow 2-bar phrase shaping": "Work 2-bar fragments slowly; shape the line before adding tempo.",
+            f"{sec_label.lower()} at controlled tempo": (
+                f"Loop the **{sec_label}** of **{song_title}** at a tempo you can phrase cleanly."
+                if song_title
+                else f"Loop the **{sec_label}** at a tempo you can phrase cleanly."
+            ),
+            "section-to-song application": (
+                f"Connect the **{sec_label}** back into a longer pass of **{song_title}**."
+                if song_title
+                else f"Connect the **{sec_label}** into a longer musical pass."
+            ),
+            "review": "Replay the hardest 2-bar fragment and note one phrasing fix for next time.",
+        }
+        return weights, details
+    if focus_bucket == "tone" and any(p in history.recurring_difficulty.lower() for p in ("register", "upper", "breath", "airy")):
+        weights = {
+            "long tones": 0.25,
+            "register connection": 0.30,
+            "tone through attacks": 0.15,
+            "musical application": 0.20,
+            "review": 0.10,
+        }
+        details = {
+            "long tones": "Hold steady notes in a comfortable register before stretching upward.",
+            "register connection": "Use slow slurred fragments to connect into the upper register without thinning.",
+            "tone through attacks": "Keep the same centered tone when tonguing or starting notes.",
+            "musical application": (
+                f"Apply the tone work to a slow phrase from **{song_title}**."
+                if song_title
+                else "Apply the tone work to a slow phrase from your active song."
+            ),
+            "review": "Replay the register that still feels unstable.",
+        }
+        return weights, details
+    if focus_bucket == "harmony" and "voicing" in history.recurring_difficulty.lower():
+        weights = {
+            "warm-up voicings": 0.15,
+            "voice-leading transitions": 0.35,
+            "left-hand pulse": 0.20,
+            "section application": 0.20,
+            "review": 0.10,
+        }
+        details = {
+            "warm-up voicings": "Review shell or root-position voicings in the current key.",
+            "voice-leading transitions": "Isolate the voicing change that still feels awkward; move smoothly between chords.",
+            "left-hand pulse": "Keep a steady pulse while the harmony changes.",
+            "section application": (
+                f"Apply the voicings to a loop from **{song_title}**."
+                if song_title
+                else "Apply the voicings to a loop from your active song."
+            ),
+            "review": "Replay the hardest transition once more at a calm tempo.",
+        }
+        return weights, details
+    if sec and song_title and focus_bucket in {"repertoire", "general"}:
+        weights = {
+            "warm-up": 0.15,
+            f"slow work on {sec.lower()}": 0.35,
+            "controlled run-through": 0.30,
+            "review": 0.20,
+        }
+        details = {
+            "warm-up": f"Warm up comfortably on **{instrument}** before section work.",
+            f"slow work on {sec.lower()}": f"Practice the **{sec}** of **{song_title}** slowly and steadily.",
+            "controlled run-through": f"Connect the **{sec}** into a longer pass of **{song_title}**.",
+            "review": f"Replay the **{sec}** and note what still needs attention.",
+        }
+        return weights, details
+    return None
+
+
 def _priority_lines(
     *,
     focus: str,
@@ -268,35 +468,24 @@ def _priority_lines(
     history: PracticeHistorySnapshot,
     song: str,
     section: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, list[str]]:
     bucket = _focus_bucket(focus)
-    focus_phrase = {
-        "tone": f"{instrument} tone",
-        "articulation": f"{instrument} articulation",
-        "timing": "timing and rhythmic control",
-        "harmony": "harmony and voicing work",
-        "improvisation": "improvisation vocabulary",
-        "phrasing": "phrasing and line shape",
-    }.get(bucket, focus or "balanced technique")
-
-    target_song = song or history.last_song
-    target_section = section or history.last_section
-    if target_section and target_song:
-        priority = f"**Today's priority:** {focus_phrase} and the **{target_section}** of **{target_song}**."
-    elif target_song:
-        priority = f"**Today's priority:** {focus_phrase} on **{target_song}**."
-    else:
-        priority = f"**Today's priority:** {focus_phrase}."
-
-    why = ""
-    if history.available and focus_prov.startswith("history"):
-        if history.unresolved_next_step:
-            why = f"**Why:** Your recent practice notes said: _{history.unresolved_next_step}_."
-        elif history.recurring_difficulty:
-            why = f"**Why:** Recent sessions flagged **{history.recurring_difficulty}** as an area that still needs work."
-    elif history.available and history.unresolved_next_step and not focus_prov.startswith("question"):
-        why = f"**Why:** Your last practice note pointed to: _{history.unresolved_next_step}_."
-    return priority, why
+    focus_phrase = _focus_display_phrase(bucket, instrument, focus)
+    priority = _format_priority_line(
+        focus_phrase=focus_phrase,
+        song=song,
+        section=section,
+    )
+    why = _history_why_line(history, focus_prov=focus_prov)
+    signals_used: list[str] = []
+    if why:
+        if history.unresolved_next_step and focus_prov.startswith("history"):
+            signals_used.append("unresolved_next_step")
+        elif history.recurring_difficulty and "history_difficulty" in focus_prov:
+            signals_used.append("recurring_difficulty")
+        elif history.last_focus and focus_prov == "history_last_focus":
+            signals_used.append("last_focus")
+    return priority, why, signals_used
 
 
 def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
@@ -310,13 +499,12 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
     focus, focus_prov = _resolve_plan_focus(req, history)
     bucket = _focus_bucket(focus)
 
-    song = req.context.active_song_title or history.last_song
-    section = req.context.active_section or history.last_section
+    song, section = _resolve_plan_song_section(req, history, focus_prov)
 
     q_focus, q_explicit = _explicit_question_focus(req)
-    use_tone_plan = bucket == "tone"
+    use_tone_plan = bucket == "tone" and not _history_drives_continuity(history, focus_prov)
 
-    priority, why = _priority_lines(
+    priority, why, history_signals_used = _priority_lines(
         focus=focus,
         focus_prov=focus_prov,
         instrument=instrument,
@@ -324,6 +512,66 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         song=song,
         section=section,
     )
+
+    continuity = _history_continuity_blocks(
+        family=family,
+        instrument=instrument,
+        song=song,
+        section=section,
+        focus_bucket=bucket,
+        history=history,
+    ) if _history_drives_continuity(history, focus_prov) else None
+
+    base_diag = {
+        "session_minutes": minutes,
+        "resolved_instrument": instrument,
+        "instrument_family": family,
+        "resolved_level": level,
+        "level_provenance": level_prov,
+        "resolved_focus": focus,
+        "focus_provenance": focus_prov,
+        "practice_history_available": history.available,
+        "history_signals_present": list(history.signals_used),
+        "history_signals_used_in_plan": history_signals_used,
+        "history_influenced_plan": bool(history_signals_used or continuity),
+        "history_next_step": history.unresolved_next_step or None,
+        "history_recurring_difficulty": history.recurring_difficulty or None,
+        "active_song_title": song or None,
+        "active_section": section or None,
+        "explicit_request_overrides_history": q_explicit,
+    }
+
+    if continuity:
+        weights, details = continuity
+        blocks = _allocate(minutes, weights)
+        steps = []
+        for label, mins in blocks.items():
+            detail = details.get(label, "")
+            line = f"**{mins} min** — {label}"
+            if detail:
+                line += f": {detail}"
+            steps.append(line)
+        direct_parts = [priority]
+        if why:
+            direct_parts.append(why)
+        direct_parts.append(f"Here is a **{minutes}-minute** plan for **{instrument}**:")
+        listen = ["Musical shape over speed", "Clean phrasing at a controlled tempo"]
+        if bucket == "phrasing":
+            listen = ["Line shape over speed", "Even tone through each 2-bar fragment"]
+        elif bucket == "tone":
+            listen = ["Centered core tone", "Stable pitch through register changes"]
+        elif bucket == "harmony":
+            listen = ["Smooth voicing motion", "Steady pulse while harmony changes"]
+        return {
+            "direct_answer": "\n\n".join(direct_parts),
+            "practice_steps": steps,
+            "what_to_listen_for": listen,
+            "recommendation": "Log what improved and what still feels unstable in **Practice Log** when you finish.",
+            "progression_criteria": [
+                "Move to the next block only when the current one stays clean on most repetitions.",
+            ],
+            "diagnostics": {**base_diag, "block_allocation": blocks, **blocks, "history_continuity_blocks": True},
+        }
 
     if use_tone_plan:
         plan = tone_focused_practice_plan(
@@ -348,17 +596,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
                 "Advance tempo or range only when the current block stays clean on most repetitions.",
             ],
             "diagnostics": {
-                "session_minutes": minutes,
-                "resolved_instrument": instrument,
-                "instrument_family": family,
-                "resolved_level": level,
-                "level_provenance": level_prov,
-                "resolved_focus": focus,
-                "focus_provenance": focus_prov,
-                "practice_history_available": history.available,
-                "history_signals_used": list(history.signals_used),
-                "active_song_title": song or None,
-                "active_section": section or None,
+                **base_diag,
                 "tone_plan_reused": True,
             },
         }
@@ -387,15 +625,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
                 "Advance tempo only when the current block stays clean on most repetitions.",
             ],
             "diagnostics": {
-                "session_minutes": minutes,
-                "resolved_instrument": instrument,
-                "instrument_family": family,
-                "resolved_level": level,
-                "level_provenance": level_prov,
-                "resolved_focus": focus,
-                "focus_provenance": focus_prov,
-                "practice_history_available": history.available,
-                "history_signals_used": list(history.signals_used),
+                **base_diag,
                 "chord_focus": True,
                 "block_allocation": blocks,
                 **blocks,
@@ -443,21 +673,8 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
             "Increase tempo or range only after the current tempo feels reliable.",
         ],
         "diagnostics": {
-            "session_minutes": minutes,
-            "resolved_instrument": instrument,
-            "instrument_family": family,
-            "resolved_level": level,
-            "level_provenance": level_prov,
-            "resolved_focus": focus,
-            "focus_provenance": focus_prov,
-            "practice_history_available": history.available,
-            "history_signals_used": list(history.signals_used),
-            "history_next_step": history.unresolved_next_step or None,
-            "history_recurring_difficulty": history.recurring_difficulty or None,
-            "active_song_title": song or None,
-            "active_section": section or None,
+            **base_diag,
             "block_allocation": blocks,
             **blocks,
-            "explicit_request_overrides_history": q_explicit,
         },
     }

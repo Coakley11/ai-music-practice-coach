@@ -703,35 +703,34 @@ def _solve_daily_song_recommendation(req: CoachRequest) -> CoachResponse:
     from music_coach_ami.practice_history_context import snapshot_from_coach_context
 
     history = snapshot_from_coach_context(req.context)
-    instrument = _coach_instrument(req)
     active = str(req.context.active_song_title or "").strip()
     next_step = history.unresolved_next_step
-    song = active or history.last_song
+    history_song = str(history.last_song or "").strip()
 
-    if song and (next_step or history.last_section or history.available):
-        reason_bits = []
-        if next_step:
-            reason_bits.append(f"Your recent practice notes said: _{next_step}_")
-        elif history.last_section:
-            reason_bits.append(f"Your recent work has centered on the **{history.last_section}**.")
-        elif history.recurring_difficulty:
-            reason_bits.append(f"Recent sessions flagged **{history.recurring_difficulty}** as an area to keep working.")
-        reason = " ".join(reason_bits) or "This song is already part of your recent practice."
+    if next_step and history_song:
+        sec = str(history.last_section or "").strip()
+        if sec and sec.lower() in next_step.lower():
+            reason = f"**Why:** Your recent practice note says the **{sec}** of **{history_song}** still needs focused work."
+        elif "bridge" in next_step.lower() and sec:
+            reason = f"**Why:** Your recent practice note says the **{sec}** of **{history_song}** still needs focused work."
+        else:
+            reason = f"**Why:** Your last practice note on **{history_song}** said: _{next_step}_."
         return CoachResponse(
             intent=CoachIntent.REPERTOIRE_RECOMMENDATION,
-            direct_answer=f"**Best choice today:** keep working on **{song}**.",
+            direct_answer=f"**Best choice today:** keep working on **{history_song}**.",
             practice_steps=[
-                f"**Why:** {reason}",
-                f"**Practice it:** Reopen **{song}** in **Song Selection** and continue where your last session left off.",
+                reason,
+                f"**Practice it:** Reopen **{history_song}** in **Song Selection** and continue where your last session left off.",
                 "**Next:** Set a short section loop in **Backing** or **Practice** and log the session when you finish.",
             ],
-            suggested_next_action=f"Open **{song}** and continue the section or note you flagged last time.",
+            suggested_next_action=f"Open **{history_song}** and continue the section or note you flagged last time.",
             source_solver="RepertoireSolver(daily_continue)",
             confidence=0.86,
             diagnostics={
                 "repertoire_mode": "daily_song",
                 "selection_reason": "practice_log_continuation",
-                "selected_song": song,
+                "selected_song": history_song,
+                "active_song_overridden": bool(active and active != history_song),
                 "history_signals_used": list(history.signals_used),
             },
         )

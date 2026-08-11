@@ -144,22 +144,99 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             "What should I work on today?",
             {},
             ami_ctx=self._ctx(
-                instrument="Flute",
+                instrument="Saxophone",
                 level="Intermediate",
+                song="The Girl from Ipanema",
+                section="Full Song",
                 log={
                     "session_count": 2,
                     "last_session_summary": {
-                        "active_song": "Blue Bossa",
-                        "next_step": "Next time: work on bridge slowly",
+                        "active_song": "The Girl from Ipanema",
                         "section_practiced": "Bridge",
+                        "focus_area": "Phrasing",
+                        "what_was_hard": "phrasing through the bridge",
+                        "next_step": "practice the bridge slowly and shape each 2-bar phrase",
                     },
                 },
             ),
         )
         assert resp is not None
-        text = resp.composed_markdown().lower()
+        md = resp.composed_markdown()
+        text = md.lower()
+        self.assertIn("phrasing", text)
         self.assertIn("bridge", text)
+        self.assertIn("ipanema", text)
         self.assertIn("why:", text)
+        self.assertIn("slow 2-bar phrase shaping", text)
+        self.assertTrue(resp.diagnostics.get("history_influenced_plan"))
+        self.assertIn("unresolved_next_step", resp.diagnostics.get("history_signals_used_in_plan") or [])
+        priority_line = md.split("\n")[0].lower()
+        self.assertIn("phrasing and line shape", priority_line)
+        self.assertIn("bridge", priority_line)
+        self.assertNotIn("full song", priority_line)
+
+    def test_priority_formatting_harmony_active_song(self) -> None:
+        resp = run_coach_pipeline(
+            "What should I work on today?",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Piano",
+                level="Advanced",
+                focus="Harmony",
+                song="Say",
+                section="Full Song",
+            ),
+        )
+        assert resp is not None
+        priority = resp.composed_markdown().split("\n")[0]
+        self.assertIn("harmony and voicing across **Say**", priority)
+        self.assertNotIn("Full Song", priority)
+        self.assertNotIn(" and the ", priority)
+
+    def test_priority_formatting_phrasing_active_song(self) -> None:
+        resp = run_coach_pipeline(
+            "What should I work on today?",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Saxophone",
+                focus="Phrasing",
+                song="The Girl from Ipanema",
+            ),
+        )
+        assert resp is not None
+        priority = resp.composed_markdown().split("\n")[0]
+        self.assertIn("phrasing and line shape in **The Girl from Ipanema**", priority)
+
+    def test_no_why_without_history_influence(self) -> None:
+        resp = run_coach_pipeline(
+            "What should I work on today?",
+            {},
+            ami_ctx=self._ctx(instrument="Piano", focus="Harmony", song="Say"),
+        )
+        assert resp is not None
+        self.assertNotIn("**Why:**", resp.composed_markdown())
+        self.assertFalse(resp.diagnostics.get("history_influenced_plan"))
+
+    def test_explicit_articulation_sax_regression(self) -> None:
+        resp = run_coach_pipeline(
+            "Give me a 20-minute articulation session on the sax.",
+            {},
+            ami_ctx=self._ctx(
+                instrument="Saxophone",
+                log={
+                    "session_count": 5,
+                    "repeated_challenge": "tone in upper register",
+                    "last_session_summary": {"next_step": "work on tone slowly"},
+                },
+            ),
+        )
+        assert resp is not None
+        text = resp.composed_markdown().lower()
+        self.assertEqual(_sum_minutes(resp.practice_steps), 20)
+        self.assertIn("articulation", text)
+        self.assertIn("single-note tonguing", text)
+        self.assertTrue(resp.diagnostics.get("explicit_request_overrides_history"))
+        self.assertNotIn("upper-register tone has come up", text)
 
     def test_no_history_fallback(self) -> None:
         resp = run_coach_pipeline(
@@ -205,6 +282,41 @@ class RepertoirePersonalizationTests(unittest.TestCase):
         text = resp.composed_markdown()
         self.assertIn("Autumn Leaves", text)
         self.assertIn("RepertoireSolver(daily_continue)", resp.source_solver)
+
+    def test_daily_song_history_beats_active_song(self) -> None:
+        resp = run_coach_pipeline(
+            "What song should I practice today?",
+            {},
+            ami_ctx={
+                "active_song": {"title": "The Girl from Ipanema"},
+                "practice_log_summary": {
+                    "session_count": 3,
+                    "last_session_summary": {
+                        "active_song": "Say",
+                        "section_practiced": "Bridge",
+                        "next_step": "work on bridge slowly",
+                    },
+                },
+            },
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Say", text)
+        self.assertNotIn("The Girl from Ipanema", text.split("**Best choice today:**")[1].split("\n")[0])
+        self.assertIn("RepertoireSolver(daily_continue)", resp.source_solver)
+        self.assertTrue(resp.diagnostics.get("active_song_overridden"))
+
+    def test_daily_song_active_fallback_without_history(self) -> None:
+        resp = run_coach_pipeline(
+            "What song should I practice today?",
+            {},
+            ami_ctx={"active_song": {"title": "The Girl from Ipanema"}},
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("The Girl from Ipanema", text)
+        self.assertIn("RepertoireSolver(daily_active_song)", resp.source_solver)
+        self.assertIn("already your active song", text.lower())
 
     def test_improv_song_question_still_improv(self) -> None:
         resp = run_coach_pipeline(
