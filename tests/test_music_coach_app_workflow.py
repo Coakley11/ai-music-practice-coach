@@ -203,27 +203,78 @@ class NavigationPipelineTests(unittest.TestCase):
         self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
         text = resp.composed_markdown()
         self.assertIn("Upload", text)
-
-    def test_harmony_map_feature_explanation(self) -> None:
-        resp = run_coach_pipeline("What does Harmony Map do?", {})
-        assert resp is not None
-        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
-        self.assertIn("Harmony Map", resp.composed_markdown())
-
-    def test_backing_vs_jam_explanation(self) -> None:
-        resp = run_coach_pipeline(
-            "What's the difference between Backing and Jam Session Generator?", {}
-        )
-        assert resp is not None
-        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
-        text = resp.composed_markdown()
-        self.assertIn("Backing", text)
-        self.assertIn("Jam", text)
+        self.assertIn("Multitrack", text)
 
     def test_missions_vs_live_coach_explanation(self) -> None:
         resp = run_coach_pipeline("Should I use Missions or Live Coach?", {})
         assert resp is not None
         self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
+        text = resp.composed_markdown()
+        self.assertIn("Missions", text)
+        self.assertIn("Live Coach", text)
+
+    def test_backing_vs_jam_both_features(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Backing and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Backing", text)
+        self.assertIn("Jam", text)
+
+    def test_style_jam_vs_jam_both_features(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Style Jam and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Style Jam", text)
+        self.assertIn("Jam Session Generator", text)
+
+    def test_entry_jam_vs_jam_parent_child(self) -> None:
+        resp = run_coach_pipeline(
+            "What's Entry & Jam compared with Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Entry & Jam", text)
+        self.assertIn("Jam Session Generator", text)
+        self.assertIn("workflow area", text.lower())
+
+    def test_multitrack_how_navigation(self) -> None:
+        resp = run_coach_pipeline("How do I use the multitrack recorder?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+        self.assertIn("Step 1", text)
+        self.assertIn("Layers", text)
+        self.assertIn("Transport", text)
+
+    def test_multitrack_overdub_question(self) -> None:
+        resp = run_coach_pipeline("Can I record one part and then add another?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+
+    def test_multitrack_mute_layer(self) -> None:
+        resp = run_coach_pipeline("How do I mute one recorded part?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+        self.assertIn("Mute", text)
+
+    def test_record_feedback_upload_not_multitrack_only(self) -> None:
+        resp = run_coach_pipeline("Where can I record myself and get feedback?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_record_several_parts_multitrack(self) -> None:
+        resp = run_coach_pipeline("Where can I record several parts of myself?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
 
     def test_phrasing_recommendation_pipeline(self) -> None:
         resp = run_coach_pipeline("I want to improve my phrasing. What should I use?", {})

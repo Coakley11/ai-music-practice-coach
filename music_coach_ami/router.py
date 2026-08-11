@@ -7,6 +7,12 @@ from typing import Any
 
 from music_coach_ami.app_knowledge import feature_by_question
 from music_coach_ami.context_reader import read_coach_context
+from music_coach_ami.feature_comparison import (
+    is_creative_feature_comparison,
+    is_feature_comparison_question,
+    multitrack_intent_in_question,
+    upload_analysis_intent_in_question,
+)
 from music_coach_ami.entities import (
     extract_constraints,
     extract_entities,
@@ -65,6 +71,11 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if "difference between" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
 
+    if is_feature_comparison_question(low):
+        if is_creative_feature_comparison(low):
+            return CoachIntent.CREATIVE_FEATURE_HELP, 0.92
+        return CoachIntent.FEATURE_EXPLANATION, 0.92
+
     if "should i use" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
 
@@ -82,8 +93,26 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if "difference between" in low and "mission" in low and "live coach" in low:
         return CoachIntent.FEATURE_EXPLANATION, 0.9
 
-    if re.search(r"\bwhere (?:do i|can i|is)\b", low) or re.search(r"\bhow do i (log|save|upload|create|change|find|analyze|record)\b", low):
-        if feature_by_question(low) or "log" in low or "upload" in low or "backing" in low or "record myself" in low:
+    if multitrack_intent_in_question(low):
+        if re.search(r"\b(how|where|can i)\b", low):
+            return CoachIntent.APP_NAVIGATION, 0.91
+        return CoachIntent.FEATURE_EXPLANATION, 0.88
+
+    if upload_analysis_intent_in_question(low) and re.search(r"\bwhere\b", low):
+        return CoachIntent.APP_NAVIGATION, 0.9
+
+    if re.search(r"\bwhere (?:do i|can i|is)\b", low) or re.search(
+        r"\bhow do i (?:log|save|upload|create|change|find|analyze|record|use|mute|solo|layer|line up)\b",
+        low,
+    ):
+        if (
+            feature_by_question(low)
+            or "log" in low
+            or "upload" in low
+            or "backing" in low
+            or "record myself" in low
+            or multitrack_intent_in_question(low)
+        ):
             return CoachIntent.APP_NAVIGATION, 0.9
 
     if "difference between" in low and ("mission" in low or "jam session" in low):

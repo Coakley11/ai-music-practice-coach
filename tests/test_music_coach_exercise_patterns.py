@@ -43,6 +43,24 @@ class RegisterInvariantTests(unittest.TestCase):
         ]
         self.assertEqual(first_eight, expected)
 
+    def test_broken_thirds_first_eight_cells(self) -> None:
+        scale, _, _ = spell_scale("D", "dorian")
+        pitched = build_degree_pattern_pitched(
+            scale, (0, 2, 1, 3), octave_count=2, start_octave=4
+        )
+        expected_rows = [
+            [("D", 4), ("F", 4), ("E", 4), ("G", 4)],
+            [("E", 4), ("G", 4), ("F", 4), ("A", 4)],
+            [("F", 4), ("A", 4), ("G", 4), ("B", 4)],
+            [("G", 4), ("B", 4), ("A", 4), ("C", 5)],
+            [("A", 4), ("C", 5), ("B", 4), ("D", 5)],
+            [("B", 4), ("D", 5), ("C", 5), ("E", 5)],
+            [("C", 5), ("E", 5), ("D", 5), ("F", 5)],
+            [("D", 5), ("F", 5), ("E", 5), ("G", 5)],
+        ]
+        for idx, row in enumerate(expected_rows):
+            self.assertEqual(pitched[idx * 4 : (idx + 1) * 4], row, msg=f"cell {idx + 1}")
+
     def test_broken_thirds_no_runaway(self) -> None:
         scale, _, _ = spell_scale("D", "dorian")
         pitched = build_degree_pattern_pitched(

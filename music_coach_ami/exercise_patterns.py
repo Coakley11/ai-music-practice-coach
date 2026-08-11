@@ -8,7 +8,6 @@ from typing import Any
 from music_coach_ami.scale_engine import (
     ScalePracticeSpec,
     _default_start_octave,
-    _midi_for_spelled,
     _octave_for_diatonic_spellings,
 )
 
@@ -192,32 +191,6 @@ def select_pattern_for_profile(profile: ExerciseProfile) -> tuple[PracticePatter
     return PATTERN_LIBRARY["four_note_sequence"], "fallback"
 
 
-def _midi_walk_scale(scale: list[str], start_idx: int, steps: int, start_octave: int) -> int:
-    n = len(scale)
-    if n == 0:
-        return _midi_for_spelled("C", start_octave)
-    idx = start_idx % n
-    octave = start_octave
-    midi = _midi_for_spelled(scale[idx], octave)
-    for _ in range(steps):
-        idx = (idx + 1) % n
-        if idx == 0:
-            octave += 1
-        midi = _midi_for_spelled(scale[idx], octave)
-    return midi
-
-
-def _pitch_note_near_target(note: str, target_midi: int, anchor_oct: int) -> tuple[str, int]:
-    best_oct = anchor_oct
-    best_dist = abs(_midi_for_spelled(note, best_oct) - target_midi)
-    for o in range(anchor_oct - 1, anchor_oct + 3):
-        dist = abs(_midi_for_spelled(note, o) - target_midi)
-        if dist < best_dist:
-            best_dist = dist
-            best_oct = o
-    return note, best_oct
-
-
 def build_degree_pattern_pitched(
     scale: list[str],
     degree_offsets: tuple[int, ...],
@@ -229,26 +202,16 @@ def build_degree_pattern_pitched(
     if n < 2 or not degree_offsets:
         return []
 
-    out: list[tuple[str, int]] = []
-    source_names: list[str] = []
-    for rep in range(max(1, octave_count)):
-        for i in range(n):
-            source_names.append(scale[i])
-    source_pitched = _octave_for_diatonic_spellings(source_names, start_octave)
+    reps = max(1, octave_count)
+    max_off = max(degree_offsets)
+    spine_len = n * reps + max_off
+    spine_names = [scale[i % n] for i in range(spine_len)]
+    spine_pitched = _octave_for_diatonic_spellings(spine_names, start_octave)
 
-    cell_index = 0
-    for _rep in range(max(1, octave_count)):
-        for start_i in range(n):
-            src_name, src_oct = source_pitched[cell_index]
-            cell_index += 1
-            for off in degree_offsets:
-                deg_idx = (start_i + off) % n
-                note = scale[deg_idx]
-                if off == 0:
-                    out.append((src_name, src_oct))
-                    continue
-                target_midi = _midi_walk_scale(scale, start_i, off, src_oct)
-                out.append(_pitch_note_near_target(note, target_midi, src_oct))
+    out: list[tuple[str, int]] = []
+    for cell_index in range(n * reps):
+        for off in degree_offsets:
+            out.append(spine_pitched[cell_index + off])
     return out
 
 

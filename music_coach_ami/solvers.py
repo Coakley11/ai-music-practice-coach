@@ -6,12 +6,15 @@ import re
 from typing import Callable
 
 from music_coach_ami.app_knowledge import (
-    CREATIVE_COMPARISONS,
     FEATURES,
-    compare_features,
     context_completeness,
     feature_by_question,
     recommend_feature_for_goal,
+)
+from music_coach_ami.feature_comparison import (
+    compose_ambiguous_record_yourself_answer,
+    resolve_recording_navigation_feature,
+    try_comparison_response,
 )
 from music_coach_ami.types import CoachContext, CoachIntent, CoachRequest, CoachResponse
 
@@ -293,9 +296,45 @@ def _when_tail(when_to_use: str) -> str:
     return text
 
 
+def _comparison_coach_response(req: CoachRequest, *, intent: CoachIntent) -> CoachResponse | None:
+    low = req.normalized_question.lower()
+    cmp = try_comparison_response(low)
+    if not cmp:
+        return None
+    solver = "FeatureExplanationSolver" if intent == CoachIntent.FEATURE_EXPLANATION else "CreativeHelpSolver"
+    return CoachResponse(
+        intent=intent,
+        direct_answer=cmp["body"],
+        suggested_next_action=cmp.get("suggested_next_action", ""),
+        source_solver=solver,
+        confidence=0.92,
+        diagnostics={
+            "comparison": cmp.get("pair_key") or f"{cmp['feature_a']}_vs_{cmp['feature_b']}",
+            "app_knowledge_consulted": f"{cmp['feature_a']},{cmp['feature_b']}",
+        },
+    )
+
+
 def solve_app_navigation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    fid = req.entities.feature_id or feature_by_question(low) or "practice_log"
+    if re.search(r"\bwhere\b", low) and "record" in low and "myself" in low:
+        if not resolve_recording_navigation_feature(low):
+            return CoachResponse(
+                intent=CoachIntent.APP_NAVIGATION,
+                direct_answer=compose_ambiguous_record_yourself_answer(),
+                suggested_next_action=(
+                    "Use **Upload & Analysis** for a single take you want analyzed; "
+                    "use **Multitrack** when you need separate layers."
+                ),
+                source_solver="AppNavigationSolver",
+                confidence=0.9,
+                diagnostics={
+                    "feature_id": "upload_analysis,multitrack",
+                    "app_knowledge_consulted": "upload_analysis,multitrack",
+                    "context_completeness": context_completeness(req.context),
+                },
+            )
+    fid = resolve_recording_navigation_feature(low) or req.entities.feature_id or feature_by_question(low) or "practice_log"
     feat = FEATURES.get(fid) or FEATURES["practice_log"]
     then_steps = list(feat.usage_steps)
     steps = [
@@ -323,43 +362,32 @@ def solve_app_navigation(req: CoachRequest) -> CoachResponse:
 
 def solve_feature_explanation(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    if "difference between" in low and "backing" in low and "jam" in low:
-        body = compare_features("backing_vs_jam") or CREATIVE_COMPARISONS["missions_vs_jam"]
-        return CoachResponse(
-            intent=CoachIntent.FEATURE_EXPLANATION,
-            direct_answer=body,
-            suggested_next_action="Use **Backing** for your current song; use **Jam Session Generator** for a fresh chart.",
-            source_solver="FeatureExplanationSolver",
-            confidence=0.92,
-            diagnostics={"comparison": "backing_vs_jam", "app_knowledge_consulted": "backing,jam_session_generator"},
-        )
-    if "difference between" in low and "mission" in low and "live coach" in low:
-        body = compare_features("missions_vs_live_coach")
-        return CoachResponse(
-            intent=CoachIntent.FEATURE_EXPLANATION,
-            direct_answer=body,
-            source_solver="FeatureExplanationSolver",
-            confidence=0.92,
-            diagnostics={"comparison": "missions_vs_live_coach"},
-        )
+    cmp_resp = _comparison_coach_response(req, intent=CoachIntent.FEATURE_EXPLANATION)
+    if cmp_resp:
+        return cmp_resp
     fid = req.entities.feature_id or feature_by_question(low)
     if not fid:
         if "backing" in low:
             fid = "backing"
         elif "practice log" in low:
             fid = "practice_log"
-        elif "upload" in low:
+        elif "upload" in low or "analyze" in low:
             fid = "upload_analysis"
+        elif "multitrack" in low or "overdub" in low:
+            fid = "multitrack"
         elif "harmony map" in low:
             fid = "harmony_map"
         else:
             fid = "backing"
     feat = FEATURES.get(fid, FEATURES["backing"])
+    how = re.search(r"\bhow do i (?:use|work with)\b", low) or (
+        "how do i" in low and fid == "multitrack"
+    )
     return CoachResponse(
         intent=CoachIntent.FEATURE_EXPLANATION,
         direct_answer=f"**{feat.display_name}** — {feat.purpose}",
         explanation=f"**When to use it:** {feat.when_to_use}",
-        app_navigation_steps=list(feat.usage_steps),
+        app_navigation_steps=list(feat.usage_steps) if how or "how do i" in low else [],
         suggested_next_action=f"Try **{feat.display_name}** on your current song or practice goal.",
         source_solver="FeatureExplanationSolver",
         confidence=0.88,
@@ -369,15 +397,9 @@ def solve_feature_explanation(req: CoachRequest) -> CoachResponse:
 
 def solve_creative_feature_help(req: CoachRequest) -> CoachResponse:
     low = req.normalized_question.lower()
-    if "difference between" in low and "mission" in low and "jam" in low:
-        body = CREATIVE_COMPARISONS["missions_vs_jam"]
-        return CoachResponse(
-            intent=CoachIntent.CREATIVE_FEATURE_HELP,
-            direct_answer=body,
-            suggested_next_action="Pick **Missions** for a structured song challenge, or **Jam Session Generator** to explore freely.",
-            source_solver="CreativeHelpSolver",
-            confidence=0.92,
-        )
+    cmp_resp = _comparison_coach_response(req, intent=CoachIntent.CREATIVE_FEATURE_HELP)
+    if cmp_resp:
+        return cmp_resp
     fid = req.entities.feature_id or "creative"
     if "mission" in low:
         fid = "missions"

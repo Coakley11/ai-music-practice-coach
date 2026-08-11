@@ -103,21 +103,70 @@ FEATURES: dict[str, AppFeature] = {
     "upload_analysis": AppFeature(
         feature_id="upload_analysis",
         display_name="Upload & Analysis",
-        purpose="Upload a recording and get structured feedback on your take.",
-        when_to_use="When you want feedback on an existing performance rather than live coaching.",
-        navigation_path="Studio sidebar → **Upload** / multitrack analysis workflow.",
-        user_goals=("analyze recording", "upload take", "get feedback on recording"),
+        purpose="Upload or record a single take and get structured feedback on your performance.",
+        when_to_use="When you already have a recording (or one live take) and want analysis and coaching feedback.",
+        navigation_path="Studio sidebar → **Upload Analysis** (🎙️).",
+        user_goals=("analyze recording", "upload take", "get feedback on recording", "analyze my take"),
         usage_steps=(
-            "Go to the **Upload** workflow for your workspace.",
-            "Upload your recording and run analysis.",
-            "Review the report and optional Music Coach follow-up.",
+            "Go to **Upload Analysis** from the studio sidebar.",
+            "Upload an audio file or record a single take with the mic.",
+            "Run analysis and review timing, pitch, tone, and musicality feedback.",
+            "Use the suggested practice plan or Music Coach follow-up.",
         ),
-        when_not_to_use="When you want real-time targets while you play (use Live Coach in Creative).",
-        related_features=("practice_log", "live_coach"),
+        when_not_to_use=(
+            "When you want to build a multi-part recording with separate layers, mute/solo, and mix controls "
+            "(use **Multitrack**). When you want live targets while playing (use **Live Coach**)."
+        ),
+        related_features=("multitrack", "practice_log", "live_coach"),
         distinctions=(
-            "**Upload Analysis** reviews a finished recording. **Live Coach** suggests targets while you improvise."
+            "**Upload & Analysis** reviews a finished take for feedback. "
+            "**Multitrack** is for recording/layering multiple parts and mixing them. "
+            "**Live Coach** suggests targets while you improvise."
         ),
-        example_questions=("Where can I record myself playing?", "How do I analyze a recording?"),
+        example_questions=("How do I analyze a recording?", "Where can I get feedback on my recording?"),
+    ),
+    "multitrack": AppFeature(
+        feature_id="multitrack",
+        display_name="Multitrack",
+        purpose="Record, upload, align, and mix multiple instrument layers into one session.",
+        when_to_use=(
+            "When you want to overdub separate parts, layer recordings, or balance several tracks together."
+        ),
+        navigation_path="Studio sidebar → **Multitrack** (🎚️).",
+        user_goals=(
+            "multitrack",
+            "multitrack recorder",
+            "multi track",
+            "record layers",
+            "overdub",
+            "layer recordings",
+            "record several parts",
+            "record another part",
+            "harmony overdub",
+        ),
+        usage_steps=(
+            "**Step 1 — Session setup:** Choose playback scope (full song, single section, multiple sections, "
+            "or **Free layering (no backing)**), set BPM, section repeats, groove/backing context when applicable.",
+            "**Step 2 — Layers:** Record or upload each instrument slot (Guitar, Bass, Piano/Keys, Vocals, "
+            "Sax/winds, Extra layer), then adjust volume, **Align** (shift earlier/later), **Mute**, **Solo**, "
+            "**Monitor backing**, and **Loop selected section** while recording.",
+            "**Step 3 — Transport & mixer:** Use transport controls for playback/monitor behavior — loop section, "
+            "metronome click, hear backing while recording, and include backing in the final mix when enabled.",
+            "Play back all layers together; save the project or export a mix when ready.",
+        ),
+        when_not_to_use=(
+            "When you only want feedback on one finished take without layering (use **Upload & Analysis**)."
+        ),
+        related_features=("upload_analysis", "backing", "practice_log"),
+        distinctions=(
+            "**Multitrack** builds and mixes multiple layers you record or upload. "
+            "**Upload & Analysis** analyzes a take for coaching feedback — not a layer mixer."
+        ),
+        example_questions=(
+            "How do I use the multitrack recorder?",
+            "Where is the multitrack recorder?",
+            "How do I record myself playing multiple parts?",
+        ),
     ),
     "creative": AppFeature(
         feature_id="creative",
@@ -280,28 +329,60 @@ CREATIVE_COMPARISONS: dict[str, str] = {
         "**Live Coach** guides you in real time during Creative practice. "
         "Record and upload when you want a report; use Live Coach when you want live targets."
     ),
+    "style_jam_vs_jam": (
+        "**Style Jam** keeps you inside a chosen style, mood, and groove for style-specific improvisation. "
+        "**Jam Session Generator** builds a fresh progression/chart for open-ended jamming. "
+        "Choose **Style Jam** when the groove/style context matters; choose **Jam Session Generator** "
+        "when you want a new harmonic setting to explore."
+    ),
+    "entry_jam_vs_jam": (
+        "**Entry & Jam** is the Creative workflow area that contains jam tools such as **Style Jam** "
+        "and **Jam Session Generator**. **Jam Session Generator** is one specific mode inside that area."
+    ),
+    "multitrack_vs_upload": (
+        "**Multitrack** is for building a session from multiple recorded/uploaded layers with align, "
+        "mute, solo, and mix controls. **Upload & Analysis** is for analyzing a finished take and "
+        "getting coaching feedback — not layering parts."
+    ),
+    "practice_key_vs_chord_edit": (
+        "**Practice Key** transposes how you read/practice the song without rewriting the chart. "
+        "**Editing song chords** changes the underlying progression/chart itself. "
+        "Use Practice Key for performance comfort; edit chords when the harmony itself needs to change."
+    ),
 }
 
 
 def feature_by_question(low: str) -> str:
     """Best-effort feature_id from question text."""
+    from music_coach_ami.feature_comparison import (
+        multitrack_intent_in_question,
+        upload_analysis_intent_in_question,
+    )
+
+    text = str(low or "").lower()
+    if multitrack_intent_in_question(text):
+        return "multitrack"
+    if upload_analysis_intent_in_question(text):
+        return "upload_analysis"
+
     rules: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("practice_log", ("log my practice", "practice log", "save a practice session", "log practice")),
         ("music_coach", ("scale help", "chord theory", "music coach", "ask the coach")),
         ("backing", ("backing track", "backing do", "change the tempo", "tempo of a backing", "backing page")),
-        ("upload_analysis", ("upload", "analyze a recording", "upload analysis", "analyze myself", "record myself")),
-        ("missions", ("what are missions", "practice a mission", "missions in creative", "missions or live coach")),
-        ("jam_session_generator", ("jam session generator", "what is the jam session", "jam session generator")),
-        ("style_jam", ("style jam",)),
+        ("multitrack", ("multitrack recorder", "multitrack", "multi track", "multi-track", "overdub")),
+        ("upload_analysis", ("upload analysis", "analyze a recording", "analyze myself")),
+        ("missions", ("what are missions", "practice a mission", "missions in creative")),
+        ("jam_session_generator", ("jam session generator", "what is the jam session")),
+        ("style_jam", ("entry style jam", "style jam mode", "style jam")),
         ("live_coach", ("live coach",)),
-        ("harmony_map", ("harmony map", "chord theory", "understand chords")),
+        ("harmony_map", ("harmony map", "understand chords")),
         ("motif", ("what is a motif", "practice a motif", "phrase / motif", "improve my phrasing")),
-        ("creative", ("what is creative", "entry & jam", "entry and jam", "practice improvis")),
+        ("creative", ("what is creative", "improvisation studio")),
         ("songs", ("see my songs", "where are my songs", "song list", "songs i'm working")),
         ("practice", ("where can i practice", "practice scales")),
     )
     for fid, phrases in rules:
-        if any(p in low for p in phrases):
+        if any(p in text for p in phrases):
             return fid
     return ""
 
