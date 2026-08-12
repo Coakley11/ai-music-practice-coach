@@ -106,6 +106,10 @@ def build_bass_line_chart_dev_summary(
         "pick_key": req.context.active_song_pick_key or snap.get("resolved_pick_key"),
         "chart_source": snap.get("chart_source"),
         "chart_available": snap.get("chart_available"),
+        "practice_key": snap.get("practice_key") or req.context.current_practice_key,
+        "original_key": snap.get("original_key") or req.context.song_original_key,
+        "sections_source_key": snap.get("sections_source_key"),
+        "transposed_to_practice_key": snap.get("transposed_to_practice_key"),
         "active_section": snap.get("active_section") or req.context.active_section,
         "chord_count": len(chords),
         "chords_preview": chords[:6],
@@ -114,6 +118,14 @@ def build_bass_line_chart_dev_summary(
         "solver_chart_transport": solver_diag.get("chart_transport_at_solver"),
         "fallback_reason": solver_diag.get("fallback_reason"),
         "notation_abc_present": bool(solver_diag.get("notation_abc_present")),
+        "resolved_instrument": solver_diag.get("resolved_instrument") or req.context.instrument,
+        "written_key": solver_diag.get("written_key"),
+        "written_chords_preview": list(solver_diag.get("written_chords") or [])[:6],
+        "notation_clef": solver_diag.get("notation_clef"),
+        "capo_fret": solver_diag.get("capo_fret"),
+        "capo_shape_key": solver_diag.get("capo_shape_key"),
+        "abc_key_field": solver_diag.get("abc_key_field"),
+        "written_transposition_applied": solver_diag.get("written_transposition_applied"),
     }
 
 
@@ -124,7 +136,15 @@ def format_bass_line_chart_dev_markdown(summary: dict[str, Any]) -> str:
         f"(full `{str(summary.get('deploy_sha_full') or '—')[:12]}`)",
         f"- repo HEAD: `{str(summary.get('repo_head_sha') or '—')[:12]}`",
         f"- title: {summary.get('title') or '—'}",
+        f"- instrument: `{summary.get('resolved_instrument') or '—'}`",
         f"- pick: `{summary.get('pick_key') or '—'}`",
+        f"- practice/concert key: `{summary.get('practice_key') or '—'}` "
+        f"(original `{summary.get('original_key') or '—'}`)",
+        f"- sections_source_key: `{summary.get('sections_source_key') or '—'}` "
+        f"transposed={summary.get('transposed_to_practice_key')}",
+        f"- written key: `{summary.get('written_key') or '—'}` "
+        f"clef=`{summary.get('notation_clef') or '—'}` "
+        f"ABC `{summary.get('abc_key_field') or '—'}`",
         f"- source: `{summary.get('chart_source') or 'none'}`",
         f"- chart_available: **{summary.get('chart_available')}**",
         f"- section: {summary.get('active_section') or '—'}",
@@ -132,7 +152,14 @@ def format_bass_line_chart_dev_markdown(summary: dict[str, Any]) -> str:
     ]
     preview = summary.get("chords_preview") or []
     if preview:
-        lines.append(f"- chords: `{preview}`")
+        lines.append(f"- concert chords: `{preview}`")
+    wpreview = summary.get("written_chords_preview") or []
+    if wpreview:
+        lines.append(f"- written chords: `{wpreview}`")
+    if summary.get("capo_shape_key") or summary.get("capo_fret") is not None:
+        lines.append(
+            f"- capo: fret={summary.get('capo_fret')} shape=`{summary.get('capo_shape_key') or '—'}`"
+        )
     if not summary.get("chart_available"):
         lines.append(f"- candidate_sources: `{summary.get('candidate_sources')}`")
         lines.append(f"- pick_key_trace: `{summary.get('pick_key_trace')}`")

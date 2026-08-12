@@ -244,7 +244,13 @@ def _resolve_catalog_sections(
     ctx: dict[str, Any],
     *,
     pick_key: str,
+    harmony_level: str = "Advanced",
 ) -> tuple[dict[str, list[str]], str, str]:
+    """Catalog sections for Coach musical ideas — full harmonic quality by default.
+
+    Practice UI may show Beginner/Intermediate simplifications; AMI generators need
+    the canonical effective chart qualities (maj7/m7/…), then Practice Key transpose.
+    """
     from chart_level_arrangement import sections_for_level
     from songs.music_source import resolve_catalog_song_for_chart
 
@@ -258,7 +264,8 @@ def _resolve_catalog_sections(
         song_picker_catalog=picker,
         song_library=library,
     )
-    level = _clean(ctx.get("level") or session.get("level") or "Intermediate") or "Intermediate"
+    # Full qualities for generation unless caller overrides.
+    level = _clean(harmony_level) or "Advanced"
     sections = sections_for_level(merged, level)
     if not original_key:
         original_key = _clean(merged.get("key") or merged.get("original_key") or "C")
@@ -287,23 +294,48 @@ def resolve_coach_chart_snapshot(
 
     sections: dict[str, list[str]] = {}
     source = ""
-    sections_in_practice_key = False
+    sections_source_key = ""
     original_key = _clean(song_original_key)
     meter = _clean(ctx.get("chart_meter") or ctx.get("time_signature") or "")
     bpm = ctx.get("bpm") or snap.get("bpm") or session.get("active_song_bpm")
 
+    # 1) Explicit ami_ctx sections (tests / submit stamps).
+    # Provenance: chart_sections_key if provided, else original song key (not Practice Key).
     if isinstance(ctx.get("chart_sections"), dict):
         sections = _sections_dict(ctx["chart_sections"])
-        source = "ami_ctx.chart_sections"
+        if sections:
+            source = "ami_ctx.chart_sections"
+            sections_source_key = _clean(ctx.get("chart_sections_key"))
+            if not sections_source_key:
+                active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
+                sections_source_key = _clean(
+                    original_key
+                    or active.get("key")
+                    or active.get("default_key")
+                    or ctx.get("original_key")
+                )
+            if bool(ctx.get("chart_sections_in_practice_key")):
+                sections_source_key = _clean(practice_key or ctx.get("display_key") or sections_source_key)
 
-    if not sections:
-        stored = session.get("improv_song_concert_sections")
-        candidate = _sections_dict(stored)
-        if candidate:
-            sections = candidate
-            source = "session.improv_song_concert_sections"
-            sections_in_practice_key = True
+    # 2) Catalog (full Advanced qualities) when pick key resolves — beats stale improv cache.
+    if not sections and resolved_pick_key:
+        try:
+            cat_sections, catalog_original, catalog_source = _resolve_catalog_sections(
+                session,
+                ctx,
+                pick_key=resolved_pick_key,
+                harmony_level="Advanced",
+            )
+            if cat_sections:
+                sections = cat_sections
+                source = catalog_source
+                if not original_key:
+                    original_key = catalog_original
+                sections_source_key = _clean(catalog_original) or sections_source_key
+        except Exception:
+            pass
 
+    # 3) Song practice blob (keyed by blob practice tonic when available).
     if not sections:
         try:
             from music_workflow_song_practice import song_practice_blob
@@ -324,10 +356,11 @@ def resolve_coach_chart_snapshot(
                         f"{pt}m" if pm == "minor" and pt and not pt.lower().endswith("m") else pt
                     )
                     if practice_from_blob:
-                        sections_in_practice_key = True
+                        sections_source_key = practice_from_blob
         except ImportError:
             pass
 
+    # 4) Custom progression originals.
     if not sections:
         try:
             from songs.music_source import custom_progression_is_active
@@ -338,30 +371,26 @@ def resolve_coach_chart_snapshot(
                     source = custom_source
                     if not original_key:
                         original_key = custom_original
+                    sections_source_key = _clean(custom_original) or sections_source_key
         except ImportError:
             pass
 
+    # 5) Session improv cache — only when catalog/blob unavailable (may be stale vs Practice Key).
     if not sections:
-        try:
-            sections, catalog_original, catalog_source = _resolve_catalog_sections(
-                session,
-                ctx,
-                pick_key=resolved_pick_key,
-            )
-            if sections:
-                source = catalog_source
-                if not original_key:
-                    original_key = catalog_original
-        except Exception:
-            pass
-
-    picker, library, catalog_handle_source = _catalog_handles(session)
+        stored = session.get("improv_song_concert_sections")
+        candidate = _sections_dict(stored)
+        if candidate:
+            sections = candidate
+            source = "session.improv_song_concert_sections"
+            # Do NOT assume these match the current Practice Key — re-key via original below.
+            sections_source_key = ""
 
     if not sections and isinstance(ctx.get("active_song"), dict):
         active = ctx["active_song"]
         sections = _sections_dict(active.get("chart_sections"))
         if sections:
             source = "ami_ctx.active_song.chart_sections"
+            sections_source_key = _clean(active.get("key") or active.get("default_key"))
         if not original_key:
             original_key = _clean(active.get("key") or active.get("default_key"))
 
@@ -371,6 +400,9 @@ def resolve_coach_chart_snapshot(
         if candidate:
             sections = candidate
             source = "session.home_sections"
+            sections_source_key = ""
+
+    picker, library, catalog_handle_source = _catalog_handles(session)
 
     resolved_practice_key = _clean(practice_key or ctx.get("display_key") or session.get("display_key"))
     if not resolved_practice_key:
@@ -384,18 +416,29 @@ def resolve_coach_chart_snapshot(
         except ImportError:
             resolved_practice_key = resolved_practice_key or original_key or "C"
 
+    if not original_key:
+        original_key = _clean(ctx.get("original_key") or session.get("original_key") or resolved_practice_key or "C")
+
+    # One authoritative transform: sections_source_key (or original) → Practice Key.
+    from_key = _clean(sections_source_key) or _clean(original_key)
+    sections_in_practice_key = bool(
+        sections and from_key and resolved_practice_key and from_key == resolved_practice_key
+    )
+    transposed_this_resolve = False
     if (
         sections
         and not sections_in_practice_key
-        and original_key
+        and from_key
         and resolved_practice_key
-        and original_key != resolved_practice_key
+        and from_key != resolved_practice_key
     ):
         try:
             from music_theory import transpose_sections_dict
 
-            sections = transpose_sections_dict(sections, original_key, resolved_practice_key)
+            sections = transpose_sections_dict(sections, from_key, resolved_practice_key)
             source = f"{source}+transpose" if source else "transpose"
+            sections_in_practice_key = True
+            transposed_this_resolve = True
         except ImportError:
             pass
 
@@ -442,5 +485,7 @@ def resolve_coach_chart_snapshot(
         "section_names": section_names,
         "active_section_chord_count": len(active_chords),
         "sections_in_practice_key": sections_in_practice_key,
+        "sections_source_key": from_key or None,
+        "transposed_to_practice_key": transposed_this_resolve,
         "catalog_handle_source": catalog_handle_source,
     }

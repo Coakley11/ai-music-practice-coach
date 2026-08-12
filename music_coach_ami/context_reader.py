@@ -179,5 +179,7 @@ def read_coach_context(
             "snapshot_instrument": snap_inst,
             "practice_log_summary": practice_log_summary,
             "chart_snapshot": chart_snapshot,
+            # Read-only session handle for written-key / capo SSOT (no chart writes).
+            "session_ref": session_state,
         },
     )

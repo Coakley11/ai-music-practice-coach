@@ -1716,7 +1716,7 @@ def _stage_music_instant_insight(
     except ImportError:
         return False
 
-    solved = solve_instant_music_insight(question, dict(submit_ctx))
+    solved = solve_instant_music_insight(question, dict(submit_ctx), session_state=session_state)
     if not solved:
         return False
     route, result = solved

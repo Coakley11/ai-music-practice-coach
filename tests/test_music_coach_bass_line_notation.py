@@ -296,6 +296,138 @@ class MusicalIdeaOverrideTests(unittest.TestCase):
         self.assertEqual(high.register, "high")
         self.assertEqual(low.register, "low")
 
+    def test_explicit_key_parsed_from_question(self) -> None:
+        from music_coach_ami.musical_idea_request import parse_musical_idea_request
+
+        idea = parse_musical_idea_request("Give me a bass line in Eb for this progression.")
+        self.assertEqual(idea.explicit_key, "Eb")
+
+
+class WrittenMusicContextAcceptanceTests(unittest.TestCase):
+    """Practice Key + instrument written-key matrix for bass-line role."""
+
+    CHORDS_DB = ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7"]
+    QUESTION = "Give me a good bass line to use for this song."
+
+    def _ctx(self, instrument: str, *, practice_key: str = "C") -> dict:
+        return {
+            "instrument": instrument,
+            "level": "Beginner",
+            "focus": "Walking Bass",
+            "display_key": practice_key,
+            "chart_sections": {"Verse": list(self.CHORDS_DB)},
+            "practice_focus_section": "Verse",
+            "active_song": {"title": "Just the Two of Us", "key": "Db"},
+        }
+
+    def _run(self, instrument: str, session: dict | None = None, **kwargs):
+        from music_coach_ami.pipeline import run_coach_pipeline
+
+        return run_coach_pipeline(self.QUESTION, session or {}, ami_ctx=self._ctx(instrument, **kwargs))
+
+    def test_piano_concert_c_answer(self) -> None:
+        resp = self._run("Piano")
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Piano")
+        self.assertEqual(resp.diagnostics.get("notation_clef"), "bass")
+        self.assertEqual(resp.diagnostics.get("written_key"), "C")
+        self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+        self.assertIn("Cmaj7", resp.diagnostics.get("effective_concert_chords") or [])
+        self.assertIn("K:C", resp.notation_abc)
+        self.assertIn("clef=bass", resp.notation_abc)
+
+    def test_guitar_no_capo_concert_c(self) -> None:
+        resp = self._run("Guitar")
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Guitar")
+        self.assertEqual(resp.diagnostics.get("notation_clef"), "treble")
+        self.assertEqual(resp.diagnostics.get("written_key"), "C")
+        self.assertEqual(resp.diagnostics.get("sounding_to_written_octave_shift"), 1)
+        self.assertIn("clef=treble", resp.notation_abc)
+
+    def test_guitar_capo_uses_shape_key(self) -> None:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        session = {CAPO_ENABLED_KEY: True, CAPO_SHAPE_KEY: "Bb"}
+        resp = self._run("Guitar", session)
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+        self.assertEqual(resp.diagnostics.get("written_key"), "Bb")
+        self.assertEqual(resp.diagnostics.get("capo_shape_key"), "Bb")
+        self.assertEqual(resp.diagnostics.get("capo_fret"), 2)
+        self.assertIn("Bbmaj7", resp.diagnostics.get("written_chords") or [])
+        self.assertIn("Cmaj7", resp.diagnostics.get("effective_concert_chords") or [])
+        self.assertIn("K:Bb", resp.notation_abc)
+
+    def test_clarinet_bb_written_d(self) -> None:
+        resp = self._run("Clarinet")
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+        self.assertEqual(resp.diagnostics.get("written_key"), "D")
+        self.assertEqual(resp.diagnostics.get("notation_clef"), "treble")
+        self.assertTrue(resp.diagnostics.get("written_transposition_applied"))
+        self.assertIn("Dmaj7", resp.diagnostics.get("written_chords") or [])
+        self.assertIn("K:D", resp.notation_abc)
+
+    def test_alto_sax_eb_written_a(self) -> None:
+        resp = self._run("Alto Sax")
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+        self.assertEqual(resp.diagnostics.get("written_key"), "A")
+        self.assertEqual(resp.diagnostics.get("notation_clef"), "treble")
+        self.assertIn("Amaj7", resp.diagnostics.get("written_chords") or [])
+        self.assertIn("K:A", resp.notation_abc)
+
+    def test_bass_practice_key_c_not_stale_db(self) -> None:
+        resp = self._run("Bass")
+        assert resp is not None
+        chords = resp.diagnostics.get("effective_concert_chords") or resp.diagnostics.get("chord_timeline_used")
+        self.assertTrue(chords)
+        self.assertTrue(any(c.startswith("C") for c in chords))
+        self.assertFalse(any(str(c).startswith("Db") for c in chords))
+        self.assertIn("Cmaj7", chords)
+        self.assertIn("Em7", chords)
+        self.assertIn("Dm7", chords)
+        # Qualities preserved through Db→C (not stripped to triads)
+        self.assertTrue(any("maj7" in c or "m7" in c or c.endswith("7") for c in chords))
+
+    def test_stale_improv_sections_rekeyed_to_practice_c(self) -> None:
+        from music_coach_ami.chart_context_reader import resolve_coach_chart_snapshot
+
+        session = {
+            "improv_song_concert_sections": {"Verse": list(self.CHORDS_DB)},
+            "display_key": "C",
+            "original_key": "Db",
+        }
+        snap = resolve_coach_chart_snapshot(
+            session,
+            ami_ctx={"display_key": "C", "practice_focus_section": "Verse"},
+            practice_key="C",
+            song_original_key="Db",
+        )
+        self.assertEqual(snap.get("practice_key"), "C")
+        self.assertTrue(snap.get("transposed_to_practice_key"))
+        self.assertIn("Cmaj7", snap.get("active_section_chords") or [])
+        self.assertNotIn("Dbmaj7", snap.get("active_section_chords") or [])
+
+    def test_bass_line_role_keeps_piano_instrument(self) -> None:
+        resp = self._run("Piano")
+        assert resp is not None
+        self.assertEqual(resp.source_solver, "SongCoachSolver(bass_line)")
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Piano")
+        self.assertNotEqual(resp.diagnostics.get("resolved_instrument"), "Bass")
+
+    def test_good_bass_line_content_detector(self) -> None:
+        from music_coach_ami.bass_line_knowledge import is_bass_line_content_request
+
+        q = "Give me a good bass line to use for this song."
+        self.assertTrue(is_bass_line_content_request(q, q.lower()))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,7 @@ class MusicalIdeaRequest:
     difficulty: str  # beginner | intermediate | advanced | ""
     register: str  # low | mid | high | ""
     rhythmic_character: str
+    explicit_key: str = ""  # optional key center named in the question
 
 
 def _clean(text: object) -> str:
@@ -70,12 +71,22 @@ def parse_musical_idea_request(
     elif "half note" in low:
         rhythmic = "half_notes"
 
+    explicit_key = ""
+    key_match = re.search(
+        r"\bin\s+(?:the\s+key\s+of\s+)?([A-Ga-g](?:#|b)?m?)\b(?:\s+(?:major|minor))?",
+        low,
+    )
+    if key_match:
+        token = key_match.group(1)
+        explicit_key = token[0].upper() + token[1:]
+
     return MusicalIdeaRequest(
         object_type=object_type,
         style=style,
         difficulty=difficulty,
         register=register,
         rhythmic_character=rhythmic,
+        explicit_key=explicit_key,
     )
 
 

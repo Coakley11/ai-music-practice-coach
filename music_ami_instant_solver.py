@@ -539,6 +539,8 @@ def _coach_result_assumptions(coach_resp: object) -> list[str]:
 def solve_instant_music_insight(
     question: str,
     context: dict[str, Any] | None,
+    *,
+    session_state: dict[str, Any] | None = None,
 ) -> tuple[MusicSolverRoute, MusicSolverResult] | None:
     """Return (route, result) for supported music coaching questions."""
     q = str(question or "").strip()
@@ -549,7 +551,7 @@ def solve_instant_music_insight(
     try:
         from music_coach_ami.pipeline import coach_response_to_legacy_route, run_coach_pipeline
 
-        coach_resp = run_coach_pipeline(q, None, ami_ctx=ctx)
+        coach_resp = run_coach_pipeline(q, session_state if isinstance(session_state, dict) else {}, ami_ctx=ctx)
         if coach_resp is not None:
             problem_type, model_name = coach_response_to_legacy_route(coach_resp)
             if (
