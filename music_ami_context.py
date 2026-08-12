@@ -541,6 +541,44 @@ def finalize_music_context_for_send(
         if live:
             ctx["display_key"] = live
 
+    # Live instrument / level / focus / section must beat a stale AMI cache snapshot.
+    # Otherwise Bass→Piano (same wording) fingerprints as a duplicate of the prior send.
+    live_song: dict[str, Any] = {}
+    try:
+        from active_song_state import gather_active_song_context
+
+        live_song = gather_active_song_context(session_state) or {}
+    except Exception:
+        live_song = {}
+    live_instrument = _active_instrument_for_ami(session_state, live_song)
+    live_level = _active_level_for_ami(session_state, live_song)
+    live_focus = str(live_song.get("focus") or session_state.get("focus") or "").strip()
+    live_section = str(
+        session_state.get("practice_focus_section")
+        or session_state.get("ii_selected_section")
+        or live_song.get("practice_focus_section")
+        or ""
+    ).strip()
+    snap_live = ctx.get("practice_snapshot")
+    if isinstance(snap_live, dict):
+        snap_live = dict(snap_live)
+    else:
+        snap_live = {}
+    if live_instrument:
+        ctx["instrument"] = live_instrument
+        snap_live["instrument"] = live_instrument
+    if live_level:
+        ctx["level"] = live_level
+        snap_live["level"] = live_level
+    if live_focus:
+        ctx["focus"] = live_focus
+        snap_live["focus"] = live_focus
+    if live_section:
+        ctx["practice_focus_section"] = live_section
+        snap_live["practice_focus_section"] = live_section
+    if snap_live:
+        ctx["practice_snapshot"] = {**(ctx.get("practice_snapshot") or {}), **snap_live}
+
     intent = detect_music_send_intent(q, page)
     ctx["routing_hint"] = intent
     ctx["problem_type_hint"] = intent

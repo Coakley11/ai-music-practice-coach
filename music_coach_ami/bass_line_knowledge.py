@@ -231,6 +231,11 @@ def _instrument_playing_guidance(family: str, instrument: str) -> str:
             f"On **{instrument}**, place each root on the **lowest practical string**; "
             "keep the bass pulse steady before adding upper notes."
         )
+    if family == "wind":
+        return (
+            f"On **{instrument}**, treat this as a **supportive harmonic line** in a comfortable register — "
+            "breathe between phrases and land chord tones clearly (not an electric-bass octave)."
+        )
     return (
         f"On **{instrument}**, outline roots on strong beats first; "
         "keep the line supportive rather than busy."
@@ -244,7 +249,11 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         compose_bass_line_from_chords,
         composition_to_diagnostics,
     )
-    from music_coach_ami.musical_idea_request import parse_musical_idea_request, resolve_generation_level
+    from music_coach_ami.musical_idea_request import (
+        musical_idea_to_diagnostics,
+        resolve_generation_level,
+        resolve_musical_idea_request,
+    )
     from music_coach_ami.written_music_context import (
         build_written_music_context,
         transpose_composition_to_written,
@@ -272,17 +281,17 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
     song = _clean(req.context.active_song_title)
     section = _usable_section(req.context.active_section)
 
-    idea = parse_musical_idea_request(
-        req.raw_question or req.normalized_question,
-        default_object="bass_line",
-        practice_focus=focus,
-        level=level,
-    )
-    gen_level = resolve_generation_level(idea, level)
-
     extra = req.context.extra if isinstance(req.context.extra, dict) else {}
     chart = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
     session_ref = extra.get("session_ref") if isinstance(extra.get("session_ref"), dict) else {}
+    # SessionStateProxy is a Mapping, not always a dict.
+    if not session_ref and extra.get("session_ref") is not None:
+        try:
+            from music_coach_ami.session_access import as_mutable_session
+
+            session_ref = as_mutable_session(extra.get("session_ref"))
+        except ImportError:
+            session_ref = {}
 
     concert_chords = list(chart.get("active_section_chords") or [])
     if not concert_chords:
@@ -291,6 +300,24 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         concert_chords = _parse_progression_chords(req.context.current_chord)
 
     section_label = _clean(chart.get("active_section")) or section
+    meter = _clean(chart.get("chart_meter") or "4/4")
+    bpm = int(chart.get("bpm") or req.context.tempo_bpm or 84)
+
+    idea = resolve_musical_idea_request(
+        req.raw_question or req.normalized_question,
+        default_object="bass_line",
+        instrument=instrument,
+        level=level,
+        practice_focus=focus,
+        meter=meter,
+        tempo_bpm=bpm,
+        section=section_label,
+        duration_minutes=req.constraints.requested_duration_minutes,
+    )
+    gen_level = resolve_generation_level(idea, level)
+    # Prefer idea style/focus for generation when question/context named one.
+    focus_for_gen = idea.practice_focus or focus
+
     practice_concert_key = _clean(
         idea.explicit_key
         or chart.get("practice_key")
@@ -299,8 +326,6 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         or "C"
     )
     original_key = _clean(chart.get("original_key") or req.context.song_original_key or practice_concert_key)
-    meter = _clean(chart.get("chart_meter") or "4/4")
-    bpm = int(chart.get("bpm") or req.context.tempo_bpm or 84)
 
     # Explicit question key outranks Practice Key: transpose chart chords when needed.
     if idea.explicit_key and concert_chords and idea.explicit_key != _clean(chart.get("practice_key")):
@@ -345,7 +370,7 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
             instrument=instrument,
             meter=meter,
             section_label=section_label,
-            practice_focus=focus,
+            practice_focus=focus_for_gen,
             style=idea.style,
             difficulty_override=idea.difficulty,
             register=idea.register,
@@ -406,7 +431,7 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "instrument_family": family,
         "resolved_level": gen_level,
         "context_level": level,
-        "practice_focus": focus,
+        "practice_focus": focus_for_gen,
         "idea_style": idea.style,
         "explicit_difficulty": idea.difficulty or None,
         "explicit_key": idea.explicit_key or None,
@@ -414,6 +439,8 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "notation_abc_present": bool(notation_abc),
         "fallback_reason": fallback_reason or None,
         "abc_key_field": abc_k or None,
+        "musical_object": idea.object_type,
+        **musical_idea_to_diagnostics(idea),
         "chart_transport_at_solver": {
             "extra_present": isinstance(extra, dict),
             "chart_snapshot_present": bool(chart),

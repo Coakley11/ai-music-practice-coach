@@ -678,5 +678,116 @@ class BassLineUiPathSubmitRegressionTests(unittest.TestCase):
         self.assertNotIn("Command Center", success_msgs)
 
 
+class CrossInstrumentBassLineRealizationTests(unittest.TestCase):
+    """Bass-line musical object realized for many instruments/keys — one solver."""
+
+    QUESTION = "Give me a good bass line to use for this song."
+    CHORDS_DB = ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7"]
+
+    def _run(self, instrument: str, practice_key: str = "C", *, level: str = "Beginner", focus: str = "Walking Bass"):
+        from music_coach_ami.pipeline import run_coach_submit
+
+        session = {
+            "display_key": practice_key,
+            "concert_key": practice_key,
+            "original_key": "Db",
+            "instrument": instrument,
+            "level": level,
+            "focus": focus,
+        }
+        ami_ctx = {
+            "instrument": instrument,
+            "level": level,
+            "focus": focus,
+            "display_key": practice_key,
+            "chart_sections": {"Verse": list(self.CHORDS_DB)},
+            "chart_sections_key": "Db",
+            "practice_focus_section": "Verse",
+            "active_song": {"title": "Just the Two of Us", "key": "Db", "pick_key": "just_the_two_of_us"},
+            "pick_key": "just_the_two_of_us",
+            "coach_page": "practice",
+        }
+        return run_coach_submit(self.QUESTION, session, ami_ctx=ami_ctx)
+
+    def test_bass_piano_guitar_flute_clarinet_alto(self) -> None:
+        from music_coach_ami.notation_profile import notation_profile_for_instrument
+
+        expectations = {
+            "Bass": {"clef": "bass", "written_contains": "K:C", "family_hint": "bass"},
+            "Piano": {"clef": "bass", "written_contains": "K:C", "family_hint": "keyboard"},
+            "Guitar": {"clef": "treble", "written_contains": "K:C", "family_hint": "fretted"},
+            "Flute": {"clef": "treble", "written_contains": "K:C", "family_hint": "wind"},
+            "Clarinet": {"clef": "treble", "written_contains": "K:D", "family_hint": "wind"},  # Bb → written D from C
+            "Alto Sax": {"clef": "treble", "written_contains": "K:A", "family_hint": "wind"},  # Eb → written A from C
+        }
+        for instrument, exp in expectations.items():
+            with self.subTest(instrument=instrument):
+                req, resp = self._run(instrument)
+                self.assertIsNotNone(resp)
+                assert resp is not None
+                self.assertEqual(resp.source_solver, "SongCoachSolver(bass_line)")
+                self.assertEqual(resp.diagnostics.get("resolved_instrument"), instrument)
+                self.assertNotEqual(resp.diagnostics.get("musical_object"), instrument.lower())
+                self.assertEqual(resp.diagnostics.get("musical_object"), "bass_line")
+                self.assertFalse(resp.diagnostics.get("fallback_reason"))
+                self.assertTrue(resp.notation_abc)
+                self.assertIn(exp["written_contains"], resp.notation_abc)
+                self.assertEqual(resp.diagnostics.get("notation_clef") or notation_profile_for_instrument(instrument).clef, exp["clef"])
+                # Concert/practice harmony stays C for all.
+                self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+
+    def test_representative_practice_keys(self) -> None:
+        for key in ("C", "Db", "F#", "Bb"):
+            with self.subTest(key=key):
+                req, resp = self._run("Bass", key)
+                self.assertIsNotNone(resp)
+                assert resp is not None
+                self.assertEqual(resp.diagnostics.get("practice_concert_key"), key)
+                k_lines = [ln for ln in (resp.notation_abc or "").splitlines() if ln.startswith("K:")]
+                self.assertTrue(k_lines)
+                self.assertTrue(k_lines[0].startswith(f"K:{key}") or f"K:{key}" in k_lines[0])
+
+    def test_level_and_focus_change_material(self) -> None:
+        _, beginner = self._run("Bass", level="Beginner", focus="Walking Bass")
+        _, advanced = self._run("Bass", level="Advanced", focus="Walking Bass")
+        _, phrasing = self._run("Bass", level="Beginner", focus="Phrasing")
+        assert beginner and advanced and phrasing
+        self.assertNotEqual(beginner.notation_abc, advanced.notation_abc)
+        self.assertNotEqual(beginner.diagnostics.get("generation_strategy"), advanced.diagnostics.get("generation_strategy"))
+        self.assertNotEqual(beginner.notation_abc, phrasing.notation_abc)
+        self.assertIn("phras", str(phrasing.diagnostics.get("generation_strategy") or phrasing.diagnostics.get("bass_line_style") or "").lower()
+                      + str(phrasing.diagnostics.get("idea_style") or "").lower()
+                      + str(phrasing.diagnostics.get("practice_focus") or "").lower())
+
+    def test_explicit_very_easy_overrides_advanced_context(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        session = {
+            "display_key": "C",
+            "instrument": "Piano",
+            "level": "Advanced",
+            "focus": "Walking Bass",
+        }
+        ami_ctx = {
+            "instrument": "Piano",
+            "level": "Advanced",
+            "focus": "Walking Bass",
+            "display_key": "C",
+            "chart_sections": {"Verse": list(self.CHORDS_DB)},
+            "chart_sections_key": "Db",
+            "practice_focus_section": "Verse",
+            "active_song": {"title": "Just the Two of Us", "key": "Db"},
+            "coach_page": "practice",
+        }
+        _, resp = run_coach_submit(
+            "Give me a very easy bass line for this song.",
+            session,
+            ami_ctx=ami_ctx,
+        )
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("resolved_level"), "beginner")
+        self.assertEqual(resp.diagnostics.get("explicit_difficulty"), "beginner")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -295,10 +295,22 @@ def question_dedupe_fingerprint(
     source_page: str = "",
     context: dict[str, Any] | None = None,
 ) -> str:
-    """Stable id for dedupe — same app, page, question, and key entities → same card."""
+    """Stable id for dedupe — same app, page, question, and key entities → same card.
+
+    Music Coach uses a dedicated semantic fingerprint so instrument / Practice Key /
+    level / focus / song / section changes produce a fresh question_id.
+    """
+    app = str(source_app or "").strip().lower()
+    if app == "music":
+        try:
+            from music_coach_ami.semantic_fingerprint import music_coach_semantic_fingerprint
+
+            return music_coach_semantic_fingerprint(question, context)
+        except ImportError:
+            pass
     ctx = dict(context or {})
     parts = [
-        str(source_app or "").strip().lower(),
+        app,
         str(source_page or "").strip().lower(),
         _normalize_question(question),
     ]
@@ -1381,14 +1393,83 @@ def _record_music_coach_send(
     question: str,
     source_app: str,
     result_path: str,
+    semantic_dimensions: dict[str, str] | None = None,
 ) -> None:
-    session_state["_ami_last_send"] = {
+    payload: dict[str, Any] = {
         "question_id": question_id,
         "question": question,
         "source_app": source_app,
         "submitted_at": utc_now_iso(),
         "result_path": result_path,
     }
+    if semantic_dimensions:
+        payload["semantic_fingerprint"] = question_id
+        payload["semantic_dimensions"] = dict(semantic_dimensions)
+    session_state["_ami_last_send"] = payload
+
+
+def _music_coach_semantic_payload(
+    question: str,
+    submit_ctx: dict[str, Any],
+) -> tuple[str, dict[str, str]]:
+    """Fingerprint + dimensions from the same fresh submit context the solver uses."""
+    try:
+        from music_coach_ami.semantic_fingerprint import (
+            music_coach_semantic_dimensions,
+            music_coach_semantic_fingerprint,
+        )
+
+        dims = music_coach_semantic_dimensions(question, submit_ctx)
+        return music_coach_semantic_fingerprint(question, submit_ctx), dims
+    except ImportError:
+        return "", {}
+
+
+def _attach_music_dedupe_diagnostics(
+    session_state: dict[str, Any],
+    *,
+    fingerprint: str,
+    dimensions: dict[str, str],
+    duplicate: bool,
+) -> None:
+    last = session_state.get("_ami_last_send")
+    prev_fp = ""
+    prev_dims: dict[str, str] = {}
+    if isinstance(last, dict):
+        prev_fp = str(last.get("semantic_fingerprint") or last.get("question_id") or "")
+        raw_dims = last.get("semantic_dimensions")
+        if isinstance(raw_dims, dict):
+            prev_dims = {str(k): str(v) for k, v in raw_dims.items()}
+    changed: list[str] = []
+    try:
+        from music_coach_ami.semantic_fingerprint import music_coach_fingerprint_diff
+
+        changed = music_coach_fingerprint_diff(prev_dims, dimensions)
+    except ImportError:
+        if prev_fp and prev_fp != fingerprint:
+            changed = ["fingerprint"]
+    patch = {
+        "semantic_fingerprint": fingerprint,
+        "previous_semantic_fingerprint": prev_fp or None,
+        "duplicate": bool(duplicate),
+        "semantic_dimensions_changed": changed,
+        "semantic_dimensions": dict(dimensions),
+        "selected_instrument": dimensions.get("instrument"),
+        "level": dimensions.get("level"),
+        "focus": dimensions.get("focus"),
+        "practice_key": dimensions.get("practice_key"),
+        "active_song_pick": dimensions.get("pick_key"),
+        "active_section": dimensions.get("section"),
+        "musical_object": dimensions.get("musical_object"),
+        "capo_enabled": dimensions.get("capo_enabled"),
+        "capo_shape_key": dimensions.get("capo_shape_key") or None,
+        "written_key_hint": dimensions.get("written_key_hint") or None,
+    }
+    existing = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if isinstance(existing, dict):
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = {**existing, **patch}
+    else:
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = patch
 
 
 def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any]) -> None:
@@ -1419,6 +1500,18 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
                 f"chart_available=`{diag.get('chart_available')}` · "
                 f"notation=`{diag.get('notation_success')}` · "
                 f"coach_response=`{diag.get('coach_response_success')}`"
+            )
+        if diag.get("semantic_fingerprint") or diag.get("duplicate") is not None:
+            ui.caption(
+                f"semantic_fp=`{diag.get('semantic_fingerprint') or '—'}` · "
+                f"prev=`{diag.get('previous_semantic_fingerprint') or '—'}` · "
+                f"duplicate=`{diag.get('duplicate')}` · "
+                f"changed=`{diag.get('semantic_dimensions_changed') or []}` · "
+                f"object=`{diag.get('musical_object') or '—'}` · "
+                f"instrument=`{diag.get('selected_instrument') or '—'}` · "
+                f"key=`{diag.get('practice_key') or '—'}` · "
+                f"level=`{diag.get('level') or '—'}` · "
+                f"focus=`{diag.get('focus') or '—'}`"
             )
         try:
             from applied_math_return_insight import MUSIC_COACH_RENDER_TRACE_KEY
@@ -1510,6 +1603,19 @@ def _execute_coach_question_submit(
     except Exception:
         log.exception("promote_music_ami_context_at_send failed for music coach (%s)", source_page)
 
+    # Stamp live capo fields onto submit context so fingerprint matches WrittenMusicContext.
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if CAPO_ENABLED_KEY in session_state or session_state.get(CAPO_ENABLED_KEY) is not None:
+            submit_ctx["guitar_capo_enabled"] = bool(session_state.get(CAPO_ENABLED_KEY))
+        if session_state.get(CAPO_SHAPE_KEY):
+            submit_ctx["guitar_capo_shape_key"] = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
+    except ImportError:
+        pass
+
+    semantic_fp, semantic_dims = _music_coach_semantic_payload(q, submit_ctx)
+
     pre_payload = build_question_payload(
         source_app=source_app,
         source_page=source_page,
@@ -1518,7 +1624,11 @@ def _execute_coach_question_submit(
         context_summary=context_summary,
         source_state=submit_source_state,
     )
-    question_id = str(pre_payload.get("question_id") or "")
+    # Prefer dedicated Music Coach fingerprint (already used inside question_id for music).
+    question_id = str(semantic_fp or pre_payload.get("question_id") or "")
+    if semantic_fp:
+        pre_payload["question_id"] = semantic_fp
+        pre_payload["resume_key"] = f"ai:question:{semantic_fp}"
 
     if _recent_duplicate_send(session_state, question_id):
         last = session_state.get("_ami_last_send")
@@ -1531,10 +1641,17 @@ def _execute_coach_question_submit(
             SESSION_PENDING_KEY = "_ami_pending_insight"
         pending = session_state.get(SESSION_PENDING_KEY)
         routed_pending = isinstance(pending, dict) and pending.get("canonical_instant")
+        _attach_music_dedupe_diagnostics(
+            session_state,
+            fingerprint=question_id,
+            dimensions=semantic_dims,
+            duplicate=True,
+        )
         if last_path == "routed_coach" or routed_pending:
             _restore_routed_insight_render_flags(session_state)
             dup_msg = (
-                "That question was already sent recently. Your Music Coach insight is shown below."
+                "That question was just answered with the same music settings. "
+                "Your Music Coach insight is shown on this page."
             )
             ui.info(dup_msg)
             session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
@@ -1549,14 +1666,19 @@ def _execute_coach_question_submit(
         dup_msg = (
             "That question was already sent recently. Open Command Center to continue with the Music Coach."
             if last_path == "legacy_fallback"
-            else "That question was already sent recently. See your insight below or open Command Center."
+            else (
+                "That question was just answered with the same music settings. "
+                "Your Music Coach insight is shown on this page."
+            )
         )
         ui.info(dup_msg)
         session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
             "kind": "info",
-            "message": "Duplicate send skipped.",
+            "message": dup_msg,
             "result_path": last_path or "duplicate",
         }
+        if developer_mode:
+            _render_music_coach_submit_dev_panel(ui, session_state)
         return {"duplicate": True, "routed": False}
 
     coach_req = None
@@ -1671,12 +1793,19 @@ def _execute_coach_question_submit(
             "duplicate_suppressed": False,
         }
         st.session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+        _attach_music_dedupe_diagnostics(
+            session_state,
+            fingerprint=question_id,
+            dimensions=semantic_dims,
+            duplicate=False,
+        )
         _record_music_coach_send(
             session_state,
             question_id=question_id,
             question=q,
             source_app=source_app,
             result_path="routed_coach",
+            semantic_dimensions=semantic_dims,
         )
         try:
             from applied_math_return_insight import record_music_coach_lifecycle_trace
@@ -1755,12 +1884,19 @@ def _execute_coach_question_submit(
         "result_path": "legacy_fallback",
         "surface": surface_tag,
     }
+    _attach_music_dedupe_diagnostics(
+        session_state,
+        fingerprint=question_id,
+        dimensions=semantic_dims,
+        duplicate=False,
+    )
     _record_music_coach_send(
         session_state,
         question_id=str(result.get("question_id") or question_id),
         question=q,
         source_app=source_app,
         result_path="legacy_fallback",
+        semantic_dimensions=semantic_dims,
     )
     if result.get("duplicate"):
         ui.info("That question was already sent recently. Open Command Center to continue with the Music Coach.")

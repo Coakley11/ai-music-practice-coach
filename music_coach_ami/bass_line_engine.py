@@ -31,6 +31,24 @@ def _is_walking_focus(focus: str, *, style: str = "") -> bool:
     return "walking" in blob or "walk bass" in blob
 
 
+def _focus_mode(focus: str, *, style: str = "") -> str:
+    """Map practice focus / idea style to a generation mode for bass-line role."""
+    blob = f"{focus} {style}".lower().replace("-", " ").replace("_", " ")
+    if "walking" in blob or "walk bass" in blob:
+        return "walking"
+    if "phras" in blob:
+        return "phrasing"
+    if "rhythm" in blob or "syncop" in blob:
+        return "rhythm"
+    if "articul" in blob:
+        return "articulation"
+    if "harmon" in blob:
+        return "harmony"
+    if "technique" in blob:
+        return "technique"
+    return "default"
+
+
 def _spell_root(chord: str, reference_key: str) -> str:
     from music_theory import (
         chord_root_for_theory,
@@ -480,17 +498,19 @@ def compose_bass_line_from_chords(
     """Deterministic phrase-aware bass line aligned to one chord per bar."""
     usable = [_clean(c) for c in chords if _clean(c)][:max_bars]
     lvl = _level_label(difficulty_override or level)
-    walking = _is_walking_focus(practice_focus, style=style)
+    mode = _focus_mode(practice_focus, style=style)
+    walking = mode == "walking"
     profile = apply_register_override(notation_profile_for_instrument(instrument), register)
     ref = _clean(reference_key) or "C"
     low, high = profile.midi_low, profile.midi_high
+    # Winds: bias toward middle of their playable window for supportive lines.
     center = (low + high) // 2
 
     bars: list[BassLineBar] = []
     prev_midi = center
     strategy = "beginner_walking" if walking and lvl == "beginner" else (
         "intermediate_walking" if walking and lvl == "intermediate" else (
-            "advanced_walking" if walking else f"{lvl}_bass_line"
+            "advanced_walking" if walking else f"{lvl}_{mode}_bass_line"
         )
     )
 
@@ -507,19 +527,46 @@ def compose_bass_line_from_chords(
 
         pitched: list[BassLineNote] = []
 
-        if walking or lvl != "beginner":
+        if mode == "phrasing":
+            # Contour with space: root half + chord tone half (or whole for beginner).
+            root_note, root_oct, root_midi = _place_pitch(root, prefer_midi=prev_midi, low=low, high=high)
+            if lvl == "beginner":
+                pitched = [BassLineNote(root_note, "whole", root_oct)]
+                prev_midi = root_midi
+            else:
+                color = seventh if lvl == "advanced" else fifth
+                c_note, c_oct, c_midi = _place_pitch(color, prefer_midi=root_midi + 4, low=low, high=high)
+                pitched = [
+                    BassLineNote(root_note, "half", root_oct),
+                    BassLineNote(c_note, "half", c_oct),
+                ]
+                prev_midi = c_midi
+        elif mode == "rhythm" and lvl != "beginner":
+            # Syncopated supportive pulse: quarter–eighth–eighth–half feel via quarters.
+            root_note, root_oct, root_midi = _place_pitch(root, prefer_midi=prev_midi, low=low, high=high)
+            color = third if lvl == "intermediate" else seventh
+            c_note, c_oct, c_midi = _place_pitch(color, prefer_midi=root_midi + 3, low=low, high=high)
+            n_note, n_oct, n_midi = _place_pitch(next_root, prefer_midi=c_midi, low=low, high=high)
+            pitched = [
+                BassLineNote(root_note, "quarter", root_oct),
+                BassLineNote(c_note, "eighth", c_oct),
+                BassLineNote(c_note, "eighth", c_oct),
+                BassLineNote(n_note, "half", n_oct),
+            ]
+            prev_midi = n_midi
+        elif walking or lvl != "beginner" or mode in {"harmony", "technique", "articulation"}:
             pitched, prev_midi = _select_walking_bar(
                 root=root,
                 tones=tones,
                 third=third,
                 fifth=fifth,
-                seventh=seventh,
+                seventh=seventh if mode == "harmony" or lvl != "beginner" else fifth,
                 next_root=next_root,
                 prev_midi=prev_midi,
                 center=center,
                 low=low,
                 high=high,
-                level=lvl,
+                level="advanced" if mode == "harmony" and lvl != "beginner" else lvl,
                 bar_idx=idx,
                 reference_key=ref,
             )
@@ -539,6 +586,7 @@ def compose_bass_line_from_chords(
 
         bars.append(BassLineBar(chord=chord, notes=tuple(pitched)))
 
+    style_out = "walking_bass" if walking else (_clean(style) or mode or "bass_line")
     return BassLineComposition(
         bars=tuple(bars),
         reference_key=ref,
@@ -546,7 +594,7 @@ def compose_bass_line_from_chords(
         section_label=_clean(section_label),
         strategy=strategy,
         notation_profile=profile,
-        style="walking_bass" if walking else _clean(style) or "bass_line",
+        style=style_out,
     )
 
 
