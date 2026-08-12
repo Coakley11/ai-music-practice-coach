@@ -190,7 +190,7 @@ def gather_practice_ami_snapshot(
         "title": _song_title(song),
         "artist": str(song.get("artist") or "").strip(),
         "genre": str(song.get("genre") or "").strip(),
-        "display_key": str(song_ctx.get("display_key") or session_state.get("display_key") or "").strip(),
+        "display_key": str(session_state.get("display_key") or song_ctx.get("display_key") or "").strip(),
         "bpm": int(bpm) if bpm is not None else None,
         "instrument": _active_instrument_for_ami(session_state, song_ctx),
         "level": _active_level_for_ami(session_state, song_ctx),
@@ -523,6 +523,24 @@ def finalize_music_context_for_send(
                 if snap.get(key) is not None and snap.get(key) != "":
                     ctx[key] = snap[key]
 
+    # Fresh Practice Key on submit rerun — never keep a stale cached display_key.
+    try:
+        from music_coach_ami.chart_context_reader import resolve_live_coach_practice_key
+
+        live_key, pk_trace = resolve_live_coach_practice_key(session_state, ami_ctx=ctx)
+        if live_key:
+            ctx["display_key"] = live_key
+            snap_out = ctx.get("practice_snapshot")
+            if isinstance(snap_out, dict):
+                snap_out = dict(snap_out)
+                snap_out["display_key"] = live_key
+                ctx["practice_snapshot"] = snap_out
+            ctx["practice_key_trace"] = pk_trace
+    except ImportError:
+        live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
+        if live:
+            ctx["display_key"] = live
+
     intent = detect_music_send_intent(q, page)
     ctx["routing_hint"] = intent
     ctx["problem_type_hint"] = intent
@@ -581,6 +599,22 @@ def build_music_applied_math_context(
     if song.get("title"):
         artist = str(song.get("artist") or "").strip()
         ctx["song"] = f"{song['title']} — {artist}" if artist else song["title"]
+
+    # Overlay live Practice Key even when snapshot/cache still holds the prior key.
+    try:
+        from music_coach_ami.chart_context_reader import resolve_live_coach_practice_key
+
+        live_key, pk_trace = resolve_live_coach_practice_key(session_state, ami_ctx=ctx)
+        if live_key:
+            ctx["display_key"] = live_key
+            snap_live = ctx.get("practice_snapshot")
+            if isinstance(snap_live, dict):
+                snap_live = dict(snap_live)
+                snap_live["display_key"] = live_key
+                ctx["practice_snapshot"] = snap_live
+            ctx["practice_key_trace"] = pk_trace
+    except ImportError:
+        pass
 
     if str(question or "").strip():
         finalize_music_context_for_send(ctx, session_state, question=question, coach_page=page)

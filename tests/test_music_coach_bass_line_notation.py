@@ -429,5 +429,104 @@ class WrittenMusicContextAcceptanceTests(unittest.TestCase):
         self.assertTrue(is_bass_line_content_request(q, q.lower()))
 
 
+class PracticeKeyAuthoritySubmitTests(unittest.TestCase):
+    """Stale snapshot must not beat live Practice Key on the submit path."""
+
+    QUESTION = "Give me a good bass line to use for this song."
+    CHORDS_DB = ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7"]
+
+    def test_stale_snapshot_display_key_loses_to_live_c(self) -> None:
+        from music_coach_ami.context_reader import read_coach_context
+        from music_coach_ami.pipeline import run_coach_submit
+
+        session = {
+            "display_key": "C",
+            "concert_key": "C",
+            "original_key": "Db",
+            "instrument": "Bass",
+            "level": "Beginner",
+            "focus": "Walking Bass",
+        }
+        ami_ctx = {
+            "instrument": "Bass",
+            "level": "Beginner",
+            "focus": "Walking Bass",
+            "display_key": "Db",  # stale transported value
+            "practice_snapshot": {
+                "display_key": "Db",
+                "title": "Just the Two of Us",
+                "pick_key": "",
+            },
+            "chart_sections": {"Verse": list(self.CHORDS_DB)},
+            "practice_focus_section": "Verse",
+            "active_song": {"title": "Just the Two of Us", "key": "Db"},
+            "coach_page": "practice",
+        }
+        ctx = read_coach_context(session, ami_ctx=ami_ctx)
+        self.assertEqual(ctx.current_practice_key, "C")
+        snap = (ctx.extra or {}).get("chart_snapshot") or {}
+        self.assertEqual(snap.get("practice_key"), "C")
+        self.assertTrue(snap.get("transposed_to_practice_key"))
+        chords = list(snap.get("active_section_chords") or [])
+        self.assertTrue(chords)
+        self.assertIn("Cmaj7", chords)
+        self.assertFalse(any(str(c).startswith("Db") for c in chords))
+
+        req, resp = run_coach_submit(self.QUESTION, session, ami_ctx=ami_ctx)
+        self.assertEqual(req.context.current_practice_key, "C")
+        assert resp is not None
+        self.assertEqual(resp.source_solver, "SongCoachSolver(bass_line)")
+        self.assertTrue(resp.notation_abc)
+        self.assertFalse(resp.diagnostics.get("fallback_reason"))
+        self.assertEqual(resp.diagnostics.get("practice_concert_key"), "C")
+        self.assertIn("K:C", resp.notation_abc)
+        self.assertNotIn("K:Db", resp.notation_abc)
+
+    def test_build_music_coach_context_refreshes_display_key(self) -> None:
+        from music_coach_context import build_music_coach_context
+        from music_coach_ami.pipeline import run_coach_submit
+
+        session = {
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+            "level": "Beginner",
+            "focus": "Walking Bass",
+            # Stale AMI cache snapshot still on Db
+            "_ami_music_snapshot": {
+                "coach_page": "practice",
+                "practice_snapshot": {
+                    "display_key": "Db",
+                    "title": "Just the Two of Us",
+                    "instrument": "Piano",
+                    "level": "Beginner",
+                },
+            },
+        }
+        submit_ctx = build_music_coach_context("practice", session)
+        # Inject chart so solver has harmony without catalog pick
+        submit_ctx = {
+            **submit_ctx,
+            "display_key": submit_ctx.get("display_key") or "C",
+            "chart_sections": {"Verse": list(self.CHORDS_DB)},
+            "practice_focus_section": "Verse",
+            "active_song": {
+                **(submit_ctx.get("active_song") or {}),
+                "title": "Just the Two of Us",
+                "key": "Db",
+            },
+        }
+        self.assertEqual(submit_ctx.get("display_key"), "C")
+        snap = submit_ctx.get("practice_snapshot") or {}
+        self.assertEqual(snap.get("display_key"), "C")
+
+        req, resp = run_coach_submit(self.QUESTION, session, ami_ctx=submit_ctx)
+        self.assertEqual(req.context.current_practice_key, "C")
+        assert resp is not None
+        self.assertTrue(resp.notation_abc)
+        self.assertIn("K:C", resp.notation_abc)
+        self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Piano")
+
+
 if __name__ == "__main__":
     unittest.main()

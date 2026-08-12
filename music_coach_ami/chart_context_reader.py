@@ -9,6 +9,86 @@ def _clean(text: object) -> str:
     return str(text or "").strip()
 
 
+def resolve_live_coach_practice_key(
+    session_state: dict[str, Any],
+    *,
+    ami_ctx: dict[str, Any] | None = None,
+    practice_key_hint: str = "",
+) -> tuple[str, dict[str, str]]:
+    """Resolve current Practice/Concert Key for Coach.
+
+    Precedence (stale transported snapshot must never beat a live key change):
+    1. live session ``display_key`` / ``concert_key`` (current widget / SSOT write target)
+    2. authoritative Practice Key SSOT when it agrees with live, or when live is empty
+       but SSOT still reflects session song state
+    3. submit/AMI context ``display_key`` or caller hint
+    4. practice_snapshot ``display_key`` (fallback only)
+    """
+    ctx = dict(ami_ctx or {})
+    session = session_state if isinstance(session_state, dict) else {}
+    snap = _practice_snapshot(ctx)
+    live = _clean(session.get("display_key") or session.get("concert_key"))
+    ctx_key = _clean(ctx.get("display_key") or practice_key_hint)
+    snap_key = _clean(snap.get("display_key"))
+    auth_tok = ""
+    auth_source = ""
+    try:
+        from musical_context_authority import resolve_authoritative_practice_key
+
+        auth = resolve_authoritative_practice_key(session)
+        auth_tok = _clean(auth.practice_key_token)
+        auth_source = _clean(auth.source)
+    except ImportError:
+        pass
+
+    trace: dict[str, str] = {
+        "authoritative_ssot": auth_tok,
+        "authoritative_source": auth_source,
+        "session_display_key": _clean(session.get("display_key")),
+        "session_concert_key": _clean(session.get("concert_key")),
+        "ctx_display_key": _clean(ctx.get("display_key")),
+        "snap_display_key": snap_key,
+        "practice_key_hint": _clean(practice_key_hint),
+        "resolved": "",
+        "source": "",
+    }
+
+    # 1) Live session key always beats stale snap/ctx.
+    if live:
+        if auth_tok and auth_tok != live:
+            trace["resolved"] = live
+            trace["source"] = "session_over_ssot_mismatch"
+            return live, trace
+        trace["resolved"] = live
+        trace["source"] = (
+            f"session_aligned_ssot:{auth_source}" if auth_tok == live and auth_source else "session_display_key"
+        )
+        return live, trace
+
+    # 2) No live widget value — prefer explicit submit/ctx over a default SSOT "C"
+    #    so fixture ami_ctx display_key still works when session is empty.
+    if ctx_key:
+        trace["resolved"] = ctx_key
+        trace["source"] = "ami_ctx_or_hint"
+        return ctx_key, trace
+
+    # 3) Authoritative SSOT (song/session derived) when ctx also empty
+    if auth_tok:
+        trace["resolved"] = auth_tok
+        trace["source"] = f"authoritative_ssot:{auth_source or 'unknown'}"
+        return auth_tok, trace
+
+    # 4) Snapshot fallback only
+    if snap_key:
+        trace["resolved"] = snap_key
+        trace["source"] = "practice_snapshot_fallback"
+        return snap_key, trace
+
+    trace["resolved"] = "C"
+    trace["source"] = "default_C"
+    return "C", trace
+
+
 def _sections_dict(raw: object) -> dict[str, list[str]]:
     if not isinstance(raw, dict):
         return {}
@@ -375,15 +455,23 @@ def resolve_coach_chart_snapshot(
         except ImportError:
             pass
 
-    # 5) Session improv cache — only when catalog/blob unavailable (may be stale vs Practice Key).
+    # 5) Session improv cache — only when catalog/blob unavailable.
+    # When original_key is known and differs from live Practice Key, treat the cache as
+    # needing a Db→C (etc.) transform. Otherwise assume the cache is already in the
+    # live Practice Key (synced workflow).
     if not sections:
         stored = session.get("improv_song_concert_sections")
         candidate = _sections_dict(stored)
         if candidate:
             sections = candidate
             source = "session.improv_song_concert_sections"
-            # Do NOT assume these match the current Practice Key — re-key via original below.
-            sections_source_key = ""
+            live_pk = _clean(
+                session.get("display_key") or session.get("concert_key") or ctx.get("display_key") or ""
+            )
+            if original_key and live_pk and original_key != live_pk:
+                sections_source_key = original_key
+            else:
+                sections_source_key = live_pk
 
     if not sections and isinstance(ctx.get("active_song"), dict):
         active = ctx["active_song"]
@@ -404,17 +492,19 @@ def resolve_coach_chart_snapshot(
 
     picker, library, catalog_handle_source = _catalog_handles(session)
 
-    resolved_practice_key = _clean(practice_key or ctx.get("display_key") or session.get("display_key"))
-    if not resolved_practice_key:
-        try:
-            from musical_context_authority import resolve_authoritative_practice_key
+    resolved_practice_key, practice_key_trace = resolve_live_coach_practice_key(
+        session,
+        ami_ctx=ctx,
+        practice_key_hint=practice_key,
+    )
+    try:
+        from musical_context_authority import resolve_authoritative_practice_key
 
-            auth = resolve_authoritative_practice_key(session)
-            resolved_practice_key = auth.practice_key_token
-            if not original_key:
-                original_key = auth.original_key_token
-        except ImportError:
-            resolved_practice_key = resolved_practice_key or original_key or "C"
+        auth = resolve_authoritative_practice_key(session)
+        if not original_key:
+            original_key = _clean(auth.original_key_token)
+    except ImportError:
+        pass
 
     if not original_key:
         original_key = _clean(ctx.get("original_key") or session.get("original_key") or resolved_practice_key or "C")
@@ -488,4 +578,5 @@ def resolve_coach_chart_snapshot(
         "sections_source_key": from_key or None,
         "transposed_to_practice_key": transposed_this_resolve,
         "catalog_handle_source": catalog_handle_source,
+        "practice_key_trace": practice_key_trace,
     }

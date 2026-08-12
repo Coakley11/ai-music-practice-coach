@@ -90,11 +90,24 @@ def read_coach_context(
                 pick = str(session_state.get("active_catalog_pick_key") or "").strip()
     progression_summary = str(active.get("progression_summary") or snap.get("progression_summary") or "").strip()
 
-    original_key = str(active.get("key") or active.get("default_key") or snap.get("genre") or "").strip()
-    if not original_key:
-        original_key = str(snap.get("display_key") or "")  # fallback only for display
+    original_key = str(active.get("key") or active.get("default_key") or "").strip()
 
-    practice_key = str(snap.get("display_key") or ctx.get("display_key") or session_state.get("display_key") or "")
+    try:
+        from music_coach_ami.chart_context_reader import resolve_live_coach_practice_key
+
+        practice_key, practice_key_trace = resolve_live_coach_practice_key(
+            session_state,
+            ami_ctx=ctx,
+            practice_key_hint="",
+        )
+    except ImportError:
+        practice_key = str(
+            session_state.get("display_key")
+            or ctx.get("display_key")
+            or snap.get("display_key")
+            or ""
+        ).strip()
+        practice_key_trace = {"source": "legacy_fallback", "resolved": practice_key}
 
     evidence = ""
     practice_log_summary: dict[str, Any] = {}
@@ -179,6 +192,7 @@ def read_coach_context(
             "snapshot_instrument": snap_inst,
             "practice_log_summary": practice_log_summary,
             "chart_snapshot": chart_snapshot,
+            "practice_key_trace": practice_key_trace,
             # Read-only session handle for written-key / capo SSOT (no chart writes).
             "session_ref": session_state,
         },
