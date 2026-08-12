@@ -93,7 +93,21 @@ def build_written_music_context(
     concert = _clean(practice_concert_key) or "C"
     original = _clean(original_song_key) or concert
     chords = [_clean(c) for c in concert_chords if _clean(c)]
-    profile = apply_register_override(notation_profile_for_instrument(inst), register)
+    # Saxophone UI label → Alto/Tenor/… profile via existing transposition SSOT.
+    try:
+        from music_coach_ami.instrument_realization import (
+            notation_instrument_name,
+            resolve_transposing_subtype,
+        )
+
+        subtype_early = resolve_transposing_subtype(session, inst)
+        profile_inst = notation_instrument_name(
+            inst, session_state=session, transposing_subtype=subtype_early
+        )
+    except ImportError:
+        profile_inst = inst
+        subtype_early = ""
+    profile = apply_register_override(notation_profile_for_instrument(profile_inst), register)
 
     written_key = concert
     steps = 0
@@ -186,7 +200,8 @@ def build_written_music_context(
         provenance={
             "chart_source": chart_source,
             "chart_key_mode": mode,
-            "transposing_type": transposing_type,
+            "transposing_type": transposing_type or subtype_early,
+            "notation_instrument": profile_inst,
             "resolve_practice_keys": keys,
         },
     )

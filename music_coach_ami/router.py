@@ -129,6 +129,11 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if is_bass_line_content_request(normalized, low):
         return CoachIntent.SONG_COACHING, 0.91
 
+    if any(p in low for p in ("give me", "show me", "write", "make me")) and any(
+        p in low for p in ("lick", "phrase", "pattern", "riff", "sequence")
+    ):
+        return CoachIntent.SCALE_PRACTICE, 0.9
+
     if any(
         p in low
         for p in (

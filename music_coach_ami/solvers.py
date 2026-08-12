@@ -71,6 +71,10 @@ def solve_practice_plan(req: CoachRequest) -> CoachResponse:
 
 
 def solve_scale_practice(req: CoachRequest) -> CoachResponse:
+    from music_coach_ami.musical_idea_knowledge import (
+        compose_musical_idea_suggestion,
+        is_musical_idea_content_request,
+    )
     from music_coach_ami.scale_engine import (
         _interval_pattern_title,
         format_scale_request_summary,
@@ -80,6 +84,22 @@ def solve_scale_practice(req: CoachRequest) -> CoachResponse:
     )
 
     low = req.normalized_question.lower()
+
+    if is_musical_idea_content_request(req.normalized_question, low):
+        # Lick / pattern / phrase vertical slice shares MusicalIdeaRequest architecture.
+        payload = compose_musical_idea_suggestion(req)
+        return CoachResponse(
+            intent=CoachIntent.SCALE_PRACTICE,
+            direct_answer=str(payload.get("direct_answer") or ""),
+            practice_steps=list(payload.get("practice_steps") or []),
+            what_to_listen_for=list(payload.get("what_to_listen_for") or []),
+            suggested_next_action=str(payload.get("suggested_next_action") or ""),
+            notation_abc=str(payload.get("notation_abc") or ""),
+            notation_abc_sections=list(payload.get("notation_abc_sections") or []),
+            source_solver="ScalePracticeSolver(musical_idea)",
+            confidence=0.88,
+            diagnostics=dict(payload.get("diagnostics") or {}),
+        )
 
     if "what scales should i practice" in low:
         return CoachResponse(

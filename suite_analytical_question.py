@@ -1464,7 +1464,20 @@ def _attach_music_dedupe_diagnostics(
         "capo_enabled": dimensions.get("capo_enabled"),
         "capo_shape_key": dimensions.get("capo_shape_key") or None,
         "written_key_hint": dimensions.get("written_key_hint") or None,
+        "transposing_subtype": dimensions.get("transposing_subtype") or None,
+        "bars": dimensions.get("bars") or None,
+        "direction": dimensions.get("direction") or None,
+        "tempo_bpm": dimensions.get("tempo_bpm") or None,
+        "duration_minutes": dimensions.get("duration_minutes") or None,
+        "instrument_change_source": str(session_state.get("instrument_change_source") or "") or None,
+        "stale_snapshot_instrument": None,
+        "fresh_submit_instrument": dimensions.get("instrument"),
     }
+    snap = session_state.get("_ami_music_snapshot")
+    if isinstance(snap, dict):
+        practice_snap = snap.get("practice_snapshot") if isinstance(snap.get("practice_snapshot"), dict) else snap
+        if isinstance(practice_snap, dict) and practice_snap.get("instrument"):
+            patch["stale_snapshot_instrument"] = str(practice_snap.get("instrument") or "")
     existing = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
     if isinstance(existing, dict):
         session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = {**existing, **patch}

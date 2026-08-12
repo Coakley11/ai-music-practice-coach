@@ -293,6 +293,22 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         except ImportError:
             session_ref = {}
 
+    try:
+        from music_coach_ami.instrument_realization import (
+            notation_instrument_name,
+            realization_diagnostics,
+        )
+
+        real_inst = realization_diagnostics(instrument, session_state=session_ref)
+        notation_inst = notation_instrument_name(
+            instrument,
+            session_state=session_ref,
+            transposing_subtype=str(real_inst.get("selected_transposing_subtype") or ""),
+        )
+    except ImportError:
+        real_inst = {}
+        notation_inst = instrument
+
     concert_chords = list(chart.get("active_section_chords") or [])
     if not concert_chords:
         concert_chords = _parse_progression_chords(req.context.progression_summary)
@@ -367,7 +383,7 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
             list(written_ctx.concert_chords),
             reference_key=written_ctx.practice_concert_key,
             level=gen_level,
-            instrument=instrument,
+            instrument=notation_inst,
             meter=meter,
             section_label=section_label,
             practice_focus=focus_for_gen,
@@ -428,7 +444,9 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "chord_context_available": bool(concert_chords),
         "chord_count": len(concert_chords),
         "resolved_instrument": instrument,
+        "notation_instrument": notation_inst,
         "instrument_family": family,
+        "instrument_realization": real_inst,
         "resolved_level": gen_level,
         "context_level": level,
         "practice_focus": focus_for_gen,

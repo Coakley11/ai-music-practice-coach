@@ -42,7 +42,13 @@ MUSIC_COACH_FP_DIMENSIONS: tuple[str, ...] = (
     "capo_enabled",
     "capo_shape_key",
     "written_key_hint",
+    "transposing_subtype",
     "duration_minutes",
+    "bars",
+    "direction",
+    "tempo_bpm",
+    "rhythm",
+    "tonality",
 )
 
 
@@ -103,12 +109,23 @@ def _idea_fields(question: str, ctx: dict[str, Any]) -> dict[str, str]:
             practice_focus=_clean(ctx.get("focus") or ctx.get("practice_focus")),
             level=_clean(ctx.get("level")),
         )
+        bars = ""
+        if getattr(idea, "bars", None):
+            bars = str(int(idea.bars))
+        tempo = ""
+        if getattr(idea, "tempo_bpm", None):
+            tempo = str(int(idea.tempo_bpm))
         return {
             "musical_object": _norm(idea.object_type) or _infer_object(question),
             "explicit_key": _norm(idea.explicit_key),
             "explicit_difficulty": _norm(idea.difficulty),
             "explicit_register": _norm(idea.register),
             "explicit_style": _norm(idea.style),
+            "bars": bars,
+            "direction": _norm(getattr(idea, "direction", "") or ""),
+            "tempo_bpm": tempo,
+            "rhythm": _norm(getattr(idea, "rhythm", "") or idea.rhythmic_character or ""),
+            "tonality": _norm(getattr(idea, "tonality", "") or ""),
         }
     except ImportError:
         return {
@@ -117,6 +134,11 @@ def _idea_fields(question: str, ctx: dict[str, Any]) -> dict[str, str]:
             "explicit_difficulty": "",
             "explicit_register": "",
             "explicit_style": "",
+            "bars": "",
+            "direction": "",
+            "tempo_bpm": "",
+            "rhythm": "",
+            "tonality": "",
         }
 
 
@@ -136,13 +158,7 @@ def _infer_object(question: str) -> str:
 
 
 def _duration_minutes(ctx: dict[str, Any], question: str) -> str:
-    for key in ("requested_duration_minutes", "practice_minutes", "available_practice_minutes"):
-        val = ctx.get(key)
-        if val is not None and str(val).strip() != "":
-            try:
-                return str(int(val))
-            except (TypeError, ValueError):
-                return _norm(val)
+    # Explicit wording in the question always outranks saved/default practice minutes.
     try:
         from music_coach_ami.entities import parse_duration_minutes
 
@@ -151,6 +167,13 @@ def _duration_minutes(ctx: dict[str, Any], question: str) -> str:
             return str(int(mins))
     except ImportError:
         pass
+    for key in ("requested_duration_minutes", "practice_minutes", "available_practice_minutes"):
+        val = ctx.get(key)
+        if val is not None and str(val).strip() != "":
+            try:
+                return str(int(val))
+            except (TypeError, ValueError):
+                return _norm(val)
     return ""
 
 
@@ -192,6 +215,12 @@ def music_coach_semantic_dimensions(
         if isinstance(pk_trace, dict):
             written = _clean(pk_trace.get("written_key"))
 
+    subtype = _clean(
+        ctx.get("transposing_subtype")
+        or ctx.get("selected_transposing_instrument")
+        or (snap.get("selected_transposing_instrument") if snap else "")
+        or ""
+    )
 
     return {
         "normalized_question": _norm(question),
@@ -212,7 +241,13 @@ def music_coach_semantic_dimensions(
         "capo_enabled": capo_enabled,
         "capo_shape_key": _norm(capo_shape),
         "written_key_hint": _norm(written),
+        "transposing_subtype": _norm(subtype),
         "duration_minutes": _duration_minutes(ctx, question),
+        "bars": idea.get("bars", ""),
+        "direction": idea.get("direction", ""),
+        "tempo_bpm": idea.get("tempo_bpm", ""),
+        "rhythm": idea.get("rhythm", ""),
+        "tonality": idea.get("tonality", ""),
     }
 
 

@@ -553,6 +553,24 @@ def finalize_music_context_for_send(
     live_instrument = _active_instrument_for_ami(session_state, live_song)
     live_level = _active_level_for_ami(session_state, live_song)
     live_focus = str(live_song.get("focus") or session_state.get("focus") or "").strip()
+    # Instrument change may leave an invalid focus (e.g. Walking Bass on Flute).
+    # Clamp for AMI fingerprint + CoachContext so winds are never fingerprint-tied
+    # to a stale Bass-only focus label.
+    if live_instrument and live_focus:
+        try:
+            from practice_setup_globals import valid_focus_for
+
+            clamped = str(valid_focus_for(live_instrument, live_focus) or "").strip()
+            if clamped:
+                if clamped != live_focus:
+                    ctx["focus_clamped_from"] = live_focus
+                    ctx["focus_clamped"] = True
+                live_focus = clamped
+                # Keep session coherent for the rest of this submit (and fingerprint).
+                if session_state.get("focus") != live_focus:
+                    session_state["focus"] = live_focus
+        except ImportError:
+            pass
     live_section = str(
         session_state.get("practice_focus_section")
         or session_state.get("ii_selected_section")
@@ -576,6 +594,23 @@ def finalize_music_context_for_send(
     if live_section:
         ctx["practice_focus_section"] = live_section
         snap_live["practice_focus_section"] = live_section
+    # Stamp sax/clarinet/trumpet subtype so fingerprint + WrittenMusicContext agree.
+    try:
+        from music_coach_ami.instrument_realization import realization_diagnostics
+
+        real = realization_diagnostics(
+            live_instrument or str(ctx.get("instrument") or ""),
+            session_state=session_state,
+        )
+        if real.get("selected_transposing_subtype"):
+            ctx["selected_transposing_instrument"] = real["selected_transposing_subtype"]
+            ctx["transposing_subtype"] = real["selected_transposing_subtype"]
+            snap_live["selected_transposing_instrument"] = real["selected_transposing_subtype"]
+        if real.get("notation_instrument"):
+            ctx["notation_instrument"] = real["notation_instrument"]
+        ctx["instrument_realization"] = real
+    except ImportError:
+        pass
     if snap_live:
         ctx["practice_snapshot"] = {**(ctx.get("practice_snapshot") or {}), **snap_live}
 
