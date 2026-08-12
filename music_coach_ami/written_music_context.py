@@ -86,7 +86,9 @@ def build_written_music_context(
     Uses ``instrument_transposition.resolve_practice_keys`` and guitar capo SSOT.
     AMI notation always presents the written domain musicians read.
     """
-    session = session_state if isinstance(session_state, dict) else {}
+    from music_coach_ami.session_access import as_mutable_session
+
+    session = as_mutable_session(session_state)
     inst = _clean(instrument) or "Piano"
     concert = _clean(practice_concert_key) or "C"
     original = _clean(original_song_key) or concert

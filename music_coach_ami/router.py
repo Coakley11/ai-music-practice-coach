@@ -370,7 +370,9 @@ def route_question(
     *,
     ami_ctx: dict[str, Any] | None = None,
 ) -> CoachRequest:
-    session = session_state if isinstance(session_state, dict) else {}
+    from music_coach_ami.session_access import as_session_mapping
+
+    session = as_session_mapping(session_state)
     ctx = read_coach_context(session, ami_ctx=ami_ctx)
     normalized = normalize_question(question)
     normalized, _phrase_norms = normalize_bass_line_phrases(normalized)

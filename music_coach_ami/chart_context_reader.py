@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from music_coach_ami.session_access import as_session_mapping
+
 
 def _clean(text: object) -> str:
     return str(text or "").strip()
@@ -25,7 +27,7 @@ def resolve_live_coach_practice_key(
     4. practice_snapshot ``display_key`` (fallback only)
     """
     ctx = dict(ami_ctx or {})
-    session = session_state if isinstance(session_state, dict) else {}
+    session = as_session_mapping(session_state)
     snap = _practice_snapshot(ctx)
     live = _clean(session.get("display_key") or session.get("concert_key"))
     ctx_key = _clean(ctx.get("display_key") or practice_key_hint)
@@ -152,7 +154,7 @@ def resolve_authoritative_pick_key(
 ) -> tuple[str, dict[str, str]]:
     """Resolve catalog pick key from the same owners the app uses (never title lookup)."""
     ctx = dict(ami_ctx or {})
-    session = session_state if isinstance(session_state, dict) else {}
+    session = as_session_mapping(session_state)
     snap = _practice_snapshot(ctx)
     trace: dict[str, str] = {
         "param_pick_key": _clean(pick_key_hint),
@@ -227,7 +229,7 @@ def trace_chart_candidate_sources(
 ) -> dict[str, Any]:
     """Developer diagnostics: which chart sources had usable section maps."""
     ctx = dict(ami_ctx or {})
-    session = session_state if isinstance(session_state, dict) else {}
+    session = as_session_mapping(session_state)
     active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
 
     def _count(raw: object) -> int:
@@ -363,7 +365,7 @@ def resolve_coach_chart_snapshot(
 ) -> dict[str, Any]:
     """Layered read-only chart resolution aligned with visible Practice/Backing chart owners."""
     ctx = dict(ami_ctx or {})
-    session = session_state if isinstance(session_state, dict) else {}
+    session = as_session_mapping(session_state)
     snap = _practice_snapshot(ctx)
     resolved_pick_key, pick_trace = resolve_authoritative_pick_key(
         session,

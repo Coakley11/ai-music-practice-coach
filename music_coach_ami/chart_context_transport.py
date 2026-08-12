@@ -17,7 +17,9 @@ def resolve_repo_head_sha() -> str:
 
 
 def session_deploy_sha(session_state: dict[str, Any] | None) -> dict[str, str]:
-    session = session_state if isinstance(session_state, dict) else {}
+    from music_coach_ami.session_access import as_session_mapping
+
+    session = as_session_mapping(session_state)
     return {
         "deploy_sha_short": str(session.get("_studio_ui_release_sha") or "").strip(),
         "deploy_sha_full": str(session.get("_music_deploy_full_sha") or "").strip(),

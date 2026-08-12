@@ -528,5 +528,155 @@ class PracticeKeyAuthoritySubmitTests(unittest.TestCase):
         self.assertEqual(resp.diagnostics.get("resolved_instrument"), "Piano")
 
 
+class BassLineUiPathSubmitRegressionTests(unittest.TestCase):
+    """Full submit path must stage same-page insight — never legacy Command Center fallback.
+
+    Uses a non-dict Mapping (like Streamlit SessionStateProxy) so we catch the
+    live bug where ``isinstance(session, dict)`` emptied Practice/chart state.
+    """
+
+    QUESTION = "Give me a good bass line to use for this song."
+    CHORDS_DB = ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7"]
+
+    def test_proxy_session_practice_key_c_stages_routed_insight(self) -> None:
+        from collections.abc import MutableMapping
+        from unittest.mock import MagicMock, patch
+
+        from applied_math_return_insight import SESSION_PENDING_KEY
+        from suite_analytical_question import (
+            MUSIC_COACH_SUBMIT_DIAG_KEY,
+            _AMI_COACH_SUBMIT_FEEDBACK_KEY,
+            _execute_coach_question_submit,
+        )
+
+        class ProxySession(MutableMapping):
+            def __init__(self, data: dict) -> None:
+                self._data = dict(data)
+
+            def __getitem__(self, key):
+                return self._data[key]
+
+            def __setitem__(self, key, value) -> None:
+                self._data[key] = value
+
+            def __delitem__(self, key) -> None:
+                del self._data[key]
+
+            def __iter__(self):
+                return iter(self._data)
+
+            def __len__(self) -> int:
+                return len(self._data)
+
+        self.assertFalse(isinstance(ProxySession({}), dict))
+
+        ss = ProxySession(
+            {
+                "display_key": "C",
+                "concert_key": "C",
+                "original_key": "Db",
+                "instrument": "Bass",
+                "level": "Beginner",
+                "focus": "Walking Bass",
+                "active_song_title": "Just the Two of Us",
+                "improv_song_concert_sections": {"Verse": list(self.CHORDS_DB)},
+                "practice_snapshot": {
+                    "title": "Just the Two of Us",
+                    "display_key": "Db",  # stale prior snapshot
+                    "pick_key": "just_the_two_of_us",
+                    "practice_focus_section": "Verse",
+                    "instrument": "Bass",
+                    "level": "Beginner",
+                    "focus": "Walking Bass",
+                },
+                "studio_page": "practice",
+                "_ami_send_gen_music_practice": 0,
+            }
+        )
+
+        def _extra_builder() -> dict:
+            return {
+                "coach_page": "practice",
+                "display_key": "C",
+                "instrument": "Bass",
+                "level": "Beginner",
+                "focus": "Walking Bass",
+                "chart_sections": {"Verse": list(self.CHORDS_DB)},
+                "chart_sections_key": "Db",
+                "practice_focus_section": "Verse",
+                "active_song": {
+                    "title": "Just the Two of Us",
+                    "key": "Db",
+                    "pick_key": "just_the_two_of_us",
+                },
+                "pick_key": "just_the_two_of_us",
+                "practice_snapshot": dict(ss.get("practice_snapshot") or {}),
+            }
+
+        st = MagicMock()
+        st.session_state = ss
+        st.rerun = MagicMock()
+        ui = MagicMock()
+
+        with patch("suite_analytical_question.submit_analytical_question") as mock_cc, patch(
+            "applied_math_return_insight.store_applied_math_insight",
+            return_value="ins-bass-c",
+        ), patch(
+            "applied_math_return_insight.stage_pending_insight",
+        ):
+            out = _execute_coach_question_submit(
+                st,
+                ui,
+                ss,
+                question_raw=self.QUESTION,
+                source_app="music",
+                source_page="practice",
+                page_suffix="practice",
+                send_gen=0,
+                surface_tag="page",
+                context_extra_builder=_extra_builder,
+                source_state_builder=lambda: {"source_page": "practice"},
+                developer_mode=True,
+            )
+
+        mock_cc.assert_not_called()
+        self.assertTrue(out and out.get("routed"))
+        self.assertNotEqual((out or {}).get("result_path"), "legacy_fallback")
+
+        fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
+        self.assertIsInstance(fb, dict)
+        self.assertEqual(fb.get("result_path"), "routed_coach")
+        self.assertNotIn("Command Center", str(fb.get("message") or ""))
+
+        diag = ss.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+        self.assertIsInstance(diag, dict)
+        self.assertEqual(diag.get("result_path"), "routed_coach")
+        self.assertEqual(diag.get("coach_intent"), "song_coaching")
+        self.assertEqual(diag.get("solver"), "SongCoachSolver(bass_line)")
+        self.assertTrue(diag.get("chart_available"))
+        self.assertTrue(diag.get("notation_abc_present"))
+        self.assertTrue(diag.get("coach_response_success"))
+        self.assertTrue(diag.get("insight_staged") or diag.get("instant_insight_staging_success"))
+        self.assertFalse(diag.get("fallback_reason"))
+        self.assertIsNone(diag.get("structured_coach_failure_stage"))
+        ctx_used = diag.get("coach_context_used") or {}
+        self.assertEqual(ctx_used.get("current_practice_key"), "C")
+        abc_k = str(diag.get("abc_key_field") or "")
+        self.assertTrue(abc_k.startswith("K:C") or "K:C" in str(diag.get("notation_abc_present")))
+
+        pending = ss.get(SESSION_PENDING_KEY)
+        self.assertIsInstance(pending, dict)
+        self.assertTrue(pending.get("canonical_instant"))
+        self.assertTrue(pending.get("conclusion") or pending.get("notation_abc"))
+        notation = str(pending.get("notation_abc") or "")
+        self.assertIn("K:C", notation)
+        self.assertNotIn("K:Db", notation)
+
+        ui.success.assert_called()
+        success_msgs = " ".join(str(c.args[0]) for c in ui.success.call_args_list if c.args)
+        self.assertIn("Music Coach insight is ready", success_msgs)
+        self.assertNotIn("Command Center", success_msgs)
+
+
 if __name__ == "__main__":
     unittest.main()

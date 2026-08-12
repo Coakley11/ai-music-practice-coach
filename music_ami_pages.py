@@ -40,8 +40,8 @@ def build_music_send_diagnostics(ctx: dict[str, Any], *, question: str = "") -> 
             "skill_topic": req.entities.skill_topic,
             "feature_id": req.entities.feature_id,
         }
-    except ImportError:
-        pass
+    except Exception as exc:
+        diag["coach_diag_probe_error"] = f"{type(exc).__name__}: {exc}"
     return diag
 
 

@@ -94,7 +94,7 @@ class ScaleSubmitIntegrationTests(unittest.TestCase):
         self.assertTrue(diag["insight_staged"])
         fb = ss[_AMI_COACH_SUBMIT_FEEDBACK_KEY]
         self.assertEqual(fb["result_path"], "routed_coach")
-        self.assertIn("below", fb["message"].lower())
+        self.assertIn("ready on this page", fb["message"].lower())
         last = ss.get("_ami_last_send")
         self.assertEqual(last.get("result_path"), "routed_coach")
 

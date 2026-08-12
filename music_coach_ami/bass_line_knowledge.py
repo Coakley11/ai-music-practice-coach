@@ -428,8 +428,13 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
     }
     if written_ctx is not None:
         diag.update(written_ctx.to_diagnostics())
+        diag["written_music_context"] = written_ctx.to_diagnostics()
     if composition is not None:
         diag.update(composition_to_diagnostics(composition, chart))
+    pk_trace = extra.get("practice_key_trace")
+    if isinstance(pk_trace, dict):
+        diag["practice_key_trace"] = dict(pk_trace)
+    diag["effective_concert_chords"] = list(concert_chords[:8])
 
     return {
         "direct_answer": direct,

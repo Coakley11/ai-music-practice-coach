@@ -1406,6 +1406,20 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
             f"**markdown:** `{diag.get('insight_markdown_rendered')}` · "
             f"**staff:** `{diag.get('notation_staff_rendered')}`"
         )
+        if diag.get("structured_coach_failure_stage") or diag.get("structured_coach_exception_type"):
+            ui.error(
+                f"structured_coach_failure_stage=`{diag.get('structured_coach_failure_stage')}` · "
+                f"{diag.get('structured_coach_exception_type')}: "
+                f"{diag.get('structured_coach_exception_message')}"
+            )
+        if diag.get("deploy_sha") or diag.get("practice_key_trace"):
+            ui.caption(
+                f"deploy=`{diag.get('deploy_sha') or '—'}` · "
+                f"practice_key_trace=`{diag.get('practice_key_trace')}` · "
+                f"chart_available=`{diag.get('chart_available')}` · "
+                f"notation=`{diag.get('notation_success')}` · "
+                f"coach_response=`{diag.get('coach_response_success')}`"
+            )
         try:
             from applied_math_return_insight import MUSIC_COACH_RENDER_TRACE_KEY
 
@@ -1493,6 +1507,8 @@ def _execute_coach_question_submit(
         )
     except ImportError:
         pass
+    except Exception:
+        log.exception("promote_music_ami_context_at_send failed for music coach (%s)", source_page)
 
     pre_payload = build_question_payload(
         source_app=source_app,
@@ -1543,35 +1559,101 @@ def _execute_coach_question_submit(
         }
         return {"duplicate": True, "routed": False}
 
+    coach_req = None
+    coach_resp = None
+    structured_failure: dict[str, Any] = {}
     try:
         from music_coach_ami.pipeline import run_coach_submit
         from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics
         from music_coach_ami.submit_integration import stage_routed_music_coach_insight
-
-        coach_req, coach_resp = run_coach_submit(q, session_state, ami_ctx=submit_ctx)
-    except ImportError:
+    except ImportError as exc:
+        structured_failure = {
+            "stage": "import_structured_coach",
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc)[:500],
+        }
         coach_req = None
         coach_resp = None
+        build_music_coach_submit_diagnostics = None  # type: ignore[assignment]
+        stage_routed_music_coach_insight = None  # type: ignore[assignment]
+        run_coach_submit = None  # type: ignore[assignment]
+    else:
+        try:
+            coach_req, coach_resp = run_coach_submit(q, session_state, ami_ctx=submit_ctx)
+        except Exception as exc:
+            # Never treat a structured-solver crash as a silent "unsupported question".
+            log.exception("Structured Music Coach pipeline failed for %s", source_page)
+            structured_failure = {
+                "stage": "run_coach_submit",
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc)[:500],
+            }
+            coach_resp = None
+            try:
+                from music_coach_ami.router import route_question
 
-    if coach_resp is not None and coach_req is not None:
-        diag = build_music_coach_submit_diagnostics(
-            coach_req,
-            coach_resp,
-            result_path="routed_coach",
-            session_state=session_state,
-        )
-        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
-        stage_routed_music_coach_insight(
-            st,
-            session_state,
-            question=q,
-            source_page=source_page,
-            coach_req=coach_req,
-            coach_resp=coach_resp,
-            diagnostics=diag,
-            question_id=question_id,
-            source_state=submit_source_state,
-        )
+                coach_req = route_question(q, session_state, ami_ctx=submit_ctx)
+            except Exception as route_exc:
+                structured_failure["route_exception_type"] = type(route_exc).__name__
+                structured_failure["route_exception_message"] = str(route_exc)[:300]
+                coach_req = None
+
+    if coach_resp is not None and coach_req is not None and stage_routed_music_coach_insight is not None:
+        try:
+            diag = build_music_coach_submit_diagnostics(
+                coach_req,
+                coach_resp,
+                result_path="routed_coach",
+                session_state=session_state,
+                structured_failure=structured_failure or None,
+            )
+            session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+            stage_routed_music_coach_insight(
+                st,
+                session_state,
+                question=q,
+                source_page=source_page,
+                coach_req=coach_req,
+                coach_resp=coach_resp,
+                diagnostics=diag,
+                question_id=question_id,
+                source_state=submit_source_state,
+            )
+        except Exception as exc:
+            log.exception("Music Coach insight staging failed for %s", source_page)
+            structured_failure = {
+                "stage": "stage_routed_music_coach_insight",
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc)[:500],
+            }
+            try:
+                from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics as _build_diag
+
+                session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = _build_diag(
+                    coach_req,
+                    coach_resp,
+                    result_path="staging_failed",
+                    session_state=session_state,
+                    structured_failure=structured_failure,
+                )
+            except Exception:
+                pass
+            ui.warning(
+                "Music Coach answered your question, but the insight could not be staged for display. "
+                "Try again or check ?dev=1 diagnostics."
+            )
+            session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+                "kind": "warning",
+                "message": "Music Coach insight staging failed.",
+                "result_path": "staging_failed",
+                "surface": surface_tag,
+            }
+            session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+            if developer_mode:
+                _render_music_coach_submit_dev_panel(ui, session_state)
+            st.rerun()
+            return {"routed": True, "duplicate": False, "question_id": question_id, "staging_failed": True}
+
         try:
             from applied_math_return_insight import SESSION_PENDING_KEY
         except ImportError:
@@ -1581,6 +1663,9 @@ def _execute_coach_question_submit(
             **diag,
             "notation_abc_present": bool(getattr(coach_resp, "notation_abc", None)),
             "insight_staged": isinstance(pending, dict) and bool(
+                pending.get("conclusion") or pending.get("question")
+            ),
+            "instant_insight_staging_success": isinstance(pending, dict) and bool(
                 pending.get("conclusion") or pending.get("question")
             ),
             "duplicate_suppressed": False,
@@ -1648,6 +1733,7 @@ def _execute_coach_question_submit(
             None,
             result_path="legacy_fallback",
             session_state=session_state,
+            structured_failure=structured_failure or None,
         )
     except ImportError:
         pass
