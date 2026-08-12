@@ -7,6 +7,7 @@ import unittest
 
 from music_coach_ami.pipeline import run_coach_pipeline
 from music_coach_ami.router import CoachIntent, route_question
+from music_coach_ami.notation_profile import notation_profile_for_instrument
 
 
 def _sum_minutes(steps: list[str]) -> int:
@@ -450,7 +451,11 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             "Bass": "clef=bass",
             "Piano": "clef=bass",
             "Guitar": "clef=treble",
+            "Flute": "clef=treble",
+            "Clarinet": "clef=treble",
+            "Alto Sax": "clef=treble",
         }
+        midis_by_inst: dict[str, list[int]] = {}
         for instrument, clef_token in expectations.items():
             resp = run_coach_pipeline(
                 question,
@@ -458,10 +463,35 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
                 ami_ctx=self._bass_line_chart_ctx(instrument=instrument),
             )
             assert resp is not None, instrument
+            self.assertEqual(resp.diagnostics.get("resolved_instrument"), instrument)
             self.assertEqual(resp.diagnostics.get("notation_clef"), clef_token.split("=")[1])
             self.assertIn(clef_token, resp.notation_abc)
             self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+            wr = resp.diagnostics.get("written_midi_range") or []
+            self.assertEqual(len(wr), 2, instrument)
+            midis_by_inst[instrument] = list(wr)
+        self.assertNotEqual(midis_by_inst["Bass"], midis_by_inst["Guitar"])
+        self.assertNotEqual(midis_by_inst["Bass"], midis_by_inst["Flute"])
+        self.assertGreater(midis_by_inst["Flute"][0], midis_by_inst["Bass"][1])
 
+    def test_bass_line_register_override_from_question(self) -> None:
+        low = run_coach_pipeline(
+            "Give me a bass line to use — keep it low.",
+            {},
+            ami_ctx=self._bass_line_chart_ctx(instrument="Alto Sax"),
+        )
+        high = run_coach_pipeline(
+            "Give me a very high bass line to use for this song.",
+            {},
+            ami_ctx=self._bass_line_chart_ctx(instrument="Flute"),
+        )
+        assert low is not None and high is not None
+        low_range = low.diagnostics.get("written_midi_range") or [0, 0]
+        high_range = high.diagnostics.get("written_midi_range") or [0, 0]
+        default_sax = notation_profile_for_instrument("Alto Sax")
+        default_flute = notation_profile_for_instrument("Flute")
+        self.assertLessEqual(low_range[0], default_sax.midi_low)
+        self.assertGreaterEqual(high_range[1], default_flute.midi_high)
     def test_bass_line_practice_key_transposition(self) -> None:
         resp = run_coach_pipeline(
             "Give me a bass line to use for this song.",

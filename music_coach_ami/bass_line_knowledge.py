@@ -301,6 +301,7 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
             practice_focus=focus,
             style=idea.style,
             difficulty_override=idea.difficulty,
+            register=idea.register,
         )
         style_label = "walking bass line" if composition.style == "walking_bass" else "bass line"
         abc_title = f"{style_label.title()} — {section_label or song or 'active song'}"
