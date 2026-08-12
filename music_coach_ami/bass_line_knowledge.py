@@ -242,6 +242,7 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         compose_bass_line_from_chords,
         composition_to_diagnostics,
     )
+    from music_coach_ami.musical_idea_request import parse_musical_idea_request, resolve_generation_level
     from music_coach_instrument_voice import instrument_family
     from music_coach_ami.request_resolution import display_coach_instrument
 
@@ -251,8 +252,17 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
     instrument = display_coach_instrument(req.entities.instrument or req.context.instrument)
     family = instrument_family(instrument)
     level = _clean(req.context.level) or "Intermediate"
+    focus = _clean(req.context.practice_focus)
     song = _clean(req.context.active_song_title)
     section = _usable_section(req.context.active_section)
+
+    idea = parse_musical_idea_request(
+        req.raw_question or req.normalized_question,
+        default_object="bass_line",
+        practice_focus=focus,
+        level=level,
+    )
+    gen_level = resolve_generation_level(idea, level)
 
     extra = req.context.extra if isinstance(req.context.extra, dict) else {}
     chart = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
@@ -284,15 +294,19 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         composition = compose_bass_line_from_chords(
             chords,
             reference_key=reference_key or "C",
-            level=level,
+            level=gen_level,
             instrument=instrument,
             meter=meter,
             section_label=section_label,
+            practice_focus=focus,
+            style=idea.style,
+            difficulty_override=idea.difficulty,
         )
-        abc_title = f"Bass line — {section_label or song or 'active song'}"
+        style_label = "walking bass line" if composition.style == "walking_bass" else "bass line"
+        abc_title = f"{style_label.title()} — {section_label or song or 'active song'}"
         notation_abc = build_bass_line_abc(composition, title=abc_title, bpm=bpm)
         notation_sections = [notation_abc] if notation_abc else []
-        direct = f"**Try this bass line for {target}:**"
+        direct = f"**Try this {style_label} for {target}:**"
     else:
         fallback_reason = "no_trustworthy_active_chart"
         direct = (
@@ -334,7 +348,11 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "chord_count": len(chords),
         "resolved_instrument": instrument,
         "instrument_family": family,
-        "resolved_level": level,
+        "resolved_level": gen_level,
+        "context_level": level,
+        "practice_focus": focus,
+        "idea_style": idea.style,
+        "explicit_difficulty": idea.difficulty or None,
         "progression_summary_used": bool(req.context.progression_summary),
         "notation_abc_present": bool(notation_abc),
         "fallback_reason": fallback_reason or None,

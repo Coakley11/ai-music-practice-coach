@@ -407,7 +407,8 @@ class ScalePracticeRequestTests(unittest.TestCase):
         self.assertEqual(spec.note_value, "eighth")
         self.assertEqual(spec.tempo_bpm, 72)
         result = generate_scale_practice(spec)
-        self.assertIn("=E", result.abc.split("K:Fm", 1)[-1])
+        body = result.abc.split("K:Fm", 1)[-1]
+        self.assertTrue("=E" in body or "=e" in body, msg=body)
         self.assertIn("Q:1/4=72", result.abc)
 
     def test_d_major_descending_sixteenths_80(self) -> None:

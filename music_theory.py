@@ -530,15 +530,20 @@ def abc_accidental_prefix_for_key(note: str, k_field: str) -> str:
 
 
 def abc_pitch_for_spelled_note(note: str, *, octave: int = 4, k_field: str = "C") -> str:
-    """Key-signature-aware ABC pitch token for a spelled note (musical spelling preserved)."""
+    """Key-signature-aware ABC pitch token for a spelled note (musical spelling preserved).
+
+    Uses standard ABC octave mapping for scientific pitch octaves:
+    C2→``C,``  C3→``C``  C4→``c``  C5→``c'``
+    Accidental prefixes (``_``, ``^``, ``=``) precede the pitch letter.
+    """
     letter, _ = spelled_note_letter_alteration(note)
     prefix = abc_accidental_prefix_for_key(note, k_field)
-    pitch_letter = letter.lower() if octave <= 3 else letter
-    if octave < 4:
-        pitch_letter = "," + pitch_letter
-    elif octave >= 5:
-        pitch_letter = pitch_letter + "'" * (octave - 4)
-    return f"{prefix}{pitch_letter}"
+    octv = int(octave)
+    if octv >= 4:
+        body = letter.lower() + ("'" * (octv - 4))
+    else:
+        body = letter.upper() + ("," * (3 - octv))
+    return f"{prefix}{body}"
 
 
 _DIATONIC_LETTERS = "CDEFGAB"

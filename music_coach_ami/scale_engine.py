@@ -1259,18 +1259,87 @@ def _abc_layout_systems_from_lines(
     *,
     lines_per_system: int = 4,
 ) -> str:
+    """Join measures onto shared systems (space-separated), wrapping every N bars."""
     if not measure_lines:
         return " |"
+    cleaned = [str(m).strip() for m in measure_lines if str(m).strip()]
     out: list[str] = []
-    buf: list[str] = []
-    for line in measure_lines:
-        buf.append(line)
-        if len(buf) >= lines_per_system:
-            out.append("\n".join(buf))
-            buf = []
-    if buf:
-        out.append("\n".join(buf))
+    for i in range(0, len(cleaned), max(1, lines_per_system)):
+        chunk = cleaned[i : i + lines_per_system]
+        # Keep trailing bar line on the last measure of the system only once
+        joined = " ".join(chunk)
+        out.append(joined if joined.endswith("|") else joined + " |")
     return "\n".join(out)
+
+
+def build_abc_from_chord_bass_line(
+    composition: Any,
+    *,
+    title: str = "Bass line",
+    bpm: int = 84,
+    tune_number: int = 1,
+    measures_per_system: int = 4,
+) -> str:
+    """Serialize a BassLineComposition to ABC with chord symbols, clef, and bar lines."""
+    from music_theory import abc_key_signature_for_reference
+
+    from music_coach_ami.notation_validate import validate_notation_structure
+
+    ref = str(getattr(composition, "reference_key", "") or "C")
+    meter = str(getattr(composition, "meter", "") or "4/4")
+    profile = getattr(composition, "notation_profile")
+    clef = str(getattr(profile, "clef", "") or "")
+    fallback_octave = int(getattr(profile, "written_octave", getattr(profile, "default_octave", 3)) or 3)
+    key_field = abc_key_signature_for_reference(ref, scale_type="major")
+    measure_lines: list[str] = []
+    for bar in getattr(composition, "bars", ()) or ():
+        parts: list[str] = []
+        chord_label = str(getattr(bar, "chord", "") or "").replace('"', "'")
+        for idx, item in enumerate(getattr(bar, "notes", ()) or ()):
+            if hasattr(item, "note"):
+                note = str(item.note)
+                dur = str(item.duration)
+                octave = int(getattr(item, "written_octave", fallback_octave) or fallback_octave)
+            else:
+                note, dur = item
+                octave = fallback_octave
+            tok = _note_to_abc(str(note), octave, key_field=key_field)
+            # L:1/4 → quarter has empty suffix; half=2; eighth=/2
+            dur_l = str(dur).lower()
+            if dur_l in ("half", "minim"):
+                suffix = "2"
+            elif dur_l in ("eighth", "quaver"):
+                suffix = "/2"
+            elif dur_l in ("whole", "semibreve"):
+                suffix = "4"
+            elif dur_l in ("sixteenth",):
+                suffix = "/4"
+            else:
+                suffix = ""
+            if idx == 0:
+                parts.append(f'"{chord_label}"{tok}{suffix}')
+            else:
+                parts.append(f"{tok}{suffix}")
+        measure_lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
+    music = _abc_layout_systems_from_lines(measure_lines, lines_per_system=measures_per_system)
+    abc = _abc_tune_block(
+        tune_number=tune_number,
+        title=title,
+        key_field=key_field,
+        bpm=bpm,
+        meter=meter,
+        note_value="quarter",
+        music=music,
+        clef=clef,
+    )
+    validate_notation_structure(
+        abc,
+        meter=meter,
+        clef=clef,
+        profile=profile,
+        raise_on_error=False,
+    )
+    return abc
 
 
 def pairs_to_playable_notes(
@@ -1473,48 +1542,6 @@ def build_abc_from_note_names(
         meter=meter,
         note_value=note_value,
         music=music,
-    )
-
-
-def build_abc_from_chord_bass_line(
-    composition: Any,
-    *,
-    title: str = "Bass line",
-    bpm: int = 84,
-    tune_number: int = 1,
-) -> str:
-    """Serialize a BassLineComposition to ABC with chord symbols and clef."""
-    from music_theory import abc_key_signature_for_reference
-
-    ref = str(getattr(composition, "reference_key", "") or "C")
-    meter = str(getattr(composition, "meter", "") or "4/4")
-    profile = getattr(composition, "notation_profile")
-    clef = str(getattr(profile, "clef", "") or "")
-    octave = int(getattr(profile, "default_octave", 3) or 3)
-    key_field = abc_key_signature_for_reference(ref, scale_type="major")
-    measure_lines: list[str] = []
-    for bar in getattr(composition, "bars", ()) or ():
-        parts: list[str] = []
-        chord_label = str(getattr(bar, "chord", "") or "").replace('"', "'")
-        for idx, item in enumerate(getattr(bar, "notes", ()) or ()):
-            note, dur = item
-            tok = _note_to_abc(str(note), octave, key_field=key_field)
-            suffix = _abc_duration_suffix(str(dur), triplet=False)
-            if idx == 0:
-                parts.append(f'"{chord_label}" {tok}{suffix}')
-            else:
-                parts.append(f"{tok}{suffix}")
-        measure_lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
-    music = _abc_layout_systems_from_lines(measure_lines, lines_per_system=4)
-    return _abc_tune_block(
-        tune_number=tune_number,
-        title=title,
-        key_field=key_field,
-        bpm=bpm,
-        meter=meter,
-        note_value="quarter",
-        music=music,
-        clef=clef,
     )
 
 
