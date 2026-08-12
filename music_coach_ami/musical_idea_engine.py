@@ -609,6 +609,166 @@ def generate_lick(
     return replace(comp, validation_ok=ok, validation_errors=tuple(errs))
 
 
+def expand_harmony_timeline(chords: Sequence[str], bars: int) -> list[str]:
+    """Deterministic bar-level chord timeline of exactly ``bars`` entries.
+
+    Cycles the section progression when fewer chord slots than requested bars.
+    Does not invent unrelated harmony — only repeats the given timeline.
+    """
+    usable = [_clean(c) for c in chords if _clean(c)]
+    n = max(1, int(bars))
+    if not usable:
+        return ["C"] * n
+    if len(usable) >= n:
+        return list(usable[:n])
+    out: list[str] = []
+    i = 0
+    while len(out) < n:
+        out.append(usable[i % len(usable)])
+        i += 1
+    return out
+
+
+def generate_idea_over_chords(
+    idea: MusicalIdeaRequest,
+    chords: Sequence[str],
+    *,
+    notation_instrument: str,
+    reference_key: str,
+    object_type: str = "phrase",
+) -> MusicalIdeaComposition:
+    """Song-relative lick/phrase/riff over a resolved harmonic timeline."""
+    from improvisation_motif import chord_tone_names
+    from music_theory import chord_root_for_theory, normalize_chord_for_theory
+
+    obj = _clean(object_type) or _clean(idea.object_type) or "phrase"
+    profile = notation_profile_for_instrument(notation_instrument)
+    low, high, prefer = generation_window(
+        profile,
+        instrument=notation_instrument,
+        register=idea.register,
+        object_type=obj if obj != "riff" else "lick",
+        difficulty=idea.difficulty or idea.level,
+    )
+    bars = int(idea.bars or 4)
+    timeline = expand_harmony_timeline(chords, bars)
+    lvl = _level(idea)
+    unit = "half" if lvl == "beginner" and obj == "phrase" else "quarter"
+    if obj == "lick" and lvl == "beginner":
+        unit = "quarter"
+    if lvl == "advanced":
+        unit = "eighth" if obj != "phrase" else "quarter"
+    if idea.rhythm:
+        unit = _unit_duration(idea)
+    ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
+    meter = idea.meter or "4/4"
+    beats_bar = _beats_per_bar(meter)
+    ub = _dur_beats(unit, meter)
+    slots_per_bar = max(1, int(round(beats_bar / ub))) if ub > 0 else 4
+
+    events: list[MusicalEvent] = []
+    prev_midi: int | None = None
+    for bar_i, chord in enumerate(timeline):
+        tones = chord_tone_names(chord, reference_key=ref) or [
+            chord_root_for_theory(normalize_chord_for_theory(chord)) or "C"
+        ]
+        # Phrase shape: opening / continuation / development / cadence roles by bar.
+        role_phase = bar_i % 4
+        if obj == "lick":
+            # Lick: compact chord-tone motif with mild development (not arpeggio dump).
+            if lvl == "beginner":
+                motif = [tones[0], tones[min(1, len(tones) - 1)], tones[0], tones[0]]
+            elif lvl == "advanced":
+                motif = [
+                    tones[0],
+                    tones[min(1, len(tones) - 1)],
+                    tones[min(2, len(tones) - 1)],
+                    tones[0],
+                    tones[min(2, len(tones) - 1)],
+                    tones[min(1, len(tones) - 1)],
+                    tones[0],
+                    tones[0],
+                ]
+            else:
+                motif = [
+                    tones[0],
+                    tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0],
+                    tones[min(1, len(tones) - 1)],
+                    tones[0],
+                ]
+            if role_phase == 2 and len(tones) > 2:
+                motif = motif[1:] + [tones[2], tones[0]]
+            if role_phase == 3:
+                motif = motif[:-1] + [tones[0]]
+        else:
+            # Phrase: chord tones with voice-leading across bars.
+            if lvl == "beginner":
+                motif = [tones[0], tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0]]
+            elif lvl == "advanced":
+                motif = [
+                    tones[0],
+                    tones[min(1, len(tones) - 1)],
+                    tones[min(2, len(tones) - 1)],
+                    tones[0],
+                ]
+            else:
+                motif = [tones[0], tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0], tones[0]]
+            if role_phase == 0:
+                motif = motif[: max(1, len(motif) - 0)]
+            elif role_phase == 3:
+                motif = [tones[0]] * min(2, slots_per_bar) if lvl == "beginner" else motif[:-1] + [tones[0]]
+
+        # Fill the entire bar with intentional pitches (no empty trailing bars).
+        picks = [motif[j % len(motif)] for j in range(slots_per_bar)]
+        for slot_i, tone in enumerate(picks):
+            beat = float(slot_i * ub)
+            if beat >= beats_bar - 1e-9:
+                break
+            dir_hint = "ascending" if role_phase < 2 else "descending"
+            if obj == "lick" and lvl == "beginner":
+                dir_hint = ""
+            spelled2, octv, midi = _place_spelled_note(
+                tone,
+                prefer_midi=prefer,
+                low=low,
+                high=high,
+                direction=dir_hint,
+                previous_midi=prev_midi,
+            )
+            events.append(
+                MusicalEvent(
+                    spelled=spelled2,
+                    octave=octv,
+                    duration=unit,
+                    bar_index=bar_i,
+                    beat=beat,
+                    articulation=idea.articulation,
+                    scale_degree=None,
+                    pitch_class=_pc(spelled2),
+                    chord=chord,
+                    role=obj,
+                    cell_index=bar_i,
+                    domain="concert",
+                )
+            )
+            prev_midi = midi
+            prefer = midi + (1 if role_phase < 2 else -1)
+
+    return MusicalIdeaComposition(
+        events=tuple(events),
+        reference_key=ref,
+        meter=meter,
+        bars=bars,
+        object_type=obj,
+        style=idea.style or f"song_{obj}",
+        notation_profile=apply_register_override(profile, idea.register),
+        strategy=f"{obj}_over_chords:{lvl}",
+        tonic=ref,
+        tonality="",
+        scale_spelling=(),
+    )
+
+
 def generate_phrase_over_chords(
     idea: MusicalIdeaRequest,
     chords: Sequence[str],
@@ -616,72 +776,28 @@ def generate_phrase_over_chords(
     notation_instrument: str,
     reference_key: str,
 ) -> MusicalIdeaComposition:
-    from improvisation_motif import chord_tone_names
-    from music_theory import chord_root_for_theory, normalize_chord_for_theory
-
-    profile = notation_profile_for_instrument(notation_instrument)
-    low, high, prefer = generation_window(
-        profile,
-        instrument=notation_instrument,
-        register=idea.register,
+    return generate_idea_over_chords(
+        idea,
+        chords,
+        notation_instrument=notation_instrument,
+        reference_key=reference_key,
         object_type="phrase",
-        difficulty=idea.difficulty or idea.level,
     )
-    usable = [_clean(c) for c in chords if _clean(c)]
-    bars = int(idea.bars or min(4, max(2, len(usable))))
-    usable = (usable + usable)[:bars] or ["C"]
-    lvl = _level(idea)
-    unit = "half" if lvl == "beginner" else "quarter"
-    if idea.rhythm:
-        unit = _unit_duration(idea)
-    ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
-    pitched: list[tuple[str, int, int | None, str, int | None]] = []
-    prev_midi: int | None = None
-    for bar_i, chord in enumerate(usable):
-        tones = chord_tone_names(chord, reference_key=ref) or [
-            chord_root_for_theory(normalize_chord_for_theory(chord)) or "C"
-        ]
-        picks = [tones[0]]
-        if lvl != "beginner" and len(tones) > 2:
-            picks.append(tones[2])
-        if lvl == "advanced" and len(tones) > 1:
-            picks.append(tones[1])
-        for t in picks:
-            spelled2, octv, midi = _place_spelled_note(
-                t,
-                prefer_midi=prefer,
-                low=low,
-                high=high,
-                direction="ascending",
-                previous_midi=prev_midi,
-            )
-            pitched.append((spelled2, octv, None, "chord_tone", bar_i))
-            prev_midi = midi
-            prefer = midi + 2
 
-    events = _pack_events_exact(
-        pitched,
-        bars=bars,
-        meter=idea.meter or "4/4",
-        unit=unit,
-        articulation=idea.articulation,
-    )
-    labeled: list[MusicalEvent] = []
-    for ev in events:
-        chord = usable[min(ev.bar_index, len(usable) - 1)]
-        labeled.append(replace(ev, chord=chord))
-    return MusicalIdeaComposition(
-        events=tuple(labeled),
-        reference_key=ref,
-        meter=idea.meter or "4/4",
-        bars=bars,
-        object_type="phrase",
-        style=idea.style or "song_phrase",
-        notation_profile=apply_register_override(profile, idea.register),
-        strategy=f"phrase_over_chords:{lvl}",
-        tonic=ref,
-        tonality="",
-        scale_spelling=(),
+
+def generate_lick_over_chords(
+    idea: MusicalIdeaRequest,
+    chords: Sequence[str],
+    *,
+    notation_instrument: str,
+    reference_key: str,
+) -> MusicalIdeaComposition:
+    return generate_idea_over_chords(
+        idea,
+        chords,
+        notation_instrument=notation_instrument,
+        reference_key=reference_key,
+        object_type="lick",
     )
 
 

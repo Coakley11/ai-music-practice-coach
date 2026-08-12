@@ -17,9 +17,9 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "solo": ("solo", "instrumental"),
     "outro": ("outro", "ending", "coda"),
     "groove": ("groove",),
-    "a": ("a", "section a"),
-    "b": ("b", "section b"),
-    "c": ("c", "section c"),
+    "a": ("a", "section a", "part a"),
+    "b": ("b", "section b", "part b"),
+    "c": ("c", "section c", "part c"),
 }
 
 
@@ -34,22 +34,26 @@ def is_musical_idea_content_request(normalized: str, low: str) -> bool:
 
 
 def extract_requested_section(question: str) -> str:
+    """Pull an explicit chart section from natural wording (part B, verse, …)."""
     low = str(question or "").lower()
-    m = re.search(
-        r"\bover (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove|[abc])\b",
-        low,
+    patterns = (
+        r"\bover (?:the )?(?:part|section) ([abc])\b",
+        r"\b(?:for|on) (?:the )?(?:part|section) ([abc])\b",
+        r"\b(?:part|section) ([abc])\b",
+        r"\b([abc]) section\b",
+        r"\bover (?:the )?([abc])\b",
+        r"\bover (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
+        r"\b(?:for|on) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
     )
-    if not m:
-        m = re.search(
-            r"\b(?:for|on) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
-            low,
-        )
-    if not m:
-        return ""
-    token = re.sub(r"\s+", "-", m.group(1).strip().lower())
-    if token == "prechorus":
-        token = "pre-chorus"
-    return token
+    for pat in patterns:
+        m = re.search(pat, low)
+        if not m:
+            continue
+        token = re.sub(r"\s+", "-", m.group(1).strip().lower())
+        if token == "prechorus":
+            token = "pre-chorus"
+        return token
+    return ""
 
 
 def resolve_chart_section(
@@ -76,18 +80,19 @@ def resolve_chart_section(
 
     req = requested.lower().strip()
     aliases = _SECTION_ALIASES.get(req, (req,))
-    for name in names:
+
+    def _match(name: str) -> bool:
         nlow = name.lower().strip()
         if nlow == req or nlow in aliases or any(a == nlow for a in aliases):
-            return {
-                "ok": True,
-                "section": name,
-                "chords": list(sections.get(name) or []),
-                "explicit": True,
-                "available": names,
-            }
-        # "Verse 1" matches verse
-        if any(nlow.startswith(a) for a in aliases if len(a) > 1):
+            return True
+        # Single-letter sections: exact token only (never "bridge" via "b").
+        if len(req) == 1 and req.isalpha():
+            return nlow == req or nlow.startswith(f"{req} ") or nlow.endswith(f" {req}")
+        # "Verse 1" matches verse; "Chorus" matches chorus.
+        return any(nlow.startswith(a) for a in aliases if len(a) > 1)
+
+    for name in names:
+        if _match(name):
             return {
                 "ok": True,
                 "section": name,
@@ -113,18 +118,26 @@ def resolve_chart_section(
     }
 
 
-def _transpose_composition_preserving_degrees(composition: Any, written_key: str, steps: int, profile: Any) -> Any:
-    """Transpose events by semitone while keeping degree metadata; spell in written key family."""
+def _transpose_composition_preserving_degrees(
+    composition: Any,
+    written_key: str,
+    steps: int,
+    profile: Any,
+    *,
+    concert_key: str = "",
+) -> Any:
+    """Transpose event pitches AND chord labels into the written domain once."""
     from music_coach_ami.musical_idea_engine import (
         MusicalEvent,
         MusicalIdeaComposition,
         _place_spelled_note,
         authoritative_scale_degrees,
     )
-    from music_theory import pitch_class_from_spelled_note, spell_note_in_key
+    from music_theory import pitch_class_from_spelled_note, spell_note_in_key, transpose_chord
 
     tonality = composition.tonality
     written_tonic = written_key.rstrip("m")
+    concert_ref = (concert_key or composition.reference_key or written_tonic).rstrip("m")
     # Build written-domain scale spelling when tonality is known.
     written_scale: list[str] = []
     if tonality:
@@ -151,6 +164,13 @@ def _transpose_composition_preserving_degrees(composition: Any, written_key: str
             direction="ascending",
             previous_midi=prev_midi,
         )
+        written_chord = ""
+        if ev.chord:
+            written_chord = transpose_chord(
+                ev.chord,
+                steps,
+                reference_key=concert_ref,
+            )
         new_events.append(
             MusicalEvent(
                 spelled=spelled2,
@@ -161,7 +181,7 @@ def _transpose_composition_preserving_degrees(composition: Any, written_key: str
                 articulation=ev.articulation,
                 scale_degree=ev.scale_degree,
                 pitch_class=pitch_class_from_spelled_note(spelled2),
-                chord=ev.chord,
+                chord=written_chord,
                 role=ev.role,
                 cell_index=ev.cell_index,
                 domain="written",
@@ -193,8 +213,9 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     from music_coach_ami.musical_idea_engine import (
         composition_diagnostics,
         composition_to_abc,
+        expand_harmony_timeline,
+        generate_idea_over_chords,
         generate_lick,
-        generate_phrase_over_chords,
         generate_scale_pattern,
         generate_sequence,
         play_summary,
@@ -295,46 +316,50 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         or req.context.current_practice_key
         or "C"
     ).strip()
-    concert_chords = list(section_resolve.get("chords") or [])
+    concert_chords_raw = list(section_resolve.get("chords") or [])
     section_label = str(section_resolve.get("section") or active_section or "").strip()
+    obj = str(idea.object_type or "lick").strip() or "lick"
 
-    # Choose generator
-    if idea.object_type == "pattern" or (
-        idea.object_type in {"", "general"}
+    # Choose generator — song-relative status does not override musical object.
+    if obj == "pattern" or (
+        obj in {"", "general"}
         and idea.tonality
         and "pattern" in (req.normalized_question or "").lower()
     ):
         composition = generate_scale_pattern(idea, notation_instrument=notation_inst)
         label = f"{idea.bars}-bar {idea.tonality or idea.style or 'scale'} pattern"
-    elif idea.object_type == "sequence":
+    elif obj == "sequence":
         composition = generate_sequence(idea, notation_instrument=notation_inst)
         label = f"{idea.bars}-bar sequence"
-    elif idea.song_relative or (idea.object_type == "phrase" and concert_chords and not idea.explicit_key):
-        if not concert_chords:
+    elif idea.song_relative or (obj in {"phrase", "lick", "riff"} and concert_chords_raw and not idea.explicit_key):
+        if not concert_chords_raw:
             composition = generate_lick(idea, notation_instrument=notation_inst)
-            label = f"{idea.bars}-bar phrase"
+            label = f"{idea.bars}-bar {obj}"
         else:
-            composition = generate_phrase_over_chords(
+            song_obj = obj if obj in {"lick", "phrase", "riff"} else "phrase"
+            composition = generate_idea_over_chords(
                 idea,
-                concert_chords,
+                concert_chords_raw,
                 notation_instrument=notation_inst,
                 reference_key=concert_key,
+                object_type=song_obj,
             )
             where = section_label or "the active section"
-            label = f"{idea.bars}-bar phrase over {where}"
+            label = f"{idea.bars}-bar {song_obj} over {where}"
     else:
         composition = generate_lick(idea, notation_instrument=notation_inst)
         key_bit = f" in {idea.explicit_key}" if idea.explicit_key else ""
         ton_bit = f" {idea.tonality}" if idea.tonality else ""
-        label = f"{idea.bars}-bar {idea.object_type}{ton_bit}{key_bit}".strip()
+        label = f"{idea.bars}-bar {obj}{ton_bit}{key_bit}".strip()
 
+    timeline_concert = expand_harmony_timeline(concert_chords_raw, int(composition.bars or idea.bars or 4))
     written_ctx = build_written_music_context(
         instrument=instrument,
         practice_concert_key=concert_key if not idea.explicit_key else (
             idea.explicit_key if not str(idea.tonality).endswith("minor") else idea.explicit_key
         ),
         original_song_key=str(req.context.song_original_key or concert_key),
-        concert_chords=concert_chords[: composition.bars] if concert_chords else [],
+        concert_chords=timeline_concert,
         session_state=session_ref,
         register=idea.register,
         chart_already_in_practice_key=bool(chart.get("sections_in_practice_key")),
@@ -343,6 +368,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
 
     concert_tonic = composition.tonic or idea.explicit_key or concert_key
     concert_tonality = composition.tonality or idea.tonality or ""
+    concert_event_chords = [e.chord for e in composition.events if e.chord]
     written_note = ""
     if (
         written_ctx.written_transposition_applied
@@ -354,16 +380,24 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             written_ctx.written_key,
             int(written_ctx.transposition_semitones),
             written_ctx.notation_profile,
+            concert_key=str(written_ctx.practice_concert_key or concert_key),
         )
-        ton_label = (concert_tonality or "idea").strip()
         written_note = (
-            f"Concert **{concert_tonic}** {ton_label} — "
-            f"written **{composition.tonic}** {composition.tonality or ton_label} "
-            f"for **{notation_inst}**"
-        ).replace("  ", " ").strip()
+            f"**Concert key:** {concert_tonic}"
+            + (f" {concert_tonality}" if concert_tonality else "")
+            + f"  \n**Written key:** {composition.tonic}"
+            + (f" {composition.tonality or concert_tonality}" if (composition.tonality or concert_tonality) else "")
+            + f" for **{notation_inst}**"
+        ).strip()
 
     bpm_out = int(idea.tempo_bpm or bpm or 96)
-    if written_note and composition.tonic:
+    if idea.song_relative and section_label:
+        title = f"{idea.bars}-Bar {composition.object_type.replace('_', ' ').title()} Over {section_label}"
+        if written_note:
+            title = (
+                f"{title} — Written in {composition.tonic} for {notation_inst}"
+            )
+    elif written_note and composition.tonic:
         ton_title = (composition.tonality or concert_tonality or label).replace("_", " ").title()
         title = f"{ton_title} In {composition.tonic} (written)"
     else:
@@ -373,6 +407,10 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     ton = idea.tonality or composition.tonality or composition.style
     if written_note and idea.explicit_key:
         direct = f"**Try this {idea.bars}-bar {ton} idea**\n\n{written_note}"
+    elif idea.song_relative and section_label:
+        direct = f"**Try this {idea.bars}-bar {composition.object_type} over {section_label}:**"
+        if written_note:
+            direct = f"{direct}\n\n{written_note}"
     elif idea.explicit_key and ton:
         direct = f"**Try this {idea.bars}-bar {ton} pattern in {idea.explicit_key}:**"
     else:
@@ -392,6 +430,8 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         "Tone and articulation match your practice focus",
     ]
 
+    bars_with_events = sorted({e.bar_index for e in composition.events})
+    written_event_chords = [e.chord for e in composition.events if e.chord]
     diag = {
         "musical_idea_content": True,
         "resolved_instrument": instrument,
@@ -400,6 +440,12 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         "written_key": written_ctx.written_key,
         "notation_abc_present": bool(abc),
         "bars_generated": composition.bars,
+        "bars_with_events": bars_with_events,
+        "bars_with_events_count": len(bars_with_events),
+        "harmonic_timeline_concert": list(timeline_concert),
+        "harmonic_timeline_written": list(written_ctx.written_chords),
+        "concert_event_chords_preview": concert_event_chords[:8],
+        "written_event_chords_preview": written_event_chords[:8],
         "notation_clef": composition.notation_profile.clef,
         "written_music_context": written_ctx.to_diagnostics(),
         "section_resolution": section_resolve,

@@ -502,5 +502,157 @@ class MusicalIdeaVerticalSliceTests(unittest.TestCase):
         self.assertNotEqual(len(h.events), 0)
 
 
+class WrittenDomainSongRelativeTests(unittest.TestCase):
+    def test_part_b_explicit_over_active_a(self) -> None:
+        from music_coach_ami.musical_idea_knowledge import extract_requested_section
+        from music_coach_ami.pipeline import run_coach_submit
+
+        self.assertEqual(extract_requested_section("Give me a 4-bar phrase over part B."), "b")
+        _, resp = run_coach_submit(
+            "Give me a 4-bar phrase over part B.",
+            {"instrument": "Guitar", "display_key": "C", "level": "Beginner"},
+            ami_ctx={
+                "instrument": "Guitar",
+                "display_key": "C",
+                "chart_sections": {"A": ["C", "G"], "B": ["Am", "F", "G", "C"]},
+                "practice_focus_section": "A",
+                "coach_page": "practice",
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        sec = resp.diagnostics.get("section_resolution") or {}
+        self.assertEqual(sec.get("section"), "B")
+        self.assertIn("B", resp.direct_answer)
+        self.assertNotIn("over A", (resp.direct_answer or "").lower())
+        self.assertEqual(resp.diagnostics.get("bars_with_events"), [0, 1, 2, 3])
+
+    def test_verse_alias_preserves_lick_object(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, resp = run_coach_submit(
+            "Give me a 4-bar lick over the verse.",
+            {
+                "instrument": "Clarinet",
+                "display_key": "G",
+                "level": "Beginner",
+                "selected_transposing_instrument": "Bb Clarinet",
+            },
+            ami_ctx={
+                "instrument": "Clarinet",
+                "display_key": "G",
+                "practice_key": "G",
+                "chart_sections": {"Verse 1": ["G6", "Em7", "C", "D"], "Chorus": ["G"]},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Chorus",
+                "coach_page": "practice",
+                "selected_transposing_instrument": "Bb Clarinet",
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        self.assertEqual(resp.diagnostics.get("musical_object"), "lick")
+        self.assertEqual((resp.diagnostics.get("section_resolution") or {}).get("section"), "Verse 1")
+        self.assertIn("lick", (resp.direct_answer or "").lower())
+        self.assertNotIn("phrase over", (resp.direct_answer or "").lower())
+        self.assertEqual(resp.diagnostics.get("bars_with_events_count"), 4)
+
+    def test_written_chords_match_notes_for_bb_clarinet(self) -> None:
+        import re
+
+        from dataclasses import replace
+
+        from music_coach_ami.musical_idea_engine import (
+            composition_to_abc,
+            generate_idea_over_chords,
+            play_summary,
+        )
+        from music_coach_ami.musical_idea_knowledge import _transpose_composition_preserving_degrees
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+        from music_coach_ami.notation_profile import notation_profile_for_instrument
+        from music_theory import transpose_chord
+
+        concert = ["G6", "C7b9", "Bbmaj9", "G/B"]
+        expected_written = [transpose_chord(c, 2, reference_key="G") for c in concert]
+        self.assertEqual(expected_written, ["A6", "D7b9", "Cmaj9", "A/C#"])
+
+        idea = resolve_musical_idea_request(
+            "Give me a 4-bar phrase over the verse.",
+            default_object="phrase",
+            instrument="Clarinet",
+        )
+        idea = replace(idea, bars=4, song_relative=True)
+        comp = generate_idea_over_chords(
+            idea,
+            concert,
+            notation_instrument="Bb Clarinet",
+            reference_key="G",
+            object_type="phrase",
+        )
+        self.assertEqual(sorted({e.bar_index for e in comp.events}), [0, 1, 2, 3])
+        written = _transpose_composition_preserving_degrees(
+            comp,
+            "A",
+            2,
+            notation_profile_for_instrument("Bb Clarinet"),
+            concert_key="G",
+        )
+        bar_chords = []
+        for bar_i in range(4):
+            evs = [e for e in written.events if e.bar_index == bar_i]
+            self.assertTrue(evs)
+            self.assertTrue(all(e.domain == "written" for e in evs))
+            self.assertEqual(evs[0].chord, expected_written[bar_i])
+            bar_chords.append(evs[0].chord)
+        summary = "\n".join(play_summary(written))
+        for wc in expected_written:
+            self.assertIn(f"({wc})", summary)
+            self.assertNotIn("(G6)", summary)
+        abc, diag = composition_to_abc(written, title="Written Phrase", bpm=96)
+        abc_chords = re.findall(r'"([^"]+)"', abc)
+        self.assertEqual(abc_chords, expected_written)
+        self.assertIn("K:A", diag.get("abc_key_field") or "")
+
+    def test_harmony_timeline_and_bar_fill_counts(self) -> None:
+        from music_coach_ami.musical_idea_engine import expand_harmony_timeline, generate_idea_over_chords
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        self.assertEqual(expand_harmony_timeline(["G6"], 4), ["G6", "G6", "G6", "G6"])
+        self.assertEqual(expand_harmony_timeline(["G6", "Em7"], 4), ["G6", "Em7", "G6", "Em7"])
+        for bars in (2, 4, 8):
+            idea = resolve_musical_idea_request(
+                f"Give me a {bars}-bar phrase over the verse.",
+                default_object="phrase",
+                instrument="Guitar",
+            )
+            comp = generate_idea_over_chords(
+                idea,
+                ["G6"],
+                notation_instrument="Guitar",
+                reference_key="G",
+                object_type="phrase",
+            )
+            self.assertEqual(comp.bars, bars)
+            self.assertEqual(sorted({e.bar_index for e in comp.events}), list(range(bars)))
+
+    def test_missing_chorus_still_honest(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, missing = run_coach_submit(
+            "Give me a 4-bar phrase over the chorus.",
+            {"instrument": "Guitar", "display_key": "C", "level": "Beginner"},
+            ami_ctx={
+                "instrument": "Guitar",
+                "display_key": "C",
+                "chart_sections": {"A": ["C", "G"], "B": ["Am", "F"]},
+                "practice_focus_section": "A",
+                "coach_page": "practice",
+            },
+        )
+        self.assertIsNotNone(missing)
+        assert missing is not None
+        self.assertIn("doesn't have a section labeled", missing.direct_answer)
+
+
 if __name__ == "__main__":
     unittest.main()
