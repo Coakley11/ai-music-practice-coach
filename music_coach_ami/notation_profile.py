@@ -86,13 +86,15 @@ def notation_profile_for_instrument(instrument: str) -> NotationProfile:
 def _wind_notation_profile(low: str) -> NotationProfile:
     """Treble-clef written ranges for common wind instruments (concert/written defaults)."""
     if "flute" in low:
+        # Playable envelope (not the default generation comfort window).
+        # Comfortable AMI defaults live in musical_idea_engine.generation_window.
         return NotationProfile(
             clef="treble",
             written_octave=5,
             sounding_to_written_shift=0,
-            register_hint="flute comfortable middle register",
-            midi_low=72,  # C5
-            midi_high=91,  # G6
+            register_hint="flute playable written envelope",
+            midi_low=60,  # C4
+            midi_high=96,  # C7
         )
     if "clarinet" in low:
         return NotationProfile(

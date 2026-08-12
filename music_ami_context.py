@@ -611,6 +611,16 @@ def finalize_music_context_for_send(
         ctx["instrument_realization"] = real
     except ImportError:
         pass
+    # Chart written-key checkbox (SSOT) — charts concert vs written; stamped for diagnostics/fingerprint.
+    try:
+        from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, chart_in_instrument_key
+
+        show_written = chart_in_instrument_key(session_state)
+        ctx[CHART_IN_INSTRUMENT_KEY_KEY] = show_written
+        ctx["show_chart_in_instrument_key"] = show_written
+        snap_live[CHART_IN_INSTRUMENT_KEY_KEY] = show_written
+    except ImportError:
+        pass
     if snap_live:
         ctx["practice_snapshot"] = {**(ctx.get("practice_snapshot") or {}), **snap_live}
 

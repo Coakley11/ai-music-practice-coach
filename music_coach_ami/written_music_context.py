@@ -202,6 +202,7 @@ def build_written_music_context(
             "chart_key_mode": mode,
             "transposing_type": transposing_type or subtype_early,
             "notation_instrument": profile_inst,
+            "show_chart_in_instrument_key": bool(session.get("show_chart_in_instrument_key", False)),
             "resolve_practice_keys": keys,
         },
     )

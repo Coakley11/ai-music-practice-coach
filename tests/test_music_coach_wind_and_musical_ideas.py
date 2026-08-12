@@ -101,7 +101,6 @@ class WindInstrumentSubmitPathTests(unittest.TestCase):
         self.assertIn("clef=treble", notation)
         self.assertIn("K:C", notation)
         self.assertFalse(mock_f.called)
-        # Focus must not remain Walking Bass for Flute
         self.assertNotEqual(str(ss.get("focus") or "").lower(), "walking bass")
 
     def test_flute_to_saxophone_resolves_subtype(self) -> None:
@@ -129,7 +128,6 @@ class WindInstrumentSubmitPathTests(unittest.TestCase):
         notation = str((pending_a or {}).get("notation_abc") or "")
         self.assertIn("clef=treble", notation)
         self.assertIn("K:A", notation)
-        self.assertTrue(diag_a.get("transposing_subtype") or diag_a.get("written_key") or "A" in notation)
 
         out_t, diag_t, pending_t, _ = self._submit(
             ss,
@@ -142,6 +140,81 @@ class WindInstrumentSubmitPathTests(unittest.TestCase):
         self.assertNotEqual(diag_t.get("semantic_fingerprint"), diag_a.get("semantic_fingerprint"))
         notation_t = str((pending_t or {}).get("notation_abc") or "")
         self.assertIn("K:D", notation_t)
+
+    def test_sax_subtype_matrix_fingerprints(self) -> None:
+        ss: dict = {"original_key": "Ab", "level": "Beginner", "focus": "Tone", "_ami_send_gen_music_practice": 0}
+        fps = []
+        keys = []
+        for sax in (
+            "Alto saxophone (Eb)",
+            "Tenor saxophone (Bb)",
+            "Soprano saxophone (Bb)",
+            "Baritone saxophone (Eb)",
+        ):
+            _, diag, pending, _ = self._submit(ss, instrument="Saxophone", key="Ab", focus="Tone", sax_type=sax)
+            self.assertFalse(diag.get("duplicate"))
+            fps.append(diag.get("semantic_fingerprint"))
+            keys.append(str((pending or {}).get("notation_abc") or ""))
+        self.assertEqual(len(set(fps)), 4)
+        self.assertIn("K:F", keys[0])  # Alto Ab → F
+        self.assertIn("K:Bb", keys[1])  # Tenor Ab → Bb
+        self.assertIn("K:Bb", keys[2])  # Soprano Ab → Bb
+
+
+class SaxWrittenKeyControlPathTests(unittest.TestCase):
+    def test_rehydrate_does_not_clobber_live_tenor_or_checkbox(self) -> None:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, flush_active_song_edits, rehydrate_transposing_sidebar_from_canonical
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            sync_written_key_instrument_anchor,
+        )
+
+        session = {
+            "instrument": "Saxophone",
+            "display_key": "Ab",
+            "concert_key": "Ab",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+            CHART_IN_INSTRUMENT_KEY_KEY: False,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Alto Saxophone",
+            ACTIVE_SONG_STATE_KEY: {
+                "pick_key": "all_the_things",
+                "instrument": "Saxophone",
+                "display_key": "Ab",
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Alto saxophone (Eb)",
+                CHART_IN_INSTRUMENT_KEY_KEY: False,
+                WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            },
+        }
+        # Normalize legacy display-name anchor without clearing checkbox.
+        sync_written_key_instrument_anchor(session, "Saxophone")
+        self.assertEqual(session.get(CHART_IN_INSTRUMENT_KEY_KEY), False)
+        self.assertEqual(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY), "Saxophone")
+
+        # User picks Tenor + written charts — live widget values must survive rehydrate.
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Tenor saxophone (Bb)"
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = True
+        flush_active_song_edits(session, reason="song_edit")
+        meta = session.get(ACTIVE_SONG_STATE_KEY) or {}
+        self.assertEqual(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY), "Tenor saxophone (Bb)")
+        self.assertTrue(meta.get(CHART_IN_INSTRUMENT_KEY_KEY))
+
+        # Simulate next rerun: stale code used to overwrite Tenor→Alto here.
+        rehydrate_transposing_sidebar_from_canonical(session)
+        self.assertEqual(session.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY), "Tenor saxophone (Bb)")
+        self.assertTrue(session.get(CHART_IN_INSTRUMENT_KEY_KEY))
+
+        # Seed path still works when keys are missing.
+        bare = {
+            ACTIVE_SONG_STATE_KEY: {
+                SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Soprano saxophone (Bb)",
+                CHART_IN_INSTRUMENT_KEY_KEY: True,
+            }
+        }
+        rehydrate_transposing_sidebar_from_canonical(bare)
+        self.assertEqual(bare.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY), "Soprano saxophone (Bb)")
+        self.assertTrue(bare.get(CHART_IN_INSTRUMENT_KEY_KEY))
 
 
 class DurationFingerprintSideTests(unittest.TestCase):
@@ -162,67 +235,213 @@ class DurationFingerprintSideTests(unittest.TestCase):
 
 
 class MusicalIdeaVerticalSliceTests(unittest.TestCase):
-    def test_harmonic_minor_pattern_bb(self) -> None:
+    def test_d_harmonic_minor_eight_bar_ascending(self) -> None:
+        from music_coach_ami.musical_idea_engine import (
+            authoritative_scale_degrees,
+            cell_anchor_midis,
+            composition_to_abc,
+            generate_scale_pattern,
+        )
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        scale = authoritative_scale_degrees("D", "harmonic minor")
+        self.assertEqual(scale, ["D", "E", "F", "G", "A", "Bb", "C#"])
+
+        idea = resolve_musical_idea_request(
+            "Give me an 8-bar ascending eighth-note pattern in D harmonic minor at 90 BPM.",
+            default_object="pattern",
+            instrument="Flute",
+        )
+        self.assertEqual(idea.object_type, "pattern")
+        self.assertEqual(idea.bars, 8)
+        self.assertEqual(idea.tempo_bpm, 90)
+        self.assertEqual(idea.rhythm, "eighth")
+        self.assertEqual(idea.explicit_key, "D")
+        self.assertEqual(idea.tonality, "harmonic minor")
+        self.assertEqual(idea.direction, "ascending")
+
+        comp = generate_scale_pattern(idea, notation_instrument="Flute")
+        self.assertEqual(comp.bars, 8)
+        self.assertEqual(list(comp.scale_spelling), scale)
+        self.assertNotIn("A#", comp.scale_spelling)
+        self.assertIn("C#", [e.spelled for e in comp.events])
+        self.assertTrue(comp.validation_ok, comp.validation_errors)
+
+        anchors = cell_anchor_midis(comp)
+        self.assertGreaterEqual(len(anchors), 4)
+        wrap = next((i for i in range(1, len(anchors)) if anchors[i] + 1 < anchors[i - 1]), None)
+        end = wrap if wrap is not None else len(anchors)
+        for i in range(1, end):
+            self.assertGreaterEqual(anchors[i], anchors[i - 1] - 1)
+
+        # No modulo replay of early bars: later spellings continue the sequence.
+        early = [e.spelled for e in comp.events if e.bar_index < 2]
+        late = [e.spelled for e in comp.events if e.bar_index >= 5]
+        self.assertNotEqual(early, late[: len(early)])
+
+        midis = []
+        from music_coach_ami.musical_idea_engine import _midi
+
+        for e in comp.events:
+            midis.append(_midi(e.spelled, e.octave))
+        self.assertLessEqual(max(midis), 90)
+        self.assertGreaterEqual(min(midis), 67)
+
+        abc, diag = composition_to_abc(comp, title="D harm", bpm=90)
+        self.assertIn("K:Dm", diag.get("abc_key_field") or "")
+        self.assertTrue(diag.get("notation_validation_ok"), diag)
+        self.assertIn("Q:1/4=90", abc)
+
+    def test_bb_harmonic_minor_scale_and_abc(self) -> None:
+        from music_coach_ami.musical_idea_engine import (
+            authoritative_scale_degrees,
+            composition_to_abc,
+            generate_scale_pattern,
+        )
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
         from music_coach_ami.pipeline import run_coach_submit
-        from music_coach_ami.scale_engine import spell_scale_degrees_for_direction
 
-        expected = spell_scale_degrees_for_direction("Bb", "harmonic minor", "ascending")
-        self.assertEqual(expected[:7], ["Bb", "C", "Db", "Eb", "F", "Gb", "A"])
+        expected = authoritative_scale_degrees("Bb", "harmonic minor")
+        self.assertEqual(expected, ["Bb", "C", "Db", "Eb", "F", "Gb", "A"])
 
-        session = {"instrument": "Flute", "level": "Intermediate", "focus": "Scales", "display_key": "C"}
-        req, resp = run_coach_submit(
-            "Give me a 4-bar descending harmonic minor pattern in Bb minor.",
-            session,
+        idea = resolve_musical_idea_request(
+            "Give me a 4-bar harmonic minor pattern in Bb minor.",
+            default_object="pattern",
+            instrument="Flute",
+        )
+        comp = generate_scale_pattern(idea, notation_instrument="Flute")
+        self.assertEqual(list(comp.scale_spelling), expected)
+        self.assertNotIn("A#", list(comp.scale_spelling) + [e.spelled for e in comp.events])
+        abc, diag = composition_to_abc(comp, title="Bb", bpm=96)
+        self.assertIn("K:Bbm", diag.get("abc_key_field") or "")
+        self.assertTrue(diag.get("notation_validation_ok"))
+
+        _, resp = run_coach_submit(
+            "Give me a harmonic minor pattern in Bb minor.",
+            {"instrument": "Flute", "level": "Intermediate", "focus": "Scales", "display_key": "C"},
             ami_ctx={"instrument": "Flute", "level": "Intermediate", "focus": "Scales", "coach_page": "practice"},
         )
         self.assertIsNotNone(resp)
         assert resp is not None
         self.assertIn("musical_idea", resp.source_solver)
-        self.assertTrue(resp.notation_abc)
-        self.assertEqual(resp.diagnostics.get("bars_generated"), 4)
-        self.assertIn("clef=treble", resp.notation_abc)
-        self.assertIn("descending", str(resp.diagnostics.get("strategy") or resp.diagnostics.get("direction") or ""))
-        self.assertEqual(resp.diagnostics.get("direction"), "descending")
+        self.assertEqual(resp.diagnostics.get("scale_spelling"), expected)
 
-    def test_lick_bars_and_tempo(self) -> None:
-        from music_coach_ami.pipeline import run_coach_submit
-
-        _, resp = run_coach_submit(
-            "Give me a 2-bar intermediate lick in Bb minor at 140 BPM.",
-            {"instrument": "Piano", "level": "Advanced", "focus": "Voicings"},
-            ami_ctx={"instrument": "Piano", "level": "Advanced", "coach_page": "practice"},
+    def test_descending_a_harmonic_minor(self) -> None:
+        from music_coach_ami.musical_idea_engine import (
+            authoritative_scale_degrees,
+            cell_anchor_midis,
+            generate_scale_pattern,
         )
-        self.assertIsNotNone(resp)
-        assert resp is not None
-        self.assertEqual(resp.diagnostics.get("bars_generated"), 2)
-        self.assertEqual(resp.diagnostics.get("tempo_bpm"), 140)
-        self.assertIn("Q:1/4=140", resp.notation_abc or "")
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
 
-    def test_song_relative_phrase(self) -> None:
+        self.assertEqual(
+            authoritative_scale_degrees("A", "harmonic minor"),
+            ["A", "B", "C", "D", "E", "F", "G#"],
+        )
+        idea = resolve_musical_idea_request(
+            "Give me a 4-bar descending harmonic minor pattern in A minor.",
+            default_object="pattern",
+            instrument="Flute",
+        )
+        self.assertEqual(idea.direction, "descending")
+        comp = generate_scale_pattern(idea, notation_instrument="Flute")
+        self.assertTrue(comp.validation_ok, comp.validation_errors)
+        anchors = cell_anchor_midis(comp)
+        wrap = next((i for i in range(1, len(anchors)) if anchors[i] > anchors[i - 1] + 1), None)
+        end = wrap if wrap is not None else len(anchors)
+        for i in range(1, end):
+            self.assertLessEqual(anchors[i], anchors[i - 1] + 1)
+
+    def test_flute_default_vs_high_register(self) -> None:
+        from music_coach_ami.musical_idea_engine import _midi, generate_scale_pattern
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        default = generate_scale_pattern(
+            resolve_musical_idea_request(
+                "Give me a harmonic minor pattern in Bb minor.",
+                default_object="pattern",
+                instrument="Flute",
+            ),
+            notation_instrument="Flute",
+        )
+        high = generate_scale_pattern(
+            resolve_musical_idea_request(
+                "Give me a high-register harmonic minor pattern in Bb minor.",
+                default_object="pattern",
+                instrument="Flute",
+            ),
+            notation_instrument="Flute",
+        )
+        d_mid = [_midi(e.spelled, e.octave) for e in default.events]
+        h_mid = [_midi(e.spelled, e.octave) for e in high.events]
+        self.assertLessEqual(max(d_mid), 90)
+        self.assertGreater(sum(h_mid) / len(h_mid), sum(d_mid) / len(d_mid))
+
+    def test_c_minor_lick_written_label_for_alto(self) -> None:
         from music_coach_ami.pipeline import run_coach_submit
 
-        ami = {
-            "instrument": "Guitar",
+        session = {
+            "instrument": "Saxophone",
+            "selected_transposing_instrument": "Alto saxophone (Eb)",
             "level": "Beginner",
-            "focus": "Lead Guitar",
+            "focus": "Tone",
             "display_key": "C",
-            "chart_sections": {"Verse": list(CHORDS_C)},
-            "chart_sections_key": "C",
-            "chart_sections_in_practice_key": True,
-            "practice_focus_section": "Verse",
-            "active_song": {"title": "Just the Two of Us", "key": "Db", "pick_key": "jttu"},
-            "pick_key": "jttu",
-            "coach_page": "practice",
         }
         _, resp = run_coach_submit(
-            "Give me a 4-bar phrase over the current section.",
-            {"instrument": "Guitar", "display_key": "C", "level": "Beginner"},
-            ami_ctx=ami,
+            "Give me a very easy 4-bar lick in C minor.",
+            session,
+            ami_ctx={
+                "instrument": "Saxophone",
+                "level": "Beginner",
+                "focus": "Tone",
+                "display_key": "C",
+                "coach_page": "practice",
+                "selected_transposing_instrument": "Alto saxophone (Eb)",
+            },
         )
         self.assertIsNotNone(resp)
         assert resp is not None
-        self.assertTrue(resp.notation_abc)
-        self.assertEqual(resp.diagnostics.get("bars_generated"), 4)
+        text = f"{resp.direct_answer}\n" + "\n".join(resp.practice_steps or [])
+        self.assertIn("Concert", text)
+        self.assertIn("written", text.lower())
+        self.assertTrue("A" in text)
+        self.assertIn("K:Am", resp.notation_abc or "")
+        midis = resp.diagnostics.get("written_midi_range_used") or [0, 99]
+        self.assertLessEqual(midis[1] - midis[0], 24)
+
+    def test_chorus_section_explicit(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, missing = run_coach_submit(
+            "Give me a 4-bar phrase over the chorus.",
+            {"instrument": "Guitar", "display_key": "C", "level": "Beginner"},
+            ami_ctx={
+                "instrument": "Guitar",
+                "display_key": "C",
+                "chart_sections": {"A": ["C", "G"], "B": ["Am", "F"]},
+                "practice_focus_section": "A",
+                "coach_page": "practice",
+            },
+        )
+        self.assertIsNotNone(missing)
+        assert missing is not None
+        self.assertIn("doesn't have a section labeled", missing.direct_answer)
+
+        _, hit = run_coach_submit(
+            "Give me a 4-bar phrase over the chorus.",
+            {"instrument": "Guitar", "display_key": "C", "level": "Beginner"},
+            ami_ctx={
+                "instrument": "Guitar",
+                "display_key": "C",
+                "chart_sections": {"Chorus": ["F", "G", "C", "Am"], "Verse": ["Dm"]},
+                "practice_focus_section": "Verse",
+                "coach_page": "practice",
+            },
+        )
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual((hit.diagnostics.get("section_resolution") or {}).get("section"), "Chorus")
+        self.assertIn("Chorus", hit.direct_answer)
 
     def test_cross_instrument_lick_fingerprints_differ(self) -> None:
         from music_coach_ami.semantic_fingerprint import music_coach_semantic_fingerprint

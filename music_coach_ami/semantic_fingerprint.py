@@ -43,6 +43,7 @@ MUSIC_COACH_FP_DIMENSIONS: tuple[str, ...] = (
     "capo_shape_key",
     "written_key_hint",
     "transposing_subtype",
+    "chart_in_instrument_key",
     "duration_minutes",
     "bars",
     "direction",
@@ -221,6 +222,15 @@ def music_coach_semantic_dimensions(
         or (snap.get("selected_transposing_instrument") if snap else "")
         or ""
     )
+    chart_written = ctx.get("show_chart_in_instrument_key")
+    if chart_written is None:
+        chart_written = ctx.get("chart_in_instrument_key")
+    if chart_written in (True, 1, "1", "true", "True"):
+        chart_written_s = "1"
+    elif chart_written in (False, 0, "0", "false", "False"):
+        chart_written_s = "0"
+    else:
+        chart_written_s = ""
 
     return {
         "normalized_question": _norm(question),
@@ -242,6 +252,7 @@ def music_coach_semantic_dimensions(
         "capo_shape_key": _norm(capo_shape),
         "written_key_hint": _norm(written),
         "transposing_subtype": _norm(subtype),
+        "chart_in_instrument_key": chart_written_s,
         "duration_minutes": _duration_minutes(ctx, question),
         "bars": idea.get("bars", ""),
         "direction": idea.get("direction", ""),

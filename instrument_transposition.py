@@ -252,14 +252,38 @@ def chart_in_instrument_key(session_state: dict) -> bool:
     return bool(session_state.get(CHART_IN_INSTRUMENT_KEY_KEY, False))
 
 
+def _base_instrument_for_written_anchor(instrument: str) -> str:
+    """Normalize display/subtype labels to the global instrument selectbox value."""
+    name = str(instrument or "").strip()
+    low = name.lower()
+    if "sax" in low:
+        return "Saxophone"
+    if "clarinet" in low:
+        return "Clarinet"
+    if "trumpet" in low or "flugel" in low:
+        return "Trumpet"
+    return name
+
+
 def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> None:
-    """Reset chart helper modes when the global instrument changes."""
+    """Reset chart helper modes when the global *base* instrument changes.
+
+    Anchors must use the global selectbox family (``Saxophone``), never a display
+    name like ``Alto Saxophone`` / ``Tenor Saxophone``. Comparing those to
+    ``instrument=="Saxophone"`` used to clear ``show_chart_in_instrument_key``
+    on every rerun and made the written-key checkbox appear stuck.
+    """
     instrument = str(instrument or "").strip()
-    anchor = str(session_state.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
-    if not anchor:
-        session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = instrument
+    base = _base_instrument_for_written_anchor(instrument) or instrument
+    raw_anchor = str(session_state.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+    anchor_base = _base_instrument_for_written_anchor(raw_anchor) if raw_anchor else ""
+    if not raw_anchor:
+        session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
-    if anchor == instrument:
+    if anchor_base == base:
+        # Normalize legacy display-name anchors without clearing the checkbox.
+        if raw_anchor != base:
+            session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
     session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
     try:
@@ -278,7 +302,7 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
         clear_stale_chart_session_keys(session_state)
     except ImportError:
         session_state.pop("_creative_chart_display_key", None)
-    session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = instrument
+    session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
 
 
 def preserve_written_key_on_display_key_change(session_state: dict) -> None:

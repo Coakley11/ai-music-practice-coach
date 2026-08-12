@@ -3902,7 +3902,14 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         should_flush = reason not in ("cpl_draft_edit",) and (
             ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
             or is_active_song_locally_dirty(ss)
-            or reason in ("display_key_change", "capo_widget")
+            or reason
+            in (
+                "display_key_change",
+                "capo_widget",
+                "song_edit",
+                "transposing_subtype",
+                "written_key_mode",
+            )
         )
         if should_flush:
             flush_active_song_edits(ss, reason=reason)
