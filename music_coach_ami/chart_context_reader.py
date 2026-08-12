@@ -39,6 +39,31 @@ def _practice_snapshot(ctx: dict[str, Any]) -> dict[str, Any]:
     return snap if isinstance(snap, dict) else {}
 
 
+def _catalog_handles(session: dict[str, Any]) -> tuple[dict[str, dict[str, dict]] | None, dict[str, dict[str, dict]] | None, str]:
+    """Session catalog handles, else canonical load_song_catalog() — same owner as the app."""
+    picker = None
+    library = None
+    source = "none"
+    try:
+        from songs.music_source import _catalog_library_from_session, _catalog_picker_from_session
+
+        picker = _catalog_picker_from_session(session)
+        library = _catalog_library_from_session(session)
+        if picker and library:
+            source = "session"
+    except ImportError:
+        pass
+    if not picker or not library:
+        try:
+            from song_catalog.catalog import load_song_catalog
+
+            library, picker, _, _ = load_song_catalog()
+            source = "load_song_catalog"
+        except ImportError:
+            pass
+    return picker, library, source
+
+
 def resolve_authoritative_pick_key(
     session_state: dict[str, Any],
     *,
@@ -91,9 +116,23 @@ def resolve_authoritative_pick_key(
         resolved = trace["active_song_state_pick_key"]
     if not resolved:
         try:
+            from songs.state import SELECTED_SONG_STATE_KEY, _recover_pick_key_by_title
+
+            picker, _, _ = _catalog_handles(session)
+            sel = session.get(SELECTED_SONG_STATE_KEY) or session.get("selected_song")
+            if isinstance(sel, dict) and isinstance(picker, dict) and picker:
+                recovered = _recover_pick_key_by_title(sel, picker)
+                if recovered:
+                    resolved = _clean(recovered)
+                    trace["recovered_pick_key_by_title"] = resolved
+        except ImportError:
+            pass
+    if not resolved:
+        try:
             from songs.state import reconcile_active_pick_key
 
-            resolved = _clean(reconcile_active_pick_key(session))
+            picker, _, _ = _catalog_handles(session)
+            resolved = _clean(reconcile_active_pick_key(session, song_picker_catalog=picker))
             trace["reconciled_pick_key"] = resolved
         except ImportError:
             pass
@@ -127,18 +166,27 @@ def trace_chart_candidate_sources(
 
     catalog_sections = 0
     catalog_error = ""
-    if pick_key:
+    picker, library, catalog_source = _catalog_handles(session)
+    if pick_key or isinstance(ctx.get("active_song"), dict) or session.get("selected_song"):
         try:
             from chart_level_arrangement import sections_for_level
             from songs.music_source import resolve_catalog_song_for_chart
 
             overlay: dict[str, Any] = {}
-            if isinstance(active, dict):
+            active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
+            if active:
                 overlay.update(active)
             sel = session.get("selected_song")
             if isinstance(sel, dict):
                 overlay = {**overlay, **sel}
-            merged, _original = resolve_catalog_song_for_chart(session, overlay)
+            if pick_key:
+                overlay["pick_key"] = pick_key
+            merged, _original = resolve_catalog_song_for_chart(
+                session,
+                overlay,
+                song_picker_catalog=picker,
+                song_library=library,
+            )
             level = _clean(ctx.get("level") or session.get("level") or "Intermediate") or "Intermediate"
             catalog_sections = _count(sections_for_level(merged, level))
         except Exception as exc:
@@ -155,6 +203,7 @@ def trace_chart_candidate_sources(
         "session_home_sections": _count(session.get("home_sections")),
         "catalog_resolve_catalog_song_for_chart": catalog_sections,
         "catalog_resolve_error": catalog_error or None,
+        "catalog_handle_source": catalog_source,
     }
 
 
@@ -199,10 +248,16 @@ def _resolve_catalog_sections(
     from chart_level_arrangement import sections_for_level
     from songs.music_source import resolve_catalog_song_for_chart
 
+    picker, library, _ = _catalog_handles(session)
     overlay = _catalog_overlay(session, ctx)
     if pick_key:
         overlay["pick_key"] = pick_key
-    merged, original_key = resolve_catalog_song_for_chart(session, overlay)
+    merged, original_key = resolve_catalog_song_for_chart(
+        session,
+        overlay,
+        song_picker_catalog=picker,
+        song_library=library,
+    )
     level = _clean(ctx.get("level") or session.get("level") or "Intermediate") or "Intermediate"
     sections = sections_for_level(merged, level)
     if not original_key:
@@ -286,7 +341,7 @@ def resolve_coach_chart_snapshot(
         except ImportError:
             pass
 
-    if not sections and resolved_pick_key:
+    if not sections:
         try:
             sections, catalog_original, catalog_source = _resolve_catalog_sections(
                 session,
@@ -299,6 +354,8 @@ def resolve_coach_chart_snapshot(
                     original_key = catalog_original
         except Exception:
             pass
+
+    picker, library, catalog_handle_source = _catalog_handles(session)
 
     if not sections and isinstance(ctx.get("active_song"), dict):
         active = ctx["active_song"]
@@ -385,4 +442,5 @@ def resolve_coach_chart_snapshot(
         "section_names": section_names,
         "active_section_chord_count": len(active_chords),
         "sections_in_practice_key": sections_in_practice_key,
+        "catalog_handle_source": catalog_handle_source,
     }

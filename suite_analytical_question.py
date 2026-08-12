@@ -1424,6 +1424,19 @@ def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any])
                 ui.json(life)
         except ImportError:
             pass
+        bass_dev = diag.get("bass_line_chart_dev")
+        if isinstance(bass_dev, dict) and bass_dev:
+            try:
+                from music_coach_ami.chart_context_transport import format_bass_line_chart_dev_markdown
+
+                ui.markdown(format_bass_line_chart_dev_markdown(bass_dev))
+            except ImportError:
+                ui.caption("Bass-line chart context")
+                ui.json(bass_dev)
+        lifecycle = diag.get("chart_context_lifecycle")
+        if isinstance(lifecycle, dict) and lifecycle:
+            ui.caption("Chart context lifecycle")
+            ui.json(lifecycle)
         ui.json(diag)
 
 
@@ -1545,6 +1558,7 @@ def _execute_coach_question_submit(
             coach_req,
             coach_resp,
             result_path="routed_coach",
+            session_state=session_state,
         )
         session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
         stage_routed_music_coach_insight(
@@ -1633,6 +1647,7 @@ def _execute_coach_question_submit(
             fallback_req,
             None,
             result_path="legacy_fallback",
+            session_state=session_state,
         )
     except ImportError:
         pass

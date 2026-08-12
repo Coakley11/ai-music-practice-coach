@@ -338,6 +338,14 @@ def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
         "progression_summary_used": bool(req.context.progression_summary),
         "notation_abc_present": bool(notation_abc),
         "fallback_reason": fallback_reason or None,
+        "chart_transport_at_solver": {
+            "extra_present": isinstance(extra, dict),
+            "chart_snapshot_present": bool(chart),
+            "chart_available": bool(chart.get("chart_available")),
+            "chart_source": chart.get("chart_source"),
+            "resolved_pick_key": chart.get("resolved_pick_key"),
+            "active_section_chord_count": len(chords),
+        },
     }
     if composition is not None:
         diag.update(composition_to_diagnostics(composition, chart))

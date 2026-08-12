@@ -27,6 +27,7 @@ def build_music_coach_submit_diagnostics(
     response: CoachResponse | None,
     *,
     result_path: str,
+    session_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     solver_name = ""
     response_intent = ""
@@ -43,9 +44,27 @@ def build_music_coach_submit_diagnostics(
             "notation_abc_present",
             "scale_practice_spec",
             "instrument_provenance",
+            "chart_transport_at_solver",
+            "fallback_reason",
         ):
             if key in response.diagnostics:
                 scale_fields[key] = response.diagnostics[key]
+
+    try:
+        from music_coach_ami.chart_context_transport import (
+            build_bass_line_chart_dev_summary,
+            build_chart_context_lifecycle_trace,
+        )
+
+        chart_lifecycle = build_chart_context_lifecycle_trace(req, session_state=session_state)
+        bass_line_chart_dev = build_bass_line_chart_dev_summary(
+            req,
+            session_state=session_state,
+            solver_diagnostics=response.diagnostics if response is not None else None,
+        )
+    except ImportError:
+        chart_lifecycle = {}
+        bass_line_chart_dev = {}
 
     return {
         "raw_question": req.raw_question,
@@ -73,6 +92,8 @@ def build_music_coach_submit_diagnostics(
             "notation_abc_present",
             bool(getattr(response, "notation_abc", None)) if response else False,
         ),
+        "chart_context_lifecycle": chart_lifecycle,
+        "bass_line_chart_dev": bass_line_chart_dev,
         "insight_staged": False,
         "insight_rendered_on_page": False,
         "duplicate_suppressed": False,

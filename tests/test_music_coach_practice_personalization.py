@@ -779,6 +779,83 @@ class CoachChartContextTransportTests(unittest.TestCase):
         self.assertIn('"Dbmaj7"', resp.notation_abc)
         self.assertNotIn("do not have the song's chord changes", resp.composed_markdown().lower())
 
+    def test_ui_submit_path_without_session_catalog_stamp(self) -> None:
+        """Live-like path: pick in active_song_state, no _catalog_backup in session."""
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+        from music_ami_context import finalize_music_context_for_send
+        from music_coach_ami.pipeline import run_coach_submit
+        from music_coach_context import build_music_coach_context
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        pick_key, _catalog, row = self._two_of_us_catalog()
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: pick_key,
+            SELECTED_SONG_STATE_KEY: {
+                "title": row["title"],
+                "artist": row["artist"],
+                "genre": row["genre"],
+                "key": "Db",
+                "pick_key": pick_key,
+            },
+            ACTIVE_SONG_STATE_KEY: {
+                "pick_key": pick_key,
+                "display_key": "Db",
+                "instrument": "Bass",
+                "level": "Intermediate",
+            },
+            "display_key": "Db",
+            "instrument": "Bass",
+            "level": "Intermediate",
+            "practice_focus_section": "Verse",
+            "studio_page": "practice",
+        }
+        submit_ctx = build_music_coach_context("practice", session)
+        question = "Give me a good baseline to use for this song."
+        submit_ctx["question"] = question
+        finalize_music_context_for_send(submit_ctx, session, question=question, coach_page="practice")
+        req, resp = run_coach_submit(question, session, ami_ctx=submit_ctx)
+        snap = req.context.extra.get("chart_snapshot") if isinstance(req.context.extra, dict) else {}
+        assert isinstance(snap, dict)
+        self.assertTrue(snap.get("chart_available"))
+        assert resp is not None
+        self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+        transport = resp.diagnostics.get("chart_transport_at_solver") or {}
+        self.assertTrue(transport.get("chart_snapshot_present"))
+        self.assertGreaterEqual(int(transport.get("active_section_chord_count") or 0), 4)
+        self.assertNotIn("do not have the song's chord changes", resp.composed_markdown().lower())
+
+    def test_ui_submit_path_recovers_pick_from_title_only(self) -> None:
+        from music_ami_context import finalize_music_context_for_send
+        from music_coach_ami.pipeline import run_coach_submit
+        from music_coach_context import build_music_coach_context
+        from songs.state import SELECTED_SONG_STATE_KEY
+
+        _pick_key, _catalog, row = self._two_of_us_catalog()
+        session = {
+            SELECTED_SONG_STATE_KEY: {
+                "title": row["title"],
+                "artist": row["artist"],
+                "genre": row["genre"],
+                "key": "Db",
+            },
+            "display_key": "Db",
+            "instrument": "Bass",
+            "level": "Intermediate",
+            "practice_focus_section": "Verse",
+            "studio_page": "practice",
+        }
+        submit_ctx = build_music_coach_context("practice", session)
+        question = "Give me a good baseline to use for this song."
+        submit_ctx["question"] = question
+        finalize_music_context_for_send(submit_ctx, session, question=question, coach_page="practice")
+        req, resp = run_coach_submit(question, session, ami_ctx=submit_ctx)
+        snap = req.context.extra.get("chart_snapshot") if isinstance(req.context.extra, dict) else {}
+        assert isinstance(snap, dict)
+        self.assertTrue(snap.get("resolved_pick_key"))
+        self.assertTrue(snap.get("chart_available"))
+        assert resp is not None
+        self.assertTrue(resp.diagnostics.get("notation_abc_present"))
+
 
 if __name__ == "__main__":
     unittest.main()
