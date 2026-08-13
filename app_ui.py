@@ -2023,6 +2023,31 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   font-size: 0.9rem;
   line-height: 1.55;
 }
+.tutorial-decision-strip {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed #fcd34d;
+  color: #78350f;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.tutorial-decision-strip p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .tutorial-hero {
+    padding: 1rem 0.95rem 0.85rem 0.95rem;
+  }
+  .tutorial-hero-icon {
+    font-size: 1.85rem;
+  }
+  .tutorial-title {
+    font-size: 1.2rem;
+  }
+  .tutorial-step-title {
+    font-size: 1.1rem;
+  }
+}
 .tutorial-step-card {
   margin-bottom: 0.35rem;
 }
