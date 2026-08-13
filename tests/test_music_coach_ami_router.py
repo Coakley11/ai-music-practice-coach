@@ -81,9 +81,14 @@ class CoachPipelineTests(unittest.TestCase):
 
     def test_coach_does_not_mutate_session(self) -> None:
         session = {"display_key": "Dm", "instrument": "Flute", "studio_page": "practice"}
-        before = dict(session)
+        before = {k: session[k] for k in ("display_key", "instrument", "studio_page")}
         run_coach_pipeline("What should I practice today?", session)
-        self.assertEqual(session, before)
+        # Musical state must stay read-only. Newer `dev` may lazy-init diagnostic
+        # stores (`_music_workflow_state_store`, `_display_key_surface_trace`) on read.
+        self.assertEqual(
+            {k: session[k] for k in ("display_key", "instrument", "studio_page")},
+            before,
+        )
 
 
 class CoachContextReaderTests(unittest.TestCase):

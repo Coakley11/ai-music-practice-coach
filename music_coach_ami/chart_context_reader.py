@@ -11,6 +11,20 @@ def _clean(text: object) -> str:
     return str(text or "").strip()
 
 
+def _authoritative_practice_key_readonly(session: Any) -> Any | None:
+    """Read Practice Key SSOT without letting diagnostic traces mutate live session.
+
+    Newer ``dev`` key resolution records ``_display_key_surface_trace`` while reading.
+    AMI context reads must stay side-effect free for the caller's session.
+    """
+    try:
+        from musical_context_authority import resolve_authoritative_practice_key
+    except ImportError:
+        return None
+    snapshot = dict(as_session_mapping(session))
+    return resolve_authoritative_practice_key(snapshot)
+
+
 def resolve_live_coach_practice_key(
     session_state: dict[str, Any],
     *,
@@ -34,14 +48,10 @@ def resolve_live_coach_practice_key(
     snap_key = _clean(snap.get("display_key"))
     auth_tok = ""
     auth_source = ""
-    try:
-        from musical_context_authority import resolve_authoritative_practice_key
-
-        auth = resolve_authoritative_practice_key(session)
+    auth = _authoritative_practice_key_readonly(session)
+    if auth is not None:
         auth_tok = _clean(auth.practice_key_token)
         auth_source = _clean(auth.source)
-    except ImportError:
-        pass
 
     trace: dict[str, str] = {
         "authoritative_ssot": auth_tok,
@@ -499,14 +509,9 @@ def resolve_coach_chart_snapshot(
         ami_ctx=ctx,
         practice_key_hint=practice_key,
     )
-    try:
-        from musical_context_authority import resolve_authoritative_practice_key
-
-        auth = resolve_authoritative_practice_key(session)
-        if not original_key:
-            original_key = _clean(auth.original_key_token)
-    except ImportError:
-        pass
+    auth = _authoritative_practice_key_readonly(session)
+    if auth is not None and not original_key:
+        original_key = _clean(auth.original_key_token)
 
     if not original_key:
         original_key = _clean(ctx.get("original_key") or session.get("original_key") or resolved_practice_key or "C")

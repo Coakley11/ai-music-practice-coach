@@ -2466,9 +2466,9 @@ def render_music_coach_page_entry(
 ) -> None:
     """Practice-page Music Coach entry — visible under Song Practice.
 
-    Opens the real Music Coach page. Sidebar Ask the Music Coach stays available.
+    Opens the real Music Coach page, and keeps the accepted AMI in-place ask
+    path. Sidebar Ask the Music Coach stays available.
     """
-    del context_extra_builder, source_state_builder, on_after_send, source_page
     ss = session_state if session_state is not None else st.session_state
     st.markdown(
         '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
@@ -2492,45 +2492,8 @@ def render_music_coach_page_entry(
             from studio_nav_history import navigate_studio_page
         navigate_studio_page(ss, "openai")
         st.rerun()
-    if developer_mode and ss.get("_music_coach_page_error"):
-        st.caption(f"🛠 Music Coach page entry · {ss.get('_music_coach_page_error')}")
+        return
 
-
-def render_music_coach_sidebar_entry(
-    st: Any,
-    *,
-    source_page: str,
-    session_state: dict[str, Any] | None = None,
-    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
-    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
-    developer_mode: bool = False,
-    on_after_send: Callable[[], None] | None = None,
-) -> None:
-    """Music Practice Coach sidebar — Ask the Music Coach (not Applied Math wording)."""
-    render_applied_math_sidebar_entry(
-        st,
-        source_app="music",
-        source_page=source_page,
-        session_state=session_state,
-        context_extra_builder=context_extra_builder,
-        source_state_builder=source_state_builder,
-        developer_mode=developer_mode,
-        on_after_send=on_after_send,
-    )
-
-
-def render_music_coach_page_entry(
-    st: Any,
-    *,
-    source_page: str,
-    session_state: dict[str, Any] | None = None,
-    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
-    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
-    developer_mode: bool = False,
-    on_after_send: Callable[[], None] | None = None,
-) -> None:
-    """Practice page main-panel Music Coach ask box (same routed submit path as sidebar)."""
-    ss = session_state if session_state is not None else st.session_state
     page_suffix = _safe_widget_suffix(source_page)
     send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
     question_key = f"ami_question_music_page_{page_suffix}_{send_gen}"
@@ -2569,6 +2532,31 @@ def render_music_coach_page_entry(
 
     if developer_mode:
         _render_music_coach_submit_dev_panel(st, ss)
+    elif ss.get("_music_coach_page_error"):
+        st.caption(f"🛠 Music Coach page entry · {ss.get('_music_coach_page_error')}")
+
+
+def render_music_coach_sidebar_entry(
+    st: Any,
+    *,
+    source_page: str,
+    session_state: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> None:
+    """Music Practice Coach sidebar — Ask the Music Coach (not Applied Math wording)."""
+    render_applied_math_sidebar_entry(
+        st,
+        source_app="music",
+        source_page=source_page,
+        session_state=session_state,
+        context_extra_builder=context_extra_builder,
+        source_state_builder=source_state_builder,
+        developer_mode=developer_mode,
+        on_after_send=on_after_send,
+    )
 
 
 def render_pending_music_coach_insight(

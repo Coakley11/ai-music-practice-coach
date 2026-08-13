@@ -224,13 +224,9 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         musical_idea_to_diagnostics,
         resolve_musical_idea_request,
     )
+    from music_coach_ami.coach_instrument import resolve_coach_instrument
     from music_coach_ami.request_resolution import display_coach_instrument
     from music_coach_ami.written_music_context import build_written_music_context
-
-    raw_instrument = str(req.entities.instrument or req.context.instrument or "").strip()
-    instrument = display_coach_instrument(raw_instrument)
-    if instrument.lower() == "your instrument":
-        instrument = raw_instrument or "Piano"
 
     extra = req.context.extra if isinstance(req.context.extra, dict) else {}
     session_ref = extra.get("session_ref")
@@ -243,6 +239,16 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             session_ref = session_ref if isinstance(session_ref, dict) else {}
     else:
         session_ref = {}
+
+    resolved_inst = resolve_coach_instrument(
+        session_ref if isinstance(session_ref, dict) else {},
+        question_entity=str(req.entities.instrument or ""),
+        ctx_instrument=str(req.context.instrument or ""),
+    )
+    display_inst = display_coach_instrument(resolved_inst)
+    # Notation needs a concrete profile; musician-facing copy keeps "your instrument"
+    # when none was selected (no silent Piano in guidance).
+    instrument = resolved_inst or "Piano"
 
     real = realization_diagnostics(instrument, session_state=session_ref)
     notation_inst = notation_instrument_name(
@@ -418,6 +424,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
 
     steps = [
         f"**{composition.object_type.replace('_', ' ').title()}** — read the staff notation below.",
+        f"Use a comfortable register on **{display_inst}**.",
         "**How to play it**",
         *play_summary(composition),
     ]
