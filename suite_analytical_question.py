@@ -2466,8 +2466,8 @@ def render_music_coach_page_entry(
 ) -> None:
     """Practice-page Music Coach entry — visible under Song Practice.
 
-    Opens the real Music Coach page, and keeps the accepted AMI in-place ask
-    path. Sidebar Ask the Music Coach stays available.
+    One card + primary button opens the real Music Coach page.
+    Sidebar Ask the Music Coach stays available for in-place questions.
     """
     ss = session_state if session_state is not None else st.session_state
     st.markdown(
@@ -2493,42 +2493,6 @@ def render_music_coach_page_entry(
         navigate_studio_page(ss, "openai")
         st.rerun()
         return
-
-    page_suffix = _safe_widget_suffix(source_page)
-    send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
-    question_key = f"ami_question_music_page_{page_suffix}_{send_gen}"
-
-    with st.expander("Ask the Music Coach", expanded=False):
-        st.caption("Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.")
-        question = st.text_area(
-            "Question",
-            value=str(ss.get(question_key) or "").strip(),
-            placeholder=music_coach_question_placeholder(source_page),
-            height=88,
-            key=question_key,
-            label_visibility="collapsed",
-        )
-        if st.button(
-            "Ask the Music Coach",
-            key=f"ami_submit_music_page_{page_suffix}",
-            use_container_width=True,
-            type="primary",
-        ):
-            _execute_coach_question_submit(
-                st,
-                st,
-                ss,
-                question_raw=str(question or ""),
-                source_app="music",
-                source_page=source_page,
-                page_suffix=page_suffix,
-                send_gen=send_gen,
-                surface_tag="page",
-                context_extra_builder=context_extra_builder,
-                source_state_builder=source_state_builder,
-                developer_mode=developer_mode,
-                on_after_send=on_after_send,
-            )
 
     if developer_mode:
         _render_music_coach_submit_dev_panel(st, ss)

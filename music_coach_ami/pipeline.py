@@ -27,6 +27,12 @@ def run_coach_submit(
     response = solver(req)
     if response is None:
         return req, None
+    try:
+        from music_coach_ami.song_grounding import attach_song_grounding
+
+        response = attach_song_grounding(req, response)
+    except Exception:
+        pass
     response.diagnostics = {
         **response.diagnostics,
         "router_confidence": req.confidence,

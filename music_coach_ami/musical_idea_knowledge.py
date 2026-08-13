@@ -226,6 +226,7 @@ def _transpose_composition_preserving_degrees(
                 role=ev.role,
                 cell_index=ev.cell_index,
                 domain="written",
+                tone_role=ev.tone_role,
             )
         )
         prev_midi = midi

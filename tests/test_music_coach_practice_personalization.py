@@ -195,7 +195,12 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
         self.assertIn("slow 2-bar phrase shaping", text)
         self.assertTrue(resp.diagnostics.get("history_influenced_plan"))
         self.assertIn("unresolved_next_step", resp.diagnostics.get("history_signals_used_in_plan") or [])
-        priority_line = md.split("\n")[0].lower()
+        self.assertIn("**Song:** *The Girl from Ipanema*", md)
+        self.assertNotIn("**Section:** Full Song", md)
+        priority_line = next(
+            (ln.lower() for ln in md.split("\n") if "phrasing and line shape" in ln.lower()),
+            "",
+        )
         self.assertIn("phrasing and line shape", priority_line)
         self.assertIn("bridge", priority_line)
         self.assertNotIn("full song", priority_line)
@@ -213,7 +218,10 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             ),
         )
         assert resp is not None
-        priority = resp.composed_markdown().split("\n")[0]
+        md = resp.composed_markdown()
+        self.assertIn("**Song:** *Say*", md)
+        self.assertNotIn("**Section:** Full Song", md)
+        priority = next((ln for ln in md.split("\n") if "harmony and voicing" in ln.lower()), "")
         self.assertIn("harmony and voicing across **Say**", priority)
         self.assertNotIn("Full Song", priority)
         self.assertNotIn(" and the ", priority)
@@ -229,7 +237,9 @@ class PracticePlanPersonalizationTests(unittest.TestCase):
             ),
         )
         assert resp is not None
-        priority = resp.composed_markdown().split("\n")[0]
+        md = resp.composed_markdown()
+        self.assertIn("**Song:** *The Girl from Ipanema*", md)
+        priority = next((ln for ln in md.split("\n") if "phrasing and line shape" in ln.lower()), "")
         self.assertIn("phrasing and line shape in **The Girl from Ipanema**", priority)
 
     def test_no_why_without_history_influence(self) -> None:

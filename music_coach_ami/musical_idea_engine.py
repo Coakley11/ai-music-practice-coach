@@ -29,6 +29,7 @@ class MusicalEvent:
     role: str = ""
     cell_index: int | None = None
     domain: str = "concert"  # concert | written
+    tone_role: str = ""  # chord_tone | passing | neighbor | approach | extension
 
 
 @dataclass(frozen=True)
@@ -233,6 +234,18 @@ def _place_spelled_note(
             return spelled, octv, midi
         in_win = [c for c in candidates if _in_window(c[1])] or candidates
         octv, midi = max(in_win, key=lambda c: c[1])
+        return spelled, octv, midi
+
+    if previous_midi is not None and direction in {"", "nearest", "continue"}:
+        scored = sorted(
+            candidates,
+            key=lambda c: (
+                0 if _in_window(c[1]) else 1,
+                abs(c[1] - previous_midi),
+                abs(c[1] - prefer_midi),
+            ),
+        )
+        octv, midi = scored[0]
         return spelled, octv, midi
 
     # No prior event / free placement: closest to prefer inside the window.
@@ -640,123 +653,34 @@ def generate_idea_over_chords(
     object_type: str = "phrase",
 ) -> MusicalIdeaComposition:
     """Song-relative lick/phrase/riff over a resolved harmonic timeline."""
-    from improvisation_motif import chord_tone_names
-    from music_theory import chord_root_for_theory, normalize_chord_for_theory
-
     obj = _clean(object_type) or _clean(idea.object_type) or "phrase"
-    # Motif density may use lick/phrase cells; the requested musical object is preserved.
-    gen_obj = "lick" if obj in {"lick", "riff"} else "phrase"
     profile = notation_profile_for_instrument(notation_instrument)
     low, high, prefer = generation_window(
         profile,
         instrument=notation_instrument,
         register=idea.register,
-        object_type=gen_obj,
+        object_type="phrase" if obj in {"melody", "phrase"} else "lick",
         difficulty=idea.difficulty or idea.level,
     )
     bars = int(idea.bars or 4)
     timeline = expand_harmony_timeline(chords, bars)
     lvl = _level(idea)
-    unit = "half" if lvl == "beginner" and gen_obj == "phrase" else "quarter"
-    if gen_obj == "lick" and lvl == "beginner":
-        unit = "quarter"
-    if lvl == "advanced":
-        unit = "eighth" if gen_obj != "phrase" else "quarter"
-    if idea.rhythm:
-        unit = _unit_duration(idea)
     ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
     meter = idea.meter or "4/4"
-    beats_bar = _beats_per_bar(meter)
-    ub = _dur_beats(unit, meter)
-    slots_per_bar = max(1, int(round(beats_bar / ub))) if ub > 0 else 4
+    from music_coach_ami.melodic_motion import generate_horizontal_line
 
-    events: list[MusicalEvent] = []
-    prev_midi: int | None = None
-    for bar_i, chord in enumerate(timeline):
-        tones = chord_tone_names(chord, reference_key=ref) or [
-            chord_root_for_theory(normalize_chord_for_theory(chord)) or "C"
-        ]
-        # Phrase shape: opening / continuation / development / cadence roles by bar.
-        role_phase = bar_i % 4
-        if gen_obj == "lick":
-            # Lick: compact chord-tone motif with mild development (not arpeggio dump).
-            if lvl == "beginner":
-                motif = [tones[0], tones[min(1, len(tones) - 1)], tones[0], tones[0]]
-            elif lvl == "advanced":
-                motif = [
-                    tones[0],
-                    tones[min(1, len(tones) - 1)],
-                    tones[min(2, len(tones) - 1)],
-                    tones[0],
-                    tones[min(2, len(tones) - 1)],
-                    tones[min(1, len(tones) - 1)],
-                    tones[0],
-                    tones[0],
-                ]
-            else:
-                motif = [
-                    tones[0],
-                    tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0],
-                    tones[min(1, len(tones) - 1)],
-                    tones[0],
-                ]
-            if role_phase == 2 and len(tones) > 2:
-                motif = motif[1:] + [tones[2], tones[0]]
-            if role_phase == 3:
-                motif = motif[:-1] + [tones[0]]
-        else:
-            # Phrase: chord tones with voice-leading across bars.
-            if lvl == "beginner":
-                motif = [tones[0], tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0]]
-            elif lvl == "advanced":
-                motif = [
-                    tones[0],
-                    tones[min(1, len(tones) - 1)],
-                    tones[min(2, len(tones) - 1)],
-                    tones[0],
-                ]
-            else:
-                motif = [tones[0], tones[min(2, len(tones) - 1)] if len(tones) > 2 else tones[0], tones[0]]
-            if role_phase == 0:
-                motif = motif[: max(1, len(motif) - 0)]
-            elif role_phase == 3:
-                motif = [tones[0]] * min(2, slots_per_bar) if lvl == "beginner" else motif[:-1] + [tones[0]]
-
-        # Fill the entire bar with intentional pitches (no empty trailing bars).
-        picks = [motif[j % len(motif)] for j in range(slots_per_bar)]
-        for slot_i, tone in enumerate(picks):
-            beat = float(slot_i * ub)
-            if beat >= beats_bar - 1e-9:
-                break
-            dir_hint = "ascending" if role_phase < 2 else "descending"
-            if gen_obj == "lick" and lvl == "beginner":
-                dir_hint = ""
-            spelled2, octv, midi = _place_spelled_note(
-                tone,
-                prefer_midi=prefer,
-                low=low,
-                high=high,
-                direction=dir_hint,
-                previous_midi=prev_midi,
-            )
-            events.append(
-                MusicalEvent(
-                    spelled=spelled2,
-                    octave=octv,
-                    duration=unit,
-                    bar_index=bar_i,
-                    beat=beat,
-                    articulation=idea.articulation,
-                    scale_degree=None,
-                    pitch_class=_pc(spelled2),
-                    chord=chord,
-                    role=obj,
-                    cell_index=bar_i,
-                    domain="concert",
-                )
-            )
-            prev_midi = midi
-            prefer = midi + (1 if role_phase < 2 else -1)
+    line = generate_horizontal_line(
+        timeline,
+        reference_key=ref,
+        level=lvl,
+        object_type=obj,
+        meter=meter,
+        low=low,
+        high=high,
+        prefer=prefer,
+        style=idea.style or "",
+    )
+    events = _events_from_motion_line(line, role=obj, articulation=idea.articulation)
 
     return MusicalIdeaComposition(
         events=tuple(events),
@@ -766,7 +690,7 @@ def generate_idea_over_chords(
         object_type=obj,
         style=idea.style or f"song_{obj}",
         notation_profile=apply_register_override(profile, idea.register),
-        strategy=f"{obj}_over_chords:{lvl}",
+        strategy=f"{obj}_over_chords:{lvl}:horizontal_motion",
         tonic=ref,
         tonality="",
         scale_spelling=(),
@@ -817,6 +741,33 @@ def generate_sequence(
     )
     comp = generate_scale_pattern(idea2, notation_instrument=notation_instrument)
     return replace(comp, object_type="sequence", strategy=f"sequence:{idea.interval_pattern or '1-2-3'}")
+
+
+def _events_from_motion_line(
+    line: Sequence[dict[str, Any]],
+    *,
+    role: str,
+    articulation: str,
+) -> list[MusicalEvent]:
+    events: list[MusicalEvent] = []
+    for item in line:
+        events.append(
+            MusicalEvent(
+                spelled=str(item.get("spelled") or "C"),
+                octave=int(item.get("octave") or 4),
+                duration=str(item.get("duration") or "quarter"),
+                bar_index=int(item.get("bar_index") or 0),
+                beat=float(item.get("beat") or 0.0),
+                articulation=articulation,
+                pitch_class=item.get("pitch_class"),
+                chord=str(item.get("chord") or ""),
+                role=role,
+                cell_index=int(item.get("bar_index") or 0),
+                domain="concert",
+                tone_role=str(item.get("tone_role") or ""),
+            )
+        )
+    return events
 
 
 def infer_piano_role(idea: MusicalIdeaRequest, question: str = "") -> str:
@@ -1017,31 +968,29 @@ def generate_piano_section_improvisation(
     rh_profile = notation_profile_for_piano_role("right_hand")
     lh_profile = notation_profile_for_piano_role("left_hand")
 
-    rh_motifs = [
-        _rh_motif_for_bar(_chord_tone_list(ch, ref), obj=obj if obj != "accompaniment" else "improvisation", lvl=lvl, phase=i % 4, ref=ref)
-        for i, ch in enumerate(timeline)
-    ]
     lh_motifs = [
         _lh_motif_for_bar(_chord_tone_list(ch, ref), lvl=lvl, phase=i % 4) for i, ch in enumerate(timeline)
     ]
 
     events: list[MusicalEvent] = []
     if role in {"right_hand", "both_hands"}:
+        from music_coach_ami.melodic_motion import generate_horizontal_line
+
         rh_low, rh_high, rh_prefer = generation_window(
             rh_profile, instrument="Piano", register=idea.register, object_type=obj, difficulty=lvl
         )
-        events.extend(
-            _events_from_hand_motifs(
-                timeline=timeline,
-                motifs=rh_motifs,
-                role="rh",
-                low=rh_low,
-                high=rh_high,
-                prefer=rh_prefer,
-                meter=meter,
-                articulation=idea.articulation,
-            )
+        rh_line = generate_horizontal_line(
+            timeline,
+            reference_key=ref,
+            level=lvl,
+            object_type=obj if obj != "accompaniment" else "improvisation",
+            meter=meter,
+            low=rh_low,
+            high=rh_high,
+            prefer=rh_prefer,
+            style=idea.style or "",
         )
+        events.extend(_events_from_motion_line(rh_line, role="rh", articulation=idea.articulation))
     if role in {"left_hand", "both_hands"}:
         lh_low, lh_high, lh_prefer = generation_window(
             lh_profile, instrument="Piano", register="low", object_type="accompaniment", difficulty=lvl
@@ -1059,7 +1008,7 @@ def generate_piano_section_improvisation(
             )
         )
     events.sort(key=lambda e: (e.bar_index, 0 if e.role == "rh" else 1, e.beat))
-    strategy = f"piano_{role}:{obj}:{lvl}:phrase_shape"
+    strategy = f"piano_{role}:{obj}:{lvl}:horizontal_motion"
     comp = MusicalIdeaComposition(
         events=tuple(events),
         reference_key=ref,
@@ -1319,9 +1268,15 @@ def cell_anchor_midis(composition: MusicalIdeaComposition) -> list[int]:
 
 
 def composition_diagnostics(composition: MusicalIdeaComposition) -> dict[str, Any]:
+    from music_coach_ami.melodic_motion import melodic_motion_metrics
+
     midis: list[int] = []
     for ev in composition.events:
         midis.append(_midi(ev.spelled, ev.octave))
+    rh = [e for e in composition.events if e.role == "rh"]
+    line_events = rh or list(composition.events)
+    motion = melodic_motion_metrics(line_events)
+    motion["phrase_strategy"] = composition.strategy
     return {
         "bars_generated": composition.bars,
         "event_count": len(composition.events),
@@ -1335,4 +1290,5 @@ def composition_diagnostics(composition: MusicalIdeaComposition) -> dict[str, An
         "cell_anchor_midis": cell_anchor_midis(composition)[:12],
         "validation_ok": composition.validation_ok,
         "validation_errors": list(composition.validation_errors),
+        "melodic_motion": motion,
     }

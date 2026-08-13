@@ -39,8 +39,26 @@ def _is_bold_label_line(s: str) -> bool:
 
 def compose_coach_markdown(response: CoachResponse) -> str:
     parts: list[str] = []
+    try:
+        from music_coach_ami.song_grounding import header_from_response
+
+        song_header = header_from_response(response)
+    except Exception:
+        song_header = ""
+    if song_header:
+        parts.append(song_header)
     if response.direct_answer:
-        parts.append(response.direct_answer.strip())
+        direct = response.direct_answer.strip()
+        if song_header and direct.startswith("**Song:**"):
+            rest = re.sub(
+                r"^\*\*Song:\*\*[^\n]*(?:\n\*\*Section:\*\*[^\n]*)?\n*",
+                "",
+                direct,
+            ).strip()
+            if rest:
+                parts.append(rest)
+        else:
+            parts.append(direct)
     if response.explanation:
         parts.append(response.explanation.strip())
     if response.recommendation:

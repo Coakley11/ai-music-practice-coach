@@ -331,5 +331,115 @@ class Dim7AndTwoHandAndDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("Assumptions:", joined)
 
 
+class SongTitleHeaderTests(unittest.TestCase):
+    def test_song_grounded_improvisation_shows_title(self) -> None:
+        _, resp = run_coach_submit(
+            "Give me an improvisation over the verse.",
+            {"instrument": "Piano", "display_key": "C", "level": "Beginner", "instrument_change_source": "sidebar"},
+            ami_ctx={
+                "instrument": "Piano",
+                "level": "Beginner",
+                "display_key": "C",
+                "practice_key": "C",
+                "coach_page": "practice",
+                "chart_sections": {"Verse": PART_A_CONCERT_C, "Chorus": ["G7", "C"]},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Verse",
+                "active_song": {"title": "Just the Two of Us", "key": "C"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertTrue(resp.diagnostics.get("song_grounded"))
+        self.assertIn("**Song:** *Just the Two of Us*", md)
+        self.assertIn("**Section:** Verse", md)
+        self.assertIn("improvisation", md.lower())
+        self.assertNotIn("just_the_two_of_us", md)
+
+    def test_generic_scale_omits_song_field(self) -> None:
+        _, resp = run_coach_submit(
+            "Give me a B harmonic minor scale.",
+            {"instrument": "Piano", "display_key": "C", "level": "Intermediate"},
+            ami_ctx={
+                "instrument": "Piano",
+                "level": "Intermediate",
+                "display_key": "C",
+                "coach_page": "practice",
+                "active_song": {"title": "Just the Two of Us", "key": "C"},
+                "chart_sections": {"Verse": PART_A_CONCERT_C},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertFalse(resp.diagnostics.get("song_grounded"))
+        self.assertNotIn("**Song:**", md)
+        self.assertIn("harmonic minor", md.lower())
+
+
+class MelodicMotionLevelTests(unittest.TestCase):
+    VERSE = ["Cmaj7", "Am7", "Dm7", "G7", "Cmaj7", "Am7", "Fmaj7", "G7"]
+
+    def _run(self, question: str, *, level: str) -> object:
+        _, resp = run_coach_submit(
+            question,
+            {"instrument": "Piano", "display_key": "C", "level": level, "instrument_change_source": "sidebar"},
+            ami_ctx={
+                "instrument": "Piano",
+                "level": level,
+                "display_key": "C",
+                "practice_key": "C",
+                "coach_page": "practice",
+                "chart_sections": {"Verse": self.VERSE},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Verse",
+                "active_song": {"title": "Motion Tune", "key": "C"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        return resp
+
+    def test_intermediate_improv_is_not_root_fifth_jumps(self) -> None:
+        resp = self._run("Give me an intermediate jazz improvisation over the verse.", level="Intermediate")
+        motion = (resp.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreaterEqual(motion.get("eighth_note_count", 0), 8)
+        self.assertGreaterEqual(motion.get("stepwise_motion_pct", 0), 0.35)
+        self.assertLess(motion.get("repeated_note_pct", 1), 0.35)
+        prose = "\n".join(resp.practice_steps or [])
+        self.assertNotRegex(prose, r"\bC G C C\b")
+        self.assertNotRegex(prose, r"\bA E A A\b")
+        self.assertEqual((resp.diagnostics or {}).get("resolved_object"), "improvisation")
+        self.assertIn("horizontal_motion", str((resp.diagnostics or {}).get("generation_strategy") or ""))
+
+    def test_advanced_improv_denser_and_more_connected_than_intermediate(self) -> None:
+        mid = self._run("Give me an intermediate jazz improvisation over the verse.", level="Intermediate")
+        adv = self._run("Give me an advanced jazz improvisation over the verse.", level="Advanced")
+        m_mid = (mid.diagnostics or {}).get("melodic_motion") or {}
+        m_adv = (adv.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreater(m_adv.get("note_count", 0), m_mid.get("note_count", 0))
+        self.assertGreaterEqual(m_adv.get("eighth_note_count", 0), m_mid.get("eighth_note_count", 0))
+        self.assertGreaterEqual(m_adv.get("stepwise_motion_pct", 0), 0.35)
+        self.assertLessEqual(m_adv.get("large_leap_count", 99), max(4, m_adv.get("note_count", 0) // 4))
+        self.assertIn("melodic_motion", adv.diagnostics or {})
+        self.assertNotIn("stepwise_motion_pct", adv.composed_markdown())
+
+    def test_melody_stays_less_dense_than_improvisation(self) -> None:
+        melody = self._run("Give me an intermediate melody over the verse.", level="Intermediate")
+        improv = self._run("Give me an intermediate jazz improvisation over the verse.", level="Intermediate")
+        m_mel = (melody.diagnostics or {}).get("melodic_motion") or {}
+        m_imp = (improv.diagnostics or {}).get("melodic_motion") or {}
+        self.assertEqual((melody.diagnostics or {}).get("resolved_object"), "melody")
+        self.assertEqual((improv.diagnostics or {}).get("resolved_object"), "improvisation")
+        self.assertLess(m_mel.get("note_count", 99), m_imp.get("note_count", 0))
+        self.assertIn("melody", (melody.direct_answer or "").lower())
+        adv_mel = self._run("Give me an advanced melody over the verse.", level="Advanced")
+        m_adv_mel = (adv_mel.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreaterEqual(m_adv_mel.get("note_count", 0), m_mel.get("note_count", 0))
+        self.assertLess(m_adv_mel.get("rhythmic_density", 1), 0.95)
+
+
 if __name__ == "__main__":
     unittest.main()
+
