@@ -15,7 +15,7 @@ class MusicalIdeaRequest:
     Instrument / level / focus are resolved realization constraints.
     """
 
-    object_type: str  # bass_line | lick | riff | phrase | pattern | sequence | …
+    object_type: str  # bass_line | lick | riff | phrase | pattern | sequence | improvisation | melody | accompaniment | …
     style: str
     difficulty: str  # beginner | intermediate | advanced | ""
     register: str  # low | mid | high | ""
@@ -37,6 +37,7 @@ class MusicalIdeaRequest:
     articulation: str = ""
     harmony_source: str = ""  # explicit | song | section | ""
     song_relative: bool = False
+    piano_role: str = ""  # right_hand | left_hand | both_hands | ""
 
 
 def _clean(text: object) -> str:
@@ -204,6 +205,12 @@ def parse_musical_idea_request(
     object_type = default_object
     if re.search(r"\bbass[- ]?line\b|\bwalking bass\b|\bbassline\b", low):
         object_type = "bass_line"
+    elif re.search(r"\baccompan(?:iment|y)\b|\bvoicings?\b", low):
+        object_type = "accompaniment"
+    elif re.search(r"\b(improvisation|improv)\b|\b(jazz )?solo\b", low):
+        object_type = "improvisation"
+    elif re.search(r"\bmelody\b|\bmelodic line\b", low):
+        object_type = "melody"
     elif "sequence" in low:
         object_type = "sequence"
     elif re.search(r"\b(lick|riff|phrase|pattern)\b", low):
@@ -215,6 +222,14 @@ def parse_musical_idea_request(
             object_type = "pattern"
         elif "phrase" in low:
             object_type = "phrase"
+
+    piano_role = ""
+    if re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low):
+        piano_role = "both_hands"
+    elif re.search(r"\b(left[- ]?hand|\blh\b)\b", low):
+        piano_role = "left_hand"
+    elif re.search(r"\b(right[- ]?hand|\brh\b)\b", low):
+        piano_role = "right_hand"
 
     style = ""
     if "walking" in low or "walking" in focus or "walk bass" in focus:
@@ -285,7 +300,10 @@ def parse_musical_idea_request(
         re.search(
             r"\b(over this song|for this song|over the (?:current )?section|"
             r"over the bridge|using (?:these|the) chord|over these chords|"
-            r"current section|this section)\b",
+            r"current section|this section|"
+            r"over (?:the )?(?:chorus|verse|intro|outro|pre[- ]?chorus|solo|groove)|"
+            r"over (?:the )?(?:part|section) [abc]|"
+            r"for (?:the )?(?:chorus|verse|bridge|part [abc]|section [abc]))\b",
             low,
         )
     )
@@ -310,6 +328,7 @@ def parse_musical_idea_request(
         tempo_bpm=_parse_tempo(low),
         harmony_source=harmony_source,
         song_relative=song_relative,
+        piano_role=piano_role,
     )
 
 
@@ -377,4 +396,6 @@ def musical_idea_to_diagnostics(idea: MusicalIdeaRequest) -> dict[str, Any]:
         "duration_minutes": idea.duration_minutes,
         "harmony_source": idea.harmony_source or None,
         "song_relative": idea.song_relative,
+        "piano_role": idea.piano_role or None,
+        "requested_object": idea.object_type,
     }

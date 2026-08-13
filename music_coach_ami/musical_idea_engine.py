@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
 
@@ -10,6 +11,7 @@ from music_coach_ami.notation_profile import (
     NotationProfile,
     apply_register_override,
     notation_profile_for_instrument,
+    notation_profile_for_piano_role,
 )
 
 
@@ -815,6 +817,264 @@ def generate_sequence(
     return replace(comp, object_type="sequence", strategy=f"sequence:{idea.interval_pattern or '1-2-3'}")
 
 
+def infer_piano_role(idea: MusicalIdeaRequest, question: str = "") -> str:
+    role = _clean(getattr(idea, "piano_role", "") or "")
+    if role:
+        return role
+    low = _clean(question).lower()
+    if re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low):
+        return "both_hands"
+    if re.search(r"\b(left[- ]?hand|\blh\b)\b", low):
+        return "left_hand"
+    if re.search(r"\b(right[- ]?hand|\brh\b)\b", low):
+        return "right_hand"
+    obj = _clean(idea.object_type)
+    if obj == "accompaniment":
+        return "left_hand"
+    if obj in {"improvisation", "melody", "solo"}:
+        return "right_hand"
+    return ""
+
+
+def _chord_tone_list(chord: str, reference_key: str) -> list[str]:
+    from improvisation_motif import chord_tone_names
+    from music_theory import chord_root_for_theory, normalize_chord_for_theory
+
+    tones = [t for t in (chord_tone_names(chord, reference_key=reference_key) or []) if t]
+    if tones:
+        return tones
+    root = chord_root_for_theory(normalize_chord_for_theory(chord)) or "C"
+    return [root]
+
+
+def _rh_motif_for_bar(
+    tones: list[str],
+    *,
+    obj: str,
+    lvl: str,
+    phase: int,
+    ref: str,
+) -> list[tuple[str, str]]:
+    """Return (spelled, duration) pairs for one RH bar — phrase shape, not arpeggio dump."""
+    root = tones[0]
+    third = tones[min(1, len(tones) - 1)]
+    fifth = tones[min(2, len(tones) - 1)] if len(tones) > 2 else root
+    seventh = tones[min(3, len(tones) - 1)] if len(tones) > 3 else third
+    if obj == "melody":
+        if lvl == "beginner":
+            cells = [(root, "half"), (third, "half")]
+            if phase == 3:
+                cells = [(root, "whole")]
+            elif phase == 2:
+                cells = [(third, "half"), (root, "half")]
+        elif lvl == "advanced":
+            cells = [(third, "quarter"), (fifth, "quarter"), (seventh, "quarter"), (root, "quarter")]
+            if phase == 2:
+                cells = [(fifth, "eighth"), (seventh, "eighth"), (root, "quarter"), (third, "half")]
+            if phase == 3:
+                cells = [(third, "half"), (root, "half")]
+        else:
+            cells = [(root, "quarter"), (third, "quarter"), (fifth, "half")]
+            if phase == 2:
+                cells = [(third, "quarter"), (fifth, "quarter"), (root, "half")]
+            if phase == 3:
+                cells = [(fifth, "half"), (root, "half")]
+        return cells
+
+    # Improvisation / solo — freer chord-tone line with level-sensitive density.
+    if lvl == "beginner":
+        cells = [(root, "quarter"), (third, "quarter"), (root, "quarter"), (fifth, "quarter")]
+        if phase == 0:
+            cells = [(root, "quarter"), (third, "quarter"), (fifth, "half")]
+        elif phase == 3:
+            cells = [(third, "half"), (root, "half")]
+    elif lvl == "advanced":
+        cells = [
+            (third, "eighth"),
+            (fifth, "eighth"),
+            (seventh, "quarter"),
+            (root, "quarter"),
+            (third, "quarter"),
+        ]
+        if phase == 2:
+            cells = [(fifth, "eighth"), (seventh, "eighth"), (root, "eighth"), (third, "eighth"), (fifth, "half")]
+        if phase == 3:
+            cells = [(seventh, "quarter"), (fifth, "quarter"), (third, "quarter"), (root, "quarter")]
+    else:
+        cells = [(third, "quarter"), (fifth, "quarter"), (root, "quarter"), (third, "quarter")]
+        if phase == 0:
+            cells = [(root, "quarter"), (third, "quarter"), (fifth, "half")]
+        elif phase == 2:
+            cells = [(third, "quarter"), (fifth, "eighth"), (seventh, "eighth"), (root, "half")]
+        elif phase == 3:
+            cells = [(fifth, "half"), (root, "half")]
+    del ref
+    return cells
+
+
+def _lh_motif_for_bar(tones: list[str], *, lvl: str, phase: int) -> list[tuple[str, str]]:
+    """Supportive LH — shells / bass, not a copy of the RH melody."""
+    root = tones[0]
+    third = tones[min(1, len(tones) - 1)]
+    fifth = tones[min(2, len(tones) - 1)] if len(tones) > 2 else root
+    seventh = tones[min(3, len(tones) - 1)] if len(tones) > 3 else fifth
+    if lvl == "beginner":
+        if phase == 3:
+            return [(root, "whole")]
+        return [(root, "half"), (fifth, "half")]
+    if lvl == "advanced":
+        if phase == 3:
+            return [(fifth, "half"), (root, "half")]
+        return [(root, "quarter"), (fifth, "quarter"), (seventh, "quarter"), (root, "quarter")]
+    if phase == 3:
+        return [(root, "half"), (fifth, "half")]
+    return [(root, "quarter"), (fifth, "quarter"), (root, "half")] if phase == 0 else [
+        (root, "quarter"),
+        (third, "quarter"),
+        (fifth, "half"),
+    ]
+
+
+def _events_from_hand_motifs(
+    *,
+    timeline: list[str],
+    motifs: list[list[tuple[str, str]]],
+    role: str,
+    low: int,
+    high: int,
+    prefer: int,
+    meter: str,
+    articulation: str,
+) -> list[MusicalEvent]:
+    events: list[MusicalEvent] = []
+    prev_midi: int | None = None
+    prefer_cur = prefer
+    beats_bar = _beats_per_bar(meter)
+    for bar_i, (chord, cells) in enumerate(zip(timeline, motifs)):
+        beat = 0.0
+        phase = bar_i % 4
+        dir_hint = "ascending" if phase < 2 else "descending"
+        for spelled, dur in cells:
+            ub = _dur_beats(dur, meter)
+            if beat + ub > beats_bar + 1e-9:
+                break
+            spelled2, octv, midi = _place_spelled_note(
+                spelled,
+                prefer_midi=prefer_cur,
+                low=low,
+                high=high,
+                direction=dir_hint,
+                previous_midi=prev_midi,
+            )
+            events.append(
+                MusicalEvent(
+                    spelled=spelled2,
+                    octave=octv,
+                    duration=dur,
+                    bar_index=bar_i,
+                    beat=beat,
+                    articulation=articulation,
+                    pitch_class=_pc(spelled2),
+                    chord=chord,
+                    role=role,
+                    cell_index=bar_i,
+                    domain="concert",
+                )
+            )
+            prev_midi = midi
+            prefer_cur = midi + (2 if dir_hint == "ascending" else -2)
+            beat += ub
+        if beat < beats_bar - 1e-9 and events and events[-1].bar_index == bar_i:
+            # Stretch the last event to fill the bar rather than leaving empty beats.
+            last = events[-1]
+            remain = beats_bar - last.beat
+            fill = "whole" if remain >= 3.5 else "half" if remain >= 1.5 else last.duration
+            events[-1] = replace(last, duration=fill)
+    return events
+
+
+def generate_piano_section_improvisation(
+    idea: MusicalIdeaRequest,
+    chords: Sequence[str],
+    *,
+    reference_key: str,
+    piano_role: str = "",
+    question: str = "",
+) -> MusicalIdeaComposition:
+    """Piano RH / LH / both-hands line over the real section harmonic timeline."""
+    role = infer_piano_role(idea, question) or _clean(piano_role) or "right_hand"
+    obj = _clean(idea.object_type) or "improvisation"
+    if obj not in {"improvisation", "melody", "accompaniment", "solo"}:
+        obj = "improvisation" if role != "left_hand" else "accompaniment"
+    profile = notation_profile_for_piano_role(role)
+    bars = int(idea.bars or max(4, len([c for c in chords if _clean(c)]) or 4))
+    timeline = expand_harmony_timeline(chords, bars)
+    lvl = _level(idea)
+    ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
+    meter = idea.meter or "4/4"
+    rh_profile = notation_profile_for_piano_role("right_hand")
+    lh_profile = notation_profile_for_piano_role("left_hand")
+
+    rh_motifs = [
+        _rh_motif_for_bar(_chord_tone_list(ch, ref), obj=obj if obj != "accompaniment" else "improvisation", lvl=lvl, phase=i % 4, ref=ref)
+        for i, ch in enumerate(timeline)
+    ]
+    lh_motifs = [
+        _lh_motif_for_bar(_chord_tone_list(ch, ref), lvl=lvl, phase=i % 4) for i, ch in enumerate(timeline)
+    ]
+
+    events: list[MusicalEvent] = []
+    if role in {"right_hand", "both_hands"}:
+        rh_low, rh_high, rh_prefer = generation_window(
+            rh_profile, instrument="Piano", register=idea.register, object_type=obj, difficulty=lvl
+        )
+        events.extend(
+            _events_from_hand_motifs(
+                timeline=timeline,
+                motifs=rh_motifs,
+                role="rh",
+                low=rh_low,
+                high=rh_high,
+                prefer=rh_prefer,
+                meter=meter,
+                articulation=idea.articulation,
+            )
+        )
+    if role in {"left_hand", "both_hands"}:
+        lh_low, lh_high, lh_prefer = generation_window(
+            lh_profile, instrument="Piano", register="low", object_type="accompaniment", difficulty=lvl
+        )
+        events.extend(
+            _events_from_hand_motifs(
+                timeline=timeline,
+                motifs=lh_motifs,
+                role="lh",
+                low=lh_low,
+                high=lh_high,
+                prefer=lh_prefer,
+                meter=meter,
+                articulation=idea.articulation,
+            )
+        )
+    events.sort(key=lambda e: (e.bar_index, 0 if e.role == "rh" else 1, e.beat))
+    strategy = f"piano_{role}:{obj}:{lvl}:phrase_shape"
+    comp = MusicalIdeaComposition(
+        events=tuple(events),
+        reference_key=ref,
+        meter=meter,
+        bars=bars,
+        object_type=obj,
+        style=idea.style or obj,
+        notation_profile=apply_register_override(profile, idea.register),
+        strategy=strategy,
+        tonic=ref,
+        tonality="",
+        scale_spelling=(),
+    )
+    ok, errs = validate_musical_idea_composition(comp)
+    return replace(comp, validation_ok=ok, validation_errors=tuple(errs))
+
+
 def composition_to_abc(
     composition: MusicalIdeaComposition,
     *,
@@ -837,52 +1097,94 @@ def composition_to_abc(
     clef = composition.notation_profile.clef or "treble"
     q = int(bpm or 96)
     key_field = _abc_key_field(tonic, tonality)
-    by_bar: dict[int, list[MusicalEvent]] = {}
-    for ev in composition.events:
-        by_bar.setdefault(ev.bar_index, []).append(ev)
 
-    measure_lines: list[str] = []
-    for bar_i in range(composition.bars):
-        evs = by_bar.get(bar_i) or []
-        parts: list[str] = []
-        for idx, ev in enumerate(evs):
-            tok = _note_to_abc(ev.spelled, ev.octave, key_field=key_field)
-            dur_l = str(ev.duration).lower()
-            if dur_l in ("half", "minim"):
-                suffix = "2"
-            elif dur_l in ("eighth", "quaver", "triplet_eighth"):
-                suffix = "/2"
-            elif dur_l in ("whole", "semibreve"):
-                suffix = "4"
-            elif dur_l in ("sixteenth",):
-                suffix = "/4"
-            else:
-                suffix = ""
-            if ev.articulation == "staccato":
-                tok = tok + "."
-            if idx == 0 and ev.chord:
-                chord_label = str(ev.chord).replace('"', "'")
-                parts.append(f'"{chord_label}"{tok}{suffix}')
-            else:
-                parts.append(f"{tok}{suffix}")
-        if not parts:
-            parts = ["z4"]
-        measure_lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
+    def _event_token(ev: MusicalEvent, *, with_chord: bool) -> str:
+        tok = _note_to_abc(ev.spelled, ev.octave, key_field=key_field)
+        dur_l = str(ev.duration).lower()
+        if dur_l in ("half", "minim"):
+            suffix = "2"
+        elif dur_l in ("eighth", "quaver", "triplet_eighth"):
+            suffix = "/2"
+        elif dur_l in ("whole", "semibreve"):
+            suffix = "4"
+        elif dur_l in ("sixteenth",):
+            suffix = "/4"
+        else:
+            suffix = ""
+        if ev.articulation == "staccato":
+            tok = tok + "."
+        if with_chord and ev.chord:
+            chord_label = str(ev.chord).replace('"', "'")
+            return f'"{chord_label}"{tok}{suffix}'
+        return f"{tok}{suffix}"
 
-    music = _abc_layout_systems_from_lines(measure_lines, lines_per_system=4)
-    abc = _abc_tune_block(
-        tune_number=1,
-        title=title,
-        key_field=key_field,
-        bpm=q,
-        meter=meter,
-        note_value="quarter",
-        music=music,
-        clef=clef,
-    )
-    validation = validate_notation_structure(
-        abc, meter=meter, clef=clef, profile=composition.notation_profile
-    )
+    def _voice_measure_lines(role: str | None) -> list[str]:
+        by_bar: dict[int, list[MusicalEvent]] = {}
+        for ev in composition.events:
+            if role and ev.role not in {role, ""} and not (role == "rh" and ev.role not in {"lh", "rh"}):
+                continue
+            if role == "lh" and ev.role == "rh":
+                continue
+            if role == "rh" and ev.role == "lh":
+                continue
+            by_bar.setdefault(ev.bar_index, []).append(ev)
+        lines: list[str] = []
+        for bar_i in range(composition.bars):
+            evs = sorted(by_bar.get(bar_i) or [], key=lambda e: e.beat)
+            parts: list[str] = []
+            for idx, ev in enumerate(evs):
+                parts.append(_event_token(ev, with_chord=idx == 0 and role != "lh"))
+            if not parts:
+                parts = ["z4"]
+            lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
+        return lines
+
+    if clef == "grand":
+        rh_lines = _voice_measure_lines("rh")
+        lh_lines = _voice_measure_lines("lh")
+        rh_music = _abc_layout_systems_from_lines(rh_lines, lines_per_system=4)
+        lh_music = _abc_layout_systems_from_lines(lh_lines, lines_per_system=4)
+        abc = (
+            f"X:1\nT:{title}\nM:{meter}\nL:1/4\nQ:1/4={q}\nK:{key_field}\n"
+            f"%%score {{(1 2)}}\n"
+            f"V:1 clef=treble\n{rh_music}\n"
+            f"V:2 clef=bass\n{lh_music}"
+        )
+        validation_clef = ""
+    else:
+        measure_lines = _voice_measure_lines(None)
+        music = _abc_layout_systems_from_lines(measure_lines, lines_per_system=4)
+        abc = _abc_tune_block(
+            tune_number=1,
+            title=title,
+            key_field=key_field,
+            bpm=q,
+            meter=meter,
+            note_value="quarter",
+            music=music,
+            clef=clef,
+        )
+        validation_clef = clef
+    if clef == "grand":
+        from music_coach_ami.notation_validate import NotationValidationResult
+
+        g_errors: list[str] = []
+        if "K:" not in abc or "M:" not in abc:
+            g_errors.append("missing_key_or_meter")
+        if "clef=treble" not in abc or "clef=bass" not in abc:
+            g_errors.append("missing_grand_clefs")
+        if "|" not in abc:
+            g_errors.append("missing_bar_lines")
+        validation = NotationValidationResult(
+            ok=not g_errors,
+            errors=g_errors,
+            meter=meter,
+            clef="grand",
+        )
+    else:
+        validation = validate_notation_structure(
+            abc, meter=meter, clef=validation_clef, profile=composition.notation_profile
+        )
     musical_ok = bool(composition.validation_ok)
     musical_errs = list(composition.validation_errors)
     notation_ok = bool(getattr(validation, "ok", True))

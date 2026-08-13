@@ -130,7 +130,26 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         return CoachIntent.SONG_COACHING, 0.91
 
     if any(p in low for p in ("give me", "show me", "write", "make me")) and any(
-        p in low for p in ("lick", "phrase", "pattern", "riff", "sequence")
+        p in low
+        for p in (
+            "lick",
+            "phrase",
+            "pattern",
+            "riff",
+            "sequence",
+            "improvisation",
+            "improv",
+            "melody",
+            "accompaniment",
+            "voicing",
+            "right-hand",
+            "right hand",
+            "left-hand",
+            "left hand",
+            "two-hand",
+            "both hands",
+            "solo over",
+        )
     ):
         return CoachIntent.SCALE_PRACTICE, 0.9
 

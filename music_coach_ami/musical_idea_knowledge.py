@@ -26,7 +26,28 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
 def is_musical_idea_content_request(normalized: str, low: str) -> bool:
     if not any(w in low for w in ("give me", "show me", "write", "make me")):
         return False
-    if any(w in low for w in ("lick", "phrase", "pattern", "riff", "sequence")):
+    if any(
+        w in low
+        for w in (
+            "lick",
+            "phrase",
+            "pattern",
+            "riff",
+            "sequence",
+            "improvisation",
+            "improv",
+            "melody",
+            "accompaniment",
+            "voicing",
+            "right-hand",
+            "right hand",
+            "left-hand",
+            "left hand",
+            "two-hand",
+            "both hands",
+            "solo over",
+        )
+    ):
         return True
     if "bars" in low and any(w in low for w in ("minor", "major", "dorian", "blues", "scale")):
         return True
@@ -216,8 +237,10 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         expand_harmony_timeline,
         generate_idea_over_chords,
         generate_lick,
+        generate_piano_section_improvisation,
         generate_scale_pattern,
         generate_sequence,
+        infer_piano_role,
         play_summary,
     )
     from music_coach_ami.musical_idea_request import (
@@ -292,8 +315,10 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         section=str(section_resolve.get("section") or active_section),
         duration_minutes=req.constraints.requested_duration_minutes,
     )
+    concert_chords_preview = list(section_resolve.get("chords") or [])
     if not idea.bars:
-        idea = replace(idea, bars=4)
+        n_ch = len([c for c in concert_chords_preview if str(c).strip()])
+        idea = replace(idea, bars=4 if n_ch <= 1 else min(16, n_ch))
     if requested_section:
         idea = replace(idea, section=str(section_resolve.get("section") or ""), song_relative=True)
 
@@ -325,6 +350,29 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     concert_chords_raw = list(section_resolve.get("chords") or [])
     section_label = str(section_resolve.get("section") or active_section or "").strip()
     obj = str(idea.object_type or "lick").strip() or "lick"
+    piano_role = infer_piano_role(idea, q_text)
+    inst_low = str(notation_inst or instrument or "").strip().lower()
+    piano_section = (
+        ("piano" in inst_low or inst_low == "keyboard")
+        and concert_chords_raw
+        and (
+            piano_role
+            or obj in {"improvisation", "melody", "accompaniment", "solo"}
+            or idea.song_relative
+            and obj in {"improvisation", "melody", "accompaniment", "phrase", "lick"}
+            and piano_role
+        )
+    )
+    if piano_role and ("piano" in inst_low or inst_low == "keyboard") and concert_chords_raw:
+        piano_section = True
+    elif (
+        ("piano" in inst_low or inst_low == "keyboard")
+        and concert_chords_raw
+        and obj in {"improvisation", "melody", "accompaniment", "solo"}
+    ):
+        piano_section = True
+        if not piano_role:
+            piano_role = "left_hand" if obj == "accompaniment" else "right_hand"
 
     # Choose generator — song-relative status does not override musical object.
     if obj == "pattern" or (
@@ -337,18 +385,33 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     elif obj == "sequence":
         composition = generate_sequence(idea, notation_instrument=notation_inst)
         label = f"{idea.bars}-bar sequence"
-    elif idea.song_relative or (obj in {"phrase", "lick", "riff"} and concert_chords_raw and not idea.explicit_key):
+    elif piano_section:
+        composition = generate_piano_section_improvisation(
+            idea,
+            concert_chords_raw,
+            reference_key=concert_key,
+            piano_role=piano_role,
+            question=q_text,
+        )
+        where = section_label or "the active section"
+        role_bit = {
+            "right_hand": "right-hand",
+            "left_hand": "left-hand",
+            "both_hands": "two-hand",
+        }.get(piano_role, "piano")
+        label = f"{idea.bars}-bar {role_bit} {obj} over {where}"
+    elif idea.song_relative or (obj in {"phrase", "lick", "riff", "improvisation", "melody"} and concert_chords_raw and not idea.explicit_key):
         if not concert_chords_raw:
             composition = generate_lick(idea, notation_instrument=notation_inst)
             label = f"{idea.bars}-bar {obj}"
         else:
-            song_obj = obj if obj in {"lick", "phrase", "riff"} else "phrase"
+            song_obj = obj if obj in {"lick", "phrase", "riff", "improvisation", "melody"} else "phrase"
             composition = generate_idea_over_chords(
                 idea,
                 concert_chords_raw,
                 notation_instrument=notation_inst,
                 reference_key=concert_key,
-                object_type=song_obj,
+                object_type="lick" if song_obj == "improvisation" else ("phrase" if song_obj == "melody" else song_obj),
             )
             where = section_label or "the active section"
             label = f"{idea.bars}-bar {song_obj} over {where}"
@@ -439,8 +502,13 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
 
     bars_with_events = sorted({e.bar_index for e in composition.events})
     written_event_chords = [e.chord for e in composition.events if e.chord]
+    idea = replace(idea, piano_role=piano_role or idea.piano_role)
     diag = {
         "musical_idea_content": True,
+        **realization_diagnostics(instrument, session_state=session_ref),
+        **musical_idea_to_diagnostics(idea),
+        **composition_diagnostics(composition),
+        **abc_diag,
         "resolved_instrument": instrument,
         "notation_instrument": notation_inst,
         "practice_concert_key": concert_key,
@@ -454,15 +522,19 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         "concert_event_chords_preview": concert_event_chords[:8],
         "written_event_chords_preview": written_event_chords[:8],
         "notation_clef": composition.notation_profile.clef,
+        "requested_object": obj,
+        "resolved_object": composition.object_type,
+        "requested_section": requested_section,
+        "resolved_section": section_label,
+        "piano_role": piano_role or idea.piano_role or None,
+        "staff_assignment": composition.notation_profile.clef,
+        "generation_strategy": composition.strategy,
+        "difficulty_level": str(idea.difficulty or idea.level or ""),
         "written_music_context": written_ctx.to_diagnostics(),
         "section_resolution": section_resolve,
         "chart_in_instrument_key": bool(session_ref.get("show_chart_in_instrument_key"))
         if isinstance(session_ref, dict)
         else None,
-        **realization_diagnostics(instrument, session_state=session_ref),
-        **musical_idea_to_diagnostics(idea),
-        **composition_diagnostics(composition),
-        **abc_diag,
     }
     return {
         "direct_answer": direct,

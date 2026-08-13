@@ -83,6 +83,39 @@ def notation_profile_for_instrument(instrument: str) -> NotationProfile:
     )
 
 
+def notation_profile_for_piano_role(role: str) -> NotationProfile:
+    """Piano staff/register by requested hand role — RH treble, LH bass, both grand."""
+    key = str(role or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if key in {"right_hand", "rh", "melody", "improvisation", "solo"}:
+        return NotationProfile(
+            clef="treble",
+            written_octave=4,
+            sounding_to_written_shift=0,
+            register_hint="piano right-hand treble register",
+            midi_low=60,  # C4
+            midi_high=84,  # C6
+        )
+    if key in {"left_hand", "lh", "accompaniment"}:
+        return NotationProfile(
+            clef="bass",
+            written_octave=2,
+            sounding_to_written_shift=0,
+            register_hint="piano left-hand bass register",
+            midi_low=36,  # C2
+            midi_high=55,  # G3
+        )
+    if key in {"both_hands", "two_hand", "two_hands", "grand"}:
+        return NotationProfile(
+            clef="grand",
+            written_octave=4,
+            sounding_to_written_shift=0,
+            register_hint="piano grand staff (RH treble + LH bass)",
+            midi_low=36,  # C2
+            midi_high=84,  # C6
+        )
+    return notation_profile_for_instrument("Piano")
+
+
 def _wind_notation_profile(low: str) -> NotationProfile:
     """Treble-clef written ranges for common wind instruments (concert/written defaults)."""
     if "flute" in low:
