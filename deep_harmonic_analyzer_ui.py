@@ -265,7 +265,12 @@ def render_deep_harmonic_analyzer_tab(
 
     session_state["_dha_ui_prefix"] = key_prefix
 
-    st.markdown("#### Deep Harmonic Analyzer")
+    try:
+        from studio_page_state import creative_tool_heading_markdown
+
+        st.markdown(creative_tool_heading_markdown("Deep Harmony"))
+    except ImportError:
+        st.markdown("#### Deep Harmonic Analyzer")
     st.caption("A guided lesson — one step at a time, like a private teacher.")
 
     live_inst, live_level, live_focus = render_setup_quick_controls(

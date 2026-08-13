@@ -181,10 +181,13 @@ def _touch_creative_workspace(session_state: dict) -> None:
         pass
 
 from studio_page_state import (
+    CREATIVE_TOOL_ICONS,
     IMPROV_ENTRY_MODES,
     IMPROV_SONG_SOURCES,
     IMPROV_TAB_NAMES,
     apply_improv_song_source,
+    creative_tool_display_label,
+    creative_tool_heading_markdown,
     flush_pending_improv_song_source,
     init_improvisation_state,
     resolve_improv_song_preview,
@@ -405,6 +408,7 @@ def render_improvisation_intelligence_lab(
             list(IMPROV_TAB_NAMES),
             horizontal=True,
             key="improv_intelligence_tab",
+            format_func=creative_tool_display_label,
             label_visibility="collapsed",
             on_change=_on_improv_tab_change,
         )
@@ -578,6 +582,7 @@ def _tab_entry_modes(
         list(IMPROV_ENTRY_MODES),
         horizontal=True,
         key="improv_entry_mode",
+        format_func=creative_tool_display_label,
         label_visibility="collapsed",
         on_change=_on_entry_mode_change,
     )
@@ -707,7 +712,10 @@ def _tab_entry_modes(
                 st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
-        st.markdown('<p class="ui-creative-section-label">Style jam generator</p>', unsafe_allow_html=True)
+        st.markdown(
+            f'<p class="ui-creative-section-label">{html.escape(creative_tool_display_label("Style Jam Mode"))}</p>',
+            unsafe_allow_html=True,
+        )
         c1, c2, c3 = st.columns(3)
         with c1:
             st.selectbox(
@@ -808,7 +816,7 @@ def _tab_entry_modes(
                 st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
-        st.markdown("#### 🌙 Jam Session Generator")
+        st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
         e1, e2 = st.columns(2)
         with e1:
             ensemble = st.selectbox(
@@ -928,7 +936,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         hydrate_creative_pages_from_song_focus(session_state, tab="Live Coach")
     except ImportError:
         pass
-    st.markdown("#### Real-time improvisation coach")
+    st.markdown(creative_tool_heading_markdown("Live Coach"))
     from practice_setup_controls import (
         DEFAULT_INSTRUMENT_OPTIONS,
         render_setup_quick_controls,
@@ -1044,7 +1052,7 @@ def _tab_motif(
         hydrate_creative_pages_from_song_focus(session_state, tab="Phrase / Motif")
     except ImportError:
         pass
-    st.markdown("#### Phrase / motif training")
+    st.markdown(creative_tool_heading_markdown("Phrase / Motif"))
     st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
 
     try:
@@ -1729,7 +1737,7 @@ def render_mission_practice_lick_on_backing(
     st.markdown("---")
     head_l, head_r = st.columns([3, 1])
     with head_l:
-        st.markdown("#### Mission Practice")
+        st.markdown(f"#### {CREATIVE_TOOL_ICONS['Missions']} Mission Practice")
         st.caption("You are still in your mission — loop the backing and work this lick at any tempo.")
     with head_r:
         if on_return_to_mission and st.button(
@@ -2366,7 +2374,7 @@ def _tab_missions(
     except ImportError:
         pass
 
-    st.markdown("#### Practice missions")
+    st.markdown(creative_tool_heading_markdown("Missions"))
     _render_missions_route_dev_marker(
         st,
         session_state,
@@ -2951,7 +2959,7 @@ def _tab_harmony_map(
     except ImportError:
         pass
 
-    st.markdown("#### Harmony map")
+    st.markdown(creative_tool_heading_markdown("Harmony Map"))
     practice_key_caption, _practice_dup = _coherent_improv_key_pair(session_state, improv_ctx)
     st.caption(
         f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(practice_key_caption)}** · "
@@ -3160,7 +3168,7 @@ def _tab_metrics_ai(
 ) -> None:
     from mission_analysis_ui import render_ai_improv_metrics_selector
 
-    st.markdown("#### AI Metrics / Mission Criteria")
+    st.markdown(creative_tool_heading_markdown("Metrics & AI"))
     if improv_ctx:
         st.caption(
             f"Scores will judge your take against **{html.escape(improv_ctx.song_title)}** "
