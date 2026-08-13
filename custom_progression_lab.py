@@ -2303,21 +2303,35 @@ CPL_KEY_OPTIONS: list[str] = list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR
 
 
 def _is_minor_home_key(home_key: str) -> bool:
-    k = str(home_key or "").strip()
-    if not k:
-        return False
-    root = chord_root(k)
-    suffix = k[len(root) :].lower()
-    return suffix.startswith("m") and "maj" not in suffix
+    try:
+        from music_theory import key_is_minor
+
+        return bool(key_is_minor(str(home_key or "").strip() or "C"))
+    except ImportError:
+        k = str(home_key or "").strip()
+        if not k:
+            return False
+        root = chord_root(k)
+        suffix = k[len(root) :].lower()
+        return suffix.startswith("m") and "maj" not in suffix
 
 
 def format_key_label(home_key: str) -> str:
-    """Human label for sidebar/display key, e.g. 'C major' or 'A minor'."""
-    k = str(home_key or "C").strip() or "C"
-    root = chord_root(k)
-    if _is_minor_home_key(k):
-        return f"{root} minor"
-    return f"{root} major"
+    """Human label for sidebar/display key, e.g. 'Ab major' or 'F# minor'.
+
+    Preserves authoritative enharmonic spelling. Must not route through
+    ``chord_root_for_theory`` / ``normalize_root`` (Ab→G# pitch-class collapse).
+    """
+    try:
+        from music_theory import display_key_label
+
+        return display_key_label(home_key)
+    except ImportError:
+        k = str(home_key or "C").strip() or "C"
+        root = chord_root(k)
+        if _is_minor_home_key(k):
+            return f"{root} minor"
+        return f"{root} major"
 
 
 def cpl_draft_written_key(active: dict) -> str:

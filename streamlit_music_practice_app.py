@@ -10118,6 +10118,12 @@ else:
         on_change=on_sidebar_practice_concert_key_change,
     )
 try:
+    from key_display_diagnostics import render_key_display_diagnostics
+
+    render_key_display_diagnostics(st, st.session_state)
+except ImportError:
+    pass
+try:
     from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
 
     st.session_state[STREAMLIT_WIDGETS_LOCKED_KEY] = True

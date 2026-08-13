@@ -155,13 +155,25 @@ def key_center_token(tonic: str, mode: str) -> str:
 
 
 def format_key_label_from_parts(tonic: str, mode: str) -> str:
-    """Human label: D + minor → 'Dm' style display for UI (not D#)."""
+    """Human label preserving tonic spelling (Ab → 'Ab major', never G#)."""
     token = key_center_token(tonic, mode)
     if str(mode or "major").lower() == "minor":
         root, _ = split_key_center(token)
         return f"{root} minor"
     root, _ = split_key_center(token)
     return f"{root} major"
+
+
+def display_key_label(key: str) -> str:
+    """Musician-facing key label that preserves authoritative enharmonic spelling.
+
+    Use for Original / Practice / Concert / Written / Shape key badges.
+    Do **not** route display labels through ``chord_root_for_theory`` /
+    ``normalize_root`` (those are pitch-class identity helpers and map Ab→G#).
+    """
+    token = str(key or "C").strip() or "C"
+    tonic, mode = split_key_center(token)
+    return format_key_label_from_parts(tonic, mode)
 
 
 _BAR_WEIGHT_SUFFIX = re.compile(
@@ -485,13 +497,31 @@ def _practice_key_for_pitch_class(key: str, mode: str) -> str:
     want_minor = str(mode or "").lower() == "minor"
     if want_minor == key_is_minor(raw) and raw in practice_keys_for_mode(mode):
         return raw
+    prefer_flat = "b" in str(root) or "♭" in str(root)
+    prefer_sharp = "#" in str(root) or "♯" in str(root)
+    matches: list[str] = []
     for candidate in practice_keys_for_mode(mode):
         cr, cs = split_chord(candidate)
         if normalize_root(cr) != nr:
             continue
         if want_minor == key_is_minor(candidate):
-            return candidate
-    return (nr + "m") if want_minor else nr
+            matches.append(candidate)
+    if prefer_flat:
+        for candidate in matches:
+            if "b" in candidate or "♭" in candidate:
+                return candidate
+    if prefer_sharp:
+        for candidate in matches:
+            if "#" in candidate or "♯" in candidate:
+                return candidate
+    if matches:
+        return matches[0]
+    # Last resort: keep the caller's spelling rather than sharp-canonical PC.
+    if want_minor == key_is_minor(raw):
+        return raw
+    if want_minor:
+        return f"{root}m" if not str(root).lower().endswith("m") else root
+    return str(root).rstrip("m") if str(root).lower().endswith("m") and len(root) > 1 else root
 
 
 def coerce_key_to_mode(key: str, mode: str) -> str:
