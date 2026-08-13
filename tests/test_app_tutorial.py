@@ -240,9 +240,19 @@ class TutorialContentTruthTests(unittest.TestCase):
         )
 
     def test_creative_page_labels_use_same_icons(self) -> None:
+        from studio_page_state import creative_tool_heading_markdown, creative_tool_visible_name
+
         for name in IMPROV_TAB_NAMES + IMPROV_ENTRY_MODES:
             label = creative_tool_display_label(name)
             self.assertTrue(label.startswith(CREATIVE_TOOL_ICONS[name] + " "))
+            heading = creative_tool_heading_markdown(name)
+            self.assertTrue(heading.startswith("#### "))
+            self.assertIn(CREATIVE_TOOL_ICONS[name], heading)
+        self.assertEqual(
+            creative_tool_visible_name("Song-Based Improvisation"),
+            "Play Song-Based Improvisation",
+        )
+        self.assertIn("Play Song-Based Improvisation", creative_tool_display_label("Song-Based Improvisation"))
 
     def test_no_developer_jargon(self) -> None:
         banned = (

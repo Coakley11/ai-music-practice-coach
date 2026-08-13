@@ -3760,7 +3760,8 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   margin: 0 0 0.7rem;
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] > div,
-.ui-creative-mode-segment [data-testid="stRadio"] > div {
+.ui-creative-mode-segment [data-testid="stRadio"] > div,
+.ui-creative-entry-segment [data-testid="stRadio"] > div {
   display: flex !important;
   flex-wrap: wrap;
   gap: 0.35rem !important;
@@ -3770,21 +3771,33 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   background: rgba(245, 243, 255, 0.95) !important;
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] label,
-.ui-creative-mode-segment [data-testid="stRadio"] label {
-  flex: 1 1 auto !important;
-  min-width: 7.4rem;
+.ui-creative-mode-segment [data-testid="stRadio"] label,
+.ui-creative-entry-segment [data-testid="stRadio"] label {
+  flex: 0 1 auto !important;
+  min-width: 0;
   margin: 0 !important;
   padding: 0.38rem 0.55rem !important;
   border-radius: 9px !important;
   font-size: 0.74rem !important;
   font-weight: 750 !important;
   text-align: center;
+  white-space: nowrap !important;
   border: 1px solid transparent !important;
+}
+@media (max-width: 640px) {
+  .st-key-creative_studio_panel [data-testid="stRadio"] label,
+  .ui-creative-mode-segment [data-testid="stRadio"] label,
+  .ui-creative-entry-segment [data-testid="stRadio"] label {
+    font-size: 0.68rem !important;
+    padding: 0.32rem 0.45rem !important;
+  }
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] label[data-checked="true"],
 .st-key-creative_studio_panel [data-testid="stRadio"] label:has(input:checked),
 .ui-creative-mode-segment [data-testid="stRadio"] label[data-checked="true"],
-.ui-creative-mode-segment [data-testid="stRadio"] label:has(input:checked) {
+.ui-creative-mode-segment [data-testid="stRadio"] label:has(input:checked),
+.ui-creative-entry-segment [data-testid="stRadio"] label[data-checked="true"],
+.ui-creative-entry-segment [data-testid="stRadio"] label:has(input:checked) {
   background: #fff !important;
   border-color: rgba(139, 92, 246, 0.55) !important;
   color: #6d28d9 !important;

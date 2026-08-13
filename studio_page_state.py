@@ -25,7 +25,7 @@ IMPROV_ENTRY_MODES: tuple[str, ...] = (
     "Jam Session Generator",
 )
 
-# Distinct icons shared by Creative Lab radios and the musician tutorial.
+# Distinct icons shared by Creative Lab radios, in-page headings, and the tutorial.
 CREATIVE_TOOL_ICONS: dict[str, str] = {
     "Entry & Jam": "🚪",
     "Song-Based Improvisation": "🎶",
@@ -39,12 +39,29 @@ CREATIVE_TOOL_ICONS: dict[str, str] = {
     "Metrics & AI": "📊",
 }
 
+# Visible names that differ slightly from internal selector values.
+CREATIVE_TOOL_DISPLAY_NAMES: dict[str, str] = {
+    "Song-Based Improvisation": "Play Song-Based Improvisation",
+}
+
+
+def creative_tool_visible_name(name: str) -> str:
+    text = str(name or "").strip()
+    return CREATIVE_TOOL_DISPLAY_NAMES.get(text, text)
+
 
 def creative_tool_display_label(name: str) -> str:
     """Musician-facing Creative tab/mode label with its dedicated icon."""
     text = str(name or "").strip()
+    visible = creative_tool_visible_name(text)
     icon = CREATIVE_TOOL_ICONS.get(text, "")
-    return f"{icon} {text}".strip() if icon else text
+    return f"{icon} {visible}".strip() if icon else visible
+
+
+def creative_tool_heading_markdown(name: str, *, level: int = 4) -> str:
+    """In-page heading that matches tutorial/Creative radio icons."""
+    hashes = "#" * max(1, min(int(level or 4), 6))
+    return f"{hashes} {creative_tool_display_label(name)}"
 
 # Major keys only — both flat and sharp spellings (C#/Db, D#/Eb, etc.).
 CREATIVE_MAJOR_KEY_OPTIONS: tuple[str, ...] = tuple(ENHARMONIC_MAJOR_KEYS)
@@ -57,6 +74,7 @@ __all__ = (
     "CREATIVE_BACKING_SONG_SOURCE_KEY",
     "CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY",
     "CREATIVE_MAJOR_KEY_OPTIONS",
+    "CREATIVE_TOOL_DISPLAY_NAMES",
     "CREATIVE_TOOL_ICONS",
     "IMPROV_ENTRY_MODES",
     "IMPROV_SONG_SOURCES",
@@ -64,6 +82,8 @@ __all__ = (
     "PENDING_IMPROV_SONG_SOURCE",
     "apply_improv_song_source",
     "creative_tool_display_label",
+    "creative_tool_heading_markdown",
+    "creative_tool_visible_name",
     "ensure_improv_entry_mode_restored",
     "ensure_creative_widgets_from_backing_context",
     "ensure_improv_intelligence_tab_restored",
