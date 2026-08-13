@@ -207,7 +207,7 @@ class TutorialContentTruthTests(unittest.TestCase):
 
     def test_karaoke_cta_is_voice_and_preps_instrument(self) -> None:
         karaoke = next(s for s in TUTORIAL_STEPS if s["id"] == "karaoke")
-        self.assertEqual(karaoke.get("action_label"), "Voice")
+        self.assertEqual(karaoke.get("action_label"), "Karaoke Performance")
         self.assertEqual(karaoke.get("action_prep"), "voice_instrument")
         self.assertEqual(karaoke.get("page_id"), "backing")
 
@@ -346,11 +346,134 @@ class TutorialRenderAndStateTests(unittest.TestCase):
             )
         self.assertGreaterEqual(st.markdown.call_count, TOTAL_STEPS)
 
-    def test_apply_tutorial_voice_instrument_sets_voice(self) -> None:
-        ss: dict[str, Any] = {"instrument": "Guitar", "focus": "Lead Guitar"}
+class _WidgetLockedSession(dict):
+    """Stand-in for Streamlit session_state after Instrument/Focus widgets exist."""
+
+    _blocked = {"instrument", "focus"}
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self._blocked and self.get("_streamlit_widgets_locked_this_run"):
+            raise RuntimeError(
+                f"StreamlitAPIException: `{key}` cannot be modified after the widget is instantiated"
+            )
+        super().__setitem__(key, value)
+
+
+def _tutorial_st_mock(*, click_go_page: bool = False) -> MagicMock:
+    st = MagicMock()
+    expander = MagicMock()
+    expander.__enter__ = MagicMock(return_value=expander)
+    expander.__exit__ = MagicMock(return_value=False)
+    st.expander.return_value = expander
+
+    def _columns(spec: Any, *args: Any, **kwargs: Any) -> list[Any]:
+        n = len(spec) if isinstance(spec, (list, tuple)) else int(spec or 1)
+        cols = []
+        for _ in range(n):
+            col = MagicMock()
+            col.__enter__ = MagicMock(return_value=col)
+            col.__exit__ = MagicMock(return_value=False)
+            cols.append(col)
+        return cols
+
+    st.columns.side_effect = _columns
+    st.button.side_effect = lambda *args, **kwargs: bool(
+        click_go_page and kwargs.get("key") == "tutorial_go_page"
+    )
+    st.checkbox.return_value = False
+    return st
+
+
+class TutorialKaraokePerformanceCtaTests(unittest.TestCase):
+    def _karaoke_step_index(self) -> int:
+        return next(i for i, step in enumerate(TUTORIAL_STEPS) if step["id"] == "karaoke")
+
+    def test_apply_tutorial_voice_instrument_queues_pending_when_widgets_locked(self) -> None:
+        from session_widget_safe import PENDING_INSTRUMENT_KEY, apply_pending_widget_hydrates
+
+        ss = _WidgetLockedSession(
+            {
+                "instrument": "Guitar",
+                "focus": "Lead Guitar",
+                "_streamlit_widgets_locked_this_run": True,
+            }
+        )
         apply_tutorial_voice_instrument(ss)
+        self.assertEqual(ss.get("instrument"), "Guitar")
+        self.assertEqual(ss.get("focus"), "Lead Guitar")
+        self.assertEqual(ss.get(PENDING_INSTRUMENT_KEY), "Voice")
+        self.assertIn(str(ss.get("_pending_focus") or ""), FOCUS_OPTIONS_BY_INSTRUMENT["Voice"])
+
+        ss.pop("_streamlit_widgets_locked_this_run", None)
+        apply_pending_widget_hydrates(ss)
         self.assertEqual(ss.get("instrument"), "Voice")
         self.assertIn(str(ss.get("focus") or ""), FOCUS_OPTIONS_BY_INSTRUMENT["Voice"])
+        self.assertNotIn(PENDING_INSTRUMENT_KEY, ss)
+
+    def test_karaoke_performance_click_navigates_to_vocal_performance_mode(self) -> None:
+        from karaoke_mode import is_voice_mode, voice_wording
+        from session_widget_safe import PENDING_INSTRUMENT_KEY, apply_pending_widget_hydrates
+
+        karaoke_idx = self._karaoke_step_index()
+        ss = _WidgetLockedSession(
+            {
+                "tutorial_dismissed": False,
+                "tutorial_open": True,
+                "tutorial_step": karaoke_idx,
+                "instrument": "Guitar",
+                "focus": "Lead Guitar",
+                "_streamlit_widgets_locked_this_run": True,
+            }
+        )
+        navigated: list[str] = []
+
+        render_tutorial_walkthrough(
+            _tutorial_st_mock(click_go_page=True),
+            ss,
+            rerun_fn=lambda: None,
+            navigate_fn=navigated.append,
+        )
+        self.assertEqual(ss.get("instrument"), "Guitar")
+        self.assertEqual(ss.get(PENDING_INSTRUMENT_KEY), "Voice")
+        self.assertEqual(navigated, ["backing"])
+        self.assertFalse(ss.get("tutorial_open"))
+
+        ss.pop("_streamlit_widgets_locked_this_run", None)
+        apply_pending_widget_hydrates(ss)
+        self.assertEqual(ss.get("instrument"), "Voice")
+        self.assertIn(str(ss.get("focus") or ""), FOCUS_OPTIONS_BY_INSTRUMENT["Voice"])
+        self.assertTrue(is_voice_mode(ss))
+        self.assertEqual(
+            voice_wording("backing_page_title", voice=True),
+            "Vocal Performance Mode",
+        )
+
+    def test_karaoke_performance_when_already_voice_only_navigates(self) -> None:
+        from session_widget_safe import PENDING_INSTRUMENT_KEY
+
+        karaoke_idx = self._karaoke_step_index()
+        ss = _WidgetLockedSession(
+            {
+                "tutorial_dismissed": False,
+                "tutorial_open": True,
+                "tutorial_step": karaoke_idx,
+                "instrument": "Voice",
+                "focus": "Phrasing",
+                "_streamlit_widgets_locked_this_run": True,
+            }
+        )
+        navigated: list[str] = []
+        render_tutorial_walkthrough(
+            _tutorial_st_mock(click_go_page=True),
+            ss,
+            rerun_fn=lambda: None,
+            navigate_fn=navigated.append,
+        )
+        self.assertEqual(ss.get("instrument"), "Voice")
+        self.assertEqual(ss.get("focus"), "Phrasing")
+        self.assertNotIn(PENDING_INSTRUMENT_KEY, ss)
+        self.assertNotIn("_pending_focus", ss)
+        self.assertEqual(navigated, ["backing"])
 
 
 if __name__ == "__main__":

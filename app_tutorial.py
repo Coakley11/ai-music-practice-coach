@@ -391,7 +391,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "script": "Sing",
         "title": "Singing? Switch to Voice.",
         "summary": "Choose Voice, pick a comfortable Practice Key, then sing with lyrics and accompaniment.",
-        "try_this": "Tap **Voice** to switch your instrument and open Vocal Performance Mode.",
+        "try_this": "Tap **Karaoke Performance** to sing in Vocal Performance Mode.",
         "why": "Karaoke is for singing the song. Upload Analysis is for feedback on a recorded take. Multitrack is for layering parts.",
         "cards": [
             {
@@ -422,7 +422,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "bullets": [
             "Voice focuses include Breath Control, Phrasing, Pitch Accuracy, Emotional Delivery, Harmony Singing, Vibrato, Dynamics, and Ear Training.",
         ],
-        "action_label": "Voice",
+        "action_label": "Karaoke Performance",
         "action_prep": "voice_instrument",
         "sections": [
             {
@@ -822,21 +822,27 @@ def tutorial_chapter_ids() -> list[str]:
 
 
 def apply_tutorial_voice_instrument(session_state: dict) -> None:
-    """Switch Practice Setup to Voice so Karaoke / Vocal Performance Mode appears."""
-    try:
-        from practice_setup_globals import set_active_instrument
+    """Queue Voice for the next pre-widget hydrate — never write widget keys here.
 
-        set_active_instrument(session_state, "Voice", source="tutorial_voice_cta")
-    except Exception:
-        session_state["instrument"] = "Voice"
-        try:
-            from practice_setup_controls import focus_options_for_instrument
+    Tutorial CTAs run after the Instrument selectbox exists. Direct
+    ``session_state["instrument"] = ...`` would raise StreamlitAPIException.
+    """
+    from practice_setup_controls import focus_options_for_instrument
+    from session_widget_safe import safe_session_assign
 
-            opts = focus_options_for_instrument("Voice")
-            if opts and str(session_state.get("focus") or "") not in opts:
-                session_state["focus"] = opts[0]
-        except Exception:
-            pass
+    # Tutorial always renders after sidebar widgets. Force the pending path
+    # even if the lock flag was somehow missing.
+    session_state["_streamlit_widgets_locked_this_run"] = True
+
+    current = str(session_state.get("instrument") or "").strip()
+    if current != "Voice":
+        safe_session_assign(session_state, "instrument", "Voice")
+
+    focus_opts = focus_options_for_instrument("Voice")
+    current_focus = str(session_state.get("focus") or "").strip()
+    if focus_opts and current_focus not in focus_opts:
+        safe_session_assign(session_state, "focus", focus_opts[0])
+
     try:
         from active_song_state import mark_active_song_local_edit
 
