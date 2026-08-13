@@ -19,6 +19,16 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
 
 IMPROV_SONG_SOURCES: tuple[str, ...] = ("Active song", "Custom progression")
 
+CREATIVE_SONG_SOURCE_DISPLAY_NAMES: dict[str, str] = {
+    "Custom progression": "✏️ Custom Progression",
+}
+
+
+def creative_song_source_display_label(name: str) -> str:
+    """Entry & Jam Song Source label — icons only where requested."""
+    text = str(name or "").strip()
+    return CREATIVE_SONG_SOURCE_DISPLAY_NAMES.get(text, text)
+
 IMPROV_ENTRY_MODES: tuple[str, ...] = (
     "Song-Based Improvisation",
     "Style Jam Mode",
@@ -72,6 +82,7 @@ CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY = "creative_improv_intelligence_tab"
 
 __all__ = (
     "CREATIVE_BACKING_SONG_SOURCE_KEY",
+    "CREATIVE_SONG_SOURCE_DISPLAY_NAMES",
     "CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY",
     "CREATIVE_MAJOR_KEY_OPTIONS",
     "CREATIVE_TOOL_DISPLAY_NAMES",
@@ -81,6 +92,7 @@ __all__ = (
     "IMPROV_TAB_NAMES",
     "PENDING_IMPROV_SONG_SOURCE",
     "apply_improv_song_source",
+    "creative_song_source_display_label",
     "creative_tool_display_label",
     "creative_tool_heading_markdown",
     "creative_tool_visible_name",

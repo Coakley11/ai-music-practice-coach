@@ -186,6 +186,7 @@ from studio_page_state import (
     IMPROV_SONG_SOURCES,
     IMPROV_TAB_NAMES,
     apply_improv_song_source,
+    creative_song_source_display_label,
     creative_tool_display_label,
     creative_tool_heading_markdown,
     flush_pending_improv_song_source,
@@ -621,6 +622,7 @@ def _tab_entry_modes(
                 list(IMPROV_SONG_SOURCES),
                 horizontal=True,
                 key="improv_song_source",
+                format_func=creative_song_source_display_label,
                 on_change=_sync_song_source,
                 label_visibility="collapsed",
             )

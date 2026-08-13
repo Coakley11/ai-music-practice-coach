@@ -1805,6 +1805,48 @@ def build_context_from_session(
     return ctx, summary
 
 
+def render_music_coach_page_entry(
+    st: Any,
+    *,
+    source_page: str,
+    session_state: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> None:
+    """Practice-page Music Coach entry — visible under Song Practice.
+
+    Opens the real Music Coach page. Sidebar Ask the Music Coach stays available.
+    """
+    del context_extra_builder, source_state_builder, on_after_send, source_page
+    ss = session_state if session_state is not None else st.session_state
+    st.markdown(
+        '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
+        "<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">💬 Ask the Music Coach</p>"
+        "<p style=\"margin:0;color:#475569;font-size:0.9rem;\">"
+        "Ask about this song, practice, theory, or how to use the app — "
+        "without leaving your session context."
+        "</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Ask the Music Coach",
+        key="practice_open_music_coach",
+        type="primary",
+        use_container_width=True,
+    ):
+        try:
+            from app_ui import navigate_studio_page
+        except ImportError:
+            from studio_nav_history import navigate_studio_page
+        navigate_studio_page(ss, "openai")
+        st.rerun()
+    if developer_mode and ss.get("_music_coach_page_error"):
+        st.caption(f"🛠 Music Coach page entry · {ss.get('_music_coach_page_error')}")
+
+
 def render_music_coach_sidebar_entry(
     st: Any,
     *,
