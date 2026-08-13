@@ -190,7 +190,7 @@ def gather_practice_ami_snapshot(
         "title": _song_title(song),
         "artist": str(song.get("artist") or "").strip(),
         "genre": str(song.get("genre") or "").strip(),
-        "display_key": str(song_ctx.get("display_key") or session_state.get("display_key") or "").strip(),
+        "display_key": str(session_state.get("display_key") or song_ctx.get("display_key") or "").strip(),
         "bpm": int(bpm) if bpm is not None else None,
         "instrument": _active_instrument_for_ami(session_state, song_ctx),
         "level": _active_level_for_ami(session_state, song_ctx),
@@ -523,6 +523,107 @@ def finalize_music_context_for_send(
                 if snap.get(key) is not None and snap.get(key) != "":
                     ctx[key] = snap[key]
 
+    # Fresh Practice Key on submit rerun — never keep a stale cached display_key.
+    try:
+        from music_coach_ami.chart_context_reader import resolve_live_coach_practice_key
+
+        live_key, pk_trace = resolve_live_coach_practice_key(session_state, ami_ctx=ctx)
+        if live_key:
+            ctx["display_key"] = live_key
+            snap_out = ctx.get("practice_snapshot")
+            if isinstance(snap_out, dict):
+                snap_out = dict(snap_out)
+                snap_out["display_key"] = live_key
+                ctx["practice_snapshot"] = snap_out
+            ctx["practice_key_trace"] = pk_trace
+    except ImportError:
+        live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
+        if live:
+            ctx["display_key"] = live
+
+    # Live instrument / level / focus / section must beat a stale AMI cache snapshot.
+    # Otherwise Bass→Piano (same wording) fingerprints as a duplicate of the prior send.
+    live_song: dict[str, Any] = {}
+    try:
+        from active_song_state import gather_active_song_context
+
+        live_song = gather_active_song_context(session_state) or {}
+    except Exception:
+        live_song = {}
+    live_instrument = _active_instrument_for_ami(session_state, live_song)
+    live_level = _active_level_for_ami(session_state, live_song)
+    live_focus = str(live_song.get("focus") or session_state.get("focus") or "").strip()
+    # Instrument change may leave an invalid focus (e.g. Walking Bass on Flute).
+    # Clamp for AMI fingerprint + CoachContext so winds are never fingerprint-tied
+    # to a stale Bass-only focus label.
+    if live_instrument and live_focus:
+        try:
+            from practice_setup_globals import valid_focus_for
+
+            clamped = str(valid_focus_for(live_instrument, live_focus) or "").strip()
+            if clamped:
+                if clamped != live_focus:
+                    ctx["focus_clamped_from"] = live_focus
+                    ctx["focus_clamped"] = True
+                live_focus = clamped
+                # Keep session coherent for the rest of this submit (and fingerprint).
+                if session_state.get("focus") != live_focus:
+                    session_state["focus"] = live_focus
+        except ImportError:
+            pass
+    live_section = str(
+        session_state.get("practice_focus_section")
+        or session_state.get("ii_selected_section")
+        or live_song.get("practice_focus_section")
+        or ""
+    ).strip()
+    snap_live = ctx.get("practice_snapshot")
+    if isinstance(snap_live, dict):
+        snap_live = dict(snap_live)
+    else:
+        snap_live = {}
+    if live_instrument:
+        ctx["instrument"] = live_instrument
+        snap_live["instrument"] = live_instrument
+    if live_level:
+        ctx["level"] = live_level
+        snap_live["level"] = live_level
+    if live_focus:
+        ctx["focus"] = live_focus
+        snap_live["focus"] = live_focus
+    if live_section:
+        ctx["practice_focus_section"] = live_section
+        snap_live["practice_focus_section"] = live_section
+    # Stamp sax/clarinet/trumpet subtype so fingerprint + WrittenMusicContext agree.
+    try:
+        from music_coach_ami.instrument_realization import realization_diagnostics
+
+        real = realization_diagnostics(
+            live_instrument or str(ctx.get("instrument") or ""),
+            session_state=session_state,
+        )
+        if real.get("selected_transposing_subtype"):
+            ctx["selected_transposing_instrument"] = real["selected_transposing_subtype"]
+            ctx["transposing_subtype"] = real["selected_transposing_subtype"]
+            snap_live["selected_transposing_instrument"] = real["selected_transposing_subtype"]
+        if real.get("notation_instrument"):
+            ctx["notation_instrument"] = real["notation_instrument"]
+        ctx["instrument_realization"] = real
+    except ImportError:
+        pass
+    # Chart written-key checkbox (SSOT) — charts concert vs written; stamped for diagnostics/fingerprint.
+    try:
+        from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, chart_in_instrument_key
+
+        show_written = chart_in_instrument_key(session_state)
+        ctx[CHART_IN_INSTRUMENT_KEY_KEY] = show_written
+        ctx["show_chart_in_instrument_key"] = show_written
+        snap_live[CHART_IN_INSTRUMENT_KEY_KEY] = show_written
+    except ImportError:
+        pass
+    if snap_live:
+        ctx["practice_snapshot"] = {**(ctx.get("practice_snapshot") or {}), **snap_live}
+
     intent = detect_music_send_intent(q, page)
     ctx["routing_hint"] = intent
     ctx["problem_type_hint"] = intent
@@ -581,6 +682,22 @@ def build_music_applied_math_context(
     if song.get("title"):
         artist = str(song.get("artist") or "").strip()
         ctx["song"] = f"{song['title']} — {artist}" if artist else song["title"]
+
+    # Overlay live Practice Key even when snapshot/cache still holds the prior key.
+    try:
+        from music_coach_ami.chart_context_reader import resolve_live_coach_practice_key
+
+        live_key, pk_trace = resolve_live_coach_practice_key(session_state, ami_ctx=ctx)
+        if live_key:
+            ctx["display_key"] = live_key
+            snap_live = ctx.get("practice_snapshot")
+            if isinstance(snap_live, dict):
+                snap_live = dict(snap_live)
+                snap_live["display_key"] = live_key
+                ctx["practice_snapshot"] = snap_live
+            ctx["practice_key_trace"] = pk_trace
+    except ImportError:
+        pass
 
     if str(question or "").strip():
         finalize_music_context_for_send(ctx, session_state, question=question, coach_page=page)

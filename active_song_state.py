@@ -909,18 +909,36 @@ def rehydrate_capo_from_canonical(session: dict[str, Any]) -> None:
         pass
 
 
-def rehydrate_transposing_sidebar_from_canonical(session: dict[str, Any]) -> None:
-    """Bind written-key + subtype widget keys from canonical blob before sidebar render."""
+def rehydrate_transposing_sidebar_from_canonical(
+    session: dict[str, Any],
+    *,
+    force: bool = False,
+) -> None:
+    """Seed written-key + subtype widget keys from canonical before sidebar render.
+
+    Never clobber keys that already exist unless ``force=True``. Streamlit applies
+    the user's new selectbox/checkbox value into ``session_state`` *before* the
+    script reruns; overwriting from a stale canonical blob here made Saxophone
+    type stick on Alto and cleared the written-key checkbox on every rerun.
+    Authoritative restore paths write session keys directly (or call with force).
+    """
     meta = session.get(ACTIVE_SONG_STATE_KEY)
     if not isinstance(meta, dict):
         return
-    if _written_key_is_set(meta):
+    if _written_key_is_set(meta) and (force or CHART_IN_INSTRUMENT_KEY_KEY not in session):
         session[CHART_IN_INSTRUMENT_KEY_KEY] = bool(meta[CHART_IN_INSTRUMENT_KEY_KEY])
     anchor = str(meta.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
-    if anchor:
-        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+    if anchor and (force or WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY not in session):
+        try:
+            from instrument_transposition import _base_instrument_for_written_anchor
+
+            session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = (
+                _base_instrument_for_written_anchor(anchor) or anchor
+            )
+        except ImportError:
+            session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
     subtype = str(meta.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip()
-    if subtype:
+    if subtype and (force or SELECTED_TRANSPOSING_INSTRUMENT_KEY not in session):
         session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
 
 
@@ -1526,8 +1544,10 @@ def commit_active_song_state_from_session(
 
 
 def flush_active_song_edits(session: dict[str, Any], *, reason: str = "song_edit") -> dict[str, Any]:
-    """End-of-rerun flush after user changed song/instrument/key."""
+    """End-of-rerun flush after user changed song/instrument/key/subtype/written-key."""
+    mark_active_song_local_edit(session)
     ctx = gather_active_song_context(session)
+    ctx = _merge_live_transposing_fields(session, dict(ctx))
     ctx = _merge_live_global_controls(session, ctx)
     return write_canonical_active_song_state(
         session,
@@ -1535,6 +1555,9 @@ def flush_active_song_edits(session: dict[str, Any], *, reason: str = "song_edit
         reason=reason,
         local_edit=True,
         mutate_display_key=False,
+        # Keep widget keys authoritative; blob already holds live subtype/written-key.
+        mutate_written_key=False,
+        mutate_transposing_subtype=False,
         apply_global_controls_to_session=False,
     )
 
@@ -1778,7 +1801,7 @@ def apply_cloud_active_song_state_if_allowed(
         _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
         _restore_display_key_owner_from_context(session, custom_ctx)
         _push_resolved_display_key_to_session(session, custom_ctx)
-        rehydrate_transposing_sidebar_from_canonical(session)
+        rehydrate_transposing_sidebar_from_canonical(session, force=True)
         rehydrate_capo_from_canonical(session)
         clear_active_song_local_edit(session)
         return True
@@ -1806,7 +1829,7 @@ def apply_cloud_active_song_state_if_allowed(
     _record_transposing_restore_trace(session, ctx, source="cloud_restore")
     _restore_display_key_owner_from_context(session, ctx)
     _push_resolved_display_key_to_session(session, ctx)
-    rehydrate_transposing_sidebar_from_canonical(session)
+    rehydrate_transposing_sidebar_from_canonical(session, force=True)
     rehydrate_capo_from_canonical(session)
     clear_active_song_local_edit(session)
     return True
@@ -1850,7 +1873,7 @@ def apply_active_song_source_state_from_ami(
             ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
     write_canonical_active_song_state(session, ctx, reason="ami_return")
     _record_transposing_restore_trace(session, ctx, source="ami_return")
-    rehydrate_transposing_sidebar_from_canonical(session)
+    rehydrate_transposing_sidebar_from_canonical(session, force=True)
     clear_active_song_local_edit(session)
 
 

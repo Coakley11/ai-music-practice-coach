@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MUSIC_AMI_BUILD_ID = "music-ami-v5-canonical-insight"
+MUSIC_AMI_BUILD_ID = "music-ami-v8-insight-lifecycle-hardening"
 
 _MUSIC_SOLVER_INTENTS = frozenset(
     {
@@ -528,15 +528,57 @@ def _route_for_intent(intent: str) -> MusicSolverRoute:
     )
 
 
+def _coach_result_assumptions(coach_resp: object) -> list[str]:
+    diag = getattr(coach_resp, "diagnostics", {}) or {}
+    mins = diag.get("session_minutes")
+    if mins:
+        return [f"Planning around **{mins} minutes** available."]
+    return [f"Router confidence: {diag.get('router_confidence', getattr(coach_resp, 'confidence', 0))}"]
+
+
 def solve_instant_music_insight(
     question: str,
     context: dict[str, Any] | None,
+    *,
+    session_state: dict[str, Any] | None = None,
 ) -> tuple[MusicSolverRoute, MusicSolverResult] | None:
     """Return (route, result) for supported music coaching questions."""
     q = str(question or "").strip()
     if not q:
         return None
     ctx = dict(context or {})
+
+    try:
+        from music_coach_ami.pipeline import coach_response_to_legacy_route, run_coach_pipeline
+
+        coach_resp = run_coach_pipeline(q, session_state if isinstance(session_state, dict) else {}, ami_ctx=ctx)
+        if coach_resp is not None:
+            problem_type, model_name = coach_response_to_legacy_route(coach_resp)
+            if (
+                problem_type == "repertoire_recommendation"
+                and str(coach_resp.diagnostics.get("repertoire_mode") or "") == "similar"
+            ):
+                problem_type = "similar_songs"
+                model_name = "Music Coach repertoire"
+            route = MusicSolverRoute(
+                problem_type=problem_type,
+                model_name=model_name,
+                model_rationale=f"Routed coach intent `{coach_resp.intent.value}`.",
+            )
+            result = MusicSolverResult(
+                short_answer=coach_resp.composed_markdown(),
+                math_idea=f"Structured solver: {coach_resp.source_solver}",
+                problem_type=problem_type,
+                model_name=model_name,
+                variables=str(coach_resp.diagnostics),
+                assumptions=_coach_result_assumptions(coach_resp),
+                confidence_pct=int(min(95, max(60, coach_resp.confidence * 100))),
+                computed=dict(coach_resp.diagnostics),
+            )
+            return route, result
+    except ImportError:
+        pass
+
     try:
         from music_ami_context import detect_music_send_intent
     except ImportError:

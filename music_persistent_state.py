@@ -2840,9 +2840,41 @@ def apply_music_disk_state(
         preserve_insight = preserve_insight or local_ami_insight_should_preserve(st)
     except ImportError:
         pass
+    pending_before_apply = ss.get("_ami_pending_insight")
     for key in _INSIGHT_KEYS:
         if key in session_extra and not preserve_insight:
-            ss[key] = copy.deepcopy(session_extra[key])
+            incoming = session_extra[key]
+            if key == "_ami_pending_insight":
+                existing = ss.get(key)
+                if isinstance(existing, dict) and (
+                    existing.get("conclusion") or existing.get("question")
+                ):
+                    if not isinstance(incoming, dict) or not (
+                        incoming.get("conclusion") or incoming.get("question")
+                    ):
+                        continue
+            ss[key] = copy.deepcopy(incoming)
+    try:
+        from applied_math_return_insight import record_music_coach_lifecycle_trace
+
+        pending_after = ss.get("_ami_pending_insight")
+        record_music_coach_lifecycle_trace(
+            st,
+            phase="apply_music_disk_state_insight_keys",
+            preserve_insight=preserve_insight,
+            pending_id_before=str((pending_before_apply or {}).get("insight_id") or "") or None
+            if isinstance(pending_before_apply, dict)
+            else None,
+            pending_id_after=str((pending_after or {}).get("insight_id") or "") or None
+            if isinstance(pending_after, dict)
+            else None,
+            pending_has_content=bool(
+                isinstance(pending_after, dict)
+                and (pending_after.get("conclusion") or pending_after.get("question"))
+            ),
+        )
+    except ImportError:
+        pass
 
     ss.pop(SUITE_LOCAL_STATE_RESTORED_KEY, None)
     for key in _WORKSPACE_KEYS:
@@ -3870,7 +3902,14 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
         should_flush = reason not in ("cpl_draft_edit",) and (
             ss.get(ACTIVE_SONG_PENDING_SYNC_KEY)
             or is_active_song_locally_dirty(ss)
-            or reason in ("display_key_change", "capo_widget")
+            or reason
+            in (
+                "display_key_change",
+                "capo_widget",
+                "song_edit",
+                "transposing_subtype",
+                "written_key_mode",
+            )
         )
         if should_flush:
             flush_active_song_edits(ss, reason=reason)
@@ -4086,6 +4125,22 @@ def prepare_music_workspace(
     """Authoritative cloud/disk workspace sync before sidebar widgets."""
     ss = st.session_state
     run_seq = int(ss.get("_script_run_seq") or 0)
+    try:
+        from applied_math_return_insight import (
+            prime_music_coach_insight_preserve_before_workspace_sync,
+            record_music_coach_lifecycle_trace,
+            _pending_insight_id,
+        )
+
+        prime_music_coach_insight_preserve_before_workspace_sync(st)
+        record_music_coach_lifecycle_trace(
+            st,
+            phase="prepare_music_workspace_entry",
+            run_seq=run_seq,
+            pending_id=_pending_insight_id(st) or None,
+        )
+    except ImportError:
+        pass
     try:
         from music_workspace_hydration import can_finalize_music_restore
 

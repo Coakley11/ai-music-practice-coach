@@ -23,6 +23,9 @@ SESSION_PERSIST_INSIGHT_DIRTY = "_suite_persist_insight_dirty"
 SESSION_INSIGHT_SOURCE_TAB_KEY = "insight_source_tab"
 SESSION_SOURCE_INVESTMENT_TAB_KEY = "source_investment_tab"
 INVESTMENT_INSIGHT_PANEL_TITLE = "Applied Investment Insight"
+MUSIC_COACH_INSIGHT_PANEL_KEY = "music_coach_insight_panel"
+MUSIC_COACH_RENDER_TRACE_KEY = "_music_coach_insight_render_trace"
+MUSIC_COACH_LIFECYCLE_TRACE_KEY = "_music_coach_insight_lifecycle_trace"
 
 _INVESTMENT_TAB_CANONICAL: dict[str, str] = {
     "portfolio health": "Portfolio Health",
@@ -59,6 +62,7 @@ INSIGHT_ELIGIBLE_PAGES: dict[str, frozenset[str]] = {
         "Efficient Frontier",
         "⑩ Frontier (Optional)",
     }),
+    "music": frozenset({"practice", "backing", "custom", "karaoke", "log", "upload", "creative"}),
 }
 
 
@@ -71,6 +75,31 @@ def _normalize_insight_page(page: str) -> str:
     if p.startswith("👑 "):
         p = p.replace("👑 ", "", 1)
     return p.strip()
+
+
+def _music_coach_pages_match(current: str, insight_page: str) -> bool:
+    """True when studio/coach page ids refer to the same Music Coach scope (e.g. creative ↔ custom)."""
+    cur = _normalize_insight_page(current).lower()
+    ins = _normalize_insight_page(insight_page).lower()
+    if not cur or not ins:
+        return False
+    if cur == ins:
+        return True
+    try:
+        from music_coach_context import COACH_PAGE_IDS, STUDIO_PAGE_TO_COACH
+    except ImportError:
+        return cur == ins
+
+    def _coach_id(page: str) -> str:
+        p = page.lower()
+        if p in COACH_PAGE_IDS:
+            return p
+        mapped = STUDIO_PAGE_TO_COACH.get(p)
+        if mapped:
+            return mapped
+        return p
+
+    return _coach_id(cur) == _coach_id(ins)
 
 
 def _normalize_investment_tab(page: str) -> str:
@@ -590,6 +619,29 @@ def insight_page_scope_decision(
         }
 
     cur = _normalize_insight_page(current_page)
+    if app == "music":
+        if not isinstance(insight, dict) or not (insight.get("conclusion") or insight.get("question")):
+            return {
+                "should_render_insight_on_page": False,
+                "render_skip_reason": "no_pending_insight",
+            }
+        insight_page = _normalize_insight_page(
+            _resolve_insight_source_page(insight) or str(insight.get("source_page") or "")
+        )
+        if insight.get("canonical_instant") and insight.get("conclusion"):
+            if insight_page and _music_coach_pages_match(cur, insight_page):
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+            if insight_page and not cur:
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+        eligible = INSIGHT_ELIGIBLE_PAGES.get("music", frozenset())
+        if cur in eligible or any(_normalize_insight_page(x) == cur for x in eligible):
+            if insight_page and _music_coach_pages_match(cur, insight_page):
+                return {"should_render_insight_on_page": True, "render_skip_reason": None}
+        return {
+            "should_render_insight_on_page": False,
+            "render_skip_reason": f"music_page_mismatch (insight={insight_page!r}, current={cur!r})",
+        }
+
     eligible = INSIGHT_ELIGIBLE_PAGES.get(app, frozenset())
     if cur not in eligible and not any(_normalize_insight_page(x) == cur for x in eligible):
         return {
@@ -625,6 +677,8 @@ def _insight_panel_title(source_app: str, insight: dict[str, Any] | None = None)
     app = str(source_app or (insight or {}).get("source_app") or "").strip().lower()
     if app == "investment":
         return INVESTMENT_INSIGHT_PANEL_TITLE
+    if app == "music":
+        return "Music Coach Insight"
     return "Applied Math Insight"
 
 
@@ -783,6 +837,12 @@ def persist_insight_dismissal_to_cloud(app_key: str, insight_id: str, *, dismiss
 
 
 
+def _insight_has_displayable_content(insight: dict[str, Any] | None) -> bool:
+    if not isinstance(insight, dict):
+        return False
+    return bool(str(insight.get("conclusion") or "").strip() or str(insight.get("question") or "").strip())
+
+
 def _pending_insight_valid(st: Any) -> dict[str, Any]:
     pending = st.session_state.get(SESSION_PENDING_KEY)
     if not isinstance(pending, dict):
@@ -793,6 +853,62 @@ def _pending_insight_valid(st: Any) -> dict[str, Any]:
     if pending.get("conclusion") or pending.get("question"):
         return pending
     return {}
+
+
+def local_ami_insight_should_preserve(st: Any) -> bool:
+    """Keep in-session Music Coach / AMI insight across workspace disk/cloud apply."""
+    ss = st.session_state
+    if ss.get("_ami_insight_return_preserve"):
+        return True
+    if ss.get("_ami_submit_render_insight_this_run") or ss.get("_ami_force_insight_render"):
+        return True
+    if ss.get("_ami_music_instant_canonical"):
+        return True
+    pending = ss.get(SESSION_PENDING_KEY)
+    if not isinstance(pending, dict):
+        return False
+    if pending.get("_ami_recovery_card"):
+        return bool(pending.get("conclusion") or pending.get("question"))
+    if pending.get("canonical_instant") and (pending.get("conclusion") or pending.get("question")):
+        return True
+    diag = pending.get("coach_submit_diagnostics")
+    if isinstance(diag, dict) and diag.get("result_path") == "routed_coach":
+        return bool(pending.get("conclusion") or pending.get("question"))
+    return False
+
+
+def prime_music_coach_insight_preserve_before_workspace_sync(st: Any) -> None:
+    """Call before ``prepare_music_workspace`` so routed insight is not overwritten by disk/cloud."""
+    should = local_ami_insight_should_preserve(st)
+    if should:
+        st.session_state["_ami_insight_return_preserve"] = True
+    record_music_coach_lifecycle_trace(
+        st,
+        phase="prime_before_workspace_sync",
+        should_preserve=should,
+        preserve_flag=bool(st.session_state.get("_ami_insight_return_preserve")),
+        pending_id=_pending_insight_id(st) or None,
+        submit_render_flag=bool(st.session_state.get("_ami_submit_render_insight_this_run")),
+    )
+
+
+def record_music_coach_lifecycle_trace(st: Any, **fields: Any) -> None:
+    """Append-only lifecycle log for ?dev=1 (submit → sync → render)."""
+    ss = st.session_state
+    trace = list(ss.get(MUSIC_COACH_LIFECYCLE_TRACE_KEY) or [])
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        **{k: v for k, v in fields.items() if v is not None},
+    }
+    trace.append(entry)
+    ss[MUSIC_COACH_LIFECYCLE_TRACE_KEY] = trace[-32:]
+
+
+def _record_music_coach_render_trace(st: Any, **fields: Any) -> None:
+    ss = st.session_state
+    trace = dict(ss.get(MUSIC_COACH_RENDER_TRACE_KEY) or {})
+    trace.update({k: v for k, v in fields.items() if v is not None})
+    ss[MUSIC_COACH_RENDER_TRACE_KEY] = trace
 
 
 def insight_exists_in_cloud(source_app: str) -> bool:
@@ -1928,13 +2044,30 @@ def render_applied_math_insight_panel(
 ) -> bool:
     """Display-only insight card on source app pages. Returns True if rendered."""
     data = insight if isinstance(insight, dict) else st.session_state.get(SESSION_PENDING_KEY)
-    if not isinstance(data, dict) or not data.get("conclusion"):
+    if not isinstance(data, dict):
+        return False
+    conclusion = str(data.get("conclusion") or "").strip()
+    question = str(data.get("question") or "").strip()
+    if not conclusion and not question:
         return False
     app = str(source_app or data.get("source_app") or "").strip().lower()
 
-    with st.container(border=True):
+    markdown_rendered = False
+    notation_attempted = False
+    notation_staff_rendered = False
+
+    insight_id_suffix = str(data.get("insight_id") or "pending")[:12]
+    try:
+        panel_ctx = (
+            st.container(key=f"{MUSIC_COACH_INSIGHT_PANEL_KEY}_{insight_id_suffix}", border=True)
+            if app == "music"
+            else st.container(border=True)
+        )
+    except TypeError:
+        panel_ctx = st.container(border=True)
+    with panel_ctx:
         st.markdown(f"#### {_insight_panel_title(app, data)}")
-        q = str(data.get("question") or "").strip()
+        q = question
         if q:
             st.markdown(f"**Question:** *{q}*")
         if str(source_app or data.get("source_app") or "").strip().lower() == "investment":
@@ -1961,14 +2094,116 @@ def render_applied_math_insight_panel(
             )
             if body:
                 st.markdown(body)
+                markdown_rendered = True
             else:
                 st.markdown(f"**Conclusion:** {data.get('conclusion')}")
+                markdown_rendered = bool(data.get("conclusion"))
         else:
-            st.markdown(f"**Conclusion:** {data.get('conclusion')}")
+            conclusion = conclusion or str(data.get("conclusion") or "").strip()
+            if app == "music" or data.get("canonical_instant"):
+                if conclusion:
+                    st.markdown(conclusion)
+                    markdown_rendered = True
+            else:
+                st.markdown(f"**Conclusion:** {conclusion}")
+                markdown_rendered = bool(conclusion)
         show_details = str(source_app or data.get("source_app") or "").strip().lower() != "investment"
+        if app == "music" and isinstance(data.get("coach_submit_diagnostics"), dict):
+            show_details = True
         method = str(data.get("method") or data.get("model_name") or "").strip()
         if show_details and method:
-            st.markdown(f"**Math used:** {method}")
+            label = "Coach" if app == "music" else "Math used"
+            st.markdown(f"**{label}:** {method}")
+        if app == "music" and isinstance(data.get("coach_submit_diagnostics"), dict):
+            diag = data["coach_submit_diagnostics"]
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                if music_developer_mode(st):
+                    with st.expander("Music Coach AMI routing (?dev=1)", expanded=False):
+                        st.json(diag)
+            except ImportError:
+                pass
+        abc_text = str(data.get("notation_abc") or "").strip()
+        abc_sections = data.get("notation_abc_sections")
+        if not isinstance(abc_sections, list) or not abc_sections:
+            abc_sections = [abc_text] if abc_text else []
+        abc_sections = [str(s).strip() for s in abc_sections if str(s).strip()]
+        if app == "music" and abc_sections:
+            notation_attempted = True
+            try:
+                import streamlit.components.v1 as components
+
+                blocks_js = []
+                for idx, section in enumerate(abc_sections):
+                    escaped = (
+                        section.replace("\\", "\\\\")
+                        .replace("`", "\\`")
+                        .replace("${", "\\${")
+                    )
+                    div_id = f"coach_abc_paper_{idx}"
+                    blocks_js.append(
+                        f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});'
+                    )
+                divs = "\n".join(
+                    f'<div id="coach_abc_paper_{idx}" style="margin-bottom:12px;"></div>'
+                    for idx in range(len(abc_sections))
+                )
+                script = "\n".join(blocks_js)
+                panel_height = min(900, 240 + 220 * len(abc_sections))
+                components.html(
+                    f"""
+                    <html><head>
+                    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+                    </head><body>
+                    {divs}
+                    <script>{script}</script>
+                    </body></html>
+                    """,
+                    height=panel_height,
+                    scrolling=True,
+                )
+                notation_staff_rendered = True
+            except Exception:
+                st.code("\n\n".join(abc_sections), language="abc")
+                notation_staff_rendered = True
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                if music_developer_mode(st):
+                    with st.expander("Notation diagnostics (?dev=1)", expanded=False):
+                        st.caption(f"ABC key: `{data.get('coach_submit_diagnostics', {}).get('abc_key', '')}`")
+                        st.caption(f"Notation sections: {len(abc_sections)}")
+                        for idx, section in enumerate(abc_sections):
+                            st.caption(f"Section {idx + 1}")
+                            st.code(section, language="abc")
+            except ImportError:
+                pass
+        elif app == "music" and abc_text:
+            notation_attempted = True
+            try:
+                import streamlit.components.v1 as components
+
+                escaped = (
+                    abc_text.replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("${", "\\${")
+                )
+                components.html(
+                    f"""
+                    <html><head>
+                    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+                    </head><body><div id="coach_abc_paper"></div>
+                    <script>ABCJS.renderAbc("coach_abc_paper", `{escaped}`, {{responsive:"resize", staffwidth:720}});</script>
+                    </body></html>
+                    """,
+                    height=320,
+                    scrolling=True,
+                )
+                notation_staff_rendered = True
+            except Exception:
+                st.code(abc_text, language="abc")
+                notation_staff_rendered = True
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
@@ -1990,7 +2225,15 @@ def render_applied_math_insight_panel(
             if st.button("Dismiss insight", key=f"ami_insight_dismiss_{insight_id}", use_container_width=True):
                 dismiss_applied_math_insight(st, app_key=app)
                 st.rerun()
-    return True
+    if app == "music":
+        st.session_state["_music_coach_insight_markdown_rendered"] = markdown_rendered
+        st.session_state["_music_coach_notation_abc_render_attempted"] = notation_attempted
+        st.session_state["_music_coach_notation_staff_rendered"] = notation_staff_rendered
+        st.session_state["_music_coach_diag_insight_rendered"] = markdown_rendered
+        if markdown_rendered:
+            st.session_state.pop("_ami_submit_render_insight_this_run", None)
+            st.session_state.pop("_ami_force_insight_render", None)
+    return markdown_rendered or bool(question)
 
 
 def render_suite_applied_math_insight_for_page(
@@ -2001,11 +2244,26 @@ def render_suite_applied_math_insight_for_page(
 ) -> bool:
     """Render insight card when pending insight matches this page (source apps)."""
     app = str(source_app or "").strip().lower()
+    if app == "music":
+        _record_music_coach_render_trace(
+            st,
+            render_suite_called=True,
+            render_source_page=str(source_page or ""),
+            studio_page=str(st.session_state.get("studio_page") or ""),
+        )
     if app == "investment":
         hydrate_applied_math_insight_for_session(st, app)
 
     insight = st.session_state.get(SESSION_PENDING_KEY)
     pending_exists = isinstance(insight, dict) and bool(insight.get("conclusion") or insight.get("question"))
+    if app == "music":
+        _record_music_coach_render_trace(
+            st,
+            pending_exists=pending_exists,
+            pending_insight_id=str((insight or {}).get("insight_id") or "") if isinstance(insight, dict) else "",
+            submit_render_flag=bool(st.session_state.get("_ami_submit_render_insight_this_run")),
+            force_render_flag=bool(st.session_state.get("_ami_force_insight_render")),
+        )
     cloud_exists = insight_exists_in_cloud(app) if app == "investment" else False
     scope = (
         insight_page_scope_decision(app, source_page, insight)
@@ -2014,6 +2272,21 @@ def render_suite_applied_math_insight_for_page(
     )
     should_render = bool(scope.get("should_render_insight_on_page"))
     skip_reason = str(scope.get("render_skip_reason") or "")
+    if app == "music":
+        try:
+            ins_page = _normalize_insight_page(
+                _resolve_insight_source_page(insight) if isinstance(insight, dict) else ""
+            )
+            cur = _normalize_insight_page(source_page)
+            _record_music_coach_render_trace(
+                st,
+                scope_should_render=should_render,
+                scope_skip_reason=skip_reason or None,
+                pages_match=_music_coach_pages_match(cur, ins_page) if ins_page else None,
+                insight_source_page=ins_page or None,
+            )
+        except Exception:
+            pass
 
     if app == "investment":
         _sync_investment_insight_tab_keys(st, app, insight=insight if isinstance(insight, dict) else None)
@@ -2048,26 +2321,59 @@ def render_suite_applied_math_insight_for_page(
             str(st.session_state.get("_ami_last_submit_source_page") or "")
         )
         cur_page = _normalize_investment_tab(source_page) if app == "investment" else _normalize_insight_page(source_page)
+        if app == "music":
+            ins_page = _normalize_insight_page(str(insight.get("source_page") or ""))
+            page_match = (
+                _music_coach_pages_match(cur_page, submit_page)
+                or _music_coach_pages_match(cur_page, ins_page)
+            )
+        else:
+            page_match = bool(submit_page and cur_page and submit_page == cur_page)
         force_render = bool(
             st.session_state.get("_ami_force_insight_render")
             or st.session_state.get("_ami_submit_render_insight_this_run")
             or (
-                submit_page
-                and cur_page
-                and submit_page == cur_page
+                page_match
                 and isinstance(insight, dict)
-                and insight.get("conclusion")
+                and (insight.get("conclusion") or insight.get("question"))
             )
         )
-        if force_render and isinstance(insight, dict) and insight.get("conclusion"):
+        if force_render and isinstance(insight, dict) and (insight.get("conclusion") or insight.get("question")):
             should_render = True
             skip_reason = ""
         else:
             st.session_state["_ami_insight_render_skipped_reason"] = skip_reason or "page_scope_blocked"
             st.session_state["_ami_insight_render_success"] = False
+            if app == "music":
+                _record_music_coach_render_trace(
+                    st,
+                    render_blocked=True,
+                    render_blocked_reason=skip_reason or "page_scope_blocked",
+                    force_render=force_render,
+                )
             return False
+    if app == "music":
+        _record_music_coach_render_trace(st, render_panel_attempted=True)
     rendered = render_applied_math_insight_panel(st, source_app=app, insight=insight)
     st.session_state["_ami_insight_render_success"] = bool(rendered)
+    if app == "music":
+        _record_music_coach_render_trace(
+            st,
+            render_panel_returned=rendered,
+            insight_markdown_rendered=st.session_state.get("_music_coach_insight_markdown_rendered"),
+            notation_staff_rendered=st.session_state.get("_music_coach_notation_staff_rendered"),
+        )
+        record_music_coach_lifecycle_trace(
+            st,
+            phase="render_suite_complete",
+            render_panel_returned=rendered,
+            render_source_page=str(source_page or ""),
+            skip_reason=skip_reason or None,
+        )
+        if rendered:
+            st.session_state["_music_coach_latest_insight_id"] = str(
+                (insight or {}).get("insight_id") or ""
+            )
     if rendered and app == "investment":
         st.session_state["_ami_insight_card_rendered"] = True
         try:

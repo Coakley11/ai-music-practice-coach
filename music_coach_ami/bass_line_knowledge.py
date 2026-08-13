@@ -1,0 +1,500 @@
+"""Bass-line phrase normalization and musical bass-line suggestions for active song context."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from music_coach_ami.types import CoachRequest
+
+
+def is_non_musical_baseline(low: str) -> bool:
+    if "baseline" not in low:
+        return False
+    if any(
+        p in low
+        for p in (
+            "practice time",
+            "for comparison",
+            "baseline for comparison",
+            "as a baseline for",
+            "performance baseline",
+            "baseline metric",
+            "establish a baseline",
+            "baseline practice time",
+        )
+    ):
+        return True
+    if re.search(r"\bbaseline\b.*\b(practice time|comparison|metrics?|standard|benchmark)\b", low):
+        return True
+    if re.search(r"\b(use|using)\b.*\bbaseline\b.*\b(comparison|compare)\b", low):
+        return True
+    return False
+
+
+def _has_bass_line_concept(low: str) -> bool:
+    if re.search(r"\bbass line\b|\bbass-line\b|\bwalking bass\b", low):
+        return True
+    compact = low.replace(" ", "").replace("-", "")
+    if "bassline" in compact:
+        return True
+    if "baseline" in low and not is_non_musical_baseline(low):
+        return True
+    return False
+
+
+def normalize_bass_line_phrases(normalized: str) -> tuple[str, list[str]]:
+    """Contextually map baseline/bassline spellings to canonical bass line wording."""
+    text = str(normalized or "").strip()
+    low = text.lower()
+    notes: list[str] = []
+    if is_non_musical_baseline(low):
+        return text, notes
+    if not _has_bass_line_concept(low):
+        return text, notes
+
+    music_context = any(
+        p in low
+        for p in (
+            "this song",
+            "for this song",
+            "this section",
+            "these chords",
+            "progression",
+            " play ",
+            "line",
+            "notes",
+            "groove",
+            "walking",
+            "root",
+            "harmony",
+            "accompaniment",
+            "to use",
+            "should i play",
+            "over these",
+            "what baseline",
+            "give me a baseline",
+            "make me a baseline",
+            "bassline",
+            "bass-line",
+            "bass line",
+        )
+    )
+    if "baseline" in low and not music_context:
+        return text, notes
+
+    replacements: tuple[tuple[str, str, str], ...] = (
+        (r"\bbaseline\b", "bass line", "baseline -> bass line"),
+        (r"\bbassline\b", "bass line", "bassline -> bass line"),
+        (r"\bbass-line\b", "bass line", "bass-line -> bass line"),
+    )
+    for pattern, canonical, note in replacements:
+        if re.search(pattern, text, flags=re.I):
+            new_text = re.sub(pattern, canonical, text, flags=re.I)
+            if new_text != text:
+                notes.append(note)
+                text = new_text
+                low = text.lower()
+    return text, notes
+
+
+def is_bass_line_practice_session(normalized: str, low: str) -> bool:
+    if not re.search(r"\bbass line\b|\bwalking bass\b", low):
+        return False
+    from music_coach_ami.entities import parse_duration_minutes
+
+    if parse_duration_minutes(normalized) and any(
+        p in low for p in ("session", "practice", "routine", "workout", "minute")
+    ):
+        return True
+    if re.search(r"\bbass line\b.*\b(session|workout|routine)\b", low):
+        return True
+    if ("session" in low or "workout" in low or "routine" in low) and "bass line" in low:
+        return True
+    return False
+
+
+def is_bass_line_content_request(normalized: str, low: str) -> bool:
+    if is_non_musical_baseline(low):
+        return False
+    text, _ = normalize_bass_line_phrases(normalized)
+    low = text.lower()
+    if not re.search(r"\bbass line\b|\bwalking bass\b", low):
+        return False
+    if is_bass_line_practice_session(text, low):
+        return False
+    content_markers = (
+        "to use",
+        "should i play",
+        "what bass line",
+        "give me a bass line",
+        "make me a bass line",
+        "simple bass line",
+        "good bass line",
+        "works with",
+        "over these chords",
+        "for this section",
+        "for this song",
+        "what line",
+        "play here",
+        "can you make me",
+        "walking bass",
+    )
+    if any(marker in low for marker in content_markers):
+        return True
+    if re.search(r"\bgive me (?:a |an )?(?:\w+ ){0,3}bass line\b", low):
+        return True
+    if re.search(r"\bwhat (?:\w+ ){0,2}bass line\b", low):
+        return True
+    return False
+
+
+def _clean(text: object) -> str:
+    return str(text or "").strip()
+
+
+def _usable_section(section: str) -> str:
+    text = _clean(section)
+    low = text.lower()
+    if low in {"full song", "full", "all", "song", "entire song"}:
+        return ""
+    return text
+
+
+def _parse_progression_chords(progression_summary: str) -> list[str]:
+    text = _clean(progression_summary)
+    if not text:
+        return []
+    parts = re.split(r"\s*[|/]\s*|\s*–\s*|\s+-\s+|\s*,\s*", text)
+    try:
+        from music_theory import normalize_chord_for_theory
+    except ImportError:
+        return [p.strip() for p in parts if p.strip()][:8]
+
+    chords: list[str] = []
+    for part in parts:
+        token = normalize_chord_for_theory(part.strip())
+        if token and token not in chords:
+            chords.append(token)
+    return chords[:8]
+
+
+def _level_label(level: str) -> str:
+    low = _clean(level).lower()
+    if "advanced" in low:
+        return "advanced"
+    if "begin" in low:
+        return "beginner"
+    if "intermediate" in low:
+        return "intermediate"
+    return "intermediate"
+
+
+def _spell_root(chord: str, reference_key: str) -> str:
+    try:
+        from music_theory import chord_root_for_theory, pitch_class_from_spelled_note, spell_note_in_key
+
+        root_name = chord_root_for_theory(chord)
+        if not root_name:
+            return "?"
+        pc = pitch_class_from_spelled_note(root_name)
+        if reference_key:
+            return spell_note_in_key(pc, reference_key)
+        return root_name
+    except ImportError:
+        return chord[:1] if chord else "?"
+
+
+def _chord_line_hint(chord: str, *, reference_key: str, level: str) -> str:
+    root = _spell_root(chord, reference_key)
+    lvl = _level_label(level)
+    if lvl == "beginner":
+        return f"**{chord}:** root **{root}** on beat 1 (quarter or half note)."
+    if lvl == "advanced":
+        return (
+            f"**{chord}:** root **{root}** on beat 1; add a chord tone on beat 2; "
+            f"use a chromatic or diatonic approach into the next root on beat 4."
+        )
+    return (
+        f"**{chord}:** root **{root}** on beat 1; connect with a nearby chord tone "
+        f"(3rd or 5th) before the next change."
+    )
+
+
+def _instrument_playing_guidance(family: str, instrument: str) -> str:
+    if family == "bass":
+        return f"On **{instrument}**, keep one note per beat at first; land each root cleanly before adding approach notes."
+    if family == "keyboard":
+        return "In the **left hand**, keep roots on strong beats and connect smoothly into the next bass note."
+    if family == "fretted":
+        return (
+            f"On **{instrument}**, place each root on the **lowest practical string**; "
+            "keep the bass pulse steady before adding upper notes."
+        )
+    if family == "wind":
+        return (
+            f"On **{instrument}**, treat this as a **supportive harmonic line** in a comfortable register — "
+            "breathe between phrases and land chord tones clearly (not an electric-bass octave)."
+        )
+    return (
+        f"On **{instrument}**, outline roots on strong beats first; "
+        "keep the line supportive rather than busy."
+    )
+
+
+def compose_bass_line_suggestion(req: CoachRequest) -> dict[str, Any]:
+    from music_coach_ami.bass_line_engine import (
+        bass_line_play_summary,
+        build_bass_line_abc,
+        compose_bass_line_from_chords,
+        composition_to_diagnostics,
+    )
+    from music_coach_ami.musical_idea_request import (
+        musical_idea_to_diagnostics,
+        resolve_generation_level,
+        resolve_musical_idea_request,
+    )
+    from music_coach_ami.written_music_context import (
+        build_written_music_context,
+        transpose_composition_to_written,
+    )
+    from music_coach_instrument_voice import instrument_family
+    from music_coach_ami.request_resolution import display_coach_instrument
+
+    _, phrase_norms = normalize_bass_line_phrases(req.raw_question or req.normalized_question)
+    if not phrase_norms:
+        _, phrase_norms = normalize_bass_line_phrases(req.normalized_question)
+
+    # Bass-line ROLE must not override selected instrument.
+    raw_instrument = _clean(req.entities.instrument or req.context.instrument)
+    if not raw_instrument or raw_instrument.lower() == "your instrument":
+        extra0 = req.context.extra if isinstance(req.context.extra, dict) else {}
+        snap_inst = _clean(extra0.get("snapshot_instrument"))
+        raw_instrument = snap_inst or raw_instrument
+    instrument = display_coach_instrument(raw_instrument)
+    if instrument.lower() == "your instrument":
+        # Last resort for notation profiles — keep copy friendly but profile needs a name.
+        instrument = raw_instrument or "Piano"
+    family = instrument_family(instrument)
+    level = _clean(req.context.level) or "Intermediate"
+    focus = _clean(req.context.practice_focus)
+    song = _clean(req.context.active_song_title)
+    section = _usable_section(req.context.active_section)
+
+    extra = req.context.extra if isinstance(req.context.extra, dict) else {}
+    chart = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
+    session_ref = extra.get("session_ref") if isinstance(extra.get("session_ref"), dict) else {}
+    # SessionStateProxy is a Mapping, not always a dict.
+    if not session_ref and extra.get("session_ref") is not None:
+        try:
+            from music_coach_ami.session_access import as_mutable_session
+
+            session_ref = as_mutable_session(extra.get("session_ref"))
+        except ImportError:
+            session_ref = {}
+
+    try:
+        from music_coach_ami.instrument_realization import (
+            notation_instrument_name,
+            realization_diagnostics,
+        )
+
+        real_inst = realization_diagnostics(instrument, session_state=session_ref)
+        notation_inst = notation_instrument_name(
+            instrument,
+            session_state=session_ref,
+            transposing_subtype=str(real_inst.get("selected_transposing_subtype") or ""),
+        )
+    except ImportError:
+        real_inst = {}
+        notation_inst = instrument
+
+    concert_chords = list(chart.get("active_section_chords") or [])
+    if not concert_chords:
+        concert_chords = _parse_progression_chords(req.context.progression_summary)
+    if not concert_chords and req.context.current_chord:
+        concert_chords = _parse_progression_chords(req.context.current_chord)
+
+    section_label = _clean(chart.get("active_section")) or section
+    meter = _clean(chart.get("chart_meter") or "4/4")
+    bpm = int(chart.get("bpm") or req.context.tempo_bpm or 84)
+
+    idea = resolve_musical_idea_request(
+        req.raw_question or req.normalized_question,
+        default_object="bass_line",
+        instrument=instrument,
+        level=level,
+        practice_focus=focus,
+        meter=meter,
+        tempo_bpm=bpm,
+        section=section_label,
+        duration_minutes=req.constraints.requested_duration_minutes,
+    )
+    gen_level = resolve_generation_level(idea, level)
+    # Prefer idea style/focus for generation when question/context named one.
+    focus_for_gen = idea.practice_focus or focus
+
+    practice_concert_key = _clean(
+        idea.explicit_key
+        or chart.get("practice_key")
+        or req.context.current_practice_key
+        or req.context.song_original_key
+        or "C"
+    )
+    original_key = _clean(chart.get("original_key") or req.context.song_original_key or practice_concert_key)
+
+    # Explicit question key outranks Practice Key: transpose chart chords when needed.
+    if idea.explicit_key and concert_chords and idea.explicit_key != _clean(chart.get("practice_key")):
+        try:
+            from music_theory import transpose_sections_dict
+
+            tmp = transpose_sections_dict({"_": concert_chords}, _clean(chart.get("practice_key")) or practice_concert_key, idea.explicit_key)
+            concert_chords = list(tmp.get("_") or concert_chords)
+            practice_concert_key = idea.explicit_key
+        except ImportError:
+            practice_concert_key = idea.explicit_key
+
+    if section_label and song:
+        target = f"the **{section_label}** of **{song}**"
+    elif song:
+        target = f"**{song}**"
+    else:
+        target = "your active song"
+
+    notation_abc = ""
+    notation_sections: list[str] = []
+    composition = None
+    written_ctx = None
+    fallback_reason = ""
+
+    if concert_chords:
+        written_ctx = build_written_music_context(
+            instrument=instrument,
+            practice_concert_key=practice_concert_key,
+            original_song_key=original_key,
+            concert_chords=concert_chords,
+            session_state=session_ref,
+            register=idea.register,
+            chart_already_in_practice_key=bool(chart.get("sections_in_practice_key")),
+            chart_source=_clean(chart.get("chart_source")),
+        )
+        # Compose in concert/practice domain, then realize written notation.
+        composition = compose_bass_line_from_chords(
+            list(written_ctx.concert_chords),
+            reference_key=written_ctx.practice_concert_key,
+            level=gen_level,
+            instrument=notation_inst,
+            meter=meter,
+            section_label=section_label,
+            practice_focus=focus_for_gen,
+            style=idea.style,
+            difficulty_override=idea.difficulty,
+            register=idea.register,
+        )
+        composition = transpose_composition_to_written(composition, written_ctx)
+        style_label = "walking bass line" if composition.style == "walking_bass" else "bass line"
+        abc_title = f"{style_label.title()} — {section_label or song or 'active song'}"
+        notation_abc = build_bass_line_abc(composition, title=abc_title, bpm=bpm)
+        notation_sections = [notation_abc] if notation_abc else []
+        direct = f"**Try this {style_label} for {target}:**"
+    else:
+        fallback_reason = "no_trustworthy_active_chart"
+        direct = (
+            f"**Try this approach:** a general bass-line pattern for {target}."
+            if song
+            else "**Try this approach:** a simple bass line you can apply once your active song is set."
+        )
+
+    steps: list[str] = []
+    if composition and notation_abc:
+        steps.append("**Bass line** — read the staff notation below.")
+        steps.append("**How to play it**")
+        steps.extend(bass_line_play_summary(composition))
+        steps.append(_instrument_playing_guidance(family, instrument))
+    else:
+        steps.append(_instrument_playing_guidance(family, instrument))
+        steps.append(
+            "**Note:** I can give you a general bass-line pattern, but I do not have the song's chord changes "
+            "available in the current Coach context."
+        )
+        steps.append(
+            "**Pattern:** play each chord root on beat 1, then add one chord tone before moving to the next root."
+        )
+        steps.append(
+            "Open the active song chart or loop **Backing** on one section so you can map roots to the real changes."
+        )
+
+    listen = [
+        "Bass notes land with the chord changes",
+        "Steady pulse — roots on strong beats",
+        "Clean movement between roots",
+        "The line supports the harmony instead of fighting it",
+    ]
+
+    abc_k = ""
+    if notation_abc:
+        for line in notation_abc.splitlines():
+            if line.startswith("K:"):
+                abc_k = line.strip()
+                break
+
+    diag = {
+        "bass_line_content": True,
+        "normalized_phrases": phrase_norms,
+        "chord_context_available": bool(concert_chords),
+        "chord_count": len(concert_chords),
+        "resolved_instrument": instrument,
+        "notation_instrument": notation_inst,
+        "instrument_family": family,
+        "instrument_realization": real_inst,
+        "resolved_level": gen_level,
+        "context_level": level,
+        "practice_focus": focus_for_gen,
+        "idea_style": idea.style,
+        "explicit_difficulty": idea.difficulty or None,
+        "explicit_key": idea.explicit_key or None,
+        "progression_summary_used": bool(req.context.progression_summary),
+        "notation_abc_present": bool(notation_abc),
+        "fallback_reason": fallback_reason or None,
+        "abc_key_field": abc_k or None,
+        "musical_object": idea.object_type,
+        **musical_idea_to_diagnostics(idea),
+        "chart_transport_at_solver": {
+            "extra_present": isinstance(extra, dict),
+            "chart_snapshot_present": bool(chart),
+            "chart_available": bool(chart.get("chart_available")),
+            "chart_source": chart.get("chart_source"),
+            "resolved_pick_key": chart.get("resolved_pick_key"),
+            "active_section_chord_count": len(concert_chords),
+            "sections_source_key": chart.get("sections_source_key"),
+            "transposed_to_practice_key": chart.get("transposed_to_practice_key"),
+            "sections_in_practice_key": chart.get("sections_in_practice_key"),
+        },
+    }
+    if written_ctx is not None:
+        diag.update(written_ctx.to_diagnostics())
+        diag["written_music_context"] = written_ctx.to_diagnostics()
+    if composition is not None:
+        diag.update(composition_to_diagnostics(composition, chart))
+    pk_trace = extra.get("practice_key_trace")
+    if isinstance(pk_trace, dict):
+        diag["practice_key_trace"] = dict(pk_trace)
+    diag["effective_concert_chords"] = list(concert_chords[:8])
+
+    return {
+        "direct_answer": direct,
+        "practice_steps": steps,
+        "what_to_listen_for": listen,
+        "notation_abc": notation_abc,
+        "notation_abc_sections": notation_sections,
+        "suggested_next_action": (
+            f"Loop {target} in **Backing** and play the written line with the track."
+            if composition
+            else (
+                f"Loop one section of **{song}** in **Backing** once the chart is loaded."
+                if song
+                else "Set your active song, then loop one section in **Backing** and apply the pattern."
+            )
+        ),
+        "diagnostics": diag,
+    }
