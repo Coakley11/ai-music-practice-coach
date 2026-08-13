@@ -90,6 +90,42 @@ class TestChordTonesAndCoaching(unittest.TestCase):
         self.assertEqual(tones[0], "G")
         self.assertIn(tones[1], ("C", "F"))
 
+    def test_bb9_natural_ninth_is_not_flat_nine(self) -> None:
+        from music_coach_ami.melodic_motion import chord_vocabulary
+
+        self.assertEqual(classify_chord_quality("Bb9"), "dom")
+        tones = chord_tone_names("Bb9", reference_key="Bb")
+        self.assertEqual(tones[0], "Bb")
+        vocab = chord_vocabulary("Bb9", reference_key="Bb")
+        self.assertEqual(vocab["scale_kind"], "mixolydian")
+        scale_notes = set(vocab["scale"])
+        self.assertIn("C", scale_notes)
+        self.assertNotIn("Cb", scale_notes)
+        ext_notes = set(vocab["extensions"])
+        self.assertIn("C", ext_notes)
+        self.assertNotIn("Cb", ext_notes)
+
+    def test_bb7b9_may_use_flat_nine(self) -> None:
+        from music_coach_ami.melodic_motion import chord_vocabulary, generate_horizontal_line
+
+        self.assertEqual(classify_chord_quality("Bb7b9"), "dom")
+        vocab = chord_vocabulary("Bb7b9", reference_key="Bb")
+        self.assertEqual(vocab["scale_kind"], "altered")
+        self.assertIn("Cb", set(vocab["scale"]))
+
+        bb9_line = generate_horizontal_line(
+            ["Bb9", "Bb9", "Bb9", "Bb9"],
+            reference_key="Bb",
+            level="intermediate",
+            object_type="improvisation",
+            low=64,
+            high=81,
+            prefer=71,
+        )
+        spelled = {str(e.get("spelled") or "") for e in bb9_line if e.get("spelled")}
+        self.assertIn("C", spelled)
+        self.assertNotIn("Cb", spelled)
+
 
 if __name__ == "__main__":
     unittest.main()

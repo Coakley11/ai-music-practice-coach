@@ -6567,6 +6567,14 @@ def render_active_song_status_strip(st: Any) -> None:
         st.markdown(block, unsafe_allow_html=True)
 
 
+def catalog_result_widget_key(pick_key: str) -> str:
+    """Stable Streamlit widget id for a catalog pick — identity is pick_key, not list index."""
+    import re
+
+    safe = re.sub(r"[^a-zA-Z0-9]+", "_", str(pick_key or "").strip()).strip("_")[:80]
+    return f"catalog_pick_result_{safe or 'song'}"
+
+
 def catalog_song_card_html(
     *,
     title: str,
@@ -6611,49 +6619,63 @@ def render_catalog_song_card_grid(
     song_meta_fn: Any,
     pick_key_for_record_fn: Any,
     on_load_pick_key: Any,
-    max_cards: int = 18,
+    max_cards: int = 80,
 ) -> None:
-    """Browse grid with Load buttons — display wiring only; callback owns state."""
+    """Browse grid — song title is the click/Enter/tap target; callback owns state.
+
+    Widget keys are derived from ``pick_key`` so filtering does not remap identity
+    when the visible list index changes.
+    """
     if not records:
         return
     shown = records[: max(1, int(max_cards))]
     st.markdown(
-        '<p class="ui-song-card-grid-title">Browse matching songs</p>',
+        '<p class="ui-song-card-grid-title">Matching songs — click or press Enter to select</p>',
         unsafe_allow_html=True,
     )
     cols_per_row = 3
     for row_start in range(0, len(shown), cols_per_row):
         row_recs = shown[row_start : row_start + cols_per_row]
         cols = st.columns(len(row_recs))
-        for col_idx, (col, rec) in enumerate(zip(cols, row_recs)):
+        for col, rec in zip(cols, row_recs):
             pk = str(pick_key_for_record_fn(rec) or "").strip()
             if not pk:
                 continue
             meta = song_meta_fn(rec) or {}
+            title = str(meta.get("title") or rec.get("title") or "Song")
+            artist = str(meta.get("artist") or rec.get("artist") or "")
+            genre = str(meta.get("genre") or rec.get("genre") or "Song")
+            is_active = pk == active_pick_key
             with col:
                 st.markdown(
                     '<div class="ui-song-card-cell">'
                     + catalog_song_card_html(
-                        title=str(meta.get("title") or rec.get("title") or "Song"),
-                        artist=str(meta.get("artist") or rec.get("artist") or ""),
-                        genre=str(meta.get("genre") or rec.get("genre") or "Song"),
+                        title=title,
+                        artist=artist,
+                        genre=genre,
                         key_display=str(meta.get("key") or rec.get("key") or "C"),
                         bpm=meta.get("bpm") or rec.get("bpm"),
                         level=str(meta.get("difficulty") or rec.get("difficulty") or ""),
                         trusted=bool(meta.get("trusted")),
-                        active=pk == active_pick_key,
+                        active=is_active,
                     )
                     + "</div>",
                     unsafe_allow_html=True,
                 )
-                btn_label = "Active" if pk == active_pick_key else "Load song"
+                btn_label = f"▸ {title}" if is_active else title
                 st.button(
                     btn_label,
-                    key=f"catalog_card_load_{row_start}_{col_idx}",
+                    key=catalog_result_widget_key(pk),
                     use_container_width=True,
-                    disabled=pk == active_pick_key,
+                    type="primary" if is_active else "secondary",
+                    disabled=False,
                     on_click=on_load_pick_key,
                     kwargs={"pick_key": pk},
+                    help=(
+                        f"{title} is the active song."
+                        if is_active
+                        else f"Select {title}" + (f" — {artist}" if artist else "")
+                    ),
                 )
 
 

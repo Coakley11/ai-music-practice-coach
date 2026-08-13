@@ -283,5 +283,120 @@ class TestDisplayKeyCloudMerge(unittest.TestCase):
         self.assertIn(label, CATALOG[genre])
 
 
+PK_NYS = format_pick_key("Jazz", "New York State of Mind — Billy Joel")
+PK_AUTUMN = format_pick_key("Jazz", "Autumn Leaves — Joseph Kosma")
+
+JAZZ_CATALOG = {
+    **CATALOG,
+    "Jazz": {
+        "New York State of Mind — Billy Joel": {
+            "title": "New York State of Mind",
+            "artist": "Billy Joel",
+            "key": "C",
+            "genre": "Jazz",
+        },
+        "Autumn Leaves — Joseph Kosma": {
+            "title": "Autumn Leaves",
+            "artist": "Joseph Kosma",
+            "key": "G",
+            "genre": "Jazz",
+        },
+    },
+}
+
+
+class TestFilteredCatalogSelectionIdentity(unittest.TestCase):
+    def test_catalog_result_widget_key_uses_pick_key_not_index(self) -> None:
+        from app_ui import catalog_result_widget_key
+
+        first = catalog_result_widget_key(PK_NYS)
+        second = catalog_result_widget_key(PK_AUTUMN)
+        self.assertTrue(first.startswith("catalog_pick_result_"))
+        self.assertTrue(second.startswith("catalog_pick_result_"))
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, catalog_result_widget_key(PK_NYS))
+        self.assertNotIn("row_0", first)
+        self.assertNotIn("col_0", first)
+
+    def test_filter_does_not_silently_select_first_visible_result(self) -> None:
+        from songs.state import sync_matching_song_dropdown_before_widget
+
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+                "matching_song_dropdown": PK_SAY,
+            }
+        )
+        options = [PK_NYS, PK_AUTUMN]
+        active = sync_matching_song_dropdown_before_widget(
+            st,
+            options,
+            PK_NYS,
+            song_picker_catalog=JAZZ_CATALOG,
+        )
+        self.assertEqual(active, PK_SAY)
+        self.assertIn(PK_SAY, options)
+        self.assertEqual(st.session_state["matching_song_dropdown"], PK_SAY)
+
+    def test_filtered_result_click_applies_canonical_pick_key(self) -> None:
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+                SELECTED_SONG_STATE_KEY: {
+                    "pick_key": PK_SAY,
+                    "title": "Say",
+                    "artist": "John Mayer",
+                    "key": "G",
+                },
+                _LAST_PICK_KEY: PK_SAY,
+            }
+        )
+        with patch("songs.state.persist_music_local_state"):
+            applied = apply_pick_key(st, PK_NYS, JAZZ_CATALOG)
+        self.assertEqual(applied.get("title"), "New York State of Mind")
+        self.assertEqual(st.session_state[ACTIVE_CATALOG_PICK_KEY], PK_NYS)
+        self.assertEqual(st.session_state[SELECTED_SONG_STATE_KEY]["title"], "New York State of Mind")
+
+    def test_render_catalog_grid_click_target_is_song_title(self) -> None:
+        from app_ui import render_catalog_song_card_grid
+
+        class _Col:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        st = MagicMock()
+        st.columns.side_effect = lambda spec: [_Col() for _ in range(spec if isinstance(spec, int) else len(spec))]
+        clicked: list[str] = []
+
+        def _on_load(*, pick_key: str = "") -> None:
+            clicked.append(pick_key)
+
+        records = [
+            {"title": "New York State of Mind", "artist": "Billy Joel", "genre": "Jazz", "key": "C"},
+            {"title": "Autumn Leaves", "artist": "Joseph Kosma", "genre": "Jazz", "key": "G"},
+        ]
+        render_catalog_song_card_grid(
+            st,
+            records,
+            active_pick_key=PK_SAY,
+            song_meta_fn=lambda rec: rec,
+            pick_key_for_record_fn=lambda rec: format_pick_key(
+                rec["genre"], f"{rec['title']} — {rec['artist']}"
+            ),
+            on_load_pick_key=_on_load,
+        )
+        labels = [str(c.args[0]) for c in st.button.call_args_list if c.args]
+        self.assertIn("New York State of Mind", labels)
+        self.assertIn("Autumn Leaves", labels)
+        keys = [str(c.kwargs.get("key") or "") for c in st.button.call_args_list]
+        self.assertTrue(any("New_York_State_of_Mind" in k or "New York" in k for k in keys))
+        self.assertFalse(any(k.startswith("catalog_card_load_0") for k in keys))
+        nys_call = next(c for c in st.button.call_args_list if c.args and c.args[0] == "New York State of Mind")
+        self.assertEqual(nys_call.kwargs.get("kwargs"), {"pick_key": PK_NYS})
+
+
 if __name__ == "__main__":
     unittest.main()

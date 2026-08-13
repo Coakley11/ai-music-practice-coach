@@ -2464,28 +2464,100 @@ def render_music_coach_page_entry(
     developer_mode: bool = False,
     on_after_send: Callable[[], None] | None = None,
 ) -> None:
-    """Practice-page Music Coach entry — visible under Song Practice.
+    """Practice-page Music Coach — one card with one question field + submit.
 
-    One card + primary button opens the real Music Coach page.
-    Sidebar Ask the Music Coach stays available for in-place questions.
+    Submits through the same canonical AMI pipeline as the sidebar Music Coach.
+    Optional secondary control opens the full Music Coach page. No second expander.
     """
     ss = session_state if session_state is not None else st.session_state
+    page_suffix = _safe_widget_suffix(source_page)
+    send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
+    question_key = f"ami_question_music_{page_suffix}_{send_gen}_page"
+    submit_key = f"ami_submit_music_{page_suffix}_page"
+
     st.markdown(
         '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
         "<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">💬 Ask the Music Coach</p>"
         "<p style=\"margin:0;color:#475569;font-size:0.9rem;\">"
-        "Ask about this song, practice, theory, or how to use the app — "
-        "without leaving your session context."
+        "Ask about this song, this practice session, theory, or how to use the app. "
+        "Your current song and Practice context stay attached to the question."
         "</p>"
         "</div>",
         unsafe_allow_html=True,
     )
-    if st.button(
-        "Ask the Music Coach",
-        key="practice_open_music_coach",
-        type="primary",
-        use_container_width=True,
+
+    fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
+    last = ss.get("_ami_last_send")
+    if (
+        isinstance(last, dict)
+        and last.get("source_app") == "music"
+        and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
     ):
+        result_path = str(last.get("result_path") or (fb or {}).get("result_path") or "")
+        if result_path == "routed_coach":
+            st.success("Music Coach insight is ready on this page.")
+        else:
+            st.success(
+                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+            )
+    elif isinstance(fb, dict) and str(fb.get("message") or "").strip():
+        kind = str(fb.get("kind") or "info").lower()
+        msg = str(fb.get("message") or "").strip()
+        if kind == "success":
+            st.success(msg)
+        elif kind == "warning":
+            st.warning(msg)
+        else:
+            st.info(msg)
+
+    question = st.text_area(
+        "Question",
+        value=str(ss.get(question_key) or "").strip(),
+        placeholder=music_coach_question_placeholder(source_page),
+        height=88,
+        key=question_key,
+        label_visibility="visible",
+    )
+
+    ask_col, open_col = st.columns([3, 2])
+    with ask_col:
+        ask_clicked = st.button(
+            "Ask the Music Coach",
+            key=submit_key,
+            type="primary",
+            use_container_width=True,
+        )
+    with open_col:
+        open_clicked = st.button(
+            "Open full Music Coach",
+            key="practice_open_music_coach",
+            type="secondary",
+            use_container_width=True,
+        )
+
+    if ask_clicked:
+        q = str(question or "").strip()
+        if not q:
+            st.warning("Enter a question first.")
+        else:
+            _execute_coach_question_submit(
+                st,
+                st,
+                ss,
+                question_raw=q,
+                source_app="music",
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag="practice_page",
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
+            return
+
+    if open_clicked:
         try:
             from app_ui import navigate_studio_page
         except ImportError:

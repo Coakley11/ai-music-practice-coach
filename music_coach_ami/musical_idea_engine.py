@@ -72,17 +72,20 @@ def _beats_per_bar(meter: str) -> float:
 
 
 def _dur_beats(duration: str, meter: str = "4/4") -> float:
-    if duration == "whole":
+    dur = str(duration or "").lower()
+    if dur.startswith("rest_"):
+        dur = dur[5:]
+    if dur in {"whole", "rest_whole"}:
         return _beats_per_bar(meter)
-    if duration == "half":
+    if dur == "half":
         return 2.0
-    if duration == "quarter":
+    if dur == "quarter":
         return 1.0
-    if duration == "eighth":
+    if dur == "eighth":
         return 0.5
-    if duration == "triplet_eighth":
+    if dur == "triplet_eighth":
         return 1.0 / 3.0
-    if duration == "sixteenth":
+    if dur == "sixteenth":
         return 0.25
     return 1.0
 
@@ -169,6 +172,22 @@ def generation_window(
             prefer = low + 5
         else:
             prefer = low + 8
+        return low, high, prefer
+
+    if ("piano" in inst or "keyboard" in inst) and obj not in {"bass_line", "accompaniment"} and reg not in {"high", "low"}:
+        # Practical RH: mostly on/near the treble staff. Peaks may rise; the line returns.
+        if "begin" in lvl or "easy" in lvl:
+            low = max(low, 67)  # G4
+            high = min(high, 79)  # G5
+            prefer = 71  # B4
+        elif "advanced" in lvl or "hard" in lvl:
+            low = max(low, 64)  # E4
+            high = min(high, 84)  # C6 phrase peaks
+            prefer = 72  # C5
+        else:
+            low = max(low, 64)  # E4
+            high = min(high, 81)  # A5
+            prefer = 71  # B4
         return low, high, prefer
 
     if reg == "high":
@@ -1050,24 +1069,38 @@ def composition_to_abc(
     key_field = _abc_key_field(tonic, tonality)
 
     def _event_token(ev: MusicalEvent, *, with_chord: bool) -> str:
-        tok = _note_to_abc(ev.spelled, ev.octave, key_field=key_field)
         dur_l = str(ev.duration).lower()
-        if dur_l in ("half", "minim"):
-            suffix = "2"
-        elif dur_l in ("eighth", "quaver", "triplet_eighth"):
-            suffix = "/2"
-        elif dur_l in ("whole", "semibreve"):
-            suffix = "4"
-        elif dur_l in ("sixteenth",):
-            suffix = "/4"
+        rest = dur_l.startswith("rest") or not str(ev.spelled or "").strip()
+        if rest:
+            if "half" in dur_l:
+                tok = "z2"
+            elif "eighth" in dur_l or "quaver" in dur_l:
+                tok = "z/2"
+            elif "whole" in dur_l or "semibreve" in dur_l:
+                tok = "z4"
+            elif "sixteenth" in dur_l:
+                tok = "z/4"
+            else:
+                tok = "z"
         else:
-            suffix = ""
-        if ev.articulation == "staccato":
-            tok = tok + "."
+            tok = _note_to_abc(ev.spelled, ev.octave, key_field=key_field)
+            if dur_l in ("half", "minim"):
+                suffix = "2"
+            elif dur_l in ("eighth", "quaver", "triplet_eighth"):
+                suffix = "/2"
+            elif dur_l in ("whole", "semibreve"):
+                suffix = "4"
+            elif dur_l in ("sixteenth",):
+                suffix = "/4"
+            else:
+                suffix = ""
+            if ev.articulation == "staccato":
+                tok = tok + "."
+            tok = f"{tok}{suffix}"
         if with_chord and ev.chord:
             chord_label = str(ev.chord).replace('"', "'")
-            return f'"{chord_label}"{tok}{suffix}'
-        return f"{tok}{suffix}"
+            return f'"{chord_label}"{tok}'
+        return tok
 
     def _voice_measure_lines(role: str | None) -> list[str]:
         by_bar: dict[int, list[MusicalEvent]] = {}
@@ -1084,7 +1117,9 @@ def composition_to_abc(
             evs = sorted(by_bar.get(bar_i) or [], key=lambda e: e.beat)
             parts: list[str] = []
             for idx, ev in enumerate(evs):
-                parts.append(_event_token(ev, with_chord=idx == 0 and role != "lh"))
+                prev_chord = str(evs[idx - 1].chord or "") if idx else ""
+                show_chord = role != "lh" and bool(ev.chord) and (idx == 0 or str(ev.chord) != prev_chord)
+                parts.append(_event_token(ev, with_chord=show_chord))
             if not parts:
                 parts = ["z4"]
             lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
@@ -1197,6 +1232,8 @@ def validate_musical_idea_composition(
                     break
     profile = composition.notation_profile
     for ev in composition.events:
+        if str(ev.duration or "").lower().startswith("rest") or not str(ev.spelled or "").strip():
+            continue
         midi = _midi(ev.spelled, ev.octave)
         if midi < profile.midi_low - 2 or midi > profile.midi_high + 2:
             errors.append(f"out_of_instrument_range:{ev.spelled}{ev.octave}")
@@ -1241,15 +1278,16 @@ def play_summary(composition: MusicalIdeaComposition) -> list[str]:
         chord_sym = next((e.chord for e in evs if e.chord), "")
         chord = f" ({chord_sym})" if chord_sym else ""
         if two_hand:
-            rh = [e.spelled for e in evs if e.role == "rh"][:8]
-            lh = [e.spelled for e in evs if e.role == "lh"][:8]
+            rh = [e.spelled for e in evs if e.role == "rh" and e.spelled][:8]
+            lh = [e.spelled for e in evs if e.role == "lh" and e.spelled][:8]
             lines.append(f"Bar {bar_i + 1}{chord}")
             if rh:
                 lines.append(f"RH: {' '.join(rh)}")
             if lh:
                 lines.append(f"LH: {' '.join(lh)}")
         else:
-            names = " ".join(e.spelled for e in evs[:8])
+            sounding = [e.spelled for e in evs if e.spelled][:8]
+            names = " ".join(sounding)
             lines.append(f"Bar {bar_i + 1}{chord}: {names}")
     return lines
 
@@ -1259,6 +1297,8 @@ def cell_anchor_midis(composition: MusicalIdeaComposition) -> list[int]:
     anchors: list[int] = []
     seen: set[int] = set()
     for ev in composition.events:
+        if str(ev.duration or "").lower().startswith("rest") or not str(ev.spelled or "").strip():
+            continue
         cell = ev.cell_index if ev.cell_index is not None else ev.bar_index
         if cell in seen:
             continue
@@ -1272,6 +1312,8 @@ def composition_diagnostics(composition: MusicalIdeaComposition) -> dict[str, An
 
     midis: list[int] = []
     for ev in composition.events:
+        if str(ev.duration or "").lower().startswith("rest") or not str(ev.spelled or "").strip():
+            continue
         midis.append(_midi(ev.spelled, ev.octave))
     rh = [e for e in composition.events if e.role == "rh"]
     line_events = rh or list(composition.events)

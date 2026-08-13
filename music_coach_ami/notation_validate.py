@@ -34,6 +34,31 @@ def _token_beats(token: str, *, default_len: str = "1/4") -> float:
     if not raw or raw in {"|", "||", "|]", "[|"}:
         return 0.0
     raw = re.sub(r'"[^"]*"', "", raw)
+    rest_m = re.match(r"^z(\d*/?\d*)$", raw)
+    if rest_m:
+        suffix = rest_m.group(1) or ""
+        if suffix == "":
+            return 1.0
+        if suffix == "2":
+            return 2.0
+        if suffix == "3":
+            return 3.0
+        if suffix == "4":
+            return 4.0
+        if suffix in {"/2", "/"}:
+            return 0.5
+        if suffix == "/4":
+            return 0.25
+        if "/" in suffix:
+            try:
+                a, b = suffix.split("/", 1)
+                return float(a or 1) / float(b or 1)
+            except (TypeError, ValueError):
+                return 1.0
+        try:
+            return float(suffix)
+        except (TypeError, ValueError):
+            return 1.0
     m = re.search(r"([A-Ga-g][,']*)(\d*/?\d*)$", raw)
     if not m:
         return 0.0
@@ -134,7 +159,7 @@ def validate_notation_structure(
         # already stripped quotes above via split — chord symbols stick to pitches
         # Re-tokenize: split on spaces after removing embedded chord labels for beat math
         beat_tokens = re.findall(
-            r'"[^"]*"|(?:[=_^]+)?[A-Ga-g][,\'=_\^]*\d*/?\d*',
+            r'"[^"]*"|z\d*/?\d*|(?:[=_^]+)?[A-Ga-g][,\'=_\^]*\d*/?\d*',
             measure,
         )
         total = 0.0

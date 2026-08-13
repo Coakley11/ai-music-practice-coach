@@ -614,6 +614,68 @@ class WrittenDomainSongRelativeTests(unittest.TestCase):
         self.assertEqual(abc_chords, expected_written)
         self.assertIn("K:A", diag.get("abc_key_field") or "")
 
+    def test_split_bar_targets_both_harmonies(self) -> None:
+        from dataclasses import replace
+
+        from music_coach_ami.melodic_motion import generate_horizontal_line
+        from music_coach_ami.musical_idea_engine import composition_to_abc, generate_idea_over_chords
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        line = generate_horizontal_line(
+            ["Gm7|C7"],
+            reference_key="Bb",
+            level="intermediate",
+            object_type="improvisation",
+            meter="4/4",
+            low=64,
+            high=81,
+            prefer=71,
+        )
+        sounding = [e for e in line if e.get("spelled")]
+        chords_used = {str(e.get("chord") or "") for e in sounding}
+        self.assertIn("Gm7", chords_used)
+        self.assertIn("C7", chords_used)
+        self.assertNotIn("Gm7|C7", chords_used)
+        self.assertTrue(any(e["beat"] < 2 and e["chord"] == "Gm7" for e in sounding))
+        self.assertTrue(any(e["beat"] >= 2 and e["chord"] == "C7" for e in sounding))
+
+        weighted = generate_horizontal_line(
+            ["Gm7:3|C7:1"],
+            reference_key="Bb",
+            level="intermediate",
+            object_type="improvisation",
+            meter="4/4",
+            low=64,
+            high=81,
+            prefer=71,
+        )
+        for ev in weighted:
+            if not ev.get("spelled"):
+                continue
+            if ev["beat"] < 3:
+                self.assertEqual(ev["chord"], "Gm7")
+            else:
+                self.assertEqual(ev["chord"], "C7")
+
+        idea = resolve_musical_idea_request(
+            "Give me a 2-bar improvisation over the verse.",
+            default_object="improvisation",
+            instrument="Piano",
+            level="Intermediate",
+        )
+        idea = replace(idea, bars=2, song_relative=True)
+        comp = generate_idea_over_chords(
+            idea,
+            ["Gm7|C7", "Fmaj7"],
+            notation_instrument="Piano",
+            reference_key="Bb",
+            object_type="improvisation",
+        )
+        abc, _diag = composition_to_abc(comp, title="Split Bar", bpm=96)
+        self.assertIn('"Gm7"', abc)
+        self.assertIn('"C7"', abc)
+        self.assertNotIn('"Gm7|C7"', abc)
+
     def test_harmony_timeline_and_bar_fill_counts(self) -> None:
         from music_coach_ami.musical_idea_engine import expand_harmony_timeline, generate_idea_over_chords
         from music_coach_ami.musical_idea_request import resolve_musical_idea_request

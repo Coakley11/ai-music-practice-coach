@@ -17,6 +17,25 @@ def _midi(note: str, octave: int) -> int:
     return int(midi_from_spelled_note(note, octave=octave))
 
 
+def _dominant_tension_kind(chord: str) -> str:
+    """Altered-dominant marker from the chord *suffix*, never the root spelling.
+
+    ``Bb9`` must not look like ``b9`` just because the root is Bb.
+    """
+    from music_theory import normalize_chord_for_theory, split_chord
+
+    head = normalize_chord_for_theory(chord) or str(chord or "").strip()
+    _, suffix = split_chord(head)
+    low = str(suffix or "").lower()
+    if "alt" in low:
+        return "alt"
+    if "b9" in low:
+        return "b9"
+    if "#9" in low:
+        return "#9"
+    return ""
+
+
 def chord_vocabulary(chord: str, *, reference_key: str = "") -> dict[str, Any]:
     """Chord tones + fitting scale fragments for one harmony."""
     from improvisation_intelligence import spell_scale_notes
@@ -24,11 +43,12 @@ def chord_vocabulary(chord: str, *, reference_key: str = "") -> dict[str, Any]:
     from music_theory import classify_chord_quality, chord_root_for_theory, normalize_chord_for_theory
 
     head = str(chord or "").strip()
-    tones = [t for t in (chord_tone_names(head, reference_key=reference_key) or []) if t]
-    root = tones[0] if tones else (chord_root_for_theory(normalize_chord_for_theory(head)) or "C")
+    theory_head = normalize_chord_for_theory(head) or head
+    tones = [t for t in (chord_tone_names(theory_head, reference_key=reference_key) or []) if t]
+    root = tones[0] if tones else (chord_root_for_theory(theory_head) or "C")
     if not tones:
         tones = [root]
-    quality = classify_chord_quality(head)
+    quality = classify_chord_quality(theory_head)
     kind_map = {
         "major": "major",
         "maj7": "major",
@@ -41,8 +61,8 @@ def chord_vocabulary(chord: str, *, reference_key: str = "") -> dict[str, Any]:
         "sus": "mixolydian",
     }
     scale_kind = kind_map.get(quality, "major")
-    low_chord = head.lower()
-    if quality == "dom" and ("b9" in low_chord or "alt" in low_chord or "#9" in low_chord):
+    tension = _dominant_tension_kind(theory_head) if quality == "dom" else ""
+    if tension:
         scale_kind = "altered"
     scale = [n for n in spell_scale_notes(root, scale_kind, reference_key or root) if n]
     tone_by_pc = {_pc(t): t for t in tones}
@@ -110,11 +130,11 @@ def rhythm_plan(level: str, object_type: str, phase: int) -> list[tuple[float, s
                 (0.5, "eighth"),
                 (1.0, "eighth"),
                 (1.5, "eighth"),
-                (2.0, "quarter"),
-                (3.0, "quarter"),
+                (2.0, "half"),
             ]
         if phase == 1:
             return [
+                (0.0, "rest_eighth"),
                 (0.5, "eighth"),
                 (1.0, "eighth"),
                 (1.5, "eighth"),
@@ -124,7 +144,15 @@ def rhythm_plan(level: str, object_type: str, phase: int) -> list[tuple[float, s
                 (3.5, "eighth"),
             ]
         if phase == 2:
-            return [(i * 0.5, "eighth") for i in range(8)]
+            return [
+                (0.0, "eighth"),
+                (0.5, "eighth"),
+                (1.0, "eighth"),
+                (1.5, "eighth"),
+                (2.0, "quarter"),
+                (3.0, "eighth"),
+                (3.5, "eighth"),
+            ]
         return [
             (0.0, "eighth"),
             (0.5, "eighth"),
@@ -212,6 +240,10 @@ def _chromatic_approach(target: str, *, below: bool = True) -> str:
     return spell_note_in_key(want, target)
 
 
+def _is_rest_duration(duration: str) -> bool:
+    return str(duration or "").lower().startswith("rest")
+
+
 def _pick_near(
     options: Sequence[str],
     *,
@@ -221,6 +253,8 @@ def _pick_near(
     prefer: int,
     max_leap: int,
     avoid_pc: int | None = None,
+    comfort_high: int | None = None,
+    pull_down: bool = False,
 ) -> tuple[str, int, int]:
     from music_coach_ami.musical_idea_engine import _place_spelled_note
 
@@ -231,26 +265,56 @@ def _pick_near(
             choices = filtered
     if not choices:
         choices = ["C"]
-    best: tuple[tuple[int, int, int], str, int, int] | None = None
+    cap = int(comfort_high) if comfort_high is not None else high
+    best: tuple[tuple[int, int, int, int], str, int, int] | None = None
     for sp in choices:
         spelled, octv, midi = _place_spelled_note(
             sp,
-            prefer_midi=prefer if prev_midi is None else prev_midi,
+            prefer_midi=prefer if prev_midi is None else (prefer if pull_down else prev_midi),
             low=low,
             high=high,
-            direction="nearest" if prev_midi is not None else "",
+            direction="descending" if pull_down and prev_midi is not None else (
+                "nearest" if prev_midi is not None else ""
+            ),
             previous_midi=prev_midi,
         )
         leap = 0 if prev_midi is None else abs(midi - prev_midi)
         score = (
             0 if leap <= max_leap else 1,
+            0 if midi <= cap else 1,
             leap,
-            0 if low <= midi <= high else 1,
+            abs(midi - prefer),
         )
         if best is None or score < best[0]:
             best = (score, spelled, octv, midi)
     assert best is not None
     return best[1], best[2], best[3]
+
+
+def _beats_per_bar(meter: str) -> float:
+    text = str(meter or "4/4").strip() or "4/4"
+    if text == "3/4":
+        return 3.0
+    if text == "6/8":
+        return 3.0
+    if "/" in text:
+        try:
+            num, den = text.split("/", 1)
+            return (float(num) * 4.0) / float(den)
+        except (TypeError, ValueError):
+            return 4.0
+    return 4.0
+
+
+def _active_chord_at_beat(bar_token: str, beat: float, *, beats_per_bar: float = 4.0) -> str:
+    """Resolve sub-bar harmony from chart tokens such as ``Gm7|C7`` or ``Gm7:2|C7:2``."""
+    try:
+        from chord_subdivisions import chord_at_beat
+    except ImportError:
+        head = str(bar_token or "").split("|", 1)[0].strip()
+        return head or str(bar_token or "").strip()
+    active = chord_at_beat(bar_token, beat, beats_per_bar=beats_per_bar)
+    return str(active or bar_token or "").strip()
 
 
 def generate_horizontal_line(
@@ -265,25 +329,26 @@ def generate_horizontal_line(
     prefer: int = 72,
     style: str = "",
 ) -> list[dict[str, Any]]:
-    """Build a continuous line over bar-level harmony (stepwise default, chord targets on strong beats)."""
-    _ = meter, style
+    """Build a continuous line over timed harmony (stepwise default, chord targets on strong beats)."""
+    _ = style
     lvl = str(level or "intermediate").lower()
     obj = str(object_type or "improvisation").lower()
     obj_motion = "melody" if obj in {"melody", "phrase"} else "improvisation"
+    bpb = _beats_per_bar(meter)
+    comfort_high = min(high, max(prefer + 9, prefer + 6))
+    center = int(prefer)
 
     events: list[dict[str, Any]] = []
     prev_midi: int | None = None
     prev_spelled = ""
     direction = 1
     run_len = 0
+    extreme_run = 0
     last_large_leap_bar = -9
     max_leap_default = 7 if lvl == "beginner" else 5
+    vocab_cache: dict[str, dict[str, Any]] = {}
 
-    for bar_i, chord in enumerate(timeline):
-        vocab = chord_vocabulary(str(chord), reference_key=reference_key)
-        tones = list(vocab["chord_tones"] or [vocab["root"]])
-        scale = list(vocab["scale"] or tones)
-        ext = list(vocab["extensions"] or [])
+    for bar_i, bar_token in enumerate(timeline):
         phase = bar_i % 4
         slots = rhythm_plan(lvl, obj_motion, phase)
         if phase == 0:
@@ -291,21 +356,51 @@ def generate_horizontal_line(
         elif phase == 2:
             direction = -1
 
-        third = tones[min(1, len(tones) - 1)]
-        seventh = tones[min(3, len(tones) - 1)] if len(tones) > 3 else third
-        guides = [third, seventh]
-        if prev_spelled:
-            guides = sorted(guides, key=lambda n: min((_pc(n) - _pc(prev_spelled)) % 12, (_pc(prev_spelled) - _pc(n)) % 12))
-
         allow_large = bar_i - last_large_leap_bar >= 2
         max_leap = 9 if allow_large and lvl == "advanced" and phase == 2 else max_leap_default
 
         for beat, dur in slots:
+            if _is_rest_duration(dur):
+                events.append(
+                    {
+                        "spelled": "",
+                        "octave": 0,
+                        "duration": dur,
+                        "bar_index": bar_i,
+                        "beat": float(beat),
+                        "midi": 0,
+                        "pitch_class": None,
+                        "chord": _active_chord_at_beat(str(bar_token), beat, beats_per_bar=bpb),
+                        "tone_role": "rest",
+                    }
+                )
+                continue
+
+            chord = _active_chord_at_beat(str(bar_token), beat, beats_per_bar=bpb)
+            vocab = vocab_cache.get(chord)
+            if vocab is None:
+                vocab = chord_vocabulary(chord, reference_key=reference_key)
+                vocab_cache[chord] = vocab
+            tones = list(vocab["chord_tones"] or [vocab["root"]])
+            scale = list(vocab["scale"] or tones)
+            ext = list(vocab["extensions"] or [])
+            third = tones[min(1, len(tones) - 1)]
+            seventh = tones[min(3, len(tones) - 1)] if len(tones) > 3 else third
+            guides = [third, seventh]
+            if prev_spelled:
+                guides = sorted(
+                    guides,
+                    key=lambda n: min((_pc(n) - _pc(prev_spelled)) % 12, (_pc(prev_spelled) - _pc(n)) % 12),
+                )
+
             is_strong = abs(beat - 0.0) < 1e-9 or abs(beat - 2.0) < 1e-9
             role = "chord_tone"
+            pull_down = extreme_run >= 2 or (prev_midi is not None and prev_midi >= comfort_high)
+            if pull_down:
+                direction = -1
             if is_strong:
                 options = list(guides) + [tones[0]]
-                if lvl == "advanced" and ext and phase in {1, 2}:
+                if lvl == "advanced" and ext and phase in {1, 2} and not pull_down:
                     options = list(ext[:1]) + options
                     role = "extension"
             elif lvl == "beginner":
@@ -316,14 +411,13 @@ def generate_horizontal_line(
                     nxt2 = _scale_step(scale, nxt, direction)
                     options = [nxt, nxt2]
                     role = "passing"
-                    if lvl == "advanced" and abs(beat - 1.5) < 1e-9:
+                    if lvl == "advanced" and abs(beat - 1.5) < 1e-9 and not pull_down:
                         options = [_chromatic_approach(guides[0], below=True), nxt]
                         role = "approach"
-                    elif lvl == "advanced" and abs(beat - 3.5) < 1e-9:
+                    elif lvl == "advanced" and abs(beat - 3.5) < 1e-9 and not pull_down:
                         options = [_chromatic_approach(tones[0], below=direction < 0), nxt]
                         role = "approach"
                     elif dur == "eighth" and run_len == 0 and third:
-                        # neighbor into the run
                         options = [_scale_step(scale, prev_spelled, -direction), nxt]
                         role = "neighbor"
                 else:
@@ -335,9 +429,11 @@ def generate_horizontal_line(
                 prev_midi=prev_midi,
                 low=low,
                 high=high,
-                prefer=prefer,
+                prefer=center if pull_down else prefer,
                 max_leap=max_leap,
                 avoid_pc=avoid,
+                comfort_high=comfort_high,
+                pull_down=pull_down,
             )
             leap = 0 if prev_midi is None else abs(midi - prev_midi)
             if leap >= 8:
@@ -348,10 +444,15 @@ def generate_horizontal_line(
                 run_len += 1
             else:
                 run_len = 0
+            if midi >= comfort_high:
+                extreme_run += 1
+            else:
+                extreme_run = 0
             turn_after = 6 if lvl == "advanced" else 4 if lvl != "beginner" else 8
-            if run_len >= turn_after:
-                direction *= -1
+            if run_len >= turn_after or extreme_run >= 3:
+                direction = -1
                 run_len = 0
+                extreme_run = 0
 
             events.append(
                 {
@@ -362,13 +463,16 @@ def generate_horizontal_line(
                     "beat": float(beat),
                     "midi": midi,
                     "pitch_class": _pc(spelled),
-                    "chord": str(chord),
+                    "chord": chord,
                     "tone_role": role,
                 }
             )
             prev_midi = midi
             prev_spelled = spelled
             prefer = midi + (2 if direction > 0 else -2)
+            if prefer > comfort_high:
+                prefer = center
+                direction = -1
 
     return events
 
@@ -389,11 +493,17 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
     if not evs:
         evs = list(events)
     evs = sorted(evs, key=lambda e: (_bar(e), _beat(e)))
-    n = len(evs)
+
+    def _dur_of(e: Any) -> str:
+        return str(e.get("duration") if isinstance(e, dict) else getattr(e, "duration", "") or "")
+
+    sounding = [e for e in evs if not _is_rest_duration(_dur_of(e))]
+    n = len(sounding)
     if n == 0:
         return {
             "note_count": 0,
             "eighth_note_count": 0,
+            "rest_count": sum(1 for e in evs if _is_rest_duration(_dur_of(e))),
             "rhythmic_density": 0.0,
             "stepwise_motion_pct": 0.0,
             "leap_count": 0,
@@ -401,13 +511,18 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
             "repeated_note_pct": 0.0,
             "chord_tone_pct": 0.0,
             "passing_approach_pct": 0.0,
+            "duration_variety": 0,
+            "median_midi": 0,
+            "max_midi": 0,
+            "consecutive_extreme_high_max": 0,
+            "pct_above_comfort": 0.0,
         }
 
     midis: list[int] = []
     durs: list[str] = []
     spelled: list[str] = []
     tone_roles: list[str] = []
-    for e in evs:
+    for e in sounding:
         if isinstance(e, dict):
             midi = int(e.get("midi") or 0)
             if not midi:
@@ -423,6 +538,8 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
             tone_roles.append(str(getattr(e, "tone_role", "") or ""))
 
     eighths = sum(1 for d in durs if d in {"eighth", "triplet_eighth", "sixteenth"})
+    rests = sum(1 for e in evs if _is_rest_duration(_dur_of(e)))
+    duration_kinds = {d.split("_", 1)[-1] if d.startswith("rest_") else d for d in [_dur_of(e) for e in evs] if d}
     steps = leaps = large = repeats = 0
     for i in range(1, n):
         iv = abs(midis[i] - midis[i - 1])
@@ -439,9 +556,21 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
     chord_roles = {"chord_tone", "extension", ""}
     ct = sum(1 for r in tone_roles if r in chord_roles)
     passing = sum(1 for r in tone_roles if r in passing_roles)
+    comfort_high = 81  # A5 — one ledger above the treble staff
+    extreme_high = 88  # E6 — three ledger lines; peaks OK, not a plateau
+    extreme_run = extreme_max = 0
+    for midi in midis:
+        if midi >= extreme_high:
+            extreme_run += 1
+            extreme_max = max(extreme_max, extreme_run)
+        else:
+            extreme_run = 0
+    above_comfort = sum(1 for m in midis if m > comfort_high)
+    ordered = sorted(midis)
     return {
         "note_count": n,
         "eighth_note_count": eighths,
+        "rest_count": rests,
         "rhythmic_density": round(eighths / n, 3),
         "stepwise_motion_pct": round(steps / intervals, 3),
         "leap_count": leaps,
@@ -449,4 +578,9 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
         "repeated_note_pct": round(repeats / intervals, 3),
         "chord_tone_pct": round(ct / n, 3),
         "passing_approach_pct": round(passing / n, 3),
+        "duration_variety": len(duration_kinds),
+        "median_midi": ordered[n // 2],
+        "max_midi": max(midis),
+        "consecutive_extreme_high_max": extreme_max,
+        "pct_above_comfort": round(above_comfort / n, 3),
     }

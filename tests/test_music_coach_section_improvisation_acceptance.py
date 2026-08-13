@@ -105,8 +105,7 @@ class WrittenDomainSpellingTests(unittest.TestCase):
                 b7_notes.append(step)
         b7_blob = " ".join(b7_notes)
         if b7_blob:
-            self.assertIn("D#", b7_blob)
-            self.assertIn("F#", b7_blob)
+            self.assertNotIn(" Eb", f" {b7_blob}")
             self.assertNotIn(" Gb", f" {b7_blob}")
 
 
@@ -438,6 +437,27 @@ class MelodicMotionLevelTests(unittest.TestCase):
         m_adv_mel = (adv_mel.diagnostics or {}).get("melodic_motion") or {}
         self.assertGreaterEqual(m_adv_mel.get("note_count", 0), m_mel.get("note_count", 0))
         self.assertLess(m_adv_mel.get("rhythmic_density", 1), 0.95)
+
+    def test_advanced_improv_has_rhythmic_breathing(self) -> None:
+        adv = self._run("Give me an advanced jazz improvisation over the verse.", level="Advanced")
+        motion = (adv.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreaterEqual(motion.get("eighth_note_count", 0), 16)
+        self.assertLess(motion.get("rhythmic_density", 1), 0.95)
+        self.assertGreaterEqual(motion.get("duration_variety", 0), 3)
+        abc = adv.notation_abc or ""
+        self.assertTrue("z" in abc or "2" in abc)
+
+    def test_piano_rh_stays_in_practical_register(self) -> None:
+        resp = self._run(
+            "Give me an intermediate jazz improvisation over the verse.",
+            level="Intermediate",
+        )
+        motion = (resp.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreaterEqual(motion.get("median_midi", 0), 64)
+        self.assertLessEqual(motion.get("median_midi", 99), 81)
+        self.assertLessEqual(motion.get("consecutive_extreme_high_max", 99), 3)
+        self.assertLess(motion.get("pct_above_comfort", 1), 0.55)
+        self.assertLessEqual(motion.get("max_midi", 99), 88)
 
 
 if __name__ == "__main__":

@@ -8093,14 +8093,17 @@ def _apply_picker_catalog_filters(
 
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
     default_pk = master_pk if master_pk in pick_options else pick_options[0]
-    if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
-        if is_custom_progression(st.session_state):
-            active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
-            return filtered, pick_options, active_pk
-        active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or default_pk)
+    if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+        active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
         return filtered, pick_options, active_pk
-    active_pk = sync_matching_song_dropdown_before_widget(st, pick_options, default_pk, song_picker_catalog=SONG_PICKER_CATALOG)
-    return filtered, pick_options, active_pk
+    dropdown_options = list(pick_options)
+    active_pk = sync_matching_song_dropdown_before_widget(
+        st,
+        dropdown_options,
+        default_pk,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+    )
+    return filtered, dropdown_options, active_pk
 
 
 def _render_picker_music_source_toggle(*, polished: bool) -> bool:
@@ -8392,9 +8395,9 @@ def _render_catalog_song_picker_block(
         render_scroll_anchor_marker(st, ANCHOR_CHOOSE_ACTIVE_SONG)
     _library_shell = st.container(key="song_library_panel") if _library_polished else None
 
-    def _on_song_dropdown_change():
+    def _apply_catalog_pick(raw_pick: str) -> None:
+        """Canonical active-song update from dropdown, click, Enter, or tap."""
         set_catalog_source(st.session_state)
-        raw_pick = st.session_state.get("matching_song_dropdown", "")
         resolved_pick = resolve_pick_key(
             raw_pick,
             song_picker_catalog=SONG_PICKER_CATALOG,
@@ -8402,8 +8405,7 @@ def _render_catalog_song_picker_block(
         )
         if not resolved_pick:
             return
-        if resolved_pick != raw_pick:
-            st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
         apply_pick_key(
             st,
             resolved_pick,
@@ -8419,6 +8421,12 @@ def _render_catalog_song_picker_block(
             st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")
         except Exception:
             pass
+
+    def _on_song_dropdown_change():
+        _apply_catalog_pick(st.session_state.get("matching_song_dropdown", ""))
+
+    def _on_filtered_song_click(pick_key: str = "") -> None:
+        _apply_catalog_pick(pick_key)
 
     if _library_polished and show_source_toggle:
         if _render_picker_music_source_toggle(polished=True):
@@ -8518,9 +8526,24 @@ def _render_catalog_song_picker_block(
                 st.markdown(
                     f'<p class="ui-song-library-foot">'
                     f"<strong>{len(filtered)}</strong> songs match your filters "
-                    f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
+                    f"· click a title or press Enter to make it the active song</p>",
                     unsafe_allow_html=True,
                 )
+                try:
+                    from app_ui import render_catalog_song_card_grid as _render_catalog_song_card_grid
+                except ImportError:
+                    _render_catalog_song_card_grid = None
+                if _render_catalog_song_card_grid is not None:
+                    _render_catalog_song_card_grid(
+                        st,
+                        filtered,
+                        active_pick_key=active_pick_key,
+                        song_meta_fn=song_card_meta,
+                        pick_key_for_record_fn=lambda rec: format_pick_key(
+                            rec["genre"], f"{rec['title']} — {rec['artist']}"
+                        ),
+                        on_load_pick_key=_on_filtered_song_click,
+                    )
     else:
         if _library_shell is not None:
             with _library_shell:
