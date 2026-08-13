@@ -3772,7 +3772,7 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
 .st-key-creative_studio_panel [data-testid="stRadio"] label,
 .ui-creative-mode-segment [data-testid="stRadio"] label {
   flex: 1 1 auto !important;
-  min-width: 6.5rem;
+  min-width: 7.4rem;
   margin: 0 !important;
   padding: 0.38rem 0.55rem !important;
   border-radius: 9px !important;

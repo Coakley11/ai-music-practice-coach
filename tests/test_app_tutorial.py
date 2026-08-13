@@ -7,11 +7,13 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from app_tutorial import (
+    EXPLORE_MORE_CTA,
     EXPLORE_MORE_IDS,
     QUICK_TOUR_IDS,
     TOTAL_STEPS,
     TUTORIAL_STEPS,
     _VALID_NAV_PAGE_IDS,
+    apply_tutorial_voice_instrument,
     close_tutorial,
     complete_tutorial,
     init_tutorial_state,
@@ -24,7 +26,12 @@ from app_tutorial import (
 )
 from practice_setup_controls import DEFAULT_INSTRUMENT_OPTIONS, FOCUS_OPTIONS_BY_INSTRUMENT
 from practice_tools_ui import PRACTICE_TOOLS
-from studio_page_state import IMPROV_ENTRY_MODES, IMPROV_TAB_NAMES
+from studio_page_state import (
+    CREATIVE_TOOL_ICONS,
+    IMPROV_ENTRY_MODES,
+    IMPROV_TAB_NAMES,
+    creative_tool_display_label,
+)
 
 
 def _flatten_tutorial_text() -> str:
@@ -185,11 +192,57 @@ class TutorialContentTruthTests(unittest.TestCase):
     def test_ami_examples_are_musician_friendly(self) -> None:
         self.assertIn("What should I practice for 20 minutes today?", self.text)
         self.assertIn("Upload Analysis or Multitrack", self.text)
+        self.assertIn("Give me a good bass line for this song.", self.text)
+        self.assertIn("Give me a harmonic minor pattern in B-flat minor.", self.text)
+        self.assertIn("Give me a 4-bar phrase over the chorus.", self.text)
         self.assertNotIn("musical_idea_engine", self.text)
         self.assertNotIn("lick generator", self.text.lower())
         low = self.primary.lower()
         for banned in ("feature branch", "current dev", "solver", "canonical"):
             self.assertNotIn(banned, low)
+
+    def test_backing_copy_matches_play_backing_track(self) -> None:
+        self.assertIn("Play Backing Track", self.primary)
+        self.assertNotIn("Generate → Play", self.text)
+
+    def test_karaoke_cta_is_voice_and_preps_instrument(self) -> None:
+        karaoke = next(s for s in TUTORIAL_STEPS if s["id"] == "karaoke")
+        self.assertEqual(karaoke.get("action_label"), "Voice")
+        self.assertEqual(karaoke.get("action_prep"), "voice_instrument")
+        self.assertEqual(karaoke.get("page_id"), "backing")
+
+    def test_explore_more_cta_is_explicit(self) -> None:
+        self.assertIn("Karaoke", EXPLORE_MORE_CTA)
+        self.assertIn("Creative", EXPLORE_MORE_CTA)
+        self.assertTrue(EXPLORE_MORE_CTA.endswith("→"))
+
+    def test_creative_cards_are_split_with_shared_icons(self) -> None:
+        creative = next(s for s in TUTORIAL_STEPS if s["id"] == "creative")
+        titles = [str(c.get("title") or "") for c in creative.get("cards") or []]
+        self.assertIn("Play Song-Based Improvisation", titles)
+        self.assertIn("Style Jam Mode", titles)
+        self.assertIn("Jam Session Generator", titles)
+        self.assertIn("Missions", titles)
+        self.assertIn("Harmony Map", titles)
+        self.assertIn("Phrase / Motif", titles)
+        self.assertIn("Live Coach", titles)
+        self.assertIn("Metrics & AI", titles)
+        self.assertNotIn("Jam", titles)
+        icons = [str(c.get("icon") or "") for c in creative.get("cards") or []]
+        self.assertEqual(len(icons), len(set(icons)), "Creative tutorial icons must be unique")
+        self.assertEqual(
+            next(c["icon"] for c in creative["cards"] if c["title"] == "Missions"),
+            CREATIVE_TOOL_ICONS["Missions"],
+        )
+        self.assertEqual(
+            next(c["icon"] for c in creative["cards"] if c["title"] == "Live Coach"),
+            CREATIVE_TOOL_ICONS["Live Coach"],
+        )
+
+    def test_creative_page_labels_use_same_icons(self) -> None:
+        for name in IMPROV_TAB_NAMES + IMPROV_ENTRY_MODES:
+            label = creative_tool_display_label(name)
+            self.assertTrue(label.startswith(CREATIVE_TOOL_ICONS[name] + " "))
 
     def test_no_developer_jargon(self) -> None:
         banned = (
@@ -292,6 +345,12 @@ class TutorialRenderAndStateTests(unittest.TestCase):
                 navigate_fn=lambda _pid: None,
             )
         self.assertGreaterEqual(st.markdown.call_count, TOTAL_STEPS)
+
+    def test_apply_tutorial_voice_instrument_sets_voice(self) -> None:
+        ss: dict[str, Any] = {"instrument": "Guitar", "focus": "Lead Guitar"}
+        apply_tutorial_voice_instrument(ss)
+        self.assertEqual(ss.get("instrument"), "Voice")
+        self.assertIn(str(ss.get("focus") or ""), FOCUS_OPTIONS_BY_INSTRUMENT["Voice"])
 
 
 if __name__ == "__main__":

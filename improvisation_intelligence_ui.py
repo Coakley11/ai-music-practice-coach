@@ -185,6 +185,7 @@ from studio_page_state import (
     IMPROV_SONG_SOURCES,
     IMPROV_TAB_NAMES,
     apply_improv_song_source,
+    creative_tool_display_label,
     flush_pending_improv_song_source,
     init_improvisation_state,
     resolve_improv_song_preview,
@@ -405,6 +406,7 @@ def render_improvisation_intelligence_lab(
             list(IMPROV_TAB_NAMES),
             horizontal=True,
             key="improv_intelligence_tab",
+            format_func=creative_tool_display_label,
             label_visibility="collapsed",
             on_change=_on_improv_tab_change,
         )
@@ -578,6 +580,7 @@ def _tab_entry_modes(
         list(IMPROV_ENTRY_MODES),
         horizontal=True,
         key="improv_entry_mode",
+        format_func=creative_tool_display_label,
         label_visibility="collapsed",
         on_change=_on_entry_mode_change,
     )

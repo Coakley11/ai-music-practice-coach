@@ -10,6 +10,8 @@ import html
 import re
 from typing import Any, Callable
 
+from studio_page_state import CREATIVE_TOOL_ICONS
+
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
 TUTORIAL_OPEN_KEY = "tutorial_open"
 TUTORIAL_STEP_KEY = "tutorial_step"
@@ -278,8 +280,8 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "script": "Play along",
         "title": "Turn the song into something you can play with",
         "summary": "Loop the verse. Slow down the bridge. Improvise over the changes. Raise the tempo when you’re ready.",
-        "try_this": "Open Backing Track → choose a section → check the tempo → Generate → Play.",
-        "why": "A metronome keeps time. Backing lets you practice inside the music.",
+        "try_this": "Open Backing Track → choose a section → choose tempo → press **Play Backing Track**.",
+        "why": "A metronome keeps time. Backing plays the accompaniment so you can practice inside the music.",
         "cards": [
             {
                 "icon": "1️⃣",
@@ -295,8 +297,8 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
             },
             {
                 "icon": "3️⃣",
-                "title": "Generate → Play",
-                "body": "Build the accompaniment, then play along.",
+                "title": "Play Backing Track",
+                "body": "Press **Play Backing Track** to hear the accompaniment and play along.",
                 "tone": "practice",
             },
         ],
@@ -314,18 +316,20 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "script": "Ask",
         "title": "Ask your Music Coach",
         "summary": "You don’t need special prompts. Ask the kinds of questions you would ask a teacher.",
-        "try_this": "Open Music Coach and ask: “What should I practice for 20 minutes today?”",
+        "try_this": "Open Music Coach and ask something musical — a bass line, a pattern, or how to practice this chorus.",
         "why": "Music Coach can use relevant context from the app — instrument, level, focus, active song, section, Practice Key, and your Practice Log — so you don’t always have to explain everything from scratch.",
         "cards": [],
         "questions": [
+            "Give me a good bass line for this song.",
+            "Give me a harmonic minor pattern in B-flat minor.",
+            "Give me a 4-bar descending harmonic minor pattern in A minor.",
+            "Give me an 8-bar ascending eighth-note pattern in D harmonic minor at 90 BPM.",
+            "Give me a very easy 4-bar lick in C minor.",
+            "Give me a 4-bar phrase over the chorus.",
             "What should I practice for 20 minutes today?",
             "How should I work on this chorus?",
-            "Where do I upload a recording?",
-            "Should I use Backing or Multitrack?",
             "Should I use Upload Analysis or Multitrack?",
-            "What should I listen for in this progression?",
-            "How should I practice this song?",
-            "How do I edit this chart?",
+            "Where do I upload a recording?",
         ],
         "bullets": [
             "Ask in plain musical language. That’s enough.",
@@ -387,7 +391,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "script": "Sing",
         "title": "Singing? Switch to Voice.",
         "summary": "Choose Voice, pick a comfortable Practice Key, then sing with lyrics and accompaniment.",
-        "try_this": "Set Instrument to Voice, pick a song, then open Backing Track — it becomes Vocal Performance Mode.",
+        "try_this": "Tap **Voice** to switch your instrument and open Vocal Performance Mode.",
         "why": "Karaoke is for singing the song. Upload Analysis is for feedback on a recorded take. Multitrack is for layering parts.",
         "cards": [
             {
@@ -418,7 +422,8 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "bullets": [
             "Voice focuses include Breath Control, Phrasing, Pitch Accuracy, Emotional Delivery, Harmony Singing, Vibrato, Dynamics, and Ear Training.",
         ],
-        "action_label": "Sing it →",
+        "action_label": "Voice",
+        "action_prep": "voice_instrument",
         "sections": [
             {
                 "title": "Learn more — finding Karaoke",
@@ -441,51 +446,63 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Creative is where you explore. Custom Progression is where you write your own chords.",
         "cards": [
             {
-                "icon": "🎹",
-                "title": "Jam",
-                "body": "Play around with a musical idea or song context — Song-Based Improvisation or Style Jam Mode.",
+                "icon": CREATIVE_TOOL_ICONS["Song-Based Improvisation"],
+                "title": "Play Song-Based Improvisation",
+                "body": "Improvise over the song you’re already working on.",
                 "tone": "creative",
             },
             {
-                "icon": "✨",
-                "title": "Jam Session Generator",
-                "body": "Create a fresh practice situation without designing everything by hand.",
+                "icon": CREATIVE_TOOL_ICONS["Style Jam Mode"],
+                "title": "Style Jam Mode",
+                "body": "Start from a style or groove when you want feel first, not a specific tune.",
                 "tone": "picker",
             },
             {
-                "icon": "🎯",
+                "icon": CREATIVE_TOOL_ICONS["Jam Session Generator"],
+                "title": "Jam Session Generator",
+                "body": "Create a fresh practice situation without designing everything by hand.",
+                "tone": "analysis",
+            },
+            {
+                "icon": CREATIVE_TOOL_ICONS["Missions"],
                 "title": "Missions",
                 "body": "Give yourself a focused challenge — phrasing, rhythm, or developing a simple idea.",
                 "tone": "practice",
             },
             {
-                "icon": "🧭",
+                "icon": CREATIVE_TOOL_ICONS["Harmony Map"],
                 "title": "Harmony Map",
                 "body": "See how the progression fits together — useful when improvising or composing.",
                 "tone": "log",
             },
             {
-                "icon": "🎼",
+                "icon": CREATIVE_TOOL_ICONS["Phrase / Motif"],
                 "title": "Phrase / Motif",
                 "body": "Develop musical ideas, then notate them.",
                 "tone": "backing",
             },
             {
-                "icon": "🧠",
-                "title": "Live Coach & Metrics & AI",
-                "body": "Live Coach helps while you explore. Metrics & AI shapes what Upload Analysis weighs.",
-                "tone": "analysis",
+                "icon": CREATIVE_TOOL_ICONS["Live Coach"],
+                "title": "Live Coach",
+                "body": "Scales, chord tones, and tips for the harmony you’re on.",
+                "tone": "voice",
+            },
+            {
+                "icon": CREATIVE_TOOL_ICONS["Metrics & AI"],
+                "title": "Metrics & AI",
+                "body": "Choose what Upload Analysis should pay attention to.",
+                "tone": "slate",
             },
         ],
         "bullets": [
-            "Start in **Entry & Jam**, then wander. You don’t have to memorize every tab.",
+            "Song-Based, Style Jam, and Jam Session Generator live under **Entry & Jam**. Then wander — you don’t have to memorize every tab.",
         ],
         "action_label": "Explore Creative →",
         "sections": [
             {
                 "title": "Learn more — Creative tabs & Missions",
                 "bullets": [
-                    "Tabs: Entry & Jam, Live Coach, Phrase / Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI.",
+                    "Tabs: Entry & Jam, Live Coach, Phrase / Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI — same icons as in this tour.",
                     "Entry modes: Song-Based Improvisation, Style Jam Mode, Jam Session Generator.",
                     "A Mission is a specific challenge — not “just play the song.” Play with backing when it’s available, and record a take if you want to review it.",
                     "Deep Harmony is a slower guided harmonic lesson when you want that pace.",
@@ -665,19 +682,19 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "voice",
             },
             {
-                "icon": "✨",
+                "icon": CREATIVE_TOOL_ICONS["Jam Session Generator"],
                 "title": "Generated jam",
                 "body": "Creative Lab → Jam Session Generator.",
                 "tone": "creative",
             },
             {
-                "icon": "🎯",
+                "icon": CREATIVE_TOOL_ICONS["Missions"],
                 "title": "Focused improv challenge",
                 "body": "Creative Lab → Missions.",
                 "tone": "practice",
             },
             {
-                "icon": "🧭",
+                "icon": CREATIVE_TOOL_ICONS["Harmony Map"],
                 "title": "Understand the progression",
                 "body": "Harmony Map.",
                 "tone": "log",
@@ -740,6 +757,7 @@ EXPLORE_MORE_IDS: tuple[str, ...] = (
 )
 QUICK_TOUR_END_INDEX = len(QUICK_TOUR_IDS) - 1
 EXPLORE_START_INDEX = len(QUICK_TOUR_IDS)
+EXPLORE_MORE_CTA = "See Karaoke, Creative & more →"
 
 
 def init_tutorial_state(session_state: dict) -> None:
@@ -801,6 +819,30 @@ def tutorial_nav_page_ids() -> list[str]:
 
 def tutorial_chapter_ids() -> list[str]:
     return [str(s.get("id") or "") for s in TUTORIAL_STEPS]
+
+
+def apply_tutorial_voice_instrument(session_state: dict) -> None:
+    """Switch Practice Setup to Voice so Karaoke / Vocal Performance Mode appears."""
+    try:
+        from practice_setup_globals import set_active_instrument
+
+        set_active_instrument(session_state, "Voice", source="tutorial_voice_cta")
+    except Exception:
+        session_state["instrument"] = "Voice"
+        try:
+            from practice_setup_controls import focus_options_for_instrument
+
+            opts = focus_options_for_instrument("Voice")
+            if opts and str(session_state.get("focus") or "") not in opts:
+                session_state["focus"] = opts[0]
+        except Exception:
+            pass
+    try:
+        from active_song_state import mark_active_song_local_edit
+
+        mark_active_song_local_edit(session_state)
+    except Exception:
+        pass
 
 
 def _esc(text: Any) -> str:
@@ -951,6 +993,12 @@ def render_tutorial_walkthrough(
     if why_html:
         st_module.markdown(why_html, unsafe_allow_html=True)
 
+    if step == QUICK_TOUR_END_INDEX:
+        st_module.markdown(
+            "You’ve got the basics. **Next** continues into Karaoke, Creative Lab, "
+            "recording, and coming back later."
+        )
+
     for section in data.get("sections") or []:
         with st_module.expander(str(section.get("title") or "Learn more"), expanded=False):
             for bullet in section.get("bullets") or []:
@@ -1022,7 +1070,7 @@ def render_tutorial_walkthrough(
             rerun_fn()
     with nav2:
         if step == QUICK_TOUR_END_INDEX:
-            next_label = "Explore more tools →"
+            next_label = EXPLORE_MORE_CTA
         elif step >= TOTAL_STEPS - 1:
             next_label = "Finish tour ✓"
         else:
@@ -1043,6 +1091,8 @@ def render_tutorial_walkthrough(
         open_label = str(data.get("action_label") or "").strip() or "Open this page →"
         if page_id and page_id in _VALID_NAV_PAGE_IDS and navigate_fn and open_label:
             if st_module.button(open_label, key="tutorial_go_page", use_container_width=True):
+                if str(data.get("action_prep") or "") == "voice_instrument":
+                    apply_tutorial_voice_instrument(session_state)
                 idx = step_index_for_page(page_id)
                 if idx is not None:
                     session_state[TUTORIAL_STEP_KEY] = idx
@@ -1066,15 +1116,8 @@ def render_tutorial_walkthrough(
 
     foot1, foot2, foot3 = st_module.columns([1, 1, 1])
     with foot1:
-        if step < EXPLORE_START_INDEX and st_module.button(
-            "Explore more tools →",
-            key="tutorial_jump_explore",
-            use_container_width=True,
-        ):
-            session_state[TUTORIAL_STEP_KEY] = EXPLORE_START_INDEX
-            rerun_fn()
-        elif step >= EXPLORE_START_INDEX and st_module.button(
-            "Back to quick tour",
+        if step >= EXPLORE_START_INDEX and st_module.button(
+            "← Back to quick tour",
             key="tutorial_jump_explore",
             use_container_width=True,
         ):
