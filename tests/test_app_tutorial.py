@@ -7,6 +7,8 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from app_tutorial import (
+    EXPLORE_MORE_IDS,
+    QUICK_TOUR_IDS,
     TOTAL_STEPS,
     TUTORIAL_STEPS,
     _VALID_NAV_PAGE_IDS,
@@ -28,14 +30,39 @@ from studio_page_state import IMPROV_ENTRY_MODES, IMPROV_TAB_NAMES
 def _flatten_tutorial_text() -> str:
     chunks: list[str] = []
     for step in TUTORIAL_STEPS:
-        for key in ("title", "summary", "when", "tip"):
+        for key in ("title", "summary", "try_this", "why", "script"):
             chunks.append(str(step.get(key) or ""))
         for bullet in step.get("bullets") or []:
             chunks.append(str(bullet))
+        for q in step.get("questions") or []:
+            chunks.append(str(q))
+        for item in step.get("journey") or []:
+            chunks.append(str(item))
+        for card in step.get("cards") or []:
+            chunks.append(str(card.get("title") or ""))
+            chunks.append(str(card.get("body") or ""))
         for section in step.get("sections") or []:
             chunks.append(str(section.get("title") or ""))
             for bullet in section.get("bullets") or []:
                 chunks.append(str(bullet))
+    return "\n".join(chunks)
+
+
+def _primary_text() -> str:
+    """Visible first-screen copy only (no Learn more expanders)."""
+    chunks: list[str] = []
+    for step in TUTORIAL_STEPS:
+        for key in ("title", "summary", "try_this", "why", "script"):
+            chunks.append(str(step.get(key) or ""))
+        for bullet in step.get("bullets") or []:
+            chunks.append(str(bullet))
+        for q in step.get("questions") or []:
+            chunks.append(str(q))
+        for item in step.get("journey") or []:
+            chunks.append(str(item))
+        for card in step.get("cards") or []:
+            chunks.append(str(card.get("title") or ""))
+            chunks.append(str(card.get("body") or ""))
     return "\n".join(chunks)
 
 
@@ -45,6 +72,14 @@ class TutorialStructureTests(unittest.TestCase):
         self.assertEqual(len(ids), TOTAL_STEPS)
         self.assertEqual(len(ids), len(set(ids)))
         self.assertGreaterEqual(TOTAL_STEPS, 12)
+
+    def test_quick_tour_then_explore_more(self) -> None:
+        ids = tutorial_chapter_ids()
+        self.assertEqual(tuple(ids[: len(QUICK_TOUR_IDS)]), QUICK_TOUR_IDS)
+        self.assertEqual(tuple(ids[len(QUICK_TOUR_IDS) :]), EXPLORE_MORE_IDS)
+        self.assertEqual(len(QUICK_TOUR_IDS), 8)
+        self.assertIn("karaoke", EXPLORE_MORE_IDS)
+        self.assertIn("creative", EXPLORE_MORE_IDS)
 
     def test_required_chapters_present(self) -> None:
         required = {
@@ -75,11 +110,21 @@ class TutorialStructureTests(unittest.TestCase):
         self.assertIsNotNone(step_index_for_page("creative"))
         self.assertIsNone(step_index_for_page("not_a_page"))
 
+    def test_primary_steps_are_not_walls_of_text(self) -> None:
+        for step in TUTORIAL_STEPS:
+            bullets = list(step.get("bullets") or [])
+            self.assertLessEqual(
+                len(bullets),
+                4,
+                f"{step['id']} shows too many primary bullets",
+            )
+
 
 class TutorialContentTruthTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = _flatten_tutorial_text()
+        cls.primary = _primary_text()
 
     def test_creative_tabs_named_match_app(self) -> None:
         for tab in IMPROV_TAB_NAMES:
@@ -137,14 +182,14 @@ class TutorialContentTruthTests(unittest.TestCase):
         self.assertIn("Analyze My Practice", self.text)
         self.assertIn("not every page auto-logs", self.text.lower())
 
-    def test_ami_examples_are_dev_safe(self) -> None:
-        # Supported question styles
+    def test_ami_examples_are_musician_friendly(self) -> None:
         self.assertIn("What should I practice for 20 minutes today?", self.text)
         self.assertIn("Upload Analysis or Multitrack", self.text)
-        # Must not claim feature-branch-only lick/pattern engine as current product
         self.assertNotIn("musical_idea_engine", self.text)
         self.assertNotIn("lick generator", self.text.lower())
-        self.assertIn("does not claim", self.text.lower())
+        low = self.primary.lower()
+        for banned in ("feature branch", "current dev", "solver", "canonical"):
+            self.assertNotIn(banned, low)
 
     def test_no_developer_jargon(self) -> None:
         banned = (
@@ -155,6 +200,8 @@ class TutorialContentTruthTests(unittest.TestCase):
             "canonical object",
             "persistence blob",
             "solver registry",
+            "feature branch",
+            "source-of-truth",
         )
         low = self.text.lower()
         for term in banned:
@@ -172,14 +219,29 @@ class TutorialContentTruthTests(unittest.TestCase):
 
     def test_which_tool_includes_karaoke(self) -> None:
         which = next(s for s in TUTORIAL_STEPS if s["id"] == "which_tool")
-        joined = " ".join(str(b) for b in which.get("bullets") or [])
+        joined = " ".join(
+            [str(c.get("title") or "") + " " + str(c.get("body") or "") for c in which.get("cards") or []]
+        )
         self.assertIn("Voice", joined)
         self.assertIn("Karaoke", joined)
 
     def test_three_way_personalization_model(self) -> None:
-        self.assertIn("Instrument = how / what you play", self.text)
-        self.assertIn("Level = how complex", self.text)
-        self.assertIn("Practice Focus = what you want to improve", self.text)
+        self.assertIn("Who are you playing as?", self.text)
+        self.assertIn("How challenging should it be?", self.text)
+        self.assertIn("What do you want to work on?", self.text)
+        self.assertIn("Instrument", self.primary)
+        self.assertIn("Level", self.primary)
+        self.assertIn("Practice Focus", self.primary)
+
+    def test_primary_copy_avoids_manual_tone(self) -> None:
+        low = self.primary.lower()
+        for phrase in (
+            "valid studio page",
+            "implementation",
+            "subsystem",
+            "domain resolution",
+        ):
+            self.assertNotIn(phrase, low)
 
 
 class TutorialRenderAndStateTests(unittest.TestCase):
@@ -198,11 +260,11 @@ class TutorialRenderAndStateTests(unittest.TestCase):
 
     def test_render_all_chapters_without_crash(self) -> None:
         st = MagicMock()
-        # expander context manager
         expander = MagicMock()
         expander.__enter__ = MagicMock(return_value=expander)
         expander.__exit__ = MagicMock(return_value=False)
         st.expander.return_value = expander
+
         def _columns(spec: Any, *args: Any, **kwargs: Any) -> list[Any]:
             n = len(spec) if isinstance(spec, (list, tuple)) else int(spec or 1)
             cols = []
@@ -229,7 +291,6 @@ class TutorialRenderAndStateTests(unittest.TestCase):
                 rerun_fn=lambda: None,
                 navigate_fn=lambda _pid: None,
             )
-        # At least one markdown call per chapter
         self.assertGreaterEqual(st.markdown.call_count, TOTAL_STEPS)
 
 

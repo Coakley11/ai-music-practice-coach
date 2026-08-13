@@ -1,12 +1,13 @@
-"""Musician-facing guided tutorial for the music practice studio.
+"""Friendly first-time musician tutorial for the music practice studio.
 
-Describes the real current product on ``dev`` — not developer internals, and not
-feature-branch-only AMI capabilities.
+Quick Tour = first useful workflows. Explore More = extra tools.
+Detailed save/edit language lives in Learn more expanders — not the main flow.
 """
 
 from __future__ import annotations
 
 import html
+import re
 from typing import Any, Callable
 
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
@@ -14,7 +15,7 @@ TUTORIAL_OPEN_KEY = "tutorial_open"
 TUTORIAL_STEP_KEY = "tutorial_step"
 TUTORIAL_DISMISS_CHECKBOX_KEY = "tutorial_dismiss_checkbox"
 
-# Valid studio page ids that tutorial "Open …" buttons may navigate to.
+# Valid studio page ids that tutorial action buttons may navigate to.
 _VALID_NAV_PAGE_IDS = frozenset(
     {
         "practice",
@@ -30,474 +31,715 @@ _VALID_NAV_PAGE_IDS = frozenset(
     }
 )
 
+# --- Quick Tour (welcome + 7 basics) ---------------------------------
+# --- Explore More (optional) -----------------------------------------
+
 TUTORIAL_STEPS: list[dict[str, Any]] = [
     {
         "id": "welcome",
+        "layer": "welcome",
         "page_id": "",
         "icon": "🎵",
-        "title": "What this app is for",
+        "script": "Welcome",
+        "title": "Your music. Your practice. One workspace.",
         "summary": (
-            "A connected practice workspace: choose music, set your setup and key, "
-            "practice with focused tools, create and improvise, record, get feedback, "
-            "and come back later with your musical context still available."
+            "Pick a song. Choose what you want to work on. Practice with backing "
+            "tracks and focused tools. Create new ideas. Record yourself. Ask your "
+            "Music Coach for help. Keep track of what you practiced — and come back "
+            "tomorrow ready to continue."
         ),
-        "when": "Start here if you are new — then follow First 5 minutes below.",
-        "bullets": [
-            "This is **not** a pile of unrelated tools. Your **active song**, "
-            "**instrument**, **level**, **focus**, and **Practice / Concert Key** "
-            "carry into Practice, Backing, Creative Lab, Karaoke (Voice), "
-            "Music Coach, and recording workflows where the app supports it.",
-            "**Why that matters:** instead of hunting for a chart, a metronome, "
-            "a backing track, a notebook, and a generic AI elsewhere, you keep "
-            "working around one musical context.",
-            "Use the tour to learn **musical goal → tool → next step**, not just page names.",
-        ],
-        "tip": (
-            "First 5 minutes: set Instrument / Level / Focus → pick a catalog song → "
-            "set a comfortable Practice Key → open Backing Track → Generate → Play."
-        ),
-        "sections": [
+        "try_this": "Take a one-minute look around. You can skip anytime.",
+        "why": "Everything here stays around the music you’re working on today.",
+        "cards": [
             {
-                "title": "Suggested first path",
-                "bullets": [
-                    "1. Practice Setup in the sidebar (Instrument, Level, Focus).",
-                    "2. Song Selection — pick a song you know.",
-                    "3. Set Practice / Concert Key to a comfortable sounding key.",
-                    "4. Backing Track — Generate, then Play.",
-                    "5. Ask Music Coach: *How should I practice this song?*",
-                    "6. Quick-save a Practice Log entry so tomorrow continues from today.",
-                ],
+                "icon": "🎯",
+                "title": "Practice",
+                "body": "Work on songs, technique, timing, tone, and specific sections.",
+                "tone": "practice",
             },
             {
-                "title": "When you are ready to go deeper",
+                "icon": "🎨",
+                "title": "Create",
+                "body": "Jam, explore harmony, generate ideas, and give yourself Missions.",
+                "tone": "creative",
+            },
+            {
+                "icon": "🎙️",
+                "title": "Listen & Improve",
+                "body": "Record, analyze, log your work, and ask Music Coach what to try next.",
+                "tone": "analysis",
+            },
+        ],
+        "bullets": [],
+        "action_label": "",
+        "sections": [
+            {
+                "title": "Learn more — how the pieces connect",
                 "bullets": [
-                    "Edit a personal chart or lyrics on Song Selection.",
-                    "Build a Custom Progression and make it active.",
-                    "Explore Creative Lab (Harmony Map, Missions, Jam Session Generator).",
-                    "Upload one take for feedback, or layer parts in Multitrack.",
-                    "Use Practice Analysis to spot patterns in your history.",
+                    "Your **active song**, **instrument**, **level**, **focus**, and "
+                    "**Practice / Concert Key** carry into Practice, Backing, Creative Lab, "
+                    "Karaoke (when Instrument is Voice), Music Coach, and recording.",
+                    "Instead of hunting for a chart, metronome, backing track, notebook, "
+                    "and a generic AI elsewhere, you keep working in one place.",
                 ],
             },
         ],
     },
     {
         "id": "setup",
+        "layer": "quick",
         "page_id": "practice",
         "icon": "🎚️",
-        "title": "Practice Setup — Instrument, Level, Focus",
-        "summary": (
-            "Three choices personalize the whole studio: "
-            "**who you are playing as**, **how complex the material should be**, "
-            "and **what you want to improve**."
-        ),
-        "when": "Change these anytime — you do not need a new song to change focus.",
-        "bullets": [
-            "**Instrument = how / what you play.** Options include Piano, Guitar, Bass, "
-            "Saxophone, Flute, Trumpet, Clarinet, Voice, and Other. Changing instrument "
-            "can change Practice Focus choices, notation/register, written-key / "
-            "transposition UI, Guitar capo controls, and Voice Karaoke workflows.",
-            "**Level = how complex the material should be** (Beginner, Intermediate, "
-            "Advanced). Use Beginner for narrower, clearer targets; Advanced when you "
-            "want richer options and denser practice ideas.",
-            "**Practice Focus = what you want to improve** — not the song. Focus lists "
-            "**change by instrument** (for example Walking Bass on Bass, Breath Control "
-            "on Voice, Lead Guitar on Guitar).",
-            "Mental model: **Instrument × Level × Focus** + active song + Practice Key "
-            "+ section → more relevant practice and coaching.",
+        "script": "Set up",
+        "title": "Tell the app who you are today",
+        "summary": "Three simple choices on the left. They help the app adapt to you.",
+        "try_this": "In Practice Setup, pick your instrument. Then choose your level and focus.",
+        "why": "You can change focus anytime without changing songs.",
+        "cards": [
+            {
+                "icon": "🎷",
+                "title": "Who are you playing as?",
+                "body": "**Instrument** — Piano, Guitar, Bass, Saxophone, Flute, Trumpet, Clarinet, Voice, or Other.",
+                "tone": "practice",
+            },
+            {
+                "icon": "📈",
+                "title": "How challenging should it be?",
+                "body": "**Level** — Beginner keeps things simpler. Intermediate adds variety. Advanced can feel more demanding.",
+                "tone": "picker",
+            },
+            {
+                "icon": "🎯",
+                "title": "What do you want to work on?",
+                "body": "**Practice Focus** — tone, phrasing, rhythm, technique, improvisation, or an instrument-specific goal.",
+                "tone": "log",
+            },
         ],
-        "tip": (
-            "Example: Flute + Intermediate + Tone steers you toward tone-oriented work; "
-            "Bass + Beginner + Walking Bass favors simple supportive lines."
-        ),
+        "bullets": [
+            "These choices help the app adapt to you — not just relabel the screen.",
+        ],
+        "action_label": "Start practicing →",
         "sections": [
             {
-                "title": "Instrument adaptations (current app)",
+                "title": "Learn more — how instrument changes the app",
                 "bullets": [
-                    "**Voice** unlocks Karaoke Performance Setlist on Song Selection and "
-                    "Vocal Performance Mode on Backing Track.",
-                    "**Saxophone** exposes Alto / Tenor / Soprano / Baritone types — "
-                    "written transposition and register differ by subtype.",
-                    "**Clarinet / Trumpet / Saxophone** can show charts in written key "
-                    "via *Show chart in written key for instrument*.",
-                    "**Guitar** can use Capo Shape Mode so sounding Practice Key and "
-                    "chord shapes stay clearly separated.",
-                    "**Bass** includes groove / Walking Bass style focuses; other "
-                    "instruments can still work on supportive bass-role ideas in coaching "
-                    "where that workflow exists.",
+                    "Focus lists change by instrument (Walking Bass on Bass, Breath Control on Voice, Lead Guitar on Guitar).",
+                    "**Voice** unlocks Karaoke Performance Setlist and Vocal Performance Mode.",
+                    "**Saxophone** lets you pick Alto, Tenor, Soprano, or Baritone — written key and range differ.",
+                    "**Clarinet / Trumpet / Saxophone** can show charts in the key you actually read.",
+                    "**Guitar** can use Capo Shape Mode so sounding Practice Key and chord shapes stay clear.",
+                    "**Piano** is a natural home for chords, voicings, and left-hand / right-hand work.",
+                    "**Bass** includes groove and Walking Bass focuses. Other instruments can still work on supportive bass-role ideas.",
+                    "**Flute** and other winds can emphasize tone, articulation, breath, and phrasing.",
                 ],
             },
         ],
     },
     {
         "id": "music",
+        "layer": "quick",
         "page_id": "picker",
         "icon": "🎼",
-        "title": "Choose your music — Catalog vs Custom",
-        "summary": (
-            "Catalog songs are ready-made charts. Custom Progressions are your own "
-            "material. Both can become the active song that feeds practice elsewhere."
-        ),
-        "when": "Catalog for repertoire; Custom for originals, lesson progressions, or exercises.",
-        "bullets": [
-            "**Catalog:** browse/search on Song Selection, pick a song, check the "
-            "active song card (genre, keys, form).",
-            "**Personal catalog edits (your copy, not a global rewrite):** "
-            "*Edit Song Chart* → Enable editing → Save corrected chart; "
-            "*Lyrics & Cues* → Save Lyrics & Cues. Use Revert when you want the "
-            "catalog version back.",
-            "**Custom Progression Lab:** build sections and chords, **Save to library**, "
-            "**Set as Active Song**, and reopen later with **Load selected**.",
-            "**Finish Song** marks a custom form ready for practice — then use it like "
-            "any active song in Practice, Backing, or Creative Lab.",
+        "script": "Pick music",
+        "title": "Choose something to play",
+        "summary": "Start with a catalog song, or build your own progression.",
+        "try_this": "Open Song Selection and pick a song you already know.",
+        "why": "Whatever you choose becomes your active song — Practice, Backing, and Creative can use it.",
+        "cards": [
+            {
+                "icon": "🎵",
+                "title": "Pick a song from the Catalog",
+                "body": "Ready-made music and charts. Great for repertoire.",
+                "tone": "picker",
+            },
+            {
+                "icon": "✍️",
+                "title": "Create your own",
+                "body": "Custom Progression for an original song, lesson, exercise, or improv idea.",
+                "tone": "custom",
+            },
         ],
-        "tip": "Editing a catalog chart saves *your* corrected chart — it does not rewrite the master library for everyone.",
+        "bullets": [
+            "You can also personalize charts and lyrics where the app supports it.",
+        ],
+        "action_label": "Pick a song →",
         "sections": [
             {
-                "title": "Active song continuity",
+                "title": "Learn more — catalog vs your own songs",
                 "bullets": [
-                    "Once a song or custom progression is active, Practice, Backing, "
-                    "Creative Lab, Karaoke (Voice), Multitrack, and Music Coach can use "
-                    "that context where each page supports it.",
-                    "Switch songs from Song Selection when you want a new context.",
+                    "Catalog edits are *your* copy: **Edit Song Chart** → Enable editing → **Save corrected chart**. "
+                    "**Lyrics & Cues** → **Save Lyrics & Cues**. Revert when you want the catalog version back — "
+                    "this does not rewrite the master catalog.",
+                    "Custom Progression: build chords, **Save to library**, **Set as Active Song**, "
+                    "reopen later with **Load selected**. **Finish Song** when the form is ready to practice.",
                 ],
             },
         ],
     },
     {
         "id": "keys",
+        "layer": "quick",
         "page_id": "picker",
         "icon": "🔑",
-        "title": "Original Key vs Practice / Concert Key",
-        "summary": (
-            "Original Key is the song’s source key. Practice / Concert Key is the "
-            "sounding key you want to practice in right now."
-        ),
-        "when": "Change Practice Key to make a song more comfortable without rewriting the original.",
-        "bullets": [
-            "**Original Key** stays with the song/chart identity.",
-            "**Practice / Concert Key** (sidebar) is non-destructive transposition for practice.",
-            "Changing Practice Key does **not** mean you permanently rewrote the original catalog song.",
-            "**Written key** (Clarinet, Trumpet, Saxophone): sounding Practice Key can "
-            "differ from what you read. Example: Concert C → Bb Clarinet reads in D; "
-            "Alto Sax reads in A. Use *Show chart in written key for instrument* when "
-            "you want charts in written spelling.",
-            "**Saxophone type** (Alto / Tenor / Soprano / Baritone) matters — subtypes "
-            "do not all read the same way.",
-            "**Guitar Capo Shape Mode:** sounding Practice Key and capo shape key can "
-            "legitimately differ — each is labeled for a different job.",
+        "script": "The key",
+        "title": "Put it in a comfortable key",
+        "summary": "Change the Practice / Concert Key anytime. The original song stays the original song.",
+        "try_this": "In the left Practice Setup panel, move Practice / Concert Key to something comfortable.",
+        "why": "Same song, easier range — especially useful for singers and transposing instruments.",
+        "cards": [
+            {
+                "icon": "📜",
+                "title": "Original Key",
+                "body": "The song’s original key.",
+                "tone": "slate",
+            },
+            {
+                "icon": "🎹",
+                "title": "Practice / Concert Key",
+                "body": "The key you want to play or sing it in today.",
+                "tone": "picker",
+            },
         ],
-        "tip": "Singers: set Instrument to Voice, then move Practice Key to a comfortable singing key before Karaoke.",
+        "bullets": [
+            "Playing Clarinet, Trumpet, or Saxophone? The app can also account for the key you actually read. "
+            "Example: Concert C → Clarinet reads D.",
+        ],
+        "action_label": "Pick a song →",
+        "sections": [
+            {
+                "title": "Learn more — written key, sax types, guitar capo",
+                "bullets": [
+                    "Use **Show chart in written key for instrument** when you want charts in written spelling.",
+                    "Saxophone **Alto / Tenor / Soprano / Baritone** do not all read the same way.",
+                    "Guitar **Capo Shape Mode** keeps sounding Practice Key and capo/chord shapes clearly separate.",
+                    "Changing Practice Key does not rewrite the original catalog song.",
+                ],
+            },
+        ],
     },
     {
         "id": "practice",
+        "layer": "quick",
         "page_id": "practice",
         "icon": "🎯",
-        "title": "Practice — your working area",
-        "summary": (
-            "Practice is where you warm up, read the chart, work technique, and use "
-            "coaching tools on the active song."
-        ),
-        "when": "Daily work on repertoire, sections, tone, time, and reading.",
-        "bullets": [
-            "Open the **Practice tools** launcher for the main groups:",
-            "**Harmony & technique** → Chord & song coach.",
-            "**Time & pitch** → Metronome, Tuner & Tone.",
-            "**Charts & lyrics** → Chart & notation, Lyrics & phrasing.",
-            "**Reference** → Transpose helpers (and Guitar capo helper when relevant).",
-            "Use **section focus** (Verse, Chorus, etc.) to loop one part at a time.",
-            "Music Coach sits alongside Practice so you can ask for a plan without leaving the room.",
+        "script": "Practice",
+        "title": "This is where you actually work",
+        "summary": "Pick one goal, work on it for a few minutes, then put it into music with Backing.",
+        "try_this": "Open Practice. Choose one section — maybe just the chorus — and one tool.",
+        "why": "You don’t have to play the whole song every time.",
+        "cards": [
+            {
+                "icon": "⏱️",
+                "title": "Time",
+                "body": "Metronome and tempo practice.",
+                "tone": "backing",
+            },
+            {
+                "icon": "🎯",
+                "title": "Pitch & Tone",
+                "body": "Tuner and tone development.",
+                "tone": "practice",
+            },
+            {
+                "icon": "🎼",
+                "title": "Music",
+                "body": "Chart, notation, lyrics, and harmony tools.",
+                "tone": "picker",
+            },
+            {
+                "icon": "🔁",
+                "title": "Focus",
+                "body": "Work on one section instead of always playing the entire song.",
+                "tone": "log",
+            },
         ],
-        "tip": "Pick one section + one focus (for example Tone) and stay there until it feels cleaner — then raise tempo or widen the section.",
+        "bullets": [
+            "Want a tricky chorus cleaner? Stay on that section until it feels easier, then raise the tempo.",
+        ],
+        "action_label": "Start practicing →",
         "sections": [
             {
-                "title": "What problems these tools solve",
+                "title": "Learn more — Practice tools",
                 "bullets": [
-                    "Tuner & Tone — start in tune; build tone before speed.",
-                    "Metronome — lock time on a section or the full form.",
-                    "Chord / song coach — understand what to play over the harmony.",
-                    "Chart & notation / TAB — read the material you are practicing.",
-                    "Lyrics & phrasing — singers and anyone tracking cues.",
-                    "Transpose helpers — sounding key, written key, or guitar shapes.",
+                    "**Harmony & technique** → Chord & song coach.",
+                    "**Time & pitch** → Metronome, Tuner & Tone.",
+                    "**Charts & lyrics** → Chart & notation, Lyrics & phrasing.",
+                    "**Reference** → Transpose helpers (and Guitar capo helper when relevant).",
+                    "Music Coach sits nearby so you can ask for a plan without leaving Practice.",
                 ],
             },
         ],
     },
     {
         "id": "backing",
+        "layer": "quick",
         "page_id": "backing",
         "icon": "🎧",
-        "title": "Backing Track",
-        "summary": "Play along with accompaniment built from your active song’s harmony and groove.",
-        "when": "You want to practice melody, improv, groove, or form against the song — not alone with a metronome.",
-        "bullets": [
-            "Uses the **active song** (catalog or custom).",
-            "Choose **full song** or a **section** to loop; check **BPM** and **groove**.",
-            "**Generate** builds the audio; **Play** starts it; stop when finished.",
-            "Different from **Jam Session Generator** (creates a new practice situation) "
-            "and from **Multitrack** (layering your own recordings).",
+        "script": "Play along",
+        "title": "Turn the song into something you can play with",
+        "summary": "Loop the verse. Slow down the bridge. Improvise over the changes. Raise the tempo when you’re ready.",
+        "try_this": "Open Backing Track → choose a section → check the tempo → Generate → Play.",
+        "why": "A metronome keeps time. Backing lets you practice inside the music.",
+        "cards": [
+            {
+                "icon": "1️⃣",
+                "title": "Choose section",
+                "body": "Full song, or just the part you’re working on.",
+                "tone": "backing",
+            },
+            {
+                "icon": "2️⃣",
+                "title": "Choose tempo",
+                "body": "Start slower than performance tempo if you need to.",
+                "tone": "backing",
+            },
+            {
+                "icon": "3️⃣",
+                "title": "Generate → Play",
+                "body": "Build the accompaniment, then play along.",
+                "tone": "practice",
+            },
         ],
-        "tip": "Generate once, then nudge BPM in small steps when a section is clean three times in a row.",
+        "bullets": [
+            "This uses your active song. It’s different from Jam Session Generator (a new practice situation) and Multitrack (your own recorded layers).",
+        ],
+        "action_label": "Play with a backing track →",
+        "sections": [],
+    },
+    {
+        "id": "coach",
+        "layer": "quick",
+        "page_id": "practice",
+        "icon": "💬",
+        "script": "Ask",
+        "title": "Ask your Music Coach",
+        "summary": "You don’t need special prompts. Ask the kinds of questions you would ask a teacher.",
+        "try_this": "Open Music Coach and ask: “What should I practice for 20 minutes today?”",
+        "why": "Music Coach can use relevant context from the app — instrument, level, focus, active song, section, Practice Key, and your Practice Log — so you don’t always have to explain everything from scratch.",
+        "cards": [],
+        "questions": [
+            "What should I practice for 20 minutes today?",
+            "How should I work on this chorus?",
+            "Where do I upload a recording?",
+            "Should I use Backing or Multitrack?",
+            "Should I use Upload Analysis or Multitrack?",
+            "What should I listen for in this progression?",
+            "How should I practice this song?",
+            "How do I edit this chart?",
+        ],
+        "bullets": [
+            "Ask in plain musical language. That’s enough.",
+        ],
+        "action_label": "Ask Music Coach →",
+        "sections": [],
+    },
+    {
+        "id": "log",
+        "layer": "quick",
+        "page_id": "log",
+        "icon": "📓",
+        "script": "Remember",
+        "title": "Don’t start from zero tomorrow",
+        "summary": "Save what you practiced today so you can see your progress and remember where to continue.",
+        "try_this": "After you play, open Practice Log and Quick Save.",
+        "why": "Your Practice Log tells you what you did. Practice Analysis helps you look for patterns over time.",
+        "cards": [
+            {
+                "icon": "⚡",
+                "title": "Quick Save",
+                "body": "Fast entry from your current song, instrument, key, BPM, and focus.",
+                "tone": "log",
+            },
+            {
+                "icon": "✏️",
+                "title": "Add a session manually",
+                "body": "When you want fuller notes.",
+                "tone": "slate",
+            },
+            {
+                "icon": "🧠",
+                "title": "Practice Analysis",
+                "body": "Look for patterns and what to work on next.",
+                "tone": "creative",
+            },
+        ],
+        "bullets": [
+            "Keeping a simple log also helps Music Coach continue from real work.",
+        ],
+        "action_label": "See my Practice Log →",
+        "sections": [
+            {
+                "title": "Learn more — logging details",
+                "bullets": [
+                    "Use **Quick Save Practice Session** or **Add Session Manually**. "
+                    "You can edit, delete, and filter history.",
+                    "**Analyze My Practice** opens Practice Analysis.",
+                    "Not every page auto-logs — save when you want the diary to remember.",
+                ],
+            },
+        ],
     },
     {
         "id": "karaoke",
+        "layer": "explore",
         "page_id": "backing",
         "icon": "🎤",
-        "title": "Voice & Karaoke",
-        "summary": (
-            "When Instrument is Voice, Song Selection becomes a Karaoke setlist workflow "
-            "and Backing Track opens as Vocal Performance Mode."
-        ),
-        "when": "Sing through a song with lyrics/cues and accompaniment; rehearse entrances and form.",
-        "bullets": [
-            "**Path:** set Instrument → **Voice** → Song Selection (*Karaoke Performance Setlist*) "
-            "→ add songs / start the set → open **Backing Track**, which becomes "
-            "**Vocal Performance Mode** for Voice.",
-            "Karaoke uses your **active song**, **lyrics/cues**, and **Practice / Concert Key** "
-            "so you can rehearse in a comfortable singing key.",
-            "Voice Practice Focus options include Breath Control, Phrasing, Pitch Accuracy, "
-            "Emotional Delivery, Harmony Singing, Vibrato, Dynamics, and Ear Training.",
-            "There is no separate “Karaoke” studio page — Voice turns Song Selection + Backing "
-            "into the karaoke workflow.",
-        ],
-        "tip": "Comfortable Practice Key first, then Karaoke — analysis of a recorded vocal take still belongs in Upload Analysis.",
-        "sections": [
+        "script": "Sing",
+        "title": "Singing? Switch to Voice.",
+        "summary": "Choose Voice, pick a comfortable Practice Key, then sing with lyrics and accompaniment.",
+        "try_this": "Set Instrument to Voice, pick a song, then open Backing Track — it becomes Vocal Performance Mode.",
+        "why": "Karaoke is for singing the song. Upload Analysis is for feedback on a recorded take. Multitrack is for layering parts.",
+        "cards": [
             {
-                "title": "Karaoke vs other tools",
-                "bullets": [
-                    "**Karaoke / Vocal Performance** — sing the song with lyrics and accompaniment.",
-                    "**Backing Track (non-Voice)** — instrumental play-along for the active song.",
-                    "**Upload Analysis** — feedback on one finished take (including vocals).",
-                    "**Multitrack** — layer several recorded parts.",
-                    "**Jam / Jam Session Generator** — creative/generated practice contexts, not the Karaoke setlist.",
-                ],
+                "icon": "1️⃣",
+                "title": "Choose Voice",
+                "body": "Set Instrument to Voice in Practice Setup.",
+                "tone": "voice",
             },
             {
-                "title": "Singer setup example",
+                "icon": "2️⃣",
+                "title": "Pick a song & key",
+                "body": "Move Practice / Concert Key to a comfortable singing range.",
+                "tone": "picker",
+            },
+            {
+                "icon": "3️⃣",
+                "title": "Open Karaoke",
+                "body": "Song Selection becomes Karaoke Performance Setlist. Backing becomes Vocal Performance Mode.",
+                "tone": "practice",
+            },
+            {
+                "icon": "4️⃣",
+                "title": "Sing, then record if you want",
+                "body": "Use Upload Analysis when you want feedback on one vocal take.",
+                "tone": "analysis",
+            },
+        ],
+        "bullets": [
+            "Voice focuses include Breath Control, Phrasing, Pitch Accuracy, Emotional Delivery, Harmony Singing, Vibrato, Dynamics, and Ear Training.",
+        ],
+        "action_label": "Sing it →",
+        "sections": [
+            {
+                "title": "Learn more — finding Karaoke",
                 "bullets": [
-                    "Instrument = Voice; Focus = Phrasing (or Breath Control / Pitch Accuracy).",
-                    "Pick a song; set Practice Key to a comfortable singing key.",
-                    "Use Lyrics & Cues if you need personal cue edits.",
-                    "Practice in Karaoke / Vocal Performance Mode; log the session afterward.",
+                    "There is no separate Karaoke studio page — Voice turns Song Selection + Backing into the karaoke workflow.",
+                    "Karaoke uses your active song, lyrics/cues, and Practice / Concert Key.",
                 ],
             },
         ],
     },
     {
         "id": "creative",
+        "layer": "explore",
         "page_id": "creative",
         "icon": "🎨",
-        "title": "Creative Lab — improvise & explore",
-        "summary": (
-            "Creative Lab is a multi-tool improv workspace around your active harmony: "
-            "entry modes, live coaching, motifs, missions, and harmony views."
-        ),
-        "when": "You want to improvise, understand the progression, or take a focused mission — not only read the chart.",
-        "bullets": [
-            "**Entry & Jam** — choose how you enter: Song-Based Improvisation, "
-            "Style Jam Mode, or Jam Session Generator.",
-            "**Live Coach** — scales, chord tones, and tips for the chord you are on.",
-            "**Phrase / Motif** — build, transform, and notate melodic ideas.",
-            "**Missions** — focused practice challenges with instructions (and examples when available).",
-            "**Harmony Map** — see section progressions and tap chords for tones/context.",
-            "**Deep Harmony** — slower guided harmonic lessons.",
-            "**Metrics & AI** — choose what Upload Analysis should weigh for mission-style scoring.",
+        "script": "Explore",
+        "title": "Creative Lab — when you want more than repeating the song",
+        "summary": "Jam, generate a fresh practice situation, take a Mission, or see how the harmony fits together.",
+        "try_this": "Open Creative Lab. Try Harmony Map once on a song you already know.",
+        "why": "Creative is where you explore. Custom Progression is where you write your own chords.",
+        "cards": [
+            {
+                "icon": "🎹",
+                "title": "Jam",
+                "body": "Play around with a musical idea or song context — Song-Based Improvisation or Style Jam Mode.",
+                "tone": "creative",
+            },
+            {
+                "icon": "✨",
+                "title": "Jam Session Generator",
+                "body": "Create a fresh practice situation without designing everything by hand.",
+                "tone": "picker",
+            },
+            {
+                "icon": "🎯",
+                "title": "Missions",
+                "body": "Give yourself a focused challenge — phrasing, rhythm, or developing a simple idea.",
+                "tone": "practice",
+            },
+            {
+                "icon": "🧭",
+                "title": "Harmony Map",
+                "body": "See how the progression fits together — useful when improvising or composing.",
+                "tone": "log",
+            },
+            {
+                "icon": "🎼",
+                "title": "Phrase / Motif",
+                "body": "Develop musical ideas, then notate them.",
+                "tone": "backing",
+            },
+            {
+                "icon": "🧠",
+                "title": "Live Coach & Metrics & AI",
+                "body": "Live Coach helps while you explore. Metrics & AI shapes what Upload Analysis weighs.",
+                "tone": "analysis",
+            },
         ],
-        "tip": "Try Harmony Map once on a song you already know — it turns chord names into musical jobs.",
+        "bullets": [
+            "Start in **Entry & Jam**, then wander. You don’t have to memorize every tab.",
+        ],
+        "action_label": "Explore Creative →",
         "sections": [
             {
-                "title": "Entry modes under Entry & Jam",
+                "title": "Learn more — Creative tabs & Missions",
                 "bullets": [
-                    "**Song-Based Improvisation** — improvise from the active song or a custom progression.",
-                    "**Style Jam Mode** — choose a style/groove-oriented jam context "
-                    "(useful when you want feel/style first, not a specific catalog tune).",
-                    "**Jam Session Generator** — quickly generate a practice jam situation "
-                    "instead of hand-building every progression.",
-                ],
-            },
-            {
-                "title": "How Creative tools differ",
-                "bullets": [
-                    "**Backing** — accompaniment for the current active song.",
-                    "**Style Jam Mode** — style-first jam entry inside Creative Lab.",
-                    "**Jam Session Generator** — generated jam material to practice over.",
-                    "**Missions** — targeted improvisation challenges, not “play the whole song casually.”",
-                    "**Harmony Map** — understanding; **chord chart** — reading the form.",
-                    "**Custom Progression** — authoring your own harmony; Creative — playing/exploring it.",
-                ],
-            },
-            {
-                "title": "Example Creative flow",
-                "bullets": [
-                    "Set an active song or custom progression.",
-                    "Entry & Jam → Song-Based (or generate a jam).",
-                    "Harmony Map → notice chord function.",
-                    "Pick a Mission → play with backing if available.",
-                    "Ask Music Coach what to improve next; log the work.",
+                    "Tabs: Entry & Jam, Live Coach, Phrase / Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI.",
+                    "Entry modes: Song-Based Improvisation, Style Jam Mode, Jam Session Generator.",
+                    "A Mission is a specific challenge — not “just play the song.” Play with backing when it’s available, and record a take if you want to review it.",
+                    "Deep Harmony is a slower guided harmonic lesson when you want that pace.",
                 ],
             },
         ],
     },
     {
         "id": "composer",
+        "layer": "explore",
         "page_id": "composer",
         "icon": "🎹",
-        "title": "Composition Studio",
-        "summary": "A place to develop song ideas — vision, structure, chords, melody, lyrics, and review.",
-        "when": "You are writing or shaping a song, not only practicing repertoire.",
-        "bullets": [
-            "Phases include Song Vision, Song Structure, Chords, Melody, Lyrics, and Review.",
-            "Use it when Custom Progression is not enough structure for a full song idea.",
-            "You can still practice composed material with Backing / Creative once it is active in your workflow.",
-        ],
-        "tip": "Start with a short form (verse/chorus) before adding dense harmony.",
-    },
-    {
-        "id": "coach",
-        "page_id": "practice",
-        "icon": "🤖",
-        "title": "Music Coach",
-        "summary": (
-            "Ask normal musician questions. The coach can use your current setup and "
-            "active song context where the app supports it."
-        ),
-        "when": "You want a plan, technique help, song advice, or help finding the right page/tool.",
-        "bullets": [
-            "Open **Music Coach** from the sidebar (also available near Practice).",
-            "Useful question types on the current app include practice planning, "
-            "technique, song coaching, theory/scales, improvisation coaching, "
-            "app navigation, and feature recommendations.",
-            "Context the coach may use: instrument, level, focus, active song, "
-            "section, Practice Key, and practice-log history where wired.",
-            "Example questions: *What should I practice for 20 minutes today?* · "
-            "*How should I practice this song?* · *Where do I upload a take for feedback?* · "
-            "*Should I use Upload Analysis or Multitrack?* · "
-            "*How do I edit this chart?*",
-            "You can also ask for supportive **bass-line** ideas over the active song "
-            "when that coaching path is available.",
-        ],
-        "tip": "Ask the way you would ask a teacher — plain musical language works better than “prompt tricks.”",
-        "sections": [
+        "script": "Write",
+        "title": "Writing a song? Open Composition Studio",
+        "summary": "When a custom progression isn’t enough structure, Composition Studio helps you shape a fuller idea.",
+        "try_this": "If you’re writing, open Composition Studio and sketch a short verse/chorus form first.",
+        "why": "Custom Progression is great for chords. Composition Studio is for a fuller song idea.",
+        "cards": [
             {
-                "title": "What this tutorial does not claim (yet)",
-                "bullets": [
-                    "Advanced lick / multi-bar pattern generation from newer AMI work "
-                    "may arrive after merge; this tour describes the current Music Coach surface.",
-                    "If a question is about app navigation, ask it — the coach can point you to the right page.",
-                ],
+                "icon": "✍️",
+                "title": "Custom Progression",
+                "body": "Build and save your own harmony, then Set as Active Song.",
+                "tone": "custom",
+            },
+            {
+                "icon": "🎹",
+                "title": "Composition Studio",
+                "body": "Vision, structure, chords, melody, lyrics, and review.",
+                "tone": "creative",
             },
         ],
+        "bullets": [
+            "Once an idea is active, you can still practice it with Backing or Creative.",
+        ],
+        "action_label": "Open Composition Studio →",
+        "sections": [],
     },
     {
         "id": "recording",
+        "layer": "explore",
         "page_id": "analysis",
         "icon": "🎙️",
-        "title": "Recording decision guide",
-        "summary": "Pick the recording path that matches your goal — logging, one-take feedback, or layered parts.",
-        "when": "Anytime you want evidence of practice or feedback on a performance.",
-        "bullets": [
-            "**I want to remember that I practiced** → Practice Log (Quick Save or Add Session Manually).",
-            "**I have one take and want feedback** → Upload Analysis (Upload & AI Coach).",
-            "**I want several parts / overdubs** → Multitrack, then optionally Send to Upload Analysis.",
-            "**I’m on a Mission** → use the Mission’s play/record options when shown, then analyze if you captured a take.",
+        "script": "Record",
+        "title": "What do you want to record?",
+        "summary": "One take, several parts, or just a note that you practiced — pick the path that matches the job.",
+        "try_this": "If you already have one performance, go to Upload Analysis.",
+        "why": "Upload Analysis coaches the take. Multitrack builds the arrangement. Practice Log keeps the diary.",
+        "cards": [
+            {
+                "icon": "🎧",
+                "title": "One take",
+                "body": "**Upload Analysis** — feedback on one performance.",
+                "tone": "analysis",
+            },
+            {
+                "icon": "🎚️",
+                "title": "Several parts",
+                "body": "**Multitrack** — layer recordings or hear parts together.",
+                "tone": "multitrack",
+            },
+            {
+                "icon": "📓",
+                "title": "Just remember",
+                "body": "**Practice Log** — save that you practiced.",
+                "tone": "log",
+            },
+            {
+                "icon": "🎯",
+                "title": "Mission take",
+                "body": "Use the Mission’s play/record options when they appear.",
+                "tone": "practice",
+            },
         ],
-        "tip": "Upload Analysis = coach the take. Multitrack = build the arrangement. Practice Log = keep the diary.",
+        "bullets": [
+            "From Multitrack you can also send a mix toward Upload Analysis when you want feedback.",
+        ],
+        "action_label": "Record a take →",
         "sections": [
             {
-                "title": "Upload Analysis",
+                "title": "Learn more — Upload Analysis vs Multitrack",
                 "bullets": [
-                    "Page: **Upload Analysis** (*Upload & AI Coach*).",
-                    "Drop/upload a recording (or use available mic capture).",
-                    "Review timing, pitch, tone/technique-style feedback and next-step suggestions.",
-                    "Workflow modes include single recording vs multitrack-oriented handoff.",
-                ],
-            },
-            {
-                "title": "Multitrack",
-                "bullets": [
-                    "Page: **Multitrack** (*Multitrack Session Workspace*).",
-                    "Layer parts with monitor backing, mute/solo/volume, transport, mix/export where available.",
-                    "Synced to your active song context for practice arranging.",
+                    "Upload Analysis (*Upload & AI Coach*): drop/upload a recording and review timing, pitch, and next-step suggestions.",
+                    "Multitrack (*Multitrack Session Workspace*): layers, mute/solo/volume, monitor backing, transport, mix/export where available.",
                 ],
             },
         ],
-    },
-    {
-        "id": "log",
-        "page_id": "log",
-        "icon": "📓",
-        "title": "Practice Log & Practice Analysis",
-        "summary": (
-            "The Log answers what you practiced. Practice Analysis looks for patterns "
-            "and what to work on next."
-        ),
-        "when": "End of a session — or weekly when you want smarter continuity.",
-        "bullets": [
-            "**Quick Save Practice Session** for a fast entry; **Add Session Manually** for full detail.",
-            "Record song, instrument, keys, BPM, duration, section, focus, ratings "
-            "(focus/confidence/accuracy/groove/tone/difficulty), notes, and next step.",
-            "Edit, delete, and filter history as needed.",
-            "**Analyze My Practice** opens **Practice Analysis** — trends and coaching-style recommendations.",
-            "Keeping the log current helps Music Coach continue from real work when history is available.",
-        ],
-        "tip": "Thirty seconds of honest notes beats a perfect empty diary.",
     },
     {
         "id": "saving",
+        "layer": "explore",
         "page_id": "picker",
         "icon": "💾",
-        "title": "Saving & returning later",
-        "summary": "Know what needs an explicit Save versus what follows your active song and Practice Key.",
-        "when": "Before you leave — and when you reopen tomorrow.",
-        "bullets": [
-            "**Practice Key** — practice transposition; does not rewrite Original Key.",
-            "**Catalog chart / lyrics edits** — use Save corrected chart / Save Lyrics & Cues "
-            "(Revert returns toward catalog material).",
-            "**Custom songs** — Save to library, then Load selected / Set as Active Song later.",
-            "**Practice Log** — Quick Save or manual add; not every page auto-logs practice.",
-            "**Multitrack / uploads** — save/export using the controls on those pages when you need the files later.",
-            "Return via Song Selection (catalog or saved custom), your last active song context, and Practice Log history.",
+        "script": "Come back",
+        "title": "Leave a trail you can follow tomorrow",
+        "summary": "Practice Key is just for today. Chart and lyric edits, custom songs, and Practice Log entries need an explicit save.",
+        "try_this": "If you edited chords or lyrics, look for Save before you switch songs.",
+        "why": "Coming back is easier when the song, key, and notes are still there.",
+        "cards": [
+            {
+                "icon": "🔑",
+                "title": "Practice Key",
+                "body": "Practice transposition — does not rewrite Original Key.",
+                "tone": "picker",
+            },
+            {
+                "icon": "📝",
+                "title": "Charts & lyrics",
+                "body": "Save corrected chart / Save Lyrics & Cues. Revert toward catalog if you want.",
+                "tone": "slate",
+            },
+            {
+                "icon": "📚",
+                "title": "Custom songs",
+                "body": "Save to library, then Load selected / Set as Active Song later.",
+                "tone": "custom",
+            },
         ],
-        "tip": "If you edited chords or lyrics, look for an explicit Save before switching songs.",
-    },
-    {
-        "id": "which_tool",
-        "page_id": "",
-        "icon": "🧭",
-        "title": "Which tool should I use?",
-        "summary": "A compact decision guide from musical goal → page.",
-        "when": "Whenever you feel stuck choosing a page.",
         "bullets": [
-            "**Practice an existing song** → Song Selection + Practice.",
-            "**Create my own progression** → Custom Progression.",
-            "**Write a fuller song idea** → Composition Studio.",
-            "**Accompaniment for this song** → Backing Track.",
-            "**Sing with lyrics / setlist** → Voice + Karaoke / Vocal Performance Mode.",
-            "**Generated jam situation** → Creative Lab → Jam Session Generator (or Style Jam Mode).",
-            "**Focused improv challenge** → Creative Lab → Missions.",
-            "**Understand the progression** → Harmony Map (and Deep Harmony when you want a lesson pace).",
-            "**Feedback on one take** → Upload Analysis.",
-            "**Layer several recordings** → Multitrack.",
-            "**Remember what I practiced** → Practice Log.",
-            "**Guidance / next plan** → Music Coach.",
+            "Return via Song Selection, your last active song, and Practice Log history.",
         ],
-        "tip": "Same song, different job: Backing to play along, Missions to challenge improv, Upload Analysis to judge a take.",
+        "action_label": "Pick a song →",
         "sections": [
             {
-                "title": "Two complete workflows",
+                "title": "Learn more — what needs Save",
                 "bullets": [
-                    "**Catalog song:** Setup → pick song → Practice Key → section → "
-                    "Practice tools / Backing → Upload Analysis → Log → Music Coach.",
-                    "**Custom idea:** Custom Progression → Save → Set Active → Creative "
-                    "(Harmony Map / Jam / Mission) → practice or record → Log.",
-                    "**Singer:** Voice + Focus → song → comfortable Practice Key → "
-                    "Karaoke / Vocal Performance → optional Upload Analysis → Log.",
+                    "Catalog chart / lyrics: explicit Save buttons. Revert returns toward catalog material — this does not rewrite the original catalog for everyone.",
+                    "Custom: **Save to library**, then **Load selected** / **Set as Active Song**.",
+                    "Practice Log: Quick Save or Add Session Manually — not every page auto-logs.",
+                    "Multitrack / uploads: use save/export on those pages when you need the files later.",
                 ],
             },
         ],
+    },
+    {
+        "id": "which_tool",
+        "layer": "explore",
+        "page_id": "",
+        "icon": "🌙",
+        "script": "Tonight",
+        "title": "A simple night of practice",
+        "summary": "Tomorrow, pick up where you left off.",
+        "try_this": "Use this as a template, then change the instrument and song to yours.",
+        "why": "The tools are more useful together than as separate apps.",
+        "journey": [
+            "🎷 Choose Clarinet",
+            "🎵 Pick a song",
+            "🔑 Move it to a comfortable Practice Key",
+            "🎯 Work on one section",
+            "🎧 Play it with Backing",
+            "💬 Ask Music Coach what to improve",
+            "🎙️ Record one take",
+            "📓 Log the session",
+        ],
+        "cards": [
+            {
+                "icon": "🎵",
+                "title": "Practice an existing song",
+                "body": "Song Selection + Practice.",
+                "tone": "picker",
+            },
+            {
+                "icon": "✍️",
+                "title": "Create my own progression",
+                "body": "Custom Progression.",
+                "tone": "custom",
+            },
+            {
+                "icon": "🎧",
+                "title": "Accompaniment",
+                "body": "Backing Track.",
+                "tone": "backing",
+            },
+            {
+                "icon": "🎤",
+                "title": "Sing with lyrics",
+                "body": "Voice + Karaoke / Vocal Performance Mode.",
+                "tone": "voice",
+            },
+            {
+                "icon": "✨",
+                "title": "Generated jam",
+                "body": "Creative Lab → Jam Session Generator.",
+                "tone": "creative",
+            },
+            {
+                "icon": "🎯",
+                "title": "Focused improv challenge",
+                "body": "Creative Lab → Missions.",
+                "tone": "practice",
+            },
+            {
+                "icon": "🧭",
+                "title": "Understand the progression",
+                "body": "Harmony Map.",
+                "tone": "log",
+            },
+            {
+                "icon": "🎙️",
+                "title": "Feedback on one take",
+                "body": "Upload Analysis.",
+                "tone": "analysis",
+            },
+            {
+                "icon": "🎚️",
+                "title": "Layer several recordings",
+                "body": "Multitrack.",
+                "tone": "multitrack",
+            },
+            {
+                "icon": "📓",
+                "title": "Remember what I practiced",
+                "body": "Practice Log.",
+                "tone": "log",
+            },
+            {
+                "icon": "💬",
+                "title": "Guidance",
+                "body": "Music Coach.",
+                "tone": "slate",
+            },
+            {
+                "icon": "🎹",
+                "title": "Write a fuller song idea",
+                "body": "Composition Studio.",
+                "tone": "creative",
+            },
+        ],
+        "bullets": [],
+        "action_label": "",
+        "sections": [],
     },
 ]
 
 TOTAL_STEPS = len(TUTORIAL_STEPS)
+QUICK_TOUR_IDS: tuple[str, ...] = (
+    "welcome",
+    "setup",
+    "music",
+    "keys",
+    "practice",
+    "backing",
+    "coach",
+    "log",
+)
+EXPLORE_MORE_IDS: tuple[str, ...] = (
+    "karaoke",
+    "creative",
+    "composer",
+    "recording",
+    "saving",
+    "which_tool",
+)
+QUICK_TOUR_END_INDEX = len(QUICK_TOUR_IDS) - 1
+EXPLORE_START_INDEX = len(QUICK_TOUR_IDS)
 
 
 def init_tutorial_state(session_state: dict) -> None:
@@ -549,7 +791,7 @@ def step_index_for_page(page_id: str) -> int | None:
 
 
 def tutorial_nav_page_ids() -> list[str]:
-    """Page ids used by Open buttons — for tests."""
+    """Page ids used by action buttons — for tests."""
     return [
         str(s.get("page_id") or "")
         for s in TUTORIAL_STEPS
@@ -561,26 +803,92 @@ def tutorial_chapter_ids() -> list[str]:
     return [str(s.get("id") or "") for s in TUTORIAL_STEPS]
 
 
-def _quick_start_html() -> str:
+def _esc(text: Any) -> str:
+    return html.escape(str(text or ""), quote=False)
+
+
+def _inline_md(text: Any) -> str:
+    escaped = html.escape(str(text or ""), quote=False)
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+
+
+def _cards_html(cards: list[dict[str, Any]]) -> str:
+    if not cards:
+        return ""
+    parts = ['<div class="tutorial-card-grid">']
+    for card in cards:
+        tone = html.escape(str(card.get("tone") or "slate"))
+        icon = _esc(card.get("icon") or "")
+        title = _esc(card.get("title") or "")
+        body_html = _inline_md(card.get("body") or "")
+        parts.append(
+            f'<div class="tutorial-mini-card tone-{tone}">'
+            f'<p class="tutorial-mini-icon">{icon}</p>'
+            f'<p class="tutorial-mini-title">{title}</p>'
+            f'<p class="tutorial-mini-body">{body_html}</p>'
+            f"</div>"
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _try_this_html(text: str) -> str:
+    if not text:
+        return ""
     return (
-        "<ol class='tutorial-quick-start'>"
-        "<li>Set <strong>Instrument / Level / Focus</strong> in the sidebar.</li>"
-        "<li>Pick a song on <strong>Song Selection</strong>.</li>"
-        "<li>Set a comfortable <strong>Practice / Concert Key</strong>.</li>"
-        "<li>Open <strong>Backing Track</strong> → <strong>Generate</strong> → <strong>Play</strong>.</li>"
-        "<li>Ask <strong>Music Coach</strong> what to practice next, then <strong>Quick Save</strong> a log entry.</li>"
-        "</ol>"
+        f'<div class="tutorial-try">'
+        f'<p class="tutorial-try-kicker">Try this</p>'
+        f'<p class="tutorial-try-body">{_esc(text)}</p>'
+        f"</div>"
     )
 
 
-def _decision_strip_html() -> str:
+def _why_html(text: str) -> str:
+    if not text:
+        return ""
     return (
-        "<div class='tutorial-decision-strip'>"
-        "<p><strong>Practice setup</strong> → Choose music → Set key / section → "
-        "Choose tool (Practice / Backing / Karaoke / Creative) → "
-        "Record / Analyze → Log / Continue</p>"
-        "</div>"
+        f'<div class="tutorial-why">'
+        f'<p class="tutorial-why-kicker">Why it helps</p>'
+        f'<p class="tutorial-why-body">{_esc(text)}</p>'
+        f"</div>"
     )
+
+
+def _questions_html(questions: list[str]) -> str:
+    if not questions:
+        return ""
+    parts = ['<div class="tutorial-bubbles">']
+    for q in questions:
+        parts.append(f'<p class="tutorial-bubble">“{_esc(q)}”</p>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _journey_html(steps: list[str]) -> str:
+    if not steps:
+        return ""
+    parts = ['<div class="tutorial-journey">']
+    for i, item in enumerate(steps):
+        parts.append(f'<div class="tutorial-journey-step">{_esc(item)}</div>')
+        if i < len(steps) - 1:
+            parts.append('<div class="tutorial-journey-arrow" aria-hidden="true">↓</div>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _progress_label(step: int, data: dict[str, Any]) -> tuple[str, int]:
+    """Return (label, percent 0-100) for the current layer."""
+    layer = str(data.get("layer") or "")
+    if layer == "welcome":
+        return "Welcome", 8
+    if layer == "quick":
+        quick_i = step  # welcome is 0; setup is 1 of 7
+        return f"Quick tour · {quick_i} of {QUICK_TOUR_END_INDEX}", int(
+            quick_i / QUICK_TOUR_END_INDEX * 100
+        )
+    explore_i = step - EXPLORE_START_INDEX + 1
+    explore_n = len(EXPLORE_MORE_IDS)
+    return f"Explore more · {explore_i} of {explore_n}", int(explore_i / explore_n * 100)
 
 
 def render_tutorial_walkthrough(
@@ -590,23 +898,26 @@ def render_tutorial_walkthrough(
     rerun_fn: Callable[[], None],
     navigate_fn: Callable[[str], None] | None = None,
 ) -> None:
-    """Guided tour panel (shown above page content when tutorial_open is True)."""
+    """Friendly tour panel (shown above page content when tutorial_open is True)."""
     step = _clamp_step(session_state.get(TUTORIAL_STEP_KEY, 0))
     data = TUTORIAL_STEPS[step]
-    progress_pct = int((step + 1) / TOTAL_STEPS * 100)
-    title = html.escape(str(data.get("title") or ""))
-    summary = html.escape(str(data.get("summary") or ""))
-    when = html.escape(str(data.get("when") or ""))
+    progress_label, progress_pct = _progress_label(step, data)
+    icon = _esc(data.get("icon") or "🎵")
+    script = _esc(data.get("script") or "Tutorial")
+    title = _esc(data.get("title") or "")
+    summary = _esc(data.get("summary") or "")
+    layer = str(data.get("layer") or "")
 
     st_module.markdown(
         f"""
-<div class="tutorial-hero">
+<div class="tutorial-hero layer-{html.escape(layer or 'quick')}">
   <div class="tutorial-hero-head">
-    <span class="tutorial-hero-icon">{data.get("icon") or "🎵"}</span>
+    <span class="tutorial-hero-icon">{icon}</span>
     <div>
-      <p class="tutorial-kicker">Musician tutorial</p>
-      <h2 class="tutorial-title">Your practice workspace</h2>
-      <p class="tutorial-sub">Chapter {step + 1} of {TOTAL_STEPS} — {title}</p>
+      <p class="tutorial-kicker">{_esc(progress_label)}</p>
+      <p class="tutorial-script">{script}</p>
+      <h2 class="tutorial-title">{title}</h2>
+      <p class="tutorial-sub">{summary}</p>
     </div>
   </div>
   <div class="tutorial-progress-track" aria-hidden="true">
@@ -617,51 +928,89 @@ def render_tutorial_walkthrough(
         unsafe_allow_html=True,
     )
 
-    if step == 0:
-        st_module.markdown(
-            '<div class="tutorial-quick-card">'
-            '<p class="tutorial-quick-title">⚡ First 5 minutes</p>'
-            f"{_quick_start_html()}"
-            f"{_decision_strip_html()}"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+    try_html = _try_this_html(str(data.get("try_this") or ""))
+    if try_html:
+        st_module.markdown(try_html, unsafe_allow_html=True)
 
-    st_module.markdown(
-        f'<div class="tutorial-step-card">'
-        f'<p class="tutorial-step-label">Chapter {step + 1} of {TOTAL_STEPS}</p>'
-        f'<h3 class="tutorial-step-title">{data.get("icon") or ""} {title}</h3>'
-        f'<p class="tutorial-sub">{summary}</p>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if when:
-        st_module.markdown(f"**When to use this:** {when}")
+    cards_html = _cards_html(list(data.get("cards") or []))
+    if cards_html:
+        st_module.markdown(cards_html, unsafe_allow_html=True)
 
-    for bullet in data.get("bullets") or []:
+    questions_html = _questions_html(list(data.get("questions") or []))
+    if questions_html:
+        st_module.markdown(questions_html, unsafe_allow_html=True)
+
+    journey_html = _journey_html(list(data.get("journey") or []))
+    if journey_html:
+        st_module.markdown(journey_html, unsafe_allow_html=True)
+
+    for bullet in (data.get("bullets") or [])[:4]:
         st_module.markdown(f"- {bullet}")
-    if data.get("tip"):
-        st_module.info(data["tip"])
+
+    why_html = _why_html(str(data.get("why") or ""))
+    if why_html:
+        st_module.markdown(why_html, unsafe_allow_html=True)
 
     for section in data.get("sections") or []:
-        with st_module.expander(str(section.get("title") or "More"), expanded=False):
+        with st_module.expander(str(section.get("title") or "Learn more"), expanded=False):
             for bullet in section.get("bullets") or []:
                 st_module.markdown(f"- {bullet}")
 
-    # Chapter jump list (scannable on phone)
-    with st_module.expander("All chapters", expanded=False):
-        for i, ch in enumerate(TUTORIAL_STEPS):
+    with st_module.expander("Jump around", expanded=False):
+        st_module.caption("Quick tour")
+        for i, ch in enumerate(TUTORIAL_STEPS[:EXPLORE_START_INDEX]):
             mark = "→ " if i == step else ""
-            st_module.markdown(f"{mark}**{i + 1}. {ch.get('title')}**")
+            st_module.markdown(f"{mark}**{ch.get('script')}** — {ch.get('title')}")
             if st_module.button(
-                f"Go to chapter {i + 1}",
+                str(ch.get("script") or f"Step {i + 1}"),
+                key=f"tutorial_jump_{i}",
+                use_container_width=True,
+            ):
+                session_state[TUTORIAL_STEP_KEY] = i
+                rerun_fn()
+        st_module.caption("Explore more")
+        for i, ch in enumerate(TUTORIAL_STEPS[EXPLORE_START_INDEX:], start=EXPLORE_START_INDEX):
+            mark = "→ " if i == step else ""
+            st_module.markdown(f"{mark}**{ch.get('script')}** — {ch.get('title')}")
+            if st_module.button(
+                str(ch.get("script") or f"Step {i + 1}"),
                 key=f"tutorial_jump_{i}",
                 use_container_width=True,
             ):
                 session_state[TUTORIAL_STEP_KEY] = i
                 rerun_fn()
 
-    nav1, nav2, nav3, nav4 = st_module.columns([1, 1, 1, 1])
+    if layer == "welcome":
+        go, skip = st_module.columns([2, 1])
+        with go:
+            if st_module.button(
+                "Start the tour →",
+                key="tutorial_next",
+                type="primary",
+                use_container_width=True,
+            ):
+                session_state[TUTORIAL_STEP_KEY] = 1
+                rerun_fn()
+        with skip:
+            if st_module.button(
+                "Explore on my own",
+                key="tutorial_close",
+                use_container_width=True,
+            ):
+                close_tutorial(session_state)
+                rerun_fn()
+        more = st_module.columns(1)[0]
+        with more:
+            if st_module.button(
+                "Skip tour",
+                key="tutorial_finish",
+                use_container_width=True,
+            ):
+                complete_tutorial(session_state)
+                rerun_fn()
+        return
+
+    nav1, nav2, nav3 = st_module.columns([1, 1, 1])
     with nav1:
         if st_module.button(
             "← Back",
@@ -672,9 +1021,14 @@ def render_tutorial_walkthrough(
             session_state[TUTORIAL_STEP_KEY] = step - 1
             rerun_fn()
     with nav2:
-        _next_label = "Finish tour ✓" if step >= TOTAL_STEPS - 1 else "Next →"
+        if step == QUICK_TOUR_END_INDEX:
+            next_label = "Explore more tools →"
+        elif step >= TOTAL_STEPS - 1:
+            next_label = "Finish tour ✓"
+        else:
+            next_label = "Next →"
         if st_module.button(
-            _next_label,
+            next_label,
             key="tutorial_next",
             type="primary",
             use_container_width=True,
@@ -686,14 +1040,22 @@ def render_tutorial_walkthrough(
             rerun_fn()
     with nav3:
         page_id = str(data.get("page_id") or "").strip()
-        open_label = f"Open {data['title']}" if page_id else "Stay in tutorial"
-        if page_id and page_id in _VALID_NAV_PAGE_IDS and navigate_fn:
+        open_label = str(data.get("action_label") or "").strip() or "Open this page →"
+        if page_id and page_id in _VALID_NAV_PAGE_IDS and navigate_fn and open_label:
             if st_module.button(open_label, key="tutorial_go_page", use_container_width=True):
                 idx = step_index_for_page(page_id)
                 if idx is not None:
                     session_state[TUTORIAL_STEP_KEY] = idx
                 session_state[TUTORIAL_OPEN_KEY] = False
                 navigate_fn(page_id)
+        elif not page_id:
+            if st_module.button(
+                "Explore on my own",
+                key="tutorial_go_page",
+                use_container_width=True,
+            ):
+                close_tutorial(session_state)
+                rerun_fn()
         else:
             st_module.button(
                 open_label,
@@ -701,35 +1063,32 @@ def render_tutorial_walkthrough(
                 disabled=True,
                 use_container_width=True,
             )
-    with nav4:
-        if st_module.button("Close", key="tutorial_close", use_container_width=True):
+
+    foot1, foot2, foot3 = st_module.columns([1, 1, 1])
+    with foot1:
+        if step < EXPLORE_START_INDEX and st_module.button(
+            "Explore more tools →",
+            key="tutorial_jump_explore",
+            use_container_width=True,
+        ):
+            session_state[TUTORIAL_STEP_KEY] = EXPLORE_START_INDEX
+            rerun_fn()
+        elif step >= EXPLORE_START_INDEX and st_module.button(
+            "Back to quick tour",
+            key="tutorial_jump_explore",
+            use_container_width=True,
+        ):
+            session_state[TUTORIAL_STEP_KEY] = 1
+            rerun_fn()
+    with foot2:
+        if st_module.button("Explore on my own", key="tutorial_close", use_container_width=True):
             close_tutorial(session_state)
             rerun_fn()
-
-    st_module.divider()
-    c1, c2, c3 = st_module.columns([2, 1, 1])
-    with c1:
-
-        def _on_dismiss_toggle() -> None:
-            if session_state.get(TUTORIAL_DISMISS_CHECKBOX_KEY):
-                complete_tutorial(session_state)
-                rerun_fn()
-
-        st_module.checkbox(
-            "Don't show again on startup",
-            key=TUTORIAL_DISMISS_CHECKBOX_KEY,
-            on_change=_on_dismiss_toggle,
-        )
-    with c2:
-        if st_module.button("Finish tour", key="tutorial_finish", use_container_width=True):
+    with foot3:
+        if st_module.button("Skip tour", key="tutorial_finish", use_container_width=True):
             complete_tutorial(session_state)
-            rerun_fn()
-    with c3:
-        if st_module.button("Start over", key="tutorial_restart", use_container_width=True):
-            session_state[TUTORIAL_STEP_KEY] = 0
             rerun_fn()
 
     st_module.caption(
-        "Use **Open …** to jump into a real page, **Close** to keep working, "
-        "or **All chapters** to skip ahead — your place in the tour is saved."
+        "Jump into a real page anytime. Your place in the tour is saved if you come back."
     )
