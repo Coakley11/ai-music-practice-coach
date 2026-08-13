@@ -523,8 +523,9 @@ class WrittenDomainSongRelativeTests(unittest.TestCase):
         assert resp is not None
         sec = resp.diagnostics.get("section_resolution") or {}
         self.assertEqual(sec.get("section"), "B")
-        self.assertIn("B", resp.direct_answer)
+        self.assertIn("Part B", resp.direct_answer)
         self.assertNotIn("over A", (resp.direct_answer or "").lower())
+        self.assertIn("Part B", resp.notation_abc or "")
         self.assertEqual(resp.diagnostics.get("bars_with_events"), [0, 1, 2, 3])
 
     def test_verse_alias_preserves_lick_object(self) -> None:
@@ -573,7 +574,7 @@ class WrittenDomainSongRelativeTests(unittest.TestCase):
         from music_theory import transpose_chord
 
         concert = ["G6", "C7b9", "Bbmaj9", "G/B"]
-        expected_written = [transpose_chord(c, 2, reference_key="G") for c in concert]
+        expected_written = [transpose_chord(c, 2, reference_key="A") for c in concert]
         self.assertEqual(expected_written, ["A6", "D7b9", "Cmaj9", "A/C#"])
 
         idea = resolve_musical_idea_request(

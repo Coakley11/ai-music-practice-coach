@@ -54,6 +54,20 @@ def is_musical_idea_content_request(normalized: str, low: str) -> bool:
     return False
 
 
+def format_section_display_label(section: str) -> str:
+    """Musician-facing section name — keep Part A/B, never a bare letter that looks like a key."""
+    text = str(section or "").strip()
+    if not text:
+        return ""
+    low = re.sub(r"\s+", " ", text.lower()).strip()
+    if low in {"a", "b", "c"}:
+        return f"Part {text.upper()}"
+    m = re.fullmatch(r"(?:part|section)\s+([abc])", low)
+    if m:
+        return f"Part {m.group(1).upper()}"
+    return text
+
+
 def extract_requested_section(question: str) -> str:
     """Pull an explicit chart section from natural wording (part B, verse, …)."""
     low = str(question or "").lower()
@@ -129,9 +143,9 @@ def resolve_chart_section(
         "requested": requested,
         "available": names,
         "message": (
-            f"This chart doesn't have a section labeled **{requested.title()}**. "
+            f"This chart doesn't have a section labeled **{format_section_display_label(requested) or requested.title()}**. "
             + (
-                f"Available sections: {', '.join(names)}."
+                f"Available sections: {', '.join(format_section_display_label(n) or n for n in names)}."
                 if names
                 else "No section map is available in the current chart context."
             )
@@ -154,6 +168,7 @@ def _transpose_composition_preserving_degrees(
         _place_spelled_note,
         authoritative_scale_degrees,
     )
+    from improvisation_motif import chord_tone_names
     from music_theory import pitch_class_from_spelled_note, spell_note_in_key, transpose_chord
 
     tonality = composition.tonality
@@ -171,12 +186,24 @@ def _transpose_composition_preserving_degrees(
 
     new_events: list[MusicalEvent] = []
     for ev in composition.events:
+        written_chord = ""
+        if ev.chord:
+            written_chord = transpose_chord(
+                ev.chord,
+                steps,
+                reference_key=written_key or concert_ref,
+            )
         if written_scale and ev.scale_degree:
             idx = (int(ev.scale_degree) - 1) % len(written_scale)
             spelled = written_scale[idx]
         else:
             pc = (pitch_class_from_spelled_note(ev.spelled) + steps) % 12
-            spelled = spell_note_in_key(pc, written_key)
+            spelled = spell_note_in_key(pc, written_chord or written_key)
+            if written_chord:
+                tones = chord_tone_names(written_chord) or []
+                match = next((t for t in tones if pitch_class_from_spelled_note(t) % 12 == pc), None)
+                if match:
+                    spelled = match
         spelled2, octv, midi = _place_spelled_note(
             spelled,
             prefer_midi=prefer,
@@ -185,13 +212,6 @@ def _transpose_composition_preserving_degrees(
             direction="ascending",
             previous_midi=prev_midi,
         )
-        written_chord = ""
-        if ev.chord:
-            written_chord = transpose_chord(
-                ev.chord,
-                steps,
-                reference_key=concert_ref,
-            )
         new_events.append(
             MusicalEvent(
                 spelled=spelled2,
@@ -393,7 +413,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             piano_role=piano_role,
             question=q_text,
         )
-        where = section_label or "the active section"
+        where = format_section_display_label(section_label) or section_label or "the active section"
         role_bit = {
             "right_hand": "right-hand",
             "left_hand": "left-hand",
@@ -405,15 +425,15 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             composition = generate_lick(idea, notation_instrument=notation_inst)
             label = f"{idea.bars}-bar {obj}"
         else:
-            song_obj = obj if obj in {"lick", "phrase", "riff", "improvisation", "melody"} else "phrase"
+            song_obj = obj if obj in {"lick", "phrase", "riff", "improvisation", "melody", "solo", "accompaniment"} else "phrase"
             composition = generate_idea_over_chords(
                 idea,
                 concert_chords_raw,
                 notation_instrument=notation_inst,
                 reference_key=concert_key,
-                object_type="lick" if song_obj == "improvisation" else ("phrase" if song_obj == "melody" else song_obj),
+                object_type=song_obj,
             )
-            where = section_label or "the active section"
+            where = format_section_display_label(section_label) or section_label or "the active section"
             label = f"{idea.bars}-bar {song_obj} over {where}"
     else:
         composition = generate_lick(idea, notation_instrument=notation_inst)
@@ -460,8 +480,11 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         ).strip()
 
     bpm_out = int(idea.tempo_bpm or bpm or 96)
-    if idea.song_relative and section_label:
-        title = f"{idea.bars}-Bar {composition.object_type.replace('_', ' ').title()} Over {section_label}"
+    object_words = str(composition.object_type or obj or "idea").replace("_", " ")
+    object_title = object_words.title()
+    section_display = format_section_display_label(section_label) or section_label
+    if idea.song_relative and section_display:
+        title = f"{idea.bars}-Bar {object_title} Over {section_display}"
         if written_note:
             title = (
                 f"{title} — Written in {composition.tonic} for {notation_inst}"
@@ -476,8 +499,8 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     ton = idea.tonality or composition.tonality or composition.style
     if written_note and idea.explicit_key:
         direct = f"**Try this {idea.bars}-bar {ton} idea**\n\n{written_note}"
-    elif idea.song_relative and section_label:
-        direct = f"**Try this {idea.bars}-bar {composition.object_type} over {section_label}:**"
+    elif idea.song_relative and section_display:
+        direct = f"**Try this {idea.bars}-bar {object_words} over {section_display}:**"
         if written_note:
             direct = f"{direct}\n\n{written_note}"
     elif idea.explicit_key and ton:
@@ -486,7 +509,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         direct = f"**Try this {label.strip()}:**"
 
     steps = [
-        f"**{composition.object_type.replace('_', ' ').title()}** — read the staff notation below.",
+        f"**{object_title}** — read the staff notation below.",
         f"Use a comfortable register on **{display_inst}**.",
         "**How to play it**",
         *play_summary(composition),

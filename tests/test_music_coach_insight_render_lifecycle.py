@@ -112,6 +112,10 @@ class MusicCoachInsightLifecycleTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(ss.get("_music_coach_insight_markdown_rendered"))
         self.assertTrue(any("Eb" in c or "major" in c for c in markdown_calls))
+        joined = "\n".join(markdown_calls)
+        self.assertNotIn("ScalePracticeSolver", joined)
+        self.assertNotIn("Router confidence", joined)
+        self.assertNotIn("Assumptions:", joined)
 
 
 if __name__ == "__main__":

@@ -139,6 +139,15 @@ class TestChordSpelling(unittest.TestCase):
         tones = chord_tone_names("E7", reference_key="Am")
         self.assertEqual(tones[:4], ["E", "G#", "B", "D"])
 
+    def test_b7b9_spells_chord_identity_not_key_flats(self) -> None:
+        tones = chord_tone_names("B7b9", reference_key="Eb")
+        joined = " ".join(tones)
+        self.assertIn("D#", joined)
+        self.assertIn("F#", joined)
+        self.assertNotIn("Eb", joined)
+        self.assertNotIn("Gb", joined)
+        self.assertEqual(spell_chord_tones("B7", reference_key="Eb")[:3], ["B", "D#", "F#"])
+
     def test_eb_major_retains_flats(self) -> None:
         self.assertEqual(spell_chord_tones("Eb", reference_key="Eb")[:3], ["Eb", "G", "Bb"])
 

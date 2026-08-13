@@ -2108,8 +2108,13 @@ def render_applied_math_insight_panel(
                 st.markdown(f"**Conclusion:** {conclusion}")
                 markdown_rendered = bool(conclusion)
         show_details = str(source_app or data.get("source_app") or "").strip().lower() != "investment"
-        if app == "music" and isinstance(data.get("coach_submit_diagnostics"), dict):
-            show_details = True
+        if app == "music":
+            try:
+                from music_persistence_trace import music_developer_mode
+
+                show_details = bool(music_developer_mode(st))
+            except ImportError:
+                show_details = False
         method = str(data.get("method") or data.get("model_name") or "").strip()
         if show_details and method:
             label = "Coach" if app == "music" else "Math used"
@@ -2210,7 +2215,7 @@ def render_applied_math_insight_panel(
             for a in assumptions[:4]:
                 st.markdown(f"- {a}")
         conf = data.get("confidence")
-        if conf:
+        if show_details and conf:
             extra = f" ({data.get('confidence_pct')}%)" if data.get("confidence_pct") else ""
             st.caption(f"Confidence: **{conf}**{extra}")
         elif not show_details and isinstance(sections, dict) and sections:

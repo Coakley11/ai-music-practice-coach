@@ -644,22 +644,24 @@ def generate_idea_over_chords(
     from music_theory import chord_root_for_theory, normalize_chord_for_theory
 
     obj = _clean(object_type) or _clean(idea.object_type) or "phrase"
+    # Motif density may use lick/phrase cells; the requested musical object is preserved.
+    gen_obj = "lick" if obj in {"lick", "riff"} else "phrase"
     profile = notation_profile_for_instrument(notation_instrument)
     low, high, prefer = generation_window(
         profile,
         instrument=notation_instrument,
         register=idea.register,
-        object_type=obj if obj != "riff" else "lick",
+        object_type=gen_obj,
         difficulty=idea.difficulty or idea.level,
     )
     bars = int(idea.bars or 4)
     timeline = expand_harmony_timeline(chords, bars)
     lvl = _level(idea)
-    unit = "half" if lvl == "beginner" and obj == "phrase" else "quarter"
-    if obj == "lick" and lvl == "beginner":
+    unit = "half" if lvl == "beginner" and gen_obj == "phrase" else "quarter"
+    if gen_obj == "lick" and lvl == "beginner":
         unit = "quarter"
     if lvl == "advanced":
-        unit = "eighth" if obj != "phrase" else "quarter"
+        unit = "eighth" if gen_obj != "phrase" else "quarter"
     if idea.rhythm:
         unit = _unit_duration(idea)
     ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
@@ -676,7 +678,7 @@ def generate_idea_over_chords(
         ]
         # Phrase shape: opening / continuation / development / cadence roles by bar.
         role_phase = bar_i % 4
-        if obj == "lick":
+        if gen_obj == "lick":
             # Lick: compact chord-tone motif with mild development (not arpeggio dump).
             if lvl == "beginner":
                 motif = [tones[0], tones[min(1, len(tones) - 1)], tones[0], tones[0]]
@@ -727,7 +729,7 @@ def generate_idea_over_chords(
             if beat >= beats_bar - 1e-9:
                 break
             dir_hint = "ascending" if role_phase < 2 else "descending"
-            if obj == "lick" and lvl == "beginner":
+            if gen_obj == "lick" and lvl == "beginner":
                 dir_hint = ""
             spelled2, octv, midi = _place_spelled_note(
                 tone,
@@ -1282,11 +1284,24 @@ def play_summary(composition: MusicalIdeaComposition) -> list[str]:
     by_bar: dict[int, list[MusicalEvent]] = {}
     for ev in composition.events:
         by_bar.setdefault(ev.bar_index, []).append(ev)
+    two_hand = any(e.role == "rh" for e in composition.events) and any(
+        e.role == "lh" for e in composition.events
+    )
     for bar_i in range(composition.bars):
         evs = by_bar.get(bar_i) or []
-        names = " ".join(e.spelled for e in evs[:8])
-        chord = f" ({evs[0].chord})" if evs and evs[0].chord else ""
-        lines.append(f"Bar {bar_i + 1}{chord}: {names}")
+        chord_sym = next((e.chord for e in evs if e.chord), "")
+        chord = f" ({chord_sym})" if chord_sym else ""
+        if two_hand:
+            rh = [e.spelled for e in evs if e.role == "rh"][:8]
+            lh = [e.spelled for e in evs if e.role == "lh"][:8]
+            lines.append(f"Bar {bar_i + 1}{chord}")
+            if rh:
+                lines.append(f"RH: {' '.join(rh)}")
+            if lh:
+                lines.append(f"LH: {' '.join(lh)}")
+        else:
+            names = " ".join(e.spelled for e in evs[:8])
+            lines.append(f"Bar {bar_i + 1}{chord}: {names}")
     return lines
 
 

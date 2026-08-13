@@ -255,6 +255,11 @@ class PianoSubmitIntegrationTests(unittest.TestCase):
         self.assertEqual((both.diagnostics or {}).get("piano_role"), "both_hands")
         self.assertIn("clef=treble", both.notation_abc or "")
         self.assertIn("clef=bass", both.notation_abc or "")
+        self.assertIn("%%score", both.notation_abc or "")
+        prose = "\n".join(both.practice_steps or [])
+        self.assertIn("RH:", prose)
+        self.assertIn("LH:", prose)
+        self.assertNotIn("ScalePracticeSolver", both.composed_markdown())
 
         _, lh = run_coach_submit(
             "Give me a left-hand accompaniment for part B.",

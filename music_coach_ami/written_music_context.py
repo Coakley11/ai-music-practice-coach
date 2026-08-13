@@ -179,7 +179,9 @@ def build_written_music_context(
         except ImportError:
             pass
 
-    written_chords = _transpose_chord_list(chords, steps, reference_key=concert)
+    # Spell transposed symbols in the *written* key family (A → F#m7, not Gbm7).
+    dest_ref = written_key or concert
+    written_chords = _transpose_chord_list(chords, steps, reference_key=dest_ref)
     written_applied = bool(steps) or (mode == "written" and written_key != concert)
 
     return WrittenMusicContext(

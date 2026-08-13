@@ -39,11 +39,11 @@ def stage_routed_music_coach_insight(
     )
     result = MusicSolverResult(
         short_answer=markdown,
-        math_idea=f"Structured solver: {solver_name}",
+        math_idea="",
         problem_type=problem_type,
         model_name=solver_name,
         variables=str(coach_resp.diagnostics),
-        assumptions=[f"Router confidence: {coach_resp.diagnostics.get('router_confidence', coach_resp.confidence)}"],
+        assumptions=[],
         confidence_pct=int(min(95, max(60, coach_resp.confidence * 100))),
         computed=dict(coach_resp.diagnostics),
     )
@@ -60,7 +60,9 @@ def stage_routed_music_coach_insight(
     insight["canonical_instant"] = True
     insight["coach_submit_diagnostics"] = dict(diagnostics)
     insight["model_name"] = solver_name
-    insight["method"] = f"Structured solver: {solver_name}"
+    # Solver / router names stay in diagnostics only — not musician-facing copy.
+    insight["method"] = ""
+    insight["assumptions"] = []
     if getattr(coach_resp, "notation_abc", None):
         insight["notation_abc"] = str(coach_resp.notation_abc or "")
     sections = getattr(coach_resp, "notation_abc_sections", None) or []

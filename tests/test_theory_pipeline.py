@@ -62,6 +62,17 @@ class TestChordTonesAndCoaching(unittest.TestCase):
     def test_bdim_triad(self) -> None:
         self.assertEqual(chord_tone_names("Bdim")[:3], ["B", "D", "F"])
 
+    def test_ebdim7_uses_diminished_fifth_not_perfect_fifth(self) -> None:
+        tones = chord_tone_names("Ebdim7")
+        pcs = {__import__("music_theory").pitch_class_from_spelled_note(t) % 12 for t in tones}
+        self.assertEqual(pcs, {3, 6, 9, 0})
+        self.assertIn("Eb", tones)
+        self.assertIn("Gb", tones)
+        joined = " ".join(tones)
+        self.assertNotIn("Bb", joined)
+        self.assertTrue(any(t in {"A", "Bbb"} for t in tones))
+        self.assertTrue(any(t in {"C", "Dbb", "B#"} for t in tones))
+
     def test_csus2_and_csus4(self) -> None:
         self.assertEqual(chord_tone_names("Csus2")[:3], ["C", "D", "G"])
         self.assertEqual(chord_tone_names("Csus4")[:3], ["C", "F", "G"])
@@ -70,7 +81,8 @@ class TestChordTonesAndCoaching(unittest.TestCase):
         tones = chord_tone_names("Eaug", reference_key="E")
         self.assertEqual(tones[0], "E")
         self.assertEqual(tones[1], "G#")
-        self.assertEqual(tones[2], "C")
+        # Augmented fifth of E is letter B → B# (enharmonic C).
+        self.assertIn(tones[2], ("B#", "C"))
 
     def test_g7sus4_coaching_uses_sus_quality(self) -> None:
         self.assertEqual(classify_chord_quality("G7sus4:4"), "sus")

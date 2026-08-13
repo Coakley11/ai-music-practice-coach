@@ -254,7 +254,7 @@ def classify_chord_quality(chord: object) -> str:
     low = str(suffix or "").lower()
     if "m7b5" in low or "ø" in low:
         return "half-dim"
-    if "dim" in low:
+    if "dim" in low or "°" in str(suffix or "") or re.search(r"(?:^|[^a-z])o7?\b", low):
         return "dim"
     if "aug" in low or "+" in str(suffix or ""):
         return "aug"
@@ -475,21 +475,35 @@ def abc_key_signature_letter_alterations(k_field: str) -> dict[str, int]:
     return out
 
 
-def pitch_class_from_spelled_note(note: str) -> int:
-    """Map a spelled note name (including E#, B#, Cb) to pitch class 0–11."""
-    root, _ = split_chord(str(note or "C").strip() or "C")
-    text = str(root)
+def _note_letter_and_accidental_tail(note: str) -> tuple[str, str]:
+    """Split a spelled pitch into letter + accidental tail (Bbb stays B+bb, not Bb)."""
+    text = str(note or "C").strip() or "C"
     letter = text[0].upper()
-    base = _NATURAL_LETTER_PC.get(letter, 0)
     tail = text[1:]
-    alter = 0
     if tail.startswith("##") or tail.startswith("x"):
+        return letter, tail[:2] if tail.startswith("##") else "x"
+    if tail.startswith("#") or tail.startswith("♯"):
+        return letter, tail[0]
+    if tail.lower().startswith("bb"):
+        return letter, tail[:2]
+    if tail.startswith("b") or tail.startswith("♭"):
+        return letter, tail[0]
+    return letter, ""
+
+
+def pitch_class_from_spelled_note(note: str) -> int:
+    """Map a spelled note name (including E#, B#, Cb, Bbb) to pitch class 0–11."""
+    letter, acc = _note_letter_and_accidental_tail(note)
+    base = _NATURAL_LETTER_PC.get(letter, 0)
+    acc_l = acc.lower()
+    alter = 0
+    if acc.startswith("##") or acc == "x":
         alter = 2
-    elif tail.startswith("#") or tail.startswith("♯"):
+    elif acc.startswith("#") or acc.startswith("♯"):
         alter = 1
-    elif tail.lower().startswith("bb"):
+    elif acc_l.startswith("bb"):
         alter = -2
-    elif tail.startswith("b") or tail.startswith("♭"):
+    elif acc.startswith("b") or acc.startswith("♭"):
         alter = -1
     return (base + alter) % 12
 
@@ -503,18 +517,16 @@ def midi_from_spelled_note(note: str, *, octave: int = 4) -> int:
 
 def spelled_note_letter_alteration(note: str) -> tuple[str, int]:
     """Return (uppercase letter, semitone delta from natural) for a spelled note."""
-    root, _ = split_chord(str(note or "C").strip() or "C")
-    text = str(root)
-    letter = text[0].upper()
-    tail = text[1:]
+    letter, acc = _note_letter_and_accidental_tail(note)
+    acc_l = acc.lower()
     alter = 0
-    if tail.startswith("##") or tail.startswith("x"):
+    if acc.startswith("##") or acc == "x":
         alter = 2
-    elif tail.startswith("#") or tail.startswith("♯"):
+    elif acc.startswith("#") or acc.startswith("♯"):
         alter = 1
-    elif tail.lower().startswith("bb"):
+    elif acc_l.startswith("bb"):
         alter = -2
-    elif tail.startswith("b") or tail.startswith("♭"):
+    elif acc.startswith("b") or acc.startswith("♭"):
         alter = -1
     return letter, alter
 
@@ -572,14 +584,15 @@ _NATURAL_LETTER_PC: dict[str, int] = {
 
 def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
     """Diatonic letter steps from root (0,2,4,6) and semitone offsets from root."""
-    low = str(suffix or "").lower()
-    if "m7b5" in low:
+    raw = str(suffix or "")
+    low = raw.lower()
+    if "m7b5" in low or "ø" in raw:
         return [(0, 0), (2, 3), (4, 6), (6, 10)]
-    if "dim" in low:
-        if "dim7" in low or "°7" in low:
-            return [(0, 0), (2, 3), (4, 6), (6, 9)]
+    if "dim7" in low or "°7" in raw or re.search(r"(?:^|[^a-z])o7\b", low):
+        return [(0, 0), (2, 3), (4, 6), (6, 9)]
+    if "dim" in low or low in {"o", "°"} or raw.strip() in {"o", "°"}:
         return [(0, 0), (2, 3), (4, 6)]
-    if "aug" in low or "+" in str(suffix or ""):
+    if "aug" in low or "+" in raw:
         return [(0, 0), (2, 4), (4, 8)]
     if "sus" in low:
         return [(0, 0), (1, 2), (4, 7)] if "sus2" in low else [(0, 0), (3, 5), (4, 7)]
@@ -605,14 +618,13 @@ def _spell_letter_to_pitch_class(letter: str, target_pc: int) -> str:
     if diff == 11:
         return f"{letter.upper()}b"
     if diff == 2:
-        return f"{letter.upper()}#"
+        return f"{letter.upper()}##"
     if diff == 10:
-        return f"{letter.upper()}b"
-    if diff == 3:
-        return f"{letter.upper()}#"
-    if diff == 9:
-        return f"{letter.upper()}b"
-    return spell_pitch_class(int(target_pc) % 12, mode="sharp")
+        return f"{letter.upper()}bb"
+    spelled = spell_pitch_class(int(target_pc) % 12, mode="sharp")
+    if pitch_class_from_spelled_note(spelled) == int(target_pc) % 12:
+        return spelled
+    return spell_pitch_class(int(target_pc) % 12, mode="flat")
 
 
 _HEPTATONIC_SCALE_TEMPLATES: tuple[tuple[int, ...], ...] = (
@@ -666,11 +678,27 @@ def spell_diatonic_scale_from_root(root: str, semitone_intervals: list[int] | tu
     return out
 
 
+def _simplify_musician_chord_tone(note: str) -> str:
+    """Prefer naturals / single accidentals (Bbb→A, Dbb→C) without changing pitch class."""
+    text = str(note or "").strip()
+    if not text:
+        return text
+    low = text.lower()
+    if "bb" not in low[1:] and "##" not in text and not text.endswith("x"):
+        return text
+    pc = pitch_class_from_spelled_note(text)
+    natural = _FLAT_PITCH_CLASSES[pc]
+    if natural in _NATURAL_PITCH_CLASSES:
+        return natural
+    return spell_pitch_class(pc, mode="flat" if "b" in low else "sharp")
+
+
 def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     """
     Chord tones with correct diatonic letter names (root, third, fifth, seventh).
 
-    Uses chord structure for letter names; ``reference_key`` only breaks ties when needed.
+    Spelling follows the **chord symbol's harmonic identity**, not the song key's
+    accidental family (B7 stays D#/F# even in Eb). ``reference_key`` is unused.
     """
     _ = reference_key
     head = normalize_chord_for_theory(chord).split("/", 1)[0].strip()
@@ -690,12 +718,10 @@ def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
         letter = _DIATONIC_LETTERS[li]
         target_pc = (root_pc + int(semi)) % 12
         tones.append(_spell_letter_to_pitch_class(letter, target_pc))
-    ref = str(reference_key or "").strip()
-    if ref and reference_spelling_mode(ref) == "flat":
-        root_tone = tones[0] if tones else ""
-        tones = [respell_note_for_key(t, ref) for t in tones]
-        if root_spelled and tones:
-            tones[0] = respell_note_for_key(root_spelled, ref) if root_spelled[0].upper() in _DIATONIC_LETTERS else tones[0]
+    tones = [_simplify_musician_chord_tone(t) for t in tones]
+    if root_spelled and tones:
+        # Keep the written root from the chord symbol (F#m7 stays F#, not Gb).
+        tones[0] = root_spelled[0].upper() + root_spelled[1:] if root_spelled[0].upper() in _DIATONIC_LETTERS else tones[0]
     return tones[:4]
 
 
