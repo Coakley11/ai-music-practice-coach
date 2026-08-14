@@ -1485,6 +1485,55 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(ctx.concert_key, "F")
         self.assertEqual(ctx.bpm, 72)
 
+    def test_style_jam_backing_refresh_keeps_f_when_live_display_is_leftover_c(self) -> None:
+        """Browser refresh / Upload return must not rebuild Style Jam F from leftover catalog C."""
+        from backing_context import (
+            BACKING_PREF_CREATIVE,
+            ensure_backing_context_from_creative_session,
+            get_backing_context,
+            hydrate_backing_context_after_restore,
+            open_backing_from_creative,
+            set_backing_source_preference,
+        )
+        from creative_session_state import CreativeSession, set_creative_session
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "F",
+            "improv_style_bpm": 72,
+            "improv_mood": "Mellow",
+            "improv_generated_sections": {"A (Bossa Nova)": ["Gm7", "C7", "Fmaj7"]},
+            "display_key": "F",
+            "concert_key": "F",
+            "instrument": "Piano",
+            "active_catalog_pick_key": "Pop::Photograph",
+        }
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="style-f",
+                tool_type="entry_style_jam",
+                entry_mode="Style Jam Mode",
+                concert_key="F",
+                style="Bossa Nova",
+                bpm=72,
+                sections={"A (Bossa Nova)": ["Gm7", "C7", "Fmaj7"]},
+            ),
+        )
+        open_backing_from_creative(session, source="entry_jam")
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        self.assertEqual(get_backing_context(session).concert_key, "F")
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        ensure_backing_context_from_creative_session(session)
+        self.assertEqual(get_backing_context(session).concert_key, "F")
+        hydrate_backing_context_after_restore(session)
+        self.assertEqual(get_backing_context(session).concert_key, "F")
+        hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
+        self.assertEqual(get_backing_context(session).concert_key, "F")
+
     def test_return_to_creative_authoritative_style_jam_before_entry_radios(self) -> None:
         """Return to Creative must land Style Jam Mode on the entry radio before widgets render."""
         from backing_context import open_backing_from_creative

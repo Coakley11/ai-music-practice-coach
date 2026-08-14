@@ -467,14 +467,21 @@ class MissionGenerateAuthoritativeChordTests(unittest.TestCase):
 
 
 class GenericBackingEntryTests(unittest.TestCase):
-    def test_generic_backing_entry_releases_mission_context(self) -> None:
-        from backing_context import BackingContext, set_backing_context
+    def test_generic_backing_entry_restores_last_valid_mission_context(self) -> None:
+        from backing_context import BACKING_PREF_CREATIVE, BackingContext, set_backing_context, set_backing_source_preference
         from backing_source_navigation import hydrate_backing_source_for_page, mark_generic_catalog_backing_entry
         from music_source_ownership import intentional_creative_backing_active
 
         session: dict = {
             "studio_page": "backing",
             "active_catalog_pick_key": "Pop::Test",
+            "creative_session": {
+                "session_id": "mission-blob",
+                "tool_type": "mission",
+                "entry_mode": "Song-Based Improvisation",
+                "mission_id": "Mission A",
+                "sections": {"A": ["C"]},
+            },
         }
         set_backing_context(
             session,
@@ -492,10 +499,12 @@ class GenericBackingEntryTests(unittest.TestCase):
                 mission_id="Mission A",
             ),
         )
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         mark_generic_catalog_backing_entry(session)
-        with unittest.mock.patch("music_source_ownership.reconcile_source_ownership", return_value=True):
+        with unittest.mock.patch("music_source_ownership.reconcile_source_ownership", return_value=True) as recon:
             hydrate_backing_source_for_page(session)
-        self.assertFalse(intentional_creative_backing_active(session))
+        self.assertFalse(recon.called)
+        self.assertTrue(intentional_creative_backing_active(session))
 
 
 if __name__ == "__main__":

@@ -517,6 +517,15 @@ BACKING_GENERIC_CATALOG_ENTRY_KEY = "_backing_generic_catalog_entry"
 BACKING_ENTRY_CLASS_KEY = "_backing_entry_class"
 BACKING_ENTRY_GENERIC_CATALOG = "generic_catalog_navigation"
 BACKING_ENTRY_SPECIALIZED_HANDOFF = "specialized_handoff"
+LAST_SURVIVING_BACKING_SOURCES = frozenset(
+    {
+        "entry_jam",
+        "song_improv",
+        "mission",
+        "custom_progression",
+    }
+)
+SPECIALIZED_BACKING_SOURCES = LAST_SURVIVING_BACKING_SOURCES
 
 
 def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> bool:
@@ -542,12 +551,74 @@ def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> boo
 
         ctx = get_backing_context(session)
         src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
-        if src in {"entry_jam", "song_improv", "mission", "custom_progression"}:
+        if src in SPECIALIZED_BACKING_SOURCES:
             if get_backing_source_preference(session) != BACKING_PREF_CATALOG:
+                return True
+            if last_valid_backing_session_survives_ordinary_nav(session):
                 return True
     except ImportError:
         pass
     return False
+
+
+def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) -> bool:
+    """True when Upload/Multitrack/Practice/etc. must restore the last Backing session.
+
+    Ordinary top-level navigation must not destroy Mission / Style Jam / Jam Generator /
+    Regular Song backing unless that session was intentionally invalidated.
+    """
+    try:
+        from backing_context import get_backing_context, is_backing_context_valid
+    except ImportError:
+        return False
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return False
+    src = str(getattr(ctx, "source", "") or "").strip()
+    if src not in LAST_SURVIVING_BACKING_SOURCES:
+        return False
+    if not is_backing_context_valid(session, ctx):
+        return False
+    try:
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if src != "custom_progression" and (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
+            return False
+    except ImportError:
+        pass
+    return True
+
+
+def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_like: Any | None = None) -> bool:
+    """Re-apply the last valid Backing owner after visiting an ordinary page."""
+    if not last_valid_backing_session_survives_ordinary_nav(session):
+        return False
+    try:
+        from backing_context import (
+            BACKING_PREF_CREATIVE,
+            get_backing_context,
+            set_backing_source_preference,
+            sync_live_keys_from_backing_context,
+        )
+    except ImportError:
+        return False
+    ctx = get_backing_context(session)
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if src in SPECIALIZED_BACKING_SOURCES:
+        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        try:
+            sync_live_keys_from_backing_context(session, st_like=st_like)
+        except Exception:
+            pass
+    return True
 
 
 def mark_specialized_backing_handoff_entry(session: dict[str, Any]) -> None:
@@ -625,7 +696,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     except ImportError:
         pass
     if generic_entry or entry_class == BACKING_ENTRY_GENERIC_CATALOG:
+        if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
+            return
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+        return
     elif intent == BACKING_INTENT_FROM_CREATIVE or entry_class == BACKING_ENTRY_SPECIALIZED_HANDOFF:
         open_backing_for_creative_source(session, st_like=st_like)
         try:
@@ -635,6 +709,9 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         except ImportError:
             pass
         return
+    if intent == BACKING_INTENT_RESTORE_LAST:
+        if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
+            return
     if intent == BACKING_INTENT_FROM_PRACTICE or intent == BACKING_INTENT_FROM_SONG_TO_BACKING:
         try:
             from custom_progression_lab import (
@@ -1956,6 +2033,8 @@ __all__ = [
     "hydrate_backing_source_for_page",
     "hydrate_picker_source_for_page",
     "hydrate_practice_source_for_page",
+    "last_valid_backing_session_survives_ordinary_nav",
+    "restore_last_valid_backing_on_ordinary_nav",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
     "queue_backing_scope_from_practice_focus",

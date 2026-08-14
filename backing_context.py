@@ -3058,14 +3058,9 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
     if existing is not None and existing.source in {"regular_song", "custom_progression"}:
         return existing
     if existing is not None and existing.source != "regular_song" and is_backing_context_valid(session, existing):
-        refreshed = refresh_backing_context_from_session(session)
-        if refreshed is not None:
-            set_backing_context(
-                session,
-                refreshed,
-                trace_caller="ensure_backing_context_from_creative_session:refresh",
-            )
-        return refreshed or existing
+        # Last valid Mission/Jam session owns key/progression. Do not rebuild from
+        # leftover live display_key (e.g. catalog C) on refresh or Upload return.
+        return existing
     try:
         from creative_session_state import creative_session_is_active, get_creative_session
 
@@ -3115,26 +3110,13 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     if concert:
         session["concert_key"] = concert
         try:
-            from creative_session_state import creative_session_is_active, get_creative_session
+            from session_widget_safe import safe_assign_display_key
 
-            if creative_session_is_active(session):
-                sess = get_creative_session(session)
-                creative_key = str((sess.concert_key if sess else "") or concert).strip() or concert
-                try:
-                    from session_widget_safe import safe_assign_display_key
-
-                    safe_assign_display_key(session, creative_key, widget_safe=False)
-                except ImportError:
-                    session["display_key"] = creative_key
-                    session["_pending_display_key"] = creative_key
-            else:
-                session["display_key"] = concert
+            safe_assign_display_key(session, concert, widget_safe=False)
         except ImportError:
             session["display_key"] = concert
+            session["_pending_display_key"] = concert
         sync_improv_widgets_from_live_concert_key(session)
-    refreshed = refresh_backing_context_from_session(session)
-    if refreshed is not None:
-        set_backing_context(session, refreshed, trace_caller="hydrate_backing_context_after_restore")
     session[PENDING_BACKING_CONTEXT_APPLY] = True
 
 
