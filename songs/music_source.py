@@ -2430,7 +2430,7 @@ def resolve_catalog_song_for_pick(
         return merged, original_key
 
     snap_keys = (
-        (CATALOG_BEFORE_CREATIVE_KEY, CATALOG_BEFORE_CUSTOM_KEY)
+        (CATALOG_BEFORE_CREATIVE_KEY, CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY)
         if authoritative_transport
         else (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY, CATALOG_BEFORE_CREATIVE_KEY)
     )
