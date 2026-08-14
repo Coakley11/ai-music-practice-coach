@@ -623,6 +623,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "latest_practice_analysis_full_report",
     "latest_practice_analysis_handoff_status",
     "backing_context",
+    "_music_mission_canonical_return_destination",
     "creative_session",
     "improv_entry_mode",
     "improv_generated_sections",

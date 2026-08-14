@@ -1362,6 +1362,55 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get("improv_ensemble"), "Latin quartet")
         self.assertEqual(int(session.get("improv_jam_bpm") or 0), 120)
 
+    def test_jam_generator_radio_takes_ownership_from_leftover_style_jam(self) -> None:
+        """Leftover Style Jam blob must not keep owning Entry & Jam after Jam Generator is selected."""
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+        from creative_session_state import (
+            CreativeSession,
+            get_creative_session,
+            set_creative_session,
+            sync_creative_session_before_persist,
+        )
+        from creative_tab_tool_persistence import handle_user_creative_selector_change
+        from music_workflow_pending_activation import owner_for_improv_entry_mode
+
+        session = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Entry & Jam",
+            "creative_improv_intelligence_tab": "Entry & Jam",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "C",
+            "improv_style_bpm": 110,
+            "improv_jam_key": "E",
+            "improv_jam_style": "Jazz Swing",
+            "improv_jam_bpm": 120,
+            "improv_jam_mood": "Mellow",
+            "improv_jam_session": {"sections": {"Jam": ["Emaj7", "A7"]}},
+        }
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="leftover-style",
+                tool_type="entry_style_jam",
+                entry_mode="Style Jam Mode",
+                concert_key="C",
+                style="Bossa Nova",
+                sections={"A": ["Cmaj7"]},
+                intelligence_tab="Entry & Jam",
+            ),
+        )
+        session["improv_entry_mode"] = "Jam Session Generator"
+        handle_user_creative_selector_change(session, "improv_entry_mode")
+        sync_creative_session_before_persist(session)
+        sess = get_creative_session(session)
+        self.assertIsNotNone(sess)
+        assert sess is not None
+        self.assertEqual(sess.tool_type, "jam_session_generator")
+        self.assertEqual(sess.entry_mode, "Jam Session Generator")
+        self.assertEqual(sess.concert_key, "E")
+        self.assertEqual(resolve_entry_jam_entry_mode(session), "Jam Session Generator")
+
     def test_jam_session_open_backing_survives_custom_practice_and_double_hydrate(self) -> None:
         from backing_context import BACKING_PREF_CREATIVE, get_backing_context, get_backing_source_preference, open_backing_from_creative
         from creative_session_state import CREATIVE_SESSION_KEY

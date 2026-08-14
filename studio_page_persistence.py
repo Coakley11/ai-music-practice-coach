@@ -75,6 +75,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "selected_sections",
             "backing_volume",
             "backing_context",
+            "_music_mission_canonical_return_destination",
             "creative_session",
             "improv_mission_practice_lick",
             "improv_mission_example",

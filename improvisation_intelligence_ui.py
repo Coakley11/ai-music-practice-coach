@@ -767,7 +767,7 @@ def _tab_entry_modes(
                 60,
                 200,
                 key="improv_style_bpm",
-                step=5,
+                step=1,
                 on_change=on_improv_style_jam_setting_change,
             )
             st.selectbox(

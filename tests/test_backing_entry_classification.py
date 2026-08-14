@@ -185,6 +185,29 @@ class BackingEntryClassificationTests(unittest.TestCase):
         self.assertEqual(ctx.get("source"), "mission")
         self.assertEqual(ctx.get("mission_id"), "Mission A")
         self.assertTrue(intentional_creative_backing_active(session))
+        session.pop("_music_mission_canonical_return_destination", None)
+        from mission_return_destination import (
+            peek_mission_return_destination,
+            seal_mission_return_destination,
+        )
+        from music_workflow_pending_mission_return import queue_pending_mission_return_from_backing
+
+        seal_mission_return_destination(
+            session,
+            {
+                "mission_id": "Mission A",
+                "section_label": "Verse",
+                "chord_symbol": "C",
+                "destination_page": "creative",
+                "creative_tab": "Missions",
+            },
+        )
+        session.pop("_music_mission_canonical_return_destination", None)
+        recovered = peek_mission_return_destination(session)
+        self.assertEqual(recovered.get("mission_id"), "Mission A")
+        req = queue_pending_mission_return_from_backing(session)
+        self.assertIsInstance(req, dict)
+        self.assertEqual(req.get("mission_id"), "Mission A")
 
     def test_multitrack_to_backing_restores_style_jam_session(self) -> None:
         session: dict = {

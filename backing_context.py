@@ -270,6 +270,9 @@ def set_backing_context(
 ) -> None:
     prev_blob = session.get(BACKING_CONTEXT_KEY)
     prev_route = prev_blob.get("creative_return_route") if isinstance(prev_blob, dict) else None
+    prev_mission_dest = (
+        prev_blob.get("mission_return_destination") if isinstance(prev_blob, dict) else None
+    )
     prev_launch_id = (
         str(prev_blob.get(BACKING_SESSION_LAUNCH_ID_BLOB_KEY) or "").strip()
         if isinstance(prev_blob, dict)
@@ -304,6 +307,11 @@ def set_backing_context(
             else:
                 payload["creative_return_route"] = dict(prev_route)
                 preservation_reason = "preserved_same_signature"
+        if (
+            isinstance(prev_mission_dest, dict)
+            and str(prev_mission_dest.get("mission_id") or "").strip()
+        ):
+            payload["mission_return_destination"] = copy.deepcopy(prev_mission_dest)
     session[BACKING_CONTEXT_KEY] = payload
     new_route = payload.get("creative_return_route")
     caller = str(trace_caller or "").strip() or _infer_set_backing_context_caller()
@@ -2436,6 +2444,14 @@ def open_backing_from_creative(
     except ImportError:
         pass
     try:
+        from backing_creative_return_route import read_live_creative_surface_at_backing_launch
+
+        _launch_tab, _launch_entry = read_live_creative_surface_at_backing_launch(session)
+        if _launch_entry in ("Style Jam Mode", "Jam Session Generator"):
+            session["_backing_handoff_entry_mode"] = _launch_entry
+    except ImportError:
+        _launch_tab, _launch_entry = "", ""
+    try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
 
         session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
@@ -2457,12 +2473,15 @@ def open_backing_from_creative(
         sync_creative_session_from_session(session)
     except ImportError:
         pass
-    try:
-        from backing_creative_return_route import read_live_creative_surface_at_backing_launch
+    if not _launch_tab or not _launch_entry:
+        try:
+            from backing_creative_return_route import read_live_creative_surface_at_backing_launch
 
-        _launch_tab, _launch_entry = read_live_creative_surface_at_backing_launch(session)
-    except ImportError:
-        _launch_tab, _launch_entry = "", ""
+            late_tab, late_entry = read_live_creative_surface_at_backing_launch(session)
+            _launch_tab = _launch_tab or late_tab
+            _launch_entry = _launch_entry or late_entry
+        except ImportError:
+            pass
     try:
         from backing_session_route import on_creative_backing_handoff
 
@@ -2519,6 +2538,10 @@ def open_backing_from_creative(
             and ptr.workflow_owner in {"jam_session_generator", "style_jam"}
             and str(source) in {"entry_jam", ""}
             and str(getattr(ctx, "source", "") or "") == "entry_jam"
+            and (
+                not launch_wf
+                or str(ptr.workflow_owner) == str(launch_wf)
+            )
         ):
             launch_wf = str(ptr.workflow_owner)
         session["_backing_launch_workflow"] = launch_wf
@@ -3118,6 +3141,15 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             session["_pending_display_key"] = concert
         sync_improv_widgets_from_live_concert_key(session)
     session[PENDING_BACKING_CONTEXT_APPLY] = True
+    if ctx.source == "mission":
+        try:
+            from mission_return_destination import (
+                rehydrate_mission_return_destination_from_backing_context,
+            )
+
+            rehydrate_mission_return_destination_from_backing_context(session)
+        except ImportError:
+            pass
 
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:

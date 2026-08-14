@@ -412,6 +412,24 @@ def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
         from studio_page_state import IMPROV_ENTRY_MODES
     except ImportError:
         IMPROV_ENTRY_MODES = ("Song-Based Improvisation", "Style Jam Mode", "Jam Session Generator")  # type: ignore[misc,assignment]
+    live = str(
+        session.get("improv_entry_mode") or session.get("creative_improv_entry_mode") or ""
+    ).strip()
+    # Live Entry & Jam submode is the user selection. Leftover Style Jam blob must
+    # not own a Jam Generator launch (or the reverse). Leftover SBI radio is ignored
+    # here so generated Style Jam still owns Backing.
+    if live in ("Style Jam Mode", "Jam Session Generator"):
+        return live
+    try:
+        from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
+
+        pending = str(session.get(PENDING_IMPROV_ENTRY_MODE_KEY) or "").strip()
+        if pending in ("Style Jam Mode", "Jam Session Generator"):
+            return pending
+    except ImportError:
+        pending = str(session.get("_pending_improv_entry_mode") or "").strip()
+        if pending in ("Style Jam Mode", "Jam Session Generator"):
+            return pending
     tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
     if tab == "Entry & Jam":
         try:
@@ -437,14 +455,8 @@ def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
                     return "Style Jam Mode"
         except ImportError:
             pass
-    try:
-        live = str(
-            session.get("improv_entry_mode") or session.get("creative_improv_entry_mode") or ""
-        ).strip()
-        if live in IMPROV_ENTRY_MODES:
-            return live
-    except ImportError:
-        pass
+    if live in IMPROV_ENTRY_MODES:
+        return live
     try:
         from session_widget_safe import PENDING_IMPROV_ENTRY_MODE_KEY
 
@@ -618,6 +630,15 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
             sync_live_keys_from_backing_context(session, st_like=st_like)
         except Exception:
             pass
+        if src == "mission":
+            try:
+                from mission_return_destination import (
+                    rehydrate_mission_return_destination_from_backing_context,
+                )
+
+                rehydrate_mission_return_destination_from_backing_context(session)
+            except ImportError:
+                pass
     return True
 
 
