@@ -112,8 +112,6 @@ def widgets_likely_instantiated(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
-    if session.get("_music_restore_phase_complete"):
-        return True
     return False
 
 
