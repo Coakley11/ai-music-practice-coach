@@ -45,11 +45,16 @@ class AuthoritativePracticeKey:
 
     def original_label(self) -> str:
         try:
-            from custom_progression_lab import format_key_label
+            from music_theory import format_key_label_from_parts
 
-            return format_key_label(self.original_key_token)
+            return format_key_label_from_parts(self.original_tonic, self.original_mode)
         except ImportError:
-            return self.original_key_token
+            try:
+                from custom_progression_lab import format_key_label
+
+                return format_key_label(self.original_key_token)
+            except ImportError:
+                return self.original_key_token
 
 
 def _mode_from_key_token(key: str) -> str:

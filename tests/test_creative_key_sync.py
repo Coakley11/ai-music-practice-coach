@@ -407,8 +407,14 @@ class TestCreativeWidgetOwnershipP0(unittest.TestCase):
             "instrument": "Alto Saxophone",
             CHART_IN_INSTRUMENT_KEY_KEY: False,
         }
-        rehydrate_transposing_sidebar_from_canonical(session)
+        # Authoritative restore may force widget keys from canonical.
+        rehydrate_transposing_sidebar_from_canonical(session, force=True)
         sync_written_key_instrument_anchor(session, "Alto Saxophone")
+        self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
+        # Ordinary rerun must not wipe a live checkbox / subtype after user edits.
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = True
+        session[ACTIVE_SONG_STATE_KEY][CHART_IN_INSTRUMENT_KEY_KEY] = False
+        rehydrate_transposing_sidebar_from_canonical(session)
         self.assertTrue(session[CHART_IN_INSTRUMENT_KEY_KEY])
 
 

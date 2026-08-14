@@ -31,6 +31,9 @@ ANALYTICAL_QUESTION_CONTINUE_PRIORITY = 64
 ANALYTICAL_QUESTION_BUTTON_LABEL = "Continue in Applied Mathematics →"
 _SEND_COOLDOWN_SECONDS = 120
 
+_AMI_COACH_SUBMIT_FEEDBACK_KEY = "_music_coach_submit_feedback"
+MUSIC_COACH_SUBMIT_DIAG_KEY = "_music_coach_ami_submit_diag"
+
 _SOURCE_AREA: dict[str, str] = {
     "baseball": "sports",
     "nba": "sports",
@@ -292,10 +295,22 @@ def question_dedupe_fingerprint(
     source_page: str = "",
     context: dict[str, Any] | None = None,
 ) -> str:
-    """Stable id for dedupe — same app, page, question, and key entities → same card."""
+    """Stable id for dedupe — same app, page, question, and key entities → same card.
+
+    Music Coach uses a dedicated semantic fingerprint so instrument / Practice Key /
+    level / focus / song / section changes produce a fresh question_id.
+    """
+    app = str(source_app or "").strip().lower()
+    if app == "music":
+        try:
+            from music_coach_ami.semantic_fingerprint import music_coach_semantic_fingerprint
+
+            return music_coach_semantic_fingerprint(question, context)
+        except ImportError:
+            pass
     ctx = dict(context or {})
     parts = [
-        str(source_app or "").strip().lower(),
+        app,
         str(source_page or "").strip().lower(),
         _normalize_question(question),
     ]
@@ -1359,6 +1374,613 @@ def build_submit_context(
     return ctx
 
 
+def _restore_routed_insight_render_flags(session_state: dict[str, Any]) -> None:
+    """Re-arm same-page insight render after duplicate submit or sidebar cooldown."""
+    try:
+        from applied_math_return_insight import SESSION_PENDING_KEY
+    except ImportError:
+        SESSION_PENDING_KEY = "_ami_pending_insight"
+    pending = session_state.get(SESSION_PENDING_KEY)
+    if isinstance(pending, dict) and pending.get("canonical_instant"):
+        session_state["_ami_submit_render_insight_this_run"] = True
+        session_state["_ami_force_insight_render"] = True
+
+
+def _record_music_coach_send(
+    session_state: dict[str, Any],
+    *,
+    question_id: str,
+    question: str,
+    source_app: str,
+    result_path: str,
+    semantic_dimensions: dict[str, str] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "question_id": question_id,
+        "question": question,
+        "source_app": source_app,
+        "submitted_at": utc_now_iso(),
+        "result_path": result_path,
+    }
+    if semantic_dimensions:
+        payload["semantic_fingerprint"] = question_id
+        payload["semantic_dimensions"] = dict(semantic_dimensions)
+    session_state["_ami_last_send"] = payload
+
+
+def _music_coach_semantic_payload(
+    question: str,
+    submit_ctx: dict[str, Any],
+) -> tuple[str, dict[str, str]]:
+    """Fingerprint + dimensions from the same fresh submit context the solver uses."""
+    try:
+        from music_coach_ami.semantic_fingerprint import (
+            music_coach_semantic_dimensions,
+            music_coach_semantic_fingerprint,
+        )
+
+        dims = music_coach_semantic_dimensions(question, submit_ctx)
+        return music_coach_semantic_fingerprint(question, submit_ctx), dims
+    except ImportError:
+        return "", {}
+
+
+def _attach_music_dedupe_diagnostics(
+    session_state: dict[str, Any],
+    *,
+    fingerprint: str,
+    dimensions: dict[str, str],
+    duplicate: bool,
+) -> None:
+    last = session_state.get("_ami_last_send")
+    prev_fp = ""
+    prev_dims: dict[str, str] = {}
+    if isinstance(last, dict):
+        prev_fp = str(last.get("semantic_fingerprint") or last.get("question_id") or "")
+        raw_dims = last.get("semantic_dimensions")
+        if isinstance(raw_dims, dict):
+            prev_dims = {str(k): str(v) for k, v in raw_dims.items()}
+    changed: list[str] = []
+    try:
+        from music_coach_ami.semantic_fingerprint import music_coach_fingerprint_diff
+
+        changed = music_coach_fingerprint_diff(prev_dims, dimensions)
+    except ImportError:
+        if prev_fp and prev_fp != fingerprint:
+            changed = ["fingerprint"]
+    patch = {
+        "semantic_fingerprint": fingerprint,
+        "previous_semantic_fingerprint": prev_fp or None,
+        "duplicate": bool(duplicate),
+        "semantic_dimensions_changed": changed,
+        "semantic_dimensions": dict(dimensions),
+        "selected_instrument": dimensions.get("instrument"),
+        "level": dimensions.get("level"),
+        "focus": dimensions.get("focus"),
+        "practice_key": dimensions.get("practice_key"),
+        "active_song_pick": dimensions.get("pick_key"),
+        "active_section": dimensions.get("section"),
+        "musical_object": dimensions.get("musical_object"),
+        "capo_enabled": dimensions.get("capo_enabled"),
+        "capo_shape_key": dimensions.get("capo_shape_key") or None,
+        "written_key_hint": dimensions.get("written_key_hint") or None,
+        "transposing_subtype": dimensions.get("transposing_subtype") or None,
+        "bars": dimensions.get("bars") or None,
+        "direction": dimensions.get("direction") or None,
+        "tempo_bpm": dimensions.get("tempo_bpm") or None,
+        "duration_minutes": dimensions.get("duration_minutes") or None,
+        "instrument_change_source": str(session_state.get("instrument_change_source") or "") or None,
+        "stale_snapshot_instrument": None,
+        "fresh_submit_instrument": dimensions.get("instrument"),
+    }
+    snap = session_state.get("_ami_music_snapshot")
+    if isinstance(snap, dict):
+        practice_snap = snap.get("practice_snapshot") if isinstance(snap.get("practice_snapshot"), dict) else snap
+        if isinstance(practice_snap, dict) and practice_snap.get("instrument"):
+            patch["stale_snapshot_instrument"] = str(practice_snap.get("instrument") or "")
+    existing = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if isinstance(existing, dict):
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = {**existing, **patch}
+    else:
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = patch
+
+
+def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any]) -> None:
+    """Compact dev routing panel for the last Music Coach submit (?dev=1)."""
+    diag = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if not isinstance(diag, dict) or not diag:
+        ui.caption("Music Coach AMI: no submit diagnostics yet this session.")
+        return
+    with ui.expander("Music Coach AMI routing (?dev=1)", expanded=True):
+        ui.markdown(
+            f"**result_path:** `{diag.get('result_path')}` · "
+            f"**coach_intent:** `{diag.get('coach_intent')}` · "
+            f"**solver:** `{diag.get('solver') or '—'}` · "
+            f"**staged:** `{diag.get('insight_staged')}` · "
+            f"**markdown:** `{diag.get('insight_markdown_rendered')}` · "
+            f"**staff:** `{diag.get('notation_staff_rendered')}`"
+        )
+        if diag.get("structured_coach_failure_stage") or diag.get("structured_coach_exception_type"):
+            ui.error(
+                f"structured_coach_failure_stage=`{diag.get('structured_coach_failure_stage')}` · "
+                f"{diag.get('structured_coach_exception_type')}: "
+                f"{diag.get('structured_coach_exception_message')}"
+            )
+        if diag.get("deploy_sha") or diag.get("practice_key_trace"):
+            ui.caption(
+                f"deploy=`{diag.get('deploy_sha') or '—'}` · "
+                f"practice_key_trace=`{diag.get('practice_key_trace')}` · "
+                f"chart_available=`{diag.get('chart_available')}` · "
+                f"notation=`{diag.get('notation_success')}` · "
+                f"coach_response=`{diag.get('coach_response_success')}`"
+            )
+        if diag.get("semantic_fingerprint") or diag.get("duplicate") is not None:
+            ui.caption(
+                f"semantic_fp=`{diag.get('semantic_fingerprint') or '—'}` · "
+                f"prev=`{diag.get('previous_semantic_fingerprint') or '—'}` · "
+                f"duplicate=`{diag.get('duplicate')}` · "
+                f"changed=`{diag.get('semantic_dimensions_changed') or []}` · "
+                f"object=`{diag.get('musical_object') or '—'}` · "
+                f"instrument=`{diag.get('selected_instrument') or '—'}` · "
+                f"key=`{diag.get('practice_key') or '—'}` · "
+                f"level=`{diag.get('level') or '—'}` · "
+                f"focus=`{diag.get('focus') or '—'}`"
+            )
+        try:
+            from applied_math_return_insight import MUSIC_COACH_RENDER_TRACE_KEY
+
+            trace = session_state.get(MUSIC_COACH_RENDER_TRACE_KEY)
+        except ImportError:
+            trace = None
+        if trace:
+            ui.caption("Render trace (last run)")
+            ui.json(trace)
+        try:
+            from applied_math_return_insight import MUSIC_COACH_LIFECYCLE_TRACE_KEY
+
+            life = session_state.get(MUSIC_COACH_LIFECYCLE_TRACE_KEY)
+            if life:
+                ui.caption("Lifecycle trace (?dev=1)")
+                ui.json(life)
+        except ImportError:
+            pass
+        bass_dev = diag.get("bass_line_chart_dev")
+        if isinstance(bass_dev, dict) and bass_dev:
+            try:
+                from music_coach_ami.chart_context_transport import format_bass_line_chart_dev_markdown
+
+                ui.markdown(format_bass_line_chart_dev_markdown(bass_dev))
+            except ImportError:
+                ui.caption("Bass-line chart context")
+                ui.json(bass_dev)
+        lifecycle = diag.get("chart_context_lifecycle")
+        if isinstance(lifecycle, dict) and lifecycle:
+            ui.caption("Chart context lifecycle")
+            ui.json(lifecycle)
+        ui.json(diag)
+
+
+def _execute_coach_question_submit(
+    st: Any,
+    ui: Any,
+    session_state: dict[str, Any],
+    *,
+    question_raw: str,
+    source_app: str,
+    source_page: str,
+    page_suffix: str,
+    send_gen: int,
+    surface_tag: str = "sidebar",
+    context: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    context_summary: str = "",
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> dict[str, Any] | None:
+    """Music Coach send: routed AMI pipeline first, else legacy Command Center handoff."""
+    q = str(question_raw or "").strip()
+    if not q:
+        ui.warning("Enter a question first.")
+        return None
+
+    submit_ctx = build_submit_context(
+        source_app,
+        source_page,
+        session_state,
+        context_extra_builder=context_extra_builder,
+        context_extra=context,
+    )
+    submit_ctx = dict(submit_ctx)
+    submit_ctx["question"] = q
+
+    submit_source_state: dict[str, Any] | None = None
+    if source_state_builder is not None:
+        try:
+            submit_source_state = source_state_builder()
+        except Exception:
+            log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+
+    coach_page = str(submit_ctx.get("coach_page") or source_page).strip()
+    try:
+        from music_ami_pages import promote_music_ami_context_at_send
+
+        promote_music_ami_context_at_send(
+            submit_ctx,
+            session_state,
+            source_page=coach_page,
+            question=q,
+        )
+    except ImportError:
+        pass
+    except Exception:
+        log.exception("promote_music_ami_context_at_send failed for music coach (%s)", source_page)
+
+    # Stamp live capo fields onto submit context so fingerprint matches WrittenMusicContext.
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        if CAPO_ENABLED_KEY in session_state or session_state.get(CAPO_ENABLED_KEY) is not None:
+            submit_ctx["guitar_capo_enabled"] = bool(session_state.get(CAPO_ENABLED_KEY))
+        if session_state.get(CAPO_SHAPE_KEY):
+            submit_ctx["guitar_capo_shape_key"] = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
+    except ImportError:
+        pass
+
+    semantic_fp, semantic_dims = _music_coach_semantic_payload(q, submit_ctx)
+
+    pre_payload = build_question_payload(
+        source_app=source_app,
+        source_page=source_page,
+        question=q,
+        context=submit_ctx,
+        context_summary=context_summary,
+        source_state=submit_source_state,
+    )
+    # Prefer dedicated Music Coach fingerprint (already used inside question_id for music).
+    question_id = str(semantic_fp or pre_payload.get("question_id") or "")
+    if semantic_fp:
+        pre_payload["question_id"] = semantic_fp
+        pre_payload["resume_key"] = f"ai:question:{semantic_fp}"
+
+    if _recent_duplicate_send(session_state, question_id):
+        last = session_state.get("_ami_last_send")
+        last_path = ""
+        if isinstance(last, dict):
+            last_path = str(last.get("result_path") or "")
+        try:
+            from applied_math_return_insight import SESSION_PENDING_KEY
+        except ImportError:
+            SESSION_PENDING_KEY = "_ami_pending_insight"
+        pending = session_state.get(SESSION_PENDING_KEY)
+        routed_pending = isinstance(pending, dict) and pending.get("canonical_instant")
+        _attach_music_dedupe_diagnostics(
+            session_state,
+            fingerprint=question_id,
+            dimensions=semantic_dims,
+            duplicate=True,
+        )
+        if last_path == "routed_coach" or routed_pending:
+            _restore_routed_insight_render_flags(session_state)
+            dup_msg = (
+                "That question was just answered with the same music settings. "
+                "Your Music Coach insight is shown on this page."
+            )
+            ui.info(dup_msg)
+            session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+                "kind": "info",
+                "message": dup_msg,
+                "result_path": "routed_coach",
+            }
+            if developer_mode:
+                _render_music_coach_submit_dev_panel(ui, session_state)
+            st.rerun()
+            return {"duplicate": True, "routed": True}
+        dup_msg = (
+            "That question was already sent recently. Open Command Center to continue with the Music Coach."
+            if last_path == "legacy_fallback"
+            else (
+                "That question was just answered with the same music settings. "
+                "Your Music Coach insight is shown on this page."
+            )
+        )
+        ui.info(dup_msg)
+        session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+            "kind": "info",
+            "message": dup_msg,
+            "result_path": last_path or "duplicate",
+        }
+        if developer_mode:
+            _render_music_coach_submit_dev_panel(ui, session_state)
+        return {"duplicate": True, "routed": False}
+
+    coach_req = None
+    coach_resp = None
+    structured_failure: dict[str, Any] = {}
+    try:
+        from music_coach_ami.pipeline import run_coach_submit
+        from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics
+        from music_coach_ami.submit_integration import stage_routed_music_coach_insight
+    except ImportError as exc:
+        structured_failure = {
+            "stage": "import_structured_coach",
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc)[:500],
+        }
+        coach_req = None
+        coach_resp = None
+        build_music_coach_submit_diagnostics = None  # type: ignore[assignment]
+        stage_routed_music_coach_insight = None  # type: ignore[assignment]
+        run_coach_submit = None  # type: ignore[assignment]
+    else:
+        try:
+            coach_req, coach_resp = run_coach_submit(q, session_state, ami_ctx=submit_ctx)
+        except Exception as exc:
+            # Never treat a structured-solver crash as a silent "unsupported question".
+            log.exception("Structured Music Coach pipeline failed for %s", source_page)
+            structured_failure = {
+                "stage": "run_coach_submit",
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc)[:500],
+            }
+            coach_resp = None
+            try:
+                from music_coach_ami.router import route_question
+
+                coach_req = route_question(q, session_state, ami_ctx=submit_ctx)
+            except Exception as route_exc:
+                structured_failure["route_exception_type"] = type(route_exc).__name__
+                structured_failure["route_exception_message"] = str(route_exc)[:300]
+                coach_req = None
+
+    if coach_resp is not None and coach_req is not None and stage_routed_music_coach_insight is not None:
+        try:
+            diag = build_music_coach_submit_diagnostics(
+                coach_req,
+                coach_resp,
+                result_path="routed_coach",
+                session_state=session_state,
+                structured_failure=structured_failure or None,
+            )
+            session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+            stage_routed_music_coach_insight(
+                st,
+                session_state,
+                question=q,
+                source_page=source_page,
+                coach_req=coach_req,
+                coach_resp=coach_resp,
+                diagnostics=diag,
+                question_id=question_id,
+                source_state=submit_source_state,
+            )
+        except Exception as exc:
+            log.exception("Music Coach insight staging failed for %s", source_page)
+            structured_failure = {
+                "stage": "stage_routed_music_coach_insight",
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc)[:500],
+            }
+            try:
+                from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics as _build_diag
+
+                session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = _build_diag(
+                    coach_req,
+                    coach_resp,
+                    result_path="staging_failed",
+                    session_state=session_state,
+                    structured_failure=structured_failure,
+                )
+            except Exception:
+                pass
+            ui.warning(
+                "Music Coach answered your question, but the insight could not be staged for display. "
+                "Try again or check ?dev=1 diagnostics."
+            )
+            session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+                "kind": "warning",
+                "message": "Music Coach insight staging failed.",
+                "result_path": "staging_failed",
+                "surface": surface_tag,
+            }
+            session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+            if developer_mode:
+                _render_music_coach_submit_dev_panel(ui, session_state)
+            st.rerun()
+            return {"routed": True, "duplicate": False, "question_id": question_id, "staging_failed": True}
+
+        try:
+            from applied_math_return_insight import SESSION_PENDING_KEY
+        except ImportError:
+            SESSION_PENDING_KEY = "_ami_pending_insight"
+        pending = session_state.get(SESSION_PENDING_KEY)
+        diag = {
+            **diag,
+            "notation_abc_present": bool(getattr(coach_resp, "notation_abc", None)),
+            "insight_staged": isinstance(pending, dict) and bool(
+                pending.get("conclusion") or pending.get("question")
+            ),
+            "instant_insight_staging_success": isinstance(pending, dict) and bool(
+                pending.get("conclusion") or pending.get("question")
+            ),
+            "duplicate_suppressed": False,
+        }
+        st.session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+        _attach_music_dedupe_diagnostics(
+            session_state,
+            fingerprint=question_id,
+            dimensions=semantic_dims,
+            duplicate=False,
+        )
+        _record_music_coach_send(
+            session_state,
+            question_id=question_id,
+            question=q,
+            source_app=source_app,
+            result_path="routed_coach",
+            semantic_dimensions=semantic_dims,
+        )
+        try:
+            from applied_math_return_insight import record_music_coach_lifecycle_trace
+
+            record_music_coach_lifecycle_trace(
+                st,
+                phase="coach_submit_staged",
+                result_path="routed_coach",
+                coach_intent=diag.get("coach_intent"),
+                solver=diag.get("solver"),
+                insight_id=str((pending or {}).get("insight_id") or "") if isinstance(pending, dict) else None,
+                insight_staged=diag.get("insight_staged"),
+                preserve_flag=bool(session_state.get("_ami_insight_return_preserve")),
+            )
+        except ImportError:
+            pass
+        session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+            "kind": "success",
+            "message": "Music Coach insight is ready on this page.",
+            "result_path": "routed_coach",
+            "surface": surface_tag,
+        }
+        session_state["_last_analytical_question"] = {
+            **pre_payload,
+            "routed_coach": True,
+            "duplicate": False,
+        }
+        session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+        if isinstance(pending, dict) and (pending.get("conclusion") or pending.get("question")):
+            ui.success("Music Coach insight is ready on this page.")
+        else:
+            ui.warning(
+                "Music Coach answered your question, but the insight could not be staged for display. "
+                "Try again or check ?dev=1 diagnostics."
+            )
+        if on_after_send is not None:
+            try:
+                on_after_send()
+            except Exception:
+                log.exception("on_after_send hook failed for music coach (%s)", source_page)
+        if developer_mode:
+            _render_music_coach_submit_dev_panel(ui, session_state)
+        st.rerun()
+        return {"routed": True, "duplicate": False, "question_id": question_id}
+
+    from music_coach_ami.router import route_question
+
+    fallback_req = coach_req if coach_req is not None else route_question(q, session_state, ami_ctx=submit_ctx)
+    try:
+        from music_coach_ami.submit_diagnostics import build_music_coach_submit_diagnostics
+
+        session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = build_music_coach_submit_diagnostics(
+            fallback_req,
+            None,
+            result_path="legacy_fallback",
+            session_state=session_state,
+            structured_failure=structured_failure or None,
+        )
+    except ImportError:
+        pass
+
+    result = submit_analytical_question(
+        source_app=source_app,
+        source_page=source_page,
+        question=q,
+        context=submit_ctx,
+        context_summary=context_summary,
+        source_state=submit_source_state,
+        session_state=session_state,
+    )
+    session_state["_last_analytical_question"] = result
+    session_state[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
+    session_state[_AMI_COACH_SUBMIT_FEEDBACK_KEY] = {
+        "kind": "success",
+        "message": "Question sent to Command Center. Open Command Center to continue with the Music Coach.",
+        "result_path": "legacy_fallback",
+        "surface": surface_tag,
+    }
+    _attach_music_dedupe_diagnostics(
+        session_state,
+        fingerprint=question_id,
+        dimensions=semantic_dims,
+        duplicate=False,
+    )
+    _record_music_coach_send(
+        session_state,
+        question_id=str(result.get("question_id") or question_id),
+        question=q,
+        source_app=source_app,
+        result_path="legacy_fallback",
+        semantic_dimensions=semantic_dims,
+    )
+    if result.get("duplicate"):
+        ui.info("That question was already sent recently. Open Command Center to continue with the Music Coach.")
+    else:
+        ui.success(
+            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
+        )
+    if on_after_send is not None and not result.get("duplicate"):
+        try:
+            on_after_send()
+        except Exception:
+            log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
+    if developer_mode:
+        _render_music_coach_submit_dev_panel(ui, session_state)
+    st.rerun()
+    return {**result, "routed": False}
+
+
+def _stage_music_instant_insight(
+    st: Any,
+    session_state: dict[str, Any],
+    *,
+    question: str,
+    source_app: str,
+    source_page: str,
+    submit_ctx: dict[str, Any],
+    submit_source_state: dict[str, Any] | None,
+    pre_payload: dict[str, Any],
+    action_url_pre: str = "",
+) -> bool:
+    """Legacy instant-insight staging (solve_instant_music_insight → pending card)."""
+    try:
+        from applied_math_return_insight import (
+            build_return_insight_payload,
+            stage_pending_insight,
+            store_applied_math_insight,
+        )
+        from music_ami_instant_solver import solve_instant_music_insight
+    except ImportError:
+        return False
+
+    solved = solve_instant_music_insight(question, dict(submit_ctx), session_state=session_state)
+    if not solved:
+        return False
+    route, result = solved
+    payload = build_return_insight_payload(
+        question=question,
+        source_app=source_app,
+        source_page=source_page,
+        question_id=str(pre_payload.get("question_id") or ""),
+        route=route,
+        result=result,
+        context=submit_ctx,
+    )
+    insight = payload.to_dict()
+    insight["canonical_instant"] = True
+    store_applied_math_insight(
+        insight,
+        source_state=submit_source_state,
+        st=st,
+    )
+    stage_pending_insight(st, insight, return_context=submit_source_state)
+    session_state["_ami_music_instant_canonical"] = {
+        "insight_id": insight.get("insight_id"),
+        "question_id": pre_payload.get("question_id"),
+    }
+    session_state["_ami_submit_render_insight_this_run"] = True
+    session_state["_ami_last_submit_source_page"] = source_page
+    return True
+
+
 def render_analyze_with_applied_math_sidebar(
     st: Any,
     *,
@@ -1400,21 +2022,27 @@ def render_analyze_with_applied_math_sidebar(
         submit_label = "Send to Command Center"
 
     last = ss.get("_ami_last_send")
+    fb = ss.get(_AMI_COACH_SUBMIT_FEEDBACK_KEY)
     if (
         isinstance(last, dict)
         and last.get("source_app") == source_app
         and _recent_duplicate_send(ss, str(last.get("question_id") or ""))
     ):
-        sent_msg = (
-            "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-            if is_music
-            else (
-                "NBA insight request saved. Open Command Center when you're ready to review it."
-                if is_nba
-                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+        result_path = str(last.get("result_path") or (fb or {}).get("result_path") or "")
+        if is_music and result_path == "routed_coach":
+            st.sidebar.success("Music Coach insight is ready on this page.")
+        elif is_music:
+            st.sidebar.success(
+                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
             )
-        )
-        st.sidebar.success(sent_msg)
+        elif is_nba:
+            st.sidebar.success(
+                "NBA insight request saved. Open Command Center when you're ready to review it."
+            )
+        else:
+            st.sidebar.success(
+                "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
+            )
 
     question = st.sidebar.text_area(
         "Question",
@@ -1442,6 +2070,30 @@ def render_analyze_with_applied_math_sidebar(
         q = str(question or "").strip()
         if not q:
             st.sidebar.warning("Enter a question first.")
+        elif is_music:
+            submit_source_state: dict[str, Any] | None = None
+            if source_state_builder is not None:
+                try:
+                    submit_source_state = source_state_builder()
+                except Exception:
+                    log.exception("AMI source_state builder failed for %s (%s)", source_app, source_page)
+            _execute_coach_question_submit(
+                st,
+                st.sidebar,
+                ss,
+                question_raw=q,
+                source_app=source_app,
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag="sidebar",
+                context=context,
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                context_summary=context_summary,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
         else:
             submit_ctx = build_submit_context(
                 source_app,
@@ -1450,7 +2102,7 @@ def render_analyze_with_applied_math_sidebar(
                 context_extra_builder=context_extra_builder,
                 context_extra=context,
             )
-            submit_source_state: dict[str, Any] | None = None
+            submit_source_state = None
             if source_state_builder is not None:
                 try:
                     submit_source_state = source_state_builder()
@@ -1468,22 +2120,14 @@ def render_analyze_with_applied_math_sidebar(
             ss["_last_analytical_question"] = result
             ss[f"_ami_send_gen_{source_app}_{page_suffix}"] = send_gen + 1
             dup_msg = (
-                "That question was already sent recently. Open Command Center to continue with the Music Coach."
-                if is_music
-                else (
-                    "That NBA insight was already requested recently. Open Command Center to review it."
-                    if is_nba
-                    else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
-                )
+                "That NBA insight was already requested recently. Open Command Center to review it."
+                if is_nba
+                else "That question was already sent recently. Open Command Center to continue in Applied Intelligence."
             )
             ok_msg = (
-                "Question sent to Command Center. Open Command Center to continue with the Music Coach."
-                if is_music
-                else (
-                    "NBA insight request saved. Open Command Center when you're ready to review it."
-                    if is_nba
-                    else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
-                )
+                "NBA insight request saved. Open Command Center when you're ready to review it."
+                if is_nba
+                else "Question sent to Command Center. Open Command Center to continue in Applied Intelligence."
             )
             if result.get("duplicate"):
                 st.sidebar.info(dup_msg)
@@ -1495,6 +2139,9 @@ def render_analyze_with_applied_math_sidebar(
                 except Exception:
                     log.exception("on_after_send hook failed for %s (%s)", source_app, source_page)
             st.rerun()
+
+    if is_music and developer_mode:
+        _render_music_coach_submit_dev_panel(st.sidebar, ss)
 
     if developer_mode:
         st.sidebar.caption(f"🛠 {AMI_SIDEBAR_DEPLOY_LABEL} · {AMI_SIDEBAR_DEPLOY_VERSION}")
@@ -1788,7 +2435,9 @@ def build_context_from_session(
                 artist = str(song.get("artist") or "").strip()
                 if title:
                     ctx["song"] = f"{title} — {artist}" if artist else title
-            instrument = str(session_state.get("instrument") or "").strip()
+            from music_coach_ami.coach_instrument import resolve_coach_instrument
+
+            instrument = resolve_coach_instrument(session_state)
             if instrument:
                 ctx["instrument"] = instrument
             display_key = str(session_state.get("display_key") or "").strip()
@@ -1803,6 +2452,88 @@ def build_context_from_session(
             summary = page_display
 
     return ctx, summary
+
+
+def render_music_coach_page_entry(
+    st: Any,
+    *,
+    source_page: str,
+    session_state: dict[str, Any] | None = None,
+    context_extra_builder: Callable[[], dict[str, Any] | None] | None = None,
+    source_state_builder: Callable[[], dict[str, Any] | None] | None = None,
+    developer_mode: bool = False,
+    on_after_send: Callable[[], None] | None = None,
+) -> None:
+    """Practice-page Music Coach entry — visible under Song Practice.
+
+    Opens the real Music Coach page, and keeps the accepted AMI in-place ask
+    path. Sidebar Ask the Music Coach stays available.
+    """
+    ss = session_state if session_state is not None else st.session_state
+    st.markdown(
+        '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
+        "<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">💬 Ask the Music Coach</p>"
+        "<p style=\"margin:0;color:#475569;font-size:0.9rem;\">"
+        "Ask about this song, practice, theory, or how to use the app — "
+        "without leaving your session context."
+        "</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Ask the Music Coach",
+        key="practice_open_music_coach",
+        type="primary",
+        use_container_width=True,
+    ):
+        try:
+            from app_ui import navigate_studio_page
+        except ImportError:
+            from studio_nav_history import navigate_studio_page
+        navigate_studio_page(ss, "openai")
+        st.rerun()
+        return
+
+    page_suffix = _safe_widget_suffix(source_page)
+    send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
+    question_key = f"ami_question_music_page_{page_suffix}_{send_gen}"
+
+    with st.expander("Ask the Music Coach", expanded=False):
+        st.caption("Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.")
+        question = st.text_area(
+            "Question",
+            value=str(ss.get(question_key) or "").strip(),
+            placeholder=music_coach_question_placeholder(source_page),
+            height=88,
+            key=question_key,
+            label_visibility="collapsed",
+        )
+        if st.button(
+            "Ask the Music Coach",
+            key=f"ami_submit_music_page_{page_suffix}",
+            use_container_width=True,
+            type="primary",
+        ):
+            _execute_coach_question_submit(
+                st,
+                st,
+                ss,
+                question_raw=str(question or ""),
+                source_app="music",
+                source_page=source_page,
+                page_suffix=page_suffix,
+                send_gen=send_gen,
+                surface_tag="page",
+                context_extra_builder=context_extra_builder,
+                source_state_builder=source_state_builder,
+                developer_mode=developer_mode,
+                on_after_send=on_after_send,
+            )
+
+    if developer_mode:
+        _render_music_coach_submit_dev_panel(st, ss)
+    elif ss.get("_music_coach_page_error"):
+        st.caption(f"🛠 Music Coach page entry · {ss.get('_music_coach_page_error')}")
 
 
 def render_music_coach_sidebar_entry(
@@ -1826,6 +2557,65 @@ def render_music_coach_sidebar_entry(
         developer_mode=developer_mode,
         on_after_send=on_after_send,
     )
+
+
+def render_pending_music_coach_insight(
+    st: Any,
+    *,
+    studio_page: str = "",
+    developer_mode: bool = False,
+) -> bool:
+    """Canonical same-page render for staged routed Music Coach insights."""
+    import app_ui as _app_ui
+
+    if _app_ui._MUSIC_INSIGHT_RENDERED_THIS_EXEC:
+        return False
+    ss = st.session_state if hasattr(st, "session_state") else st
+    try:
+        from applied_math_return_insight import (
+            MUSIC_COACH_RENDER_TRACE_KEY,
+            SESSION_PENDING_KEY,
+            _pending_insight_valid,
+        )
+        from music_coach_context import resolve_coach_source_page
+    except ImportError:
+        return False
+
+    pending = _pending_insight_valid(st)
+    if not pending:
+        return False
+
+    studio = str(studio_page or ss.get("studio_page") or "practice").strip()
+    coach = resolve_coach_source_page(ss if isinstance(ss, dict) else dict(ss))
+    rendered = False
+    for page in (coach, studio):
+        if not page:
+            continue
+        if render_suite_applied_math_insight(st, source_app="music", source_page=page):
+            rendered = True
+            _app_ui._MUSIC_INSIGHT_RENDERED_THIS_EXEC = True
+            break
+
+    diag = ss.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
+    if isinstance(diag, dict):
+        diag = dict(diag)
+        diag["insight_rendered_on_page"] = bool(ss.get("_music_coach_diag_insight_rendered"))
+        diag["insight_markdown_rendered"] = bool(ss.get("_music_coach_insight_markdown_rendered"))
+        diag["notation_abc_render_attempted"] = bool(
+            ss.get("_music_coach_notation_abc_render_attempted")
+        )
+        diag["notation_staff_rendered"] = bool(ss.get("_music_coach_notation_staff_rendered"))
+        ss[MUSIC_COACH_SUBMIT_DIAG_KEY] = diag
+
+    if developer_mode and not rendered:
+        staged = bool(pending) and str((diag or {}).get("result_path") or "") == "routed_coach"
+        if staged or pending.get("canonical_instant"):
+            trace = ss.get(MUSIC_COACH_RENDER_TRACE_KEY) or {}
+            st.warning(
+                "Routed Music Coach insight is staged but was not rendered on this page. "
+                f"Scope/trace: `{trace.get('render_blocked_reason') or trace.get('scope_skip_reason') or 'unknown'}`"
+            )
+    return rendered
 
 
 def render_suite_applied_math_insight(

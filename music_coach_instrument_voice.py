@@ -448,3 +448,149 @@ def music_theory_coaching(instrument: str, display_key: str, section: str) -> st
         "I = home, IV = lift, V = tension, vi = emotional color in pop harmony. "
         f"{angle}"
     )
+
+
+def _musical_application_phrase(song_title: str, section: str) -> str:
+    title = str(song_title or "").strip()
+    sec = str(section or "").strip()
+    if not title or title.lower() in {"full song", "full", "song"}:
+        return "a short phrase from a current song or etude"
+    if sec and sec.lower() not in {"full song", "full", "all", "song"}:
+        return f'"{title}" — focus on **{sec}**'
+    return f'"{title}"'
+
+
+def _beginner_level(level: str) -> bool:
+    low = str(level or "").lower()
+    return not low or "begin" in low or "easy" in low
+
+
+def tone_focused_practice_plan(
+    instrument: str,
+    total_minutes: int,
+    *,
+    level: str = "",
+    song_title: str = "",
+    section: str = "",
+) -> dict[str, object]:
+    """Structured tone-first practice plan blocks (instrument-family voice)."""
+    fam = instrument_family(instrument)
+    inst = str(instrument or "your instrument").strip()
+    beginner = _beginner_level(level)
+    song_phrase = _musical_application_phrase(song_title, section)
+
+    if fam == "wind":
+        weights = (8, 6, 5, 8, 3) if total_minutes >= 30 else (5, 4, 4, 5, 2)
+        m1, m2, m3, m4, m5 = _scale_tone_blocks(total_minutes, weights)
+        hold = "6–8 seconds" if beginner else "8–10 seconds"
+        goal = (
+            f"**Today's goal:** produce a centered, stable **{inst}** tone that stays consistent "
+            "through sustained notes, articulation, and actual music."
+        )
+        headline = f"**{total_minutes}-minute {inst} tone session**"
+        steps = [
+            f"### 1. {m1} min — Centered long tones\n\n"
+            f"- Start in a comfortable **middle register**.\n"
+            f"- Hold each note about **{hold}** at a medium-soft dynamic.\n"
+            "- Keep the air steady through the entire note; rest briefly between reps.\n"
+            "- Move chromatically or through a simple scale across **5–7 notes**.\n\n"
+            "**Listen for:** clean start, centered core, stable pitch, even volume, minimal air noise.\n\n"
+            f"**Ready when:** **4 of 5** notes begin cleanly and stay stable for {hold.split('–')[-1]}.",
+            f"### 2. {m2} min — Tone through register changes\n\n"
+            "- Play **slow 4–6 note slurred fragments** (scale or simple interval).\n"
+            "- Match tone color when crossing register boundaries.\n"
+            "- Repeat each fragment until low/middle/high feel connected.\n\n"
+            "**Listen for:** no sudden thinning or spreading of sound between registers.\n\n"
+            "**Ready when:** you can play the fragment **3 times** with no obvious tone drop between registers.",
+            f"### 3. {m3} min — Clear attacks without losing tone\n\n"
+            "- On one comfortable note: **slur 4**, then **tongue 4** at the same dynamic.\n"
+            "- Keep the tone centered immediately after the tongue releases.\n"
+            "- Expand to a short **2–3 note pattern** if stable.\n\n"
+            "**Listen for:** attacks that are clear but not explosive or breathy.\n\n"
+            "**Ready when:** **8 of 10** attacks are clean without a thin or airy start.",
+            f"### 4. {m4} min — Musical application\n\n"
+            f"- Apply the same tone work to a short phrase from {song_phrase}.\n"
+            "- Play **very slowly**; preserve the centered sound from your long-tone work.\n"
+            "- Choose a phrase that moves through more than one register if possible.\n\n"
+            "**Listen for:** tone quality stays as good in the phrase as on isolated notes.\n\n"
+            "**Ready when:** the phrase stays centered **3 times in a row** at a slow tempo.",
+            f"### 5. {m5} min — Review\n\n"
+            "- Replay the **hardest note or phrase** from the session.\n"
+            "- Optional: record one short take.\n"
+            "- Name **one specific tone issue** to target next time.\n\n"
+            "**At the end:** judge whether your sound has a clearer core and steadier air than when you started.",
+        ]
+        listen = [
+            "Focused core rather than airy or diffuse sound",
+            "Stable pitch and steady air through the note",
+            "Even dynamic from start to finish",
+        ]
+        return {
+            "headline": headline,
+            "goal": goal,
+            "steps": steps,
+            "listen": listen,
+            "closing": "If tone stayed centered through long tones **and** your phrase, you met today's goal.",
+        }
+
+    if fam == "keyboard":
+        weights = (8, 7, 5, 7, 3)
+        blocks = _scale_tone_blocks(total_minutes, weights)
+        headline = f"**{total_minutes}-minute {inst} tone & touch session**"
+        goal = "**Today's goal:** even, singing tone at the keyboard with consistent touch and balance between hands."
+        steps = [
+            f"### 1. {blocks[0]} min — Legato tone production\n"
+            "- Mid-register long tones with **weighted, relaxed fingers**.\n"
+            "**Listen for:** even tone without harsh attack.\n"
+            "**Ready when:** 4 of 5 notes speak with the same color.",
+            f"### 2. {blocks[1]} min — Slow melodic lines\n"
+            "- 4–8 note phrases, slurred, very slow.\n"
+            "**Ready when:** 3 clean repetitions with matched tone.",
+            f"### 3. {blocks[2]} min — Articulation balance\n"
+            "- Alternate detached and legato on the same pattern.\n"
+            "**Ready when:** detached notes stay round, not brittle.",
+            f"### 4. {blocks[3]} min — Apply to {song_phrase}\n"
+            "- One short passage, slow tempo.\n"
+            "**Ready when:** phrase feels as controlled as your drills.",
+            f"### 5. {blocks[4]} min — Review\n"
+            "- Repeat the hardest bar; note one touch issue for next time.",
+        ]
+        return {"headline": headline, "goal": goal, "steps": steps, "listen": ["Even tone", "Relaxed hand"], "closing": ""}
+
+    weights = (7, 6, 5, 9, 3)
+    blocks = _scale_tone_blocks(total_minutes, weights)
+    headline = f"**{total_minutes}-minute tone-focused session for {inst}**"
+    goal = "**Today's goal:** consistent, centered sound on sustained and moving notes."
+    steps = [
+        f"### 1. {blocks[0]} min — Sustained tone\n"
+        "- Comfortable register, steady time on each note.\n"
+        "**Ready when:** 4 of 5 reps stay stable.",
+        f"### 2. {blocks[1]} min — Slow lines\n"
+        "- Short slurred phrases; match tone note to note.",
+        f"### 3. {blocks[2]} min — Articulation\n"
+        "- Keep tone quality on repeated attacks.",
+        f"### 4. {blocks[3]} min — Song phrase from {song_phrase}\n"
+        "- Slow application of the same tone focus.",
+        f"### 5. {blocks[4]} min — Review\n"
+        "- One hardest moment; one goal for next practice.",
+    ]
+    return {"headline": headline, "goal": goal, "steps": steps, "listen": ["Stable tone"], "closing": ""}
+
+
+def _scale_tone_blocks(total: int, weights: tuple[int, ...]) -> tuple[int, ...]:
+    wsum = sum(weights) or 1
+    raw = [total * w / wsum for w in weights]
+    rounded = [int(x) for x in raw]
+    while sum(rounded) < total:
+        for i in range(len(rounded)):
+            if sum(rounded) >= total:
+                break
+            rounded[i] += 1
+    while sum(rounded) > total and any(x > 1 for x in rounded):
+        for i in range(len(rounded)):
+            if sum(rounded) <= total:
+                break
+            if rounded[i] > 1:
+                rounded[i] -= 1
+    return tuple(rounded)
+

@@ -3,6 +3,27 @@
 from __future__ import annotations
 
 
+def test_custom_progression_song_source_label_uses_pencil() -> None:
+    from studio_page_state import (
+        IMPROV_SONG_SOURCES,
+        creative_song_source_display_label,
+    )
+
+    assert "Custom progression" in IMPROV_SONG_SOURCES
+    assert creative_song_source_display_label("Custom progression") == "✏️ Custom Progression"
+    assert creative_song_source_display_label("Active song") == "Active song"
+
+
+def test_entry_jam_song_source_radio_uses_display_label() -> None:
+    from pathlib import Path
+
+    text = Path(__file__).resolve().parents[1].joinpath("improvisation_intelligence_ui.py").read_text(
+        encoding="utf-8"
+    )
+    assert "format_func=creative_song_source_display_label" in text
+    assert 'key="improv_song_source"' in text
+
+
 def test_studio_page_state_exports_improv_song_source_helpers() -> None:
     from studio_page_state import (
         flush_pending_improv_song_source,

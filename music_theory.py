@@ -155,13 +155,25 @@ def key_center_token(tonic: str, mode: str) -> str:
 
 
 def format_key_label_from_parts(tonic: str, mode: str) -> str:
-    """Human label: D + minor → 'Dm' style display for UI (not D#)."""
+    """Human label preserving tonic spelling (Ab → 'Ab major', never G#)."""
     token = key_center_token(tonic, mode)
     if str(mode or "major").lower() == "minor":
         root, _ = split_key_center(token)
         return f"{root} minor"
     root, _ = split_key_center(token)
     return f"{root} major"
+
+
+def display_key_label(key: str) -> str:
+    """Musician-facing key label that preserves authoritative enharmonic spelling.
+
+    Use for Original / Practice / Concert / Written / Shape key badges.
+    Do **not** route display labels through ``chord_root_for_theory`` /
+    ``normalize_root`` (those are pitch-class identity helpers and map Ab→G#).
+    """
+    token = str(key or "C").strip() or "C"
+    tonic, mode = split_key_center(token)
+    return format_key_label_from_parts(tonic, mode)
 
 
 _BAR_WEIGHT_SUFFIX = re.compile(
@@ -334,6 +346,218 @@ def respell_notes_for_key(notes: list[str], reference_key: str) -> list[str]:
     return [respell_note_for_key(n, reference_key) for n in notes]
 
 
+def abc_key_signature_for_reference(reference_key: str, *, scale_type: str = "major") -> str:
+    """Conventional ABC ``K:`` token for a reference key (Eb major → ``Eb``, not enharmonic ``D``)."""
+    ref = str(reference_key or "C").strip() or "C"
+    st = str(scale_type or "major").lower()
+    minor = (
+        "minor" in st
+        and "major" not in st
+        and "pentatonic" not in st
+        and "blues" not in st
+        and "dorian" not in st
+        and "mixolydian" not in st
+        and "lydian" not in st
+        and "locrian" not in st
+    )
+    if minor and not ref.lower().endswith("m"):
+        ref = f"{ref}m"
+    root, _ = split_chord(ref)
+    spelled = respell_note_for_key(root, ref)
+    if minor:
+        low = str(spelled or "C")
+        return f"{low}m" if not low.lower().endswith("m") else low
+    return str(spelled or "C")
+
+
+def parent_major_root_for_mode(tonic: str, scale_type: str) -> str:
+    """Major key whose signature matches the mode's pitch collection."""
+    st = str(scale_type or "major").lower()
+    root = str(tonic or "C").strip() or "C"
+    midi = midi_from_spelled_note(root, octave=4)
+    if st == "dorian":
+        parent_midi = midi - 2
+    elif st == "mixolydian":
+        parent_midi = midi
+    elif st == "lydian":
+        parent_midi = midi - 5
+    elif st == "locrian":
+        parent_midi = midi + 1
+    else:
+        parent_midi = midi
+    mode = reference_spelling_mode(root)
+    return spell_pitch_class(parent_midi % 12, mode=mode)
+
+
+def abc_key_signature_for_mode(tonic: str, scale_type: str) -> str:
+    """ABC ``K:`` field from the parent major key of a mode (D Dorian → ``C``, not ``D``)."""
+    parent = parent_major_root_for_mode(tonic, scale_type)
+    return abc_key_signature_for_reference(parent, scale_type="major")
+
+
+def format_musician_note_name(note: str, reference_key: str) -> str:
+    """Musician-facing note with Unicode ♭/♯ when the key family uses accidentals."""
+    spelled = respell_note_for_key(str(note or "C").strip() or "C", reference_key)
+    if len(spelled) > 1 and spelled[1] == "b":
+        return f"{spelled[0]}♭"
+    if len(spelled) > 1 and spelled[1] == "#":
+        return f"{spelled[0]}♯"
+    return spelled
+
+
+_SHARP_KEY_ORDER = "FCGDAEB"
+_FLAT_KEY_ORDER = "BEADGCF"
+
+_MAJOR_KEY_ACCIDENTALS: dict[str, tuple[str, int]] = {
+    "C": ("natural", 0),
+    "G": ("sharp", 1),
+    "D": ("sharp", 2),
+    "A": ("sharp", 3),
+    "E": ("sharp", 4),
+    "B": ("sharp", 5),
+    "F#": ("sharp", 6),
+    "C#": ("sharp", 7),
+    "F": ("flat", 1),
+    "Bb": ("flat", 2),
+    "Eb": ("flat", 3),
+    "Ab": ("flat", 4),
+    "Db": ("flat", 5),
+    "Gb": ("flat", 6),
+    "Cb": ("flat", 7),
+}
+
+
+def _parse_abc_k_field(k_field: str) -> tuple[str, bool]:
+    text = str(k_field or "C").strip() or "C"
+    low = text.lower()
+    minor = low.endswith("m") and "maj" not in low
+    root = text[:-1] if minor else text
+    root = respell_note_for_key(root, text if minor else root)
+    return root, minor
+
+
+def _relative_major_tonic(minor_root: str) -> str:
+    nr = normalize_root(str(minor_root or "A").strip() or "A")
+    if nr not in CHROMATIC:
+        return "C"
+    idx = CHROMATIC.index(nr)
+    rel_pc = (idx + 3) % 12
+    ref = f"{str(minor_root or 'A').strip() or 'A'}m"
+    return spell_note_in_key(rel_pc, ref)
+
+
+def _major_key_accidentals(root: str) -> tuple[str, int]:
+    r = str(root or "C").strip() or "C"
+    if r in _MAJOR_KEY_ACCIDENTALS:
+        return _MAJOR_KEY_ACCIDENTALS[r]
+    nr = normalize_root(r)
+    for name, spec in _MAJOR_KEY_ACCIDENTALS.items():
+        if normalize_root(name) == nr:
+            return spec
+    return ("natural", 0)
+
+
+def abc_key_signature_letter_alterations(k_field: str) -> dict[str, int]:
+    """Per-letter semitone delta from natural implied by the ``K:`` key signature (-1 flat, +1 sharp)."""
+    root, minor = _parse_abc_k_field(k_field)
+    if minor:
+        root = _relative_major_tonic(root)
+    kind, count = _major_key_accidentals(root)
+    out: dict[str, int] = {}
+    if kind == "sharp" and count:
+        for i, letter in enumerate(_SHARP_KEY_ORDER):
+            if i < count:
+                out[letter] = 1
+    elif kind == "flat" and count:
+        for i, letter in enumerate(_FLAT_KEY_ORDER):
+            if i < count:
+                out[letter] = -1
+    return out
+
+
+def pitch_class_from_spelled_note(note: str) -> int:
+    """Map a spelled note name (including E#, B#, Cb) to pitch class 0–11."""
+    root, _ = split_chord(str(note or "C").strip() or "C")
+    text = str(root)
+    letter = text[0].upper()
+    base = _NATURAL_LETTER_PC.get(letter, 0)
+    tail = text[1:]
+    alter = 0
+    if tail.startswith("##") or tail.startswith("x"):
+        alter = 2
+    elif tail.startswith("#") or tail.startswith("♯"):
+        alter = 1
+    elif tail.lower().startswith("bb"):
+        alter = -2
+    elif tail.startswith("b") or tail.startswith("♭"):
+        alter = -1
+    return (base + alter) % 12
+
+
+def midi_from_spelled_note(note: str, *, octave: int = 4) -> int:
+    """MIDI number for a spelled note at the given octave (C4 = 60)."""
+    letter, alter = spelled_note_letter_alteration(note)
+    base_pc = _NATURAL_LETTER_PC[letter]
+    return base_pc + 12 * (int(octave) + 1) + alter
+
+
+def spelled_note_letter_alteration(note: str) -> tuple[str, int]:
+    """Return (uppercase letter, semitone delta from natural) for a spelled note."""
+    root, _ = split_chord(str(note or "C").strip() or "C")
+    text = str(root)
+    letter = text[0].upper()
+    tail = text[1:]
+    alter = 0
+    if tail.startswith("##") or tail.startswith("x"):
+        alter = 2
+    elif tail.startswith("#") or tail.startswith("♯"):
+        alter = 1
+    elif tail.lower().startswith("bb"):
+        alter = -2
+    elif tail.startswith("b") or tail.startswith("♭"):
+        alter = -1
+    return letter, alter
+
+
+def abc_accidental_prefix_for_key(note: str, k_field: str) -> str:
+    """ABC accidental prefix (_, ^, =, etc.) only when the note differs from ``K:`` defaults."""
+    letter, alter = spelled_note_letter_alteration(note)
+    key_alter = abc_key_signature_letter_alterations(k_field).get(letter, 0)
+    if alter == 0 and key_alter != 0:
+        return "="
+    delta = alter - key_alter
+    if delta == 0:
+        return ""
+    if delta == 1:
+        return "^"
+    if delta == 2:
+        return "^^"
+    if delta == -1:
+        return "_"
+    if delta == -2:
+        return "__"
+    if delta > 0:
+        return "^" * delta
+    return "_" * (-delta)
+
+
+def abc_pitch_for_spelled_note(note: str, *, octave: int = 4, k_field: str = "C") -> str:
+    """Key-signature-aware ABC pitch token for a spelled note (musical spelling preserved).
+
+    Uses standard ABC octave mapping for scientific pitch octaves:
+    C2→``C,``  C3→``C``  C4→``c``  C5→``c'``
+    Accidental prefixes (``_``, ``^``, ``=``) precede the pitch letter.
+    """
+    letter, _ = spelled_note_letter_alteration(note)
+    prefix = abc_accidental_prefix_for_key(note, k_field)
+    octv = int(octave)
+    if octv >= 4:
+        body = letter.lower() + ("'" * (octv - 4))
+    else:
+        body = letter.upper() + ("," * (3 - octv))
+    return f"{prefix}{body}"
+
+
 _DIATONIC_LETTERS = "CDEFGAB"
 _NATURAL_LETTER_PC: dict[str, int] = {
     "C": 0,
@@ -485,13 +709,31 @@ def _practice_key_for_pitch_class(key: str, mode: str) -> str:
     want_minor = str(mode or "").lower() == "minor"
     if want_minor == key_is_minor(raw) and raw in practice_keys_for_mode(mode):
         return raw
+    prefer_flat = "b" in str(root) or "♭" in str(root)
+    prefer_sharp = "#" in str(root) or "♯" in str(root)
+    matches: list[str] = []
     for candidate in practice_keys_for_mode(mode):
         cr, cs = split_chord(candidate)
         if normalize_root(cr) != nr:
             continue
         if want_minor == key_is_minor(candidate):
-            return candidate
-    return (nr + "m") if want_minor else nr
+            matches.append(candidate)
+    if prefer_flat:
+        for candidate in matches:
+            if "b" in candidate or "♭" in candidate:
+                return candidate
+    if prefer_sharp:
+        for candidate in matches:
+            if "#" in candidate or "♯" in candidate:
+                return candidate
+    if matches:
+        return matches[0]
+    # Last resort: keep the caller's spelling rather than sharp-canonical PC.
+    if want_minor == key_is_minor(raw):
+        return raw
+    if want_minor:
+        return f"{root}m" if not str(root).lower().endswith("m") else root
+    return str(root).rstrip("m") if str(root).lower().endswith("m") and len(root) > 1 else root
 
 
 def coerce_key_to_mode(key: str, mode: str) -> str:

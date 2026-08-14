@@ -1,0 +1,397 @@
+"""App navigation and workflow coaching tests."""
+
+from __future__ import annotations
+
+import unittest
+
+from music_coach_ami.app_knowledge import FEATURES, feature_by_question
+from music_coach_ami.pipeline import run_coach_pipeline
+from music_coach_ami.router import CoachIntent, route_question
+from music_coach_ami.types import CoachContext
+
+
+class AppWorkflowRouterTests(unittest.TestCase):
+    def test_log_practice_navigation(self) -> None:
+        req = route_question("How do I log my practice?", {})
+        self.assertEqual(req.intent, CoachIntent.APP_NAVIGATION)
+
+    def test_improv_on_song_not_navigation(self) -> None:
+        req = route_question("How can I practice improvising on this song?", {})
+        self.assertEqual(req.intent, CoachIntent.IMPROVISATION_COACHING)
+
+    def test_repertoire_types(self) -> None:
+        req = route_question("What kind of songs should I practice?", {})
+        self.assertEqual(req.intent, CoachIntent.REPERTOIRE_RECOMMENDATION)
+
+    def test_scale_help_recommendation(self) -> None:
+        req = route_question(
+            "What part of the app can I find scale help and chord theory?", {}
+        )
+        self.assertEqual(req.intent, CoachIntent.APP_FEATURE_RECOMMENDATION)
+
+    def test_harmony_map_explanation(self) -> None:
+        req = route_question("What is Harmony Map for?", {})
+        self.assertEqual(req.intent, CoachIntent.FEATURE_EXPLANATION)
+
+    def test_motif_theory_vs_coaching(self) -> None:
+        self.assertEqual(route_question("What is a motif?", {}).intent, CoachIntent.THEORY_EXPLANATION)
+        self.assertEqual(
+            route_question("How should I practice developing a motif?", {}).intent,
+            CoachIntent.IMPROVISATION_COACHING,
+        )
+
+
+class AppKnowledgeTests(unittest.TestCase):
+    def test_practice_log_has_navigation_path(self) -> None:
+        feat = FEATURES["practice_log"]
+        self.assertIn("Practice Log", feat.navigation_path)
+
+    def test_no_hallucinated_settings_path(self) -> None:
+        joined = " ".join(f.navigation_path for f in FEATURES.values())
+        self.assertNotIn("Settings >", joined)
+
+
+class VerticalSliceTests(unittest.TestCase):
+    def test_a_log_practice(self) -> None:
+        resp = run_coach_pipeline("How do I log my practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Practice Log", text)
+        self.assertNotIn("notebook", text.lower())
+        self.assertNotIn("when when", text.lower())
+        self.assertNotIn("**Where to go:**", text)
+        self.assertIn("**Use:**", text)
+        self.assertIn("Quick Save", text)
+
+    def test_b_improv_with_song_context(self) -> None:
+        ctx = {
+            "active_song": {"title": "Autumn Leaves"},
+            "practice_focus_section": "Head",
+            "ii_selected_chord": "Am7",
+        }
+        resp = run_coach_pipeline(
+            "How can I practice improvising on this song?",
+            ctx,
+            ami_ctx={"active_song": {"title": "Autumn Leaves"}, "practice_focus_section": "Head"},
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Autumn Leaves", text)
+        self.assertIn("strong beats", text.lower())
+        self.assertNotIn("beats 1 and 3", text.lower())
+        self.assertIn("Backing Track Studio", text)
+        self.assertNotIn("Jam Session Generator** in the same key", text)
+
+    def test_b_improv_without_song_no_invented_title(self) -> None:
+        resp = run_coach_pipeline("How can I practice improvising on this song?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertNotIn("Autumn Leaves", text)
+
+    def test_b_improv_exact_progression_context(self) -> None:
+        ctx = {
+            "active_song": {
+                "title": "Say",
+                "progression_summary": "C–G–Am–F",
+            },
+            "practice_focus_section": "Chorus",
+            "display_key": "G",
+        }
+        resp = run_coach_pipeline(
+            "How can I practice improvising on this song?",
+            ctx,
+            ami_ctx=ctx,
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Say", text)
+        self.assertIn("C–G–Am–F", text)
+
+    def test_c_repertoire_broad_not_similar_header(self) -> None:
+        resp = run_coach_pipeline("What kind of songs should I practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Comfort piece", text)
+        self.assertNotIn("Songs similar to", text)
+
+    def test_c_repertoire_singular_song(self) -> None:
+        resp = run_coach_pipeline("What song should I practice to improve improvisation?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Best choice", text)
+        self.assertNotIn("on **Piano**", text)
+
+    def test_d_scale_and_chord_destinations(self) -> None:
+        resp = run_coach_pipeline(
+            "What part of the app can I find scale help and chord theory?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Music Coach", text)
+        self.assertIn("Harmony Map", text)
+
+
+class ExpandedRoutingTests(unittest.TestCase):
+    def test_where_practice_log(self) -> None:
+        self.assertEqual(route_question("Where is Practice Log?", {}).intent, CoachIntent.APP_NAVIGATION)
+
+    def test_record_myself_navigation(self) -> None:
+        self.assertEqual(route_question("Where can I record myself?", {}).intent, CoachIntent.APP_NAVIGATION)
+
+    def test_analyze_recording_navigation(self) -> None:
+        self.assertEqual(route_question("How do I analyze a recording?", {}).intent, CoachIntent.APP_NAVIGATION)
+
+    def test_harmony_map_do(self) -> None:
+        self.assertEqual(route_question("What does Harmony Map do?", {}).intent, CoachIntent.FEATURE_EXPLANATION)
+
+    def test_backing_vs_jam(self) -> None:
+        self.assertEqual(
+            route_question("What's the difference between Backing and Jam Session Generator?", {}).intent,
+            CoachIntent.FEATURE_EXPLANATION,
+        )
+
+    def test_missions_vs_live_coach(self) -> None:
+        self.assertEqual(
+            route_question("Should I use Missions or Live Coach?", {}).intent,
+            CoachIntent.FEATURE_EXPLANATION,
+        )
+
+    def test_phrasing_recommendation(self) -> None:
+        self.assertEqual(
+            route_question("I want to improve my phrasing. What should I use?", {}).intent,
+            CoachIntent.APP_FEATURE_RECOMMENDATION,
+        )
+
+    def test_timing_recommendation(self) -> None:
+        self.assertEqual(
+            route_question("I want to improve my timing. What should I use?", {}).intent,
+            CoachIntent.APP_FEATURE_RECOMMENDATION,
+        )
+
+    def test_what_to_practice_today(self) -> None:
+        req = route_question("What feature should I use if I don't know what to practice today?", {})
+        self.assertIn(
+            req.intent,
+            (CoachIntent.APP_FEATURE_RECOMMENDATION, CoachIntent.PRACTICE_PLAN),
+        )
+
+    def test_similar_current_song(self) -> None:
+        self.assertEqual(
+            route_question("What songs are similar to my current song?", {}).intent,
+            CoachIntent.REPERTOIRE_RECOMMENDATION,
+        )
+
+    def test_record_myself_playing_navigation(self) -> None:
+        self.assertEqual(
+            route_question("Where can I record myself playing?", {}).intent,
+            CoachIntent.APP_NAVIGATION,
+        )
+
+
+class NavigationPipelineTests(unittest.TestCase):
+    """End-to-end smoke for expanded navigation / recommendation prompts."""
+
+    def test_upload_analyze_navigation(self) -> None:
+        resp = run_coach_pipeline("How do I analyze a recording?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        self.assertIn("Upload", resp.composed_markdown())
+
+    def test_record_myself_navigation(self) -> None:
+        resp = run_coach_pipeline("Where can I record myself playing?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+        self.assertIn("Multitrack", text)
+
+    def test_missions_vs_live_coach_explanation(self) -> None:
+        resp = run_coach_pipeline("Should I use Missions or Live Coach?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.FEATURE_EXPLANATION)
+        text = resp.composed_markdown()
+        self.assertIn("Missions", text)
+        self.assertIn("Live Coach", text)
+
+    def test_backing_vs_jam_both_features(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Backing and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Backing", text)
+        self.assertIn("Jam", text)
+
+    def test_style_jam_vs_jam_both_features(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Style Jam and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Style Jam", text)
+        self.assertIn("Jam Session Generator", text)
+
+    def test_entry_jam_vs_jam_parent_child(self) -> None:
+        resp = run_coach_pipeline(
+            "What's Entry & Jam compared with Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Entry & Jam", text)
+        self.assertIn("Jam Session Generator", text)
+        self.assertIn("workflow area", text.lower())
+
+    def test_multitrack_how_navigation(self) -> None:
+        resp = run_coach_pipeline("How do I use the multitrack recorder?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_NAVIGATION)
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+        self.assertIn("Step 1", text)
+        self.assertIn("Layers", text)
+        self.assertIn("Transport", text)
+
+    def test_multitrack_overdub_question(self) -> None:
+        resp = run_coach_pipeline("Can I record one part and then add another?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+
+    def test_multitrack_mute_layer(self) -> None:
+        resp = run_coach_pipeline("How do I mute one recorded part?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+        self.assertIn("Mute", text)
+
+    def test_record_feedback_upload_not_multitrack_only(self) -> None:
+        resp = run_coach_pipeline("Where can I record myself and get feedback?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_record_several_parts_multitrack(self) -> None:
+        resp = run_coach_pipeline("Where can I record several parts of myself?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Multitrack", text)
+
+    def test_phrasing_recommendation_pipeline(self) -> None:
+        resp = run_coach_pipeline("I want to improve my phrasing. What should I use?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_FEATURE_RECOMMENDATION)
+
+    def test_timing_recommendation_pipeline(self) -> None:
+        resp = run_coach_pipeline("I want to improve my timing. What should I use?", {})
+        assert resp is not None
+        self.assertEqual(resp.intent, CoachIntent.APP_FEATURE_RECOMMENDATION)
+
+    def test_practice_log_numbered_then_steps(self) -> None:
+        resp = run_coach_pipeline("How do I log my practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("1.", text)
+        self.assertIn("**Then:**", text)
+
+
+class RecordingIntentTests(unittest.TestCase):
+    def test_log_practice_routes_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I log my practice?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Practice Log", text)
+        self.assertIn("Quick Save", text)
+
+    def test_record_what_practiced_routes_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I record what I practiced today?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Practice Log", text)
+        self.assertNotIn("Multitrack", text.split("Practice Log")[0])
+
+    def test_record_myself_playing_not_practice_log(self) -> None:
+        resp = run_coach_pipeline("How do I record myself playing?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertNotIn("**Use:** Practice Log", text)
+        self.assertIn("Upload", text)
+        self.assertIn("Multitrack", text)
+
+    def test_make_audio_recording_upload(self) -> None:
+        resp = run_coach_pipeline("Where can I make an audio recording?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_record_and_feedback_upload(self) -> None:
+        resp = run_coach_pipeline("How do I record myself and get feedback?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Upload", text)
+
+    def test_overdub_flute_multitrack(self) -> None:
+        resp = run_coach_pipeline("How do I overdub another flute part?", {})
+        assert resp is not None
+        self.assertIn("Multitrack", resp.composed_markdown())
+
+    def test_layer_recordings_multitrack(self) -> None:
+        resp = run_coach_pipeline("How do I layer recordings?", {})
+        assert resp is not None
+        self.assertIn("Multitrack", resp.composed_markdown())
+
+
+class ComparisonNavigationTests(unittest.TestCase):
+    def test_missions_live_coach_includes_paths(self) -> None:
+        resp = run_coach_pipeline("Which is better for improvisation? Missions or Live Coach?", {})
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Missions", text)
+        self.assertIn("Live Coach", text)
+        self.assertIn("Find it:", text)
+        self.assertIn("Creative", text)
+
+    def test_style_jam_vs_jam_includes_paths(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Style Jam and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Style Jam", text)
+        self.assertIn("Jam Session Generator", text)
+        self.assertIn("Entry & Jam", text)
+        self.assertIn("Find it:", text)
+
+    def test_backing_vs_jam_includes_paths(self) -> None:
+        resp = run_coach_pipeline(
+            "What's the difference between Backing and Jam Session Generator?", {}
+        )
+        assert resp is not None
+        text = resp.composed_markdown()
+        self.assertIn("Backing", text)
+        self.assertIn("Jam", text)
+        self.assertIn("Find it:", text)
+
+
+class ExerciseFocusPipelineTests(unittest.TestCase):
+    def test_tone_vs_articulation_different_patterns(self) -> None:
+        tone = run_coach_pipeline(
+            "Give me a medium E Dorian exercise for tone on the flute",
+            {},
+        )
+        artic = run_coach_pipeline(
+            "Give me a medium E Dorian exercise for articulation on the flute",
+            {},
+        )
+        assert tone is not None and artic is not None
+        t_id = (tone.diagnostics.get("exercise_profile") or {}).get("selected_pattern_id")
+        a_id = (artic.diagnostics.get("exercise_profile") or {}).get("selected_pattern_id")
+        self.assertTrue(t_id)
+        self.assertTrue(a_id)
+        self.assertNotEqual(t_id, a_id)
+        self.assertIn("slurred", tone.composed_markdown().lower())
+        art = artic.diagnostics.get("exercise_profile") or {}
+        self.assertIn(art.get("notation_articulation"), ("slur2_short2", "tongued", "alternate_slur_tongue"))
+
+
+if __name__ == "__main__":
+    unittest.main()

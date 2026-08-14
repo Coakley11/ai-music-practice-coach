@@ -1948,96 +1948,256 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   font-size: 0.78rem;
   font-weight: 600;
 }
-/* Guided tutorial */
+/* Guided tutorial — matches studio script headers + page accent washes */
 .tutorial-sidebar-entry {
   margin: 0 0 0.65rem 0;
   padding-bottom: 0.35rem;
   border-bottom: 1px solid #e2e8f0;
 }
 .tutorial-hero {
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 45%, #312e81 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 42%, #312e81 100%);
   color: #f8fafc;
-  border-radius: 16px;
-  padding: 1.25rem 1.35rem 1rem 1.35rem;
-  margin-bottom: 1rem;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  border-radius: 18px;
+  padding: 1.2rem 1.3rem 1rem 1.3rem;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.tutorial-hero.layer-welcome {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 38%, #4c1d95 100%);
+}
+.tutorial-hero.layer-explore {
+  background: linear-gradient(135deg, #0f172a 0%, #312e81 50%, #5b21b6 100%);
 }
 .tutorial-hero-head {
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 .tutorial-hero-icon {
-  font-size: 2.4rem;
+  font-size: 2.35rem;
   line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+  flex-shrink: 0;
 }
 .tutorial-kicker {
   margin: 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #93c5fd;
 }
+.tutorial-script {
+  margin: 0.08rem 0 0.1rem 0;
+  font-family: "Caveat", "Segoe Script", "Bradley Hand", cursive;
+  font-size: 2.05rem;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #fef08a;
+  letter-spacing: 0.01em;
+}
 .tutorial-title {
-  margin: 0.15rem 0 0.25rem 0;
-  font-size: 1.45rem;
-  font-weight: 800;
+  margin: 0.12rem 0 0.28rem 0;
+  font-size: 1.32rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
   color: #fff;
+  line-height: 1.2;
 }
 .tutorial-sub {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   color: #cbd5e1;
+  line-height: 1.45;
 }
 .tutorial-progress-track {
   height: 6px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 999px;
-  margin-top: 1rem;
+  margin-top: 0.95rem;
   overflow: hidden;
 }
 .tutorial-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #38bdf8, #22c55e);
+  background: linear-gradient(90deg, #38bdf8, #a3e635);
   border-radius: 999px;
   transition: width 0.25s ease;
 }
-.tutorial-quick-card {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-  margin-bottom: 1rem;
+.tutorial-try,
+.tutorial-why {
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem 0.75rem;
+  margin: 0 0 0.75rem 0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
 }
-.tutorial-quick-title {
-  margin: 0 0 0.45rem 0;
+.tutorial-try {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 78%);
+  border: 1px solid #fed7aa;
+}
+.tutorial-why {
+  background: linear-gradient(135deg, #f0fdfa 0%, #ffffff 78%);
+  border: 1px solid #99f6e4;
+}
+.tutorial-try-kicker,
+.tutorial-why-kicker {
+  margin: 0 0 0.18rem 0;
+  font-size: 0.68rem;
   font-weight: 800;
-  color: #92400e;
-  font-size: 0.95rem;
-}
-.tutorial-quick-start {
-  margin: 0;
-  padding-left: 1.15rem;
-  color: #78350f;
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-.tutorial-step-card {
-  margin-bottom: 0.35rem;
-}
-.tutorial-step-label {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #64748b;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
-.tutorial-step-title {
-  margin: 0.2rem 0 0.5rem 0;
-  font-size: 1.25rem;
+.tutorial-try-kicker { color: #c2410c; }
+.tutorial-why-kicker { color: #0f766e; }
+.tutorial-try-body,
+.tutorial-why-body {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.45;
   color: #0f172a;
+  font-weight: 650;
+}
+.tutorial-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+  margin: 0 0 0.85rem 0;
+}
+.tutorial-mini-card {
+  border-radius: 14px;
+  padding: 0.8rem 0.85rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+  min-width: 0;
+}
+.tutorial-mini-card.tone-practice {
+  background: linear-gradient(135deg, #fff5f5 0%, #ffffff 72%);
+  border-color: #fecaca;
+}
+.tutorial-mini-card.tone-picker {
+  background: linear-gradient(135deg, #eef2ff 0%, #ffffff 72%);
+  border-color: #c7d2fe;
+}
+.tutorial-mini-card.tone-backing {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
+  border-color: #bfdbfe;
+}
+.tutorial-mini-card.tone-creative {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
+  border-color: #ddd6fe;
+}
+.tutorial-mini-card.tone-analysis {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
+  border-color: #fed7aa;
+}
+.tutorial-mini-card.tone-multitrack {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
+  border-color: #fdba74;
+}
+.tutorial-mini-card.tone-log {
+  background: linear-gradient(135deg, #f0fdfa 0%, #ffffff 72%);
+  border-color: #99f6e4;
+}
+.tutorial-mini-card.tone-custom {
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 72%);
+  border-color: #a7f3d0;
+}
+.tutorial-mini-card.tone-voice {
+  background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 72%);
+  border-color: #fbcfe8;
+}
+.tutorial-mini-card.tone-slate {
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 72%);
+  border-color: #e2e8f0;
+}
+.tutorial-mini-icon {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+.tutorial-mini-title {
+  margin: 0 0 0.28rem 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.tutorial-mini-body {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: #475569;
+}
+.tutorial-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.85rem 0;
+}
+.tutorial-bubble {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #312e81;
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.tutorial-journey {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  margin: 0 0 0.9rem 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border: 1px solid #e2e8f0;
+}
+.tutorial-journey-step {
+  text-align: center;
+  font-weight: 750;
+  color: #0f172a;
+  font-size: 0.98rem;
+  padding: 0.28rem 0.4rem;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+.tutorial-journey-arrow {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+@media (max-width: 640px) {
+  .tutorial-hero {
+    padding: 0.95rem 0.9rem 0.85rem;
+  }
+  .tutorial-hero-icon {
+    font-size: 1.75rem;
+  }
+  .tutorial-script {
+    font-size: 1.7rem;
+  }
+  .tutorial-title {
+    font-size: 1.12rem;
+  }
+  .tutorial-sub {
+    font-size: 0.9rem;
+  }
+  .tutorial-card-grid {
+    grid-template-columns: 1fr;
+  }
+  .tutorial-bubble {
+    font-size: 0.82rem;
+    width: 100%;
+    border-radius: 12px;
+  }
 }
 /* Custom progression steps */
 .cpl-step-card {
@@ -3600,7 +3760,8 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   margin: 0 0 0.7rem;
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] > div,
-.ui-creative-mode-segment [data-testid="stRadio"] > div {
+.ui-creative-mode-segment [data-testid="stRadio"] > div,
+.ui-creative-entry-segment [data-testid="stRadio"] > div {
   display: flex !important;
   flex-wrap: wrap;
   gap: 0.35rem !important;
@@ -3610,21 +3771,33 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   background: rgba(245, 243, 255, 0.95) !important;
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] label,
-.ui-creative-mode-segment [data-testid="stRadio"] label {
-  flex: 1 1 auto !important;
-  min-width: 6.5rem;
+.ui-creative-mode-segment [data-testid="stRadio"] label,
+.ui-creative-entry-segment [data-testid="stRadio"] label {
+  flex: 0 1 auto !important;
+  min-width: 0;
   margin: 0 !important;
   padding: 0.38rem 0.55rem !important;
   border-radius: 9px !important;
   font-size: 0.74rem !important;
   font-weight: 750 !important;
   text-align: center;
+  white-space: nowrap !important;
   border: 1px solid transparent !important;
+}
+@media (max-width: 640px) {
+  .st-key-creative_studio_panel [data-testid="stRadio"] label,
+  .ui-creative-mode-segment [data-testid="stRadio"] label,
+  .ui-creative-entry-segment [data-testid="stRadio"] label {
+    font-size: 0.68rem !important;
+    padding: 0.32rem 0.45rem !important;
+  }
 }
 .st-key-creative_studio_panel [data-testid="stRadio"] label[data-checked="true"],
 .st-key-creative_studio_panel [data-testid="stRadio"] label:has(input:checked),
 .ui-creative-mode-segment [data-testid="stRadio"] label[data-checked="true"],
-.ui-creative-mode-segment [data-testid="stRadio"] label:has(input:checked) {
+.ui-creative-mode-segment [data-testid="stRadio"] label:has(input:checked),
+.ui-creative-entry-segment [data-testid="stRadio"] label[data-checked="true"],
+.ui-creative-entry-segment [data-testid="stRadio"] label:has(input:checked) {
   background: #fff !important;
   border-color: rgba(139, 92, 246, 0.55) !important;
   color: #6d28d9 !important;
@@ -4997,7 +5170,7 @@ html, body, .block-container, [data-testid="stSidebar"] {
 .cpl-finish-panel,
 .cpl-panel,
 .cpl-section-block,
-.tutorial-quick-card,
+.tutorial-mini-card,
 .notation-output {
   transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), border-color 180ms var(--ease);
 }
@@ -8242,21 +8415,12 @@ def _render_music_coach_insight_below_quick_nav(st: Any, *, current_page: str) -
 
 def render_deferred_music_coach_insight(st: Any, *, studio_page: str) -> bool:
     """Render pending insight after page body (main-panel submit runs after quick nav)."""
-    global _MUSIC_INSIGHT_RENDERED_THIS_EXEC
-
-    if _MUSIC_INSIGHT_RENDERED_THIS_EXEC:
-        return False
-    ss = getattr(st, "session_state", st)
-    if ss.get("_ami_insight_card_rendered"):
-        return False
     try:
-        from applied_math_return_insight import _pending_insight_valid
+        from suite_analytical_question import render_pending_music_coach_insight
 
-        if not _pending_insight_valid(st):
-            return False
+        return render_pending_music_coach_insight(st, studio_page=studio_page)
     except Exception:
-        return False
-    return _render_music_coach_insight_below_quick_nav(st, current_page=studio_page)
+        return _render_music_coach_insight_below_quick_nav(st, current_page=studio_page)
 
 
 def render_sidebar_studio_nav(

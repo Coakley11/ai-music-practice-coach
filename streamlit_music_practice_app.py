@@ -1304,6 +1304,12 @@ if hasattr(st, "session_state"):
                 enter_run_phase(st.session_state, "workspace_hydration")
             except ImportError:
                 pass
+            try:
+                from applied_math_return_insight import prime_music_coach_insight_preserve_before_workspace_sync
+
+                prime_music_coach_insight_preserve_before_workspace_sync(st)
+            except Exception:
+                pass
             prepare_music_workspace(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
@@ -10118,6 +10124,12 @@ else:
         on_change=on_sidebar_practice_concert_key_change,
     )
 try:
+    from key_display_diagnostics import render_key_display_diagnostics
+
+    render_key_display_diagnostics(st, st.session_state)
+except ImportError:
+    pass
+try:
     from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
 
     st.session_state[STREAMLIT_WIDGETS_LOCKED_KEY] = True
@@ -10191,7 +10203,18 @@ def _sync_global_control_after_edit(*, reason: str) -> None:
 
 
 def _sync_canonical_active_song_after_edit() -> None:
-    """Phase C: flush canonical active_song_state and force cloud save."""
+    """Phase C: flush canonical active_song_state and force cloud save.
+
+    Always persist subtype / written-key into the in-session canonical blob first.
+    Cloud save may be suppressed during startup, but rehydrate must still see the
+    user's latest Saxophone type / written-key checkbox.
+    """
+    try:
+        from active_song_state import flush_active_song_edits
+
+        flush_active_song_edits(st.session_state, reason="song_edit")
+    except Exception:
+        pass
     try:
         from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
 
@@ -10210,8 +10233,20 @@ def _sync_canonical_active_song_after_edit() -> None:
 
 
 def _on_written_key_checkbox_change() -> None:
+    """Persist 'Show chart in written key for instrument' without wiping the toggle."""
     instrument = st.session_state.get("instrument", "Piano")
-    sync_written_key_instrument_anchor(st.session_state, instrument)
+    # Normalize anchor only — never clear the checkbox the user just toggled.
+    try:
+        from instrument_transposition import (
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+            _base_instrument_for_written_anchor,
+        )
+
+        base = _base_instrument_for_written_anchor(str(instrument or ""))
+        if base:
+            st.session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
+    except Exception:
+        sync_written_key_instrument_anchor(st.session_state, instrument)
     try:
         from backing_musical_state import clear_stale_chart_session_keys
         from creative_key_sync import invalidate_creative_backing_context
@@ -10227,6 +10262,13 @@ def _on_written_key_checkbox_change() -> None:
 
 
 def _on_transposing_subtype_change() -> None:
+    """Persist Saxophone type (Alto/Tenor/…) into canonical active_song_state."""
+    try:
+        from active_song_state import mark_active_song_local_edit
+
+        mark_active_song_local_edit(st.session_state)
+    except ImportError:
+        pass
     _sync_canonical_active_song_after_edit()
 
 
@@ -11182,6 +11224,17 @@ except Exception as _main_boundary_trace_exc:
     import traceback
 
     st.code(traceback.format_exc())
+
+try:
+    from suite_analytical_question import render_pending_music_coach_insight
+
+    render_pending_music_coach_insight(
+        st,
+        studio_page=_studio_page,
+        developer_mode=_developer_mode_enabled(),
+    )
+except Exception as exc:
+    st.session_state["_music_coach_pending_render_error"] = str(exc)
 
 _live_dispatch_page = str(st.session_state.get("studio_page") or "").strip() or _studio_page
 if _live_dispatch_page != _studio_page:
