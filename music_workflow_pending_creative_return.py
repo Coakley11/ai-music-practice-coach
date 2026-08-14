@@ -108,6 +108,15 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         prepare_return_to_backing_source(session)
         session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
         try:
+            from backing_context import get_backing_context
+            from song_improv_scope_authority import apply_song_improv_entry_defaults
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(ctx.source or "") == "song_improv":
+                apply_song_improv_entry_defaults(session, source="creative_return_consume")
+        except ImportError:
+            pass
+        try:
             from generated_workflow_projection import project_generated_owner_from_active_blob
 
             project_generated_owner_from_active_blob(session, writer="creative_return_consume")
