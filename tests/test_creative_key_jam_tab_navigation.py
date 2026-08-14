@@ -57,8 +57,27 @@ class TestJamKeyAcrossCreativeTabs(unittest.TestCase):
         self.assertEqual(str(session.get("display_key") or ""), "C#m")
         self.assertEqual(_authoritative_practice_chart_key(session, "C#m"), "C#m")
 
-    def test_harmony_coherent_key_pair(self) -> None:
+    def test_harmony_reclaims_song_key_not_stale_jam(self) -> None:
+        from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, save_workflow_blob
+
+        pick = "Jewish|Hevenu"
         session = _jam_d_major_session(tab="Harmony Map")
+        session["display_key"] = "C#m"
+        session["concert_key"] = "C#m"
+        save_workflow_blob(
+            session,
+            WorkflowStateBlob(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id=pick,
+                keys=KeyAuthority(
+                    practice_tonic="C#",
+                    practice_mode="minor",
+                    original_tonic="C#",
+                    original_mode="minor",
+                ),
+            ),
+            source="test",
+        )
         ctx = ImprovSessionContext(
             song_title="Hevenu",
             artist="",
@@ -70,8 +89,8 @@ class TestJamKeyAcrossCreativeTabs(unittest.TestCase):
             sections={},
         )
         kc, dk = _coherent_improv_key_pair(session, ctx)
-        self.assertEqual(kc, "D")
-        self.assertEqual(dk, "D")
+        self.assertEqual(kc, "C#m")
+        self.assertEqual(dk, "C#m")
 
     def test_return_to_creative_missions_uses_song_blob_not_jam_seal(self) -> None:
         pick = "Jewish|Hevenu"

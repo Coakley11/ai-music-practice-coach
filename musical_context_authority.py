@@ -227,7 +227,14 @@ def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> boo
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
     page = str(session.get("studio_page") or "").strip().lower()
-    if pick and tab in {"Song-Based Improvisation", "Missions", "Phrase / Motif"}:
+    if pick and tab in {
+        "Song-Based Improvisation",
+        "Missions",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     if pick and page in {"practice", "picker"}:
         return True
@@ -282,7 +289,14 @@ def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     page = str(session.get("studio_page") or "").strip().lower()
     if page in {"practice", "picker"}:

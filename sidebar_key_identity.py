@@ -27,7 +27,18 @@ def _song_catalog_owner(session: dict[str, Any]) -> bool:
     except ImportError:
         pick = str(session.get("active_catalog_pick_key") or "").strip()
         tab = str(session.get("improv_intelligence_tab") or "").strip()
-        return bool(pick and tab in {"Song-Based Improvisation", "Missions", "Phrase / Motif"})
+        return bool(
+            pick
+            and tab
+            in {
+                "Song-Based Improvisation",
+                "Missions",
+                "Phrase / Motif",
+                "Harmony Map",
+                "Live Coach",
+                "Metrics & AI",
+            }
+        )
 
 
 def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:

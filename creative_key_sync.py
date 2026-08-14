@@ -68,7 +68,14 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
 def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
     """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam."""
     tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
-    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     try:
         from music_workflow_state_store import get_active_workflow_pointer
@@ -554,7 +561,14 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return False
     page = str(session.get("studio_page") or "").strip().lower()
     entry = str(session.get("improv_entry_mode") or "").strip()

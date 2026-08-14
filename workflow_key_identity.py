@@ -146,7 +146,14 @@ def song_or_mission_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     try:
         from backing_context import get_backing_context
