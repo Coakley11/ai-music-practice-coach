@@ -672,10 +672,14 @@ def generate_lick_through_section(
     notation_instrument: str,
     reference_key: str,
     piano_role: str = "",
+    song_title: str = "",
+    song_style: str = "",
 ) -> MusicalIdeaComposition:
-    """1–2 bar lick reused/adapted through the section harmony."""
+    """1–2 bar lick reused/adapted through the requested output span."""
     from music_coach_ami.melodic_motion import (
         adapt_motif_to_harmony,
+        bar_is_pitch_collapsed,
+        build_section_phrase_plan,
         generate_horizontal_line,
         motif_articulation_fingerprint,
         motif_interval_shape,
@@ -700,23 +704,37 @@ def generate_lick_through_section(
     )
     bars = int(idea.bars or max(4, len([c for c in chords if _clean(c)]) or 4))
     timeline = expand_harmony_timeline(chords, bars)
-    motif_bars = 2 if len(timeline) >= 2 else 1
+    motif_bars = min(2, max(1, len(timeline)))
+    if bars == 1:
+        motif_bars = 1
     lvl = _level(idea)
     ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
     meter = idea.meter or "4/4"
+    style = song_style or idea.style or ""
+    seed = sum(ord(c) for c in f"{song_title}|{idea.section}|{notation_instrument}") % 7
+    plan = build_section_phrase_plan(timeline, reference_key=ref)
     core_chords = timeline[:motif_bars]
-    core = generate_horizontal_line(
-        core_chords,
-        reference_key=ref,
-        level=lvl,
-        object_type="lick",
-        meter=meter,
-        low=low,
-        high=high,
-        prefer=prefer,
-        style=idea.style or "",
-        instrument_family=family,
-    )
+    core: list[dict[str, Any]] = []
+    for attempt in range(5):
+        core = generate_horizontal_line(
+            core_chords,
+            reference_key=ref,
+            level=lvl,
+            object_type="lick",
+            meter=meter,
+            low=low,
+            high=high,
+            prefer=prefer + attempt * 3,
+            style=style,
+            instrument_family=family,
+            phrase_plan=build_section_phrase_plan(core_chords, reference_key=ref),
+            song_seed=seed + attempt,
+        )
+        collapsed_core = any(bar_is_pitch_collapsed(core, i) for i in range(motif_bars))
+        shape = motif_interval_shape(core)
+        moving = sum(1 for d in shape if d != 0)
+        if not collapsed_core and moving >= max(1, len(shape) // 3):
+            break
     apply_phrase_articulation(
         core,
         family=family,
@@ -736,19 +754,36 @@ def generate_lick_through_section(
     ]
     cursor = motif_bars
     cell = 1
+    last_midi = next((int(e.get("midi") or 0) for e in reversed(core) if e.get("midi")), prefer)
     while cursor < len(timeline):
         span = min(motif_bars, len(timeline) - cursor)
         dest = timeline[cursor : cursor + span]
+        source = [e for e in core if int(e.get("bar_index") or 0) < span]
         adapted = adapt_motif_to_harmony(
-            [e for e in core if int(e.get("bar_index") or 0) < span],
+            source,
             dest,
             bar_offset=cursor,
             reference_key=ref,
             low=low,
             high=high,
-            prefer=prefer,
+            prefer=last_midi,
             instrument_family=family,
+            previous_midi=last_midi,
         )
+        for b in range(span):
+            if bar_is_pitch_collapsed(adapted, cursor + b) and not bar_is_pitch_collapsed(source, b):
+                adapted = adapt_motif_to_harmony(
+                    source,
+                    dest,
+                    bar_offset=cursor,
+                    reference_key=ref,
+                    low=low,
+                    high=high,
+                    prefer=last_midi + 4,
+                    instrument_family=family,
+                    previous_midi=last_midi,
+                )
+                break
         for item in adapted:
             item["cell_index"] = cell
             src_group = int(item.get("slur_group") or 0)
@@ -761,7 +796,7 @@ def generate_lick_through_section(
             {
                 "bars": [cursor + 1, cursor + span],
                 "chords": list(dest),
-                "strategy": "degree_map" if src_q == dst_q else "harmonic_adaptation",
+                "strategy": "contour_then_harmony" if src_q == dst_q else "harmonic_adaptation",
                 "source_quality": src_q,
                 "dest_quality": dst_q,
             }
@@ -771,7 +806,8 @@ def generate_lick_through_section(
         if adapted:
             last = next((e for e in reversed(adapted) if e.get("midi")), None)
             if last:
-                prefer = int(last.get("midi") or prefer)
+                last_midi = int(last.get("midi") or last_midi)
+                prefer = last_midi
 
     events = _events_from_motion_line(line, role="rh" if family == "keyboard" else obj, articulation="")
     ok, errs = validate_musical_idea_composition(
@@ -787,13 +823,20 @@ def generate_lick_through_section(
             tonic=ref,
         )
     )
+    collapsed = [i for i in range(bars) if bar_is_pitch_collapsed(line, i)]
     meta = {
         "motif_bars": motif_bars,
+        "output_bars": bars,
         "motif_interval_shape": motif_interval_shape(core),
         "rhythmic_fingerprint": motif_rhythmic_fingerprint(core),
         "articulation_fingerprint": motif_articulation_fingerprint(core),
         "adaptations": adaptations,
         "source_chords": list(core_chords),
+        "phrase_plan": {k: plan.get(k) for k in ("phrase_len", "cadence_bars", "melody_source", "harmonic_digest")},
+        "melody_source": "none",
+        "song_title": song_title or "",
+        "collapsed_bars": collapsed,
+        "song_style": style,
     }
     return MusicalIdeaComposition(
         events=tuple(events),
@@ -827,6 +870,8 @@ def generate_idea_over_chords(
     notation_instrument: str,
     reference_key: str,
     object_type: str = "phrase",
+    song_title: str = "",
+    song_style: str = "",
 ) -> MusicalIdeaComposition:
     """Song-relative lick/phrase/riff over a resolved harmonic timeline."""
     obj = _clean(object_type) or _clean(idea.object_type) or "phrase"
@@ -836,9 +881,12 @@ def generate_idea_over_chords(
             chords,
             notation_instrument=notation_instrument,
             reference_key=reference_key,
+            song_title=song_title,
+            song_style=song_style,
         )
     from music_coach_ami.phrase_articulation import apply_phrase_articulation
     from music_coach_instrument_voice import instrument_family
+    from music_coach_ami.melodic_motion import build_section_phrase_plan, generate_horizontal_line
 
     family = instrument_family(notation_instrument)
     profile = notation_profile_for_instrument(notation_instrument)
@@ -854,8 +902,9 @@ def generate_idea_over_chords(
     lvl = _level(idea)
     ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
     meter = idea.meter or "4/4"
-    from music_coach_ami.melodic_motion import generate_horizontal_line
-
+    style = song_style or idea.style or ""
+    seed = sum(ord(c) for c in f"{song_title}|{idea.section}|{notation_instrument}") % 7
+    plan = build_section_phrase_plan(timeline, reference_key=ref)
     line = generate_horizontal_line(
         timeline,
         reference_key=ref,
@@ -865,8 +914,10 @@ def generate_idea_over_chords(
         low=low,
         high=high,
         prefer=prefer,
-        style=idea.style or "",
+        style=style,
         instrument_family=family,
+        phrase_plan=plan,
+        song_seed=seed,
     )
     apply_phrase_articulation(line, family=family, level=lvl, object_type=obj)
     events = _events_from_motion_line(line, role=obj, articulation=idea.articulation)
@@ -879,10 +930,16 @@ def generate_idea_over_chords(
         object_type=obj,
         style=idea.style or f"song_{obj}",
         notation_profile=apply_register_override(profile, idea.register),
-        strategy=f"{obj}_over_chords:{lvl}:horizontal_motion",
+        strategy=f"{obj}_over_chords:{lvl}:phrase_plan",
         tonic=ref,
         tonality="",
         scale_spelling=(),
+        motif_meta={
+            "melody_source": "none",
+            "phrase_plan": {k: plan.get(k) for k in ("phrase_len", "cadence_bars", "melody_source", "harmonic_digest")},
+            "song_title": song_title or "",
+            "output_bars": bars,
+        },
     )
 
 
@@ -1169,7 +1226,7 @@ def generate_piano_section_improvisation(
 
     events: list[MusicalEvent] = []
     if role in {"right_hand", "both_hands"}:
-        from music_coach_ami.melodic_motion import generate_horizontal_line
+        from music_coach_ami.melodic_motion import build_section_phrase_plan, generate_horizontal_line
         from music_coach_ami.phrase_articulation import apply_phrase_articulation
 
         rh_low, rh_high, rh_prefer = generation_window(
@@ -1186,6 +1243,8 @@ def generate_piano_section_improvisation(
             prefer=rh_prefer,
             style=idea.style or "",
             instrument_family="keyboard",
+            phrase_plan=build_section_phrase_plan(timeline, reference_key=ref),
+            song_seed=sum(ord(c) for c in f"{idea.section}|piano|{obj}") % 7,
         )
         apply_phrase_articulation(
             rh_line, family="keyboard", level=lvl, object_type=obj, voice="rh"
@@ -1547,4 +1606,6 @@ def composition_diagnostics(composition: MusicalIdeaComposition) -> dict[str, An
         "validation_errors": list(composition.validation_errors),
         "melodic_motion": motion,
         "motif_meta": dict(getattr(composition, "motif_meta", None) or {}),
+        "melody_source": str((getattr(composition, "motif_meta", None) or {}).get("melody_source") or "none"),
+        "collapsed_bars": list((getattr(composition, "motif_meta", None) or {}).get("collapsed_bars") or []),
     }

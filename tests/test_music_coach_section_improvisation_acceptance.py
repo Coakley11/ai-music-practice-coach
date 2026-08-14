@@ -410,7 +410,8 @@ class MelodicMotionLevelTests(unittest.TestCase):
         self.assertNotRegex(prose, r"\bC G C C\b")
         self.assertNotRegex(prose, r"\bA E A A\b")
         self.assertEqual((resp.diagnostics or {}).get("resolved_object"), "improvisation")
-        self.assertIn("horizontal_motion", str((resp.diagnostics or {}).get("generation_strategy") or ""))
+        strategy = str((resp.diagnostics or {}).get("generation_strategy") or "")
+        self.assertTrue("phrase_plan" in strategy or "horizontal_motion" in strategy)
 
     def test_advanced_improv_denser_and_more_connected_than_intermediate(self) -> None:
         mid = self._run("Give me an intermediate jazz improvisation over the verse.", level="Intermediate")
@@ -547,7 +548,7 @@ class LickMotifArchitectureTests(unittest.TestCase):
             reference_key="C",
             object_type="improvisation",
         )
-        self.assertIn("horizontal_motion", improv.strategy)
+        self.assertTrue("phrase_plan" in improv.strategy or "horizontal_motion" in improv.strategy)
         self.assertNotIn("lick_through_section", improv.strategy)
 
     def test_lick_over_part_a_musician_copy_explains_reuse(self) -> None:

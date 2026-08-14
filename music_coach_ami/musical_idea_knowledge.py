@@ -23,11 +23,23 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+_GENERATION_VERBS = (
+    "give me",
+    "show me",
+    "write",
+    "make me",
+    "generate",
+    "create",
+    "play me",
+)
+
+
 def is_musical_idea_content_request(normalized: str, low: str) -> bool:
-    if not any(w in low for w in ("give me", "show me", "write", "make me")):
+    text = str(low or normalized or "").lower()
+    if not any(w in text for w in _GENERATION_VERBS):
         return False
     if any(
-        w in low
+        w in text
         for w in (
             "lick",
             "phrase",
@@ -49,9 +61,20 @@ def is_musical_idea_content_request(normalized: str, low: str) -> bool:
         )
     ):
         return True
-    if "bars" in low and any(w in low for w in ("minor", "major", "dorian", "blues", "scale")):
+    if "bars" in text and any(w in text for w in ("minor", "major", "dorian", "blues", "scale")):
         return True
     return False
+
+
+def style_from_section_harmony(chords: list[str] | tuple[str, ...] | None) -> str:
+    """Infer a generation-style hint from chart tokens — not a transcribed melody."""
+    joined = " ".join(str(c) for c in (chords or [])).lower()
+    if not joined.strip():
+        return ""
+    jazz_markers = ("maj7", "m7", "m9", "9", "13", "7b9", "alt", "|", "sus")
+    if any(m in joined for m in jazz_markers):
+        return "jazz"
+    return ""
 
 
 def format_section_display_label(section: str) -> str:
@@ -79,7 +102,7 @@ def extract_requested_section(question: str) -> str:
         r"\bover (?:the )?([abc])\b",
         r"\b(?:practice|work on|loop) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\bover (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
-        r"\b(?:for|on) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
+        r"\b(?:for|on|of) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\bthe (intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
     )
     for pat in patterns:
@@ -456,6 +479,10 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     concert_chords_raw = list(section_resolve.get("chords") or [])
     section_label = str(section_resolve.get("section") or active_section or "").strip()
     obj = str(idea.object_type or "lick").strip() or "lick"
+    song_title = str(req.context.active_song_title or "").strip()
+    song_style = str(idea.style or req.entities.style_genre or "").strip()
+    if not song_style:
+        song_style = style_from_section_harmony(concert_chords_raw)
     piano_role = infer_piano_role(idea, q_text)
     inst_low = str(notation_inst or instrument or "").strip().lower()
     piano_section = (
@@ -498,6 +525,8 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             notation_instrument=notation_inst,
             reference_key=concert_key,
             piano_role=piano_role if ("piano" in inst_low or inst_low == "keyboard") else "",
+            song_title=song_title,
+            song_style=song_style,
         )
         where = format_section_display_label(section_label) or section_label or "the active section"
         label = f"{idea.bars}-bar lick over {where}"
@@ -528,6 +557,8 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
                 notation_instrument=notation_inst,
                 reference_key=concert_key,
                 object_type=song_obj,
+                song_title=song_title,
+                song_style=song_style,
             )
             where = format_section_display_label(section_label) or section_label or "the active section"
             label = f"{idea.bars}-bar {song_obj} over {where}"
@@ -688,6 +719,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         "difficulty_level": str(idea.difficulty or idea.level or ""),
         "written_music_context": written_ctx.to_diagnostics(),
         "section_resolution": section_resolve,
+        "melody_source": str((getattr(composition, "motif_meta", None) or {}).get("melody_source") or "none"),
         "chart_in_instrument_key": bool(session_ref.get("show_chart_in_instrument_key"))
         if isinstance(session_ref, dict)
         else None,

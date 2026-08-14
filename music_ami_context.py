@@ -436,6 +436,12 @@ def detect_music_send_intent(question: str, coach_page: str = "") -> str:
             or _is_music_theory_question(low)
         ):
             continue
+        if intent == "section_focus" and any(
+            v in low for v in ("give me", "show me", "write", "make me", "generate", "create", "play me")
+        ) and any(
+            w in low for w in ("lick", "phrase", "improvisation", "improv", "melody", "riff", "solo")
+        ):
+            continue
         if any(p in low for p in phrases):
             return intent
     if extract_song_title_from_question(q):

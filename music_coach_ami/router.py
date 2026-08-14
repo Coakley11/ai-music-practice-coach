@@ -129,7 +129,15 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
     if is_bass_line_content_request(normalized, low):
         return CoachIntent.SONG_COACHING, 0.91
 
-    if any(p in low for p in ("give me", "show me", "write", "make me")) and any(
+    try:
+        from music_coach_ami.musical_idea_knowledge import is_musical_idea_content_request
+
+        if is_musical_idea_content_request(normalized, low):
+            return CoachIntent.SCALE_PRACTICE, 0.92
+    except ImportError:
+        pass
+
+    if any(p in low for p in ("give me", "show me", "write", "make me", "generate", "create", "play me")) and any(
         p in low
         for p in (
             "lick",

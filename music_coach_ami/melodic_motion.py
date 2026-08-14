@@ -329,38 +329,51 @@ def generate_horizontal_line(
     prefer: int = 72,
     style: str = "",
     instrument_family: str = "",
+    phrase_plan: dict[str, Any] | None = None,
+    song_seed: int = 0,
 ) -> list[dict[str, Any]]:
     """Build a continuous line over timed harmony (stepwise default, chord targets on strong beats)."""
-    _ = style
     lvl = str(level or "intermediate").lower()
     obj = str(object_type or "improvisation").lower()
     obj_motion = "melody" if obj in {"melody", "phrase"} else "improvisation"
+    if obj == "lick":
+        obj_motion = "improvisation"
     family = str(instrument_family or "").lower()
     wind = family == "wind"
     bpb = _beats_per_bar(meter)
     comfort_high = min(high, max(prefer + 9, prefer + 6))
     center = int(prefer)
+    plan = phrase_plan if isinstance(phrase_plan, dict) else build_section_phrase_plan(timeline, reference_key=reference_key)
+    cadence_bars = set(int(b) for b in (plan.get("cadence_bars") or []))
+    phrase_len = int(plan.get("phrase_len") or 4)
+    jazzish = any(k in str(style or "").lower() for k in ("jazz", "ballad", "swing", "bebop"))
+    seed = int(song_seed or 0)
 
     events: list[dict[str, Any]] = []
     prev_midi: int | None = None
     prev_spelled = ""
-    direction = 1
+    direction = 1 if seed % 2 == 0 else -1
     run_len = 0
     extreme_run = 0
     last_large_leap_bar = -9
     if wind:
-        max_leap_default = 4 if obj_motion == "melody" else 5
+        max_leap_default = 4 if obj in {"melody", "phrase"} else 5
     else:
         max_leap_default = 7 if lvl == "beginner" else 5
     vocab_cache: dict[str, dict[str, Any]] = {}
 
     for bar_i, bar_token in enumerate(timeline):
-        phase = bar_i % 4
+        phase = bar_i % max(1, phrase_len)
         slots = rhythm_plan(lvl, obj_motion, phase)
-        if phase == 0:
-            direction = 1
-        elif phase == 2:
-            direction = -1
+        if obj == "lick":
+            if bar_i == 0:
+                direction = 1
+            elif bar_i == 1:
+                direction = -1
+        elif phase == 0:
+            direction = 1 if (bar_i // max(1, phrase_len) + seed) % 2 == 0 else -1
+        elif cadence_bars and bar_i in cadence_bars:
+            direction = -1 if prev_midi and prev_midi > center else 1
 
         allow_large = bar_i - last_large_leap_bar >= 2
         max_leap = 9 if allow_large and lvl == "advanced" and phase == 2 and not wind else max_leap_default
@@ -392,8 +405,10 @@ def generate_horizontal_line(
             tones = list(vocab["chord_tones"] or [vocab["root"]])
             scale = list(vocab["scale"] or tones)
             ext = list(vocab["extensions"] or [])
-            third = tones[min(1, len(tones) - 1)]
-            seventh = tones[min(3, len(tones) - 1)] if len(tones) > 3 else third
+            rot = seed % max(1, len(tones))
+            tones_rot = tones[rot:] + tones[:rot]
+            third = tones_rot[min(1, len(tones_rot) - 1)]
+            seventh = tones_rot[min(3, len(tones_rot) - 1)] if len(tones_rot) > 3 else third
             guides = [third, seventh]
             if prev_spelled:
                 guides = sorted(
@@ -402,17 +417,21 @@ def generate_horizontal_line(
                 )
 
             is_strong = abs(beat - 0.0) < 1e-9 or abs(beat - 2.0) < 1e-9
+            cadence = bar_i in cadence_bars
             role = "chord_tone"
             pull_down = extreme_run >= 2 or (prev_midi is not None and prev_midi >= comfort_high)
             if pull_down:
                 direction = -1
-            if is_strong:
-                options = list(guides) + [tones[0]]
+            if cadence and (is_strong or abs(beat - 3.0) < 1e-9):
+                options = [tones_rot[0], third]
+                role = "chord_tone"
+            elif is_strong:
+                options = list(guides) + [tones_rot[0]]
                 if lvl == "advanced" and ext and phase in {1, 2} and not pull_down:
                     options = list(ext[:1]) + options
                     role = "extension"
             elif lvl == "beginner":
-                options = tones[:3]
+                options = tones_rot[:3]
             else:
                 if prev_spelled and scale:
                     nxt = _scale_step(scale, prev_spelled, direction)
@@ -423,17 +442,22 @@ def generate_horizontal_line(
                         options = [_chromatic_approach(guides[0], below=True), nxt]
                         role = "approach"
                     elif lvl == "advanced" and abs(beat - 3.5) < 1e-9 and not pull_down:
-                        options = [_chromatic_approach(tones[0], below=direction < 0), nxt]
+                        options = [_chromatic_approach(tones_rot[0], below=direction < 0), nxt]
                         role = "approach"
                     elif dur == "eighth" and run_len == 0 and third:
                         options = [_scale_step(scale, prev_spelled, -direction), nxt]
                         role = "neighbor"
+                    if jazzish and lvl != "beginner" and abs(beat - 0.5) < 1e-9:
+                        options = [_chromatic_approach(guides[0], below=True)] + options
+                        role = "approach"
                 else:
-                    options = tones[:3]
+                    options = tones_rot[:3]
 
-            avoid = _pc(prev_spelled) if prev_spelled and dur in {"eighth", "triplet_eighth"} else None
+            avoid = None
+            if prev_spelled and dur in {"eighth", "triplet_eighth", "sixteenth"}:
+                avoid = _pc(prev_spelled)
             spelled, octv, midi = _pick_near(
-                options or tones,
+                options or tones_rot,
                 prev_midi=prev_midi,
                 low=low,
                 high=high,
@@ -443,6 +467,16 @@ def generate_horizontal_line(
                 comfort_high=comfort_high,
                 pull_down=pull_down,
             )
+            if avoid is not None and _pc(spelled) == avoid and prev_midi is not None:
+                spelled, octv, midi = _snap_along_contour(
+                    dest_vocab=vocab,
+                    prev_midi=prev_midi,
+                    intended_delta=2 if direction > 0 else -2,
+                    low=low,
+                    high=high,
+                    prefer_chord_tone=is_strong,
+                    allow_repeat=False,
+                )
             leap = 0 if prev_midi is None else abs(midi - prev_midi)
             if leap >= 8:
                 last_large_leap_bar = bar_i
@@ -482,7 +516,208 @@ def generate_horizontal_line(
                 prefer = center
                 direction = -1
 
+    _repair_pitch_collapsed_bars(
+        events,
+        timeline,
+        reference_key=reference_key,
+        low=low,
+        high=high,
+        prefer=center,
+    )
     return events
+
+
+def _repair_pitch_collapsed_bars(
+    events: list[dict[str, Any]],
+    timeline: Sequence[str],
+    *,
+    reference_key: str,
+    low: int,
+    high: int,
+    prefer: int,
+) -> None:
+    """If a generated bar flattened to one pitch, restore directional motion in place."""
+    for bar_i, bar_token in enumerate(timeline):
+        if not bar_is_pitch_collapsed(events, bar_i):
+            continue
+        notes = [
+            e
+            for e in events
+            if int(e.get("bar_index") or 0) == bar_i
+            and not _is_rest_duration(str(e.get("duration") or ""))
+            and str(e.get("spelled") or "").strip()
+        ]
+        if len(notes) < 2:
+            continue
+        prev_midi = None
+        for e in events:
+            if int(e.get("bar_index") or 0) >= bar_i:
+                break
+            if int(e.get("midi") or 0):
+                prev_midi = int(e["midi"])
+        direction = 1
+        for i, e in enumerate(notes):
+            chord = str(e.get("chord") or bar_token)
+            vocab = chord_vocabulary(chord, reference_key=reference_key)
+            if prev_midi is None:
+                prev_midi = int(e.get("midi") or prefer)
+                continue
+            intended = 2 if direction > 0 else -2
+            if i == len(notes) - 1:
+                intended = -intended
+            spelled, octv, midi = _snap_along_contour(
+                dest_vocab=vocab,
+                prev_midi=prev_midi,
+                intended_delta=intended,
+                low=low,
+                high=high,
+                prefer_chord_tone=i % 2 == 0,
+                allow_repeat=False,
+            )
+            e["spelled"] = spelled
+            e["octave"] = octv
+            e["midi"] = midi
+            e["pitch_class"] = _pc(spelled)
+            prev_midi = midi
+            if i % 3 == 2:
+                direction *= -1
+
+
+def build_section_phrase_plan(timeline: Sequence[str], *, reference_key: str = "") -> dict[str, Any]:
+    """Phrase windows and cadence bars from section harmony — not a transcribed melody."""
+    _ = reference_key
+    chords = [str(c) for c in timeline]
+    n = len(chords)
+    if n <= 0:
+        return {"phrases": [], "cadence_bars": [], "phrase_len": 2, "melody_source": "none"}
+    phrase_len = 2 if n <= 4 else 4
+    phrases: list[dict[str, Any]] = []
+    cadence_bars: list[int] = []
+    for start in range(0, n, phrase_len):
+        end = min(start + phrase_len - 1, n - 1)
+        cadence = end == n - 1 or ((end + 1) % phrase_len == 0)
+        if cadence:
+            cadence_bars.append(end)
+        phrases.append(
+            {
+                "start": start,
+                "end": end,
+                "destination": chords[end],
+                "cadence": cadence,
+                "chords": chords[start : end + 1],
+            }
+        )
+    return {
+        "phrases": phrases,
+        "cadence_bars": cadence_bars,
+        "phrase_len": phrase_len,
+        "melody_source": "none",
+        "harmonic_digest": tuple(chords[:8]),
+    }
+
+
+def contour_signs(shape: Sequence[int]) -> list[int]:
+    return [0 if not d else (1 if d > 0 else -1) for d in shape]
+
+
+def bar_unique_pitch_count(events: Sequence[dict[str, Any]], bar_index: int) -> int:
+    pcs: set[int] = set()
+    for e in events:
+        if int(e.get("bar_index") or 0) != bar_index:
+            continue
+        if _is_rest_duration(str(e.get("duration") or "")) or not str(e.get("spelled") or "").strip():
+            continue
+        midi = int(e.get("midi") or 0)
+        if midi:
+            pcs.add(midi % 12)
+        else:
+            pcs.add(_pc(str(e.get("spelled") or "C")))
+    return len(pcs)
+
+
+def bar_is_pitch_collapsed(events: Sequence[dict[str, Any]], bar_index: int, *, min_notes: int = 4) -> bool:
+    notes = [
+        e
+        for e in events
+        if int(e.get("bar_index") or 0) == bar_index
+        and not _is_rest_duration(str(e.get("duration") or ""))
+        and str(e.get("spelled") or "").strip()
+    ]
+    if len(notes) < min_notes:
+        return False
+    return bar_unique_pitch_count(events, bar_index) <= 1
+
+
+def _snap_along_contour(
+    *,
+    dest_vocab: dict[str, Any],
+    prev_midi: int,
+    intended_delta: int,
+    low: int,
+    high: int,
+    prefer_chord_tone: bool,
+    allow_repeat: bool,
+) -> tuple[str, int, int]:
+    from music_coach_ami.musical_idea_engine import _place_spelled_note
+
+    intended_midi = prev_midi + intended_delta
+    tones = list(dest_vocab.get("chord_tones") or [dest_vocab.get("root") or "C"])
+    scale = list(dest_vocab.get("scale") or tones)
+    ext = list(dest_vocab.get("extensions") or [])
+    pool = list(tones) + list(scale) + list(ext)
+    seen: set[str] = set()
+    options: list[str] = []
+    for n in pool:
+        if n and n not in seen:
+            seen.add(n)
+            options.append(n)
+    if not options:
+        options = ["C"]
+    prev_pc = prev_midi % 12
+    direction = "ascending" if intended_delta > 0 else "descending" if intended_delta < 0 else "nearest"
+    best: tuple[tuple[int, int, int, int, int], str, int, int] | None = None
+    for sp in options:
+        if not allow_repeat and _pc(sp) == prev_pc:
+            continue
+        spelled, octv, midi = _place_spelled_note(
+            sp,
+            prefer_midi=intended_midi,
+            low=low,
+            high=high,
+            direction=direction,
+            previous_midi=prev_midi,
+        )
+        actual = midi - prev_midi
+        sign_pen = 0
+        if intended_delta > 0 and actual <= 0:
+            sign_pen = 30
+        elif intended_delta < 0 and actual >= 0:
+            sign_pen = 30
+        elif intended_delta == 0 and actual != 0:
+            sign_pen = 8
+        chord_pen = 0 if sp in tones else (1 if prefer_chord_tone else 2)
+        dist = abs(midi - intended_midi)
+        interval_pen = abs(actual - intended_delta)
+        score = (sign_pen, dist, interval_pen, chord_pen, abs(actual))
+        if best is None or score < best[0]:
+            best = (score, spelled, octv, midi)
+    if best is None:
+        # Same pitch-class was the only pool member. Step chromatically in the
+        # intended direction, then snap that neighbor to the closest legal tone.
+        step = 1 if intended_delta >= 0 else -1
+        if intended_delta == 0:
+            step = 0
+        probe = prev_midi + (step if step else 2)
+        spelled, octv, midi = _place_spelled_note(
+            options[0],
+            prefer_midi=probe,
+            low=low,
+            high=high,
+            direction=direction,
+            previous_midi=prev_midi,
+        )
+        return spelled, octv, midi
+    return best[1], best[2], best[3]
 
 
 def adapt_motif_to_harmony(
@@ -495,13 +730,20 @@ def adapt_motif_to_harmony(
     high: int,
     prefer: int,
     instrument_family: str = "",
+    previous_midi: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Reuse a motif's rhythm/contour/articulation, remapped to destination harmony."""
-    family = str(instrument_family or "").lower()
-    max_leap = 4 if family == "wind" else 5
-    out: list[dict[str, Any]] = []
-    prev_midi: int | None = None
+    """Reuse a motif's rhythm/contour/articulation, remapped to destination harmony.
+
+    Interval *sign* (up/down/unison) is preserved first; pitches then snap to
+    destination chord/scale tones. Nearest-pitch picking without contour is what
+    collapsed live licks into one repeated chord tone per bar.
+    """
+    _ = instrument_family
     dest_list = [str(c) for c in dest_chords if str(c).strip()] or ["C"]
+    shape = motif_interval_shape(core)
+    out: list[dict[str, Any]] = []
+    prev_midi: int | None = previous_midi
+    sound_i = 0
     for item in core:
         src_bar = int(item.get("bar_index") or 0)
         if src_bar >= len(dest_list):
@@ -515,34 +757,38 @@ def adapt_motif_to_harmony(
             new_item["midi"] = 0
             out.append(new_item)
             continue
-        src_chord = str(item.get("chord") or dest_chord)
-        src_vocab = chord_vocabulary(src_chord, reference_key=reference_key)
         dst_vocab = chord_vocabulary(dest_chord, reference_key=reference_key)
-        src_scale = list(src_vocab.get("scale") or src_vocab.get("chord_tones") or ["C"])
-        dst_scale = list(dst_vocab.get("scale") or dst_vocab.get("chord_tones") or ["C"])
         dst_tones = list(dst_vocab.get("chord_tones") or [dst_vocab.get("root") or "C"])
-        src_tones = list(src_vocab.get("chord_tones") or [src_vocab.get("root") or "C"])
-        idx = _scale_index(src_scale, str(item.get("spelled") or "C"))
-        dest_spelled = dst_scale[idx % len(dst_scale)] if dst_scale else dst_tones[0]
-        role = str(item.get("tone_role") or "")
-        if role in {"chord_tone", "extension"}:
+        beat = float(item.get("beat") or 0.0)
+        strong = abs(beat) < 1e-9 or abs(beat - 2.0) < 1e-9
+        if sound_i == 0:
+            src_chord = str(item.get("chord") or dest_chord)
+            src_vocab = chord_vocabulary(src_chord, reference_key=reference_key)
+            src_tones = list(src_vocab.get("chord_tones") or [src_vocab.get("root") or "C"])
             src_pc = _pc(str(item.get("spelled") or "C"))
-            func_i = next((i for i, t in enumerate(src_tones) if _pc(t) == src_pc), None)
-            if func_i is not None and func_i < len(dst_tones):
-                dest_spelled = dst_tones[func_i]
-        options = [dest_spelled]
-        if dst_scale:
-            options.append(dst_scale[(idx + 1) % len(dst_scale)])
-            options.append(dst_scale[(idx - 1) % len(dst_scale)])
-        options.extend(dst_tones[:2])
-        spelled, octv, midi = _pick_near(
-            options,
-            prev_midi=prev_midi,
-            low=low,
-            high=high,
-            prefer=prefer if prev_midi is None else prev_midi,
-            max_leap=max_leap,
-        )
+            func_i = next((i for i, t in enumerate(src_tones) if _pc(t) == src_pc), 0)
+            dest_spelled = dst_tones[func_i % len(dst_tones)] if dst_tones else "C"
+            spelled, octv, midi = _pick_near(
+                [dest_spelled] + dst_tones[:3],
+                prev_midi=prev_midi,
+                low=low,
+                high=high,
+                prefer=prefer if prev_midi is None else prev_midi,
+                max_leap=7 if prev_midi is not None else 12,
+            )
+        else:
+            delta = shape[sound_i - 1] if sound_i - 1 < len(shape) else 2
+            if int(delta) == 0:
+                delta = 2 if (sound_i % 2) else -2
+            spelled, octv, midi = _snap_along_contour(
+                dest_vocab=dst_vocab,
+                prev_midi=int(prev_midi or prefer),
+                intended_delta=int(delta),
+                low=low,
+                high=high,
+                prefer_chord_tone=strong,
+                allow_repeat=False,
+            )
         new_item["spelled"] = spelled
         new_item["octave"] = octv
         new_item["midi"] = midi
@@ -550,6 +796,7 @@ def adapt_motif_to_harmony(
         out.append(new_item)
         prev_midi = midi
         prefer = midi
+        sound_i += 1
     return out
 
 

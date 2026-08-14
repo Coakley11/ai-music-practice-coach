@@ -44,14 +44,29 @@ def _clean(text: object) -> str:
     return str(text or "").strip()
 
 
+_BAR_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "eight": 8,
+    "twelve": 12,
+    "sixteen": 16,
+}
+
+
 def _parse_bars(low: str) -> int | None:
-    m = re.search(r"\b(\d{1,2})\s*[- ]?\s*bars?\b", low)
-    if not m:
-        m = re.search(r"\b(\d{1,2})\s*[- ]?\s*measures?\b", low)
+    m = re.search(
+        r"\b(\d{1,2}|one|two|three|four|five|six|eight|twelve|sixteen)\s*[- ]?\s*(?:bar|measure)s?\b",
+        low,
+    )
     if not m:
         return None
+    token = m.group(1).lower()
     try:
-        n = int(m.group(1))
+        n = _BAR_WORDS[token] if token in _BAR_WORDS else int(token)
         return max(1, min(32, n))
     except ValueError:
         return None
