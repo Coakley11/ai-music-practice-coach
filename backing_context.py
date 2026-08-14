@@ -1249,22 +1249,25 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         except ImportError:
             pass
     chart_display_key = _resolve_chart_display_key(session, concert_key)
+    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     if entry_mode == "Jam Session Generator":
-        style = str(session.get("improv_jam_style") or "Jazz Swing").strip() or "Jazz Swing"
-        groove = str(session.get("improv_groove") or style).strip()
-        bpm = int(session.get("improv_jam_bpm") or 110)
-        mood = str(session.get("improv_jam_mood") or "Mellow").strip()
+        style = str(session.get("improv_jam_style") or style_meta.get("style") or "Jazz Swing").strip() or "Jazz Swing"
+        groove = str(session.get("improv_groove") or style_meta.get("groove") or style).strip()
+        bpm = int(session.get("improv_jam_bpm") or style_meta.get("bpm") or 110)
+        mood = str(session.get("improv_jam_mood") or style_meta.get("mood") or "Mellow").strip()
     else:
-        style = str(session.get("improv_style") or "").strip() or "Jazz Swing"
-        groove = str(session.get("improv_groove") or style).strip()
-        bpm = int(session.get("improv_style_bpm") or 110)
-        mood = str(session.get("improv_mood") or "Mellow").strip()
+        style = str(session.get("improv_style") or style_meta.get("style") or "").strip() or "Jazz Swing"
+        groove = str(session.get("improv_groove") or style_meta.get("groove") or style).strip()
+        bpm = int(session.get("improv_style_bpm") or style_meta.get("bpm") or 110)
+        mood = str(session.get("improv_mood") or style_meta.get("mood") or "Mellow").strip()
 
-    groove_intensity = str(session.get("improv_groove") or "Medium").strip()
+    groove_intensity = str(
+        session.get("improv_groove") or style_meta.get("groove") or style_meta.get("groove_intensity") or "Medium"
+    ).strip()
     from backing_musical_profile import normalize_backing_play_intensity
     from songs.playback_defaults import normalize_groove_label
 
-    difficulty = str(session.get("improv_difficulty") or "Intermediate").strip()
+    difficulty = str(session.get("improv_difficulty") or style_meta.get("difficulty") or "Intermediate").strip()
     groove_intensity = normalize_backing_play_intensity(groove_intensity, difficulty=difficulty)
     if _catalog_groove_label_leak(groove_intensity, style):
         groove_intensity = normalize_backing_play_intensity("", difficulty=difficulty)
@@ -1342,6 +1345,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         try:
             from musical_context_coherence import (
                 CreativeBackingHandoffBlocked,
+                infer_major_tonic_from_progression,
                 raise_coherence_handoff_blocked,
                 validate_hybrid_generated_session_split,
             )
@@ -1352,6 +1356,41 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                 progression=progression,
                 style_id=style,
             )
+            if hybrid_v:
+                try:
+                    from creative_key_sync import retranspose_generated_sections
+                    from music_theory import normalize_root, semitone_distance, split_chord
+
+                    inferred = infer_major_tonic_from_progression(progression)
+                    if inferred and concert_key:
+                        inf_root = normalize_root(split_chord(inferred)[0])
+                        dest_root = normalize_root(split_chord(str(concert_key))[0])
+                        if inf_root and dest_root and semitone_distance(inf_root, dest_root) != 0:
+                            sections_dict = retranspose_generated_sections(
+                                sections_dict,
+                                from_key=inferred,
+                                to_key=str(concert_key),
+                            )
+                            try:
+                                from improvisation_intelligence import flatten_sections
+
+                                progression = flatten_sections(sections_dict)
+                            except ImportError:
+                                progression = [
+                                    str(c)
+                                    for chs in sections_dict.values()
+                                    if isinstance(chs, list)
+                                    for c in chs
+                                    if str(c).strip()
+                                ]
+                            hybrid_v = validate_hybrid_generated_session_split(
+                                session,
+                                declared_key=concert_key,
+                                progression=progression,
+                                style_id=style,
+                            )
+                except ImportError:
+                    pass
             if hybrid_v:
                 raise_coherence_handoff_blocked(session, hybrid_v)
         except CreativeBackingHandoffBlocked:

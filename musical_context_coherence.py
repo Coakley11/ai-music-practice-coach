@@ -361,17 +361,28 @@ def validate_hybrid_generated_session_split(
     """Session-level hybrid: widget key vs session jam sections without blob authority."""
     if not progression:
         return []
+    try:
+        from music_theory import split_key_center
+
+        tonic, mode = split_key_center(str(declared_key or "C"))
+    except ImportError:
+        tonic, mode = str(declared_key or "C"), "major"
+    if mode not in {"major", "minor"}:
+        mode = "major"
+    mood = str(
+        session.get("improv_mood") or session.get("improv_jam_mood") or "Mellow"
+    ).strip() or "Mellow"
     ctx = CoherentMusicalContext(
-        owner="jam_session_generator",
+        owner="style_jam" if str(session.get("improv_entry_mode") or "") == "Style Jam Mode" else "jam_session_generator",
         workflow_session_id="",
-        practice_tonic=str(declared_key or "C"),
-        practice_mode="major",
+        practice_tonic=tonic,
+        practice_mode=mode,
         key_token=str(declared_key or "C"),
         section_map={"_": list(progression)},
         selected_section="",
         selected_chord="",
         style_id=style_id,
-        mood=str(session.get("improv_jam_mood") or "Mellow"),
+        mood=mood,
         progression_flat=tuple(progression),
         sources={"progression": "session_improv_jam_session", "key": "session_widget"},
     )

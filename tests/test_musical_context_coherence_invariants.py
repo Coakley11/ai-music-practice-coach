@@ -9,7 +9,6 @@ from improvisation_intelligence import generate_style_progression
 from musical_context_coherence import (
     VIOLATION_UNTRANSPOSED_GENERATED_ARTIFACT,
     CoherentMusicalContext,
-    CreativeBackingHandoffBlocked,
     infer_major_tonic_from_progression,
     resolve_coherent_musical_context,
     run_musical_context_coherence_checks,
@@ -138,7 +137,7 @@ class MusicalContextCoherenceInvariantTests(unittest.TestCase):
         self.assertIn("Cmaj7", " ".join(ctx.progression or []))
         self.assertNotIn("Ebmaj7", " ".join(ctx.progression or []))
 
-    def test_hybrid_legacy_path_blocks_handoff(self) -> None:
+    def test_hybrid_legacy_path_transposes_to_declared_key(self) -> None:
         session = _session(
             studio_page="backing",
             improv_entry_mode="Jam Session Generator",
@@ -149,9 +148,12 @@ class MusicalContextCoherenceInvariantTests(unittest.TestCase):
             improv_jam_mood="Mellow",
             improv_jam_session={"sections": {"Head": ["Fm7", "Bb7", "Ebmaj7", "Cm7"]}},
         )
-        with self.assertRaises(CreativeBackingHandoffBlocked):
-            build_entry_jam_context(session)
-        self.assertTrue(session.get("_musical_context_coherence_handoff_block"))
+        ctx = build_entry_jam_context(session)
+        self.assertEqual(str(ctx.concert_key or ""), "C")
+        joined = " ".join(ctx.progression or [])
+        self.assertIn("Cmaj7", joined)
+        self.assertNotIn("Ebmaj7", joined)
+        self.assertFalse(session.get("_musical_context_coherence_handoff_block"))
 
     def test_generate_then_coherence_clean(self) -> None:
         session = _session(
