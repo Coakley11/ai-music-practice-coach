@@ -563,6 +563,12 @@ def apply_creative_session_to_session(
         safe_session_assign = None  # type: ignore[assignment,misc]
 
     def _set(key: str, value: Any) -> None:
+        if (
+            widget_safe
+            and key in {"improv_mood", "improv_difficulty", "improv_groove", "improv_jam_mood"}
+            and str(session.get(key) or "").strip()
+        ):
+            return
         if safe_session_assign is not None:
             safe_session_assign(session, key, value, widget_safe=widget_safe)
         else:

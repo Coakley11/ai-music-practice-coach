@@ -1568,8 +1568,8 @@ def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str
                 session_state["creative_lab_analysis_mode"] = canon
             session_state["creative_lab_last_mode"] = canon
             return canon
-        if not selector_hydration_complete(session_state):
-            return str(session_state.get("creative_lab_analysis_mode") or "").strip()
+        # Hydration-incomplete must not block the empty-startup default; it only
+        # blocks promoting widget defaults into canonical persistence.
     except ImportError:
         pass
     last = str(session_state.get("creative_lab_last_mode") or "").strip()
