@@ -138,6 +138,19 @@ def _flatten_sections(section_map: dict[str, list[str]]) -> list[str]:
 
 
 def resolve_handoff_entry_mode(session: dict[str, Any]) -> str:
+    """Entry mode that owns a generated-artifact seal — never leftover SBI radio state.
+
+    Opening entry_jam backing must seal Style Jam / Jam Generator from the generated
+    session, even when ``improv_entry_mode`` still says Song-Based Improvisation.
+    """
+    try:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        resolved = resolve_entry_jam_entry_mode(session)
+        if resolved in ("Style Jam Mode", "Jam Session Generator"):
+            return resolved
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import _creative_handoff_entry_mode
 
