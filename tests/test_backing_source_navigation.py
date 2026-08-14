@@ -1463,6 +1463,27 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         open_backing_from_creative(session, source="entry_jam")
         ctx2 = build_entry_jam_context(session)
         self.assertEqual(ctx2.entry_mode, "Style Jam Mode")
+        self.assertEqual(ctx2.concert_key, "F")
+
+    def test_build_entry_jam_context_style_key_owns_leftover_c(self) -> None:
+        from backing_context import build_entry_jam_context, open_backing_from_creative
+
+        session = {
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_style": "Bossa Nova",
+            "improv_style_key": "F",
+            "improv_style_bpm": 72,
+            "improv_mood": "Mellow",
+            "improv_generated_sections": {"A (Bossa Nova)": ["Gm7", "C7", "Fmaj7"]},
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+        }
+        open_backing_from_creative(session, source="entry_jam")
+        ctx = build_entry_jam_context(session)
+        self.assertEqual(ctx.entry_mode, "Style Jam Mode")
+        self.assertEqual(ctx.concert_key, "F")
+        self.assertEqual(ctx.bpm, 72)
 
     def test_return_to_creative_authoritative_style_jam_before_entry_radios(self) -> None:
         """Return to Creative must land Style Jam Mode on the entry radio before widgets render."""

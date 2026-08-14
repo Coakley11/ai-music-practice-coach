@@ -1243,9 +1243,14 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             from creative_key_sync import creative_entry_concert_key
 
             creative_sel = str(creative_entry_concert_key(session) or "").strip()
-            entry_for_key = str(session.get("improv_entry_mode") or "").strip()
-            if entry_for_key in {"Style Jam Mode", "Jam Session Generator"} and creative_sel:
-                key = display_key = concert_key = creative_sel
+            if entry_mode in {"Style Jam Mode", "Jam Session Generator"}:
+                jam_key = ""
+                if entry_mode == "Style Jam Mode":
+                    jam_key = str(session.get("improv_style_key") or creative_sel or "").strip()
+                else:
+                    jam_key = str(session.get("improv_jam_key") or creative_sel or "").strip()
+                if jam_key:
+                    key = display_key = concert_key = jam_key
         except ImportError:
             pass
     chart_display_key = _resolve_chart_display_key(session, concert_key)
