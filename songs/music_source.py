@@ -2590,11 +2590,11 @@ def resolve_catalog_pick_for_backing_restore_with_source(
         return _normalize(pk), source
 
     if str(reason or "").strip() in _creative_return_reasons:
-        # Pre-Creative catalog wins over stale catalog_before_custom / last_catalog (e.g. Say).
+        # Pre-Creative snapshot wins when Jam/Creative overwrote the live pick.
+        # Live catalog pick wins over stale last_catalog (e.g. leftover Say).
         snap_order = (
             ("catalog_before_creative", CATALOG_BEFORE_CREATIVE_KEY),
             ("catalog_before_custom", CATALOG_BEFORE_CUSTOM_KEY),
-            ("last_catalog_state", LAST_CATALOG_STATE_KEY),
         )
         for source, snap_key in snap_order:
             raw = session_state.get(snap_key)
@@ -2603,17 +2603,22 @@ def resolve_catalog_pick_for_backing_restore_with_source(
             pk = str(raw.get("pick_key") or "").strip()
             if _pick_key_is_catalog(pk):
                 return _record(source, pk)
-        practice_pk = str(session_state.get(PRACTICE_SOURCE_PICK_KEY) or "").strip()
-        if _pick_key_is_catalog(practice_pk):
-            return _record("practice_source_pick", practice_pk)
         live = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
         if _pick_key_is_catalog(live):
             return _record("active_catalog_pick_key", live)
+        practice_pk = str(session_state.get(PRACTICE_SOURCE_PICK_KEY) or "").strip()
+        if _pick_key_is_catalog(practice_pk):
+            return _record("practice_source_pick", practice_pk)
         meta = session_state.get("active_song_state")
         if isinstance(meta, dict):
             pk = str(meta.get("pick_key") or "").strip()
             if _pick_key_is_catalog(pk):
                 return _record("active_song_state", pk)
+        raw_last = session_state.get(LAST_CATALOG_STATE_KEY)
+        if isinstance(raw_last, dict):
+            pk = str(raw_last.get("pick_key") or "").strip()
+            if _pick_key_is_catalog(pk):
+                return _record("last_catalog_state", pk)
         session_state["catalog_restore_pick_source"] = "none"
         return "", "none"
 
