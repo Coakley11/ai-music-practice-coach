@@ -361,6 +361,11 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
         if not is_song_editing_question(low):
             return CoachIntent.PRACTICE_PLAN, 0.88
 
+    if re.search(
+        r"how should i practice (?:the )?(?:intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove|part [abc]|section [abc])",
+        low,
+    ):
+        return CoachIntent.SONG_COACHING, 0.9
     if any(p in low for p in ("which section", "work on in this song", "practice melody", "what tempo should i start")):
         return CoachIntent.SONG_COACHING, 0.82
 

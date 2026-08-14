@@ -30,6 +30,7 @@ class MusicalEvent:
     cell_index: int | None = None
     domain: str = "concert"  # concert | written
     tone_role: str = ""  # chord_tone | passing | neighbor | approach | extension
+    slur_group: int = 0  # 0 = none; matching ids slur together in notation
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class MusicalIdeaComposition:
     scale_spelling: tuple[str, ...] = ()
     validation_errors: tuple[str, ...] = ()
     validation_ok: bool = True
+    motif_meta: dict[str, Any] = field(default_factory=dict)
 
 
 def _clean(text: object) -> str:
@@ -663,6 +665,161 @@ def expand_harmony_timeline(chords: Sequence[str], bars: int) -> list[str]:
     return out
 
 
+def generate_lick_through_section(
+    idea: MusicalIdeaRequest,
+    chords: Sequence[str],
+    *,
+    notation_instrument: str,
+    reference_key: str,
+    piano_role: str = "",
+) -> MusicalIdeaComposition:
+    """1–2 bar lick reused/adapted through the section harmony."""
+    from music_coach_ami.melodic_motion import (
+        adapt_motif_to_harmony,
+        generate_horizontal_line,
+        motif_articulation_fingerprint,
+        motif_interval_shape,
+        motif_rhythmic_fingerprint,
+    )
+    from music_coach_ami.phrase_articulation import apply_phrase_articulation
+    from music_coach_instrument_voice import instrument_family
+
+    obj = "lick"
+    family = instrument_family(notation_instrument)
+    profile = (
+        notation_profile_for_piano_role(piano_role or "right_hand")
+        if family == "keyboard"
+        else notation_profile_for_instrument(notation_instrument)
+    )
+    low, high, prefer = generation_window(
+        profile,
+        instrument=notation_instrument,
+        register=idea.register,
+        object_type="lick",
+        difficulty=idea.difficulty or idea.level,
+    )
+    bars = int(idea.bars or max(4, len([c for c in chords if _clean(c)]) or 4))
+    timeline = expand_harmony_timeline(chords, bars)
+    motif_bars = 2 if len(timeline) >= 2 else 1
+    lvl = _level(idea)
+    ref = _clean(reference_key) or _clean(idea.explicit_key) or "C"
+    meter = idea.meter or "4/4"
+    core_chords = timeline[:motif_bars]
+    core = generate_horizontal_line(
+        core_chords,
+        reference_key=ref,
+        level=lvl,
+        object_type="lick",
+        meter=meter,
+        low=low,
+        high=high,
+        prefer=prefer,
+        style=idea.style or "",
+        instrument_family=family,
+    )
+    apply_phrase_articulation(
+        core,
+        family=family,
+        level=lvl,
+        object_type="lick",
+        voice="rh" if family == "keyboard" else "",
+    )
+    for item in core:
+        item["cell_index"] = 0
+    line: list[dict[str, Any]] = list(core)
+    adaptations: list[dict[str, Any]] = [
+        {
+            "bars": [1, motif_bars],
+            "chords": list(core_chords),
+            "strategy": "original_motif",
+        }
+    ]
+    cursor = motif_bars
+    cell = 1
+    while cursor < len(timeline):
+        span = min(motif_bars, len(timeline) - cursor)
+        dest = timeline[cursor : cursor + span]
+        adapted = adapt_motif_to_harmony(
+            [e for e in core if int(e.get("bar_index") or 0) < span],
+            dest,
+            bar_offset=cursor,
+            reference_key=ref,
+            low=low,
+            high=high,
+            prefer=prefer,
+            instrument_family=family,
+        )
+        for item in adapted:
+            item["cell_index"] = cell
+            src_group = int(item.get("slur_group") or 0)
+            item["slur_group"] = src_group + (cell * 50) if src_group else 0
+            item["articulation"] = item.get("articulation") or ""
+        line.extend(adapted)
+        src_q = chord_vocabulary_quality(core_chords[0] if core_chords else "")
+        dst_q = chord_vocabulary_quality(dest[0] if dest else "")
+        adaptations.append(
+            {
+                "bars": [cursor + 1, cursor + span],
+                "chords": list(dest),
+                "strategy": "degree_map" if src_q == dst_q else "harmonic_adaptation",
+                "source_quality": src_q,
+                "dest_quality": dst_q,
+            }
+        )
+        cursor += span
+        cell += 1
+        if adapted:
+            last = next((e for e in reversed(adapted) if e.get("midi")), None)
+            if last:
+                prefer = int(last.get("midi") or prefer)
+
+    events = _events_from_motion_line(line, role="rh" if family == "keyboard" else obj, articulation="")
+    ok, errs = validate_musical_idea_composition(
+        MusicalIdeaComposition(
+            events=tuple(events),
+            reference_key=ref,
+            meter=meter,
+            bars=bars,
+            object_type=obj,
+            style=idea.style or "lick",
+            notation_profile=apply_register_override(profile, idea.register),
+            strategy=f"lick_through_section:{lvl}:{motif_bars}",
+            tonic=ref,
+        )
+    )
+    meta = {
+        "motif_bars": motif_bars,
+        "motif_interval_shape": motif_interval_shape(core),
+        "rhythmic_fingerprint": motif_rhythmic_fingerprint(core),
+        "articulation_fingerprint": motif_articulation_fingerprint(core),
+        "adaptations": adaptations,
+        "source_chords": list(core_chords),
+    }
+    return MusicalIdeaComposition(
+        events=tuple(events),
+        reference_key=ref,
+        meter=meter,
+        bars=bars,
+        object_type=obj,
+        style=idea.style or "lick",
+        notation_profile=apply_register_override(profile, idea.register),
+        strategy=f"lick_through_section:{lvl}:{motif_bars}",
+        tonic=ref,
+        validation_ok=ok,
+        validation_errors=tuple(errs),
+        motif_meta=meta,
+    )
+
+
+def chord_vocabulary_quality(chord: str) -> str:
+    try:
+        from music_coach_ami.melodic_motion import chord_vocabulary
+
+        return str(chord_vocabulary(chord).get("quality") or "")
+    except Exception:
+        return ""
+
+
 def generate_idea_over_chords(
     idea: MusicalIdeaRequest,
     chords: Sequence[str],
@@ -673,6 +830,17 @@ def generate_idea_over_chords(
 ) -> MusicalIdeaComposition:
     """Song-relative lick/phrase/riff over a resolved harmonic timeline."""
     obj = _clean(object_type) or _clean(idea.object_type) or "phrase"
+    if obj == "lick":
+        return generate_lick_through_section(
+            idea,
+            chords,
+            notation_instrument=notation_instrument,
+            reference_key=reference_key,
+        )
+    from music_coach_ami.phrase_articulation import apply_phrase_articulation
+    from music_coach_instrument_voice import instrument_family
+
+    family = instrument_family(notation_instrument)
     profile = notation_profile_for_instrument(notation_instrument)
     low, high, prefer = generation_window(
         profile,
@@ -698,7 +866,9 @@ def generate_idea_over_chords(
         high=high,
         prefer=prefer,
         style=idea.style or "",
+        instrument_family=family,
     )
+    apply_phrase_articulation(line, family=family, level=lvl, object_type=obj)
     events = _events_from_motion_line(line, role=obj, articulation=idea.articulation)
 
     return MusicalIdeaComposition(
@@ -770,20 +940,26 @@ def _events_from_motion_line(
 ) -> list[MusicalEvent]:
     events: list[MusicalEvent] = []
     for item in line:
+        spelled = str(item.get("spelled") or "")
+        dur = str(item.get("duration") or "quarter")
+        if not spelled and not dur.startswith("rest"):
+            spelled = "C"
+        art = str(item.get("articulation") or articulation or "")
         events.append(
             MusicalEvent(
-                spelled=str(item.get("spelled") or "C"),
+                spelled=spelled,
                 octave=int(item.get("octave") or 4),
-                duration=str(item.get("duration") or "quarter"),
+                duration=dur,
                 bar_index=int(item.get("bar_index") or 0),
                 beat=float(item.get("beat") or 0.0),
-                articulation=articulation,
+                articulation=art,
                 pitch_class=item.get("pitch_class"),
                 chord=str(item.get("chord") or ""),
                 role=role,
-                cell_index=int(item.get("bar_index") or 0),
+                cell_index=int(item.get("cell_index") if item.get("cell_index") is not None else item.get("bar_index") or 0),
                 domain="concert",
                 tone_role=str(item.get("tone_role") or ""),
+                slur_group=int(item.get("slur_group") or 0),
             )
         )
     return events
@@ -994,6 +1170,7 @@ def generate_piano_section_improvisation(
     events: list[MusicalEvent] = []
     if role in {"right_hand", "both_hands"}:
         from music_coach_ami.melodic_motion import generate_horizontal_line
+        from music_coach_ami.phrase_articulation import apply_phrase_articulation
 
         rh_low, rh_high, rh_prefer = generation_window(
             rh_profile, instrument="Piano", register=idea.register, object_type=obj, difficulty=lvl
@@ -1008,24 +1185,48 @@ def generate_piano_section_improvisation(
             high=rh_high,
             prefer=rh_prefer,
             style=idea.style or "",
+            instrument_family="keyboard",
+        )
+        apply_phrase_articulation(
+            rh_line, family="keyboard", level=lvl, object_type=obj, voice="rh"
         )
         events.extend(_events_from_motion_line(rh_line, role="rh", articulation=idea.articulation))
     if role in {"left_hand", "both_hands"}:
+        from music_coach_ami.phrase_articulation import apply_phrase_articulation
+
         lh_low, lh_high, lh_prefer = generation_window(
             lh_profile, instrument="Piano", register="low", object_type="accompaniment", difficulty=lvl
         )
-        events.extend(
-            _events_from_hand_motifs(
-                timeline=timeline,
-                motifs=lh_motifs,
-                role="lh",
-                low=lh_low,
-                high=lh_high,
-                prefer=lh_prefer,
-                meter=meter,
-                articulation=idea.articulation,
-            )
+        lh_events = _events_from_hand_motifs(
+            timeline=timeline,
+            motifs=lh_motifs,
+            role="lh",
+            low=lh_low,
+            high=lh_high,
+            prefer=lh_prefer,
+            meter=meter,
+            articulation=idea.articulation,
         )
+        lh_line = [
+            {
+                "spelled": e.spelled,
+                "octave": e.octave,
+                "duration": e.duration,
+                "bar_index": e.bar_index,
+                "beat": e.beat,
+                "articulation": e.articulation,
+                "slur_group": int(getattr(e, "slur_group", 0) or 0),
+                "chord": e.chord,
+                "tone_role": e.tone_role,
+                "role": "lh",
+                "midi": _midi(e.spelled, e.octave) if e.spelled else 0,
+            }
+            for e in lh_events
+        ]
+        apply_phrase_articulation(
+            lh_line, family="keyboard", level=lvl, object_type="accompaniment", voice="lh"
+        )
+        events.extend(_events_from_motion_line(lh_line, role="lh", articulation=""))
     events.sort(key=lambda e: (e.bar_index, 0 if e.role == "rh" else 1, e.beat))
     strategy = f"piano_{role}:{obj}:{lvl}:horizontal_motion"
     comp = MusicalIdeaComposition(
@@ -1061,6 +1262,8 @@ def composition_to_abc(
         _note_to_abc,
     )
 
+    from music_coach_ami.phrase_articulation import articulation_abc_prefix, slur_bounds
+
     meter = composition.meter or "4/4"
     tonic = composition.tonic or composition.reference_key or "C"
     tonality = composition.tonality or "major"
@@ -1068,9 +1271,10 @@ def composition_to_abc(
     q = int(bpm or 96)
     key_field = _abc_key_field(tonic, tonality)
 
-    def _event_token(ev: MusicalEvent, *, with_chord: bool) -> str:
+    def _event_token(ev: MusicalEvent, *, with_chord: bool, slur_start: bool = False, slur_end: bool = False) -> str:
         dur_l = str(ev.duration).lower()
         rest = dur_l.startswith("rest") or not str(ev.spelled or "").strip()
+        art_prefix = "" if rest else articulation_abc_prefix(ev.articulation)
         if rest:
             if "half" in dur_l:
                 tok = "z2"
@@ -1094,16 +1298,20 @@ def composition_to_abc(
                 suffix = "/4"
             else:
                 suffix = ""
-            if ev.articulation == "staccato":
+            if "staccato" in str(ev.articulation or "").lower():
                 tok = tok + "."
-            tok = f"{tok}{suffix}"
+            tok = f"{art_prefix}{tok}{suffix}"
+        if slur_start:
+            tok = "(" + tok
+        if slur_end:
+            tok = tok + ")"
         if with_chord and ev.chord:
             chord_label = str(ev.chord).replace('"', "'")
             return f'"{chord_label}"{tok}'
         return tok
 
     def _voice_measure_lines(role: str | None) -> list[str]:
-        by_bar: dict[int, list[MusicalEvent]] = {}
+        voice_evs: list[MusicalEvent] = []
         for ev in composition.events:
             if role and ev.role not in {role, ""} and not (role == "rh" and ev.role not in {"lh", "rh"}):
                 continue
@@ -1111,15 +1319,20 @@ def composition_to_abc(
                 continue
             if role == "rh" and ev.role == "lh":
                 continue
-            by_bar.setdefault(ev.bar_index, []).append(ev)
+            voice_evs.append(ev)
+        voice_evs = sorted(voice_evs, key=lambda e: (e.bar_index, e.beat))
+        marked = slur_bounds(voice_evs)
+        by_bar: dict[int, list[tuple[MusicalEvent, bool, bool]]] = {}
+        for ev, start, end in marked:
+            by_bar.setdefault(ev.bar_index, []).append((ev, start, end))
         lines: list[str] = []
         for bar_i in range(composition.bars):
-            evs = sorted(by_bar.get(bar_i) or [], key=lambda e: e.beat)
+            evs = by_bar.get(bar_i) or []
             parts: list[str] = []
-            for idx, ev in enumerate(evs):
-                prev_chord = str(evs[idx - 1].chord or "") if idx else ""
+            for idx, (ev, start, end) in enumerate(evs):
+                prev_chord = str(evs[idx - 1][0].chord or "") if idx else ""
                 show_chord = role != "lh" and bool(ev.chord) and (idx == 0 or str(ev.chord) != prev_chord)
-                parts.append(_event_token(ev, with_chord=show_chord))
+                parts.append(_event_token(ev, with_chord=show_chord, slur_start=start, slur_end=end))
             if not parts:
                 parts = ["z4"]
             lines.append(_abc_beam_within_measure(parts, meter, _abc_default_length("quarter")) + " |")
@@ -1333,4 +1546,5 @@ def composition_diagnostics(composition: MusicalIdeaComposition) -> dict[str, An
         "validation_ok": composition.validation_ok,
         "validation_errors": list(composition.validation_errors),
         "melodic_motion": motion,
+        "motif_meta": dict(getattr(composition, "motif_meta", None) or {}),
     }

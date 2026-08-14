@@ -2467,7 +2467,7 @@ def render_music_coach_page_entry(
     """Practice-page Music Coach — one card with one question field + submit.
 
     Submits through the same canonical AMI pipeline as the sidebar Music Coach.
-    Optional secondary control opens the full Music Coach page. No second expander.
+    No second expander and no extra navigation button.
     """
     ss = session_state if session_state is not None else st.session_state
     page_suffix = _safe_widget_suffix(source_page)
@@ -2519,21 +2519,12 @@ def render_music_coach_page_entry(
         label_visibility="visible",
     )
 
-    ask_col, open_col = st.columns([3, 2])
-    with ask_col:
-        ask_clicked = st.button(
-            "Ask the Music Coach",
-            key=submit_key,
-            type="primary",
-            use_container_width=True,
-        )
-    with open_col:
-        open_clicked = st.button(
-            "Open full Music Coach",
-            key="practice_open_music_coach",
-            type="secondary",
-            use_container_width=True,
-        )
+    ask_clicked = st.button(
+        "Ask the Music Coach",
+        key=submit_key,
+        type="primary",
+        use_container_width=True,
+    )
 
     if ask_clicked:
         q = str(question or "").strip()
@@ -2556,15 +2547,6 @@ def render_music_coach_page_entry(
                 on_after_send=on_after_send,
             )
             return
-
-    if open_clicked:
-        try:
-            from app_ui import navigate_studio_page
-        except ImportError:
-            from studio_nav_history import navigate_studio_page
-        navigate_studio_page(ss, "openai")
-        st.rerun()
-        return
 
     if developer_mode:
         _render_music_coach_submit_dev_panel(st, ss)

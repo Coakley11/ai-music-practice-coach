@@ -460,6 +460,132 @@ class MelodicMotionLevelTests(unittest.TestCase):
         self.assertLessEqual(motion.get("max_midi", 99), 88)
 
 
+class ExplicitSectionPracticeTests(unittest.TestCase):
+    def test_how_should_i_practice_the_verse_uses_verse_not_full_song(self) -> None:
+        q = "How should I practice the verse?"
+        _, resp = run_coach_submit(
+            q,
+            {
+                "instrument": "Tenor Sax",
+                "display_key": "C",
+                "level": "Intermediate",
+                "instrument_change_source": "sidebar",
+            },
+            ami_ctx={
+                "instrument": "Tenor Sax",
+                "level": "Intermediate",
+                "display_key": "C",
+                "practice_key": "C",
+                "coach_page": "practice",
+                "chart_sections": {
+                    "Verse 1": ["Cmaj7", "Dm7", "Em7", "A7", "Dm7", "G7", "Cmaj7", "G7"],
+                    "Chorus": ["Fmaj7", "G7", "Em7", "A7"],
+                    "Bridge": ["Am7", "D7", "G7", "Cmaj7"],
+                },
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Full Song",
+                "active_song": {"title": "New York State of Mind", "key": "C"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertIn("**Song:** *New York State of Mind*", md)
+        self.assertIn("**Section:** Verse 1", md)
+        self.assertIn("Verse 1", md)
+        self.assertNotIn("prioritize **Full Song** first", md)
+        self.assertNotIn("Full Song first", md)
+        self.assertEqual((resp.diagnostics or {}).get("resolved_section"), "Verse 1")
+        self.assertEqual((resp.diagnostics or {}).get("section_source"), "explicit_question")
+
+
+class LickMotifArchitectureTests(unittest.TestCase):
+    PART_A = ["Am7", "D7", "Gmaj7", "Cmaj7", "F#m7b5", "B7", "Em7", "A7"]
+
+    def test_eight_bar_lick_reuses_two_bar_motif(self) -> None:
+        from collections import Counter
+        from dataclasses import replace
+
+        from music_coach_ami.musical_idea_engine import generate_lick_through_section, generate_idea_over_chords
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        q = "Give me a tenor sax lick that can be played over part A."
+        idea = resolve_musical_idea_request(
+            q, default_object="lick", instrument="Tenor Sax", level="Intermediate"
+        )
+        idea = replace(idea, bars=8)
+        lick = generate_lick_through_section(
+            idea,
+            self.PART_A,
+            notation_instrument="Tenor Sax",
+            reference_key="C",
+        )
+        self.assertTrue(str(lick.strategy).startswith("lick_through_section"))
+        meta = lick.motif_meta or {}
+        self.assertEqual(meta.get("motif_bars"), 2)
+        cells = Counter(e.cell_index for e in lick.events)
+        self.assertGreaterEqual(len(cells), 3)
+        fp = list(meta.get("rhythmic_fingerprint") or [])
+        self.assertGreaterEqual(len(fp), 2)
+        dest_chords = [e.chord for e in lick.events if e.chord]
+        self.assertIn("D7", dest_chords)
+        self.assertIn("Gmaj7", dest_chords)
+        art = list(meta.get("articulation_fingerprint") or [])
+        self.assertTrue(art)
+
+        improv_idea = resolve_musical_idea_request(
+            "Give me an improvisation over part A.",
+            default_object="improvisation",
+            instrument="Tenor Sax",
+            level="Intermediate",
+        )
+        improv_idea = replace(improv_idea, bars=8)
+        improv = generate_idea_over_chords(
+            improv_idea,
+            self.PART_A,
+            notation_instrument="Tenor Sax",
+            reference_key="C",
+            object_type="improvisation",
+        )
+        self.assertIn("horizontal_motion", improv.strategy)
+        self.assertNotIn("lick_through_section", improv.strategy)
+
+    def test_lick_over_part_a_musician_copy_explains_reuse(self) -> None:
+        _, resp = run_coach_submit(
+            "Give me a tenor sax lick that can be played over part A.",
+            {
+                "instrument": "Tenor Sax",
+                "display_key": "C",
+                "level": "Intermediate",
+                "selected_transposing_instrument": "Tenor saxophone (Bb)",
+                "instrument_change_source": "sidebar",
+            },
+            ami_ctx={
+                "instrument": "Tenor Sax",
+                "level": "Intermediate",
+                "display_key": "C",
+                "practice_key": "C",
+                "coach_page": "practice",
+                "chart_sections": {"A": self.PART_A},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "A",
+                "selected_transposing_instrument": "Tenor saxophone (Bb)",
+                "active_song": {"title": "Acceptance Tune", "key": "C"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        md = resp.composed_markdown()
+        self.assertIn("Core lick", md)
+        self.assertIn("How it moves through Part A", md)
+        self.assertNotIn("motif_interval_shape", md)
+        self.assertNotIn("rhythmic_fingerprint", md)
+        self.assertNotIn("harmonic_adaptation", md)
+        self.assertEqual(resp.diagnostics.get("resolved_object"), "lick")
+        meta = (resp.diagnostics or {}).get("motif_meta") or {}
+        self.assertEqual(meta.get("motif_bars"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -778,7 +778,21 @@ def _resolve_plan_song_section(
     history: PracticeHistorySnapshot,
     focus_prov: str,
 ) -> tuple[str, str]:
+    from music_coach_ami.musical_idea_knowledge import (
+        _chart_sections_from_request,
+        resolve_practice_section_target,
+    )
+
     active_song = _clean(req.context.active_song_title)
+    target = resolve_practice_section_target(
+        req.raw_question or req.normalized_question,
+        chart_sections=_chart_sections_from_request(req),
+        active_section=str(req.context.active_section or ""),
+    )
+    if target.get("explicit") or target.get("source") == "explicit_question":
+        section = _clean(target.get("section") or "")
+        song = active_song or _clean(history.last_song)
+        return song, section
     active_section = _usable_section(req.context.active_section)
     if focus_prov.startswith("history"):
         song = _clean(history.last_song) or active_song

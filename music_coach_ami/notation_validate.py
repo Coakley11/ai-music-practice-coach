@@ -34,6 +34,9 @@ def _token_beats(token: str, *, default_len: str = "1/4") -> float:
     if not raw or raw in {"|", "||", "|]", "[|"}:
         return 0.0
     raw = re.sub(r'"[^"]*"', "", raw)
+    raw = re.sub(r"![^!]*!", "", raw)
+    raw = raw.replace("(", "").replace(")", "")
+    raw = re.sub(r"([A-Ga-g][,']*)\.", r"\1", raw)
     rest_m = re.match(r"^z(\d*/?\d*)$", raw)
     if rest_m:
         suffix = rest_m.group(1) or ""
@@ -158,9 +161,13 @@ def validate_notation_structure(
         # tokens may still include chord-prefixed pitches like "Cm7"C,
         # already stripped quotes above via split — chord symbols stick to pitches
         # Re-tokenize: split on spaces after removing embedded chord labels for beat math
+        measure_for_beats = re.sub(r'"[^"]*"', "", measure)
+        measure_for_beats = re.sub(r"![^!]*!", "", measure_for_beats)
+        measure_for_beats = measure_for_beats.replace("(", " ").replace(")", " ")
+        measure_for_beats = re.sub(r"([A-Ga-g][,']*)\.", r"\1", measure_for_beats)
         beat_tokens = re.findall(
-            r'"[^"]*"|z\d*/?\d*|(?:[=_^]+)?[A-Ga-g][,\'=_\^]*\d*/?\d*',
-            measure,
+            r"z\d*/?\d*|(?:[=_^]+)?[A-Ga-g][,\'=_\^]*\d*/?\d*",
+            measure_for_beats,
         )
         total = 0.0
         for tok in beat_tokens:

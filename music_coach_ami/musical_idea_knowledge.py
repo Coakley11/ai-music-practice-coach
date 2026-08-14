@@ -73,12 +73,14 @@ def extract_requested_section(question: str) -> str:
     low = str(question or "").lower()
     patterns = (
         r"\bover (?:the )?(?:part|section) ([abc])\b",
-        r"\b(?:for|on) (?:the )?(?:part|section) ([abc])\b",
+        r"\b(?:for|on|practice) (?:the )?(?:part|section) ([abc])\b",
         r"\b(?:part|section) ([abc])\b",
         r"\b([abc]) section\b",
         r"\bover (?:the )?([abc])\b",
+        r"\b(?:practice|work on|loop) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\bover (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\b(?:for|on) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
+        r"\bthe (intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
     )
     for pat in patterns:
         m = re.search(pat, low)
@@ -153,6 +155,65 @@ def resolve_chart_section(
     }
 
 
+_FULL_SONG_LABELS = frozenset({"full song", "full", "all", "song", "entire song", "whole song"})
+
+
+def _chart_sections_from_request(req: CoachRequest) -> dict[str, Any]:
+    extra = req.context.extra if isinstance(req.context.extra, dict) else {}
+    snap = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
+    for key in ("chart_sections", "sections"):
+        raw = snap.get(key) if snap else None
+        if isinstance(raw, dict) and raw:
+            return raw
+    raw = extra.get("chart_sections")
+    return raw if isinstance(raw, dict) else {}
+
+
+def resolve_practice_section_target(
+    question: str,
+    *,
+    chart_sections: dict[str, Any] | None = None,
+    active_section: str = "",
+) -> dict[str, Any]:
+    """Explicit named section beats Full Song default, then active-section fallback."""
+    requested = extract_requested_section(question)
+    sections = chart_sections if isinstance(chart_sections, dict) else {}
+    if requested:
+        res = resolve_chart_section(
+            requested,
+            chart_sections=sections,
+            fallback_section="",
+        )
+        if res.get("ok") and str(res.get("section") or "").strip():
+            return {**res, "source": "explicit_question"}
+        display = format_section_display_label(requested) or str(requested).replace("-", " ").title()
+        return {
+            "ok": True,
+            "section": display,
+            "chords": list(res.get("chords") or []),
+            "explicit": True,
+            "requested": requested,
+            "available": list(res.get("available") or []),
+            "source": "explicit_question",
+        }
+    active = str(active_section or "").strip()
+    if active.lower() not in _FULL_SONG_LABELS and active:
+        res = resolve_chart_section(
+            "",
+            chart_sections=sections,
+            fallback_section=active,
+        )
+        return {**res, "source": "active_section"}
+    return {
+        "ok": True,
+        "section": active or "",
+        "chords": [],
+        "explicit": False,
+        "source": "full_song_default",
+        "available": list(sections.keys()) if sections else [],
+    }
+
+
 def _transpose_composition_preserving_degrees(
     composition: Any,
     written_key: str,
@@ -193,6 +254,27 @@ def _transpose_composition_preserving_degrees(
                 steps,
                 reference_key=written_key or concert_ref,
             )
+        rest = str(ev.duration or "").lower().startswith("rest") or not str(ev.spelled or "").strip()
+        if rest:
+            new_events.append(
+                MusicalEvent(
+                    spelled="",
+                    octave=ev.octave,
+                    duration=ev.duration,
+                    bar_index=ev.bar_index,
+                    beat=ev.beat,
+                    articulation=ev.articulation,
+                    scale_degree=ev.scale_degree,
+                    pitch_class=None,
+                    chord=written_chord,
+                    role=ev.role,
+                    cell_index=ev.cell_index,
+                    domain="written",
+                    tone_role=ev.tone_role,
+                    slur_group=int(getattr(ev, "slur_group", 0) or 0),
+                )
+            )
+            continue
         if written_scale and ev.scale_degree:
             idx = (int(ev.scale_degree) - 1) % len(written_scale)
             spelled = written_scale[idx]
@@ -227,6 +309,7 @@ def _transpose_composition_preserving_degrees(
                 cell_index=ev.cell_index,
                 domain="written",
                 tone_role=ev.tone_role,
+                slur_group=int(getattr(ev, "slur_group", 0) or 0),
             )
         )
         prev_midi = midi
@@ -244,6 +327,7 @@ def _transpose_composition_preserving_degrees(
         tonic=written_tonic,
         tonality=written_tonality,
         scale_spelling=tuple(written_scale) if written_scale else composition.scale_spelling,
+        motif_meta=dict(getattr(composition, "motif_meta", None) or {}),
     )
 
 
@@ -258,6 +342,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         expand_harmony_timeline,
         generate_idea_over_chords,
         generate_lick,
+        generate_lick_through_section,
         generate_piano_section_improvisation,
         generate_scale_pattern,
         generate_sequence,
@@ -406,6 +491,16 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     elif obj == "sequence":
         composition = generate_sequence(idea, notation_instrument=notation_inst)
         label = f"{idea.bars}-bar sequence"
+    elif obj == "lick" and concert_chords_raw:
+        composition = generate_lick_through_section(
+            idea,
+            concert_chords_raw,
+            notation_instrument=notation_inst,
+            reference_key=concert_key,
+            piano_role=piano_role if ("piano" in inst_low or inst_low == "keyboard") else "",
+        )
+        where = format_section_display_label(section_label) or section_label or "the active section"
+        label = f"{idea.bars}-bar lick over {where}"
     elif piano_section:
         composition = generate_piano_section_improvisation(
             idea,
@@ -498,7 +593,17 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     abc, abc_diag = composition_to_abc(composition, title=title, bpm=bpm_out)
 
     ton = idea.tonality or composition.tonality or composition.style
-    if written_note and idea.explicit_key:
+    lick_meta = dict(getattr(composition, "motif_meta", None) or {})
+    motif_bars = int(lick_meta.get("motif_bars") or 0)
+    if obj == "lick" and motif_bars and idea.song_relative and section_display:
+        core_label = f"{motif_bars} bar{'s' if motif_bars != 1 else ''}"
+        direct = (
+            f"**Core lick — {core_label}**\n\n"
+            f"Then the same idea moves through **{section_display}**."
+        )
+        if written_note:
+            direct = f"{direct}\n\n{written_note}"
+    elif written_note and idea.explicit_key:
         direct = f"**Try this {idea.bars}-bar {ton} idea**\n\n{written_note}"
     elif idea.song_relative and section_display:
         direct = f"**Try this {idea.bars}-bar {object_words} over {section_display}:**"
@@ -515,6 +620,33 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         "**How to play it**",
         *play_summary(composition),
     ]
+    if obj == "lick" and motif_bars and section_display:
+        adaptations = list(lick_meta.get("adaptations") or [])
+        move_lines: list[str] = []
+        last_i = len(adaptations) - 1
+        for i, ad in enumerate(adaptations):
+            bars = list(ad.get("bars") or [])
+            if len(bars) >= 2 and bars[0] != bars[1]:
+                span = f"Bars {bars[0]}–{bars[1]}"
+            elif bars:
+                span = f"Bar {bars[0]}"
+            else:
+                continue
+            if i == 0:
+                kind = "original motif"
+            elif i == last_i:
+                kind = "adapted/resolving motif"
+            else:
+                kind = "adapted motif"
+            move_lines.append(f"{span}: {kind}")
+        steps = [
+            f"**Core lick — {motif_bars} bar{'s' if motif_bars != 1 else ''}** — learn this compact idea first.",
+            f"**How it moves through {section_display}**",
+            *move_lines,
+            f"Use a comfortable register on **{display_inst}**.",
+            "**How to play it**",
+            *play_summary(composition),
+        ]
     if written_note:
         steps.insert(1, written_note)
     listen = [

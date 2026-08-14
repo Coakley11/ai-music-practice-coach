@@ -343,11 +343,13 @@ from songs.state import (
     PENDING_MATCHING_SONG_DROPDOWN,
     PICK_KEY_RECOVERY_NOTICE_KEY,
     SELECTED_SONG_STATE_KEY,
+    SELECT_SONG_PLACEHOLDER,
     SUITE_LOCAL_STATE_RESTORED_KEY,
     apply_pick_key,
     build_music_local_state,
     ensure_master_song_initialized,
     get_song_context,
+    is_select_song_placeholder,
     persist_music_local_state,
     restore_saved_app_state_once,
     sync_matching_song_dropdown_before_widget,
@@ -7795,8 +7797,10 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
 
 def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = None) -> str:
     """Dropdown label with optional favorite star prefix."""
+    if is_select_song_placeholder(pick_key):
+        return "Select a song…"
     genre, title = parse_pick_key(pick_key)
-    base = f"{title}  ·  {genre}"
+    base = f"{title}  ·  {genre}" if genre else title
     if favorites and pick_key in favorites:
         return f"★ {base}"
     return base
@@ -8092,7 +8096,7 @@ def _apply_picker_catalog_filters(
         return filtered, [], ""
 
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-    default_pk = master_pk if master_pk in pick_options else pick_options[0]
+    default_pk = master_pk if master_pk in pick_options else ""
     if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
         active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
         return filtered, pick_options, active_pk
@@ -8100,7 +8104,7 @@ def _apply_picker_catalog_filters(
     active_pk = sync_matching_song_dropdown_before_widget(
         st,
         dropdown_options,
-        default_pk,
+        default_pk or str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
         song_picker_catalog=SONG_PICKER_CATALOG,
     )
     return filtered, dropdown_options, active_pk
@@ -8397,6 +8401,8 @@ def _render_catalog_song_picker_block(
 
     def _apply_catalog_pick(raw_pick: str) -> None:
         """Canonical active-song update from dropdown, click, Enter, or tap."""
+        if is_select_song_placeholder(raw_pick):
+            return
         set_catalog_source(st.session_state)
         resolved_pick = resolve_pick_key(
             raw_pick,
@@ -8424,9 +8430,6 @@ def _render_catalog_song_picker_block(
 
     def _on_song_dropdown_change():
         _apply_catalog_pick(st.session_state.get("matching_song_dropdown", ""))
-
-    def _on_filtered_song_click(pick_key: str = "") -> None:
-        _apply_catalog_pick(pick_key)
 
     if _library_polished and show_source_toggle:
         if _render_picker_music_source_toggle(polished=True):
@@ -8526,24 +8529,9 @@ def _render_catalog_song_picker_block(
                 st.markdown(
                     f'<p class="ui-song-library-foot">'
                     f"<strong>{len(filtered)}</strong> songs match your filters "
-                    f"· click a title or press Enter to make it the active song</p>",
+                    f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
                     unsafe_allow_html=True,
                 )
-                try:
-                    from app_ui import render_catalog_song_card_grid as _render_catalog_song_card_grid
-                except ImportError:
-                    _render_catalog_song_card_grid = None
-                if _render_catalog_song_card_grid is not None:
-                    _render_catalog_song_card_grid(
-                        st,
-                        filtered,
-                        active_pick_key=active_pick_key,
-                        song_meta_fn=song_card_meta,
-                        pick_key_for_record_fn=lambda rec: format_pick_key(
-                            rec["genre"], f"{rec['title']} — {rec['artist']}"
-                        ),
-                        on_load_pick_key=_on_filtered_song_click,
-                    )
     else:
         if _library_shell is not None:
             with _library_shell:
@@ -8583,22 +8571,15 @@ def _render_catalog_song_picker_block(
             return
 
         master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-        default_pk = master_pk if master_pk in pick_options else pick_options[0]
-        if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
-            from songs.state import queue_pending_catalog_pick
-
-            live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-            target_pk = live_pk if live_pk else default_pk
-            set_catalog_source(st.session_state)
-            queue_pending_catalog_pick(st, target_pk)
-            st.rerun()
-
+        default_pk = master_pk if master_pk in pick_options else ""
+        dropdown_options = list(pick_options)
         active_pick_key = sync_matching_song_dropdown_before_widget(
             st,
-            pick_options,
-            default_pk,
+            dropdown_options,
+            default_pk or str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
             song_picker_catalog=SONG_PICKER_CATALOG,
         )
+        pick_options = dropdown_options
         _legacy_fav_set = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
 
         def _legacy_picker_label(opt: str) -> str:

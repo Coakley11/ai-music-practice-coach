@@ -328,12 +328,15 @@ def generate_horizontal_line(
     high: int = 84,
     prefer: int = 72,
     style: str = "",
+    instrument_family: str = "",
 ) -> list[dict[str, Any]]:
     """Build a continuous line over timed harmony (stepwise default, chord targets on strong beats)."""
     _ = style
     lvl = str(level or "intermediate").lower()
     obj = str(object_type or "improvisation").lower()
     obj_motion = "melody" if obj in {"melody", "phrase"} else "improvisation"
+    family = str(instrument_family or "").lower()
+    wind = family == "wind"
     bpb = _beats_per_bar(meter)
     comfort_high = min(high, max(prefer + 9, prefer + 6))
     center = int(prefer)
@@ -345,7 +348,10 @@ def generate_horizontal_line(
     run_len = 0
     extreme_run = 0
     last_large_leap_bar = -9
-    max_leap_default = 7 if lvl == "beginner" else 5
+    if wind:
+        max_leap_default = 4 if obj_motion == "melody" else 5
+    else:
+        max_leap_default = 7 if lvl == "beginner" else 5
     vocab_cache: dict[str, dict[str, Any]] = {}
 
     for bar_i, bar_token in enumerate(timeline):
@@ -357,7 +363,9 @@ def generate_horizontal_line(
             direction = -1
 
         allow_large = bar_i - last_large_leap_bar >= 2
-        max_leap = 9 if allow_large and lvl == "advanced" and phase == 2 else max_leap_default
+        max_leap = 9 if allow_large and lvl == "advanced" and phase == 2 and not wind else max_leap_default
+        if wind:
+            max_leap = min(max_leap, 5 if lvl == "advanced" else 4)
 
         for beat, dur in slots:
             if _is_rest_duration(dur):
@@ -477,6 +485,103 @@ def generate_horizontal_line(
     return events
 
 
+def adapt_motif_to_harmony(
+    core: Sequence[dict[str, Any]],
+    dest_chords: Sequence[str],
+    *,
+    bar_offset: int,
+    reference_key: str,
+    low: int,
+    high: int,
+    prefer: int,
+    instrument_family: str = "",
+) -> list[dict[str, Any]]:
+    """Reuse a motif's rhythm/contour/articulation, remapped to destination harmony."""
+    family = str(instrument_family or "").lower()
+    max_leap = 4 if family == "wind" else 5
+    out: list[dict[str, Any]] = []
+    prev_midi: int | None = None
+    dest_list = [str(c) for c in dest_chords if str(c).strip()] or ["C"]
+    for item in core:
+        src_bar = int(item.get("bar_index") or 0)
+        if src_bar >= len(dest_list):
+            continue
+        dest_chord = dest_list[src_bar]
+        new_item = dict(item)
+        new_item["bar_index"] = int(bar_offset) + src_bar
+        new_item["chord"] = dest_chord
+        new_item["cell_index"] = int(bar_offset) // max(1, len(dest_list))
+        if _is_rest_duration(str(item.get("duration") or "")) or not str(item.get("spelled") or "").strip():
+            new_item["midi"] = 0
+            out.append(new_item)
+            continue
+        src_chord = str(item.get("chord") or dest_chord)
+        src_vocab = chord_vocabulary(src_chord, reference_key=reference_key)
+        dst_vocab = chord_vocabulary(dest_chord, reference_key=reference_key)
+        src_scale = list(src_vocab.get("scale") or src_vocab.get("chord_tones") or ["C"])
+        dst_scale = list(dst_vocab.get("scale") or dst_vocab.get("chord_tones") or ["C"])
+        dst_tones = list(dst_vocab.get("chord_tones") or [dst_vocab.get("root") or "C"])
+        src_tones = list(src_vocab.get("chord_tones") or [src_vocab.get("root") or "C"])
+        idx = _scale_index(src_scale, str(item.get("spelled") or "C"))
+        dest_spelled = dst_scale[idx % len(dst_scale)] if dst_scale else dst_tones[0]
+        role = str(item.get("tone_role") or "")
+        if role in {"chord_tone", "extension"}:
+            src_pc = _pc(str(item.get("spelled") or "C"))
+            func_i = next((i for i, t in enumerate(src_tones) if _pc(t) == src_pc), None)
+            if func_i is not None and func_i < len(dst_tones):
+                dest_spelled = dst_tones[func_i]
+        options = [dest_spelled]
+        if dst_scale:
+            options.append(dst_scale[(idx + 1) % len(dst_scale)])
+            options.append(dst_scale[(idx - 1) % len(dst_scale)])
+        options.extend(dst_tones[:2])
+        spelled, octv, midi = _pick_near(
+            options,
+            prev_midi=prev_midi,
+            low=low,
+            high=high,
+            prefer=prefer if prev_midi is None else prev_midi,
+            max_leap=max_leap,
+        )
+        new_item["spelled"] = spelled
+        new_item["octave"] = octv
+        new_item["midi"] = midi
+        new_item["pitch_class"] = _pc(spelled)
+        out.append(new_item)
+        prev_midi = midi
+        prefer = midi
+    return out
+
+
+def motif_interval_shape(events: Sequence[dict[str, Any]]) -> list[int]:
+    sounding = [e for e in events if str(e.get("spelled") or "").strip() and not _is_rest_duration(str(e.get("duration") or ""))]
+    shape: list[int] = []
+    for i in range(1, len(sounding)):
+        a = int(sounding[i - 1].get("midi") or 0)
+        b = int(sounding[i].get("midi") or 0)
+        if a and b:
+            shape.append(b - a)
+    return shape
+
+
+def motif_rhythmic_fingerprint(events: Sequence[dict[str, Any]]) -> list[tuple[float, str]]:
+    return [
+        (float(e.get("beat") or 0.0), str(e.get("duration") or "quarter"))
+        for e in events
+        if int(e.get("bar_index") or 0) == int(events[0].get("bar_index") or 0)
+    ] if events else []
+
+
+def motif_articulation_fingerprint(events: Sequence[dict[str, Any]]) -> list[tuple[bool, str]]:
+    """Slur membership + articulation mark per sounding note — lick identity, not pitches."""
+    out: list[tuple[bool, str]] = []
+    for e in events:
+        if _is_rest_duration(str(e.get("duration") or "")) or not str(e.get("spelled") or "").strip():
+            continue
+        out.append((int(e.get("slur_group") or 0) > 0, str(e.get("articulation") or "")))
+    return out
+
+
 def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str, Any]:
     """Developer diagnostics for line quality (not musician-facing)."""
 
@@ -504,6 +609,7 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
             "note_count": 0,
             "eighth_note_count": 0,
             "rest_count": sum(1 for e in evs if _is_rest_duration(_dur_of(e))),
+            "breathing_opportunities": sum(1 for e in evs if _is_rest_duration(_dur_of(e))),
             "rhythmic_density": 0.0,
             "stepwise_motion_pct": 0.0,
             "leap_count": 0,
@@ -516,6 +622,9 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
             "max_midi": 0,
             "consecutive_extreme_high_max": 0,
             "pct_above_comfort": 0.0,
+            "average_interval": 0.0,
+            "consecutive_large_leaps_max": 0,
+            "range_semitones": 0,
         }
 
     midis: list[int] = []
@@ -541,14 +650,26 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
     rests = sum(1 for e in evs if _is_rest_duration(_dur_of(e)))
     duration_kinds = {d.split("_", 1)[-1] if d.startswith("rest_") else d for d in [_dur_of(e) for e in evs] if d}
     steps = leaps = large = repeats = 0
+    consecutive_large = consecutive_large_max = 0
+    interval_sum = 0
     for i in range(1, n):
         iv = abs(midis[i] - midis[i - 1])
+        interval_sum += iv
         if iv <= 2:
             steps += 1
+            consecutive_large = 0
         if iv >= 5:
             leaps += 1
         if iv >= 8:
             large += 1
+            consecutive_large += 1
+            consecutive_large_max = max(consecutive_large_max, consecutive_large)
+        else:
+            if iv >= 5:
+                consecutive_large += 1
+                consecutive_large_max = max(consecutive_large_max, consecutive_large)
+            else:
+                consecutive_large = 0
         if spelled[i] == spelled[i - 1]:
             repeats += 1
     intervals = max(1, n - 1)
@@ -571,6 +692,7 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
         "note_count": n,
         "eighth_note_count": eighths,
         "rest_count": rests,
+        "breathing_opportunities": rests,
         "rhythmic_density": round(eighths / n, 3),
         "stepwise_motion_pct": round(steps / intervals, 3),
         "leap_count": leaps,
@@ -583,4 +705,7 @@ def melodic_motion_metrics(events: Sequence[Any], *, role: str = "") -> dict[str
         "max_midi": max(midis),
         "consecutive_extreme_high_max": extreme_max,
         "pct_above_comfort": round(above_comfort / n, 3),
+        "average_interval": round(interval_sum / intervals, 3),
+        "consecutive_large_leaps_max": consecutive_large_max,
+        "range_semitones": (max(midis) - min(midis)) if midis else 0,
     }

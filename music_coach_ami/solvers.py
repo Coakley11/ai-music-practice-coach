@@ -966,8 +966,36 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
             diagnostics=dict(payload.get("diagnostics") or {}),
         )
 
-    section = req.context.active_section or "the first section that feels shaky"
+    from music_coach_ami.musical_idea_knowledge import (
+        format_section_display_label,
+        resolve_practice_section_target,
+        _chart_sections_from_request,
+    )
+
     song = req.context.active_song_title or "your active song"
+    target = resolve_practice_section_target(
+        req.raw_question or req.normalized_question,
+        chart_sections=_chart_sections_from_request(req),
+        active_section=str(req.context.active_section or ""),
+    )
+    raw_section = str(target.get("section") or "").strip()
+    section_display = format_section_display_label(raw_section) or raw_section
+    explicit = bool(target.get("explicit") or target.get("source") == "explicit_question")
+    if explicit and section_display:
+        section = section_display
+        direct = (
+            f"For **{song}**, practice **{section}** as the target for this question. "
+            f"You can connect it to another section later, but keep this pass on **{section}**."
+        )
+        loop_line = f"Loop **4–8 bars** of **{section}** with a metronome or Backing."
+        next_line = (
+            f"When **{section}** is clean 3× in a row, you can chain it to the next section."
+        )
+    else:
+        section = section_display or "the first section that feels shaky"
+        direct = f"For **{song}**, prioritize **{section}** first — it becomes the anchor for the rest."
+        loop_line = "Loop **4–8 bars** of that section with a metronome or Backing."
+        next_line = "When clean 3× in a row, add the **next section** for a 2-section chain."
     bpm = req.context.tempo_bpm
     tempo_line = (
         f"Start at **{max(40, int(bpm * 0.75))} BPM** (~75% of {bpm}) if transitions stumble."
@@ -976,15 +1004,20 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
     )
     return CoachResponse(
         intent=CoachIntent.SONG_COACHING,
-        direct_answer=f"For **{song}**, prioritize **{section}** first — it becomes the anchor for the rest.",
+        direct_answer=direct,
         practice_steps=[
-            "Loop **4–8 bars** of that section with a metronome or Backing.",
+            loop_line,
             tempo_line,
-            "When clean 3× in a row, add the **next section** for a 2-section chain.",
+            next_line,
         ],
-        suggested_next_action="Set Backing scope to that section and log the session in Practice Log.",
+        suggested_next_action=f"Set Backing scope to **{section}** and log the session in Practice Log.",
         source_solver="SongCoachSolver",
         confidence=0.8,
+        diagnostics={
+            "resolved_section": raw_section or section_display,
+            "section_resolution": target,
+            "section_source": str(target.get("source") or ""),
+        },
     )
 
 

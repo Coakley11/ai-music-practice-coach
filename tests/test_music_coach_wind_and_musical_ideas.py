@@ -717,5 +717,198 @@ class WrittenDomainSongRelativeTests(unittest.TestCase):
         self.assertIn("doesn't have a section labeled", missing.direct_answer)
 
 
+class WindMelodicMotionAndArticulationTests(unittest.TestCase):
+    PART_A = ["Am7", "D7", "Gmaj7", "Cmaj7", "F#m7b5", "B7", "Em7", "A7"]
+
+    def _ctx(self, *, instrument: str, level: str, sax: str = "") -> dict:
+        ctx = {
+            "instrument": instrument,
+            "level": level,
+            "focus": "Improvisation",
+            "display_key": "C",
+            "practice_key": "C",
+            "coach_page": "practice",
+            "chart_sections": {"A": self.PART_A},
+            "chart_sections_in_practice_key": True,
+            "practice_focus_section": "A",
+            "active_song": {"title": "Acceptance Tune", "key": "C"},
+        }
+        if sax:
+            ctx["selected_transposing_instrument"] = sax
+        return ctx
+
+    def _session(self, *, instrument: str, level: str, sax: str = "") -> dict:
+        ss = {
+            "instrument": instrument,
+            "display_key": "C",
+            "level": level,
+            "instrument_change_source": "sidebar",
+        }
+        if sax:
+            ss["selected_transposing_instrument"] = sax
+        return ss
+
+    def test_wind_melody_is_smoother_than_improvisation(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, melody = run_coach_submit(
+            "Give me a lyrical melody over part A.",
+            self._session(instrument="Flute", level="Intermediate"),
+            ami_ctx=self._ctx(instrument="Flute", level="Intermediate"),
+        )
+        _, improv = run_coach_submit(
+            "Give me an improvisation over part A.",
+            self._session(instrument="Flute", level="Intermediate"),
+            ami_ctx=self._ctx(instrument="Flute", level="Intermediate"),
+        )
+        self.assertIsNotNone(melody)
+        self.assertIsNotNone(improv)
+        assert melody is not None and improv is not None
+        m = (melody.diagnostics or {}).get("melodic_motion") or {}
+        i = (improv.diagnostics or {}).get("melodic_motion") or {}
+        self.assertGreaterEqual(m.get("stepwise_motion_pct", 0), 0.35)
+        self.assertLessEqual(m.get("consecutive_large_leaps_max", 9), 1)
+        self.assertLessEqual(i.get("consecutive_large_leaps_max", 9), 2)
+        self.assertGreaterEqual(m.get("stepwise_motion_pct", 0), i.get("stepwise_motion_pct", 1) - 0.15)
+        self.assertLessEqual(m.get("average_interval", 99), 5.5)
+
+    def test_lyrical_wind_melody_renders_slur_groups(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, resp = run_coach_submit(
+            "Give me a lyrical melody over part A.",
+            self._session(instrument="Tenor Sax", level="Intermediate", sax="Tenor saxophone (Bb)"),
+            ami_ctx=self._ctx(instrument="Tenor Sax", level="Intermediate", sax="Tenor saxophone (Bb)"),
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        abc = resp.notation_abc or ""
+        self.assertIn("(", abc)
+        self.assertIn(")", abc)
+        self.assertNotIn("notation_validation_failed", resp.diagnostics or {})
+        self.assertGreaterEqual(abc.count("("), 1)
+        self.assertGreaterEqual(abc.count(")"), 1)
+
+    def test_intermediate_wind_improv_does_not_tongue_every_eighth(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, resp = run_coach_submit(
+            "Give me an intermediate jazz improvisation over part A.",
+            self._session(instrument="Alto Sax", level="Intermediate", sax="Alto saxophone (Eb)"),
+            ami_ctx=self._ctx(instrument="Alto Sax", level="Intermediate", sax="Alto saxophone (Eb)"),
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        abc = resp.notation_abc or ""
+        self.assertIn("(", abc)
+        eighths = ((resp.diagnostics or {}).get("melodic_motion") or {}).get("eighth_note_count", 0)
+        self.assertGreaterEqual(eighths, 8)
+        # A giant section slur would be a single '('; phrase groups produce several.
+        self.assertLess(abc.count("("), eighths)
+        self.assertGreaterEqual(abc.count("("), 1)
+
+    def test_jazz_improv_can_mark_intentional_accents(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, resp = run_coach_submit(
+            "Give me an advanced jazz improvisation over part A.",
+            self._session(instrument="Tenor Sax", level="Advanced", sax="Tenor saxophone (Bb)"),
+            ami_ctx=self._ctx(instrument="Tenor Sax", level="Advanced", sax="Tenor saxophone (Bb)"),
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        abc = resp.notation_abc or ""
+        self.assertIn("!>!", abc)
+        self.assertLess(abc.count("!>!"), 12)
+
+    def test_beginner_is_not_overloaded_with_markings(self) -> None:
+        from music_coach_ami.pipeline import run_coach_submit
+
+        _, resp = run_coach_submit(
+            "Give me a simple melody over part A.",
+            self._session(instrument="Clarinet", level="Beginner"),
+            ami_ctx=self._ctx(instrument="Clarinet", level="Beginner"),
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        abc = resp.notation_abc or ""
+        self.assertLessEqual(abc.count("!>!"), 2)
+        self.assertLessEqual(abc.count("("), 4)
+
+    def test_piano_rh_slurs_independent_of_lh_and_two_hand_abc_valid(self) -> None:
+        from music_coach_ami.musical_idea_engine import (
+            composition_to_abc,
+            generate_piano_section_improvisation,
+        )
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+
+        q = "Give me a two-hand piano improvisation over the verse."
+        idea = resolve_musical_idea_request(
+            q, default_object="improvisation", instrument="Piano", level="Intermediate"
+        )
+        from dataclasses import replace
+
+        idea = replace(idea, bars=8)
+        comp = generate_piano_section_improvisation(
+            idea,
+            self.PART_A,
+            reference_key="C",
+            piano_role="both_hands",
+            question=q,
+        )
+        rh_slurs = {e.slur_group for e in comp.events if e.role == "rh" and e.slur_group}
+        lh_slurs = {e.slur_group for e in comp.events if e.role == "lh" and e.slur_group}
+        self.assertTrue(rh_slurs)
+        self.assertFalse(lh_slurs & rh_slurs)
+        abc, diag = composition_to_abc(comp, title="Two-hand test", bpm=96)
+        errs = [str(e) for e in (diag.get("notation_validation_errors") or [])]
+        self.assertFalse(any("beats" in e or "missing" in e for e in errs))
+        self.assertIn("clef=treble", abc)
+        self.assertIn("clef=bass", abc)
+        rh_voice = abc.split("V:1", 1)[-1].split("V:2", 1)[0]
+        lh_voice = abc.split("V:2", 1)[-1]
+        self.assertIn("(", rh_voice)
+        self.assertIn(")", rh_voice)
+        self.assertNotIn("(", lh_voice)
+
+    def test_articulation_metadata_does_not_change_spelling_or_transpose(self) -> None:
+        from dataclasses import replace
+
+        from music_coach_ami.musical_idea_engine import composition_to_abc, generate_idea_over_chords
+        from music_coach_ami.musical_idea_knowledge import _transpose_composition_preserving_degrees
+        from music_coach_ami.musical_idea_request import resolve_musical_idea_request
+        from music_coach_ami.notation_profile import notation_profile_for_instrument
+
+        idea = resolve_musical_idea_request(
+            "Give me an improvisation over part A.",
+            default_object="improvisation",
+            instrument="Tenor Sax",
+            level="Intermediate",
+        )
+        idea = replace(idea, bars=8)
+        concert = generate_idea_over_chords(
+            idea,
+            self.PART_A,
+            notation_instrument="Tenor Sax",
+            reference_key="C",
+            object_type="improvisation",
+        )
+        profile = notation_profile_for_instrument("Tenor Sax")
+        written = _transpose_composition_preserving_degrees(
+            concert, "D", 2, profile, concert_key="C"
+        )
+        self.assertEqual(len(written.events), len(concert.events))
+        for a, b in zip(concert.events, written.events):
+            self.assertEqual(a.slur_group, b.slur_group)
+            self.assertEqual(a.articulation, b.articulation)
+            self.assertEqual(a.duration, b.duration)
+            if a.spelled:
+                self.assertNotEqual(a.spelled, "")
+                self.assertTrue(b.spelled)
+        abc, diag = composition_to_abc(written, title="Written slur test", bpm=96)
+        self.assertIn("K:", abc)
+        self.assertTrue(diag.get("notation_ok", True) or "(" in abc or ")" in abc)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,8 +29,14 @@ ACTIVE_CATALOG_PICK_KEY = "active_catalog_pick_key"
 PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
 PENDING_CATALOG_PICK_KEY = "_pending_catalog_pick_key"
 PICK_KEY_RECOVERY_NOTICE_KEY = "_pick_key_recovery_notice"
+SELECT_SONG_PLACEHOLDER = "__select_a_song__"
 _LAST_PICK_KEY = "_master_song_pick_key"
 SUITE_LOCAL_STATE_RESTORED_KEY = "_suite_local_state_restored"
+
+
+def is_select_song_placeholder(value: object) -> bool:
+    text = str(value or "").strip()
+    return text in {SELECT_SONG_PLACEHOLDER, "Select a song…", "Select a song..."}
 
 
 def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
@@ -626,8 +632,10 @@ def sync_matching_song_dropdown_before_widget(
 ) -> str:
     """Align the dropdown widget with ``ACTIVE_CATALOG_PICK_KEY`` before it is drawn.
 
-    Never assign ``matching_song_dropdown`` after the selectbox exists — use pending
-    values applied on the next run only.
+    When the live active song is in the filtered options, keep it selected.
+    When it is not, show a placeholder instead of silently selecting the first
+    filtered result (so click/Enter on that result is a real selection).
+    Never assign ``matching_song_dropdown`` after the selectbox exists.
     """
     if not pick_options:
         return fallback_pk
@@ -648,51 +656,26 @@ def sync_matching_song_dropdown_before_widget(
             return live_pk if live_pk in pick_options else live_pk
     except ImportError:
         pass
-    if (
-        song_picker_catalog
-        and dropdown
-        and dropdown in pick_options
-        and dropdown != live_pk
-        and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
-    ):
-        try:
-            from active_song_state import is_active_song_locally_dirty
-
-            if is_active_song_locally_dirty(st.session_state) or not live_pk:
-                sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-                live_pk = dropdown
-        except ImportError:
-            sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-            live_pk = dropdown
-
-    if live_pk and live_pk not in pick_options and song_picker_catalog:
-        if resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog):
-            pick_options.insert(0, live_pk)
-
-    fallback = fallback_pk if fallback_pk in pick_options else pick_options[0]
-    active = live_pk or fallback
-    if active not in pick_options:
-        active = fallback
-        try:
-            from music_state_writes import WriteOrigin, guarded_session_set
-
-            guarded_session_set(
-                st.session_state,
-                ACTIVE_CATALOG_PICK_KEY,
-                active,
-                origin=WriteOrigin.WIDGET_SYNC,
-                writer="sync_matching_song_dropdown_before_widget",
-            )
-        except ImportError:
-            st.session_state[ACTIVE_CATALOG_PICK_KEY] = active
 
     pending = st.session_state.pop(PENDING_MATCHING_SONG_DROPDOWN, None)
-    if pending in pick_options:
-        st.session_state["matching_song_dropdown"] = pending
-    elif st.session_state.get("matching_song_dropdown") not in pick_options:
-        st.session_state["matching_song_dropdown"] = active
+    if pending and is_select_song_placeholder(pending):
+        pending = None
 
-    return active
+    if live_pk and live_pk in pick_options:
+        if pending in pick_options:
+            st.session_state["matching_song_dropdown"] = pending
+        elif is_select_song_placeholder(dropdown) or dropdown not in pick_options:
+            st.session_state["matching_song_dropdown"] = live_pk
+        return live_pk
+
+    # Active song is outside this filter — do not pretend the first result is selected.
+    if SELECT_SONG_PLACEHOLDER not in pick_options:
+        pick_options.insert(0, SELECT_SONG_PLACEHOLDER)
+    if pending in pick_options and not is_select_song_placeholder(pending):
+        st.session_state["matching_song_dropdown"] = pending
+    else:
+        st.session_state["matching_song_dropdown"] = SELECT_SONG_PLACEHOLDER
+    return live_pk or fallback_pk
 
 
 def _label_for_library_entry(genre: str, title: str, song_library: dict) -> str:

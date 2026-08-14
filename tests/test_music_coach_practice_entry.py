@@ -7,26 +7,11 @@ from unittest.mock import MagicMock, patch
 from suite_analytical_question import render_music_coach_page_entry
 
 
-class _Col:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
-def _columns(spec):
-    n = spec if isinstance(spec, int) else len(spec)
-    return [_Col() for _ in range(max(1, int(n)))]
-
-
-def _button_by_key(*, ask: bool = False, open_full: bool = False):
+def _button_by_key(*, ask: bool = False):
     def _side_effect(*args, **kwargs):
         key = str(kwargs.get("key") or "")
         if key == "ami_submit_music_practice_page":
             return ask
-        if key == "practice_open_music_coach":
-            return open_full
         return False
 
     return _side_effect
@@ -36,7 +21,6 @@ def test_practice_music_coach_entry_is_visible() -> None:
     st = MagicMock()
     ss: dict = {}
     st.session_state = ss
-    st.columns.side_effect = _columns
     st.button.side_effect = _button_by_key()
     st.text_area.return_value = ""
 
@@ -53,8 +37,7 @@ def test_practice_music_coach_entry_is_visible() -> None:
     open_buttons = [
         c for c in st.button.call_args_list if c.args and "Open full Music Coach" in str(c.args[0])
     ]
-    assert len(open_buttons) == 1
-    assert open_buttons[0].kwargs.get("key") == "practice_open_music_coach"
+    assert open_buttons == []
     st.expander.assert_not_called()
 
 
@@ -62,7 +45,6 @@ def test_practice_music_coach_entry_submits_via_canonical_ami_pipeline() -> None
     st = MagicMock()
     ss: dict = {"studio_page": "practice", "practice_focus_section": "Verse"}
     st.session_state = ss
-    st.columns.side_effect = _columns
     st.button.side_effect = _button_by_key(ask=True)
     st.text_area.return_value = "Give me an improvisation over the verse."
     extra = {"song": "Motion Tune", "coach_page": "practice"}
@@ -91,21 +73,6 @@ def test_practice_music_coach_entry_submits_via_canonical_ami_pipeline() -> None
     st.expander.assert_not_called()
 
 
-def test_practice_music_coach_entry_navigates_to_coach_page() -> None:
-    st = MagicMock()
-    ss: dict = {"studio_page": "practice"}
-    st.session_state = ss
-    st.columns.side_effect = _columns
-    st.button.side_effect = _button_by_key(open_full=True)
-    st.text_area.return_value = ""
-
-    with patch("app_ui.navigate_studio_page") as nav:
-        render_music_coach_page_entry(st, source_page="practice", session_state=ss)
-
-    nav.assert_called_once_with(ss, "openai")
-    st.rerun.assert_called_once()
-
-
 def test_practice_page_still_calls_music_coach_entry() -> None:
     from pathlib import Path
 
@@ -121,4 +88,6 @@ def test_practice_page_still_calls_music_coach_entry() -> None:
     assert 'expander("Ask the Music Coach"' not in entry_fn
     assert "_execute_coach_question_submit" in entry_fn
     assert "text_area" in entry_fn
+    assert "Open full Music Coach" not in entry_fn
+    assert "practice_open_music_coach" not in entry_fn
     assert entry_fn.count("Ask the Music Coach") >= 2
