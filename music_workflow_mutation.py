@@ -862,6 +862,25 @@ def update_active_practice_key(
         effective_persist = "explicit"
     prev_sections_fp = _progression_fingerprint(blob.section_map)
     auth_old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+    if owner in {"song_based_improvisation", "mission_jam"} and blob.section_map:
+        try:
+            from music_theory import key_center_token
+            from workflow_musical_authority import section_maps_equivalent
+
+            orig_token = key_center_token(blob.keys.original_tonic, blob.keys.original_mode)
+            home = session.get("home_sections")
+            if (
+                orig_token
+                and orig_token != auth_old_key
+                and isinstance(home, dict)
+                and home
+                and section_maps_equivalent(blob.section_map, home)
+            ):
+                # Chart is still catalog-original pitch; leftover prior-song practice_tonic
+                # must not be the transpose from-key (Say G on a Hevenu Dm chart).
+                auth_old_key = orig_token
+        except ImportError:
+            pass
 
     def _mut(b: WorkflowStateBlob) -> None:
         orig_t = b.keys.original_tonic or b.keys.practice_tonic

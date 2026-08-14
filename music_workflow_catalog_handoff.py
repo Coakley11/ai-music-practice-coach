@@ -157,6 +157,14 @@ def ensure_song_based_workflow_matches_live_pick(session: dict[str, Any], *, sou
                     except ImportError:
                         pass
                 elif isinstance(blob.section_map, dict) and blob.section_map:
+                    try:
+                        from workflow_musical_authority import (
+                            reclaim_stale_prior_song_practice_key_on_original_chart,
+                        )
+
+                        reclaim_stale_prior_song_practice_key_on_original_chart(session)
+                    except ImportError:
+                        pass
                     session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
             except ImportError:
                 pass
@@ -234,6 +242,14 @@ def reconcile_song_based_progression_for_live_catalog_pick(
             except ImportError:
                 pass
         elif blob is not None and isinstance(blob.section_map, dict) and blob.section_map:
+            try:
+                from workflow_musical_authority import (
+                    reclaim_stale_prior_song_practice_key_on_original_chart,
+                )
+
+                reclaim_stale_prior_song_practice_key_on_original_chart(session)
+            except ImportError:
+                pass
             session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
         record_catalog_handoff_trace(
             session,

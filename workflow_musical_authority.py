@@ -404,11 +404,70 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
         session[ACTIVE_WORKFLOW_OWNER_KEY] = new_wf
 
 
+def section_maps_equivalent(left: Any, right: Any) -> bool:
+    """True when two section maps have the same labels and chord symbols in order."""
+    if not isinstance(left, dict) or not isinstance(right, dict) or not left or not right:
+        return False
+    if set(left) != set(right):
+        return False
+    for name in left:
+        a = [str(c).strip() for c in (left.get(name) or []) if str(c).strip()] if isinstance(left.get(name), list) else []
+        b = [str(c).strip() for c in (right.get(name) or []) if str(c).strip()] if isinstance(right.get(name), list) else []
+        if a != b:
+            return False
+    return True
+
+
+def reclaim_stale_prior_song_practice_key_on_original_chart(session: dict[str, Any]) -> str:
+    """If the live chart is still catalog-original pitch, leftover prior-song Practice Key must not own it.
+
+    Example: Say in G → pick Hevenu (Dm chart copied, original_mode D minor) while practice_tonic
+    stays G. Transposing that Dm chart as if it were in G yields G#m instead of C#m.
+    """
+    try:
+        from music_theory import key_center_token, split_key_center
+        from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+        from music_workflow_state_store import KeyAuthority, save_workflow_blob
+    except ImportError:
+        return ""
+    song = song_practice_blob(session)
+    if song is None or not isinstance(song.section_map, dict) or not song.section_map:
+        return ""
+    orig_token = key_center_token(song.keys.original_tonic, song.keys.original_mode)
+    practice_token = resolve_song_practice_key_token(session)
+    if not orig_token or not practice_token or practice_token == orig_token:
+        return practice_token
+    home = session.get("home_sections")
+    if not isinstance(home, dict) or not home:
+        return practice_token
+    if not section_maps_equivalent(song.section_map, home):
+        return practice_token
+    ot, om = split_key_center(orig_token)
+    song.keys = KeyAuthority(
+        original_tonic=song.keys.original_tonic,
+        original_mode=song.keys.original_mode,
+        practice_tonic=ot,
+        practice_mode=om,
+        written_tonic=song.keys.written_tonic,
+        written_mode=song.keys.written_mode,
+        instrument=song.keys.instrument,
+        transposition=getattr(song.keys, "transposition", "") or "",
+        key_owner=song.keys.key_owner or "song_based_improvisation",
+    )
+    save_workflow_blob(session, song, source="reclaim_original_chart_practice_key")
+    session["display_key"] = orig_token
+    session["concert_key"] = orig_token
+    session["_pending_display_key"] = orig_token
+    session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+    return orig_token
+
+
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog song sections transposed to current practice concert key."""
     try:
         from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
 
+        reclaim_stale_prior_song_practice_key_on_original_chart(session)
         song = song_practice_blob(session)
         if song is not None and isinstance(song.section_map, dict) and song.section_map:
             session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
@@ -521,8 +580,10 @@ __all__ = [
     "WORKFLOW_MUSICAL_STATES_KEY",
     "WorkflowType",
     "capture_workflow_musical_state",
+    "reclaim_stale_prior_song_practice_key_on_original_chart",
     "restore_workflow_snapshot",
     "save_workflow_snapshot",
+    "section_maps_equivalent",
     "switch_workflow_owner",
     "sync_song_improv_sections_to_practice_key",
     "validate_workflow_consistency",
