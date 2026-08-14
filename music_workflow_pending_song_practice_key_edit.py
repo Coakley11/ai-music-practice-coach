@@ -73,6 +73,79 @@ def peek_pending_song_practice_key_edit(session: dict[str, Any]) -> dict[str, An
     return copy.deepcopy(raw) if isinstance(raw, dict) else None
 
 
+def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
+    """Pending Practice Key for same-rerun Creative readers. Empty if owner no longer matches."""
+    pending = peek_pending_song_practice_key_edit(session)
+    if not pending:
+        return ""
+    token = str(pending.get("selected_key_token") or "").strip()
+    if not token:
+        return ""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr is None:
+            return ""
+        if str(pending.get("workflow_owner") or "") != str(ptr.workflow_owner or ""):
+            return ""
+        if str(pending.get("workflow_session_id") or "") != str(ptr.workflow_session_id or ""):
+            return ""
+    except ImportError:
+        return token
+    return token
+
+
+def overlay_concert_token_with_pending_practice_key(
+    session: dict[str, Any],
+    canonical_token: str,
+) -> str:
+    """Same-rerun concert Practice Key: pending edit wins over the still-uncommitted blob."""
+    pending = pending_selected_practice_key_token(session)
+    return pending or str(canonical_token or "").strip()
+
+
+def overlay_sections_with_pending_practice_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    spelled_in_key: str,
+) -> dict[str, list[str]]:
+    """Transpose a concert section map toward a queued Practice Key without writing session."""
+    dest = pending_selected_practice_key_token(session)
+    src = str(spelled_in_key or "").strip()
+    if not dest or not src or dest == src or not isinstance(sections, dict) or not sections:
+        return sections
+    try:
+        from music_theory import transpose_sections_dict
+
+        return transpose_sections_dict(sections, src, dest)
+    except ImportError:
+        return sections
+
+
+def overlay_chord_with_pending_practice_key(
+    session: dict[str, Any],
+    chord: str,
+    *,
+    spelled_in_key: str,
+) -> str:
+    dest = pending_selected_practice_key_token(session)
+    src = str(spelled_in_key or "").strip()
+    raw = str(chord or "").strip()
+    if not dest or not src or dest == src or not raw:
+        return raw
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(src, dest)
+        if not steps:
+            return raw
+        return transpose_chord(raw, steps, reference_key=dest)
+    except ImportError:
+        return raw
+
+
 def clear_pending_song_practice_key_edit(session: dict[str, Any]) -> None:
     session.pop(PENDING_SONG_PRACTICE_KEY_EDIT_KEY, None)
 
@@ -305,6 +378,10 @@ __all__ = [
     "PENDING_SONG_PRACTICE_KEY_EDIT_LAST_DIAG_KEY",
     "clear_pending_song_practice_key_edit",
     "consume_pending_song_practice_key_edit",
+    "overlay_chord_with_pending_practice_key",
+    "overlay_concert_token_with_pending_practice_key",
+    "overlay_sections_with_pending_practice_key",
     "peek_pending_song_practice_key_edit",
+    "pending_selected_practice_key_token",
     "queue_pending_song_practice_key_edit",
 ]

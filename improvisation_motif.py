@@ -181,7 +181,22 @@ def concert_song_sections_from_session(session_state: dict) -> dict[str, list[st
 
         resolved = _song_improv_sections_dict(session_state)
         if isinstance(resolved, dict) and resolved:
-            return resolved
+            try:
+                from music_workflow_pending_song_practice_key_edit import (
+                    overlay_sections_with_pending_practice_key,
+                )
+                from music_workflow_song_practice import resolve_song_practice_key_token
+
+                spelled = resolve_song_practice_key_token(session_state) or str(
+                    session_state.get("concert_key") or ""
+                )
+                return overlay_sections_with_pending_practice_key(
+                    session_state,
+                    resolved,
+                    spelled_in_key=spelled,
+                )
+            except ImportError:
+                return resolved
     except ImportError:
         pass
     raw = session_state.get("improv_song_concert_sections")
@@ -193,7 +208,24 @@ def concert_song_sections_from_session(session_state: dict) -> dict[str, list[st
             clean = [str(c).strip() for c in val if str(c).strip()]
             if clean:
                 out[str(key)] = clean
-    return out or None
+    if not out:
+        return None
+    try:
+        from music_workflow_pending_song_practice_key_edit import (
+            overlay_sections_with_pending_practice_key,
+        )
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        spelled = resolve_song_practice_key_token(session_state) or str(
+            session_state.get("concert_key") or ""
+        )
+        return overlay_sections_with_pending_practice_key(
+            session_state,
+            out,
+            spelled_in_key=spelled,
+        )
+    except ImportError:
+        return out
 
 
 def resolve_improv_sections(

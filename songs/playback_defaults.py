@@ -418,15 +418,44 @@ def canonicalize_backing_defaults_for_song(
 
                     if is_backing_user_dirty(st.session_state):
                         norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
+                        live_groove = str(st.session_state.get(BACKING_GROOVE_KEY) or st.session_state.get("backing_groove_style") or "").strip()
+                        if live_groove:
+                            norm_groove = normalize_groove_label(live_groove)
+                        live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                        if live_meter:
+                            norm_meter = normalize_time_signature(live_meter)
                     else:
                         norm_bpm = int(creative_ctx.bpm or norm_bpm)
                         st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = norm_bpm
                 except ImportError:
                     norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
             st.session_state[BPM_WIDGET_KEY] = norm_bpm
-            st.session_state[BACKING_GROOVE_KEY] = norm_groove
             st.session_state["backing_track_bpm"] = norm_bpm
-            st.session_state["backing_groove_style"] = norm_groove
+            keep_user_feel = False
+            try:
+                from backing_track_state import is_backing_user_dirty
+
+                keep_user_feel = bool(is_backing_user_dirty(st.session_state) and not did_reset)
+            except ImportError:
+                keep_user_feel = False
+            if not keep_user_feel:
+                st.session_state[BACKING_GROOVE_KEY] = norm_groove
+                st.session_state["backing_groove_style"] = norm_groove
+                st.session_state[BACKING_METER_KEY] = norm_meter
+            else:
+                live_groove = str(
+                    st.session_state.get(BACKING_GROOVE_KEY)
+                    or st.session_state.get("backing_groove_style")
+                    or norm_groove
+                ).strip()
+                if live_groove:
+                    norm_groove = normalize_groove_label(live_groove)
+                    st.session_state[BACKING_GROOVE_KEY] = norm_groove
+                    st.session_state["backing_groove_style"] = norm_groove
+                live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                if live_meter:
+                    norm_meter = normalize_time_signature(live_meter)
+                    st.session_state[BACKING_METER_KEY] = norm_meter
             return {
                 "sync_id": creative_sync_id,
                 "active_song_bpm": int(active_song_bpm),

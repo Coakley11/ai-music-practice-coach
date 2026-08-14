@@ -609,8 +609,15 @@ def render_backing_chord_chart(
         key_text,
     ]
     if shape_sections and capo_shape_key:
+        try:
+            from music_theory import format_key_label_from_parts, split_key_center
+
+            tonic, mode = split_key_center(str(dk or capo_shape_key))
+            chart_label = format_key_label_from_parts(tonic, mode)
+        except ImportError:
+            chart_label = str(dk or capo_shape_key)
         meta_bits.append(
-            f"Guitar shape: {html.escape(capo_shape_key)}"
+            f"Charts in {html.escape(chart_label)}"
             + (f" · capo {capo_fret}" if capo_fret else "")
         )
     meta_bits.extend([

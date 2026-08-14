@@ -769,6 +769,12 @@ def _reconcile_key_dependent_state(
         return
     if owner not in {"mission_jam", "song_based_improvisation"}:
         return
+    try:
+        from improvisation_missions import transpose_stored_mission_example
+
+        transpose_stored_mission_example(session, from_key=old_key, to_key=new_key)
+    except ImportError:
+        pass
     blob.example_fingerprint = ""
     blob.artifact_fingerprint = ""
     blob.backing_handoff_chord = ""

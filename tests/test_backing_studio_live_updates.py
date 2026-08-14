@@ -622,14 +622,14 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         set_backing_context(session, ctx)
         state = resolve_current_backing_musical_state(session)
         self.assertEqual(state.practice_concert_key, "C")
-        self.assertEqual(state.chart_badge_label, "Guitar shape")
-        self.assertEqual(state.chart_badge_value, "F")
+        self.assertEqual(state.chart_badge_label, "Charts in")
+        self.assertEqual(state.chart_badge_value, "F major")
         banner = format_backing_context_banner(ctx, practice_concert_key=state.practice_concert_key)
         self.assertIn("Twist and Shout", banner)
         self.assertIn(" · C · ", banner)
         self.assertNotIn(" · D", banner)
         full_label = f"{banner} · {state.chart_badge_label} {state.chart_badge_value}"
-        self.assertIn("Guitar shape F", full_label)
+        self.assertIn("Charts in F major", full_label)
 
     def test_sync_regular_song_backing_context_keys_updates_stale_snapshot(self) -> None:
         session = {

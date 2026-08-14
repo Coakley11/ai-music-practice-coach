@@ -424,15 +424,39 @@ def refresh_mission_example(
     inst = instrument or example.instrument
     tempo = bpm if bpm is not None else 100
     concert_auth = str(song_concert_key or example.concert_key or "").strip()
-    spell_display = example.display_key
-    if concert_auth:
-        spell_display = concert_auth
+    spell_display = str(example.display_key or concert_auth).strip()
+    display_motif = dict(example.motif or {})
+    display_chord = str(example.chord or "").strip()
+    if concert_auth and spell_display and concert_auth != spell_display:
+        try:
+            from effective_practice_context import musician_facing_chord
+            from music_theory import semitone_distance, transpose_chord
+            from improvisation_motif import _midi_from_note, _note_from_midi
+
+            display_chord = musician_facing_chord(
+                display_chord,
+                concert_key=concert_auth,
+                chart_key=spell_display,
+            )
+            steps = semitone_distance(concert_auth, spell_display)
+            notes = list(display_motif.get("notes") or [])
+            if steps and notes:
+                out_notes = []
+                for n in notes:
+                    midi = _midi_from_note(str(n), 4)
+                    out_notes.append(_note_from_midi(midi + steps, spell_display))
+                display_motif = dict(display_motif)
+                display_motif["notes"] = out_notes
+                display_motif["display"] = " – ".join(out_notes)
+                display_motif["chord"] = display_chord
+        except ImportError:
+            pass
     ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord
 
         ref_key = harmonic_reference_for_chord(
-            example.chord,
+            display_chord,
             song_display_key=spell_display,
         )
     except ImportError:
@@ -440,14 +464,14 @@ def refresh_mission_example(
             from mission_pitch_spelling import coaching_reference_for_mission_chord
 
             ref_key = coaching_reference_for_mission_chord(
-                example.chord,
+                display_chord,
                 song_display_key=spell_display,
             )
         except ImportError:
             pass
     out = rebuild_mission_outputs(
-        example.motif,
-        chord=example.chord,
+        display_motif,
+        chord=display_chord,
         instrument=inst,
         key_center=ref_key,
         bpm=tempo,
@@ -456,7 +480,6 @@ def refresh_mission_example(
         song_concert_key=concert_auth or example.concert_key or example.display_key,
     )
     example.instrument = inst
-    example.motif = out["motif"]
     example.abc = out["abc"]
     example.tab = out["tab"]
     example.piano_html = out["piano_html"]
@@ -783,10 +806,76 @@ def _fallback_chord_insight(chord: str) -> ChordCoachInsight:
     )
 
 
+def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str) -> dict | None:
+    src = str(from_key or "").strip()
+    dest = str(to_key or "").strip()
+    if not src or not dest or src == dest or not isinstance(raw, dict):
+        return None
+    from music_theory import semitone_distance, transpose_chord
+    from improvisation_motif import _midi_from_note, _note_from_midi
+
+    steps = semitone_distance(src, dest)
+    if not steps:
+        return None
+    out = dict(raw)
+    chord = str(out.get("chord") or "").strip()
+    if chord:
+        out["chord"] = transpose_chord(chord, steps, reference_key=dest)
+    motif = dict(out.get("motif") or {})
+    notes = list(motif.get("notes") or [])
+    if notes:
+        out_notes = []
+        for n in notes:
+            midi = _midi_from_note(str(n), 4)
+            out_notes.append(_note_from_midi(midi + steps, dest))
+        motif["notes"] = out_notes
+        motif["display"] = " – ".join(out_notes)
+        if motif.get("chord"):
+            motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=dest)
+        try:
+            from improvisation_motif import sync_motif_midi
+
+            sync_motif_midi(motif)
+        except Exception:
+            pass
+        out["motif"] = motif
+    out["abc"] = ""
+    out["tab"] = ""
+    out["piano_html"] = ""
+    return out
+
+
+def transpose_stored_mission_example(session_state: dict, *, from_key: str, to_key: str) -> bool:
+    """Transpose cached Mission example with Practice Key. Concert audio identity follows ``to_key``."""
+    raw = session_state.get(MISSION_EXAMPLE_KEY)
+    if not isinstance(raw, dict):
+        return False
+    transposed = _transpose_mission_example_payload(raw, from_key=from_key, to_key=to_key)
+    if transposed is None:
+        return False
+    session_state[MISSION_EXAMPLE_KEY] = transposed
+    session_state.pop("_mission_example_output_fp", None)
+    return True
+
+
 def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) -> MissionExample | None:
     raw = session_state.get(MISSION_EXAMPLE_KEY)
     if not raw or not isinstance(raw, dict):
         return None
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        pending = pending_selected_practice_key_token(session_state)
+        spelled = resolve_song_practice_key_token(session_state) or str(
+            improv_ctx.key_center or session_state.get("concert_key") or ""
+        )
+        if pending and spelled and pending != spelled:
+            overlaid = _transpose_mission_example_payload(raw, from_key=spelled, to_key=pending)
+            if overlaid is not None:
+                raw = overlaid
+    except ImportError:
+        pass
     chord = str(raw.get("chord", "C"))
     try:
         from mission_pitch_spelling import chord_coach_insight_for_mission

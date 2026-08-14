@@ -472,7 +472,12 @@ def effective_practice_key(
     """
     chart_key, _ = effective_chart_key(concert_key, instrument, session_state)
     if capo_shape_key and str(instrument or "").strip() == "Guitar":
-        return str(capo_shape_key).strip() or chart_key
+        try:
+            from guitar_capo import shape_chart_key_for_concert
+
+            return shape_chart_key_for_concert(concert_key, capo_shape_key)
+        except ImportError:
+            return str(capo_shape_key).strip() or chart_key
     return chart_key
 
 
@@ -495,8 +500,13 @@ def resolve_practice_keys(
     except ImportError:
         capo_shape = None
     if capo_shape:
-        chart_key = capo_shape
-        mode = "written"
+        try:
+            from guitar_capo import shape_chart_key_for_concert
+
+            chart_key = shape_chart_key_for_concert(concert_key, capo_shape)
+        except ImportError:
+            chart_key = capo_shape
+        mode = "shape"
     global_display = concert_key
     practice_key = effective_practice_key(
         session_state,

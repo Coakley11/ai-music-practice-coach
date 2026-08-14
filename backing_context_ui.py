@@ -80,6 +80,8 @@ def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-met
 
 def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, str]:
     inst = str(session.get("instrument") or "")
+    mk = None
+    mode = ""
     try:
         from songs.key_state import resolve_active_musical_key
 
@@ -88,7 +90,14 @@ def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, st
     except Exception:
         mode = ""
     if inst == "Guitar" and session.get("guitar_capo_enabled"):
-        return "Guitar shape", chart_key
+        try:
+            from guitar_capo import shape_chart_label_for_concert
+
+            concert = str(getattr(mk, "practice_concert_key", None) or chart_key or "C")
+            shape = str(session.get("guitar_capo_shape_key") or chart_key or "")
+            return "Charts in", shape_chart_label_for_concert(concert, shape)
+        except Exception:
+            return "Charts in", chart_key
     if mode == "written":
         return "Written key", chart_key
     return "Charts", chart_key

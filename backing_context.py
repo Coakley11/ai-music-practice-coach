@@ -579,7 +579,12 @@ def _resolve_chart_display_key(session: dict[str, Any], concert_key: str) -> str
             if inst == "Guitar" and session.get(CAPO_ENABLED_KEY):
                 shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
                 if shape:
-                    return shape
+                    try:
+                        from guitar_capo import shape_chart_key_for_concert
+
+                        return shape_chart_key_for_concert(concert, shape)
+                    except ImportError:
+                        return shape
         except ImportError:
             pass
     except ImportError:

@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from music_theory import (
-    key_mode,
-    practice_keys_for_mode,
+    ENHARMONIC_MAJOR_KEYS,
+    format_key_label_from_parts,
+    key_center_token,
     semitone_distance,
+    split_key_center,
     transpose_sections_dict,
 )
 
@@ -25,31 +27,64 @@ CAPO_PERSIST_KEYS: tuple[str, ...] = (
     CAPO_LAST_CONCERT_KEY,
 )
 
-_SHAPE_CANDIDATES: tuple[str, ...] = (
+_SHAPE_TONIC_CANDIDATES: tuple[str, ...] = (
     "G",
     "E",
     "A",
     "D",
     "C",
-    "Em",
-    "Am",
-    "Dm",
-    "Bm",
-    "Gm",
     "F",
+    "Bb",
+    "Eb",
 )
+
+
+def shape_tonic_only(shape_key: str) -> str:
+    """Shape Key control value — tonic/root only, never major/minor."""
+    tonic, _mode = split_key_center(str(shape_key or "C").strip() or "C")
+    return str(tonic or "C").strip() or "C"
+
+
+def shape_tonic_options(*, selected: str = "") -> list[str]:
+    """Tonic-only Shape Key picker (C, D, Eb, F#) — no C major / C minor pairs."""
+    pick = shape_tonic_only(selected) if selected else ""
+    options = list(ENHARMONIC_MAJOR_KEYS)
+    if pick and pick not in options:
+        return [pick] + options
+    if pick:
+        return [pick] + [k for k in options if k != pick]
+    return options
+
+
+def shape_chart_key_for_concert(concert_key: str, shape_key: str) -> str:
+    """Musician-facing chart key: Shape tonic + canonical Practice/Concert mode.
+
+    ``C major + Shape D → D`` (D major). ``F# minor + Shape D → Dm``.
+    Does not change concert audio or song mode.
+    """
+    _tonic, mode = split_key_center(str(concert_key or "C").strip() or "C")
+    if mode not in {"major", "minor"}:
+        mode = "major"
+    return key_center_token(shape_tonic_only(shape_key), mode)
+
+
+def shape_chart_label_for_concert(concert_key: str, shape_key: str) -> str:
+    """Human label for charts, e.g. 'D minor' or 'D major'."""
+    token = shape_chart_key_for_concert(concert_key, shape_key)
+    tonic, mode = split_key_center(token)
+    return format_key_label_from_parts(tonic, mode)
 
 
 def capo_fret_for_shape(sounding_key: str, shape_key: str) -> int:
     """Fret number so ``shape_key`` grips sound as ``sounding_key``."""
-    return semitone_distance(shape_key, sounding_key)
+    return semitone_distance(shape_tonic_only(shape_key), sounding_key)
 
 
 def default_shape_key_for_sounding(sounding_key: str) -> str:
-    """Lowest-fret friendly shape center (e.g. Cm → Em, capo 8)."""
+    """Lowest-fret friendly shape tonic (mode is inherited from sounding key)."""
     best_shape = "G"
     best_capo = 99
-    for shape in _SHAPE_CANDIDATES:
+    for shape in _SHAPE_TONIC_CANDIDATES:
         capo = capo_fret_for_shape(sounding_key, shape)
         if capo < best_capo:
             best_capo = capo
@@ -75,15 +110,23 @@ def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
         if key in ctx:
             val = str(ctx.get(key) or "").strip()
             if val:
-                session_state[key] = val
+                session_state[key] = shape_tonic_only(val) if key == CAPO_SHAPE_KEY else val
 
 
 def capo_written_display_key(session_state: dict) -> str | None:
-    """Shape key used as written/practice display when capo mode is on (read-only)."""
+    """Shape chart key (tonic + concert mode) when capo mode is on (read-only)."""
     if not session_state.get(CAPO_ENABLED_KEY):
         return None
     shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
-    return shape or None
+    if not shape:
+        return None
+    concert = str(
+        session_state.get("display_key")
+        or session_state.get("concert_key")
+        or session_state.get(CAPO_SOUNDING_KEY)
+        or "C"
+    ).strip() or "C"
+    return shape_chart_key_for_concert(concert, shape)
 
 
 def sync_capo_written_display_key(session_state: dict) -> None:
@@ -122,12 +165,14 @@ def sync_capo_from_practice_display_key(
     if last != sounding:
         session_state[CAPO_LAST_CONCERT_KEY] = sounding
         if not session_state.get(CAPO_ENABLED_KEY):
-            session_state[CAPO_SHAPE_KEY] = sounding
+            session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
     if not session_state.get(CAPO_ENABLED_KEY):
-        session_state[CAPO_SHAPE_KEY] = sounding
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
     session_state.setdefault(CAPO_ENABLED_KEY, False)
     if CAPO_SHAPE_KEY not in session_state:
         session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(sounding)
+    else:
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or ""))
     return sounding
 
 
@@ -238,12 +283,16 @@ def build_capo_context(
         )
 
     sounding_key = str(session_state.get(CAPO_SOUNDING_KEY, concert_key))
-    shape_key = str(
-        session_state.get(
-            CAPO_SHAPE_KEY,
-            default_shape_key_for_sounding(sounding_key),
+    shape_tonic = shape_tonic_only(
+        str(
+            session_state.get(
+                CAPO_SHAPE_KEY,
+                default_shape_key_for_sounding(sounding_key),
+            )
         )
     )
+    session_state[CAPO_SHAPE_KEY] = shape_tonic
+    shape_key = shape_chart_key_for_concert(concert_key or sounding_key, shape_tonic)
     if sounding_key != concert_key:
         sounding_sections = transpose_sections_dict(sections, concert_key, sounding_key)
     else:
@@ -272,11 +321,11 @@ def capo_status_banner_html(ctx: CapoContext) -> str:
         '<div class="ui-card soft" style="margin:0.75rem 0;border-left:4px solid #f59e0b;">'
         '<p class="ui-card-title">🎸 Capo shape mode</p>'
         f'<p class="ui-card-sub"><strong>Actual sounding key:</strong> {html.escape(ctx.sounding_key)} · '
-        f"<strong>Guitar shape key:</strong> {html.escape(ctx.shape_key)} · "
+        f"<strong>Guitar shape key:</strong> {html.escape(shape_tonic_only(ctx.shape_key))} · "
         f"<strong>Capo:</strong> {html.escape(capo_line)}</p>"
         f'<p class="ui-card-sub"><strong>Backing track plays in:</strong> {html.escape(ctx.sounding_key)} '
-        f"(concert / sounding) · <strong>Charts &amp; TAB shown as:</strong> "
-        f"{html.escape(ctx.shape_key)} shapes</p>"
+        f"(concert / sounding) · <strong>Charts in:</strong> "
+        f"{html.escape(shape_chart_label_for_concert(ctx.sounding_key, ctx.shape_key))}</p>"
         "<p class=\"ui-card-sub\" style=\"font-size:0.82rem;color:#64748b;\">"
         "Capo mode is not global transpose — use <em>Practice / Concert Key</em> in the sidebar "
         "to move the whole song.</p></div>"
@@ -304,10 +353,10 @@ def render_guitar_capo_sidebar(
         help="Charts/TAB use grip shapes; backing audio stays in the sounding key.",
     )
     if not session_state.get(CAPO_ENABLED_KEY):
-        session_state[CAPO_SHAPE_KEY] = sounding
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
         ui.markdown(
             f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
-            f"{html.escape(sounding)}</p>",
+            f"{html.escape(shape_tonic_only(sounding))}</p>",
             unsafe_allow_html=True,
         )
         ui.markdown(
@@ -318,33 +367,31 @@ def render_guitar_capo_sidebar(
         flush_capo_edits_to_cloud(persist_st)
         return
 
-    shape_opts = practice_keys_for_mode(key_mode(sounding))
     try:
-        from creative_key_sync import (
-            creative_major_shape_key_options,
-            flush_pending_creative_major_keys,
-            is_creative_major_jam_active,
-            to_major_key_preserve_spelling,
-        )
+        from creative_key_sync import flush_pending_creative_major_keys
     except ImportError:
-        to_major_key_preserve_spelling = lambda k: str(k or "C")  # type: ignore
-        is_creative_major_jam_active = lambda _s: False  # type: ignore
-        creative_major_shape_key_options = lambda _s, selected="": list(shape_opts)  # type: ignore
         flush_pending_creative_major_keys = lambda _s: None  # type: ignore
     flush_pending_creative_major_keys(session_state)
-    cur_shape = to_major_key_preserve_spelling(
-        str(session_state.get(CAPO_SHAPE_KEY, default_shape_key_for_sounding(sounding)))
+    pending_shape = str(session_state.get("_pending_capo_shape_key") or "").strip()
+    if pending_shape:
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(pending_shape)
+        session_state.pop("_pending_capo_shape_key", None)
+    cur_shape = shape_tonic_only(
+        str(session_state.get(CAPO_SHAPE_KEY) or default_shape_key_for_sounding(sounding))
     )
-    if is_creative_major_jam_active(session_state):
-        shape_opts = creative_major_shape_key_options(session_state, cur_shape)
-    if cur_shape not in shape_opts:
-        shape_opts = [cur_shape] + shape_opts
+    shape_opts = shape_tonic_options(selected=cur_shape)
     session_state[CAPO_SHAPE_KEY] = ui.selectbox(
         "Shape Key",
         shape_opts,
         index=shape_opts.index(cur_shape) if cur_shape in shape_opts else 0,
         key="guitar_capo_shape_widget",
-        help="Guitar fingering / written key — the grips you play.",
+        help="Tonic/root only. Charts inherit major/minor from Practice / Concert Key.",
+    )
+    session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or cur_shape))
+    chart_label = shape_chart_label_for_concert(sounding, session_state[CAPO_SHAPE_KEY])
+    ui.markdown(
+        f'<p class="ui-sidebar-key-caption"><strong>Charts in</strong> {html.escape(chart_label)}</p>',
+        unsafe_allow_html=True,
     )
     capo = capo_fret_for_shape(sounding, session_state[CAPO_SHAPE_KEY])
     ui.markdown(

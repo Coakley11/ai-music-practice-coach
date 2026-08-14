@@ -6,7 +6,45 @@ from dataclasses import dataclass
 from typing import Any
 
 from improvisation_intelligence import coaching_reference_key
-from music_theory import transpose_sections_dict
+from music_theory import semitone_distance, transpose_chord, transpose_sections_dict
+
+
+def musician_facing_chart_key(session: dict[str, Any], concert_key: str = "") -> str:
+    """Written or guitar-shape chart key for the given concert Practice Key.
+
+    Shape Key is tonic-only; major/minor is inherited from ``concert_key``.
+    Does not replace canonical concert identity with a stale resolver chart key.
+    """
+    from instrument_transposition import effective_chart_key
+    from songs.key_state import resolve_active_musical_key
+
+    musical = resolve_active_musical_key(session, surface="musician_facing_chart")
+    concert = str(concert_key or musical.practice_concert_key or "C").strip() or "C"
+    inst = str(musical.instrument or session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY, shape_chart_key_for_concert
+
+        if inst == "Guitar" and session.get(CAPO_ENABLED_KEY):
+            shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+            if shape:
+                return shape_chart_key_for_concert(concert, shape)
+    except ImportError:
+        pass
+    chart, _mode = effective_chart_key(concert, inst, session)
+    return str(chart or concert).strip() or concert
+
+
+def musician_facing_chord(chord: str, *, concert_key: str, chart_key: str) -> str:
+    """Transpose one concert chord symbol into the player-facing chart key."""
+    src = str(chord or "").strip()
+    concert = str(concert_key or "").strip()
+    chart = str(chart_key or "").strip()
+    if not src or not concert or not chart or concert == chart:
+        return src
+    steps = semitone_distance(concert, chart)
+    if not steps:
+        return src
+    return transpose_chord(src, steps, reference_key=chart)
 
 
 @dataclass(frozen=True)

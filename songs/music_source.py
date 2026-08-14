@@ -1344,6 +1344,35 @@ def on_active_song_identity_changed(
     }
     if identity_changed:
         try:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+            if pick_key and not is_custom:
+                session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key).strip()
+            if title:
+                session["song"] = str(title)
+        except ImportError:
+            if pick_key and not is_custom:
+                session["active_catalog_pick_key"] = str(pick_key).strip()
+            if title:
+                session["song"] = str(title)
+        for stale_key in (
+            "improv_song_concert_sections",
+            "home_sections",
+            "_music_song_creative_focus",
+            "improv_mission_example",
+            "_missions_tab_generate_context",
+            "_mission_example_output_fp",
+            "_mission_example_material_fp",
+            "harmony_map_section_selections",
+        ):
+            session.pop(stale_key, None)
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            sync_song_improv_sections_to_practice_key(session)
+        except ImportError:
+            pass
+        try:
             from backing_context import reset_backing_on_active_song_change
 
             reset_backing_on_active_song_change(

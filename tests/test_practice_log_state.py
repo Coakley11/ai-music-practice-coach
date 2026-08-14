@@ -416,7 +416,7 @@ class TestPracticeLogKeyLabels(unittest.TestCase):
         }
         keys = gather_practice_log_keys(session)
         self.assertEqual(keys["practice_concert_key"], "C#m")
-        self.assertEqual(keys["guitar_shape_key"], "Am")
+        self.assertEqual(keys["guitar_shape_key"], "A")
         self.assertEqual(keys["written_key"], "")
 
     def test_quick_save_prefill_uses_canonical_keys(self) -> None:

@@ -316,7 +316,12 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
         if live_ident is not None:
             return live_ident
         return None
-    if generated_workflow_owns_practice_key(session) and ctx_source != "mission":
+    if generated_workflow_owns_practice_key(session) and ctx_source not in {
+        "mission",
+        "regular_song",
+        "custom_progression",
+        "song_improv",
+    }:
         gen_ident = resolve_active_workflow_key_identity(session)
         if gen_ident is not None and str(gen_ident.workflow_owner or "") in {
             "style_jam",

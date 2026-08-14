@@ -310,7 +310,7 @@ def resolve_current_backing_musical_state(
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
-        if generated_workflow_owns_practice_key(session):
+        if generated_workflow_owns_practice_key(session) and source_type == "entry_jam":
             ident = resolve_active_workflow_key_identity(session)
             if ident is not None:
                 practice = ident.practice_key_token
@@ -336,8 +336,23 @@ def resolve_current_backing_musical_state(
     shape_on = bool(instrument == "Guitar" and session.get(CAPO_ENABLED_KEY))
 
     shape_key_raw = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+    if shape_on and shape_key_raw:
+        try:
+            from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+
+            shape_key_raw = shape_tonic_only(shape_key_raw)
+            chart_from_shape = shape_chart_key_for_concert(practice, shape_key_raw)
+        except ImportError:
+            chart_from_shape = shape_key_raw
+    else:
+        chart_from_shape = ""
     if major_jam and shape_key_raw:
-        shape_key_raw = to_major_key_preserve_spelling(shape_key_raw)
+        try:
+            from guitar_capo import shape_tonic_only
+
+            shape_key_raw = shape_tonic_only(shape_key_raw)
+        except ImportError:
+            pass
 
     written_key = ""
     if written_on:
@@ -345,9 +360,9 @@ def resolve_current_backing_musical_state(
         if major_jam and written_key:
             written_key = to_major_key_preserve_spelling(written_key)
 
-    if shape_on and shape_key_raw:
+    if shape_on and chart_from_shape:
         chart_mode: ChartMode = "shape"
-        chart_display = shape_key_raw
+        chart_display = chart_from_shape
     elif written_on and written_key:
         chart_mode = "written"
         chart_display = written_key
@@ -359,7 +374,12 @@ def resolve_current_backing_musical_state(
     show_badge = chart_mode != "concert" and chart_display != practice
     if show_badge:
         if chart_mode == "shape":
-            badge_label, badge_val = "Guitar shape", chart_display
+            try:
+                from guitar_capo import shape_chart_label_for_concert
+
+                badge_label, badge_val = "Charts in", shape_chart_label_for_concert(practice, shape_key_raw)
+            except ImportError:
+                badge_label, badge_val = "Guitar shape", chart_display
         else:
             badge_label, badge_val = "Written key", chart_display
     else:
@@ -436,7 +456,7 @@ def resolve_current_backing_musical_state(
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
-        if generated_workflow_owns_practice_key(session):
+        if generated_workflow_owns_practice_key(session) and source_type == "entry_jam":
             ident = resolve_active_workflow_key_identity(session)
             if ident is not None:
                 resolved_key_mode = ident.practice_mode

@@ -878,7 +878,13 @@ def resolve_active_musical_key(
         shape_key = ""
 
     if shape_key:
-        chart_key = shape_key
+        try:
+            from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+
+            shape_key = shape_tonic_only(shape_key)
+            chart_key = shape_chart_key_for_concert(practice_concert_key, shape_key)
+        except ImportError:
+            chart_key = shape_key
         mode = "shape"
     elif is_transposing_instrument(inst) and chart_in_instrument_key(session):
         chart_key, mode = effective_chart_key(practice_concert_key, inst, session)

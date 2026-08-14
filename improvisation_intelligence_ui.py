@@ -94,13 +94,24 @@ MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
 
 
+def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
+    try:
+        from music_workflow_pending_song_practice_key_edit import (
+            overlay_concert_token_with_pending_practice_key,
+        )
+
+        return overlay_concert_token_with_pending_practice_key(session_state, token) or token
+    except ImportError:
+        return token
+
+
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
         from workflow_key_identity import resolve_practice_key_identity_for_ui
 
         ident = resolve_practice_key_identity_for_ui(session_state)
         if ident is not None:
-            return ident.practice_key_token
+            return _overlay_pending_practice_key(session_state, ident.practice_key_token)
     except ImportError:
         pass
     try:
@@ -117,7 +128,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
 
         tok = resolve_song_practice_key_token(session_state)
         if tok:
-            return tok
+            return _overlay_pending_practice_key(session_state, tok)
     except ImportError:
         pass
     try:
@@ -125,9 +136,15 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
         from music_theory import key_center_token
 
         pk = resolve_authoritative_practice_key(session_state)
-        return key_center_token(pk.practice_tonic, pk.practice_mode)
+        return _overlay_pending_practice_key(
+            session_state,
+            key_center_token(pk.practice_tonic, pk.practice_mode),
+        )
     except ImportError:
-        return str(session_state.get("display_key") or fallback or "C")
+        return _overlay_pending_practice_key(
+            session_state,
+            str(session_state.get("display_key") or fallback or "C"),
+        )
 
 
 def _authoritative_concert_sections(
@@ -157,10 +174,16 @@ def _target_focus_chord(session_state: dict, chords: list[str]) -> str:
 
 
 def _coherent_improv_key_pair(session_state: dict, improv_ctx: ImprovSessionContext) -> tuple[str, str]:
-    """Single practice-key token for key_center and display_key in coach UIs."""
-    fallback = str(improv_ctx.display_key or improv_ctx.key_center or "C")
-    token = _authoritative_practice_chart_key(session_state, fallback)
-    return token, token
+    """Return (concert_practice_key, musician_facing_chart_key)."""
+    fallback = str(improv_ctx.key_center or improv_ctx.display_key or "C")
+    concert = _authoritative_practice_chart_key(session_state, fallback)
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        chart = musician_facing_chart_key(session_state, concert)
+    except ImportError:
+        chart = str(improv_ctx.display_key or concert)
+    return concert, chart
 
 
 def _motif_notation_reference_key(improv_ctx: ImprovSessionContext, chord: str = "") -> str:
@@ -1278,6 +1301,13 @@ def _ensure_chord_selection(
     _migrate_ii_chord_selection(session_state)
     if not chords:
         return
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+
+        if pending_selected_practice_key_token(session_state):
+            return
+    except ImportError:
+        pass
 
     try:
         from creative_chord_selection_authority import (
@@ -1636,8 +1666,19 @@ def _render_section_chord_map(
                 )
                 with cols[ci]:
                     is_sel = sel_section == label and sel_chord == ch
+                    try:
+                        from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+                        chart_key = musician_facing_chart_key(session_state, key_center)
+                        tile_label = musician_facing_chord(
+                            ch,
+                            concert_key=key_center,
+                            chart_key=chart_key,
+                        )
+                    except ImportError:
+                        tile_label = ch
                     st.button(
-                        ch,
+                        tile_label,
                         key=button_key,
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
@@ -2056,13 +2097,13 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         }
         return
 
-    chart_key, key_center = _coherent_improv_key_pair(session_state, improv_ctx)
-    improv_ctx.key_center = key_center
+    concert, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    improv_ctx.key_center = concert
     improv_ctx.display_key = chart_key
 
     if isinstance(snap, dict):
         snap_key = str(snap.get("chart_key") or snap.get("key_center") or "").strip()
-        if snap_key and snap_key != chart_key:
+        if snap_key and snap_key != concert and snap_key != chart_key:
             session_state.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
             snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
 
@@ -2292,22 +2333,37 @@ def _maybe_refresh_mission_example_outputs(
 ) -> MissionExample:
     from improvisation_missions import mission_example_fingerprint, mission_example_for_display
 
-    fp = mission_example_fingerprint(example)
-    spell_fp = str((example.motif or {}).get("spelling_reference") or "")
-    needs = session_state.get("_mission_example_output_fp") != fp or not spell_fp
-    if not needs:
-        return example
     concert = str(
         session_state.get("concert_key")
         or session_state.get("improv_song_concert_key")
         or example.concert_key
         or example.display_key
     )
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        chart = musician_facing_chart_key(session_state, concert)
+    except ImportError:
+        chart = str(example.display_key or concert)
+    fp = mission_example_fingerprint(example)
+    spell_fp = str((example.motif or {}).get("spelling_reference") or "")
+    needs = (
+        session_state.get("_mission_example_output_fp") != fp
+        or not spell_fp
+        or str(chart or "") != str(concert or "")
+    )
+    if not needs:
+        return example
+    example.display_key = chart
+    example.concert_key = concert
     refreshed = mission_example_for_display(
         example,
         instrument=instrument,
         bpm=bpm,
         song_concert_key=concert,
+        session_state=session_state,
+        authoritative_concert_key=concert,
+        authoritative_display_key=str(example.display_key or ""),
     )
     session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
     return refreshed
@@ -2548,10 +2604,32 @@ def _tab_missions(
     cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
     practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+    try:
+        from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+        chart_key = musician_facing_chart_key(session_state, practice_key)
+        shown_chord = musician_facing_chord(
+            cur_chord,
+            concert_key=practice_key,
+            chart_key=chart_key,
+        )
+    except ImportError:
+        shown_chord = cur_chord
+        chart_key = practice_key
+    chart_note = ""
+    if chart_key != practice_key:
+        try:
+            from music_theory import format_key_label_from_parts, split_key_center
+
+            tonic, mode = split_key_center(chart_key)
+            chart_label = format_key_label_from_parts(tonic, mode)
+        except ImportError:
+            chart_label = chart_key
+        chart_note = f" · Charts in **{html.escape(chart_label)}**"
     st.caption(
         f"Practice Key: **{html.escape(practice_key)}** · "
-        f"Selected Mission Chord: **{html.escape(cur_chord)}** · "
-        f"Section: **{html.escape(section_label)}**"
+        f"Selected Mission Chord: **{html.escape(shown_chord)}** · "
+        f"Section: **{html.escape(section_label)}**{chart_note}"
     )
 
     _sync_missions_session_from_improv_ctx(session_state, improv_ctx, section_map=section_map)
@@ -3005,9 +3083,10 @@ def _tab_harmony_map(
         pass
 
     st.markdown(creative_tool_heading_markdown("Harmony Map"))
-    practice_key_caption, _practice_dup = _coherent_improv_key_pair(session_state, improv_ctx)
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    caption_key = chart_key if chart_key != concert_key else concert_key
     st.caption(
-        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(practice_key_caption)}** · "
+        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(caption_key)}** · "
         "one progression per section — tap a chord for stable & color tones."
     )
 
@@ -3020,12 +3099,12 @@ def _tab_harmony_map(
         show_sync_caption=False,
     )
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
-    practice_key, key_center = _coherent_improv_key_pair(session_state, improv_ctx)
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     improv_ctx = ImprovSessionContext(
         song_title=improv_ctx.song_title,
         artist=improv_ctx.artist,
-        key_center=key_center,
-        display_key=practice_key,
+        key_center=concert_key,
+        display_key=chart_key,
         instrument=live_inst,
         level=live_level,
         focus=live_focus,
