@@ -84,7 +84,7 @@ def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
 
 
 def entry_jam_practice_key_authority_active(session: dict[str, Any]) -> bool:
-    """Style Jam / Jam Session still owns practice key (including Missions/Harmony on same entry)."""
+    """Style Jam / Jam Session own practice key only while those tools or their Backing are current."""
     if _catalog_song_workflow_owns_practice_key(session):
         return False
     page = str(session.get("studio_page") or "").strip().lower()

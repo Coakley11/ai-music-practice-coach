@@ -111,6 +111,28 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
         state = resolve_current_backing_musical_state(session)
         self.assertEqual(state.practice_concert_key, "C")
 
+    def test_missions_live_practice_key_owns_when_song_blob_missing(self) -> None:
+        session: dict = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_key": "Eb",
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "active_catalog_pick_key": "hevenu_shalom",
+        }
+        ident = resolve_practice_key_identity_for_ui(session)
+        self.assertIsNotNone(ident)
+        assert ident is not None
+        self.assertEqual(ident.practice_tonic, "D")
+        self.assertEqual(ident.practice_mode, "minor")
+        self.assertEqual(ident.practice_key_token.lower(), "dm")
+        self.assertEqual(ident.workflow_owner, "song_based_improvisation")
+        self.assertNotEqual(ident.source, "active_workflow_blob")
+        pk = resolve_authoritative_practice_key(session)
+        self.assertEqual(pk.practice_mode, "minor")
+        self.assertEqual(pk.practice_key_token.lower(), "dm")
+
     def test_missions_reclaim_song_d_minor_not_generated_eb(self) -> None:
         pick = "Jewish|Hevenu"
         session: dict = {

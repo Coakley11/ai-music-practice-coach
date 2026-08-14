@@ -53,6 +53,48 @@ def song_practice_blob(session: dict[str, Any]) -> WorkflowStateBlob | None:
     return get_workflow_blob(session, "song_based_improvisation", sid)
 
 
+def seed_song_practice_blob_from_live_practice_key(session: dict[str, Any]) -> str:
+    """When song/mission owns Practice Key but the song blob is missing, seed from live identity.
+
+    Live ``display_key`` (full tonic + mode) is the owner — not catalog original C and not
+    leftover jam / mission_jam blob keys. Never overwrite an existing song blob.
+    """
+    existing = song_practice_blob(session)
+    if existing is not None:
+        return resolve_song_practice_key_token(session)
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not live:
+        return ""
+    try:
+        from music_workflow_compatibility import _tonic_mode_from_token
+    except ImportError:
+        from music_theory import split_key_center
+
+        def _tonic_mode_from_token(key: str) -> tuple[str, str]:
+            return split_key_center(str(key or "C"))
+
+    pt, pm = _tonic_mode_from_token(live)
+    if pm not in {"major", "minor"}:
+        pm = "major"
+    sid = song_based_blob_session_id(session)
+    src, song_id = song_practice_storage_id(session)
+    blob = WorkflowStateBlob(
+        workflow_owner="song_based_improvisation",
+        workflow_session_id=sid,
+        source_type=src,
+        song_id=song_id,
+        keys=KeyAuthority(
+            original_tonic=pt,
+            original_mode=pm,
+            practice_tonic=pt,
+            practice_mode=pm,
+            key_owner="song_based_improvisation",
+        ),
+    )
+    save_workflow_blob(session, blob, source="seed_live_practice_key")
+    return resolve_song_practice_key_token(session)
+
+
 def _section_map_total_chords(section_map: dict[str, list[str]] | None) -> int:
     if not isinstance(section_map, dict) or not section_map:
         return 0
@@ -173,6 +215,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             deactivate_generated_jam_key_ownership(session, pre_widget=True)
         except ImportError:
             pass
+        seed_song_practice_blob_from_live_practice_key(session)
         mirror_mission_keys_from_song_blob(session)
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
         token = sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
@@ -220,6 +263,7 @@ __all__ = [
     "mission_blob_session_id",
     "rehydrate_full_song_concert_sections",
     "resolve_song_practice_key_token",
+    "seed_song_practice_blob_from_live_practice_key",
     "song_based_blob_session_id",
     "song_practice_blob",
     "song_practice_storage_id",

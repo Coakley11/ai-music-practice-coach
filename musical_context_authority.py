@@ -101,12 +101,15 @@ def resolve_authoritative_practice_key(
                     orig_m = _mode_from_key_token(original_raw)
                 except ImportError:
                     pass
+            source = ident.source
+            if source == "song_practice_blob":
+                source = "song_based_blob_practice_key"
             return AuthoritativePracticeKey(
                 original_tonic=orig_t,
                 original_mode=orig_m,
                 practice_tonic=ident.practice_tonic,
                 practice_mode=ident.practice_mode,
-                source=ident.source,
+                source=source,
             )
     except ImportError:
         pass
@@ -156,7 +159,15 @@ def resolve_authoritative_practice_key(
         practice_raw = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
         original_raw = practice_raw
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if (
+    try:
+        from workflow_key_identity import song_or_mission_workflow_owns_practice_key
+
+        song_owns_live = song_or_mission_workflow_owns_practice_key(session)
+    except ImportError:
+        song_owns_live = False
+    if live and song_owns_live:
+        practice_raw = live
+    elif (
         live
         and _mode_from_key_token(live) == "minor"
         and _mode_from_key_token(practice_raw) != "minor"

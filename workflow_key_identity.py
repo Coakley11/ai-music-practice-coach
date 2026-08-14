@@ -243,9 +243,38 @@ def resolve_song_practice_key_identity(session: dict[str, Any]) -> WorkflowKeyId
         if song is None:
             return None
         sid = song_based_blob_session_id(session)
-        return _identity_from_blob("song_based_improvisation", sid, song, source="song_practice_blob")
+        return _identity_from_blob("song_based_improvisation", sid, song, source="song_based_blob_practice_key")
     except ImportError:
         return None
+
+
+def _identity_from_live_practice_key(session: dict[str, Any]) -> WorkflowKeyIdentity | None:
+    """Full tonic+mode from live Practice Key — used only when song/mission owns and blob is absent."""
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not live:
+        return None
+    from music_theory import format_key_label_from_parts, key_center_token, split_key_center
+
+    tonic, mode = split_key_center(live)
+    if mode not in {"major", "minor"}:
+        mode = "major"
+    token = key_center_token(tonic, mode)
+    sid = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
+    try:
+        from music_workflow_song_practice import song_based_blob_session_id
+
+        sid = song_based_blob_session_id(session) or sid
+    except ImportError:
+        pass
+    return WorkflowKeyIdentity(
+        workflow_owner="song_based_improvisation",
+        workflow_session_id=sid,
+        practice_tonic=tonic,
+        practice_mode=mode,
+        practice_key_token=token,
+        practice_label=format_key_label_from_parts(tonic, mode),
+        source="live_practice_display_key",
+    )
 
 
 def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKeyIdentity | None:
@@ -259,9 +288,10 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
             ctx_source = str(ctx.source or "").strip()
     except ImportError:
         pass
-    if ctx_source == "mission" or (
+    song_owns = ctx_source == "mission" or (
         song_or_mission_workflow_owns_practice_key(session) and ctx_source != "entry_jam"
-    ):
+    )
+    if song_owns:
         if not session.get("_missions_parent_key_hydrate_guard"):
             session["_missions_parent_key_hydrate_guard"] = True
             try:
@@ -275,6 +305,10 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
         song_ident = resolve_song_practice_key_identity(session)
         if song_ident is not None:
             return song_ident
+        live_ident = _identity_from_live_practice_key(session)
+        if live_ident is not None:
+            return live_ident
+        return None
     if generated_workflow_owns_practice_key(session) and ctx_source != "mission":
         gen_ident = resolve_active_workflow_key_identity(session)
         if gen_ident is not None and str(gen_ident.workflow_owner or "") in {
@@ -295,6 +329,9 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
         song_ident = resolve_song_practice_key_identity(session)
         if song_ident is not None:
             return song_ident
+        live_ident = _identity_from_live_practice_key(session)
+        if live_ident is not None:
+            return live_ident
     return resolve_active_workflow_key_identity(session)
 
 
