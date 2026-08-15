@@ -285,7 +285,10 @@ def emit_deploy_startup_log(*, force: bool = False) -> None:
 
 
 def log_deploy_startup() -> None:
-    emit_deploy_startup_log(force=True)
+    try:
+        emit_deploy_startup_log(force=True)
+    except Exception:
+        pass
 
 
 def module_runtime_paths() -> dict[str, str]:
