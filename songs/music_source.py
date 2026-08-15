@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable
 
 ACTIVE_MUSIC_SOURCE_KEY = "active_music_source"
@@ -1350,11 +1351,35 @@ def on_active_song_identity_changed(
                 session[ACTIVE_CATALOG_PICK_KEY] = str(pick_key).strip()
             if title:
                 session["song"] = str(title)
+            try:
+                from songs.state import SELECTED_SONG_STATE_KEY as _SEL_KEY
+            except ImportError:
+                _SEL_KEY = "selected_song"
+            sel = _selected_song_for_identity(
+                session.get(_SEL_KEY),
+                pick_key=pick_key,
+                title=title,
+                artist=artist,
+                original_key=original_key,
+                song_data=song_data,
+            )
+            if sel:
+                session[_SEL_KEY] = sel
         except ImportError:
             if pick_key and not is_custom:
                 session["active_catalog_pick_key"] = str(pick_key).strip()
             if title:
                 session["song"] = str(title)
+            sel = _selected_song_for_identity(
+                session.get("selected_song"),
+                pick_key=pick_key,
+                title=title,
+                artist=artist,
+                original_key=original_key,
+                song_data=song_data,
+            )
+            if sel:
+                session["selected_song"] = sel
         for stale_key in (
             "improv_song_concert_sections",
             "home_sections",
@@ -1364,6 +1389,7 @@ def on_active_song_identity_changed(
             "_mission_example_output_fp",
             "_mission_example_material_fp",
             "harmony_map_section_selections",
+            "_creative_session_hydrated_creative",
         ):
             session.pop(stale_key, None)
         try:
@@ -1380,6 +1406,12 @@ def on_active_song_identity_changed(
                 new_pick_key=pick_key,
                 practice_concert_key=target_display,
             )
+        except ImportError:
+            pass
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            sync_song_improv_sections_to_practice_key(session)
         except ImportError:
             pass
     return identity_changed
@@ -2395,6 +2427,79 @@ def _catalog_bpm_from_row(row: dict[str, Any]) -> int:
     return bpm if bpm > 0 else 0
 
 
+def _section_map_from_record(raw: Any) -> dict[str, list[str]]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for name, chords in raw.items():
+        if not isinstance(chords, list):
+            continue
+        clean = [str(c).strip() for c in chords if str(c).strip()]
+        if clean:
+            out[str(name)] = clean
+    return out
+
+
+def _selected_song_for_identity(
+    existing: Any,
+    *,
+    pick_key: str,
+    title: str,
+    artist: str,
+    original_key: str,
+    song_data: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Replace prior-song identity AND chart sections with the newly selected catalog row."""
+    sel = dict(song_data) if isinstance(song_data, dict) and song_data else {}
+    prior = dict(existing) if isinstance(existing, dict) else {}
+    if not sel:
+        sel = dict(prior)
+        sel.pop("sections", None)
+    elif str(prior.get("pick_key") or "").strip() != str(pick_key or "").strip():
+        if not _section_map_from_record(sel.get("sections")):
+            sel.pop("sections", None)
+    if pick_key:
+        sel["pick_key"] = str(pick_key).strip()
+    if title:
+        sel["title"] = str(title)
+    if artist:
+        sel["artist"] = str(artist)
+    if original_key:
+        sel["key"] = str(original_key)
+    sections = _section_map_from_record(sel.get("sections"))
+    if sections:
+        sel["sections"] = copy.deepcopy(sections)
+    elif "sections" in sel:
+        sel.pop("sections", None)
+    return sel
+
+
+def catalog_chart_sections_for_pick(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    selected: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    """Catalog original-key sections for a pick — selected row, home, library, or picker."""
+    sections = _section_map_from_record((selected or {}).get("sections"))
+    if sections:
+        return sections
+    home = _section_map_from_record(session_state.get("home_sections"))
+    if home:
+        return home
+    for catalog in (
+        _catalog_library_from_session(session_state),
+        _catalog_picker_from_session(session_state),
+    ):
+        if not isinstance(catalog, dict) or not catalog:
+            continue
+        row = _catalog_row_for_pick(pick_key, catalog)
+        sections = _section_map_from_record((row or {}).get("sections"))
+        if sections:
+            return sections
+    return {}
+
+
 def _merge_catalog_transport_into_selected(
     selected: dict[str, Any],
     pick_key: str,
@@ -2426,6 +2531,9 @@ def _merge_catalog_transport_into_selected(
         val = str(row.get(field) or "").strip()
         if val and (authoritative or not str(out.get(field) or "").strip()):
             out[field] = val
+    row_sections = _section_map_from_record(row.get("sections"))
+    if row_sections and (authoritative or not _section_map_from_record(out.get("sections"))):
+        out["sections"] = copy.deepcopy(row_sections)
     return out
 
 
@@ -2456,6 +2564,10 @@ def resolve_catalog_song_for_pick(
             catalog,
             authoritative=authoritative_transport,
         )
+        if not _section_map_from_record(merged.get("sections")):
+            extra = catalog_chart_sections_for_pick(session_state, pick_key, selected=merged)
+            if extra:
+                merged["sections"] = copy.deepcopy(extra)
         return merged, original_key
 
     snap_keys = (
@@ -2523,6 +2635,9 @@ def resolve_catalog_song_for_pick(
                 "key": str(row.get("key") or "C").strip() or "C",
                 "extensions": dict(ext),
             }
+            row_sections = _section_map_from_record(row.get("sections"))
+            if row_sections:
+                selected["sections"] = copy.deepcopy(row_sections)
             row_bpm = _catalog_bpm_from_row(row)
             if row_bpm > 0:
                 selected["bpm"] = row_bpm

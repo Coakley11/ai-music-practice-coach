@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+from dataclasses import replace
 from typing import Any, Callable
 
 from app_ui import nav_icon_button_label
@@ -184,6 +185,20 @@ def _coherent_improv_key_pair(session_state: dict, improv_ctx: ImprovSessionCont
     except ImportError:
         chart = str(improv_ctx.display_key or concert)
     return concert, chart
+
+
+def _player_facing_chord(session_state: dict, chord: str, *, concert_key: str) -> str:
+    """Concert chord → Written/Shape display symbol. Empty in stays empty out."""
+    src = str(chord or "").strip()
+    if not src:
+        return ""
+    try:
+        from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+        chart = musician_facing_chart_key(session_state, concert_key)
+        return musician_facing_chord(src, concert_key=concert_key, chart_key=chart)
+    except ImportError:
+        return src
 
 
 def _motif_notation_reference_key(improv_ctx: ImprovSessionContext, chord: str = "") -> str:
@@ -368,8 +383,15 @@ def render_improvisation_intelligence_lab(
 
     instrument = str(ctx.get("instrument") or "Guitar")
     level = str(ctx.get("level") or "Intermediate")
-    song_title = str(ctx.get("song") or "Song")
-    artist = str(ctx.get("artist") or "")
+    _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    _pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    _sel_pk = str((_sel or {}).get("pick_key") or "").strip()
+    if _sel and _pick and _sel_pk == _pick:
+        song_title = str((_sel or {}).get("title") or session_state.get("song") or ctx.get("song") or "Song")
+        artist = str((_sel or {}).get("artist") or ctx.get("artist") or "")
+    else:
+        song_title = str(session_state.get("song") or (_sel or {}).get("title") or ctx.get("song") or "Song")
+        artist = str(ctx.get("artist") or (_sel or {}).get("artist") or "")
 
     try:
         from app_ui import (
@@ -1010,22 +1032,26 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
 
     _ensure_chord_selection(session_state, chords, section_map)
     cur, idx = _selected_chord(session_state, chords, section_map)
-    parent_key = _parent_practice_key_label(improv_ctx)
-    analysis_ref = _motif_notation_reference_key(improv_ctx, cur)
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    parent_key = chart_key or _parent_practice_key_label(improv_ctx)
+    shown_cur = _player_facing_chord(session_state, cur, concert_key=concert_key)
+    bound_ctx = replace(improv_ctx, key_center=concert_key, display_key=chart_key)
+    analysis_ref = _motif_notation_reference_key(bound_ctx, shown_cur or cur)
     _render_section_chord_map(
         st,
         section_map,
         session_state,
         key_prefix="improv_live",
         source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.key_center,
+        key_center=concert_key,
     )
 
     nxt = chords[idx + 1] if idx + 1 < len(chords) else ""
+    shown_nxt = _player_facing_chord(session_state, nxt, concert_key=concert_key)
     insight = chord_coach_insight(
-        cur,
+        shown_cur or cur,
         key_center=parent_key,
-        next_chord=nxt,
+        next_chord=shown_nxt,
         instrument=live_inst,
         level=live_level,
     )
@@ -1122,12 +1148,14 @@ def _tab_motif(
     )
 
     cur, _idx = _selected_chord(session_state, chords, section_map)
+    concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    shown_cur = _player_facing_chord(session_state, cur, concert_key=concert_key)
     motif_key = _motif_notation_reference_key(improv_ctx, cur)
 
     g0, g1, g2, g3 = st.columns(4)
     with g0:
         if st.button(
-            f"Generate motif for {cur}",
+            f"Generate motif for {shown_cur or cur}",
             type="primary",
             key="improv_gen_motif_chord",
             use_container_width=True,
@@ -3085,8 +3113,10 @@ def _tab_harmony_map(
     st.markdown(creative_tool_heading_markdown("Harmony Map"))
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     caption_key = chart_key if chart_key != concert_key else concert_key
+    _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    live_title = str((_sel or {}).get("title") or session_state.get("song") or improv_ctx.song_title)
     st.caption(
-        f"**{html.escape(improv_ctx.song_title)}** · key **{html.escape(caption_key)}** · "
+        f"**{html.escape(live_title)}** · key **{html.escape(caption_key)}** · "
         "one progression per section — tap a chord for stable & color tones."
     )
 
@@ -3100,9 +3130,10 @@ def _tab_harmony_map(
     )
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
     improv_ctx = ImprovSessionContext(
-        song_title=improv_ctx.song_title,
-        artist=improv_ctx.artist,
+        song_title=str((_sel or {}).get("title") or session_state.get("song") or improv_ctx.song_title),
+        artist=str((_sel or {}).get("artist") or improv_ctx.artist),
         key_center=concert_key,
         display_key=chart_key,
         instrument=live_inst,
@@ -3145,9 +3176,10 @@ def _tab_harmony_map(
         chips = []
         for ch in chords:
             selected = sel_section == sec_label and sel_chord == ch
+            shown = _player_facing_chord(session_state, ch, concert_key=concert_key)
             chips.append(
                 f'<span class="hm-chord-chip{" selected" if selected else ""}">'
-                f"{html.escape(ch)}</span>"
+                f"{html.escape(shown)}</span>"
             )
         st.markdown(
             f'<div class="hm-section-block">'
@@ -3162,8 +3194,9 @@ def _tab_harmony_map(
                 button_key = (
                     f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}"
                 )
+                shown = _player_facing_chord(session_state, ch, concert_key=concert_key)
                 if st.button(
-                    ch,
+                    shown,
                     key=button_key,
                     type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
                     use_container_width=True,
@@ -3194,12 +3227,15 @@ def _tab_harmony_map(
                 prev_ch = section_map[si - 1][1][-1]
             break
 
+    shown_sel = _player_facing_chord(session_state, sel_chord, concert_key=concert_key)
+    shown_next = _player_facing_chord(session_state, next_ch, concert_key=concert_key)
+    shown_prev = _player_facing_chord(session_state, prev_ch, concert_key=concert_key)
     guide = analyze_chord_for_harmony_map(
-        sel_chord,
+        shown_sel or sel_chord,
         improv_ctx=improv_ctx,
         section=sel_section,
-        next_chord=next_ch,
-        prev_chord=prev_ch,
+        next_chord=shown_next,
+        prev_chord=shown_prev,
     )
     try:
         from harmonic_spelling import assert_mission_spelling_consistency
@@ -3207,7 +3243,7 @@ def _tab_harmony_map(
         scale_text = " ".join(guide.scale_lines or [])
         assert_mission_spelling_consistency(
             session_state,
-            chord_symbol=sel_chord,
+            chord_symbol=shown_sel or sel_chord,
             stable_tones=guide.stable_tones,
             coaching_tones=list(guide.stable_tones),
             color_tones=[c.note for c in guide.color_tones],
@@ -3259,7 +3295,7 @@ def _tab_harmony_map(
     for tip in guide.instrument_tips:
         st.markdown(f"- {tip}")
 
-    if next_chord := next_ch:
+    if next_chord := shown_next:
         st.caption(f"Next chord in this section: **{html.escape(next_chord)}**")
 
 
@@ -3273,6 +3309,28 @@ def _tab_deep_harmony(
 ) -> None:
     from deep_harmonic_analyzer_ui import render_deep_harmonic_analyzer_tab
 
+    try:
+        from song_creative_focus import hydrate_creative_pages_from_song_focus
+
+        hydrate_creative_pages_from_song_focus(session_state, tab="Deep Harmony")
+    except ImportError:
+        pass
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
+    _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    improv_ctx = replace(
+        improv_ctx,
+        song_title=str((_sel or {}).get("title") or session_state.get("song") or improv_ctx.song_title),
+        artist=str((_sel or {}).get("artist") or improv_ctx.artist),
+        key_center=concert_key,
+        display_key=chart_key,
+        sections=concert_sections,
+        progression_flat=flatten_sections(
+            concert_sections,
+            section_names=list(improv_ctx.section_order) or None,
+        ),
+        section_order=list(improv_ctx.section_order) or list(concert_sections.keys()),
+    )
     render_deep_harmonic_analyzer_tab(
         st,
         session_state=session_state,

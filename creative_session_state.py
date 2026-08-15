@@ -515,6 +515,12 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     except ImportError:
         song_src = str(session.get("improv_song_source") or "Active song")
     existing = CreativeSession.from_dict(session.get(CREATIVE_SESSION_KEY)) if session.get(CREATIVE_SESSION_KEY) else None
+    try:
+        from music_workflow_catalog_handoff import song_based_session_id_for_live_pick
+
+        bound_song_id = song_based_session_id_for_live_pick(session) if tool == "song_based_improvisation" else ""
+    except ImportError:
+        bound_song_id = str(session.get("active_catalog_pick_key") or "") if tool == "song_based_improvisation" else ""
     sess = CreativeSession(
         session_id=existing.session_id if existing else "",
         tool_type=tool,
@@ -535,6 +541,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
         selected_section=str(
             session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or ""
         ).strip(),
+        bound_song_id=bound_song_id,
         intelligence_tab=_normalize_improv_intelligence_tab(tab),
     )
     set_creative_session(session, sess)
@@ -727,6 +734,7 @@ def apply_creative_session_to_session(
     elif sess.tool_type == "song_based_improvisation":
         live_sid = ""
         stale_parent = ""
+        sync_live_sections = None
         try:
             from music_workflow_catalog_handoff import (
                 song_based_session_id_for_live_pick,
@@ -736,15 +744,18 @@ def apply_creative_session_to_session(
 
             live_sid = song_based_session_id_for_live_pick(session)
             stale_parent = stale_song_based_parent_session_id(session, creative_session=sess)
+            sync_live_sections = sync_song_based_sections_for_live_pick
         except ImportError:
             pass
         bound_sid = str(getattr(sess, "bound_song_id", "") or "").strip()
-        if stale_parent and live_sid and stale_parent != live_sid:
-            sync_song_based_sections_for_live_pick(session, source="creative_session_parent_mismatch")
-        elif bound_sid and live_sid and bound_sid != live_sid:
-            sync_song_based_sections_for_live_pick(session, source="creative_session_bound_mismatch")
-        elif sess.sections and (not bound_sid or not live_sid or bound_sid == live_sid):
+        if stale_parent and live_sid and stale_parent != live_sid and sync_live_sections:
+            sync_live_sections(session, source="creative_session_parent_mismatch")
+        elif bound_sid and live_sid and bound_sid != live_sid and sync_live_sections:
+            sync_live_sections(session, source="creative_session_bound_mismatch")
+        elif sess.sections and bound_sid and live_sid and bound_sid == live_sid:
             session["improv_song_concert_sections"] = {k: list(v) for k, v in sess.sections.items()}
+        elif sync_live_sections:
+            sync_live_sections(session, source="creative_session_unbound")
     else:
         _set("improv_style", sess.style)
         if widget_safe:

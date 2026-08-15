@@ -462,26 +462,63 @@ def reclaim_stale_prior_song_practice_key_on_original_chart(session: dict[str, A
     return orig_token
 
 
+def _section_maps_same_song(expected: dict[str, list[str]], actual: dict[str, list[str]]) -> bool:
+    if not expected or not actual:
+        return False
+    overlap = [name for name in expected if name in actual]
+    if not overlap:
+        return False
+    for name in overlap:
+        want = expected[name][0] if expected[name] else ""
+        got = actual[name][0] if actual[name] else ""
+        if want and got and want != got:
+            return False
+    return True
+
+
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog song sections transposed to current practice concert key."""
     try:
         from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+        from music_workflow_catalog_handoff import workflow_blob_matches_live_catalog_parent
+        from songs.music_source import catalog_chart_sections_for_pick
 
         reclaim_stale_prior_song_practice_key_on_original_chart(session)
-        song = song_practice_blob(session)
-        if song is not None and isinstance(song.section_map, dict) and song.section_map:
-            session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
-            return copy.deepcopy(song.section_map)
         practice = resolve_song_practice_key_token(session) or str(
             session.get("display_key") or session.get("concert_key") or ""
         ).strip()
+        song = song_practice_blob(session)
+        catalog_sections = catalog_chart_sections_for_pick(
+            session, str(session.get("active_catalog_pick_key") or "")
+        )
+        if (
+            song is not None
+            and isinstance(song.section_map, dict)
+            and song.section_map
+            and workflow_blob_matches_live_catalog_parent(session, song)
+        ):
+            expected = catalog_sections
+            original = ""
+            sel = session.get("selected_song")
+            if isinstance(sel, dict):
+                original = str(sel.get("key") or "").strip()
+            if catalog_sections and original and practice and original != practice:
+                try:
+                    from music_theory import transpose_sections_dict
+
+                    expected = transpose_sections_dict(catalog_sections, original, practice)
+                except ImportError:
+                    expected = catalog_sections
+            if not catalog_sections or _section_maps_same_song(expected, song.section_map):
+                session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+                return copy.deepcopy(song.section_map)
     except ImportError:
         practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
     if not practice:
         return {}
     try:
         from backing_context import _current_pick_key
-        from songs.music_source import resolve_catalog_song_for_pick
+        from songs.music_source import catalog_chart_sections_for_pick, resolve_catalog_song_for_pick
         from music_theory import transpose_sections_dict
 
         pick = _current_pick_key(session)
@@ -489,22 +526,8 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
         if not isinstance(selected, dict) or not selected:
             return {}
         original = str(selected.get("key") or selected.get("original_key") or original_key or "").strip()
-        sections = selected.get("sections")
-        if not isinstance(sections, dict) or not sections:
-            home = session.get("home_sections")
-            if isinstance(home, dict) and home:
-                sections = home
-            else:
-                try:
-                    from songs.music_source import _catalog_picker_from_session, _catalog_row_for_pick
-
-                    catalog = _catalog_picker_from_session(session)
-                    row = _catalog_row_for_pick(pick, catalog) if catalog else None
-                    if isinstance(row, dict) and isinstance(row.get("sections"), dict):
-                        sections = row["sections"]
-                except ImportError:
-                    sections = None
-        if not isinstance(sections, dict) or not sections:
+        sections = catalog_chart_sections_for_pick(session, pick, selected=selected)
+        if not sections:
             return {}
         base = {
             str(name): [str(c) for c in chords if str(c).strip()]

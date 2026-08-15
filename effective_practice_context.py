@@ -47,6 +47,45 @@ def musician_facing_chord(chord: str, *, concert_key: str, chart_key: str) -> st
     return transpose_chord(src, steps, reference_key=chart)
 
 
+def musician_facing_chords(
+    chords: list[str] | tuple[str, ...],
+    *,
+    concert_key: str,
+    chart_key: str,
+) -> list[str]:
+    """Transpose a concert chord list into the player-facing chart key."""
+    return [
+        musician_facing_chord(ch, concert_key=concert_key, chart_key=chart_key)
+        for ch in (chords or [])
+    ]
+
+
+def musician_facing_section_map(
+    section_map: list[tuple[str, list[str]]],
+    *,
+    concert_key: str,
+    chart_key: str,
+) -> list[tuple[str, list[str]]]:
+    """Transpose a section chord map for Harmony Map / Live Coach display."""
+    return [
+        (label, musician_facing_chords(chs, concert_key=concert_key, chart_key=chart_key))
+        for label, chs in (section_map or [])
+    ]
+
+
+def musician_facing_sections_dict(
+    sections: dict[str, list[str]],
+    *,
+    concert_key: str,
+    chart_key: str,
+) -> dict[str, list[str]]:
+    """Transpose a sections dict for Deep Harmony and other chart-facing copy."""
+    return {
+        str(name): musician_facing_chords(list(chs or []), concert_key=concert_key, chart_key=chart_key)
+        for name, chs in (sections or {}).items()
+    }
+
+
 @dataclass(frozen=True)
 class EffectivePracticeContext:
     original_key: str

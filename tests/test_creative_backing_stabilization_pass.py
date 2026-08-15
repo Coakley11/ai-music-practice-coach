@@ -343,5 +343,380 @@ class TestAdvancedSettingsKeepUserGroove(unittest.TestCase):
         self.assertIn("3", str(out.get("applied_meter") or ""))
 
 
+LET_IT_BE_INTRO = ["C", "G/B", "Am7", "Fmaj7"]
+DANCE_MONKEY_INTRO = ["F#m", "D", "E", "C#m"]
+
+
+def _guitar_shape_session(concert: str, shape: str) -> dict:
+    return {
+        "instrument": "Guitar",
+        "guitar_capo_enabled": True,
+        "guitar_capo_shape_key": shape,
+        "display_key": concert,
+        "concert_key": concert,
+    }
+
+
+class TestMusicianFacingProjectionSurfaces(unittest.TestCase):
+    def test_harmony_map_projects_let_it_be_shape_d(self) -> None:
+        from effective_practice_context import musician_facing_section_map
+
+        session = _guitar_shape_session("C", "D")
+        chart = musician_facing_chart_key(session, "C")
+        self.assertEqual(chart, "D")
+        projected = musician_facing_section_map(
+            [("Intro", list(LET_IT_BE_INTRO))],
+            concert_key="C",
+            chart_key=chart,
+        )
+        self.assertEqual(projected[0][1], ["D", "A/C#", "Bm7", "Gmaj7"])
+
+    def test_harmony_map_projects_dance_monkey_shape_d_minor(self) -> None:
+        from effective_practice_context import musician_facing_section_map
+
+        session = _guitar_shape_session("F#m", "D")
+        chart = musician_facing_chart_key(session, "F#m")
+        self.assertEqual(chart, "Dm")
+        projected = musician_facing_section_map(
+            [("Intro", list(DANCE_MONKEY_INTRO))],
+            concert_key="F#m",
+            chart_key=chart,
+        )
+        self.assertEqual(projected[0][1][0], "Dm")
+        self.assertNotIn("F#m", projected[0][1])
+
+    def test_deep_harmony_core_progression_uses_projected_chords(self) -> None:
+        from deep_harmonic_analyzer import HarmonicAnalysisInput, build_deep_harmonic_lesson
+        from effective_practice_context import musician_facing_sections_dict
+
+        session = _guitar_shape_session("C", "D")
+        chart = musician_facing_chart_key(session, "C")
+        sections = musician_facing_sections_dict(
+            {"Intro": list(LET_IT_BE_INTRO)},
+            concert_key="C",
+            chart_key=chart,
+        )
+        lesson = build_deep_harmonic_lesson(
+            HarmonicAnalysisInput(
+                song_title="Let It Be",
+                artist="The Beatles",
+                key_center=chart,
+                display_key=chart,
+                sections=sections,
+                instrument="Guitar",
+                level="Intermediate",
+                focus="Improvisation",
+                genre="Rock",
+                section_order=["Intro"],
+                progression_flat=list(sections["Intro"]),
+            )
+        )
+        blob = " ".join(str(p) for p in (lesson.get("priorities") or []))
+        loop = " ".join(str(c) for c in ((lesson.get("loop") or {}).get("chords") or []))
+        combined = blob + " " + loop
+        self.assertIn("D", combined)
+        self.assertIn("Bm7", combined)
+        self.assertNotIn("Am7", combined)
+        self.assertNotIn("G/B", combined)
+
+    def test_live_coach_prose_uses_projected_next_chord(self) -> None:
+        from improvisation_intelligence import chord_coach_insight
+
+        session = _guitar_shape_session("C", "D")
+        chart = musician_facing_chart_key(session, "C")
+        shown = musician_facing_chord("C", concert_key="C", chart_key=chart)
+        shown_next = musician_facing_chord("G/B", concert_key="C", chart_key=chart)
+        self.assertEqual(shown, "D")
+        self.assertEqual(shown_next, "A/C#")
+        insight = chord_coach_insight(
+            shown,
+            key_center=chart,
+            next_chord=shown_next,
+            instrument="Guitar",
+            level="Intermediate",
+        )
+        self.assertIn("A/C#", insight.resolve_hint)
+        self.assertNotIn("G/B", insight.resolve_hint)
+        self.assertEqual(insight.chord, "D")
+
+    def test_harmony_map_guide_prose_uses_projected_identity(self) -> None:
+        from improvisation_harmony import analyze_chord_for_harmony_map
+        from improvisation_intelligence import ImprovSessionContext
+
+        ctx = ImprovSessionContext(
+            song_title="Let It Be",
+            artist="The Beatles",
+            key_center="C",
+            display_key="D",
+            instrument="Guitar",
+            level="Intermediate",
+            focus="Improvisation",
+            sections={"Intro": list(LET_IT_BE_INTRO)},
+            bpm=100,
+            style_label="Rock",
+        )
+        guide = analyze_chord_for_harmony_map(
+            "D",
+            improv_ctx=ctx,
+            section="Intro",
+            next_chord="A/C#",
+            prev_chord="",
+        )
+        self.assertEqual(guide.chord, "D")
+        self.assertIn("A/C#", guide.phrase_idea)
+        self.assertNotIn("G/B", guide.phrase_idea)
+        shown_next = musician_facing_chord("G/B", concert_key="C", chart_key="D")
+        self.assertEqual(shown_next, "A/C#")
+
+    def test_written_key_uses_same_projection_helper(self) -> None:
+        from instrument_transposition import (
+            CHART_IN_INSTRUMENT_KEY_KEY,
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
+        )
+        from effective_practice_context import musician_facing_section_map
+
+        session = {
+            "instrument": "Saxophone",
+            WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
+            SELECTED_TRANSPOSING_INSTRUMENT_KEY: "Tenor saxophone (Bb)",
+            CHART_IN_INSTRUMENT_KEY_KEY: True,
+            "display_key": "C",
+            "concert_key": "C",
+        }
+        chart = musician_facing_chart_key(session, "C")
+        self.assertNotEqual(chart, "C")
+        projected = musician_facing_section_map(
+            [("Intro", list(LET_IT_BE_INTRO))],
+            concert_key="C",
+            chart_key=chart,
+        )
+        self.assertNotEqual(projected[0][1], LET_IT_BE_INTRO)
+        self.assertEqual(
+            musician_facing_chord("C", concert_key="C", chart_key=chart),
+            projected[0][1][0],
+        )
+
+
+class TestCreativeReadersFollowActiveSongAndPendingKey(unittest.TestCase):
+    def test_resolve_improv_sections_after_shape_to_viva(self) -> None:
+        from improvisation_intelligence import ImprovSessionContext
+        from improvisation_motif import resolve_improv_sections
+
+        session = {
+            "active_catalog_pick_key": SHAPE_PICK,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": SHAPE_PICK},
+            "song": "Shape of You",
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "improv_song_concert_sections": copy.deepcopy(SHAPE_SECTIONS),
+            "home_sections": copy.deepcopy(SHAPE_SECTIONS),
+        }
+        session["_active_song_identity"] = "shape-old"
+        st = SimpleNamespace(session_state=session)
+        def _sync(ss):
+            ss["improv_song_concert_sections"] = copy.deepcopy(VIVA_SECTIONS)
+            return copy.deepcopy(VIVA_SECTIONS)
+
+        with patch(
+            "songs.music_source.sync_song_improv_sections_to_practice_key",
+            create=True,
+        ):
+            with patch(
+                "workflow_musical_authority.sync_song_improv_sections_to_practice_key",
+                side_effect=_sync,
+            ):
+                on_active_song_identity_changed(
+                    st,
+                    pick_key=VIVA_PICK,
+                    title="Viva La Vida",
+                    artist="Coldplay",
+                    original_key="C",
+                    is_custom=False,
+                    sync_id="viva-1",
+                    default_bpm=138,
+                    default_groove="Pop groove",
+                    default_meter="4/4",
+                    display_key="C",
+                    invalidate_backing=lambda _st: None,
+                    force_reset=True,
+                )
+        self.assertEqual(session.get("song"), "Viva La Vida")
+        self.assertEqual(session.get("active_catalog_pick_key"), VIVA_PICK)
+        self.assertEqual((session.get("selected_song") or {}).get("title"), "Viva La Vida")
+        ctx = ImprovSessionContext(
+            song_title=str(session.get("song") or ""),
+            artist="Coldplay",
+            key_center="C",
+            display_key="C",
+            instrument="Guitar",
+            level="Intermediate",
+            focus="Improvisation",
+            sections=session.get("improv_song_concert_sections") or {},
+            bpm=138,
+            style_label="Pop",
+        )
+        mapped = resolve_improv_sections(session, ctx)
+        flat = [ch for _label, chs in mapped for ch in chs]
+        self.assertTrue(flat)
+        self.assertNotIn("Bm", flat)
+        self.assertIn("C", flat)
+
+    def test_pending_practice_key_is_what_creative_readers_use_same_rerun(self) -> None:
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+        from improvisation_motif import concert_song_sections_from_session
+        from music_workflow_pending_song_practice_key_edit import (
+            queue_pending_song_practice_key_edit,
+        )
+
+        session = {
+            "active_catalog_pick_key": VIVA_PICK,
+            "song": "Viva La Vida",
+            "display_key": "C",
+            "concert_key": "C",
+            "improv_song_concert_sections": copy.deepcopy(VIVA_SECTIONS),
+        }
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id=VIVA_PICK,
+            ),
+            source="test",
+        )
+        blob = WorkflowStateBlob(
+            workflow_owner="song_based_improvisation",
+            workflow_session_id=VIVA_PICK,
+            keys=KeyAuthority(
+                original_tonic="C",
+                original_mode="major",
+                practice_tonic="C",
+                practice_mode="major",
+            ),
+            section_map=copy.deepcopy(VIVA_SECTIONS),
+        )
+        save_workflow_blob(session, blob, source="test")
+        queued = queue_pending_song_practice_key_edit(
+            session,
+            selected_key_token="D",
+            workflow_owner="song_based_improvisation",
+            workflow_session_id=VIVA_PICK,
+        )
+        self.assertIsNotNone(queued)
+        self.assertEqual(_authoritative_practice_chart_key(session, "C"), "D")
+        sections = concert_song_sections_from_session(session)
+        verse = list((sections or {}).get("Verse") or [])
+        self.assertEqual(verse[0], "D")
+        stored = get_workflow_blob(session, "song_based_improvisation", VIVA_PICK)
+        assert stored is not None
+        self.assertEqual(str(stored.keys.practice_tonic), "C")
+
+    def test_identity_change_uses_song_data_sections_not_prior_chart(self) -> None:
+        let_pick = format_pick_key("Rock", "Let It Be — The Beatles")
+        dance_pick = format_pick_key("Pop", "Dance Monkey — Tones and I")
+        let_sections = {"Intro": list(LET_IT_BE_INTRO), "Verse": list(LET_IT_BE_INTRO)}
+        dance_sections = {"Intro": list(DANCE_MONKEY_INTRO), "Verse 1": list(DANCE_MONKEY_INTRO)}
+        dance_row = {
+            "title": "Dance Monkey",
+            "artist": "Tones and I",
+            "key": "F#m",
+            "pick_key": dance_pick,
+            "sections": copy.deepcopy(dance_sections),
+        }
+        session = {
+            "active_catalog_pick_key": let_pick,
+            "selected_song": {
+                "title": "Let It Be",
+                "artist": "The Beatles",
+                "key": "C",
+                "pick_key": let_pick,
+                "sections": copy.deepcopy(let_sections),
+            },
+            "song": "Let It Be",
+            "display_key": "C",
+            "concert_key": "C",
+            "improv_song_concert_sections": copy.deepcopy(let_sections),
+            "home_sections": copy.deepcopy(let_sections),
+            "_reconcile_song_library": {"Pop": {"Dance Monkey — Tones and I": copy.deepcopy(dance_row)}},
+            "_reconcile_song_picker_catalog": {
+                "Pop": {"Dance Monkey — Tones and I": copy.deepcopy(dance_row)}
+            },
+        }
+        session["_active_song_identity"] = "let-it-be-old"
+        st = SimpleNamespace(session_state=session)
+        on_active_song_identity_changed(
+            st,
+            pick_key=dance_pick,
+            title="Dance Monkey",
+            artist="Tones and I",
+            original_key="F#m",
+            is_custom=False,
+            sync_id="dance-1",
+            default_bpm=98,
+            default_groove="Pop groove",
+            default_meter="4/4",
+            display_key="F#m",
+            song_data=copy.deepcopy(dance_row),
+            invalidate_backing=lambda _st: None,
+            force_reset=True,
+        )
+        concert = session.get("improv_song_concert_sections") or {}
+        intro = list(concert.get("Intro") or [])
+        self.assertEqual(intro[:4], DANCE_MONKEY_INTRO)
+        self.assertNotIn("G/B", str(concert))
+        self.assertNotIn("Am7", str(concert))
+        self.assertEqual((session.get("selected_song") or {}).get("title"), "Dance Monkey")
+        self.assertEqual(session.get("song"), "Dance Monkey")
+
+    def test_shape_to_viva_song_data_replaces_bm_without_mocked_sync(self) -> None:
+        viva_row = {
+            "title": "Viva La Vida",
+            "artist": "Coldplay",
+            "key": "C",
+            "pick_key": VIVA_PICK,
+            "sections": copy.deepcopy(VIVA_SECTIONS),
+        }
+        session = {
+            "active_catalog_pick_key": SHAPE_PICK,
+            "selected_song": {
+                "title": "Shape of You",
+                "key": "Bm",
+                "pick_key": SHAPE_PICK,
+                "sections": copy.deepcopy(SHAPE_SECTIONS),
+            },
+            "song": "Shape of You",
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "improv_song_concert_sections": copy.deepcopy(SHAPE_SECTIONS),
+            "home_sections": copy.deepcopy(SHAPE_SECTIONS),
+            "_reconcile_song_library": {"Pop": {"Viva La Vida — Coldplay": copy.deepcopy(viva_row)}},
+            "_reconcile_song_picker_catalog": {
+                "Pop": {"Viva La Vida — Coldplay": copy.deepcopy(viva_row)}
+            },
+        }
+        session["_active_song_identity"] = "shape-old"
+        st = SimpleNamespace(session_state=session)
+        on_active_song_identity_changed(
+            st,
+            pick_key=VIVA_PICK,
+            title="Viva La Vida",
+            artist="Coldplay",
+            original_key="C",
+            is_custom=False,
+            sync_id="viva-1",
+            default_bpm=138,
+            default_groove="Pop groove",
+            default_meter="4/4",
+            display_key="C",
+            song_data=copy.deepcopy(viva_row),
+            invalidate_backing=lambda _st: None,
+            force_reset=True,
+        )
+        concert = session.get("improv_song_concert_sections") or {}
+        verse = list(concert.get("Verse") or [])
+        self.assertEqual(verse, VIVA_SECTIONS["Verse"])
+        self.assertNotIn("Bm", verse)
+
+
 if __name__ == "__main__":
     unittest.main()

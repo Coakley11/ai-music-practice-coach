@@ -283,13 +283,36 @@ def render_deep_harmonic_analyzer_tab(
     )
 
     ext = song_data.get("extensions") or {}
+    concert = str(improv_ctx.key_center or "C")
+    chart = str(improv_ctx.display_key or concert)
+    try:
+        from effective_practice_context import (
+            musician_facing_chart_key,
+            musician_facing_chords,
+            musician_facing_sections_dict,
+        )
+
+        chart = musician_facing_chart_key(session_state, concert) or chart
+        display_sections = musician_facing_sections_dict(
+            improv_ctx.sections or {},
+            concert_key=concert,
+            chart_key=chart,
+        )
+        display_flat = musician_facing_chords(
+            list(improv_ctx.progression_flat or []),
+            concert_key=concert,
+            chart_key=chart,
+        )
+    except ImportError:
+        display_sections = improv_ctx.sections
+        display_flat = list(improv_ctx.progression_flat or [])
     lesson = build_deep_harmonic_lesson(
         HarmonicAnalysisInput(
             song_title=improv_ctx.song_title,
             artist=improv_ctx.artist,
-            key_center=improv_ctx.key_center,
-            display_key=improv_ctx.display_key,
-            sections=improv_ctx.sections,
+            key_center=chart,
+            display_key=chart,
+            sections=display_sections,
             section_order=list(improv_ctx.section_order or []),
             instrument=live_inst,
             level=live_level,
@@ -298,7 +321,7 @@ def render_deep_harmonic_analyzer_tab(
             bpm=improv_ctx.bpm,
             time_signature=str(ext.get("time_signature") or ""),
             arrangement_notes=str(ext.get("arrangement_notes") or ""),
-            progression_flat=list(improv_ctx.progression_flat or []),
+            progression_flat=display_flat,
         )
     )
     render_deep_harmonic_lesson(st, session_state, lesson)

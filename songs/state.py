@@ -914,7 +914,7 @@ def apply_pick_key(
         existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
         return existing if isinstance(existing, dict) else {}
     data = song_picker_catalog[genre][label]
-    st.session_state[SELECTED_SONG_STATE_KEY] = {
+    selected_payload = {
         "pick_key": pick_key,
         "title": data["title"],
         "artist": data["artist"],
@@ -922,6 +922,14 @@ def apply_pick_key(
         "label": label,
         "key": data.get("key") or "",
     }
+    data_sections = data.get("sections")
+    if isinstance(data_sections, dict) and data_sections:
+        selected_payload["sections"] = {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in data_sections.items()
+            if isinstance(chords, list)
+        }
+    st.session_state[SELECTED_SONG_STATE_KEY] = selected_payload
     prev = st.session_state.get(_LAST_PICK_KEY)
     st.session_state[_LAST_PICK_KEY] = pick_key
     st.session_state["active_genre"] = genre
@@ -957,6 +965,17 @@ def apply_pick_key(
                 artist=str(data.get("artist") or ""),
                 fallback=data,
             )
+        lib_sections = lib_record.get("sections") if isinstance(lib_record, dict) else None
+        if isinstance(lib_sections, dict) and lib_sections:
+            live_sel = dict(st.session_state.get(SELECTED_SONG_STATE_KEY) or selected_payload)
+            live_sel["sections"] = {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in lib_sections.items()
+                if isinstance(chords, list)
+            }
+            if lib_record.get("key"):
+                live_sel["key"] = str(lib_record.get("key") or live_sel.get("key") or "")
+            st.session_state[SELECTED_SONG_STATE_KEY] = live_sel
         original_key = str(lib_record.get("key") or data.get("key") or "C").strip() or "C"
         default_bpm = canonical_active_song_bpm(lib_record)
         from songs.playback_defaults import default_groove_for_song, get_song_default_meter

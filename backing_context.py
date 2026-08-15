@@ -2789,7 +2789,6 @@ def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
         "improv_entry_mode",
         "improv_generated_sections",
         "improv_jam_session",
-        "improv_song_concert_sections",
         "improv_style_meta",
         "improv_style",
         "improv_jam_style",
