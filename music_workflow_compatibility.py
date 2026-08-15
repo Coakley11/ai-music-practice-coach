@@ -91,6 +91,17 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         pick = str(session.get("active_catalog_pick_key") or session.get("song") or "song").strip()
         return f"mission|catalog|{pick}"
     if owner == "style_jam":
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr and str(ptr.workflow_owner or "") == "style_jam" and str(ptr.workflow_session_id or "").strip():
+                return str(ptr.workflow_session_id).strip()
+        except ImportError:
+            pass
+        stored = str(session.get("_style_jam_workflow_session_id") or "").strip()
+        if stored:
+            return stored
         record_legacy_field_read(session, "improv_style", adapter="session_id")
         return str(session.get("improv_style") or "style_jam").strip() or "style_jam"
     if owner == "jam_session_generator":

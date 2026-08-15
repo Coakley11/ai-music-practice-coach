@@ -92,21 +92,28 @@ class TestBackingLaunchIdRoutePreservation(unittest.TestCase):
     def test_jam_generator_bpm_sync_preserves_route_and_launch_id(self) -> None:
         session = _jam_generator_session()
         route, launch_id = self._open_and_seal(session, source="entry_jam")
+        ctx_before = get_backing_context(session)
+        assert ctx_before is not None
+        source_bpm = int(ctx_before.bpm or 0)
         sig_before, sig_after, changed = _simulate_bpm_signature_change(session)
-        self.assertNotEqual(sig_before, sig_after)
-        self.assertIn("bpm", changed)
+        self.assertEqual(sig_before, sig_after)
+        self.assertNotIn("bpm", changed)
         raw = session.get(BACKING_CONTEXT_KEY)
         assert isinstance(raw, dict)
         self.assertEqual(str(raw.get(BACKING_SESSION_LAUNCH_ID_BLOB_KEY) or ""), launch_id)
         self.assertEqual(get_creative_return_route(session), route)
+        ctx_after = get_backing_context(session)
+        assert ctx_after is not None
+        self.assertEqual(int(ctx_after.bpm or 0), source_bpm)
+        self.assertNotEqual(int(session.get("backing_track_bpm") or 0), source_bpm)
         self._assert_return_origin(session, route, entry_mode="Jam Session Generator")
 
     def test_entry_style_bpm_sync_preserves_route(self) -> None:
         session = _style_jam_like_session()
         route, launch_id = self._open_and_seal(session, source="entry_jam")
         sig_before, sig_after, changed = _simulate_bpm_signature_change(session)
-        self.assertNotEqual(sig_before, sig_after)
-        self.assertIn("bpm", changed)
+        self.assertEqual(sig_before, sig_after)
+        self.assertNotIn("bpm", changed)
         self.assertEqual(get_creative_return_route(session), route)
         self._assert_return_origin(session, route, entry_mode="Style Jam Mode")
 
@@ -115,8 +122,8 @@ class TestBackingLaunchIdRoutePreservation(unittest.TestCase):
         session["improv_intelligence_tab"] = "Entry & Jam"
         route, _launch_id = self._open_and_seal(session, source="song_improv")
         sig_before, sig_after, changed = _simulate_bpm_signature_change(session)
-        self.assertNotEqual(sig_before, sig_after)
-        self.assertTrue(changed)
+        self.assertEqual(sig_before, sig_after)
+        self.assertNotIn("bpm", changed)
         self.assertEqual(get_creative_return_route(session), route)
         self._assert_return_origin(session, route, entry_mode="Song-Based Improvisation")
 
@@ -124,8 +131,8 @@ class TestBackingLaunchIdRoutePreservation(unittest.TestCase):
         session = _mission_backing_session()
         route, _launch_id = self._open_and_seal(session, source="mission")
         sig_before, sig_after, changed = _simulate_bpm_signature_change(session)
-        self.assertNotEqual(sig_before, sig_after)
-        self.assertTrue(changed)
+        self.assertEqual(sig_before, sig_after)
+        self.assertNotIn("bpm", changed)
         self.assertEqual(get_creative_return_route(session), route)
         self._assert_return_origin(
             session,

@@ -230,11 +230,12 @@ def commit_style_jam_generation(
         snapshot_song_practice_key_if_needed(session)
     except ImportError:
         pass
-    style_id = str(session.get("improv_style") or style or "style_jam").strip() or "style_jam"
+    style_id = str(style or session.get("improv_style") or "style_jam").strip() or "style_jam"
     ptr = get_active_workflow_pointer(session)
     sid = style_id
     if ptr and ptr.workflow_owner == "style_jam" and not new_session:
         sid = ptr.workflow_session_id or sid
+    session["_style_jam_workflow_session_id"] = sid
     pt, pm = _tonic_mode_from_token(key_center)
 
     def _mut(b: WorkflowStateBlob) -> None:
@@ -301,7 +302,7 @@ def commit_jam_session_generation(
     jam = seal_jam_session_musical_context(jam, key_center=key_center, sections=sections)
     sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
     try:
-        tempo_bpm = int(jam.get("bpm") or session.get("improv_jam_bpm") or 0)
+        tempo_bpm = int(session.get("improv_jam_bpm") or jam.get("bpm") or 0)
     except (TypeError, ValueError):
         tempo_bpm = 0
     mood = str(jam.get("mood") or jam.get("atmosphere") or session.get("improv_jam_mood") or "Mellow")

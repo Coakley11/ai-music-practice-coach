@@ -572,7 +572,16 @@ def apply_creative_session_to_session(
     def _set(key: str, value: Any) -> None:
         if (
             widget_safe
-            and key in {"improv_mood", "improv_difficulty", "improv_groove", "improv_jam_mood"}
+            and key in {
+                "improv_mood",
+                "improv_difficulty",
+                "improv_groove",
+                "improv_jam_mood",
+                "improv_style",
+                "improv_style_bpm",
+                "improv_jam_style",
+                "improv_jam_bpm",
+            }
             and str(session.get(key) or "").strip()
         ):
             return

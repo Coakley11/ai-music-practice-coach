@@ -405,15 +405,21 @@ def render_improvisation_intelligence_lab(
 
     inject_creative_studio_styles(st)
 
-    chart_key = _authoritative_practice_chart_key(session_state, chart_key)
+    concert_key = _authoritative_practice_chart_key(session_state, chart_key)
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        display_chart = musician_facing_chart_key(session_state, concert_key)
+    except ImportError:
+        display_chart = concert_key
     sections = _authoritative_concert_sections(session_state, sections)
 
     _section_order = list(song_data.get("section_order") or ctx.get("section_order") or list(sections.keys()))
     improv_ctx = ImprovSessionContext(
         song_title=song_title,
         artist=artist,
-        key_center=str(ctx.get("practice_concert_key") or ctx.get("concert_key") or chart_key or "C"),
-        display_key=chart_key,
+        key_center=concert_key,
+        display_key=display_chart,
         instrument=instrument,
         level=level,
         focus=str(ctx.get("focus") or "Improvisation"),
@@ -933,7 +939,7 @@ def _tab_entry_modes(
                 70,
                 180,
                 key="improv_jam_bpm",
-                step=5,
+                step=1,
                 on_change=on_improv_jam_setting_change,
             )
             st.selectbox(
@@ -2390,11 +2396,15 @@ def _maybe_refresh_mission_example_outputs(
     from improvisation_missions import mission_example_fingerprint, mission_example_for_display
 
     concert = str(
-        session_state.get("concert_key")
+        example.concert_key
         or session_state.get("improv_song_concert_key")
-        or example.concert_key
-        or example.display_key
-    )
+        or ""
+    ).strip()
+    try:
+        concert = _authoritative_practice_chart_key(session_state, concert or example.concert_key or example.display_key)
+    except Exception:
+        if not concert:
+            concert = str(session_state.get("concert_key") or example.concert_key or example.display_key or "")
     try:
         from effective_practice_context import musician_facing_chart_key
 
@@ -2402,11 +2412,13 @@ def _maybe_refresh_mission_example_outputs(
     except ImportError:
         chart = str(example.display_key or concert)
     fp = mission_example_fingerprint(example)
+    projected = str((example.motif or {}).get("_projected_display_key") or "")
     spell_fp = str((example.motif or {}).get("spelling_reference") or "")
     needs = (
         session_state.get("_mission_example_output_fp") != fp
         or not spell_fp
-        or str(chart or "") != str(concert or "")
+        or projected != str(chart or "")
+        or str(example.concert_key or "") != str(concert or "")
     )
     if not needs:
         return example
@@ -2572,6 +2584,37 @@ def _tab_missions(
             sync_song_improv_sections_to_practice_key(session_state)
         except ImportError:
             pass
+
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    blob_key = str(improv_ctx.key_center or concert_key)
+    try:
+        from workflow_key_identity import resolve_song_practice_key_identity
+
+        ident = resolve_song_practice_key_identity(session_state)
+        if ident is not None and str(ident.practice_key_token or "").strip():
+            blob_key = str(ident.practice_key_token)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_pending_song_practice_key_edit import overlay_sections_with_pending_practice_key
+
+        if isinstance(improv_ctx.sections, dict) and improv_ctx.sections:
+            overlayed = overlay_sections_with_pending_practice_key(
+                session_state,
+                dict(improv_ctx.sections),
+                spelled_in_key=blob_key,
+            )
+            improv_ctx = replace(
+                improv_ctx,
+                sections=overlayed,
+                key_center=concert_key,
+                display_key=chart_key,
+            )
+        else:
+            improv_ctx = replace(improv_ctx, key_center=concert_key, display_key=chart_key)
+    except ImportError:
+        improv_ctx = replace(improv_ctx, key_center=concert_key, display_key=chart_key)
+
     try:
         from active_musical_workflow_envelope import (
             inspect_mission_workflow_envelope,
@@ -2655,10 +2698,18 @@ def _tab_missions(
         session_state,
         key_prefix="improv_mission",
         source_id=_improv_source_id(session_state, improv_ctx),
-        key_center=improv_ctx.key_center,
+        key_center=concert_key,
     )
     cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
+    try:
+        from music_workflow_pending_song_practice_key_edit import overlay_chord_with_pending_practice_key
+
+        cur_chord = overlay_chord_with_pending_practice_key(
+            session_state, cur_chord, spelled_in_key=blob_key
+        )
+    except ImportError:
+        pass
     practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
     try:
         from effective_practice_context import musician_facing_chart_key, musician_facing_chord

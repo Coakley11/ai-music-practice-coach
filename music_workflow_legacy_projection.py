@@ -240,11 +240,24 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     elif owner == "style_jam":
         session["improv_entry_mode"] = "Style Jam Mode"
         session["improv_style_key"] = key_token
-        session["improv_style"] = str(blob.style or blob.generated_session_id or "").strip()
-        session["improv_mood"] = str(blob.mood or "").strip()
-        session["improv_groove"] = str(blob.groove or "").strip()
-        if blob.tempo_bpm:
-            session["improv_style_bpm"] = int(blob.tempo_bpm)
+        skip_style_controls = False
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            skip_style_controls = bool(widgets_likely_instantiated(session))
+        except ImportError:
+            skip_style_controls = False
+        if str(mutation_source or "") in {
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+        }:
+            skip_style_controls = True
+        if not skip_style_controls:
+            session["improv_style"] = str(blob.style or blob.generated_session_id or "").strip()
+            session["improv_mood"] = str(blob.mood or "").strip()
+            session["improv_groove"] = str(blob.groove or "").strip()
+            if blob.tempo_bpm:
+                session["improv_style_bpm"] = int(blob.tempo_bpm)
         if blob.section_map:
             session["improv_generated_sections"] = copy.deepcopy(blob.section_map)
         try:
@@ -263,10 +276,23 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     elif owner == "jam_session_generator":
         session["improv_entry_mode"] = "Jam Session Generator"
         session["improv_jam_key"] = key_token
-        session["improv_jam_style"] = str(blob.style or "").strip()
-        session["improv_jam_mood"] = str(blob.mood or "").strip()
-        if blob.tempo_bpm:
-            session["improv_jam_bpm"] = int(blob.tempo_bpm)
+        skip_jam_controls = False
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            skip_jam_controls = bool(widgets_likely_instantiated(session))
+        except ImportError:
+            skip_jam_controls = False
+        if str(mutation_source or "") in {
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+        }:
+            skip_jam_controls = True
+        if not skip_jam_controls:
+            session["improv_jam_style"] = str(blob.style or "").strip()
+            session["improv_jam_mood"] = str(blob.mood or "").strip()
+            if blob.tempo_bpm:
+                session["improv_jam_bpm"] = int(blob.tempo_bpm)
         try:
             from improv_jam_session_projection import build_improv_jam_session_from_blob, set_improv_jam_session
 

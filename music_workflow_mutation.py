@@ -352,13 +352,21 @@ def commit_staged_workflow(
         canonical_keep = mutation_type == "practice_key_change" and owner in {
             "style_jam",
             "jam_session_generator",
+            "mission_jam",
+            "song_based_improvisation",
         }
         if not canonical_keep and str(source or "") in {
             "on_improv_style_key_change",
             "on_improv_jam_key_change",
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+            "sidebar_song_improv",
         }:
             canonical_keep = True
-        if not canonical_keep and mutation_type == "mission_example_artifact":
+        if not canonical_keep and mutation_type in {
+            "mission_example_artifact",
+            "style_jam_control_settings",
+        }:
             canonical_keep = True
         if canonical_keep:
             trace["validation_result"] = "defer"

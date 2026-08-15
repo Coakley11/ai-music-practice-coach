@@ -1533,16 +1533,6 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
                     pass
 
     bpm = int(style_meta.get("bpm") or session.get("improv_style_bpm") or _default_bpm(session))
-    existing = get_backing_context(session)
-    live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
-    if (
-        existing
-        and existing.source == "mission"
-        and existing.mission_id == (mission_id or None)
-        and str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "") == str(existing.source_signature or "")
-        and live_bpm > 0
-    ):
-        bpm = live_bpm
     groove = str(style_meta.get("groove") or session.get("improv_groove") or _default_groove(session)).strip()
     style = str(style_meta.get("style") or session.get("improv_style") or "").strip()
     meter = str(
@@ -1948,10 +1938,6 @@ def apply_backing_context_to_session(
         apply_transport_bpm = not transport_already
     if apply_transport_bpm and ctx.source in {"entry_jam", "mission", "song_improv"}:
         session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
-    elif not apply_transport_bpm and ctx.source in {"entry_jam", "mission", "song_improv"}:
-        live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
-        if live_bpm > 0:
-            ctx.bpm = live_bpm
 
     if ctx.source == "custom_progression":
         try:
@@ -3175,13 +3161,9 @@ def _sync_creative_backing_transport_handoff(
     backing_style = _backing_groove_style_from_ctx(ctx)
     sig = str(ctx.source_signature or "").strip()
     seeded = str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip() == sig
-    live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
     if not seeded:
         request_backing_bpm(st_like, int(ctx.bpm))
         session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
-    elif live_bpm > 0 and ctx.bpm != live_bpm:
-        ctx.bpm = live_bpm
-        set_backing_context(session, ctx, trace_caller="backing_context:_sync_creative_backing_transport_handoff:bpm_sync")
     request_backing_groove(st_like, backing_style)
     if ctx.meter:
         session["_pending_backing_meter"] = str(ctx.meter)

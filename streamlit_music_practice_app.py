@@ -9052,12 +9052,9 @@ def _render_backing_scope_controls(
         _cur_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
         if _cur_scope not in _scope_choices:
             _cur_scope = "Selected sections" if _cur_scope == "Selected sections" else "Full song"
-        st.session_state["backing_track_scope"] = _cur_scope
+            st.session_state["backing_track_scope"] = _cur_scope
         if _cur_scope == "Selected sections":
             seed_backing_multi_sections_for_widget(st.session_state, section_names)
-        else:
-            st.session_state.pop("backing_track_single_section", None)
-            st.session_state.pop("backing_track_multi_sections", None)
 
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
         render_backing_field_label(
@@ -9262,7 +9259,7 @@ def _render_backing_step2_playback_action(
             "Quick BPM",
             min_value=BACKING_BPM_MIN,
             max_value=BACKING_BPM_MAX,
-            step=5,
+            step=1,
             key=slider_key,
             label_visibility="collapsed",
             help="Your tempo is kept until you change songs (20–180 BPM).",
@@ -9861,6 +9858,12 @@ elif _studio_page_for_hydrate == "backing":
         from backing_source_navigation import hydrate_backing_source_for_page
 
         hydrate_backing_source_for_page(st.session_state, st_like=st)
+        try:
+            from backing_play_session import sync_backing_play_session_on_backing_page
+
+            sync_backing_play_session_on_backing_page(st.session_state)
+        except ImportError:
+            pass
     except ImportError:
         pass
 elif _studio_page_for_hydrate == "creative":
@@ -10161,6 +10164,12 @@ def _on_backing_filter_change() -> None:
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
+        try:
+            from backing_play_session import capture_backing_play_session_overrides
+
+            capture_backing_play_session_overrides(st.session_state)
+        except ImportError:
+            pass
     except Exception:
         return
     _sync_canonical_backing_after_edit()
@@ -12553,6 +12562,12 @@ elif _studio_page == "backing":
         from backing_source_navigation import hydrate_backing_source_for_page
 
         hydrate_backing_source_for_page(st.session_state, st_like=st)
+        try:
+            from backing_play_session import sync_backing_play_session_on_backing_page
+
+            sync_backing_play_session_on_backing_page(st.session_state)
+        except ImportError:
+            pass
     except ImportError:
         pass
     try:
@@ -13174,14 +13189,9 @@ elif _studio_page == "backing":
     _locked_creative_style = default_groove_style
     _locked_creative_meter = _backing_source_default_meter
     if _creative_backing_ctx is not None and _creative_backing_ctx.source == "entry_jam":
-        try:
-            from creative_key_sync import is_creative_major_jam_active
-
-            _lock_creative_style_meter = is_creative_major_jam_active(st.session_state)
-            _locked_creative_style = str(_creative_backing_ctx.style or default_groove_style)
-            _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
-        except ImportError:
-            pass
+        # Advanced Style/Meter are ephemeral play-session overrides, not generated-source locks.
+        _locked_creative_style = str(_creative_backing_ctx.style or default_groove_style)
+        _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
     bpm, _play_clicked = _render_backing_step2_playback_action(
         song_id=_bpm_sync_id,
         default_bpm=_backing_source_default_bpm,

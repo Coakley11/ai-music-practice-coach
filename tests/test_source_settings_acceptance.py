@@ -125,7 +125,8 @@ class TestCreativeCatalogIsolation(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
         sync_backing_bpm_from_slider(st, slider_bpm=60)
         self.assertNotIn(shape, session.get(BPM_BY_SOURCE_KEY, {}))
-        self.assertEqual(session[BPM_BY_SOURCE_KEY].get(CREATIVE_STYLE_JAM_PICK), 60)
+        self.assertNotIn(CREATIVE_STYLE_JAM_PICK, session.get(BPM_BY_SOURCE_KEY, {}))
+        self.assertEqual(int(session.get("backing_track_bpm") or 0), 60)
 
     def test_catalog_rebuild_uses_bm_not_creative_leak(self) -> None:
         from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
@@ -269,7 +270,7 @@ class TestPerSourceBpmIsolation(unittest.TestCase):
         }
         self.assertEqual(get_source_bpm(session, shape, default=96), 88)
 
-    def test_bpm_slider_writes_bpm_by_source(self) -> None:
+    def test_bpm_slider_writes_play_session_not_song_source(self) -> None:
         shape = _shape_pick()
         st = SimpleNamespace(
             session_state={
@@ -278,7 +279,11 @@ class TestPerSourceBpmIsolation(unittest.TestCase):
             }
         )
         sync_backing_bpm_from_slider(st, slider_bpm=105)
-        self.assertEqual(st.session_state[BPM_BY_SOURCE_KEY][shape], 105)
+        self.assertNotIn(shape, st.session_state.get(BPM_BY_SOURCE_KEY, {}))
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        self.assertTrue(backing_play_session_has_override(st.session_state, "bpm"))
+        self.assertEqual(int(effective_backing_play_overrides(st.session_state).get("bpm") or 0), 105)
 
     def test_sources_do_not_share_keys(self) -> None:
         trial = "custom::trial-1"

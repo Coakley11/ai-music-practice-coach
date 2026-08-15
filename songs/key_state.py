@@ -147,9 +147,16 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
 
 def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
     """Normalize widget spelling to the active song mode (Cm vs C minor, etc.)."""
+    text = str(raw or "C").strip() or "C"
+    try:
+        from songs.practice_key_state import creative_jam_owns_practice_settings
+
+        if creative_jam_owns_practice_settings(session):
+            return text
+    except ImportError:
+        pass
     selected = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str(selected.get("key") or session.get("original_key") or "C").strip() or "C"
-    text = str(raw or "C").strip() or "C"
     return coerce_key_to_mode(text, key_mode(original))
 
 

@@ -159,6 +159,20 @@ def resolve_backing_bpm_for_slider(
         return canonical
 
     try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(st.session_state, "bpm"):
+            resolved = effective_backing_play_overrides(st.session_state)
+            override_bpm = normalize_backing_bpm(resolved.get("bpm"))
+            if override_bpm:
+                st.session_state[slider_key] = override_bpm
+                st.session_state[BPM_WIDGET_KEY] = override_bpm
+                st.session_state["bpm"] = override_bpm
+                return override_bpm
+    except ImportError:
+        pass
+
+    try:
         from songs.practice_key_state import consume_force_bpm_sync
 
         if consume_force_bpm_sync(st.session_state, sync_id):
@@ -225,45 +239,10 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
     st.session_state["backing_track_bpm"] = bpm
-    jam_owns = False
     try:
-        from workflow_key_identity import generated_workflow_owns_practice_key
+        from backing_play_session import capture_backing_play_session_overrides
 
-        jam_owns = bool(generated_workflow_owns_practice_key(st.session_state))
-    except ImportError:
-        try:
-            from backing_context import get_backing_context
-
-            ctx = get_backing_context(st.session_state)
-            jam_owns = ctx is not None and str(ctx.source or "") == "entry_jam"
-        except ImportError:
-            jam_owns = False
-    if jam_owns:
-        entry = str(st.session_state.get("improv_entry_mode") or "").strip()
-        if entry == "Jam Session Generator":
-            st.session_state["improv_jam_bpm"] = bpm
-        else:
-            st.session_state["improv_style_bpm"] = bpm
-        try:
-            from music_workflow_generated_session import commit_style_jam_control_settings
-
-            commit_style_jam_control_settings(st.session_state)
-        except ImportError:
-            pass
-        try:
-            from creative_key_sync import invalidate_creative_backing_context, sync_creative_style_jam_meta
-
-            sync_creative_style_jam_meta(st.session_state)
-            invalidate_creative_backing_context(st.session_state)
-        except ImportError:
-            pass
-        return bpm
-    try:
-        from songs.practice_key_state import resolve_practice_source_pick, set_source_bpm
-
-        pick = resolve_practice_source_pick(st.session_state)
-        if pick:
-            set_source_bpm(st.session_state, bpm, pick_key=pick)
+        capture_backing_play_session_overrides(st.session_state)
     except ImportError:
         pass
     return bpm
@@ -447,10 +426,16 @@ def canonicalize_backing_defaults_for_song(
                     pass
             else:
                 try:
+                    from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
                     from backing_track_state import is_backing_user_dirty
 
-                    if is_backing_user_dirty(st.session_state):
-                        norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
+                    if backing_play_session_has_override(st.session_state, "bpm") or is_backing_user_dirty(st.session_state):
+                        resolved = effective_backing_play_overrides(st.session_state)
+                        override_bpm = int(resolved.get("bpm") or 0)
+                        if override_bpm > 0:
+                            norm_bpm = override_bpm
+                        else:
+                            norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
                         live_groove = str(st.session_state.get(BACKING_GROOVE_KEY) or st.session_state.get("backing_groove_style") or "").strip()
                         if live_groove:
                             norm_groove = normalize_groove_label(live_groove)

@@ -247,6 +247,13 @@ def _clear_spurious_backing_dirty(session: dict[str, Any]) -> None:
 
 def _should_seed_widgets_from_canonical(session: dict[str, Any]) -> bool:
     """True when canonical may hydrate widget keys (restore / first load), not mid-edit reruns."""
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            return False
+    except ImportError:
+        pass
     if is_backing_user_dirty(session):
         return False
     if session.get(BACKING_PENDING_SYNC_KEY):
@@ -650,6 +657,13 @@ def bind_backing_rendered_widgets_from_canonical(
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
     if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    except ImportError:
+        pass
 
     canonical = canonical_backing_filters(session)
     if canonical is None:
@@ -1010,6 +1024,16 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
 
 
 def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int = 100) -> int:
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "bpm"):
+            resolved = int(effective_backing_play_overrides(session).get("bpm") or 0)
+            if resolved > 0:
+                session["backing_track_bpm"] = resolved
+                return resolved
+    except ImportError:
+        pass
     if not is_backing_user_dirty(session) and _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))

@@ -426,20 +426,41 @@ def refresh_mission_example(
     concert_auth = str(song_concert_key or example.concert_key or "").strip()
     spell_display = str(example.display_key or concert_auth).strip()
     display_motif = dict(example.motif or {})
-    display_chord = str(example.chord or "").strip()
+    concert_chord = str(display_motif.get("_concert_chord") or example.chord or "").strip()
+    concert_notes = display_motif.get("_concert_notes")
+    already_projected = str(display_motif.get("_projected_display_key") or "").strip()
+    if not isinstance(concert_notes, list) or not concert_notes:
+        if not already_projected:
+            concert_notes = list(display_motif.get("notes") or [])
+            display_motif["_concert_notes"] = list(concert_notes)
+            display_motif["_concert_chord"] = concert_chord
+        else:
+            concert_notes = None
+    display_chord = concert_chord
     if concert_auth and spell_display and concert_auth != spell_display:
         try:
             from effective_practice_context import musician_facing_chord
-            from music_theory import semitone_distance, transpose_chord
+
+            display_chord = musician_facing_chord(
+                concert_chord,
+                concert_key=concert_auth,
+                chart_key=spell_display,
+            )
+        except ImportError:
+            display_chord = concert_chord
+    if concert_auth and spell_display and concert_auth != spell_display and isinstance(concert_notes, list):
+        try:
+            from effective_practice_context import musician_facing_chord
+            from music_theory import semitone_distance
             from improvisation_motif import _midi_from_note, _note_from_midi
 
             display_chord = musician_facing_chord(
-                display_chord,
+                concert_chord,
                 concert_key=concert_auth,
                 chart_key=spell_display,
             )
             steps = semitone_distance(concert_auth, spell_display)
-            notes = list(display_motif.get("notes") or [])
+            notes = list(concert_notes or [])
             if steps and notes:
                 out_notes = []
                 for n in notes:
@@ -449,8 +470,15 @@ def refresh_mission_example(
                 display_motif["notes"] = out_notes
                 display_motif["display"] = " – ".join(out_notes)
                 display_motif["chord"] = display_chord
+            display_motif["_projected_display_key"] = spell_display
+            display_motif["_concert_notes"] = list(concert_notes or [])
+            display_motif["_concert_chord"] = concert_chord
         except ImportError:
             pass
+    else:
+        display_motif["_projected_display_key"] = spell_display
+        display_motif["_concert_notes"] = list(concert_notes or [])
+        display_motif["_concert_chord"] = concert_chord
     ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord
@@ -486,6 +514,12 @@ def refresh_mission_example(
     example.show_tab = out["show_tab"]
     example.show_piano = out["show_piano"]
     example.motif = out.get("motif") or display_motif
+    if isinstance(example.motif, dict):
+        example.motif = dict(example.motif)
+        if isinstance(concert_notes, list):
+            example.motif["_concert_notes"] = list(concert_notes)
+        example.motif["_concert_chord"] = concert_chord
+        example.motif["_projected_display_key"] = spell_display
     return example
 
 
@@ -670,6 +704,11 @@ def generate_mission_example(
         idea_variant=(nonce if variant == "new" else (seed % 1000)),
     )
     motif = sync_motif_midi(motif)
+    if isinstance(motif, dict):
+        motif = dict(motif)
+        motif["_concert_notes"] = list(motif.get("notes") or [])
+        motif["_concert_chord"] = str(chord or "").strip()
+        motif.pop("_projected_display_key", None)
     out = rebuild_mission_outputs(
         motif,
         chord=chord,
@@ -865,6 +904,17 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
         motif["display"] = " – ".join(out_notes)
         if motif.get("chord"):
             motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=dest)
+        concert_notes = motif.get("_concert_notes")
+        if isinstance(concert_notes, list) and concert_notes:
+            concert_out = []
+            for n in concert_notes:
+                midi = _midi_from_note(str(n), 4)
+                concert_out.append(_note_from_midi(midi + steps, dest))
+            motif["_concert_notes"] = concert_out
+        concert_chord = str(motif.get("_concert_chord") or "").strip()
+        if concert_chord:
+            motif["_concert_chord"] = transpose_chord(concert_chord, steps, reference_key=dest)
+        motif.pop("_projected_display_key", None)
         try:
             from improvisation_motif import sync_motif_midi
 
@@ -910,11 +960,21 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
     except ImportError:
         pass
     chord = str(raw.get("chord", "C"))
+    display_chord = chord
+    try:
+        from effective_practice_context import musician_facing_chord
+
+        concert = str(improv_ctx.key_center or "").strip()
+        chart = str(improv_ctx.display_key or concert).strip()
+        if concert and chart and concert != chart:
+            display_chord = musician_facing_chord(chord, concert_key=concert, chart_key=chart)
+    except ImportError:
+        display_chord = chord
     try:
         from mission_pitch_spelling import chord_coach_insight_for_mission
 
         insight = chord_coach_insight_for_mission(
-            chord,
+            display_chord,
             song_display_key=improv_ctx.display_key,
             song_key_center=improv_ctx.key_center,
             instrument=str(session_state.get("instrument", improv_ctx.instrument)),
@@ -923,15 +983,15 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
     except ImportError:
         try:
             insight = chord_coach_insight(
-                chord,
+                display_chord,
                 key_center=improv_ctx.display_key,
                 instrument=str(session_state.get("instrument", improv_ctx.instrument)),
                 level=str(session_state.get("level", improv_ctx.level)),
             )
         except Exception:
-            insight = _fallback_chord_insight(chord)
+            insight = _fallback_chord_insight(display_chord)
     except Exception:
-        insight = _fallback_chord_insight(chord)
+        insight = _fallback_chord_insight(display_chord)
     return MissionExample(
         mission=str(raw.get("mission", "")),
         variant=str(raw.get("variant", "normal")),

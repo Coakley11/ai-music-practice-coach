@@ -247,6 +247,15 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     current = str(session_state.get("studio_page", "practice"))
     if current == page_id:
         return False
+    if current == "backing" and page_id != "backing":
+        try:
+            from backing_play_session import expire_backing_play_session_on_page_exit
+
+            expire_backing_play_session_on_page_exit(
+                session_state, previous_page=current, new_page=page_id
+            )
+        except ImportError:
+            pass
     if page_id == "backing":
         try:
             from backing_source_navigation import (
