@@ -1516,10 +1516,18 @@ def rehydrate_creative_from_backing_context(
         from music_workflow_legacy_projection import restore_workflow_blob_to_session
 
         ptr = get_active_workflow_pointer(session)
-        if ptr and str(ptr.workflow_owner or "") == "jam_session_generator":
+        if ptr and str(ptr.workflow_owner or "") in {"jam_session_generator", "style_jam"}:
             blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
             if blob is not None and blob.section_map:
                 restore_workflow_blob_to_session(session, blob)
+                try:
+                    from generated_workflow_projection import project_generated_owner_from_active_blob
+
+                    project_generated_owner_from_active_blob(
+                        session, writer="return_from_backing_generated"
+                    )
+                except ImportError:
+                    pass
                 try:
                     from workflow_key_identity import apply_practice_key_identity_to_session, resolve_active_workflow_key_identity
 
@@ -1528,7 +1536,7 @@ def rehydrate_creative_from_backing_context(
                         apply_practice_key_identity_to_session(
                             session,
                             ident,
-                            source="return_from_backing_jam_blob",
+                            source="return_from_backing_generated_blob",
                             widget_safe=widget_safe,
                         )
                 except ImportError:
@@ -1596,7 +1604,7 @@ def restore_session_widgets_from_backing_context(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()
     concert = _fixed_concert(concert)
-    if concert:
+    if concert and ctx.source not in {"entry_jam"}:
         try:
             from session_widget_safe import safe_assign_display_key
 
@@ -1802,12 +1810,7 @@ def restore_session_widgets_from_backing_context(
             if concert:
                 sess.concert_key = concert
                 if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
-                    try:
-                        from creative_key_sync import to_major_key_preserve_spelling
-
-                        sess.display_key = to_major_key_preserve_spelling(concert)
-                    except ImportError:
-                        sess.display_key = concert
+                    sess.display_key = concert
                 else:
                     sess.display_key = concert
             set_creative_session(session, sess)

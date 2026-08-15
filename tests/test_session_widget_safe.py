@@ -143,7 +143,7 @@ class TestSessionWidgetSafe(unittest.TestCase):
         _lock_widgets(session)
         hydrate_creative_session_for_page(session)
         self.assertEqual(session.get("display_key"), "Bm")
-        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "D")
+        self.assertNotEqual(session.get(PENDING_DISPLAY_KEY), "D")
         self.assertEqual(session.get("improv_style_key"), "D")
 
     def test_apply_with_widget_safe_false_sets_display_key(self) -> None:
@@ -151,7 +151,8 @@ class TestSessionWidgetSafe(unittest.TestCase):
         sess = sync_creative_session_from_session(_style_jam_session())
         assert sess is not None
         apply_creative_session_to_session(session, sess, widget_safe=False)
-        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("improv_style_key"), "D")
+        self.assertNotEqual(session.get("display_key"), "D")
 
     def test_apply_pending_widget_hydrates_overwrites_stale_entry_mode(self) -> None:
         session = {"improv_entry_mode": "Song-Based Improvisation"}
@@ -195,7 +196,7 @@ class TestSessionWidgetSafe(unittest.TestCase):
         ctx = build_entry_jam_context({**session, "improv_style_key": "F"})
         set_backing_context(session, ctx)
         sync_live_keys_from_backing_context(session)
-        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("concert_key"), "G")
         self.assertEqual(session.get("improv_style_key"), "G")
         self.assertEqual(session.get(PENDING_IMPROV_STYLE_KEY), "F")
 

@@ -610,12 +610,17 @@ def render_backing_chord_chart(
     ]
     if shape_sections and capo_shape_key:
         try:
-            from music_theory import format_key_label_from_parts, split_key_center
+            from guitar_capo import shape_chart_label_for_concert
 
-            tonic, mode = split_key_center(str(dk or capo_shape_key))
-            chart_label = format_key_label_from_parts(tonic, mode)
+            chart_label = shape_chart_label_for_concert(str(dk or "C"), capo_shape_key)
         except ImportError:
-            chart_label = str(dk or capo_shape_key)
+            try:
+                from music_theory import format_key_label_from_parts, split_key_center
+
+                tonic, mode = split_key_center(str(dk or capo_shape_key))
+                chart_label = format_key_label_from_parts(tonic, mode)
+            except ImportError:
+                chart_label = str(dk or capo_shape_key)
         meta_bits.append(
             f"Charts in {html.escape(chart_label)}"
             + (f" · capo {capo_fret}" if capo_fret else "")

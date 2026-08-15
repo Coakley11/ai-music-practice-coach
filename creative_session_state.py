@@ -657,6 +657,8 @@ def apply_creative_session_to_session(
             skip_global_key = True
     except ImportError:
         pass
+    if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        skip_global_key = True
     if not skip_global_key:
         if safe_assign_display_key is not None:
             safe_assign_display_key(session, display, widget_safe=widget_safe)

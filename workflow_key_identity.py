@@ -180,7 +180,7 @@ def song_or_mission_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
 
 
 def fixed_practice_key_projection_blocked(session: dict[str, Any]) -> bool:
-    """Catalog fixed-key family must not override generated jam / explicit song practice blob."""
+    """Catalog fixed-key family must not override generated jam concert identity."""
     if generated_workflow_owns_practice_key(session):
         return True
     try:
@@ -191,12 +191,6 @@ def fixed_practice_key_projection_blocked(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
-    if song_or_mission_workflow_owns_practice_key(session):
-        try:
-            if resolve_song_practice_key_token(session):
-                return True
-        except ImportError:
-            pass
     return False
 
 
@@ -295,7 +289,7 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
             ctx_source = str(ctx.source or "").strip()
     except ImportError:
         pass
-    song_owns = ctx_source == "mission" or (
+    song_owns = ctx_source in {"mission", "regular_song", "song_improv"} or (
         song_or_mission_workflow_owns_practice_key(session) and ctx_source != "entry_jam"
     )
     if song_owns:
@@ -359,7 +353,9 @@ def apply_practice_key_identity_to_session(
     try:
         from session_widget_safe import safe_assign_display_key, safe_session_assign
 
-        safe_assign_display_key(session, token, widget_safe=widget_safe)
+        generated = ident.workflow_owner in {"style_jam", "jam_session_generator"}
+        if not generated:
+            safe_assign_display_key(session, token, widget_safe=widget_safe)
         if ident.workflow_owner == "jam_session_generator":
             from creative_key_sync import IMPROV_JAM_KEY_TRACKER, PENDING_IMPROV_JAM_KEY
 
@@ -373,9 +369,10 @@ def apply_practice_key_identity_to_session(
             session[IMPROV_STYLE_KEY_TRACKER] = token
             safe_session_assign(session, "improv_style_key", token, widget_safe=widget_safe)
     except ImportError:
-        session["display_key"] = token
-        session["concert_key"] = token
-        session["_pending_display_key"] = token
+        if ident.workflow_owner not in {"style_jam", "jam_session_generator"}:
+            session["display_key"] = token
+            session["concert_key"] = token
+            session["_pending_display_key"] = token
         if ident.workflow_owner == "jam_session_generator":
             session["improv_jam_key"] = token
         elif ident.workflow_owner == "style_jam":

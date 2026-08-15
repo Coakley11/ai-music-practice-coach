@@ -225,6 +225,39 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
     st.session_state["backing_track_bpm"] = bpm
+    jam_owns = False
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        jam_owns = bool(generated_workflow_owns_practice_key(st.session_state))
+    except ImportError:
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(st.session_state)
+            jam_owns = ctx is not None and str(ctx.source or "") == "entry_jam"
+        except ImportError:
+            jam_owns = False
+    if jam_owns:
+        entry = str(st.session_state.get("improv_entry_mode") or "").strip()
+        if entry == "Jam Session Generator":
+            st.session_state["improv_jam_bpm"] = bpm
+        else:
+            st.session_state["improv_style_bpm"] = bpm
+        try:
+            from music_workflow_generated_session import commit_style_jam_control_settings
+
+            commit_style_jam_control_settings(st.session_state)
+        except ImportError:
+            pass
+        try:
+            from creative_key_sync import invalidate_creative_backing_context, sync_creative_style_jam_meta
+
+            sync_creative_style_jam_meta(st.session_state)
+            invalidate_creative_backing_context(st.session_state)
+        except ImportError:
+            pass
+        return bpm
     try:
         from songs.practice_key_state import resolve_practice_source_pick, set_source_bpm
 

@@ -60,11 +60,44 @@ def refresh_generated_jam_key_context_from_blob(session: dict[str, Any]) -> None
 def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
     if isinstance(session.get(SONG_PRACTICE_KEY_SNAPSHOT_KEY), dict):
         return
+    song_token = ""
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        song_token = str(resolve_song_practice_key_token(session) or "").strip()
+    except ImportError:
+        pass
+    if not song_token:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if pick:
+                song_token = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            pass
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    token = song_token or live
     session[SONG_PRACTICE_KEY_SNAPSHOT_KEY] = {
-        "display_key": str(session.get("display_key") or "").strip(),
-        "concert_key": str(session.get("concert_key") or "").strip(),
-        "practice_concert_key": str(session.get("practice_concert_key") or "").strip(),
+        "display_key": token,
+        "concert_key": token,
+        "practice_concert_key": token,
     }
+    if token:
+        try:
+            from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if pick:
+                store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
+                if not isinstance(store, dict):
+                    store = {}
+                if not str(store.get(pick) or "").strip():
+                    store = dict(store)
+                    store[pick] = token
+                    session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+        except ImportError:
+            pass
 
 
 def activate_generated_jam_key_ownership(
@@ -120,9 +153,10 @@ def activate_generated_jam_key_ownership(
 
         apply_creative_concert_key(session, token, source="generated_jam_key_owner")
     except ImportError:
-        session["concert_key"] = token
-        session["display_key"] = token
-        session["_pending_display_key"] = token
+        if entry == "Jam Session Generator":
+            session["improv_jam_key"] = token
+        else:
+            session["improv_style_key"] = token
 
 
 def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widget: bool = False) -> bool:

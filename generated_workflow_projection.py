@@ -67,8 +67,7 @@ def sync_style_jam_legacy_from_active_blob(
             widget_safe=True,
         )
     except ImportError:
-        session["concert_key"] = token
-        session["display_key"] = token
+        session["improv_style_key"] = token
     try:
         from creative_key_sync import IMPROV_STYLE_KEY_TRACKER
 

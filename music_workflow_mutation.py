@@ -629,6 +629,17 @@ def mutate_mission_chord_selection(
         mirror_mission_keys_from_song_blob(session)
     except ImportError:
         pass
+    practice_before = (
+        str(session.get("display_key") or ""),
+        str(session.get("concert_key") or ""),
+        str(session.get("_pending_display_key") or ""),
+    )
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        song_token_before = str(resolve_song_practice_key_token(session) or "")
+    except ImportError:
+        song_token_before = ""
     ptr = get_active_workflow_pointer(session)
     if ptr is None or ptr.workflow_owner != "mission_jam":
         try:
@@ -750,6 +761,33 @@ def mutate_mission_chord_selection(
             pass
     if chord_changed:
         _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
+    restore_tok = song_token_before or practice_before[0] or practice_before[1]
+    after_display = str(session.get("display_key") or "")
+    after_concert = str(session.get("concert_key") or "")
+    after_pending = str(session.get("_pending_display_key") or "")
+    if restore_tok and (
+        after_display != restore_tok
+        or after_concert != restore_tok
+        or (after_pending and after_pending != restore_tok)
+    ):
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=restore_tok)
+        except ImportError:
+            session["concert_key"] = restore_tok
+            session["_pending_display_key"] = restore_tok
+        try:
+            from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+            ensure_song_practice_blob_for_active_song(
+                session,
+                practice_key=restore_tok,
+                original_key=str((sel or {}).get("key") or ""),
+            )
+        except ImportError:
+            pass
     return result
 
 

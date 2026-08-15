@@ -254,9 +254,6 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             session[IMPROV_STYLE_KEY_TRACKER] = key_token
         except ImportError:
             pass
-        _project_session_field(session, "display_key", key_token)
-        _project_session_field(session, "concert_key", key_token)
-        session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
 
@@ -300,9 +297,6 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:
             pass
-        _project_session_field(session, "display_key", key_token)
-        _project_session_field(session, "concert_key", key_token)
-        session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
 

@@ -471,7 +471,14 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
             or session.get("_pending_display_key")
             or ""
         ).strip()
-        if pending:
+        jam_owns = False
+        try:
+            from workflow_key_identity import generated_workflow_owns_practice_key
+
+            jam_owns = bool(generated_workflow_owns_practice_key(session))
+        except ImportError:
+            jam_owns = False
+        if pending and not jam_owns:
             return pending, pending, pending
 
         live = str(session.get("display_key") or "").strip()
@@ -531,20 +538,34 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def sync_improv_widgets_from_live_concert_key(session: dict[str, Any]) -> None:
-    """Keep Creative improv widget keys aligned with the live Practice Concert Key."""
-    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if not live:
-        return
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    meta = dict(session.get("improv_style_meta") or {})
-    if entry == "Style Jam Mode":
-        session["improv_style_key"] = live
-        meta["key"] = live
-    elif entry == "Jam Session Generator":
-        session["improv_jam_key"] = live
-        meta["key"] = live
-    if meta:
-        session["improv_style_meta"] = meta
+    """Keep generated-jam widgets aligned with the generated session — never song display_key."""
+    try:
+        from generated_workflow_projection import project_generated_owner_from_active_blob
+
+        if project_generated_owner_from_active_blob(session, writer="sync_improv_widgets"):
+            return
+    except ImportError:
+        pass
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+
+        if generated_workflow_owns_practice_key(session):
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None:
+                live = ident.practice_key_token
+                entry = str(session.get("improv_entry_mode") or "").strip()
+                meta = dict(session.get("improv_style_meta") or {})
+                if entry == "Style Jam Mode":
+                    session["improv_style_key"] = live
+                    meta["key"] = live
+                elif entry == "Jam Session Generator":
+                    session["improv_jam_key"] = live
+                    meta["key"] = live
+                if meta:
+                    session["improv_style_meta"] = meta
+                return
+    except ImportError:
+        pass
 
 
 def _creative_concert_keys(session: dict[str, Any]) -> tuple[str, str, str] | None:
@@ -1966,7 +1987,8 @@ def apply_backing_context_to_session(
                     concert = ident.practice_key_token
         except ImportError:
             pass
-        if concert:
+        jam_ctx = str(ctx.source or "") == "entry_jam"
+        if concert and not jam_ctx:
             try:
                 from session_widget_safe import safe_assign_display_key
 
@@ -1977,6 +1999,21 @@ def apply_backing_context_to_session(
                     request_display_key(st_like, concert)
                 else:
                     session["display_key"] = concert
+        elif concert and jam_ctx:
+            try:
+                from session_widget_safe import safe_session_assign
+
+                entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+                if entry == "Jam Session Generator":
+                    safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
+                else:
+                    safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
+            except ImportError:
+                entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+                if entry == "Jam Session Generator":
+                    session["improv_jam_key"] = concert
+                else:
+                    session["improv_style_key"] = concert
 
     is_custom = ctx.source == "custom_progression"
     song_id = str(ctx.active_song_id or "").strip()
@@ -2109,10 +2146,24 @@ def sync_live_keys_from_backing_context(
     concert = _fixed_practice_key_for_context(session, ctx, concert)
     if not concert:
         return ""
+    if ctx.source == "entry_jam":
+        entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+        try:
+            from session_widget_safe import safe_session_assign
+
+            if entry == "Style Jam Mode":
+                safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
+            elif entry == "Jam Session Generator":
+                safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
+        except ImportError:
+            if entry == "Style Jam Mode":
+                session["improv_style_key"] = concert
+            elif entry == "Jam Session Generator":
+                session["improv_jam_key"] = concert
+        return concert
     try:
         from session_widget_safe import (
             safe_assign_display_key,
-            safe_session_assign,
             widgets_likely_instantiated,
         )
 
@@ -2132,20 +2183,6 @@ def sync_live_keys_from_backing_context(
         session[PENDING_DISPLAY_KEY] = concert
         if not widget_safe:
             session["display_key"] = concert
-    if ctx.source == "entry_jam":
-        entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
-        try:
-            from session_widget_safe import safe_session_assign
-
-            if entry == "Style Jam Mode":
-                safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
-            elif entry == "Jam Session Generator":
-                safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
-        except ImportError:
-            if entry == "Style Jam Mode":
-                session["improv_style_key"] = concert
-            elif entry == "Jam Session Generator":
-                session["improv_jam_key"] = concert
     return concert
 
 
@@ -2202,7 +2239,21 @@ def sections_dict_from_backing_context(
     ctx = ctx or active_creative_backing_context(session)
     if ctx is None:
         return {}
-    practice_key = str(session.get("display_key") or ctx.concert_key or "C").strip() or "C"
+    practice_key = str(ctx.concert_key or session.get("display_key") or "C").strip() or "C"
+    if ctx.source == "entry_jam":
+        try:
+            from workflow_key_identity import resolve_active_workflow_key_identity
+
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None:
+                practice_key = ident.practice_key_token
+        except ImportError:
+            practice_key = str(
+                session.get("improv_style_key")
+                or session.get("improv_jam_key")
+                or ctx.concert_key
+                or "C"
+            ).strip() or "C"
     practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
         try:
@@ -2948,6 +2999,40 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         pass
     clear_backing_context(session)
     try:
+        from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+        deactivate_generated_jam_key_ownership(session, pre_widget=True)
+    except ImportError:
+        pass
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        song_tok = str(resolve_song_practice_key_token(session) or "").strip()
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if song_tok and pick:
+            store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
+            if not isinstance(store, dict):
+                store = {}
+            store = dict(store)
+            store[pick] = song_tok
+            session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+            session["display_key"] = song_tok
+            session["concert_key"] = song_tok
+    except ImportError:
+        pass
+    try:
+        from music_workflow_activation import activate_workflow_simple
+
+        activate_workflow_simple(
+            session,
+            "song_based_improvisation",
+            activation_source="restore_regular_song_backing",
+            return_route="backing",
+        )
+    except ImportError:
+        pass
+    try:
         from music_source_ownership import _release_creative_transport_authority
 
         _release_creative_transport_authority(session)
@@ -3134,7 +3219,7 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     concert = str(
         ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
     ).strip()
-    if concert:
+    if concert and ctx.source != "entry_jam":
         session["concert_key"] = concert
         try:
             from session_widget_safe import safe_assign_display_key
@@ -3143,7 +3228,7 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
         except ImportError:
             session["display_key"] = concert
             session["_pending_display_key"] = concert
-        sync_improv_widgets_from_live_concert_key(session)
+    sync_improv_widgets_from_live_concert_key(session)
     session[PENDING_BACKING_CONTEXT_APPLY] = True
     if ctx.source == "mission":
         try:

@@ -485,6 +485,7 @@ def refresh_mission_example(
     example.piano_html = out["piano_html"]
     example.show_tab = out["show_tab"]
     example.show_piano = out["show_piano"]
+    example.motif = out.get("motif") or display_motif
     return example
 
 
@@ -647,16 +648,17 @@ def generate_mission_example(
         mission, chord, improv_ctx.song_title, variant, level, section, nonce=nonce
     )
     rng = random.Random(seed)
+    spell_ref = str(improv_ctx.key_center or improv_ctx.display_key or "C")
     try:
         from harmonic_spelling import harmonic_reference_for_chord
 
         spell_ref = harmonic_reference_for_chord(
             chord,
-            song_display_key=improv_ctx.display_key,
+            song_display_key=improv_ctx.key_center,
             song_key_center=improv_ctx.key_center,
         )
     except ImportError:
-        spell_ref = improv_ctx.display_key
+        spell_ref = improv_ctx.key_center
 
     motif = _build_motif_for_mission(
         mission,
@@ -675,7 +677,7 @@ def generate_mission_example(
         key_center=spell_ref,
         bpm=bpm,
         mission=mission,
-        song_display_key=improv_ctx.display_key,
+        song_display_key=improv_ctx.key_center,
         song_concert_key=improv_ctx.key_center,
     )
     motif = out["motif"]
@@ -683,22 +685,24 @@ def generate_mission_example(
     abc = str(out.get("abc") or "")
     tab = str(out.get("tab") or "")
     piano_html = str(out.get("piano_html") or "")
+    concert = str(improv_ctx.key_center or "C").strip() or "C"
+    chart = str(improv_ctx.display_key or concert).strip() or concert
 
     insight = chord_coach_insight(
         chord,
-        key_center=improv_ctx.display_key,
+        key_center=concert,
         instrument=instrument,
         level=level,
     )
 
-    return MissionExample(
+    example = MissionExample(
         mission=mission,
         variant=variant,
         chord=chord,
         section=section,
         song_title=improv_ctx.song_title,
-        display_key=improv_ctx.display_key,
-        concert_key=improv_ctx.key_center,
+        display_key=chart,
+        concert_key=concert,
         instrument=instrument,
         level=level,
         focus=focus,
@@ -712,6 +716,35 @@ def generate_mission_example(
         show_tab=family == "guitar",
         show_piano=family == "piano",
     )
+    example = refresh_mission_example(
+        example,
+        instrument=instrument,
+        bpm=bpm,
+        song_concert_key=concert,
+    )
+    shown_chord = chord
+    if concert and chart and concert != chart:
+        try:
+            from effective_practice_context import musician_facing_chord
+
+            shown_chord = musician_facing_chord(chord, concert_key=concert, chart_key=chart)
+        except ImportError:
+            shown_chord = chord
+    shown_insight = chord_coach_insight(
+        shown_chord,
+        key_center=chart,
+        instrument=instrument,
+        level=level,
+    )
+    example.insight = shown_insight
+    example.why = _why_it_works(
+        mission,
+        shown_chord,
+        improv_ctx=improv_ctx,
+        section=section,
+        insight=shown_insight,
+    )
+    return example
 
 
 def mission_example_fingerprint(example: MissionExample | None) -> str:

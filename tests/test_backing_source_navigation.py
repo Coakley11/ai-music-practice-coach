@@ -146,7 +146,9 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertIsNotNone(ctx)
         assert ctx is not None
         self.assertEqual(ctx.source, "entry_jam")
-        self.assertEqual(str(session.get("display_key")), "D")
+        self.assertEqual(str(session.get("improv_style_key")), "D")
+        self.assertEqual(str(ctx.concert_key or ctx.key or ""), "D")
+        self.assertEqual(str(session.get("display_key")), "Bm")
         self.assertTrue(session.get(PENDING_BACKING_CONTEXT_APPLY))
 
     def test_from_creative_intent_preserves_entry_jam_over_catalog_pick(self) -> None:
@@ -235,10 +237,13 @@ class TestBackingSourceNavigation(unittest.TestCase):
         open_backing_from_creative(piano, source="entry_jam", st_like=st_like)
         set_backing_open_intent(piano, BACKING_INTENT_FROM_CREATIVE)
         hydrate_backing_source_for_page(piano, st_like=st_like)
-        self.assertEqual(piano.get("concert_key"), "F")
-        self.assertEqual(piano.get("display_key"), "F")
-        self.assertNotEqual(piano.get("display_key"), "G")
+        ctx = get_backing_context(piano)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(str(ctx.concert_key or ctx.key or ""), "F")
         self.assertEqual(piano.get("improv_style_key"), "F")
+        self.assertEqual(piano.get("display_key"), "G")
+        self.assertNotEqual(piano.get("improv_style_key"), "G")
         self.assertNotIn(PENDING_DISPLAY_KEY, piano)
 
         # Transposing instrument: backing still establishes concert F; written chart differs only via transposition authority.
@@ -255,8 +260,12 @@ class TestBackingSourceNavigation(unittest.TestCase):
         open_backing_from_creative(alto, source="entry_jam", st_like=st_alto)
         set_backing_open_intent(alto, BACKING_INTENT_FROM_CREATIVE)
         hydrate_backing_source_for_page(alto, st_like=st_alto)
-        self.assertEqual(alto.get("concert_key"), "F")
-        self.assertNotEqual(alto.get("display_key"), "G")
+        alto_ctx = get_backing_context(alto)
+        self.assertIsNotNone(alto_ctx)
+        assert alto_ctx is not None
+        self.assertEqual(str(alto_ctx.concert_key or alto_ctx.key or ""), "F")
+        self.assertEqual(alto.get("improv_style_key"), "F")
+        self.assertEqual(alto.get("display_key"), "G")
         written = written_key_for_type("F", "Alto saxophone (Eb)")
         from instrument_transposition import effective_chart_key
 
@@ -994,7 +1003,8 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(sess.style, "Bright Bossa Nova")
         self.assertEqual(sess.bpm, 75)
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
-        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertEqual(sess.concert_key, "F")
 
 
     def test_creative_page_hydrate_restores_from_backing_after_return(self) -> None:

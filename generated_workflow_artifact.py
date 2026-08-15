@@ -397,7 +397,7 @@ def detect_cross_owner_handoff_fields(
             f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} owner={declared} entry_mode_owner={entry_owner}"
         )
     prog_head = " ".join(list(snapshot.progression or [])[:4]).upper()
-    if declared == "style_jam" and ("EBMAJ7" in prog_head or "JEWISH BALLAD" in snapshot.style.upper()):
+    if declared == "style_jam" and "JEWISH BALLAD" in str(snapshot.style or "").upper():
         violations.append(f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} progression_owner=old_generator actual={prog_head[:32]}")
     if declared == "style_jam" and "jam_session_generator" in str(session.get("_backing_handoff_entry_mode") or ""):
         violations.append(f"{WORKFLOW_OWNER_INTEGRITY_FAILURE} handoff_entry=jam_session_generator card_owner=style_jam")
@@ -425,6 +425,12 @@ def last_valid_generated_artifact_snapshot(
 
 def seal_backing_handoff_snapshot_for_creative_open(session: dict[str, Any]) -> bool:
     """Seal immutable owner snapshot immediately before entry_jam backing_context build."""
+    try:
+        from music_workflow_generated_session import align_generated_session_to_declared_concert_key
+
+        align_generated_session_to_declared_concert_key(session)
+    except ImportError:
+        pass
     entry = resolve_handoff_entry_mode(session)
     owner = owner_for_entry_mode(entry)
     if owner is None:

@@ -48,6 +48,56 @@ def resolve_song_practice_key_token(session: dict[str, Any]) -> str:
     return tonic
 
 
+def ensure_song_practice_blob_for_active_song(
+    session: dict[str, Any],
+    *,
+    practice_key: str,
+    original_key: str = "",
+) -> str:
+    """Bind the active catalog song blob to a complete Practice Key on the same rerun."""
+    from music_theory import key_center_token, split_key_center
+
+    token = str(practice_key or "").strip()
+    if not token:
+        return ""
+    pt, pm = split_key_center(token)
+    token = key_center_token(pt, pm)
+    orig = str(original_key or "").strip()
+    ot, om = split_key_center(orig) if orig else (pt, pm)
+    sid = song_based_blob_session_id(session)
+    src, song_id = song_practice_storage_id(session)
+    blob = get_workflow_blob(session, "song_based_improvisation", sid)
+    if blob is None:
+        blob = WorkflowStateBlob(
+            workflow_owner="song_based_improvisation",
+            workflow_session_id=sid,
+            source_type=src,
+            song_id=song_id,
+            keys=KeyAuthority(
+                original_tonic=ot,
+                original_mode=om,
+                practice_tonic=pt,
+                practice_mode=pm,
+                key_owner="song_based_improvisation",
+            ),
+        )
+    else:
+        blob.keys = KeyAuthority(
+            original_tonic=ot or blob.keys.original_tonic,
+            original_mode=om or blob.keys.original_mode,
+            practice_tonic=pt,
+            practice_mode=pm,
+            written_tonic=blob.keys.written_tonic,
+            written_mode=blob.keys.written_mode,
+            instrument=blob.keys.instrument,
+            key_owner="song_based_improvisation",
+        )
+        blob.song_id = song_id or blob.song_id
+        blob.source_type = src or blob.source_type
+    save_workflow_blob(session, blob, source="ensure_song_practice_blob_for_active_song")
+    return token
+
+
 def song_practice_blob(session: dict[str, Any]) -> WorkflowStateBlob | None:
     sid = song_based_blob_session_id(session)
     return get_workflow_blob(session, "song_based_improvisation", sid)

@@ -77,7 +77,8 @@ class GeneratedJamStyleKeySealRegressionTests(unittest.TestCase):
         self.assertNotIn("EBMAJ7", joined)
         self.assertTrue(any("CMAJ7" in c.upper() or "CMAJ" in c.upper() for c in flat))
 
-        self.assertEqual(str(session.get("display_key") or ""), "C")
+        self.assertEqual(str(session.get("improv_jam_key") or ""), "C")
+        self.assertEqual(str(session.get("display_key") or ""), "Eb")
         ctx_raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY) or {}
         self.assertEqual(str(ctx_raw.get("practice_tonic") or ""), "C")
 

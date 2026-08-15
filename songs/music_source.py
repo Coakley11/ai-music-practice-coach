@@ -1253,18 +1253,44 @@ def on_active_song_identity_changed(
         except ImportError:
             pass
         target_display = str(display_key if display_key is not None else original_key).strip() or original_key
-        if display_key is None:
-            try:
-                from practice_key_mode import resolve_practice_concert_key_for_song
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
+            if is_fixed_practice_key_mode(session):
                 target_display = resolve_practice_concert_key_for_song(
                     session,
                     original_key,
                     pick_key=pick_key,
                     fallback=target_display,
                 )
-            except ImportError:
-                pass
+            elif display_key is None:
+                target_display = resolve_practice_concert_key_for_song(
+                    session,
+                    original_key,
+                    pick_key=pick_key,
+                    fallback=target_display,
+                )
+        except ImportError:
+            pass
+        if pick_key:
+            session["active_catalog_pick_key"] = str(pick_key).strip()
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=target_display)
+        except ImportError:
+            session["concert_key"] = target_display
+            session["_pending_display_key"] = target_display
+        try:
+            from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+            ensure_song_practice_blob_for_active_song(
+                session,
+                practice_key=target_display,
+                original_key=original_key,
+            )
+        except ImportError:
+            pass
         song_identity = song_display_identity(title, artist, original_key, pick_key=pick_key)
         apply_display_key_for_active_song(
             st,

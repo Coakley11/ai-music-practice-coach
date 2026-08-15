@@ -37,6 +37,7 @@ from improvisation_intelligence import (
 )
 from creative_key_sync import (
     CREATIVE_MAJOR_KEY_OPTIONS,
+    creative_complete_concert_key_options,
     creative_major_shape_key_options,
     on_improv_jam_key_change,
     on_improv_jam_setting_change,
@@ -781,16 +782,20 @@ def _tab_entry_modes(
                 on_change=on_improv_style_jam_setting_change,
             )
             try:
-                _style_key_opts = creative_major_shape_key_options(
+                from music_theory import display_key_label
+
+                _style_key_opts = creative_complete_concert_key_options(
                     session_state,
                     selected=str(session_state.get("improv_style_key") or "C"),
                 )
             except Exception:
                 _style_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+                display_key_label = lambda k: k  # type: ignore
             st.selectbox(
                 "Concert Key",
                 _style_key_opts,
                 key="improv_style_key",
+                format_func=display_key_label,
                 on_change=on_improv_style_key_change,
             )
         with c2:
@@ -839,7 +844,13 @@ def _tab_entry_modes(
         gen = session_state.get("improv_generated_sections")
         if gen:
             _style_label = str(session_state.get("improv_style") or "Style jam")
-            _key_label = str(session_state.get("improv_style_key") or "C")
+            _key_token = str(session_state.get("improv_style_key") or "C")
+            try:
+                from music_theory import display_key_label
+
+                _key_label = display_key_label(_key_token)
+            except ImportError:
+                _key_label = _key_token
             st.success(
                 f"Generated **{_style_label}** in **{_key_label}** · "
                 f"{str(session_state.get('improv_mood') or 'Mellow')} · "
@@ -892,18 +903,21 @@ def _tab_entry_modes(
             )
         with e2:
             try:
-                from creative_key_sync import creative_major_shape_key_options
+                from creative_key_sync import creative_complete_concert_key_options
+                from music_theory import display_key_label
 
-                _jam_key_opts = creative_major_shape_key_options(
+                _jam_key_opts = creative_complete_concert_key_options(
                     session_state,
                     selected=str(session_state.get("improv_jam_key") or "C"),
                 )
             except ImportError:
                 _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+                display_key_label = lambda k: k  # type: ignore
             key_c = st.selectbox(
                 "Concert Key",
                 _jam_key_opts,
                 key="improv_jam_key",
+                format_func=display_key_label,
                 on_change=on_improv_jam_key_change,
             )
             tempo = st.slider(
@@ -2068,14 +2082,20 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
 
     song_title = str(session_state.get("song") or "Song")
     artist = str(session_state.get("artist") or "")
-    chart_key = _authoritative_practice_chart_key(
+    concert_key = _authoritative_practice_chart_key(
         session_state,
         str(session_state.get("display_key") or session_state.get("chart_key") or "C"),
     )
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        chart_key = musician_facing_chart_key(session_state, concert_key)
+    except ImportError:
+        chart_key = concert_key
     ctx = ImprovSessionContext(
         song_title=song_title,
         artist=artist,
-        key_center=chart_key,
+        key_center=concert_key,
         display_key=chart_key,
         instrument=str(session_state.get("instrument") or "Guitar"),
         level=str(session_state.get("level") or "Intermediate"),

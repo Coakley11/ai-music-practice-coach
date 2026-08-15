@@ -28,8 +28,8 @@ class TestCreativeKeySync(unittest.TestCase):
             IMPROV_STYLE_KEY_TRACKER: "G",
         }
         sync_creative_key_change(session, "Eb")
-        self.assertEqual(session.get("concert_key"), "Eb")
-        self.assertEqual(session.get("_pending_display_key"), "Eb")
+        self.assertEqual(session.get("improv_style_key"), "Eb")
+        self.assertEqual(session.get("display_key"), "G")
         head = session["improv_generated_sections"]["Head (Jazz Swing)"]
         self.assertNotEqual(head[0], "Dm7")
 

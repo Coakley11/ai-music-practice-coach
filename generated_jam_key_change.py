@@ -367,6 +367,19 @@ def apply_pending_generated_key_edit_pre_widget(
     _finalize_generated_key_edit_after_mutation(
         session, owner=owner, widget_key=widget_key, requested=requested, st_like=st_like
     )
+    if owner == "style_jam":
+        try:
+            from music_workflow_generated_session import finalize_generated_style_jam_key_seal
+
+            finalize_generated_style_jam_key_seal(session, requested)
+        except ImportError:
+            pass
+        try:
+            from creative_key_sync import invalidate_creative_backing_context
+
+            invalidate_creative_backing_context(session)
+        except ImportError:
+            pass
     log_generated_key_change(
         session,
         "next_run_value",

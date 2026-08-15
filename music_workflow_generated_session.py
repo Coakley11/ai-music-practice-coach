@@ -133,6 +133,66 @@ def finalize_generated_style_jam_key_seal(session: dict[str, Any], key_center: s
         pass
 
 
+def commit_style_jam_control_settings(session: dict[str, Any]) -> bool:
+    """Write Style / Mood / Groove / BPM / difficulty from widgets into the generated blob.
+
+    Widget values are the user intent. Do not project the old blob over them first.
+    """
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    owner = "jam_session_generator" if entry == "Jam Session Generator" else "style_jam"
+    if entry == "Jam Session Generator":
+        style = str(session.get("improv_jam_style") or "").strip()
+        mood = str(session.get("improv_jam_mood") or "").strip()
+        groove = str(session.get("improv_groove") or "").strip()
+        try:
+            tempo = int(session.get("improv_jam_bpm") or 0)
+        except (TypeError, ValueError):
+            tempo = 0
+    else:
+        style = str(session.get("improv_style") or "").strip()
+        mood = str(session.get("improv_mood") or "").strip()
+        groove = str(session.get("improv_groove") or "").strip()
+        try:
+            tempo = int(session.get("improv_style_bpm") or 0)
+        except (TypeError, ValueError):
+            tempo = 0
+    difficulty = str(session.get("improv_difficulty") or "").strip()
+    meter = str(session.get("improv_style_meter") or session.get("backing_time_signature") or "").strip()
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or str(ptr.workflow_owner or "") != owner:
+        try:
+            from generated_jam_key_change import align_generated_workflow_pointer_for_key_edit
+
+            align_generated_workflow_pointer_for_key_edit(session, owner)
+            ptr = get_active_workflow_pointer(session)
+        except ImportError:
+            pass
+    if ptr is None or str(ptr.workflow_owner or "") != owner:
+        return False
+
+    def _mut(b: WorkflowStateBlob) -> None:
+        if style:
+            b.style = style
+        if mood:
+            b.mood = mood
+        if groove:
+            b.groove = groove
+        if tempo:
+            b.tempo_bpm = int(tempo)
+        if meter:
+            b.meter = meter
+        _ = difficulty
+
+    result = mutate_active_workflow(
+        session,
+        _mut,
+        mutation_type="style_jam_control_settings",
+        source="on_improv_style_jam_setting_change",
+        expected_owner=owner,
+    )
+    return bool(result.ok)
+
+
 def commit_style_jam_generation(
     session: dict[str, Any],
     *,
@@ -144,6 +204,12 @@ def commit_style_jam_generation(
     tempo_bpm: int = 0,
     new_session: bool = False,
 ) -> bool:
+    try:
+        from generated_jam_key_context import snapshot_song_practice_key_if_needed
+
+        snapshot_song_practice_key_if_needed(session)
+    except ImportError:
+        pass
     style_id = str(session.get("improv_style") or style or "style_jam").strip() or "style_jam"
     ptr = get_active_workflow_pointer(session)
     sid = style_id
@@ -269,8 +335,97 @@ def commit_jam_session_generation(
     return act.ok
 
 
+def align_generated_session_to_declared_concert_key(session: dict[str, Any]) -> bool:
+    """Retranspose generated sections onto the declared jam Concert Key before seal.
+
+    Keeps snapshot validation strict: the generated session must be internally
+    consistent (complete Concert Key + matching progression) before Backing
+    rebuilds from it.
+    """
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    owner = "jam_session_generator" if entry == "Jam Session Generator" else "style_jam"
+    declared = resolve_generated_concert_key_for_owner(session, owner)
+    ptr = get_active_workflow_pointer(session)
+    blob = None
+    if ptr is not None and str(ptr.workflow_owner or "") in {"style_jam", "jam_session_generator"}:
+        owner = str(ptr.workflow_owner or owner)
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        if blob is not None:
+            try:
+                from music_theory import key_center_token
+
+                blob_token = key_center_token(
+                    str(blob.keys.practice_tonic or "C"),
+                    str(blob.keys.practice_mode or "major"),
+                )
+            except ImportError:
+                blob_token = str(blob.keys.practice_tonic or "")
+            if not declared:
+                declared = blob_token
+    if not declared:
+        return False
+    sections: dict[str, list[str]] = {}
+    if blob is not None and isinstance(blob.section_map, dict) and blob.section_map:
+        sections = copy.deepcopy(blob.section_map)
+    elif owner == "jam_session_generator":
+        jam = session.get("improv_jam_session")
+        if isinstance(jam, dict) and isinstance(jam.get("sections"), dict):
+            sections = copy.deepcopy(jam.get("sections") or {})
+    else:
+        raw = session.get("improv_generated_sections")
+        if isinstance(raw, dict) and raw:
+            sections = copy.deepcopy(raw)
+    if not sections:
+        return False
+    try:
+        from creative_key_sync import retranspose_generated_sections
+        from improvisation_intelligence import flatten_sections
+        from musical_context_coherence import infer_major_tonic_from_progression
+        from music_theory import normalize_root, semitone_distance, split_chord
+    except ImportError:
+        return False
+    flat = flatten_sections(sections)
+    inferred = infer_major_tonic_from_progression(flat)
+    if not inferred:
+        return True
+    inf_root = normalize_root(split_chord(inferred)[0])
+    dest_root = normalize_root(split_chord(str(declared))[0])
+    if not inf_root or not dest_root or semitone_distance(inf_root, dest_root) == 0:
+        return True
+    aligned = retranspose_generated_sections(sections, from_key=inferred, to_key=str(declared))
+    if owner == "jam_session_generator":
+        jam = session.get("improv_jam_session")
+        if isinstance(jam, dict):
+            session["improv_jam_session"] = seal_jam_session_musical_context(
+                jam, key_center=str(declared), sections=aligned
+            )
+        else:
+            session["improv_generated_sections"] = aligned
+    else:
+        session["improv_generated_sections"] = aligned
+    if blob is not None:
+        from music_workflow_compatibility import _tonic_mode_from_token
+
+        pt, pm = _tonic_mode_from_token(str(declared))
+        blob.keys = KeyAuthority(
+            original_tonic=str(blob.keys.original_tonic or pt),
+            original_mode=str(blob.keys.original_mode or pm),
+            practice_tonic=pt,
+            practice_mode=pm,
+            written_tonic=blob.keys.written_tonic,
+            written_mode=blob.keys.written_mode,
+            instrument=blob.keys.instrument,
+            key_owner=str(blob.keys.key_owner or owner),
+        )
+        blob.section_map = copy.deepcopy(aligned)
+        save_workflow_blob(session, blob, source="align_generated_session_to_declared_concert_key")
+    return True
+
+
 __all__ = [
+    "align_generated_session_to_declared_concert_key",
     "commit_jam_session_generation",
+    "commit_style_jam_control_settings",
     "commit_style_jam_generation",
     "finalize_generated_jam_session_key_seal",
     "finalize_generated_style_jam_key_seal",

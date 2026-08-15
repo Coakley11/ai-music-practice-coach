@@ -119,7 +119,6 @@ def _resolve_creative_practice_concert_key(
     from creative_key_sync import (
         CREATIVE_CONCERT_KEY_SOURCE,
         creative_entry_concert_key,
-        to_major_key_preserve_spelling,
     )
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
@@ -156,7 +155,13 @@ def _resolve_creative_practice_concert_key(
     else:
         practice = ctx_concert or "C"
     if major_jam and practice:
-        practice = to_major_key_preserve_spelling(practice)
+        try:
+            from music_theory import key_center_token, split_key_center
+
+            tonic, mode = split_key_center(practice)
+            practice = key_center_token(tonic, mode)
+        except ImportError:
+            pass
     return practice
 
 
@@ -180,7 +185,6 @@ def resolve_current_backing_musical_state(
     from creative_key_sync import (
         creative_entry_concert_key,
         is_creative_major_jam_active,
-        to_major_key_preserve_spelling,
     )
     from music_theory import key_mode
     from songs.bpm_state import BPM_WIDGET_KEY
@@ -280,7 +284,13 @@ def resolve_current_backing_musical_state(
         practice = str(mk.practice_concert_key or "C").strip() or "C"
 
     if major_jam:
-        practice = to_major_key_preserve_spelling(practice)
+        try:
+            from music_theory import key_center_token, split_key_center
+
+            tonic, mode = split_key_center(practice)
+            practice = key_center_token(tonic, mode)
+        except ImportError:
+            pass
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
         from workflow_key_identity import fixed_practice_key_projection_blocked
@@ -306,7 +316,13 @@ def resolve_current_backing_musical_state(
     except ImportError:
         pass
     if major_jam and sidebar:
-        sidebar = to_major_key_preserve_spelling(sidebar)
+        try:
+            from music_theory import key_center_token, split_key_center
+
+            tonic, mode = split_key_center(sidebar)
+            sidebar = key_center_token(tonic, mode)
+        except ImportError:
+            pass
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
@@ -358,7 +374,13 @@ def resolve_current_backing_musical_state(
     if written_on:
         written_key = str(written_key_for_instrument(practice, instrument, session) or "").strip()
         if major_jam and written_key:
-            written_key = to_major_key_preserve_spelling(written_key)
+            try:
+                from music_theory import key_center_token, split_key_center
+
+                tonic, mode = split_key_center(written_key)
+                written_key = key_center_token(tonic, mode)
+            except ImportError:
+                pass
 
     if shape_on and chart_from_shape:
         chart_mode: ChartMode = "shape"

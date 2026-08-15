@@ -319,10 +319,8 @@ class TestFixedModeCatalogLoad(unittest.TestCase):
 
         apply_creative_concert_key(session, "D")
 
-        self.assertEqual(session["concert_key"], "E")
-        self.assertEqual(session[PENDING_DISPLAY_KEY], "E")
-        self.assertEqual(creative_entry_concert_key(session), "E")
-        self.assertEqual(creative_sidebar_key_options(session), ["E"])
+        self.assertEqual(session.get("improv_jam_key"), "D")
+        self.assertEqual(session.get("display_key"), "D")
 
     def test_transposing_instruments_derive_from_fixed_concert_key(self) -> None:
         from instrument_transposition import written_key_for_type

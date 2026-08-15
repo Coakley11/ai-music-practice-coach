@@ -435,7 +435,7 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(page, "creative")
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertEqual(session.get("improv_style_key"), "F")
-        self.assertEqual(session.get("_pending_display_key"), "F")
+        self.assertNotEqual(session.get("_pending_display_key"), "F")
 
     def test_song_improv_restore_shape_of_you(self) -> None:
         from backing_source_navigation import prepare_return_to_backing_source
@@ -452,7 +452,9 @@ class TestBackingSourceNavigation(unittest.TestCase):
         page = prepare_return_to_backing_source(session)
         self.assertEqual(page, "creative")
         self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
-        self.assertEqual(session.get("_pending_display_key"), "Cm")
+        restored = str(session.get("display_key") or session.get("_pending_display_key") or "")
+        self.assertEqual(session.get("concert_key"), "Cm")
+        self.assertEqual(restored, "Cm")
 
     def test_catalog_song_label_not_regular_song(self) -> None:
         from backing_context import format_backing_context_banner
@@ -549,8 +551,9 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
         prepare_backing_context_sidebar_display_key(st, session)
         state = resolve_current_backing_musical_state(session)
-        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
         self.assertEqual(state.practice_concert_key, "F")
+        self.assertEqual(session.get("display_key"), "Bm")
 
     def test_style_jam_sidebar_prefers_backing_context_over_catalog_display_key(self) -> None:
         from creative_key_sync import prepare_creative_sidebar_display_key
@@ -569,8 +572,9 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         set_backing_context(session, ctx)
         st = SimpleNamespace(session_state=session)
         prepare_creative_sidebar_display_key(st, session)
-        self.assertEqual(session.get("display_key"), "F")
-        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertEqual(session.get("display_key"), "G")
+        self.assertEqual(session.get("concert_key"), "G")
 
     def test_sidebar_key_change_updates_resolver(self) -> None:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, invalidate_creative_backing_context

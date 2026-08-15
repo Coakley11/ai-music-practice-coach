@@ -76,24 +76,35 @@ def peek_pending_song_practice_key_edit(session: dict[str, Any]) -> dict[str, An
 def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
     """Pending Practice Key for same-rerun Creative readers. Empty if owner no longer matches."""
     pending = peek_pending_song_practice_key_edit(session)
-    if not pending:
-        return ""
-    token = str(pending.get("selected_key_token") or "").strip()
-    if not token:
-        return ""
-    try:
-        from music_workflow_state_store import get_active_workflow_pointer
+    if pending:
+        token = str(pending.get("selected_key_token") or "").strip()
+        if token:
+            try:
+                from music_workflow_state_store import get_active_workflow_pointer
 
-        ptr = get_active_workflow_pointer(session)
-        if ptr is None:
-            return ""
-        if str(pending.get("workflow_owner") or "") != str(ptr.workflow_owner or ""):
-            return ""
-        if str(pending.get("workflow_session_id") or "") != str(ptr.workflow_session_id or ""):
+                ptr = get_active_workflow_pointer(session)
+                if ptr is None:
+                    return ""
+                if str(pending.get("workflow_owner") or "") != str(ptr.workflow_owner or ""):
+                    return ""
+                if str(pending.get("workflow_session_id") or "") != str(ptr.workflow_session_id or ""):
+                    return ""
+            except ImportError:
+                return token
+            return token
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        if generated_workflow_owns_practice_key(session):
             return ""
     except ImportError:
-        return token
-    return token
+        pass
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        return str(session.get(PENDING_DISPLAY_KEY) or "").strip()
+    except ImportError:
+        return str(session.get("_pending_display_key") or "").strip()
 
 
 def overlay_concert_token_with_pending_practice_key(
