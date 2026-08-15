@@ -168,6 +168,26 @@ def commit_style_jam_control_settings(session: dict[str, Any]) -> bool:
         except ImportError:
             pass
     if ptr is None or str(ptr.workflow_owner or "") != owner:
+        try:
+            from music_workflow_compatibility import build_workflow_blob_from_legacy, legacy_session_id_for_owner
+            from music_workflow_state_store import ActiveWorkflowPointer, set_active_workflow_pointer
+
+            sid = str(legacy_session_id_for_owner(session, owner) or "").strip()
+            if not sid:
+                sid = str(uuid.uuid4()) if owner == "jam_session_generator" else (style or "style_jam")
+            blob = build_workflow_blob_from_legacy(session, owner)
+            blob.workflow_owner = owner
+            blob.workflow_session_id = sid
+            save_workflow_blob(session, blob, source="style_jam_control_settings_align")
+            set_active_workflow_pointer(
+                session,
+                ActiveWorkflowPointer(workflow_owner=owner, workflow_session_id=sid),
+                source="style_jam_control_settings_align",
+            )
+            ptr = get_active_workflow_pointer(session)
+        except ImportError:
+            pass
+    if ptr is None or str(ptr.workflow_owner or "") != owner:
         return False
 
     def _mut(b: WorkflowStateBlob) -> None:
@@ -280,6 +300,12 @@ def commit_jam_session_generation(
     sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
     jam = seal_jam_session_musical_context(jam, key_center=key_center, sections=sections)
     sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
+    try:
+        tempo_bpm = int(jam.get("bpm") or session.get("improv_jam_bpm") or 0)
+    except (TypeError, ValueError):
+        tempo_bpm = 0
+    mood = str(jam.get("mood") or jam.get("atmosphere") or session.get("improv_jam_mood") or "Mellow")
+    groove = str(session.get("improv_groove") or jam.get("style") or style or "")
 
     def _mut(b: WorkflowStateBlob) -> None:
         b.keys = KeyAuthority(
@@ -291,7 +317,10 @@ def commit_jam_session_generation(
         )
         b.generated_session_id = sid
         b.style = str(style or session.get("improv_jam_style") or "")
-        b.mood = str(session.get("improv_jam_mood") or b.mood or "Mellow")
+        b.mood = mood
+        b.groove = groove
+        if tempo_bpm:
+            b.tempo_bpm = int(tempo_bpm)
         b.section_map = copy.deepcopy(sections)
         b.source_type = "generated"
 
@@ -311,7 +340,9 @@ def commit_jam_session_generation(
         keys=KeyAuthority(practice_tonic=pt, practice_mode=pm, original_tonic=pt, original_mode=pm),
         generated_session_id=sid,
         style=str(style or ""),
-        mood=str(session.get("improv_jam_mood") or "Mellow"),
+        mood=mood,
+        groove=groove,
+        tempo_bpm=int(tempo_bpm or 0),
         section_map=copy.deepcopy(sections),
         source_type="generated",
     )

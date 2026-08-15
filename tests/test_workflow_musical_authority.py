@@ -116,7 +116,7 @@ class TestWorkflowKeyIsolation(unittest.TestCase):
         save_workflow_snapshot(session, "song_based_improvisation")
         switch_workflow_owner(session, "style_jam")
         self.assertEqual(str(session.get("improv_style_key")), "D")
-        self.assertEqual(str(session.get("display_key")), "D")
+        self.assertEqual(str(session.get("display_key")), "Ebm")
 
     def test_jam_key_change_transposes_sections(self) -> None:
         sections = {"A": ["C", "F", "G"]}

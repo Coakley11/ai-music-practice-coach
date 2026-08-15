@@ -78,6 +78,19 @@ def get_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
         pick = str(raw.get("pick_key") or "").strip()
         if not pick.startswith("custom::"):
+            live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if live_pick and not live_pick.startswith("custom::") and live_pick != pick:
+                return sync_catalog_session(session)
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                saved = get_practice_concert_key(session, pick)
+                if saved and str(raw.get("display_key") or "").strip() != saved:
+                    raw = dict(raw)
+                    raw["display_key"] = saved
+                    session[CATALOG_SESSION_KEY] = raw
+            except ImportError:
+                pass
             return raw
     return sync_catalog_session(session)
 
@@ -159,16 +172,38 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
 
 def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[str, list[str]]:
     pick = str(catalog.get("pick_key") or "").strip()
-    stored = session.get("improv_song_concert_sections")
-    if isinstance(stored, dict) and stored:
-        ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if not pick or not ctx_pick or pick == ctx_pick or ctx_pick.startswith("custom::"):
-            if not ctx_pick.startswith("custom::"):
+    ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    live_is_catalog = bool(ctx_pick) and not ctx_pick.startswith("custom::")
+    if live_is_catalog and pick and ctx_pick != pick:
+        return {}
+    if live_is_catalog and (not pick or pick == ctx_pick):
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            synced = sync_song_improv_sections_to_practice_key(session)
+            if isinstance(synced, dict) and synced:
                 return {
                     str(name): [str(c) for c in chords if str(c).strip()]
-                    for name, chords in stored.items()
+                    for name, chords in synced.items()
                     if isinstance(chords, list)
                 }
+        except ImportError:
+            pass
+    stored = session.get("improv_song_concert_sections")
+    if live_is_catalog and isinstance(stored, dict) and stored:
+        if not pick or pick == ctx_pick:
+            return {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in stored.items()
+                if isinstance(chords, list)
+            }
+    bucket = catalog.get("sections")
+    if isinstance(bucket, dict) and bucket:
+        return {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in bucket.items()
+            if isinstance(chords, list)
+        }
     return {}
 
 

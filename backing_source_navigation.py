@@ -496,8 +496,6 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             activate_sbi_ownership,
         )
 
-        if str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip() == "Missions":
-            return activate_mission_ownership(session, st_like=st_like)
         if session.get("improv_mission_backing_handoff"):
             session.pop("improv_mission_backing_handoff", None)
             return activate_mission_ownership(session, st_like=st_like)
@@ -529,7 +527,7 @@ BACKING_GENERIC_CATALOG_ENTRY_KEY = "_backing_generic_catalog_entry"
 BACKING_ENTRY_CLASS_KEY = "_backing_entry_class"
 BACKING_ENTRY_GENERIC_CATALOG = "generic_catalog_navigation"
 BACKING_ENTRY_SPECIALIZED_HANDOFF = "specialized_handoff"
-LAST_SURVIVING_BACKING_SOURCES = frozenset(
+SPECIALIZED_BACKING_SOURCES = frozenset(
     {
         "entry_jam",
         "song_improv",
@@ -537,7 +535,7 @@ LAST_SURVIVING_BACKING_SOURCES = frozenset(
         "custom_progression",
     }
 )
-SPECIALIZED_BACKING_SOURCES = LAST_SURVIVING_BACKING_SOURCES
+LAST_SURVIVING_BACKING_SOURCES = frozenset(SPECIALIZED_BACKING_SOURCES | {"regular_song"})
 
 
 def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> bool:
@@ -554,22 +552,6 @@ def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> boo
         pass
     if session.get("improv_mission_backing_handoff"):
         return True
-    try:
-        from backing_context import (
-            BACKING_PREF_CATALOG,
-            get_backing_context,
-            get_backing_source_preference,
-        )
-
-        ctx = get_backing_context(session)
-        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
-        if src in SPECIALIZED_BACKING_SOURCES:
-            if get_backing_source_preference(session) != BACKING_PREF_CATALOG:
-                return True
-            if last_valid_backing_session_survives_ordinary_nav(session):
-                return True
-    except ImportError:
-        pass
     return False
 
 
@@ -624,6 +606,14 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
         return False
     ctx = get_backing_context(session)
     src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if src == "regular_song":
+        try:
+            from backing_context import restore_regular_song_backing
+
+            restore_regular_song_backing(session, st_like=st_like)
+        except Exception:
+            pass
+        return True
     if src in SPECIALIZED_BACKING_SOURCES:
         set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         try:

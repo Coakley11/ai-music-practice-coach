@@ -745,7 +745,12 @@ def _tab_entry_modes(
                     st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
-            render_creative_progression_block(st, session_state, preview_sections)
+            render_creative_progression_block(
+                st,
+                session_state,
+                preview_sections,
+                concert_key=str(song_preview.get("display_key") or ""),
+            )
 
         _render_open_practice_backing_row(
             st,
@@ -899,7 +904,10 @@ def _tab_entry_modes(
                 key="improv_ensemble",
             )
             style = st.selectbox(
-                "Groove style", list(STYLE_JAM_STYLES), key="improv_jam_style"
+                "Groove style",
+                list(STYLE_JAM_STYLES),
+                key="improv_jam_style",
+                on_change=on_improv_jam_setting_change,
             )
         with e2:
             try:

@@ -24,6 +24,7 @@ def sync_style_jam_legacy_from_active_blob(
     *,
     writer: str,
     phase: str = "",
+    include_controls: bool = True,
 ) -> bool:
     """Style Jam page/backing must not mix widget controls with stale improv_generated_sections."""
     _ptr, blob = _active_generated_blob(session, "style_jam")
@@ -40,11 +41,12 @@ def sync_style_jam_legacy_from_active_blob(
         str(blob.keys.practice_mode or "major"),
     )
     session["improv_entry_mode"] = "Style Jam Mode"
-    session["improv_style"] = str(blob.style or "").strip()
-    session["improv_mood"] = str(blob.mood or "").strip()
-    session["improv_groove"] = str(blob.groove or "").strip()
-    if blob.tempo_bpm:
-        session["improv_style_bpm"] = int(blob.tempo_bpm)
+    if include_controls:
+        session["improv_style"] = str(blob.style or "").strip()
+        session["improv_mood"] = str(blob.mood or "").strip()
+        session["improv_groove"] = str(blob.groove or "").strip()
+        if blob.tempo_bpm:
+            session["improv_style_bpm"] = int(blob.tempo_bpm)
     session["improv_style_key"] = token
     if isinstance(blob.section_map, dict) and blob.section_map:
         session["improv_generated_sections"] = copy.deepcopy(blob.section_map)
@@ -78,7 +80,12 @@ def sync_style_jam_legacy_from_active_blob(
     return True
 
 
-def project_generated_owner_from_active_blob(session: dict[str, Any], *, writer: str) -> bool:
+def project_generated_owner_from_active_blob(
+    session: dict[str, Any],
+    *,
+    writer: str,
+    include_controls: bool = True,
+) -> bool:
     """Reconcile legacy Creative fields from the active generated workflow blob."""
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key
@@ -95,7 +102,9 @@ def project_generated_owner_from_active_blob(session: dict[str, Any], *, writer:
     except ImportError:
         return False
     if owner == "style_jam":
-        return sync_style_jam_legacy_from_active_blob(session, writer=writer, phase="project_owner")
+        return sync_style_jam_legacy_from_active_blob(
+            session, writer=writer, phase="project_owner", include_controls=include_controls
+        )
     if owner == "jam_session_generator":
         try:
             from improv_jam_session_projection import sync_improv_jam_session_from_active_blob

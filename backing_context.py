@@ -1299,6 +1299,24 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         groove = str(session.get("improv_groove") or style_meta.get("groove") or style).strip()
         bpm = int(session.get("improv_style_bpm") or style_meta.get("bpm") or 110)
         mood = str(session.get("improv_mood") or style_meta.get("mood") or "Mellow").strip()
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        owner = str(ptr.workflow_owner or "") if ptr else ""
+        if owner in {"style_jam", "jam_session_generator"}:
+            blob = get_workflow_blob(session, owner, str(ptr.workflow_session_id or ""))
+            if blob is not None and int(getattr(blob, "tempo_bpm", 0) or 0) > 0:
+                bpm = int(blob.tempo_bpm)
+            if blob is not None:
+                if str(blob.style or "").strip():
+                    style = str(blob.style).strip()
+                if str(blob.mood or "").strip():
+                    mood = str(blob.mood).strip()
+                if str(blob.groove or "").strip():
+                    groove = str(blob.groove).strip()
+    except ImportError:
+        pass
 
     groove_intensity = str(
         session.get("improv_groove") or style_meta.get("groove") or style_meta.get("groove_intensity") or "Medium"
@@ -3006,19 +3024,26 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         pass
     try:
         from music_workflow_song_practice import resolve_song_practice_key_token
-        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+        from songs.practice_key_state import get_practice_concert_key
 
-        song_tok = str(resolve_song_practice_key_token(session) or "").strip()
         pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if song_tok and pick:
-            store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
-            if not isinstance(store, dict):
-                store = {}
-            store = dict(store)
-            store[pick] = song_tok
-            session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+        saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+        song_tok = saved or str(resolve_song_practice_key_token(session) or "").strip()
+        try:
+            from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY, shape_chart_key_for_concert, shape_tonic_only
+
+            if saved and session.get(CAPO_ENABLED_KEY):
+                shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or ""))
+                if shape:
+                    chart = shape_chart_key_for_concert(saved, shape)
+                    if song_tok == chart and song_tok != saved:
+                        song_tok = saved
+        except ImportError:
+            pass
+        if song_tok:
             session["display_key"] = song_tok
             session["concert_key"] = song_tok
+            session["_pending_display_key"] = song_tok
     except ImportError:
         pass
     try:

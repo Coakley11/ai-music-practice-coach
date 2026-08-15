@@ -1061,7 +1061,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             try:
                 from generated_workflow_projection import project_generated_owner_from_active_blob
 
-                project_generated_owner_from_active_blob(session, writer="prepare_creative_sidebar")
+                project_generated_owner_from_active_blob(
+                    session, writer="prepare_creative_sidebar", include_controls=False
+                )
             except ImportError:
                 pass
             ident = resolve_practice_key_identity_for_ui(session)
@@ -1783,9 +1785,15 @@ def creative_progression_display(
     }
 
 
-def render_creative_progression_block(st: Any, session: dict[str, Any], sections: dict[str, list[str]]) -> None:
+def render_creative_progression_block(
+    st: Any,
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    concert_key: str = "",
+) -> None:
     """Render concert progression and optional written/shape chart line."""
-    display = creative_progression_display(session, sections)
+    display = creative_progression_display(session, sections, concert_key=concert_key)
     st.markdown(
         f'<p class="ui-creative-progression-preview">Practice concert key: '
         f"<strong>{html.escape(display['concert_key'])}</strong></p>",

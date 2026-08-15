@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from backing_context import (
     BACKING_CONTEXT_KEY,
+    BACKING_PREF_CATALOG,
     BACKING_PREF_CREATIVE,
     BackingContext,
     open_backing_from_creative,
@@ -101,6 +102,7 @@ class BackingEntryClassificationTests(unittest.TestCase):
         st_like = SimpleNamespace(session_state=session)
         open_backing_from_creative(session, source="mission", st_like=st_like)
         set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+        session["improv_mission_backing_handoff"] = True
         mark_specialized_backing_handoff_entry(session)
         hydrate_backing_source_for_page(session, st_like=st_like)
         hydrate_backing_source_for_page(session, st_like=st_like)
@@ -143,7 +145,7 @@ class BackingEntryClassificationTests(unittest.TestCase):
         self.assertEqual(ctx.get("source"), "mission")
         self.assertEqual(ctx.get("mission_id"), "Mission A")
 
-    def test_creative_to_backing_uses_specialized_not_generic(self) -> None:
+    def test_creative_top_level_backing_restores_last_session(self) -> None:
         session: dict = {
             "studio_page": "creative",
             "improv_entry_mode": "Jam Session Generator",
@@ -152,6 +154,50 @@ class BackingEntryClassificationTests(unittest.TestCase):
         set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         navigate_studio_page(session, "backing")
         self.assertEqual(
+            str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+            BACKING_INTENT_RESTORE_LAST,
+        )
+
+    def test_explicit_open_in_backing_still_uses_specialized_handoff(self) -> None:
+        session: dict = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Jam Session Generator",
+        }
+        set_backing_context(session, _entry_jam_ctx())
+        mark_specialized_backing_handoff_entry(session)
+        navigate_studio_page(session, "backing")
+        self.assertEqual(
+            str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+            BACKING_INTENT_FROM_CREATIVE,
+        )
+
+    def test_top_level_backing_from_missions_tab_does_not_infer_mission(self) -> None:
+        session: dict = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "active_catalog_pick_key": "Pop::X",
+        }
+        ctx = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id="Pop::X",
+            song_title="Shape of You",
+            key="Bm",
+            display_key="Dm",
+            concert_key="Dm",
+            bpm=96,
+            style="",
+            groove="Pop groove",
+        )
+        set_backing_context(session, ctx)
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+        navigate_studio_page(session, "backing")
+        self.assertEqual(
+            str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+            BACKING_INTENT_RESTORE_LAST,
+        )
+        self.assertNotEqual(
             str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
             BACKING_INTENT_FROM_CREATIVE,
         )

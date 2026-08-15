@@ -439,5 +439,189 @@ class TestSongSwitchSameRerunPracticeKey(unittest.TestCase):
         self.assertNotIn("Bm", verse)
 
 
+class TestSbiUsesSongPracticeKeyNotOriginal(unittest.TestCase):
+    def test_shape_of_you_d_minor_preview_does_not_reuse_b_minor(self) -> None:
+        from music_theory import transpose_sections_dict
+        from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+        from songs.practice_key_state import set_practice_concert_key
+        from source_session_state import CATALOG_SESSION_KEY, resolve_sbi_preview
+        from workflow_musical_authority import reclaim_stale_prior_song_practice_key_on_original_chart
+
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_intelligence_tab": "Song-Based Improvisation",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "selected_song": {
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+                "pick_key": SHAPE_PICK,
+                "sections": copy.deepcopy(SHAPE_SECTIONS),
+            },
+            "song": "Shape of You",
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "home_sections": copy.deepcopy(SHAPE_SECTIONS),
+            "improv_song_concert_sections": copy.deepcopy(SHAPE_SECTIONS),
+            "practice_key_by_source": {SHAPE_PICK: "Dm"},
+            CATALOG_SESSION_KEY: {
+                "pick_key": SHAPE_PICK,
+                "selected_song": {
+                    "title": "Shape of You",
+                    "artist": "Ed Sheeran",
+                    "key": "Bm",
+                    "pick_key": SHAPE_PICK,
+                },
+                "original_key": "Bm",
+                "display_key": "Bm",
+                "sections": copy.deepcopy(SHAPE_SECTIONS),
+            },
+        }
+        set_practice_concert_key(session, "Dm", pick_key=SHAPE_PICK)
+        ensure_song_practice_blob_for_active_song(session, practice_key="Dm", original_key="Bm")
+        blob = get_workflow_blob(session, "song_based_improvisation", SHAPE_PICK)
+        if blob is not None:
+            blob.section_map = copy.deepcopy(SHAPE_SECTIONS)
+            save_workflow_blob(session, blob, source="test")
+        reclaimed = reclaim_stale_prior_song_practice_key_on_original_chart(session)
+        self.assertEqual(reclaimed, "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview["display_key"], "Dm")
+        expected = transpose_sections_dict(SHAPE_SECTIONS, "Bm", "Dm")
+        self.assertEqual(preview["sections"].get("Verse"), expected.get("Verse"))
+        self.assertNotEqual(preview["sections"].get("Verse"), SHAPE_SECTIONS["Verse"])
+
+
+class TestJamGeneratorExactBpm(unittest.TestCase):
+    def test_generate_jam_session_keeps_requested_tempo(self) -> None:
+        from improvisation_intelligence import generate_jam_session
+        from music_workflow_generated_session import commit_jam_session_generation
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        jam = generate_jam_session(
+            ensemble="Jazz trio",
+            style="Jazz Swing",
+            key_center="C",
+            tempo=90,
+            mood="Mellow",
+            seed=1,
+        )
+        self.assertEqual(int(jam["bpm"]), 90)
+        jam2 = generate_jam_session(
+            ensemble="Jazz trio",
+            style="Jazz Swing",
+            key_center="C",
+            tempo=90,
+            mood="Mellow",
+            seed=99,
+        )
+        self.assertEqual(int(jam2["bpm"]), 90)
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_style": "Jazz Swing",
+            "improv_jam_key": "C",
+            "improv_jam_bpm": 90,
+            "improv_jam_mood": "Mellow",
+            "improv_jam_session": jam,
+        }
+        self.assertTrue(
+            commit_jam_session_generation(
+                session, jam, key_center="C", style="Jazz Swing", new_session=True
+            )
+        )
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        assert blob is not None
+        self.assertEqual(int(blob.tempo_bpm), 90)
+        ctx = build_entry_jam_context(session)
+        self.assertEqual(int(ctx.bpm), 90)
+
+    def test_jam_atmosphere_and_bpm_commit_to_blob(self) -> None:
+        from improvisation_intelligence import generate_jam_session
+        from music_workflow_generated_session import commit_jam_session_generation, commit_style_jam_control_settings
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        jam = generate_jam_session(style="Jazz Swing", key_center="Eb", tempo=90, mood="Mellow")
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Jam Session Generator",
+            "improv_jam_style": "Jazz Swing",
+            "improv_jam_key": "Eb",
+            "improv_jam_bpm": 90,
+            "improv_jam_mood": "Mellow",
+            "improv_groove": "Medium",
+            "improv_jam_session": jam,
+        }
+        commit_jam_session_generation(
+            session, jam, key_center="Eb", style="Jazz Swing", new_session=True
+        )
+        session["improv_jam_mood"] = "Dark"
+        session["improv_jam_bpm"] = 84
+        session["improv_jam_style"] = "Funk"
+        self.assertTrue(commit_style_jam_control_settings(session))
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        assert blob is not None
+        self.assertEqual(str(blob.mood), "Dark")
+        self.assertEqual(int(blob.tempo_bpm), 84)
+        self.assertEqual(str(blob.style), "Funk")
+
+
+class TestRegularSongRestoreIgnoresShapeChartLeak(unittest.TestCase):
+    def test_restore_keeps_d_minor_when_live_display_is_e_minor_shape_chart(self) -> None:
+        from songs.practice_key_state import set_practice_concert_key
+
+        session = _style_jam_session(jam_key="C#", song_key="Dm")
+        set_practice_concert_key(session, "Dm", pick_key=SHAPE_PICK)
+        session["display_key"] = "Em"
+        session["concert_key"] = "Em"
+        session["_pending_display_key"] = "Em"
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            with patch(
+                "songs.music_source.resolve_catalog_song_for_pick",
+                return_value=(
+                    {
+                        "title": "Shape of You",
+                        "artist": "Ed Sheeran",
+                        "key": "Bm",
+                        "pick_key": SHAPE_PICK,
+                        "bpm": 96,
+                        "sections": SHAPE_SECTIONS,
+                    },
+                    "Bm",
+                ),
+            ):
+                ctx = restore_regular_song_backing(session, st_like=st_like)
+        self.assertEqual(ctx.source, "regular_song")
+        restored = str(session.get("display_key") or session.get("concert_key") or ctx.concert_key or "")
+        self.assertIn(restored, {"Dm", "D minor"})
+        self.assertNotEqual(restored, "Em")
+        self.assertEqual(musician_facing_chart_key(session, "Dm"), "Em")
+
+
+class TestStyleJamPrepareSidebarDoesNotOverwriteControls(unittest.TestCase):
+    def test_sidebar_projection_leaves_live_style_mood_groove(self) -> None:
+        from generated_workflow_projection import project_generated_owner_from_active_blob
+
+        session = _style_jam_session(jam_key="C#")
+        session["improv_style"] = "Jazz Swing"
+        session["improv_mood"] = "Dark"
+        session["improv_groove"] = "Heavy"
+        session["improv_style_bpm"] = 90
+        project_generated_owner_from_active_blob(
+            session, writer="prepare_creative_sidebar", include_controls=False
+        )
+        self.assertEqual(session.get("improv_style"), "Jazz Swing")
+        self.assertEqual(session.get("improv_mood"), "Dark")
+        self.assertEqual(session.get("improv_groove"), "Heavy")
+        self.assertEqual(int(session.get("improv_style_bpm") or 0), 90)
+
+
 if __name__ == "__main__":
     unittest.main()

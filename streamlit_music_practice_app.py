@@ -14646,13 +14646,9 @@ elif _studio_page == "creative":
             ptr = get_active_workflow_pointer(st.session_state)
             if ptr and ptr.workflow_owner == "song_based_improvisation":
                 entry = "Song-Based Improvisation"
-            elif ptr and ptr.workflow_owner == "mission_jam":
-                tab = "Missions"
         except ImportError:
             pass
-        if tab == "Missions":
-            creative_source = "mission"
-        elif st.session_state.pop("improv_mission_backing_handoff", False):
+        if st.session_state.pop("improv_mission_backing_handoff", False):
             creative_source = "mission"
         elif entry == "Song-Based Improvisation":
             source = resolve_improv_song_source(st.session_state)
