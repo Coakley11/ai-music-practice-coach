@@ -93,6 +93,15 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
     entry = str(session.get("improv_entry_mode") or "").strip()
     if page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}:
         return True
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(ctx.source or "") == "entry_jam":
+                return True
+        except ImportError:
+            pass
     try:
         from creative_session_state import creative_session_is_active, get_creative_session
 

@@ -694,6 +694,10 @@ def _tab_entry_modes(
         if source == "Custom progression":
             pass  # preview_sections already from custom_session bucket
         elif source == "Active song":
+            preview_sections = _authoritative_concert_sections(
+                session_state,
+                preview_sections or improv_ctx.sections,
+            )
             if not preview_sections and not is_custom:
                 preview_sections = improv_ctx.sections
         elif not preview_sections:
@@ -2588,13 +2592,20 @@ def _tab_missions(
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     blob_key = str(improv_ctx.key_center or concert_key)
     try:
-        from workflow_key_identity import resolve_song_practice_key_identity
+        from music_workflow_song_practice import resolve_song_practice_key_token
 
-        ident = resolve_song_practice_key_identity(session_state)
-        if ident is not None and str(ident.practice_key_token or "").strip():
-            blob_key = str(ident.practice_key_token)
+        committed = str(resolve_song_practice_key_token(session_state) or "").strip()
+        if committed:
+            blob_key = committed
     except ImportError:
-        pass
+        try:
+            from workflow_key_identity import resolve_song_practice_key_identity
+
+            ident = resolve_song_practice_key_identity(session_state)
+            if ident is not None and str(ident.practice_key_token or "").strip():
+                blob_key = str(ident.practice_key_token)
+        except ImportError:
+            pass
     try:
         from music_workflow_pending_song_practice_key_edit import overlay_sections_with_pending_practice_key
 
@@ -2939,6 +2950,24 @@ def _tab_missions(
         family = instrument_family(live_inst)
 
         st.markdown("##### Optional example (inspiration only)")
+        example_heading_chord = shown_chord
+        try:
+            from effective_practice_context import musician_facing_chord
+
+            example_heading_chord = musician_facing_chord(
+                str(
+                    (example.motif or {}).get("_concert_chord")
+                    or example.chord
+                    or cur_chord
+                    or shown_chord
+                ),
+                concert_key=practice_key,
+                chart_key=chart_key,
+            )
+        except ImportError:
+            example_heading_chord = shown_chord
+        if example_heading_chord:
+            st.markdown(f"**Mission example · {html.escape(example_heading_chord)}**")
         st.markdown(
             f"**Notes:** `{example.motif.get('display', '')}` · "
             f"**Rhythm:** `{example.motif.get('rhythm', '')}`"

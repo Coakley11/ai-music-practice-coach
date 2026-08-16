@@ -112,6 +112,7 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
     label = format_backing_context_banner(
         ctx,
         practice_concert_key=state.practice_concert_key,
+        applied_bpm=int(state.applied_bpm or 0) or None,
     )
     if not label:
         return False
@@ -201,17 +202,14 @@ def render_backing_creative_context_card(
         style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
     backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
+    concert_raw = str(state.practice_concert_key or practice_key or ctx.concert_key or "C")
     try:
-        from musical_context_authority import format_practice_concert_key_line
+        from music_theory import format_key_label_from_parts, split_key_center
 
-        concert = html.escape(
-            format_practice_concert_key_line(
-                session,
-                fallback=str(state.practice_concert_key or practice_key or "C"),
-            )
-        )
+        tonic, mode = split_key_center(concert_raw)
+        concert = html.escape(format_key_label_from_parts(tonic, mode) or concert_raw)
     except ImportError:
-        concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
+        concert = html.escape(concert_raw)
     inst_raw = str(state.instrument or session.get("instrument") or "Piano")
     try:
         from instrument_aware import instrument_theme

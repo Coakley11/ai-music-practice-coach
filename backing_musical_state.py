@@ -240,7 +240,7 @@ def resolve_current_backing_musical_state(
     creative_selected = str(creative_entry_concert_key(session) or "").strip()
     live_practice = str(session.get("display_key") or "").strip()
     practice = ""
-    if creative_active and creative:
+    if creative_active and creative and str(getattr(creative, "source", "") or "") == "entry_jam":
         try:
             from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
@@ -454,6 +454,21 @@ def resolve_current_backing_musical_state(
     slider_key = backing_bpm_slider_widget_key(sid) if sid else BPM_WIDGET_KEY
     slider_bpm = int(session.get(slider_key) or session.get(BPM_WIDGET_KEY) or context_bpm)
     resolved_applied = int(applied_bpm if applied_bpm is not None else slider_bpm)
+    try:
+        from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            ov = effective_backing_play_overrides(session)
+            if ov.get("bpm"):
+                resolved_applied = int(ov["bpm"])
+                slider_bpm = int(ov["bpm"])
+            if ov.get("groove"):
+                style = str(ov["groove"])
+                groove = str(ov["groove"])
+            if ov.get("meter"):
+                meter = str(ov["meter"])
+    except ImportError:
+        pass
 
     concert_sections: dict[str, list[str]] = {}
     chart_sections: dict[str, list[str]] = {}

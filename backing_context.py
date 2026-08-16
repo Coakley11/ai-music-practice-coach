@@ -758,6 +758,17 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
     ctx = get_backing_context(session)
     if ctx is None:
         return canonical_bpm, _default_groove(session), "4/4"
+    try:
+        from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            ov = effective_backing_play_overrides(session)
+            bpm = int(ov.get("bpm") or session.get("backing_track_bpm") or ctx.bpm or canonical_bpm)
+            groove = str(ov.get("groove") or _backing_groove_style_from_ctx(ctx))
+            meter = str(ov.get("meter") or ctx.meter or "4/4")
+            return bpm, groove, meter
+    except ImportError:
+        pass
     if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
         live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
         if live_bpm > 0:
@@ -839,9 +850,26 @@ def flush_pending_backing_handoff_keys(
         normalize_groove_label,
     )
 
+    skip_bpm = skip_groove = skip_meter = False
+    try:
+        from backing_play_session import backing_play_session_has_override, play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            skip_bpm = backing_play_session_has_override(session, "bpm")
+            skip_groove = backing_play_session_has_override(session, "groove")
+            skip_meter = backing_play_session_has_override(session, "meter")
+    except ImportError:
+        pass
+
     pending_bpm = session.pop(PENDING_BACKING_TRACK_BPM, None)
     pending_groove = session.pop(PENDING_BACKING_GROOVE, None)
     pending_meter = session.pop("_pending_backing_meter", None)
+    if skip_bpm:
+        pending_bpm = None
+    if skip_groove:
+        pending_groove = None
+    if skip_meter:
+        pending_meter = None
 
     if pending_bpm is not None:
         bpm = int(pending_bpm)
@@ -934,15 +962,60 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
 
 def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog/custom song sections — never Entry Jam generated maps or one-chord mission slices."""
+    try:
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        synced = sync_song_improv_sections_to_practice_key(session)
+        if isinstance(synced, dict) and synced:
+            cleaned = {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in synced.items()
+                if isinstance(chords, list)
+            }
+            if sum(len(v) for v in cleaned.values()) > 0:
+                return cleaned
+    except ImportError:
+        pass
     stored = session.get("improv_song_concert_sections")
     if isinstance(stored, dict) and stored:
         flat_count = sum(len(v) for v in stored.values() if isinstance(v, list))
         if flat_count > 1:
-            return {
+            cleaned = {
                 str(name): [str(c) for c in chords if str(c).strip()]
                 for name, chords in stored.items()
                 if isinstance(chords, list)
             }
+            orig = ""
+            sel = session.get("selected_song")
+            if isinstance(sel, dict):
+                orig = str(sel.get("key") or "").strip()
+            dest = ""
+            try:
+                from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+                dest = overlay_destination_practice_key(session)
+            except ImportError:
+                dest = str(session.get("display_key") or "")
+            first = ""
+            for chs in cleaned.values():
+                if chs:
+                    first = str(chs[0] or "").strip()
+                    if first:
+                        break
+            keep = True
+            if first and orig:
+                try:
+                    from music_theory import normalize_root, split_chord
+
+                    first_root = normalize_root(split_chord(first)[0])
+                    orig_root = normalize_root(split_chord(orig)[0])
+                    dest_root = normalize_root(split_chord(dest or orig)[0])
+                    if first_root and first_root not in {orig_root, dest_root}:
+                        keep = False
+                except ImportError:
+                    keep = True
+            if keep:
+                return cleaned
     home = session.get("home_sections")
     if isinstance(home, dict) and home:
         return {
@@ -1847,10 +1920,15 @@ def format_backing_context_banner(
     ctx: BackingContext | None,
     *,
     practice_concert_key: str = "",
+    applied_bpm: int | None = None,
 ) -> str:
     if ctx is None:
         return ""
     resolved_concert = str(practice_concert_key or "").strip()
+    try:
+        bpm_display = int(applied_bpm) if applied_bpm is not None else int(ctx.bpm or 0)
+    except (TypeError, ValueError):
+        bpm_display = int(ctx.bpm or 0)
     if ctx.source == "regular_song":
         parts = ["Backing source: Catalog song"]
         if ctx.song_title:
@@ -1858,8 +1936,8 @@ def format_backing_context_banner(
         concert = resolved_concert or str(ctx.display_key or "").strip()
         if concert:
             parts.append(concert)
-        if ctx.bpm:
-            parts.append(f"{ctx.bpm} BPM")
+        if bpm_display:
+            parts.append(f"{bpm_display} BPM")
         return " · ".join(parts)
     if ctx.source == "entry_jam":
         parts = ["Backing source: Entry & Jam"]
@@ -1870,8 +1948,8 @@ def format_backing_context_banner(
         concert = resolved_concert or str(ctx.concert_key or ctx.key or ctx.display_key or "").strip()
         if concert:
             parts.append(f"Concert {concert}")
-        if ctx.bpm:
-            parts.append(f"{ctx.bpm} BPM")
+        if bpm_display:
+            parts.append(f"{bpm_display} BPM")
         return " · ".join(parts)
     if ctx.source == "mission":
         parts = ["Creative Backing Jam · Mission"]
@@ -1886,8 +1964,8 @@ def format_backing_context_banner(
         concert = resolved_concert or str(ctx.concert_key or ctx.display_key or "").strip()
         if concert:
             parts.append(f"Concert {concert}")
-        if ctx.bpm:
-            parts.append(f"{ctx.bpm} BPM")
+        if bpm_display:
+            parts.append(f"{bpm_display} BPM")
         return " · ".join(parts)
     if ctx.source == "custom_progression":
         if ctx.progression:
@@ -2031,7 +2109,15 @@ def apply_backing_context_to_session(
         )
 
     session.pop("last_backing_defaults_song_id", None)
-    if apply_transport_bpm:
+    skip_transport = False
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        skip_transport = bool(play_session_blocks_canonical_seed(session))
+    except ImportError:
+        skip_transport = False
+
+    if apply_transport_bpm and not skip_transport:
         if widget_safe:
             request_backing_bpm(st_like, int(ctx.bpm))
             request_backing_groove(st_like, backing_style)
@@ -2049,10 +2135,12 @@ def apply_backing_context_to_session(
             session["backing_track_bpm"] = int(ctx.bpm)
             session["backing_groove_style"] = backing_style
             flush_pending_backing_handoff_keys(session, sync_id=sync_id)
-    elif widget_safe:
+    elif widget_safe and not skip_transport:
         request_backing_groove(st_like, backing_style)
 
-    if ctx.section:
+    if skip_transport:
+        pass
+    elif ctx.section:
         session[PENDING_BACKING_SCOPE] = "Single section"
         session[PENDING_BACKING_SINGLE_SECTION] = ctx.section
         if not widget_safe:
@@ -2088,29 +2176,32 @@ def apply_backing_context_to_session(
             if not widget_safe:
                 session["backing_track_scope"] = str(ctx.scope or "Full song")
 
-    if widget_safe:
+    if skip_transport:
+        pass
+    elif widget_safe:
         session[PENDING_BACKING_LOOPS] = int(ctx.loops or 2)
     else:
         session["backing_track_loops"] = int(ctx.loops or 2)
 
-    canonical = {
-        "backing_track_bpm": int(session.get("backing_track_bpm") or ctx.bpm),
-        "backing_groove_style": backing_style,
-        "backing_time_signature": str(ctx.meter or "4/4"),
-        "backing_track_scope": str(session.get("backing_track_scope") or ctx.scope or "Full song"),
-        "backing_track_single_section": str(
-            session.get("backing_track_single_section") or ctx.section or ""
-        ),
-        "backing_track_loops": int(ctx.loops or 2),
-    }
-    multi = session.get("backing_track_multi_sections")
-    if isinstance(multi, list) and multi:
-        canonical["backing_track_multi_sections"] = list(multi)
-    write_canonical_backing_state(
-        session,
-        canonical,
-        reason=f"backing_context_{ctx.source}",
-    )
+    if not skip_transport:
+        canonical = {
+            "backing_track_bpm": int(session.get("backing_track_bpm") or ctx.bpm),
+            "backing_groove_style": backing_style,
+            "backing_time_signature": str(ctx.meter or "4/4"),
+            "backing_track_scope": str(session.get("backing_track_scope") or ctx.scope or "Full song"),
+            "backing_track_single_section": str(
+                session.get("backing_track_single_section") or ctx.section or ""
+            ),
+            "backing_track_loops": int(ctx.loops or 2),
+        }
+        multi = session.get("backing_track_multi_sections")
+        if isinstance(multi, list) and multi:
+            canonical["backing_track_multi_sections"] = list(multi)
+        write_canonical_backing_state(
+            session,
+            canonical,
+            reason=f"backing_context_{ctx.source}",
+        )
     session[BACKING_NEEDS_REGEN] = True
     session[BACKING_AUTOPLAY] = True
     if ctx.source in {"entry_jam", "mission"} and ctx.groove_intensity:
@@ -2120,7 +2211,7 @@ def apply_backing_context_to_session(
             session[BACKING_HUMANIZE_LEVEL_KEY] = humanize_level_for_groove_intensity(ctx.groove_intensity)
         except ImportError:
             session["backing_humanize_level"] = humanize_level_for_groove_intensity(ctx.groove_intensity)
-    if ctx.meter:
+    if ctx.meter and not skip_transport:
         if widget_safe:
             session["_pending_backing_meter"] = str(ctx.meter)
         else:
@@ -2976,6 +3067,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     from songs.key_state import invalidate_backing_cache
     from songs.music_source import activate_catalog_song_for_backing, resolve_catalog_pick_for_backing_restore
 
+    try:
+        from backing_play_session import expire_backing_play_session
+
+        expire_backing_play_session(session)
+    except ImportError:
+        pass
+    try:
+        set_backing_source_preference(session, BACKING_PREF_CATALOG)
+    except Exception:
+        pass
+
     reason = "creative_to_catalog"
     try:
         from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, peek_key_transition_intent
@@ -3030,6 +3132,18 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             session["display_key"] = song_tok
             session["concert_key"] = song_tok
             session["_pending_display_key"] = song_tok
+            try:
+                from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+                orig = ""
+                selected = session.get("selected_song")
+                if isinstance(selected, dict):
+                    orig = str(selected.get("key") or "")
+                ensure_song_practice_blob_for_active_song(
+                    session, practice_key=song_tok, original_key=orig
+                )
+            except ImportError:
+                pass
     except ImportError:
         pass
     try:
@@ -3161,12 +3275,20 @@ def _sync_creative_backing_transport_handoff(
     backing_style = _backing_groove_style_from_ctx(ctx)
     sig = str(ctx.source_signature or "").strip()
     seeded = str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip() == sig
-    if not seeded:
-        request_backing_bpm(st_like, int(ctx.bpm))
-        session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            return
+    except ImportError:
+        pass
+    if seeded:
+        return
+    request_backing_bpm(st_like, int(ctx.bpm))
     request_backing_groove(st_like, backing_style)
     if ctx.meter:
         session["_pending_backing_meter"] = str(ctx.meter)
+    session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
 
 
 def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> BackingContext | None:

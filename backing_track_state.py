@@ -1002,6 +1002,16 @@ def commit_backing_transport_from_session(session: dict[str, Any], *, reason: st
 
 
 def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "groove"):
+            resolved = str(effective_backing_play_overrides(session).get("groove") or "").strip()
+            if resolved:
+                session["backing_groove_style"] = normalize_backing_groove(resolved)
+                return str(session["backing_groove_style"])
+    except ImportError:
+        pass
     if (
         not is_backing_locally_dirty(session)
         and not session.get(BACKING_PENDING_SYNC_KEY)
@@ -1093,6 +1103,18 @@ def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
 
 def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: str = "4/4") -> tuple[str, bool]:
     """Return meter for Step 2 radio; only seed widget keys on restore / first load."""
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "meter"):
+            ov = effective_backing_play_overrides(session)
+            meter = normalize_backing_meter(str(ov.get("meter") or default_meter), default=default_meter)
+            session["backing_time_signature"] = meter
+            if "meter_override" in ov:
+                session["backing_time_signature_override"] = bool(ov.get("meter_override"))
+            return meter, bool(session.get("backing_time_signature_override"))
+    except ImportError:
+        pass
     if _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         meter_raw = str(canonical.get("backing_time_signature") or "").strip()

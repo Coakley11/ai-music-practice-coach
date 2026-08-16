@@ -159,6 +159,14 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
         original = str(catalog.get("original_key") or "C").strip() or "C"
     if pick:
         try:
+            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+            dest = overlay_destination_practice_key(session)
+            if dest:
+                return dest
+        except ImportError:
+            pass
+        try:
             from songs.practice_key_state import get_practice_concert_key
 
             saved = get_practice_concert_key(session, pick)
@@ -168,6 +176,31 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
             pass
     dk = str(catalog.get("display_key") or "").strip()
     return dk or original
+
+
+def _sections_overlay_pending_practice_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    """Retranspose catalog sections toward the effective Practice Key on the same rerun."""
+    if not isinstance(sections, dict) or not sections:
+        return sections
+    try:
+        from music_workflow_pending_song_practice_key_edit import (
+            overlay_sections_with_pending_practice_key,
+        )
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        spelled = resolve_song_practice_key_token(session) or str(
+            session.get("concert_key") or ""
+        )
+        return overlay_sections_with_pending_practice_key(
+            session,
+            sections,
+            spelled_in_key=spelled,
+        )
+    except ImportError:
+        return sections
 
 
 def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[str, list[str]]:
@@ -182,28 +215,31 @@ def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[
 
             synced = sync_song_improv_sections_to_practice_key(session)
             if isinstance(synced, dict) and synced:
-                return {
+                cleaned = {
                     str(name): [str(c) for c in chords if str(c).strip()]
                     for name, chords in synced.items()
                     if isinstance(chords, list)
                 }
+                return _sections_overlay_pending_practice_key(session, cleaned)
         except ImportError:
             pass
     stored = session.get("improv_song_concert_sections")
     if live_is_catalog and isinstance(stored, dict) and stored:
         if not pick or pick == ctx_pick:
-            return {
+            cleaned = {
                 str(name): [str(c) for c in chords if str(c).strip()]
                 for name, chords in stored.items()
                 if isinstance(chords, list)
             }
+            return _sections_overlay_pending_practice_key(session, cleaned)
     bucket = catalog.get("sections")
     if isinstance(bucket, dict) and bucket:
-        return {
+        cleaned = {
             str(name): [str(c) for c in chords if str(c).strip()]
             for name, chords in bucket.items()
             if isinstance(chords, list)
         }
+        return _sections_overlay_pending_practice_key(session, cleaned)
     return {}
 
 

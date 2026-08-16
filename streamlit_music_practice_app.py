@@ -10067,7 +10067,16 @@ try:
         and str(getattr(_backing_ctx_for_sidebar, "source", "") or "").strip() == "regular_song"
         and active_creative_backing_context(st.session_state) is None
     )
-    if is_creative_major_jam_active(st.session_state):
+    _generated_backing_sidebar = False
+    try:
+        from creative_key_sync import generated_backing_owns_left_panel_key as _gen_backing_owns
+
+        _generated_backing_sidebar = bool(_gen_backing_owns(st.session_state))
+    except ImportError:
+        _generated_backing_sidebar = False
+    if _generated_backing_sidebar:
+        _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
+    elif is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
     elif _catalog_regular_backing:
         _display_key_options = sync_display_key_before_widget(
@@ -10154,6 +10163,12 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
+        from backing_play_session import capture_backing_play_session_overrides
+
+        capture_backing_play_session_overrides(st.session_state)
+    except Exception:
+        pass
+    try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,
             mark_backing_user_edit,
@@ -10164,12 +10179,6 @@ def _on_backing_filter_change() -> None:
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
-        try:
-            from backing_play_session import capture_backing_play_session_overrides
-
-            capture_backing_play_session_overrides(st.session_state)
-        except ImportError:
-            pass
     except Exception:
         return
     _sync_canonical_backing_after_edit()

@@ -16,6 +16,30 @@ PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"
 
 CREATIVE_MAJOR_JAM_MODES: tuple[str, ...] = ("Style Jam Mode", "Jam Session Generator")
 
+
+def generated_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
+    """True when Backing is showing a generated Style Jam / Jam Generator session.
+
+    The left-panel Practice / Concert Key then mutates the generated owner, not
+    the catalog song Practice Key.
+    """
+    if str(session.get("studio_page") or "").strip().lower() != "backing":
+        return False
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(ctx.source or "") == "entry_jam":
+            return True
+    except ImportError:
+        return False
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        return bool(generated_workflow_owns_practice_key(session))
+    except ImportError:
+        return False
+
 _SIDEBAR_USER_DISPLAY_KEY_SOURCES: frozenset[str] = frozenset(
     {
         "sidebar_on_change",
@@ -778,6 +802,29 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}
             )
             if jam_like:
+                if generated_backing_owns_left_panel_key(session):
+                    gen = ident
+                    if gen is None or str(gen.workflow_owner or "") not in {
+                        "style_jam",
+                        "jam_session_generator",
+                    }:
+                        try:
+                            from workflow_key_identity import resolve_active_workflow_key_identity
+
+                            gen = resolve_active_workflow_key_identity(session)
+                        except ImportError:
+                            gen = ident
+                    if gen is not None:
+                        selected = gen.practice_key_token
+                        options = practice_keys_for_mode(gen.practice_mode)
+                        if selected not in options:
+                            options = [selected] + options
+                        _apply_display_key_before_widget(
+                            st, selected, source="generated_backing_concert_key"
+                        )
+                        session["concert_key"] = selected
+                        session["_sidebar_key_identity_label"] = gen.practice_label
+                        return options
                 song_ident = resolve_song_practice_key_identity(session)
                 if song_ident is not None:
                     selected = song_ident.practice_key_token
@@ -1070,6 +1117,30 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             from music_theory import key_mode, practice_keys_for_mode
             from workflow_key_identity import resolve_song_practice_key_identity
 
+            if generated_backing_owns_left_panel_key(session):
+                gen = ident
+                if gen is None or str(gen.workflow_owner or "") not in {
+                    "style_jam",
+                    "jam_session_generator",
+                }:
+                    try:
+                        from workflow_key_identity import resolve_active_workflow_key_identity
+
+                        gen = resolve_active_workflow_key_identity(session)
+                    except ImportError:
+                        gen = ident
+                if gen is not None:
+                    token = gen.practice_key_token
+                    options = practice_keys_for_mode(gen.practice_mode)
+                    if token not in options:
+                        options = [token] + options
+                    _apply_display_key_before_widget(
+                        st, token, source="generated_backing_concert_key"
+                    )
+                    session["concert_key"] = token
+                    session["_sidebar_key_identity_label"] = gen.practice_label
+                    return options
+
             song_ident = resolve_song_practice_key_identity(session)
             if song_ident is not None:
                 token = song_ident.practice_key_token
@@ -1341,8 +1412,33 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
 
         ptr = get_active_workflow_pointer(session)
         if ptr and ptr.workflow_owner in {"style_jam", "jam_session_generator"}:
-            # Global sidebar is catalog song Practice Key. Generated Concert Key
-            # is improv_style_key / improv_jam_key — do not treat this widget as jam owner.
+            if generated_backing_owns_left_panel_key(session):
+                widget_key = (
+                    "improv_jam_key"
+                    if str(ptr.workflow_owner) == "jam_session_generator"
+                    else "improv_style_key"
+                )
+                session[widget_key] = new
+                try:
+                    from generated_jam_key_change import capture_generated_key_edit_intent
+
+                    capture_generated_key_edit_intent(session, widget_key=widget_key)
+                except ImportError:
+                    pass
+                try:
+                    from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
+
+                    append_jam_sidebar_key_trace(
+                        session,
+                        "generated_backing_left_panel_key",
+                        new_display_key=new,
+                        workflow_owner=str(ptr.workflow_owner or ""),
+                        widget_key=widget_key,
+                    )
+                except ImportError:
+                    pass
+                return
+            # Creative page: global sidebar is catalog song Practice Key.
             try:
                 from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
 
@@ -1365,21 +1461,6 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     workflow_owner=str(ptr.workflow_owner or ""),
                     display_key=str(session.get("display_key") or ""),
                     improv_style_key=str(session.get("improv_style_key") or ""),
-                )
-            except ImportError:
-                pass
-            return
-            try:
-                from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
-
-                append_jam_sidebar_key_trace(
-                    session,
-                    "sync_sidebar_early_return_generated_owner",
-                    new_display_key=new,
-                    workflow_owner=str(ptr.workflow_owner or ""),
-                    display_key=str(session.get("display_key") or ""),
-                    concert_key=str(session.get("concert_key") or ""),
-                    improv_jam_key=str(session.get("improv_jam_key") or ""),
                 )
             except ImportError:
                 pass
@@ -1575,12 +1656,13 @@ def on_sidebar_practice_concert_key_change() -> None:
         )
     except ImportError:
         pass
-    try:
-        from song_practice_key_sidebar_change import capture_sidebar_song_practice_key_edit_intent
+    if not generated_backing_owns_left_panel_key(st.session_state):
+        try:
+            from song_practice_key_sidebar_change import capture_sidebar_song_practice_key_edit_intent
 
-        capture_sidebar_song_practice_key_edit_intent(st.session_state)
-    except ImportError:
-        pass
+            capture_sidebar_song_practice_key_edit_intent(st.session_state)
+        except ImportError:
+            pass
     sync_sidebar_creative_concert_key(st.session_state, st_like=st)
     try:
         from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace

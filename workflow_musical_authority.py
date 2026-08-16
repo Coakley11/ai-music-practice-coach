@@ -492,7 +492,14 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
         from songs.music_source import catalog_chart_sections_for_pick
 
         reclaim_stale_prior_song_practice_key_on_original_chart(session)
-        practice = resolve_song_practice_key_token(session) or str(
+        practice = ""
+        try:
+            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+            practice = str(overlay_destination_practice_key(session) or "").strip()
+        except ImportError:
+            practice = ""
+        practice = practice or resolve_song_practice_key_token(session) or str(
             session.get("display_key") or session.get("concert_key") or ""
         ).strip()
         song = song_practice_blob(session)

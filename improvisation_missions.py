@@ -520,6 +520,36 @@ def refresh_mission_example(
             example.motif["_concert_notes"] = list(concert_notes)
         example.motif["_concert_chord"] = concert_chord
         example.motif["_projected_display_key"] = spell_display
+    example.chord = concert_chord or str(example.chord or "")
+    try:
+        from improvisation_intelligence import ImprovSessionContext, chord_coach_insight
+
+        shown_insight = chord_coach_insight(
+            display_chord,
+            key_center=spell_display or concert_auth,
+            instrument=inst,
+            level=str(example.level or "Intermediate"),
+        )
+        example.insight = shown_insight
+        fake_ctx = ImprovSessionContext(
+            song_title=str(example.song_title or ""),
+            artist="",
+            key_center=concert_auth or example.concert_key or "C",
+            display_key=spell_display or example.display_key or concert_auth or "C",
+            instrument=inst,
+            level=str(example.level or "Intermediate"),
+            focus=str(example.focus or "Improvisation"),
+            sections={},
+        )
+        example.why = _why_it_works(
+            example.mission,
+            display_chord,
+            improv_ctx=fake_ctx,
+            section=str(example.section or ""),
+            insight=shown_insight,
+        )
+    except Exception:
+        pass
     return example
 
 
@@ -814,6 +844,8 @@ def store_mission_example(
         "variant": example.variant,
         "chord": example.chord,
         "section": example.section,
+        "concert_key": str(example.concert_key or ""),
+        "display_key": str(example.display_key or ""),
         "motif": example.motif,
         "abc": example.abc,
         "tab": example.tab,
@@ -946,17 +978,21 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
     if not raw or not isinstance(raw, dict):
         return None
     try:
-        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+        from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
         from music_workflow_song_practice import resolve_song_practice_key_token
 
-        pending = pending_selected_practice_key_token(session_state)
-        spelled = resolve_song_practice_key_token(session_state) or str(
-            improv_ctx.key_center or session_state.get("concert_key") or ""
+        dest = overlay_destination_practice_key(session_state) or str(
+            improv_ctx.key_center or session_state.get("display_key") or ""
         )
-        if pending and spelled and pending != spelled:
-            overlaid = _transpose_mission_example_payload(raw, from_key=spelled, to_key=pending)
+        spelled = str(raw.get("concert_key") or "").strip() or resolve_song_practice_key_token(
+            session_state
+        ) or str(improv_ctx.key_center or session_state.get("concert_key") or "")
+        if dest and spelled and dest != spelled:
+            overlaid = _transpose_mission_example_payload(raw, from_key=spelled, to_key=dest)
             if overlaid is not None:
+                overlaid["concert_key"] = dest
                 raw = overlaid
+                session_state[MISSION_EXAMPLE_KEY] = overlaid
     except ImportError:
         pass
     chord = str(raw.get("chord", "C"))
@@ -992,6 +1028,13 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
             insight = _fallback_chord_insight(display_chord)
     except Exception:
         insight = _fallback_chord_insight(display_chord)
+    why = _why_it_works(
+        str(raw.get("mission", "")),
+        display_chord,
+        improv_ctx=improv_ctx,
+        section=str(raw.get("section", "")),
+        insight=insight,
+    )
     return MissionExample(
         mission=str(raw.get("mission", "")),
         variant=str(raw.get("variant", "normal")),
@@ -1007,7 +1050,7 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         abc=str(raw.get("abc", "")),
         tab=str(raw.get("tab", "")),
         piano_html=str(raw.get("piano_html", "")),
-        why=str(raw.get("why", "")),
+        why=why,
         practice_steps=list(raw.get("practice_steps") or []),
         insight=insight,
         show_tab=bool(raw.get("show_tab")),

@@ -426,20 +426,37 @@ def canonicalize_backing_defaults_for_song(
                     pass
             else:
                 try:
-                    from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+                    from backing_play_session import (
+                        backing_play_session_has_override,
+                        effective_backing_play_overrides,
+                        play_session_blocks_canonical_seed,
+                    )
                     from backing_track_state import is_backing_user_dirty
 
-                    if backing_play_session_has_override(st.session_state, "bpm") or is_backing_user_dirty(st.session_state):
+                    keep_play = bool(
+                        play_session_blocks_canonical_seed(st.session_state)
+                        or backing_play_session_has_override(st.session_state, "bpm")
+                        or backing_play_session_has_override(st.session_state, "groove")
+                        or backing_play_session_has_override(st.session_state, "meter")
+                        or is_backing_user_dirty(st.session_state)
+                    )
+                    if keep_play:
                         resolved = effective_backing_play_overrides(st.session_state)
                         override_bpm = int(resolved.get("bpm") or 0)
                         if override_bpm > 0:
                             norm_bpm = override_bpm
                         else:
                             norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
-                        live_groove = str(st.session_state.get(BACKING_GROOVE_KEY) or st.session_state.get("backing_groove_style") or "").strip()
+                        ov_groove = str(resolved.get("groove") or "").strip()
+                        live_groove = ov_groove or str(
+                            st.session_state.get(BACKING_GROOVE_KEY)
+                            or st.session_state.get("backing_groove_style")
+                            or ""
+                        ).strip()
                         if live_groove:
                             norm_groove = normalize_groove_label(live_groove)
-                        live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                        ov_meter = str(resolved.get("meter") or "").strip()
+                        live_meter = ov_meter or str(st.session_state.get(BACKING_METER_KEY) or "").strip()
                         if live_meter:
                             norm_meter = normalize_time_signature(live_meter)
                     else:
@@ -451,9 +468,16 @@ def canonicalize_backing_defaults_for_song(
             st.session_state["backing_track_bpm"] = norm_bpm
             keep_user_feel = False
             try:
+                from backing_play_session import play_session_blocks_canonical_seed
                 from backing_track_state import is_backing_user_dirty
 
-                keep_user_feel = bool(is_backing_user_dirty(st.session_state) and not did_reset)
+                keep_user_feel = bool(
+                    (
+                        is_backing_user_dirty(st.session_state)
+                        or play_session_blocks_canonical_seed(st.session_state)
+                    )
+                    and not did_reset
+                )
             except ImportError:
                 keep_user_feel = False
             if not keep_user_feel:

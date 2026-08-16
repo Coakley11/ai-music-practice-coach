@@ -107,13 +107,130 @@ def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
         return str(session.get("_pending_display_key") or "").strip()
 
 
+def overlay_destination_practice_key(session: dict[str, Any]) -> str:
+    """Effective Practice Key for same-rerun readers.
+
+    Prefer the queued sidebar edit, then the saved catalog Practice Key map,
+    then live ``display_key`` when a catalog/song owner still holds the page.
+    Generated-jam Concert Key must not become the overlay destination for
+    catalog sections.
+    """
+    try:
+        from creative_key_sync import generated_backing_owns_left_panel_key
+
+        if generated_backing_owns_left_panel_key(session):
+            return ""
+    except ImportError:
+        pass
+    pending = pending_selected_practice_key_token(session)
+    if pending:
+        return pending
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick and not pick.startswith("custom::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if saved:
+                return saved
+        except ImportError:
+            pass
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        if generated_workflow_owns_practice_key(session):
+            tab = str(
+                session.get("improv_intelligence_tab") or session.get("improv_entry_mode") or ""
+            ).strip()
+            if tab in {"Style Jam Mode", "Jam Session Generator", "Entry & Jam"}:
+                return ""
+    except ImportError:
+        pass
+    return str(
+        session.get("display_key") or session.get("_pending_display_key") or ""
+    ).strip()
+
+
+def infer_catalog_sections_spelled_in_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    fallback: str = "",
+) -> str:
+    """Key the current catalog section map is actually spelled in.
+
+    Blob Practice Key identity can already be the destination while the map is
+    still original-pitch. Overlay must transpose from the map's real pitch.
+    """
+    orig = ""
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        orig = str(sel.get("key") or sel.get("original_key") or "").strip()
+    dest = overlay_destination_practice_key(session)
+    blob = str(fallback or "").strip()
+    catalog = None
+    try:
+        from songs.music_source import catalog_chart_sections_for_pick
+
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pick:
+            catalog = catalog_chart_sections_for_pick(session, pick)
+    except ImportError:
+        catalog = None
+    home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else None
+    if not isinstance(sections, dict) or not sections:
+        return blob or orig or dest
+    try:
+        from music_theory import transpose_sections_dict
+        from workflow_musical_authority import section_maps_equivalent
+    except ImportError:
+        return blob or orig or dest
+    if isinstance(catalog, dict) and catalog and section_maps_equivalent(sections, catalog):
+        return orig or dest
+    if isinstance(home, dict) and home and section_maps_equivalent(sections, home):
+        return orig or dest
+    if orig and dest and dest != orig:
+        try:
+            from music_theory import normalize_root, split_chord
+
+            first = ""
+            for chs in sections.values():
+                if isinstance(chs, list) and chs:
+                    first = str(chs[0] or "").strip()
+                    if first:
+                        break
+            if first:
+                orig_root = normalize_root(split_chord(orig)[0])
+                first_root = normalize_root(split_chord(first)[0])
+                dest_root = normalize_root(split_chord(dest)[0])
+                if orig_root and first_root == orig_root and first_root != dest_root:
+                    return orig
+        except Exception:
+            pass
+    if orig and dest and dest != orig and isinstance(catalog, dict) and catalog:
+        try:
+            expected = transpose_sections_dict(catalog, orig, dest)
+            if section_maps_equivalent(sections, expected):
+                return dest
+        except Exception:
+            pass
+    if orig and blob and blob != orig and isinstance(catalog, dict) and catalog:
+        try:
+            expected = transpose_sections_dict(catalog, orig, blob)
+            if section_maps_equivalent(sections, expected):
+                return blob
+        except Exception:
+            pass
+    return blob or orig or dest
+
+
 def overlay_concert_token_with_pending_practice_key(
     session: dict[str, Any],
     canonical_token: str,
 ) -> str:
-    """Same-rerun concert Practice Key: pending edit wins over the still-uncommitted blob."""
-    pending = pending_selected_practice_key_token(session)
-    return pending or str(canonical_token or "").strip()
+    """Same-rerun concert Practice Key: pending/saved edit wins over the still-uncommitted blob."""
+    dest = overlay_destination_practice_key(session)
+    return dest or str(canonical_token or "").strip()
 
 
 def overlay_sections_with_pending_practice_key(
@@ -122,9 +239,15 @@ def overlay_sections_with_pending_practice_key(
     *,
     spelled_in_key: str,
 ) -> dict[str, list[str]]:
-    """Transpose a concert section map toward a queued Practice Key without writing session."""
-    dest = pending_selected_practice_key_token(session)
-    src = str(spelled_in_key or "").strip()
+    """Transpose a concert section map toward a queued Practice Key without writing session.
+
+    ``spelled_in_key`` must be the key the sections are currently spelled in
+    (committed blob / last committed practice key), not the destination.
+    """
+    dest = overlay_destination_practice_key(session)
+    src = infer_catalog_sections_spelled_in_key(
+        session, sections, fallback=str(spelled_in_key or "")
+    )
     if not dest or not src or dest == src or not isinstance(sections, dict) or not sections:
         return sections
     try:
@@ -141,9 +264,22 @@ def overlay_chord_with_pending_practice_key(
     *,
     spelled_in_key: str,
 ) -> str:
-    dest = pending_selected_practice_key_token(session)
+    dest = overlay_destination_practice_key(session)
     src = str(spelled_in_key or "").strip()
     raw = str(chord or "").strip()
+    orig = ""
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        orig = str(sel.get("key") or sel.get("original_key") or "").strip()
+    if dest and orig and dest == src and orig != dest and raw:
+        home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else {}
+        catalog_hit = False
+        for chs in (home or {}).values():
+            if isinstance(chs, list) and any(str(c).strip() == raw for c in chs):
+                catalog_hit = True
+                break
+        if catalog_hit:
+            src = orig
     if not dest or not src or dest == src or not raw:
         return raw
     try:
@@ -391,6 +527,7 @@ __all__ = [
     "consume_pending_song_practice_key_edit",
     "overlay_chord_with_pending_practice_key",
     "overlay_concert_token_with_pending_practice_key",
+    "overlay_destination_practice_key",
     "overlay_sections_with_pending_practice_key",
     "peek_pending_song_practice_key_edit",
     "pending_selected_practice_key_token",
