@@ -14,7 +14,13 @@ Canonical session_state keys
 * ``"focus"``      -> str matching one of
   :func:`practice_setup_controls.focus_options_for_instrument(instrument)`
 
-These are the **only** keys the rest of the app should read from. Page-
+These are the **only** keys the rest of the app should read from for the
+*selected* instrument / level / focus strings. Coaching meaning of Practice
+Focus (priorities, metrics, exercises, prompts) lives in
+``practice_focus_policy`` / ``practice_focus_context`` — not in this module.
+
+Historical copies of focus (logs, upload analyses) must use
+``practice_focus_snapshot`` so later selector changes cannot rewrite the past.
 local widgets (sidebar selectbox, quick-control row, YouTube panel,
 etc.) may use prefixed widget keys *as long as they sync to / from*
 these canonical keys via ``sync_widget_state_from_globals`` (before

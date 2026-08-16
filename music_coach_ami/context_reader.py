@@ -167,10 +167,38 @@ def read_coach_context(
     if chart_snapshot.get("practice_key"):
         practice_key = str(chart_snapshot.get("practice_key") or practice_key)
 
+    practice_focus = str(snap.get("focus") or ctx.get("focus") or session_state.get("focus") or "")
+    extra = {
+        "routing_hint": str(ctx.get("routing_hint") or ""),
+        "instrument_provenance": prov,
+        "snapshot_instrument": snap_inst,
+        "practice_log_summary": practice_log_summary,
+        "chart_snapshot": chart_snapshot,
+        "practice_key_trace": practice_key_trace,
+        # Read-only session handle for written-key / capo SSOT (no chart writes).
+        "session_ref": session_state,
+    }
+    try:
+        from practice_focus_context import resolve_practice_focus_context
+
+        pf = resolve_practice_focus_context(session_state)
+        if pf.focus:
+            practice_focus = pf.focus
+        extra["practice_focus_prompt"] = pf.ami_prompt_block
+        extra["practice_focus_category"] = pf.category
+        extra["practice_focus_profile"] = {
+            "label": pf.focus,
+            "category": pf.category,
+            "preferred_metric_ids": list(pf.profile.preferred_metric_ids),
+            "score_keys": list(pf.profile.score_keys),
+        }
+    except ImportError:
+        pass
+
     return CoachContext(
         instrument=instrument,
         level=level,
-        practice_focus=str(snap.get("focus") or ctx.get("focus") or session_state.get("focus") or ""),
+        practice_focus=practice_focus,
         available_practice_minutes=minutes_int,
         active_song_title=title,
         active_song_pick_key=pick,
@@ -186,14 +214,5 @@ def read_coach_context(
         studio_page=str(session_state.get("studio_page") or ""),
         coach_page=coach_page,
         recent_practice_evidence=evidence,
-        extra={
-            "routing_hint": str(ctx.get("routing_hint") or ""),
-            "instrument_provenance": prov,
-            "snapshot_instrument": snap_inst,
-            "practice_log_summary": practice_log_summary,
-            "chart_snapshot": chart_snapshot,
-            "practice_key_trace": practice_key_trace,
-            # Read-only session handle for written-key / capo SSOT (no chart writes).
-            "session_ref": session_state,
-        },
+        extra=extra,
     )

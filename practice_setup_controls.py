@@ -106,18 +106,33 @@ GLOBAL_CONTROL_TRACE_KEY = "_global_control_widget_trace"
 
 
 def focus_options_for_instrument(instrument: str) -> list[str]:
-    return FOCUS_OPTIONS_BY_INSTRUMENT.get(
-        instrument,
-        [
-            "Melody",
-            "Harmony",
-            "Rhythm",
-            "Dynamics",
-            "Improvisation",
-            "Technique",
-            "Ear Training",
-        ],
-    )
+    """Instrument-aware Practice Focus labels.
+
+    The first option remains the instrument default (Guitar → Strumming,
+    Saxophone → Tone, …). Shared coaching focuses (Timing, Melody, Harmony,
+    …) are appended so the same coaching concepts exist across instruments
+    without changing that default.
+    """
+    try:
+        from practice_focus_policy import append_shared_coaching_focuses
+    except ImportError:
+        def append_shared_coaching_focuses(options):  # type: ignore[misc]
+            return list(options)
+
+    base = FOCUS_OPTIONS_BY_INSTRUMENT.get(instrument)
+    if base is None:
+        return append_shared_coaching_focuses(
+            [
+                "Melody",
+                "Harmony",
+                "Rhythm",
+                "Dynamics",
+                "Improvisation",
+                "Technique",
+                "Ear Training",
+            ]
+        )
+    return append_shared_coaching_focuses(list(base))
 
 
 def _widget_value_for_global(

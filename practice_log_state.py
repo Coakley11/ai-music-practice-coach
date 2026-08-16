@@ -557,6 +557,14 @@ def _normalize_focus_area(raw: Any, *, legacy_focus: Any = None) -> str:
     for key, val in legacy_map.items():
         if key in low:
             return val
+    try:
+        from practice_focus_policy import coarse_log_focus_area
+
+        mapped = coarse_log_focus_area(text)
+        if mapped and mapped != "general":
+            return mapped
+    except ImportError:
+        pass
     return text if text else "general"
 
 
@@ -654,6 +662,31 @@ def migrate_practice_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
         section = "whole song" if count == 0 else "custom"
     out["section_practiced"] = section if section in SECTIONS_PRACTICED else "custom"
 
+    out["focus"] = str(out.get("focus") or out.get("practice_focus") or "").strip()
+    if out["focus"]:
+        out["practice_focus"] = out["focus"]
+        try:
+            from practice_focus_snapshot import (
+                read_practice_focus_snapshot,
+                snapshot_from_historical_fields,
+            )
+
+            snap = read_practice_focus_snapshot(out.get("practice_focus_snapshot"))
+            if snap is None:
+                snap = snapshot_from_historical_fields(
+                    instrument=out.get("instrument_family") or out.get("instrument"),
+                    practice_focus=out["focus"],
+                    captured_at=out.get("created_at") or out.get("date"),
+                    instrument_display=out.get("instrument"),
+                )
+            if snap:
+                out["practice_focus_snapshot"] = snap
+                stored = str(snap.get("practice_focus") or "").strip()
+                if stored:
+                    out["focus"] = stored
+                    out["practice_focus"] = stored
+        except ImportError:
+            pass
     out["focus_area"] = _normalize_focus_area(out.get("focus_area"), legacy_focus=out.get("focus"))
     out["practice_type"] = _normalize_practice_type(out.get("practice_type") or out.get("mode"))
     out["source_mode"] = str(out.get("source_mode") or out["practice_type"]).strip()
@@ -893,6 +926,17 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
 
     prefill["focus_area"] = _normalize_focus_area(None, legacy_focus=legacy_focus)
     prefill["focus"] = legacy_focus
+    prefill["practice_focus"] = legacy_focus
+    try:
+        from practice_focus_snapshot import capture_practice_focus_snapshot
+
+        snap = capture_practice_focus_snapshot(ss)
+        prefill["practice_focus_snapshot"] = snap
+        if snap.get("practice_focus"):
+            prefill["practice_focus"] = str(snap.get("practice_focus") or legacy_focus)
+            prefill["focus"] = prefill["practice_focus"]
+    except ImportError:
+        pass
 
     try:
         from practice_state import gather_practice_filters

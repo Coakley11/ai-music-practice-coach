@@ -1,6 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-15
+
+---
+
+## Current Priorities
+
+*See [music_app_tasks.md](./music_app_tasks.md) — Practice Focus System is active on `feature/practice-focus-system`.*
 
 ---
 

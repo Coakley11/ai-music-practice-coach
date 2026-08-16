@@ -1,11 +1,27 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-04 (Phase 2A Missions recording @ `227a55b` pending live acceptance; new P0 handoff + speed plans) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-15 (Practice Focus System active on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
+
+### P0 — Practice Focus System (active)
+
+**Plan:** [plans/2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)  
+**Branch:** `feature/practice-focus-system` from `origin/dev` (`870a365`). **Do not merge to `dev` until approved.**  
+**Parked:** `feature/creative-backing-stabilization` @ `44403d43785a0bdd29c0762f98155efd393ccb70` — do not touch or use as base.
+
+**Goal:** Practice Focus is an app-wide coaching variable (bias, not prison): AMI, Practice, Upload, Log, Multitrack, then safe Backing/Custom. Deeper Creative waits for the parked branch. Composition is hook-only.
+
+- [x] Branch from clean `origin/dev` (not Creative stabilization)
+- [x] Audit existing `focus` storage, widgets, persistence, lookalikes
+- [x] Phase 1 foundation: `practice_focus_policy` / `practice_focus_context` / `practice_focus_snapshot` + tests
+- [ ] Phase 2: AMI, Practice page, Upload/AI Coach, Practice Log weekly analysis, Multitrack
+- [ ] Phase 3: safe Backing instructional layer + Custom tools on current `dev`
+- [ ] Phase 4: Creative integration after parked branch is accepted
+- [ ] Phase 5: Composition (later)
 
 ### P0 — Mission Take → Upload Analysis durable handoff (queued)
 
@@ -362,7 +378,8 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 
 ## Notes
 
-- **Phase 2A (2026-08-04):** **`227a55b`** on `origin/dev` — pending **live acceptance**; next P0: [mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) + [navigation speed pass](./plans/2026-08-04-music-navigation-speed-pass.md).
+- **Practice Focus (2026-08-15):** Active on `feature/practice-focus-system`. Parked Creative/Backing @ `44403d4`. Do not merge Practice Focus to `dev` until approved. Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md).
+- **Phase 2A (2026-08-04):** **`227a55b`** on `origin/dev` — pending **live acceptance**; queued P0: [mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) + [navigation speed pass](./plans/2026-08-04-music-navigation-speed-pass.md).
 - **Phase 1 Items 1–8 (2026-08-03):** **Live-accepted & frozen** on `dev` — Item 8 @ **`8ef698e`** (CAS + revision unification; TEST A/B/C). **Phase 2 gate open.** Do not modify frozen persistence/CAS or Item 8 diagnostics without `?dev=1` proof.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.

@@ -34,6 +34,8 @@ _HISTORY_RESULT_KEYS = (
     "multitrack",
     "layer_scores",
     "message",
+    "practice_focus_snapshot",
+    "practice_focus_at_analysis",
 )
 
 

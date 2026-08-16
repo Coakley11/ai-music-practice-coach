@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-15
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -14,17 +14,27 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 *Phase 1 Items **1–8** **live-accepted & frozen** on `dev` (Item 8 @ **`8ef698e`**). **Phase 2** may proceed per [tasks](./music_app_tasks.md).*
 
+*Creative/Backing stabilization is **parked** @ `44403d4` while Practice Focus runs on a separate branch from `origin/dev`.*
+
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (immediate) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
-| **P0** (immediate) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
-| **P0** (immediate) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
+| **P0** (active) | Practice Focus System — coaching variable across AMI / Practice / Upload / Log | [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) |
+| **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
+| **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
+| **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
 | **P1** | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
 | **P2** (later) | Back/Forward nav audit | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
 
 ---
 
 ## Next Features
+
+### Practice Focus System (P0 — active on feature branch)
+
+- App-wide coaching variable (not a badge): AMI, Practice, Upload, Log, Multitrack, then safe Backing/Custom
+- Deeper Creative waits until parked `feature/creative-backing-stabilization` @ `44403d4` is accepted
+- Composition is hook-only until that page is further along
+- See [plan](./plans/2026-08-15-practice-focus-system.md)
 
 ### Mission handoff & Upload Analysis (P0 — scheduled)
 
