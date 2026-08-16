@@ -1,0 +1,325 @@
+keyboard_arrow_down
+
+Account & Workspace · Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+← Command Center
+
+keyboard_arrow_down
+
+Saved session
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+🎼 ACTIVE SONG
+
+SONG
+Perfect — Ed Sheeran
+
+🎼 Songs
+
+Perfect · Pop
+
+Song Original Key: G
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+Practice focus
+
+🎵 MUSIC COACH
+
+Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+Ask the Music Coach
+
+🧭 PAGES
+
+◀
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✏️ Custom Progression
+
+🎹 Composition Studio
+
+🎨 Creative Lab
+
+🎚️ Multitrack
+
+🎙️ Upload Analysis
+
+📓 Practice Log
+
+⏱️ SESSION
+
+Practice length: 30 min (adjust on the Practice page)
+
+🎸 GUITAR CAPO / CHORD SHAPES
+
+Sounding Key: A
+
+Capo Shape Mode
+
+Shape Key: A
+
+Capo Fret: open (no capo)
+
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+← Back
+
+Forward →
+
+📖 Tutorial
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✏️
+Custom
+
+Open
+
+🎹
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+Music Coach Insight
+
+Question: What notes are in C major?
+
+C major uses the notes C, D, E, F, G, A, B.
+
+That is the C major scale in order from the tonic.
+
+Coach: Structured solver: TheorySolver(scale_notes)
+
+Assumptions:
+
+Router confidence: 0.92
+
+Confidence: high (92%)
+
+Dismiss insight
+
+🎯
+
+MUSIC STUDIO
+
+Practice
+
+Song Practice
+
+Set up your session below — change key in the sidebar; pick songs on Song Selection.
+
+🎸
+Guitar practice mode · Chord shapes · strumming · picking · fretboard connection · Build technique on the active chart.
+
+💬 Ask the Music Coach
+
+Ask about this song, practice, theory, or how to use the app — without leaving your session context.
+
+Ask the Music Coach
+
+keyboard_arrow_down
+
+Ask the Music Coach
+
+Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.
+
+Ask the Music Coach
+
+Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.
+
+Instrument · level · focus
+
+PRACTICE LENGTH
+
+Session goal in minutes — coach scales to this.
+
+30
+
+10
+
+120
+
+Key behavior for this practice session
+
+Use each song's original/default key
+
+Use one key family for this practice session
+
+Session
+Guitar · Intermediate · Strumming · Pop groove · 30 min
+
+Coach and charts follow these choices. Tempo and section loops live on Backing Track.
+
+Section Focus
+
+SECTION FOCUS
+
+Full Song
+
+Intro
+
+Verse
+
+Chorus
+
+Outro
+
+Full song
+5 chords
+94 bars
+
+Practice tools
+
+Open a focused tool without leaving your current song and practice setup.
+
+HARMONY & TECHNIQUE
+
+🎸 Chord & song coach
+
+TIME & PITCH
+
+🎵 Metronome, Tuner & Tone
+
+CHARTS & LYRICS
+
+📋 Chart & notation
+
+🎤 Lyrics & phrasing
+
+REFERENCE
+
+🎹 Transpose helpers
+
+🎸 Chord & song coach
+
+Section focus, scales, chord coach, and session exercises.
+
+Close
+
+Perfect · Section: Full song · Guitar · Intermediate · Strumming · Chart key A · 100 BPM
+keyboard_arrow_right
+
+Song coach
+
+keyboard_arrow_down
+
+Practice coach & session
+
+Uses Instrument · level · focus from Practice setup above (Guitar, Intermediate, Strumming).
+
+Session length: 30 min · chart key: A
+
+PERSONALIZED COACH EXERCISE
+Conservatory Coach Plan 1: Intro
+
+Song: Perfect
+Target section: Intro — 7 bars
+Today: 30 minutes on Guitar, Intermediate, Strumming
+Chord focus: A → E/G#
+Loop: A | E/G# | F#m7 | E | Dadd9 | E | A
+Section character: make the entrance steady and uncluttered
+
+1. Technical Warm-up (5 min)
+
+Play/sing the chord tones of A: A - C# - E. Then resolve into E/G# with steady groove and connected phrasing.
+Aim for: Subdivision stays even; accents land where you intended
+
+2. Song-Specific Drill (11 min)
+
+Keep the strumming or picking hand moving. Use A → E/G# in Intro (A | E/G# | F#m7 | E | Dadd9 | E | A).
+
+3. Instrument + Focus Coaching (9 min)
+
+Strumming drill (6/8 pulse): loop A | E/G# | F#m7 | E | Dadd9 | E | A for 3 passes. Count 1-2-3 4-5-6; feel two big beats per bar. Accent beat 1 and beat 4; keep the inner eighths flowing. Pattern: D - U D - U or arpeggiate bass-treble-treble twice per bar. Pass 1 is muted strings only; pass 2 adds chord changes; pass 3 follows the section note: Keep the groove consistent and make phrase endings clear.
+Isolate the strumming pattern on open strings or one chord before adding changes. Use A → E/G# in Intro (A | E/G# | F#m7 | E | Dadd9 | E | A).
+
+4. Creativity / Musicianship
+
+Create one alternate version of the same 7-bar phrase: new register, new voicing, new articulation, or a small fill into E/G#.
+
+5. Progress Check (5 min)
+
+Connect the drill to the backing track for 9 minutes, then record one full pass of Intro.
+Success standard: The strumming or groove hand keeps moving through changes
+
+🔄 New exercise
+
+Rotates section targets and raises demand gradually.
+
+keyboard_arrow_right
+
+Chord coach
+
+keyboard_arrow_down
+
+Daily time breakdown
+
+Coach assignment for today: make Intro feel intentional, not just correct.
+
+Warmup (5 min): prepare Guitar for The strumming or groove hand keeps moving through changes; keep the sound relaxed and even.
+Song section (11 min): loop Intro from Perfect for 7 bars: A | E/G# | F#m7 | E | Dadd9 | E | A. First pass is accuracy, second pass is musical shape.
+Strumming block (9 min): 6/8 pulse: Count 1-2-3 4-5-6; feel two big beats per bar. Accent beat 1 and beat 4; keep the inner eighths flowing. For Guitar, D - U D - U or arpeggiate bass-treble-treble twice per bar. Keep the groove consistent and make phrase endings clear. Loop at about 70-80% tempo first; mute or simplify the part before adding full chord changes..
+Review (5 min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
+keyboard_arrow_right
+
+Full song ABC sketch (optional)
+
+Deep harmony & improvisation → Creative Lab page.

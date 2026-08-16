@@ -1,0 +1,256 @@
+keyboard_double_arrow_left
+keyboard_arrow_down
+
+Account & Workspace · Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+← Command Center
+
+keyboard_arrow_down
+
+Saved session
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+🎼 ACTIVE SONG
+
+SONG
+Perfect — Ed Sheeran
+
+🎼 Songs
+
+Perfect · Pop
+
+Song Original Key: G
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+Practice focus
+
+🎵 MUSIC COACH
+
+Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Music Coach insight is ready on this page.
+
+Question
+
+Ask the Music Coach
+
+🧭 PAGES
+
+◀
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✏️ Custom Progression
+
+🎹 Composition Studio
+
+🎨 Creative Lab
+
+🎚️ Multitrack
+
+🎙️ Upload Analysis
+
+📓 Practice Log
+
+⏱️ SESSION
+
+Practice length: 30 min (adjust on the Practice page)
+
+🎸 GUITAR CAPO / CHORD SHAPES
+
+Sounding Key: A
+
+Capo Shape Mode
+
+Shape Key: A
+
+Capo Fret: open (no capo)
+
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+← Back
+
+Forward →
+
+📖 Tutorial
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✏️
+Custom
+
+Open
+
+🎹
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+Music Coach Insight
+
+Question: What notes are in C major?
+
+C major uses the notes C, D, E, F, G, A, B.
+
+That is the C major scale in order from the tonic.
+
+Coach: Structured solver: TheorySolver(scale_notes)
+
+Assumptions:
+
+Router confidence: 0.92
+
+Confidence: high (92%)
+
+Dismiss insight
+
+🎯
+
+MUSIC STUDIO
+
+Practice
+
+Song Practice
+
+Set up your session below — change key in the sidebar; pick songs on Song Selection.
+
+🎸
+Guitar practice mode · Chord shapes · strumming · picking · fretboard connection · Build technique on the active chart.
+
+💬 Ask the Music Coach
+
+Ask about this song, practice, theory, or how to use the app — without leaving your session context.
+
+Ask the Music Coach
+
+keyboard_arrow_down
+
+Ask the Music Coach
+
+Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.
+
+Ask the Music Coach
+
+Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.
+
+Instrument · level · focus
+
+PRACTICE LENGTH
+
+Session goal in minutes — coach scales to this.
+
+30
+
+10
+
+120
+
+Key behavior for this practice session
+
+Use each song's original/default key
+
+Use one key family for this practice session
+
+Session
+Guitar · Intermediate · Timing · Pop groove · 30 min
+
+Coach and charts follow these choices. Tempo and section loops live on Backing Track.
+
+Section Focus
+
+SECTION FOCUS
+
+Full Song
+
+Intro
+
+Verse
+
+Chorus
+
+Outro
+
+Full song
+5 chords
+94 bars
+
+Practice tools
+
+Open a focused tool without leaving your current song and practice setup.
+
+HARMONY & TECHNIQUE
+
+🎸 Chord & song coach
+
+TIME & PITCH
+
+🎵 Metronome, Tuner & Tone
+
+CHARTS & LYRICS
+
+📋 Chart & notation
+
+🎤 Lyrics & phrasing
+
+REFERENCE
+
+🎹 Transpose helpers
+
+Choose a tool above — your song, section, and setup stay as they are.
+
+Deep harmony & improvisation → Creative Lab page.

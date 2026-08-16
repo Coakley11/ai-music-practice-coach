@@ -3042,25 +3042,59 @@ def vocal_practice_text(level, sections):
 
 def guitar_practice_text(focus, level):
     focus = focus or ""
-    if focus == "Rhythm":
+    kind = focus
+    policy_lines: list[str] = []
+    try:
+        from practice_focus_coaching import practice_page_focus_lines, practice_page_kind
+
+        kind = practice_page_kind(focus)
+        policy_lines = practice_page_focus_lines("Guitar", focus)
+    except ImportError:
+        pass
+    extra = "".join(f"- {line}\n" for line in policy_lines[:3])
+    if kind == "Rhythm" or focus == "Rhythm":
         return f"""
-### Guitar Rhythm Practice
-- **Groove feel:** mute lightly with the fretting hand and lock the strum to the backing track.
+### Guitar Rhythm / Strumming Practice
+{extra}- **Groove feel:** mute lightly with the fretting hand and lock the strum to the backing track.
 - **Strumming:** start with downstrokes on quarter notes, then add eighth-note upstrokes.
 - **Muting:** practice dead-strum bars between chord changes to keep time moving.
-- **Transitions:** isolate the two hardest chord changes and loop each for 2 minutes.
+- **Transitions:** isolate the two hardest chord changes and loop each for 2 minutes without stopping the strumming hand.
 - **Comping:** use smaller 3- or 4-note voicings for clean rhythmic consistency.
 - **Level target:** {level} players should keep time steady before adding syncopation or extensions.
 """
-    if focus == "Melody":
+    if kind == "Timing":
+        return f"""
+### Guitar Timing Practice
+{extra}- **Beat placement:** count aloud and land chord changes exactly on the beat.
+- **Subdivision:** tap eighths (or the song's grid) before playing them.
+- **Rushing/dragging:** loop the hardest bar and notice where time moves.
+- **Metronome:** every beat first, then 2 and 4 only.
+- **Level target:** {level} players should stabilize tempo before adding density.
+"""
+    if kind == "Harmony":
+        return f"""
+### Guitar Harmony Practice
+{extra}- **Chord tones:** name root, 3rd, and 7th of each change before playing it.
+- **Voice leading:** keep common tones ringing; move only the fingers that must move.
+- **Guide tones:** play 3rds and 7ths as a slow line through the section.
+- **Level target:** {level} players should hear the change before speeding it up.
+"""
+    if kind == "Melody":
         return f"""
 ### Guitar Melody / Lead Practice
-- **Phrasing:** sing the line first, then play it; leave space between ideas.
+{extra}- **Phrasing:** sing the line first, then play it; leave space between ideas.
 - **Slides and bends:** target chord tones on strong beats, especially 3rds and 7ths.
 - **Vibrato:** hold sustained notes over stable chords and match vibrato speed to the groove.
 - **Hammer-ons / pull-offs:** use them as articulation, not speed tricks.
 - **Double stops:** outline thirds/sixths through the section changes.
 - **Positioning:** map the melody around one fretboard position, then shift only for expressive reasons.
+"""
+    if extra:
+        return f"""
+### Guitar Practice — {focus or kind}
+{extra}- Use playable voicings from the chart; avoid full six-string shapes when a smaller grip sounds cleaner.
+- Practice one section with metronome, then with the backing track.
+- For {level} level, keep **{focus or kind}** as the main goal of each repetition.
 """
     return f"""
 ### Guitar Practice
@@ -5177,14 +5211,28 @@ def _instrument_family(instrument):
 
 
 def _focus_area(focus):
+    try:
+        from practice_focus_coaching import practice_page_kind
+
+        return practice_page_kind(focus)
+    except ImportError:
+        pass
     text = str(focus or "").lower()
     if any(token in text for token in ["dynamic", "crescendo", "decrescendo", "loud", "soft", "intensity", "touch"]):
         return "Dynamics"
     if any(token in text for token in ["strum", "rhythm", "comp", "groove", "pocket", "syncopation", "left-hand", "left hand"]):
         return "Rhythm"
+    if any(token in text for token in ["timing", "metronome", "rush", "drag"]):
+        return "Timing"
+    if "tone" in text or "breath" in text or "embouchure" in text:
+        return "Tone"
+    if "articul" in text:
+        return "Articulation"
+    if "phras" in text:
+        return "Phrasing"
     if any(token in text for token in ["voicing", "voice leading", "inversion", "reharm", "harmony", "triad", "barre", "transition", "root motion"]):
         return "Harmony"
-    if any(token in text for token in ["lead", "melody", "double stop", "phrasing", "articulation", "tone", "breath", "vibrato", "range", "endurance"]):
+    if any(token in text for token in ["lead", "melody", "double stop", "vibrato", "range", "endurance"]):
         return "Melody"
     if any(token in text for token in ["solo", "improv", "walking", "bebop", "scales", "guide tone"]):
         return "Improvisation"
@@ -5488,6 +5536,30 @@ def _instrument_drills(
     advanced = level == "Advanced"
     beginner = level == "Beginner"
     focus_area = _focus_area(focus)
+    policy_lines: list[str] = []
+    try:
+        from practice_focus_coaching import practice_page_focus_lines
+
+        policy_lines = practice_page_focus_lines(
+            instrument,
+            focus,
+            first_chord=first_chord,
+            second_chord=second_chord,
+            chord_path=chord_path,
+            section_name=section_name,
+        )
+    except ImportError:
+        policy_lines = []
+
+    def _mix_focus_drills(primary, secondary, tertiary):
+        if policy_lines:
+            return [
+                policy_lines[0],
+                primary,
+                policy_lines[1] if len(policy_lines) > 1 else secondary,
+            ]
+        return [primary, secondary, tertiary]
+
     rhythm = _rhythm_guidance(
         instrument,
         section_name=section_name,
@@ -5517,10 +5589,30 @@ def _instrument_drills(
         )
         if focus_area == "Rhythm":
             primary = rhythm_task
+        elif focus_area == "Timing":
+            primary = (
+                f"Timing drill: loop **{chord_path}** with a metronome. "
+                f"Land **{first_chord} -> {second_chord}** exactly on the beat; listen for rushing or dragging."
+            )
+        elif focus_area == "Tone":
+            primary = (
+                f"Tone drill: play **{first_chord}** with even pick/finger attack and quiet unused strings, "
+                f"then match that contact and sustain on **{second_chord}**."
+            )
         elif focus_area == "Melody":
             primary = lead_task
         elif focus_area == "Harmony":
             primary = harmony_task
+        elif focus_area == "Phrasing":
+            primary = (
+                f"Phrasing drill: play a 2-bar idea over **{first_chord}**, leave a beat of space, "
+                f"then answer over **{second_chord}** and resolve on a chord tone."
+            )
+        elif focus_area == "Articulation":
+            primary = (
+                f"Articulation drill: play **{chord_path}** once legato/held, then with short muted attacks. "
+                f"Keep the pulse identical."
+            )
         elif focus_area == "Improvisation":
             primary = f"Solo cell: make a two-bar phrase from **{guide_a}**, **{guide_b}**, and one bend/slide; repeat it over **{second_chord}** with one rhythmic change."
         elif focus_area == "Ear Training":
@@ -5530,11 +5622,11 @@ def _instrument_drills(
         else:
             primary = technique_task
         secondary = lead_task if focus_area == "Rhythm" else rhythm_task
-        return [
+        return _mix_focus_drills(
             primary,
             secondary,
             dynamic_task if focus_area != "Dynamics" else harmony_task,
-        ]
+        )
 
     if family == "piano":
         shell = (
@@ -5554,10 +5646,17 @@ def _instrument_drills(
         )
         if focus_area == "Rhythm":
             primary = comping
+        elif focus_area == "Timing":
+            primary = (
+                f"Timing drill: loop **{chord_path}** with a metronome. "
+                f"Keep left-hand pulse steady through **{first_chord} -> {second_chord}**; do not rush the change."
+            )
         elif focus_area == "Harmony":
             primary = shell if beginner else f"{shell} Then try: {reharm}"
         elif focus_area == "Melody":
             primary = f"Top-note melody: keep the right-hand top note singing through **{chord_path}** while the inner notes voice-lead quietly."
+        elif focus_area == "Phrasing":
+            primary = f"Phrase drill: play a 2-bar question in the right hand over **{first_chord}**, then answer over **{second_chord}**."
         elif focus_area == "Improvisation":
             primary = f"One-hand improv: left hand plays shells through **{chord_path}**; right hand improvises using **{chord_tones}** plus one neighbor tone."
         elif focus_area == "Ear Training":
@@ -5566,7 +5665,11 @@ def _instrument_drills(
             primary = dynamic_task
         else:
             primary = inversion
-        return [primary, shell if focus_area != "Dynamics" else comping, dynamic_task if not advanced else reharm]
+        return _mix_focus_drills(
+            primary,
+            shell if focus_area != "Dynamics" else comping,
+            dynamic_task if not advanced else reharm,
+        )
 
     if family == "winds":
         articulation = (
@@ -5585,17 +5688,35 @@ def _instrument_drills(
         dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
             primary = articulation
+        elif focus_area == "Timing":
+            primary = (
+                f"Timing drill: play **{chord_tones}** over **{first_chord}** with a metronome, "
+                f"then resolve to **{next_guide_a}** exactly on beat 1 of **{second_chord}**. Listen for rushing."
+            )
+        elif focus_area == "Tone":
+            primary = (
+                f"Long-tone drill: sustain **{guide_a}** and **{guide_b}** from **{first_chord}** with steady air, "
+                f"then match that sound on **{next_guide_a}** over **{second_chord}**. Avoid pinched tone."
+            )
         elif focus_area in ["Harmony", "Improvisation"]:
             primary = guide
         elif focus_area == "Melody":
             primary = f"Phrase shaping: play a two-bar question ending softly on **{guide_b}**, then answer louder into **{next_guide_a}** over **{second_chord}**."
+        elif focus_area == "Phrasing":
+            primary = breath
+        elif focus_area == "Articulation":
+            primary = articulation
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing **{guide_a}** and **{guide_b}** before playing them, then resolve by ear into **{next_guide_a}** over **{second_chord}**."
         elif focus_area == "Dynamics":
             primary = dynamic_task
         else:
             primary = scale
-        return [primary, breath, dynamic_task if focus_area != "Dynamics" else guide]
+        return _mix_focus_drills(
+            primary,
+            breath if focus_area != "Phrasing" else guide,
+            dynamic_task if focus_area != "Dynamics" else guide,
+        )
 
     if family == "bass":
         groove = (
@@ -5615,6 +5736,11 @@ def _instrument_drills(
         dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
             primary = rhythm
+        elif focus_area == "Timing":
+            primary = (
+                f"Timing drill: loop **{chord_path}** with a metronome. "
+                f"Place **{root_a}** and **{root_b}** exactly on beat 1 of each chord."
+            )
         elif focus_area == "Harmony":
             primary = f"Outline drill: play root, 3rd, 5th, approach tone for each bar of **{chord_path}** without adding fills."
         elif focus_area == "Improvisation":
@@ -5627,7 +5753,11 @@ def _instrument_drills(
             primary = dynamic_task
         else:
             primary = approach
-        return [primary, groove, dynamic_task if focus_area != "Dynamics" else walking if not beginner else approach]
+        return _mix_focus_drills(
+            primary,
+            groove,
+            dynamic_task if focus_area != "Dynamics" else walking if not beginner else approach,
+        )
 
     if family == "voice":
         cue = lyric_line or f"the first phrase of {section_name}"
@@ -5655,15 +5785,23 @@ def _instrument_drills(
             primary = f"Ear drill: sing the root, 3rd, and 5th of **{first_chord}** on `loo`, then identify which note feels most stable against **{second_chord}**."
         elif focus_area == "Dynamics":
             primary = dynamics
+        elif focus_area == "Phrasing":
+            primary = delivery
+        elif focus_area == "Tone":
+            primary = vowels
         else:
             primary = breathing
-        return [primary, delivery, vowels if focus_area != "Technique" else dynamics]
+        return _mix_focus_drills(
+            primary,
+            delivery,
+            vowels if focus_area != "Technique" else dynamics,
+        )
 
-    return [
+    return _mix_focus_drills(
         f"Loop **{chord_path}** for {reps} passes and make the change **{first_chord} -> {second_chord}** land cleanly on beat 1.",
         f"Name and play/sing the chord tones of **{first_chord}**: {chord_tones}.",
         f"Record one pass of **{section_name}** and listen only for time, tone, and the section ending.",
-    ]
+    )
 
 
 def daily_practice_breakdown_markdown(
@@ -5702,21 +5840,49 @@ def daily_practice_breakdown_markdown(
         "bass": f"pocket, root/fifth movement, and approach notes into **{second_chord}**",
         "voice": f"breath, vowel, lyric delivery, and dynamics for **{section_name}**",
     }.get(family, f"clean time and chord-tone control through **{first_chord} -> {second_chord}**")
+    warmup_aim = instrument_focus
+    try:
+        from practice_focus_coaching import practice_page_watch_for
+
+        watch = practice_page_watch_for(instrument, focus)
+        if watch:
+            warmup_aim = watch[0]
+    except ImportError:
+        pass
 
     focus_area = _focus_area(focus)
     focus_task = {
         "Rhythm": f"{rhythm['practice']} Loop at about 70-80% tempo first; mute or simplify the part before adding full chord changes.",
+        "Timing": f"Count the subdivision aloud, then loop **{chord_path}** until **{first_chord} -> {second_chord}** lands on the beat without rushing.",
+        "Tone": f"Sustain chord tones of **{first_chord}** with even sound, then match that quality on **{second_chord}**.",
+        "Articulation": f"Play **{chord_path}** with one consistent attack pattern, then contrast legato vs separated notes.",
+        "Phrasing": f"Shape 2-bar and 4-bar phrases over **{chord_path}**; leave space before the next idea.",
         "Dynamics": f"{dynamics['practice']}. Record two passes: restrained verse-level intensity, then fuller chorus-level intensity.",
         "Harmony": f"name the function/color of **{first_chord} -> {second_chord}**, then voice-lead by nearest chord tones",
         "Melody": f"build a two-bar phrase that peaks once and resolves into **{second_chord}**",
         "Improvisation": f"improvise only with chord tones for one pass, then add one approach note into **{second_chord}**",
         "Ear Training": f"sing the root and 3rd of **{first_chord}**, then check it on your instrument before moving to **{second_chord}**",
-    }.get(focus_area, f"make the change **{first_chord} -> {second_chord}** clean, musical, and repeatable")
+    }.get(focus_area)
+    if not focus_task:
+        try:
+            from practice_focus_coaching import practice_page_focus_lines
+
+            lines = practice_page_focus_lines(
+                instrument,
+                focus,
+                first_chord=first_chord,
+                second_chord=second_chord,
+                chord_path=chord_path,
+                section_name=section_name,
+            )
+            focus_task = lines[0] if lines else f"make the change **{first_chord} -> {second_chord}** clean, musical, and repeatable"
+        except ImportError:
+            focus_task = f"make the change **{first_chord} -> {second_chord}** clean, musical, and repeatable"
 
     return f"""
 **Coach assignment for today:** make **{section_name}** feel intentional, not just correct.
 
-- Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}; keep the sound relaxed and even.
+- Warmup ({blocks['warmup']} min): prepare **{instrument}** for {warmup_aim}; keep the sound relaxed and even.
 - Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**. First pass is accuracy, second pass is musical shape.
 - {focus} block ({blocks['focus']} min): {focus_task}.
 - Review ({blocks['review']} min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
@@ -5795,6 +5961,16 @@ def song_practice_plan(
         development = f"After the clean pass, add one controlled variation: displacement, reharm, articulation change, fill, or dynamic contrast based on your instrument."
         creative_step = f"Test one advanced choice in context: substitute a passing color, delay a resolution, displace the rhythm, or reharmonize only the last bar of the loop."
 
+    watch_for = []
+    try:
+        from practice_focus_coaching import practice_page_watch_for
+
+        watch_for = practice_page_watch_for(instrument, focus)
+    except ImportError:
+        watch_for = []
+    listen_line = watch_for[0] if watch_for else "time, tone, and the section ending"
+    warmup_focus = watch_for[1] if len(watch_for) > 1 else "keep the sound relaxed and even"
+
     return f"""
 ### Conservatory Coach Plan {cycle}: {section_name}
 **Song:** {song}  
@@ -5806,6 +5982,7 @@ def song_practice_plan(
 
 **1. Technical Warm-up ({blocks['warmup']} min)**
 - Play/sing the chord tones of **{first_chord}**: {chord_tones}. Then resolve into **{second_chord}** {difficulty}.
+- Aim for: {warmup_focus}
 
 **2. Song-Specific Drill ({blocks['section']} min)**
 - {drills[0]}
@@ -5821,7 +5998,7 @@ def song_practice_plan(
 
 **5. Progress Check ({blocks['review']} min)**
 - {development}
-- Success standard: one clean take where time, tone, and section shape are all believable.
+- Success standard: {listen_line}
 """
 
 
@@ -5889,6 +6066,10 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
     dynamics = _dynamics_guidance(instrument or "", section_name, first_chord, second_chord)
     coach_line = {
         "Rhythm": f"{rhythm['practice']} Mute/simplify first, then add the chord changes.",
+        "Timing": f"Count the grid, then loop **{chord_path}** until **{first_chord} -> {second_chord}** stays on the beat.",
+        "Tone": f"Sustain even sound on **{first_chord}**, then match it on **{second_chord}**.",
+        "Articulation": f"Keep one attack pattern through **{chord_path}**, then contrast legato vs separated notes.",
+        "Phrasing": f"Shape 2-bar phrases over **{chord_path}** and leave space between ideas.",
         "Dynamics": f"{dynamics['practice']}. Keep tempo steady while changing volume and intensity.",
         "Harmony": f"Study **{first_chord} -> {second_chord}**: name common tones, then move to the nearest available voicing.",
         "Melody": f"Create a two-bar phrase over **{chord_path}** that lands clearly on a chord tone.",

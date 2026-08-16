@@ -1,0 +1,48 @@
+# F-ami-guitar-timing-same-rerun.txt
+Instrument: Guitar
+Practice Focus: Timing
+Question: What should I practice today?
+Intent: CoachIntent.PRACTICE_PLAN
+
+**Today's priority:** strumming, groove, and rhythmic patterns in **Shape of You**.
+
+Here is a **30-minute** plan for **Guitar**:
+
+**Recommendation:** Log what improved and what still feels unstable in **Practice Log** when you finish.
+
+**What to do**
+
+**6 min** — isolated pattern: Isolate the strumming pattern on open strings or one chord before adding changes.
+
+**7 min** — subdivision & accents: Use muting and accents to define the pattern.
+
+**8 min** — chord changes without stopping: Watch chord-transition gaps that stop the groove.
+
+**6 min** — song / backing application: Apply this on **Shape of You**. Keep the pattern through the form.
+
+**3 min** — review: Play one short take and notice where the groove breaks.
+
+**What to listen for**
+
+- The strumming or groove hand keeps moving through changes
+
+- Subdivision stays even; accents land where you intended
+
+- Chord-transition gaps do not stop the pattern
+
+**When to progress**
+
+- Move to the next block only when the current one stays clean on most repetitions.
+
+- Add upstrokes, accents, or tempo only after the hand stays continuous.
+
+## Practice steps
+**6 min** — isolated pattern: Isolate the strumming pattern on open strings or one chord before adding changes.
+**7 min** — subdivision & accents: Use muting and accents to define the pattern.
+**8 min** — chord changes without stopping: Watch chord-transition gaps that stop the groove.
+**6 min** — song / backing application: Apply this on **Shape of You**. Keep the pattern through the form.
+**3 min** — review: Play one short take and notice where the groove breaks.
+
+diagnostics.practice_focus_not_applied=None
+diagnostics.policy_plan=True
+diagnostics.focus_profile=rhythm_groove

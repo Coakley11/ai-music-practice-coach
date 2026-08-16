@@ -1,0 +1,46 @@
+# H-ami-sax-articulation.txt
+Instrument: Saxophone
+Practice Focus: Articulation
+Question: What should I practice today?
+Intent: CoachIntent.PRACTICE_PLAN
+
+**Today's priority:** Saxophone articulation in **Shape of You**.
+
+Here is a **30-minute** plan for **Saxophone**:
+
+**Recommendation:** Log what improved and what still feels unstable in **Practice Log** when you finish.
+
+**What to do**
+
+**5 min** — warm-up tone centering: Play a few comfortable notes on **Saxophone** with steady sound before adding articulation.
+
+**9 min** — single-note tonguing: Isolate attacks on long tones, then on a simple melody.
+
+**7 min** — slur/tongue contrast: Alternate legato and staccato on the same pitches.
+
+**6 min** — musical phrase application: Apply this on **Shape of You**. Use one articulation pattern through the phrase.
+
+**3 min** — review: Check that entrances speak on time without thinning the sound.
+
+**What to listen for**
+
+- Each attack speaks cleanly and on time
+
+- Legato and separated notes are clearly different
+
+- Tone does not thin when articulation gets busier
+
+**When to progress**
+
+- Move to the next block only when the current one stays clean on most repetitions.
+
+## Practice steps
+**5 min** — warm-up tone centering: Play a few comfortable notes on **Saxophone** with steady sound before adding articulation.
+**9 min** — single-note tonguing: Isolate attacks on long tones, then on a simple melody.
+**7 min** — slur/tongue contrast: Alternate legato and staccato on the same pitches.
+**6 min** — musical phrase application: Apply this on **Shape of You**. Use one articulation pattern through the phrase.
+**3 min** — review: Check that entrances speak on time without thinning the sound.
+
+diagnostics.practice_focus_not_applied=None
+diagnostics.policy_plan=True
+diagnostics.focus_profile=articulation

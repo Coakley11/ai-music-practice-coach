@@ -345,6 +345,8 @@ _MUSIC_THEORY_PHRASES: tuple[str, ...] = (
 
 
 def _is_transposition_question(low: str) -> bool:
+    if re.search(r"\bwhat notes are in\b", low) and "instead" not in low:
+        return False
     if re.search(r"\bin\s+[a-g][#b]?\s+instead\s+of\s+[a-g]", low):
         return True
     if re.search(r"\bplay\b.+\bin\s+[a-g][#b]?\s+instead\s+of", low):

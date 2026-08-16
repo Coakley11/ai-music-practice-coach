@@ -927,6 +927,15 @@ def solve_repertoire_recommendation(req: CoachRequest) -> CoachResponse | None:
 
 
 def solve_theory_explanation(req: CoachRequest) -> CoachResponse | None:
+    scale_answer = _direct_scale_notes_answer(req.raw_question or req.normalized_question)
+    if scale_answer:
+        return CoachResponse(
+            intent=CoachIntent.THEORY_EXPLANATION,
+            direct_answer=scale_answer,
+            source_solver="TheorySolver(scale_notes)",
+            confidence=0.92,
+            diagnostics={"theory_mode": "scale_notes", "practice_focus_not_applied": True},
+        )
     try:
         from music_ami_instant_solver import _music_theory_answer
 
@@ -945,6 +954,48 @@ def solve_theory_explanation(req: CoachRequest) -> CoachResponse | None:
         )
     except ImportError:
         return None
+
+
+def _direct_scale_notes_answer(question: str) -> str:
+    """Answer factual 'what notes are in X major/minor' questions without Practice Focus hijack."""
+    import re
+
+    raw = str(question or "")
+    match = re.search(
+        r"\bnotes are in\s+([a-g](?:#{1,2}|b{1,2})?)\s*(major|minor|maj|min)?\b",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        match = re.search(
+            r"\bnotes in\s+([a-g](?:#{1,2}|b{1,2})?)\s*(major|minor|maj|min)?\b",
+            raw,
+            flags=re.IGNORECASE,
+        )
+    if not match:
+        return ""
+    tonic = match.group(1)
+    mode_raw = (match.group(2) or "major").lower()
+    minor = mode_raw.startswith("min")
+    tonic_disp = tonic[0].upper() + tonic[1:]
+    try:
+        from music_theory import pitch_class_from_spelled_note, spell_note_in_key
+
+        root = pitch_class_from_spelled_note(tonic_disp)
+        steps = (0, 2, 3, 5, 7, 8, 10) if minor else (0, 2, 4, 5, 7, 9, 11)
+        ref = f"{tonic_disp}m" if minor else tonic_disp
+        names = [spell_note_in_key((root + step) % 12, ref) for step in steps]
+    except Exception:
+        if tonic_disp.upper() == "C" and not minor:
+            names = ["C", "D", "E", "F", "G", "A", "B"]
+        else:
+            return ""
+    label = f"{tonic_disp} {'minor' if minor else 'major'}"
+    listed = ", ".join(names)
+    return (
+        f"**{label}** uses the notes **{listed}**.\n\n"
+        f"That is the {label} scale in order from the tonic."
+    )
 
 
 def solve_song_coaching(req: CoachRequest) -> CoachResponse:

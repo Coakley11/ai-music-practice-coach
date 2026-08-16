@@ -1,6 +1,6 @@
 # Practice Focus System
 
-**Last updated:** 2026-08-15  
+**Last updated:** 2026-08-16  
 **Active branch:** `feature/practice-focus-system`  
 **Base:** current clean `origin/dev` (`870a365899d3207982d0c2834f8c9bf2092e9931`)  
 **Do not merge to `dev` until explicit approval.**
@@ -138,11 +138,10 @@ baseline metrics + focus-required metrics (`preferred_metric_ids`) + performance
 
 ### Phase 2 — Highest-value coaching surfaces
 
-1. AMI — consume prompt block in practice-plan / “what should I practice” paths; do not hijack theory questions
-2. Practice page — replace weak `_focus_area` fallthrough with policy suggestions
-3. Upload / AI Coach — stamp snapshot at analysis start; bias metric selection/weighting/summary
-4. Practice Log + weekly analysis — pass historical snapshots into the model; distinguish current vs historical
-5. Multitrack — inject context into analysis/guidance where metrics exist
+1. [x] **Phase 2A (2026-08-16):** AMI + Practice page consume `PracticeFocusContext` / policy via `practice_focus_coaching.py`. Same instrument + same song + change-only Focus produces different AMI plans and Practice drills. Factual theory (e.g. C major notes) is not hijacked. Upload / Log / Multitrack still deferred.
+2. [ ] **Phase 2B:** Upload / AI Coach — stamp snapshot at analysis start; bias metric selection/weighting/summary
+3. [ ] **Phase 2C:** Practice Log + weekly analysis — pass historical snapshots into the model; distinguish current vs historical
+4. [ ] **Phase 2D:** Multitrack — inject context into analysis/guidance where metrics exist
 
 ### Phase 3 — Stable instructional layers on current `dev`
 
@@ -162,9 +161,11 @@ Later, once Composition itself is sufficiently complete. Clean `PracticeFocusCon
 
 ## Files / modules
 
-**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `tests/test_practice_focus_policy.py`
+**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`
 
 **Touched in Phase 1:** `practice_setup_controls.py`, `practice_setup_globals.py` (docs), `practice_log_state.py`, `music_coach_ami/context_reader.py`, `upload_history.py`
+
+**Touched in Phase 2A:** `music_coach_ami/practice_plan_knowledge.py`, `music_coach_ami/router.py`, `music_coach_ami/solvers.py`, `music_coach_ami/context_reader.py`, `music_ami_context.py`, `streamlit_music_practice_app.py`
 
 **Do not touch for this project:** Creative/Backing canonical ownership modules on the parked branch; Tests A–E persistence paths; CAS / Item 8.
 

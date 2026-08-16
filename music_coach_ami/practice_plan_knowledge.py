@@ -37,6 +37,14 @@ def _allocate(total: int, weights: dict[str, float]) -> dict[str, int]:
 
 
 def _focus_bucket(focus: str) -> str:
+    try:
+        from practice_focus_coaching import ami_focus_bucket
+
+        bucket = ami_focus_bucket(focus)
+        if bucket and bucket != "general":
+            return bucket
+    except ImportError:
+        pass
     low = str(focus or "").lower()
     if "tone" in low:
         return "tone"
@@ -721,12 +729,14 @@ def _focus_display_phrase(bucket: str, instrument: str, focus: str) -> str:
         "tone": f"{instrument} tone",
         "articulation": f"{instrument} articulation",
         "timing": "timing and rhythmic control",
+        "rhythm_groove": "strumming, groove, and rhythmic patterns" if "strum" in str(focus or "").lower() else "rhythm and groove",
         "harmony": "harmony and voicing",
         "improvisation": "improvisation vocabulary",
         "phrasing": "phrasing and line shape",
         "fingerstyle": "fingerstyle technique",
         "bass_line": "bass-line development",
         "technique": f"{instrument} technique",
+        "melody": "melody and motif development",
         "repertoire": "repertoire work",
     }
     if bucket in phrases:
@@ -743,7 +753,16 @@ def _format_priority_line(*, focus_phrase: str, song: str = "", section: str = "
     if song_title:
         if focus_phrase.endswith("work"):
             return f"**Today's priority:** {focus_phrase} on **{song_title}**."
-        if focus_phrase in {"harmony and voicing", "phrasing and line shape", "fingerstyle technique", "bass-line development"}:
+        if focus_phrase in {
+            "harmony and voicing",
+            "phrasing and line shape",
+            "fingerstyle technique",
+            "bass-line development",
+            "strumming, groove, and rhythmic patterns",
+            "rhythm and groove",
+            "timing and rhythmic control",
+            "melody and motif development",
+        }:
             preposition = "across" if focus_phrase == "harmony and voicing" else "in"
             return f"**Today's priority:** {focus_phrase} {preposition} **{song_title}**."
         return f"**Today's priority:** {focus_phrase} in **{song_title}**."
@@ -1067,6 +1086,66 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
                 "chord_focus": True,
                 "block_allocation": blocks,
                 **blocks,
+            },
+        }
+
+    try:
+        from practice_focus_coaching import (
+            listen_and_progression_for_focus,
+            should_prefer_policy_plan,
+            timed_practice_blocks,
+        )
+    except ImportError:
+        should_prefer_policy_plan = lambda _f: False  # type: ignore[assignment,misc]
+        timed_practice_blocks = None  # type: ignore[assignment]
+        listen_and_progression_for_focus = None  # type: ignore[assignment]
+
+    if (
+        timed_practice_blocks
+        and should_prefer_policy_plan(focus)
+        and not use_tone_plan
+    ):
+        weights, details = timed_practice_blocks(
+            instrument,
+            focus,
+            song=song,
+            section=section,
+            level=level,
+        )
+        blocks = _allocate(minutes, weights)
+        steps = []
+        for label, mins in blocks.items():
+            detail = details.get(label, "")
+            line = f"**{mins} min** — {label}"
+            if detail:
+                line += f": {detail}"
+            steps.append(line)
+        listen, progression = listen_and_progression_for_focus(instrument, focus)
+        direct_parts = [priority]
+        if why:
+            direct_parts.append(why)
+        direct_parts.append(f"Here is a **{minutes}-minute** plan for **{instrument}**:")
+        _append_practice_app_hints(direct_parts, steps=steps, bucket=bucket)
+        extra = {}
+        try:
+            from practice_focus_coaching import context_prompt_block
+
+            extra["practice_focus_prompt"] = context_prompt_block(instrument, focus, role="ami")
+        except ImportError:
+            pass
+        return {
+            "direct_answer": "\n\n".join(direct_parts),
+            "practice_steps": steps,
+            "what_to_listen_for": listen,
+            "recommendation": "Log what improved and what still feels unstable in **Practice Log** when you finish.",
+            "progression_criteria": progression,
+            "diagnostics": {
+                **base_diag,
+                "focus_profile": bucket,
+                "policy_plan": True,
+                "block_allocation": blocks,
+                **blocks,
+                **extra,
             },
         }
 

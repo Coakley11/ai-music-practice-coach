@@ -1,0 +1,16 @@
+# G-ami-c-major-guardrail.txt
+Instrument: Guitar
+Practice Focus: Strumming
+Question: What notes are in C major?
+Intent: CoachIntent.THEORY_EXPLANATION
+
+**C major** uses the notes **C, D, E, F, G, A, B**.
+
+That is the C major scale in order from the tonic.
+
+## Practice steps
+(none)
+
+diagnostics.practice_focus_not_applied=True
+diagnostics.policy_plan=None
+diagnostics.focus_profile=None

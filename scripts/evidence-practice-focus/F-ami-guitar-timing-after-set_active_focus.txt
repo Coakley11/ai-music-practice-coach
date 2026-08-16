@@ -1,0 +1,34 @@
+# Same-rerun Timing after set_active_focus
+session.focus=Timing
+
+**Today's priority:** timing and rhythmic control in **Shape of You**.
+
+Here is a **30-minute** plan for **Guitar**:
+
+**In the app:** Open **Practice tools → Metronome, Tuner & Tone**.
+
+**Recommendation:** Log what improved and what still feels unstable in **Practice Log** when you finish.
+
+**What to do**
+
+**9 min** — metronome groove: Practice with a metronome on every beat, then on 2 and 4 only.
+
+**8 min** — subdivision placement: Speak or tap the subdivision before playing it.
+
+**8 min** — section loop: Apply this on **Shape of You**. Loop a short passage until placement stays reliable.
+
+**5 min** — review: Notice where time wobbles — usually into peaks or chord changes.
+
+**What to listen for**
+
+- Beat 1 is obvious and unhurried
+
+- Subdivision stays even; watch rushing into peaks or changes
+
+- Rests still sit on the grid
+
+**When to progress**
+
+- Move to the next block only when the current one stays clean on most repetitions.
+
+- Increase tempo only after placement feels reliable.

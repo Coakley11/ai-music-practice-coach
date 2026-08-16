@@ -1,0 +1,48 @@
+# H-ami-sax-phrasing.txt
+Instrument: Saxophone
+Practice Focus: Phrasing
+Question: What should I practice today?
+Intent: CoachIntent.PRACTICE_PLAN
+
+**Today's priority:** phrasing and line shape in **Shape of You**.
+
+Here is a **30-minute** plan for **Saxophone**:
+
+**Recommendation:** Log what improved and what still feels unstable in **Practice Log** when you finish.
+
+**What to do**
+
+**8 min** — phrase length: Play 2-bar and 4-bar phrases with a clear ending.
+
+**8 min** — breathing / space: Leave space after each phrase instead of filling every beat.
+
+**7 min** — question and answer: Answer a short idea with a related but varied reply.
+
+**4 min** — song application: Apply this on **Shape of You**.
+
+**3 min** — review: Listen for sentence shape: start, direction, and resolution.
+
+**What to listen for**
+
+- Phrases have a beginning, direction, and ending
+
+- There is audible space / breath between ideas
+
+- Dynamics help the sentence, not random volume
+
+**When to progress**
+
+- Move to the next block only when the current one stays clean on most repetitions.
+
+- Extend phrase length only when 2-bar fragments stay shaped.
+
+## Practice steps
+**8 min** — phrase length: Play 2-bar and 4-bar phrases with a clear ending.
+**8 min** — breathing / space: Leave space after each phrase instead of filling every beat.
+**7 min** — question and answer: Answer a short idea with a related but varied reply.
+**4 min** — song application: Apply this on **Shape of You**.
+**3 min** — review: Listen for sentence shape: start, direction, and resolution.
+
+diagnostics.practice_focus_not_applied=None
+diagnostics.policy_plan=True
+diagnostics.focus_profile=phrasing

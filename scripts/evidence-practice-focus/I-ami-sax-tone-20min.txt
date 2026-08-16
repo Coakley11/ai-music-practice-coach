@@ -1,0 +1,126 @@
+# I-ami-sax-tone-20min.txt
+Instrument: Saxophone
+Practice Focus: Tone
+Question: Give me a 20-minute practice routine.
+Intent: CoachIntent.PRACTICE_PLAN
+
+**Today's priority:** Saxophone tone in **Shape of You**.
+
+**20-minute Saxophone tone session**
+
+**Today's goal:** produce a centered, stable **Saxophone** tone that stays consistent through sustained notes, articulation, and actual music.
+
+**Recommendation:** If tone stayed centered through long tones **and** your phrase, you met today's goal.
+
+**What to do**
+
+### 1. 5 min — Centered long tones
+
+- Start in a comfortable **middle register**.
+- Hold each note about **8–10 seconds** at a medium-soft dynamic.
+- Keep the air steady through the entire note; rest briefly between reps.
+- Move chromatically or through a simple scale across **5–7 notes**.
+
+**Listen for:** clean start, centered core, stable pitch, even volume, minimal air noise.
+
+**Ready when:** **4 of 5** notes begin cleanly and stay stable for 10 seconds.
+
+### 2. 4 min — Tone through register changes
+
+- Play **slow 4–6 note slurred fragments** (scale or simple interval).
+- Match tone color when crossing register boundaries.
+- Repeat each fragment until low/middle/high feel connected.
+
+**Listen for:** no sudden thinning or spreading of sound between registers.
+
+**Ready when:** you can play the fragment **3 times** with no obvious tone drop between registers.
+
+### 3. 4 min — Clear attacks without losing tone
+
+- On one comfortable note: **slur 4**, then **tongue 4** at the same dynamic.
+- Keep the tone centered immediately after the tongue releases.
+- Expand to a short **2–3 note pattern** if stable.
+
+**Listen for:** attacks that are clear but not explosive or breathy.
+
+**Ready when:** **8 of 10** attacks are clean without a thin or airy start.
+
+### 4. 5 min — Musical application
+
+- Apply the same tone work to a short phrase from "Shape of You".
+- Play **very slowly**; preserve the centered sound from your long-tone work.
+- Choose a phrase that moves through more than one register if possible.
+
+**Listen for:** tone quality stays as good in the phrase as on isolated notes.
+
+**Ready when:** the phrase stays centered **3 times in a row** at a slow tempo.
+
+### 5. 2 min — Review
+
+- Replay the **hardest note or phrase** from the session.
+- Optional: record one short take.
+- Name **one specific tone issue** to target next time.
+
+**At the end:** judge whether your sound has a clearer core and steadier air than when you started.
+
+**What to listen for**
+
+- Focused core rather than airy or diffuse sound
+
+- Stable pitch and steady air through the note
+
+- Even dynamic from start to finish
+
+**When to progress**
+
+- Advance tempo or range only when the current block stays clean on most repetitions.
+
+## Practice steps
+### 1. 5 min — Centered long tones
+
+- Start in a comfortable **middle register**.
+- Hold each note about **8–10 seconds** at a medium-soft dynamic.
+- Keep the air steady through the entire note; rest briefly between reps.
+- Move chromatically or through a simple scale across **5–7 notes**.
+
+**Listen for:** clean start, centered core, stable pitch, even volume, minimal air noise.
+
+**Ready when:** **4 of 5** notes begin cleanly and stay stable for 10 seconds.
+### 2. 4 min — Tone through register changes
+
+- Play **slow 4–6 note slurred fragments** (scale or simple interval).
+- Match tone color when crossing register boundaries.
+- Repeat each fragment until low/middle/high feel connected.
+
+**Listen for:** no sudden thinning or spreading of sound between registers.
+
+**Ready when:** you can play the fragment **3 times** with no obvious tone drop between registers.
+### 3. 4 min — Clear attacks without losing tone
+
+- On one comfortable note: **slur 4**, then **tongue 4** at the same dynamic.
+- Keep the tone centered immediately after the tongue releases.
+- Expand to a short **2–3 note pattern** if stable.
+
+**Listen for:** attacks that are clear but not explosive or breathy.
+
+**Ready when:** **8 of 10** attacks are clean without a thin or airy start.
+### 4. 5 min — Musical application
+
+- Apply the same tone work to a short phrase from "Shape of You".
+- Play **very slowly**; preserve the centered sound from your long-tone work.
+- Choose a phrase that moves through more than one register if possible.
+
+**Listen for:** tone quality stays as good in the phrase as on isolated notes.
+
+**Ready when:** the phrase stays centered **3 times in a row** at a slow tempo.
+### 5. 2 min — Review
+
+- Replay the **hardest note or phrase** from the session.
+- Optional: record one short take.
+- Name **one specific tone issue** to target next time.
+
+**At the end:** judge whether your sound has a clearer core and steadier air than when you started.
+
+diagnostics.practice_focus_not_applied=None
+diagnostics.policy_plan=None
+diagnostics.focus_profile=None

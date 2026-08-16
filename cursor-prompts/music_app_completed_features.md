@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-15
+**Last updated:** 2026-08-16
 
 ---
 
@@ -23,6 +23,17 @@
 ---
 
 ## Completed Features
+
+### Practice Focus System — Phase 2A AMI + Practice page (2026-08-16)
+
+- [x] Shared `practice_focus_coaching.py` consumes policy/context (no musical-state ownership)
+- [x] AMI practice-plan intents use timed blocks / priorities / exercises from Practice Focus
+- [x] Factual theory path (`What notes are in C major?`) is not hijacked by Strumming
+- [x] Practice page drills, guitar copy, warmup/watch-for, and plan steps follow the selected Focus
+- [x] Same-rerun Focus change updates AMI/Practice without refresh; Guitar Strumming → Saxophone still falls back to Tone
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`)
+- Tests: `tests/test_practice_focus_phase2_ami_practice.py`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
 
 ### Phase 1 Creative-state persistence — Item 8 (2026-08-03)
 

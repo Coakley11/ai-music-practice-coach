@@ -179,19 +179,36 @@ def read_coach_context(
         "session_ref": session_state,
     }
     try:
-        from practice_focus_context import resolve_practice_focus_context
+        from practice_focus_policy import (
+            category_for_focus,
+            format_focus_prompt_block,
+            profile_as_dict,
+            resolve_focus_profile,
+        )
 
-        pf = resolve_practice_focus_context(session_state)
-        if pf.focus:
-            practice_focus = pf.focus
-        extra["practice_focus_prompt"] = pf.ami_prompt_block
-        extra["practice_focus_category"] = pf.category
+        live_focus = ""
+        if "focus" in session_state:
+            try:
+                from practice_setup_globals import get_active_focus
+
+                live_focus = str(get_active_focus(session_state) or "").strip()
+            except ImportError:
+                live_focus = str(session_state.get("focus") or "").strip()
+        if live_focus:
+            practice_focus = live_focus
+        inst_for_focus = instrument or str(session_state.get("instrument") or "")
+        extra["practice_focus_prompt"] = format_focus_prompt_block(
+            inst_for_focus, practice_focus, role="ami"
+        )
+        extra["practice_focus_category"] = category_for_focus(practice_focus)
+        profile = resolve_focus_profile(inst_for_focus, practice_focus)
         extra["practice_focus_profile"] = {
-            "label": pf.focus,
-            "category": pf.category,
-            "preferred_metric_ids": list(pf.profile.preferred_metric_ids),
-            "score_keys": list(pf.profile.score_keys),
+            "label": profile.label,
+            "category": profile.category,
+            "preferred_metric_ids": list(profile.preferred_metric_ids),
+            "score_keys": list(profile.score_keys),
         }
+        extra["practice_focus_profile_full"] = profile_as_dict(profile)
     except ImportError:
         pass
 

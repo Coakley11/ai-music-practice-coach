@@ -78,6 +78,18 @@ def _is_practice_routine_request(normalized: str, low: str) -> bool:
         return True
     if re.search(r"\bwhat should i (?:practice|work on)\b", low):
         return True
+    if re.search(r"\bhow should i practice\b", low) and "motif" not in low:
+        return True
+    if re.search(r"\bhow can i improve\b", low) and "improvis" not in low:
+        return True
+    if re.search(r"\bwhat exercise should i\b", low) or re.search(
+        r"\bwhat should i do next\b", low
+    ):
+        return True
+    if re.search(r"\bhow should i use (?:this |the )?backing\b", low):
+        return True
+    if re.search(r"\bwhat should i focus on\b", low):
+        return True
     if "practice plan" in low or "practice routine" in low:
         return True
     if "practice today" in low and "song" not in low:
@@ -125,6 +137,11 @@ def _rule_route(normalized: str, coach_page: str) -> tuple[CoachIntent, float]:
 
     if _is_practice_routine_request(normalized, low):
         return CoachIntent.PRACTICE_PLAN, 0.93
+
+    if re.search(r"\bwhat notes are in\b", low) or re.search(
+        r"\bnotes in\s+[a-g][#b]?\s*(major|minor)?\b", low
+    ):
+        return CoachIntent.THEORY_EXPLANATION, 0.92
 
     if is_bass_line_content_request(normalized, low):
         return CoachIntent.SONG_COACHING, 0.91

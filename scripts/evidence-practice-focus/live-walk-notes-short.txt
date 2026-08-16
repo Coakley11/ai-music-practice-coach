@@ -1,0 +1,10 @@
+guitar=False
+strumming=True
+reveal=True
+A isolate=True
+A conservatory=True
+sax=False
+tone=True
+reveal2=True
+D longtone=False
+D conservatory=False
