@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-16 · **Branch:** `feature/practice-focus-system` (base `origin/dev` `870a365`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
-**Practice Focus System (active):** [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) on `feature/practice-focus-system`. **Phase 2A** (AMI + Practice page) in progress on this branch. Do **not** merge to `dev` until explicit approval.
+**Practice Focus System (active):** [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) on `feature/practice-focus-system`. **Phase 2A** AMI + Practice and **Phase 2B** Upload / AI Coach are on this branch. Do **not** merge to `dev` until explicit approval.
 
 **Parked:** `feature/creative-backing-stabilization` @ `44403d43785a0bdd29c0762f98155efd393ccb70` — do not merge, reset, rebase, or use as Practice Focus base.
 

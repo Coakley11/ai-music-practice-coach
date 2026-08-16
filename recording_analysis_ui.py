@@ -244,6 +244,17 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     duration = float(result.get("duration", 0) or 0)
     duration_text = _esc(f"{duration:.1f}s")
     instrument_text = _esc(result.get("instrument", ""))
+    focus_caption = ""
+    try:
+        from practice_focus_evaluation import analysis_focus_caption
+
+        focus_caption = analysis_focus_caption(result)
+    except ImportError:
+        stored = str(result.get("practice_focus_at_analysis") or "").strip()
+        focus_caption = (
+            f"Practice Focus at analysis: {stored}" if stored else "Practice Focus at analysis: Not recorded"
+        )
+    focus_pill = f"<span class='ra-pill'>{_esc(focus_caption)}</span>" if focus_caption else ""
 
     return f"""
 {ANALYSIS_CSS}
@@ -254,6 +265,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <div class="ra-pills">
       {tempo_line}
       <span class="ra-pill">{duration_text} · {instrument_text}</span>
+      {focus_pill}
       <span class="ra-pill issue">⚠ {_esc(result.get('biggest_issue', ''))}</span>
       <span class="ra-pill focus">→ {_esc(result.get('next_focus', ''))}</span>
     </div>

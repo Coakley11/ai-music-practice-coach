@@ -1,0 +1,26 @@
+# F-tone-focus-severe-timing
+Practice Focus at analysis: Tone
+instrument: Saxophone
+mission_ids: ['motif_development', 'instrument_tone', 'dynamic_contrast', 'articulation']
+
+## Coach summary
+Your current focus is **Tone**, so this review prioritizes sound stability and evenness from pitch-stability, dynamics, and spectral evidence. This is not a fabricated resonance score. Pulse, pitch, dynamics, and attack clarity were estimated from this take. A serious issue outside this focus still needs attention: timing & rhythm (34/100).
+
+## Next practice
+- Emphasize air support, stable embouchure, resonance, and register consistency.
+- Avoid pinched tone; listen for even vibrato only after the core sound is stable.
+- Start with long tones: stable pitch, even air or contact, no pinched sound.
+- C major scale @ 70 BPM — even subdivisions.
+
+## Compact analysis block
+Practice Focus coaching context (bias, not a prison):
+- Instrument: Saxophone
+- Current Practice Focus: Tone
+- Category: tone
+- Increased attention: Emphasize air support, stable embouchure, resonance, and register consistency.; Avoid pinched tone; listen for even vibrato only after the core sound is stable.; consistent sound quality; stable air or contact; resonance; register consistency
+- For this evaluation, increase weight and coaching priority on the focus dimensions. Still report serious problems outside the focus. Do not claim metrics the audio cannot support.
+- Increase coaching weight on these dimensions when evidence exists; do not fabricate metrics the signal cannot support. Mention major issues outside the focus when they are important. Do not hijack unrelated factual questions.
+- Measured score keys to emphasize: tone, pitch, technique
+- Derived mission metrics to emphasize (heuristic, not new sensors): instrument_tone, dynamic_contrast, articulation
+- Coaching-only next steps may use practice suggestions; do not present them as measured defects.
+- Exact Focus label to preserve: Tone

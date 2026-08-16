@@ -139,7 +139,7 @@ baseline metrics + focus-required metrics (`preferred_metric_ids`) + performance
 ### Phase 2 — Highest-value coaching surfaces
 
 1. [x] **Phase 2A (2026-08-16):** AMI + Practice page consume `PracticeFocusContext` / policy via `practice_focus_coaching.py`. Same instrument + same song + change-only Focus produces different AMI plans and Practice drills. Factual theory (e.g. C major notes) is not hijacked. Upload / Log / Multitrack still deferred.
-2. [ ] **Phase 2B:** Upload / AI Coach — stamp snapshot at analysis start; bias metric selection/weighting/summary
+2. [x] **Phase 2B (2026-08-16):** Upload / AI Coach snapshots Practice Focus at analysis start (`practice_focus_evaluation.py`). Focus unions supported mission metrics, emphasizes measured score keys, rewrites coach summary/next exercises, and keeps historical results immutable. Severe non-focus issues still surface. Unsupported measurements are not fabricated.
 3. [ ] **Phase 2C:** Practice Log + weekly analysis — pass historical snapshots into the model; distinguish current vs historical
 4. [ ] **Phase 2D:** Multitrack — inject context into analysis/guidance where metrics exist
 
@@ -161,7 +161,9 @@ Later, once Composition itself is sufficiently complete. Clean `PracticeFocusCon
 
 ## Files / modules
 
-**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`
+**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `practice_focus_evaluation.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`, `tests/test_practice_focus_phase2b_upload.py`
+
+**Touched in Phase 2B:** `recording_analysis.py`, `recording_analysis_ui.py`, `streamlit_music_practice_app.py` (analysis run), `upload_history.py`
 
 **Touched in Phase 1:** `practice_setup_controls.py`, `practice_setup_globals.py` (docs), `practice_log_state.py`, `music_coach_ami/context_reader.py`, `upload_history.py`
 

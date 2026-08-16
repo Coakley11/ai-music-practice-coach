@@ -24,6 +24,16 @@
 
 ## Completed Features
 
+### Practice Focus System — Phase 2B Upload / AI Coach (2026-08-16)
+
+- [x] Snapshot Practice Focus at analysis start; historical results stay immutable
+- [x] Supported mission metrics are unioned (never removing explicit user metrics)
+- [x] Coach summary and next exercises follow Focus; severe non-focus scores still surface
+- [x] Dashboard shows `Practice Focus at analysis: …` or `Not recorded`
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`)
+- Tests: `tests/test_practice_focus_phase2b_upload.py`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
+
 ### Practice Focus System — Phase 2A AMI + Practice page (2026-08-16)
 
 - [x] Shared `practice_focus_coaching.py` consumes policy/context (no musical-state ownership)

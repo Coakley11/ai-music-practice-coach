@@ -14324,6 +14324,16 @@ elif _studio_page == "analysis":
                             )
                             ctx = enrich_analysis_context(st.session_state, ctx)
                             ctx["mission_ids"] = mission_ids
+                            try:
+                                from practice_focus_evaluation import prepare_upload_analysis_context
+
+                                ctx = prepare_upload_analysis_context(
+                                    st.session_state,
+                                    ctx,
+                                    user_metric_ids=list(mission_ids or []),
+                                )
+                            except ImportError:
+                                pass
                             if not is_analysis_criteria_locked(st.session_state):
                                 ctx["custom_goal"] = str(
                                     st.session_state.get("analysis_custom_goal") or ""
@@ -14415,6 +14425,16 @@ elif _studio_page == "analysis":
                             recording_type=recording_type.lower().replace(" ", "_"),
                         )
                         ctx["mission_ids"] = mission_ids
+                        try:
+                            from practice_focus_evaluation import prepare_upload_analysis_context
+
+                            ctx = prepare_upload_analysis_context(
+                                st.session_state,
+                                ctx,
+                                user_metric_ids=list(mission_ids or []),
+                            )
+                        except ImportError:
+                            pass
                         if not is_analysis_criteria_locked(st.session_state):
                             ctx["custom_goal"] = str(
                                 st.session_state.get("analysis_custom_goal") or ""

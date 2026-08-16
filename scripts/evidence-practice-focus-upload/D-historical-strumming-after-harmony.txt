@@ -1,0 +1,4 @@
+# Historical immutability
+current session focus after change: Harmony
+saved practice_focus_at_analysis: Strumming
+snapshot: {'schema_version': 1, 'instrument': 'Guitar', 'instrument_display': 'Guitar', 'instrument_subtype': '', 'practice_focus': 'Strumming', 'focus_category': 'rhythm_groove', 'captured_at': ''}

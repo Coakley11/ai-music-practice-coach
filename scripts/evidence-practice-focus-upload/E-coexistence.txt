@@ -1,0 +1,2 @@
+old: Strumming
+new: Harmony

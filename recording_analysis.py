@@ -587,6 +587,28 @@ def analyze_recording(
         y, sr, _ = _load_audio(audio_bytes, filename)
         features = extract_audio_features(y, sr)
         instrument = str(ctx.get("instrument") or "Piano")
+        try:
+            from practice_focus_evaluation import (
+                apply_focus_to_coach_outputs,
+                attach_frozen_focus_to_context,
+                build_evaluation_debug,
+                merge_metric_ids_with_focus,
+                stamp_result_with_frozen_snapshot,
+            )
+
+            attach_frozen_focus_to_context(ctx)
+            snap = ctx.get("practice_focus_snapshot")
+            focus_label = str((snap or {}).get("practice_focus") or ctx.get("focus") or "")
+            instrument = str(ctx.get("instrument") or instrument)
+            user_ids = list(ctx.get("practice_focus_user_metric_ids") or ctx.get("mission_ids") or [])
+            merged_ids, added_ids = merge_metric_ids_with_focus(user_ids, instrument, focus_label)
+            ctx["mission_ids"] = merged_ids
+        except ImportError:
+            snap = None
+            focus_label = str(ctx.get("focus") or "")
+            user_ids = list(ctx.get("mission_ids") or [])
+            merged_ids, added_ids = user_ids, []
+
         scores = compute_performance_scores(features, instrument)
 
         categories = {
@@ -623,6 +645,26 @@ def analyze_recording(
 
         practice_plan = build_practice_plan(scores, ctx, features)
         summary, biggest, improved, next_focus = build_coach_summary(scores, categories)
+        focused = None
+        try:
+            focused = apply_focus_to_coach_outputs(
+                scores=scores,
+                categories=categories,
+                practice_plan=practice_plan,
+                instrument=instrument,
+                focus=focus_label,
+                baseline_summary=summary,
+                biggest_issue=biggest,
+                most_improved=improved,
+                next_focus=next_focus,
+            )
+            practice_plan = focused["practice_plan"]
+            summary = focused["coach_summary"]
+            biggest = focused["biggest_issue"]
+            improved = focused["most_improved"]
+            next_focus = focused["next_focus"]
+        except Exception:
+            focused = None
 
         mission_ids = list(ctx.get("mission_ids") or [])
         mission_block: dict[str, Any] = {}
@@ -662,6 +704,26 @@ def analyze_recording(
             "time_signature": ctx.get("time_signature"),
         }
         result_payload.update(mission_block)
+        try:
+            debug = build_evaluation_debug(
+                instrument=instrument,
+                focus=focus_label,
+                user_metric_ids=user_ids,
+                merged_metric_ids=merged_ids,
+                added_metric_ids=added_ids,
+                scores=scores,
+            )
+            if focused:
+                debug["severe_non_focus_score_keys"] = list(
+                    focused.get("severe_non_focus_score_keys") or []
+                )
+            result_payload = stamp_result_with_frozen_snapshot(
+                result_payload,
+                snap or ctx.get("practice_focus_snapshot"),
+                evaluation_debug=debug,
+            )
+        except Exception:
+            pass
         return result_payload
     except Exception as e:
         return {"ok": False, "message": f"Could not analyze recording: {e}"}

@@ -31,7 +31,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Practice Focus System (P0 — active on feature branch)
 
-- App-wide coaching variable (not a badge): **Phase 2A** AMI + Practice page on `feature/practice-focus-system`; remaining: Upload, Log, Multitrack, then safe Backing/Custom
+- App-wide coaching variable (not a badge): **Phase 2A** AMI + Practice page and **Phase 2B** Upload / AI Coach on `feature/practice-focus-system`; remaining: Practice Log weekly analysis, Multitrack, then safe Backing/Custom
 - Deeper Creative waits until parked `feature/creative-backing-stabilization` @ `44403d4` is accepted
 - Composition is hook-only until that page is further along
 - See [plan](./plans/2026-08-15-practice-focus-system.md)

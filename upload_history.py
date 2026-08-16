@@ -36,6 +36,10 @@ _HISTORY_RESULT_KEYS = (
     "message",
     "practice_focus_snapshot",
     "practice_focus_at_analysis",
+    "practice_focus_evaluation",
+    "instrument",
+    "biggest_issue",
+    "next_focus",
 )
 
 

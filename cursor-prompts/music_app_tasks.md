@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-16 (Practice Focus Phase 2A AMI + Practice page on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-16 (Practice Focus Phase 2B Upload / AI Coach on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -19,10 +19,10 @@
 - [x] Audit existing `focus` storage, widgets, persistence, lookalikes
 - [x] Phase 1 foundation: `practice_focus_policy` / `practice_focus_context` / `practice_focus_snapshot` + tests
 - [x] Phase 2A: AMI + Practice page consume policy/context (`practice_focus_coaching.py`); same-rerun Focus change; C-major factual guardrail
-- [ ] Phase 2B: Upload / AI Coach weighting (not started)
+- [x] Phase 2B: Upload / AI Coach snapshot + supported metric emphasis (`practice_focus_evaluation.py`)
 - [ ] Phase 2C: Practice Log + weekly Practice Coach analysis (not started)
 - [ ] Phase 2D: Multitrack (not started)
-- [ ] Phase 2 (remaining): Upload/AI Coach, Practice Log weekly analysis, Multitrack
+- [ ] Phase 2 (remaining): Practice Log weekly analysis, Multitrack
 - [ ] Phase 3: safe Backing instructional layer + Custom tools on current `dev`
 - [ ] Phase 4: Creative integration after parked branch is accepted
 - [ ] Phase 5: Composition (later)

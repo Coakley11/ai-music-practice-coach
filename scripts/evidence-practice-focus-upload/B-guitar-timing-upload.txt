@@ -1,0 +1,26 @@
+# B-guitar-timing-upload
+Practice Focus at analysis: Timing
+instrument: Guitar
+mission_ids: ['motif_development', 'timing_groove', 'rhythmic_diversity', 'space_silence']
+
+## Coach summary
+Your current focus is **Timing**, so this review prioritizes beat placement, subdivision, and tempo stability for **Guitar**. Pulse, pitch, dynamics, and attack clarity were estimated from this take.
+
+## Next practice
+- Practice with a metronome on every beat, then on 2 and 4 only.
+- Speak or tap the subdivision before playing it.
+- Loop a short passage and listen for rushing into chord changes or phrase peaks.
+- C major scale @ 70 BPM — even subdivisions.
+
+## Compact analysis block
+Practice Focus coaching context (bias, not a prison):
+- Instrument: Guitar
+- Current Practice Focus: Timing
+- Category: timing
+- Increased attention: beat placement; subdivision accuracy; tempo stability; rushing vs dragging; rests and space that still sit in time
+- For this evaluation, increase weight and coaching priority on the focus dimensions. Still report serious problems outside the focus. Do not claim metrics the audio cannot support.
+- Increase coaching weight on these dimensions when evidence exists; do not fabricate metrics the signal cannot support. Mention major issues outside the focus when they are important. Do not hijack unrelated factual questions.
+- Measured score keys to emphasize: timing, groove
+- Derived mission metrics to emphasize (heuristic, not new sensors): timing_groove, rhythmic_diversity, space_silence
+- Coaching-only next steps may use practice suggestions; do not present them as measured defects.
+- Exact Focus label to preserve: Timing

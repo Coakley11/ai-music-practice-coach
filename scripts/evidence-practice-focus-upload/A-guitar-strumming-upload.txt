@@ -1,0 +1,26 @@
+# A-guitar-strumming-upload
+Practice Focus at analysis: Strumming
+instrument: Guitar
+mission_ids: ['motif_development', 'timing_groove', 'rhythmic_diversity', 'dynamic_contrast']
+
+## Coach summary
+Your current focus is **Strumming**, so this review prioritizes rhythmic continuity, groove, and attack consistency from the timing and onset evidence in this take — not stroke-by-stroke classification. Pulse, pitch, dynamics, and attack clarity were estimated from this take.
+
+## Next practice
+- Keep the strumming or picking hand moving.
+- Watch chord-transition gaps that stop the groove.
+- Use muting and accents to define the pattern.
+- C major scale @ 70 BPM — even subdivisions.
+
+## Compact analysis block
+Practice Focus coaching context (bias, not a prison):
+- Instrument: Guitar
+- Current Practice Focus: Strumming
+- Category: rhythm_groove
+- Increased attention: Keep the strumming or picking hand moving.; Watch chord-transition gaps that stop the groove.; Use muting and accents to define the pattern.; rhythmic consistency of the strumming hand; up/down stroke patterns; subdivision (especially eighth notes)
+- For this evaluation, increase weight and coaching priority on the focus dimensions. Still report serious problems outside the focus. Do not claim metrics the audio cannot support.
+- Increase coaching weight on these dimensions when evidence exists; do not fabricate metrics the signal cannot support. Mention major issues outside the focus when they are important. Do not hijack unrelated factual questions.
+- Measured score keys to emphasize: timing, groove, technique
+- Derived mission metrics to emphasize (heuristic, not new sensors): timing_groove, rhythmic_diversity, dynamic_contrast
+- Coaching-only next steps may use practice suggestions; do not present them as measured defects.
+- Exact Focus label to preserve: Strumming

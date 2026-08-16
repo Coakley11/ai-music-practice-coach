@@ -1,0 +1,26 @@
+# E-guitar-harmony-new-analysis
+Practice Focus at analysis: Harmony
+instrument: Guitar
+mission_ids: ['motif_development', 'chord_tone_targeting', 'guide_tones', 'voice_leading', 'deep_harmony']
+
+## Coach summary
+Your current focus is **Harmony**, so this review prioritizes chord-tone and voice-leading evidence where the analysis can support it. Pulse, pitch, dynamics, and attack clarity were estimated from this take.
+
+## Next practice
+- Spell the chord tones of each harmony in the section.
+- Practice 3rds and 7ths as a slow guide-tone line through the changes.
+- Connect adjacent chords with the smallest voice-leading motion.
+- C major scale @ 70 BPM — even subdivisions.
+
+## Compact analysis block
+Practice Focus coaching context (bias, not a prison):
+- Instrument: Guitar
+- Current Practice Focus: Harmony
+- Category: harmony
+- Increased attention: chord tones; guide tones (3rds and 7ths); harmonic movement; voice leading; knowing what each chord is asking for
+- For this evaluation, increase weight and coaching priority on the focus dimensions. Still report serious problems outside the focus. Do not claim metrics the audio cannot support.
+- Increase coaching weight on these dimensions when evidence exists; do not fabricate metrics the signal cannot support. Mention major issues outside the focus when they are important. Do not hijack unrelated factual questions.
+- Measured score keys to emphasize: musicality, pitch
+- Derived mission metrics to emphasize (heuristic, not new sensors): chord_tone_targeting, guide_tones, voice_leading, deep_harmony
+- Coaching-only next steps may use practice suggestions; do not present them as measured defects.
+- Exact Focus label to preserve: Harmony
