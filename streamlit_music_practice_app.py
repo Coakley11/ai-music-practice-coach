@@ -10176,6 +10176,10 @@ def _on_backing_filter_change() -> None:
         )
 
         if not st.session_state.get(BACKING_USER_EDITS_ALLOWED_KEY):
+            try:
+                persist_music_local_state(st)
+            except Exception:
+                pass
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)

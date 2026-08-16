@@ -231,6 +231,21 @@ class TestSbiSameRerunPracticeKeyTranspose(unittest.TestCase):
         self.assertFalse(first.startswith("D#"), sections)
         self.assertTrue(first.startswith("A") or first.startswith("G"), sections)
 
+    def test_prior_practice_key_map_transposes_when_blob_already_dest(self) -> None:
+        """A-major Perfect map must move to E even if identity/fallback is already E."""
+        session = _perfect_session(practice="A")
+        set_practice_concert_key(session, "E", pick_key=PERFECT_PICK)
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        ensure_song_practice_blob_for_active_song(session, practice_key="E", original_key="G")
+        a_map = transpose_sections_dict(copy.deepcopy(PERFECT_G), "G", "A")
+        overlaid = overlay_sections_with_pending_practice_key(
+            session, a_map, spelled_in_key="E"
+        )
+        self.assertTrue(str(overlaid["Verse"][0]).startswith("E"), overlaid)
+        self.assertFalse(str(overlaid["Verse"][0]).startswith("A"), overlaid)
+        self.assertFalse(str(overlaid["Verse"][0]).startswith("F#"), overlaid)
+
 
 class TestBackingBannerEffectiveBpm(unittest.TestCase):
     def test_banner_uses_ephemeral_bpm_not_source(self) -> None:
@@ -394,6 +409,58 @@ class TestAdvancedSettingsLiveMutation(unittest.TestCase):
         self.assertIn("jazz", str(out.get("applied_groove") or session.get("backing_groove_style") or "").lower())
         self.assertEqual(session.get("backing_groove_style"), "Jazz swing")
 
+    def test_canonicalize_did_reset_keeps_play_session_meter(self) -> None:
+        session = {
+            "studio_page": "backing",
+            BACKING_CONTEXT_KEY: {
+                "source": "entry_jam",
+                "entry_mode": "Style Jam Mode",
+                "bpm": 96,
+                "style": "Bossa nova",
+                "meter": "4/4",
+                "source_signature": "sig-adv",
+                BACKING_SESSION_LAUNCH_ID_BLOB_KEY: "adv-1",
+            },
+            "backing_track_bpm": 96,
+            "backing_groove_style": "Bossa nova",
+            "backing_time_signature": "4/4",
+            "_canonical_active_backing_song_id": "old-sync",
+        }
+        ctx = BackingContext(
+            source="entry_jam",
+            source_label="Entry & Jam",
+            active_song_id="jam-adv",
+            song_title="Jam",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            bpm=96,
+            style="Bossa nova",
+            groove="Medium",
+            meter="4/4",
+            scope="Full song",
+            loops=2,
+            entry_mode="Style Jam Mode",
+            source_signature="sig-adv",
+        )
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        session[BACKING_CONTEXT_KEY][BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = "adv-1"
+        sync_backing_play_session_on_backing_page(session)
+        session["backing_time_signature"] = "3/4"
+        session["backing_time_signature_override"] = True
+        capture_backing_play_session_overrides(session)
+        from songs.playback_defaults import canonicalize_backing_defaults_for_song
+
+        st_like = SimpleNamespace(session_state=session)
+        canonicalize_backing_defaults_for_song(
+            st_like,
+            sync_id="jam-adv",
+            active_song_bpm=96,
+            active_song_groove="Bossa nova",
+            active_song_meter="4/4",
+        )
+        self.assertEqual(session.get("backing_time_signature"), "3/4")
+
 
 class TestGeneratedBackingKeyVsCatalog(unittest.TestCase):
     def test_generated_backing_left_panel_mutates_generated_owner(self) -> None:
@@ -411,6 +478,15 @@ class TestGeneratedBackingKeyVsCatalog(unittest.TestCase):
         ptr = get_active_workflow_pointer(session)
         assert ptr is not None
         self.assertEqual(str(ptr.workflow_owner), "jam_session_generator")
+        session.pop("_streamlit_widgets_locked_this_run", None)
+        from music_workflow_pending_generated_key_edit import consume_pending_generated_key_edit
+
+        consume_pending_generated_key_edit(session)
+        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        assert blob is not None
+        token = str(blob.keys.practice_tonic or "").strip()
+        self.assertTrue(token.startswith("E"), token)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "A")
 
     def test_generated_key_never_mutates_catalog_practice_key(self) -> None:
         from songs.practice_key_state import creative_jam_owns_practice_settings, should_write_song_source_settings

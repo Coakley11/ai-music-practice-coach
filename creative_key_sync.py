@@ -803,6 +803,20 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             )
             if jam_like:
                 if generated_backing_owns_left_panel_key(session):
+                    pending_token = ""
+                    try:
+                        from music_workflow_pending_generated_key_edit import (
+                            consume_pending_generated_key_edit,
+                            peek_pending_generated_key_edit,
+                        )
+
+                        pending = peek_pending_generated_key_edit(session)
+                        if pending:
+                            pending_token = str(pending.get("selected_key_token") or "").strip()
+                            consume_pending_generated_key_edit(session, st=st)
+                            ident = resolve_practice_key_identity_for_ui(session)
+                    except ImportError:
+                        pending_token = ""
                     gen = ident
                     if gen is None or str(gen.workflow_owner or "") not in {
                         "style_jam",
@@ -815,7 +829,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                         except ImportError:
                             gen = ident
                     if gen is not None:
-                        selected = gen.practice_key_token
+                        selected = pending_token or gen.practice_key_token
                         options = practice_keys_for_mode(gen.practice_mode)
                         if selected not in options:
                             options = [selected] + options
@@ -1420,8 +1434,16 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 )
                 session[widget_key] = new
                 try:
-                    from generated_jam_key_change import capture_generated_key_edit_intent
+                    from generated_jam_key_change import (
+                        align_generated_workflow_pointer_for_key_edit,
+                        capture_generated_key_edit_intent,
+                    )
 
+                    align_generated_workflow_pointer_for_key_edit(
+                        session,
+                        str(ptr.workflow_owner),
+                        session_id=str(ptr.workflow_session_id or ""),
+                    )
                     capture_generated_key_edit_intent(session, widget_key=widget_key)
                 except ImportError:
                     pass

@@ -397,13 +397,47 @@ def canonicalize_backing_defaults_for_song(
             if creative_ctx.meter:
                 norm_meter = normalize_time_signature(str(creative_ctx.meter))
             if did_reset:
+                keep_play_reset = False
+                try:
+                    from backing_play_session import (
+                        backing_play_session_has_override,
+                        effective_backing_play_overrides,
+                        play_session_blocks_canonical_seed,
+                    )
+                    from backing_track_state import is_backing_user_dirty
+
+                    keep_play_reset = bool(
+                        play_session_blocks_canonical_seed(st.session_state)
+                        or backing_play_session_has_override(st.session_state, "bpm")
+                        or backing_play_session_has_override(st.session_state, "groove")
+                        or backing_play_session_has_override(st.session_state, "meter")
+                        or is_backing_user_dirty(st.session_state)
+                    )
+                except ImportError:
+                    keep_play_reset = False
                 invalidate_backing_cache(st)
                 invalidate_backing_page_snapshots(st)
+                if keep_play_reset:
+                    resolved = effective_backing_play_overrides(st.session_state)
+                    override_bpm = int(resolved.get("bpm") or 0)
+                    if override_bpm > 0:
+                        norm_bpm = override_bpm
+                    ov_groove = str(resolved.get("groove") or "").strip()
+                    if ov_groove:
+                        norm_groove = normalize_groove_label(ov_groove)
+                    ov_meter = str(resolved.get("meter") or "").strip()
+                    if ov_meter:
+                        norm_meter = normalize_time_signature(ov_meter)
                 _set_bpm_tracking_ids(st, creative_sync_id, norm_bpm)
                 st.session_state[LAST_PLAYBACK_GROOVE_SONG] = creative_sync_id
                 st.session_state[BACKING_GROOVE_KEY] = norm_groove
                 st.session_state[BACKING_METER_KEY] = norm_meter
-                st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+                if not keep_play_reset:
+                    st.session_state[BACKING_METER_OVERRIDE_KEY] = False
+                else:
+                    st.session_state[BACKING_METER_OVERRIDE_KEY] = bool(
+                        resolved.get("meter_override") or ov_meter
+                    )
                 st.session_state[LAST_BACKING_METER_SONG] = creative_sync_id
                 st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
                 st.session_state.pop(PENDING_BACKING_GROOVE, None)
@@ -412,16 +446,18 @@ def canonicalize_backing_defaults_for_song(
                 try:
                     from backing_track_state import BACKING_WIDGETS_SEEDED_KEY
 
-                    st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+                    if not keep_play_reset:
+                        st.session_state.pop(BACKING_WIDGETS_SEEDED_KEY, None)
                 except ImportError:
                     pass
                 try:
                     from backing_track_state import reset_backing_playback_scope_to_full_song
 
-                    reset_backing_playback_scope_to_full_song(
-                        st.session_state,
-                        source="creative_backing_sync_id_change",
-                    )
+                    if not keep_play_reset:
+                        reset_backing_playback_scope_to_full_song(
+                            st.session_state,
+                            source="creative_backing_sync_id_change",
+                        )
                 except ImportError:
                     pass
             else:
@@ -472,11 +508,8 @@ def canonicalize_backing_defaults_for_song(
                 from backing_track_state import is_backing_user_dirty
 
                 keep_user_feel = bool(
-                    (
-                        is_backing_user_dirty(st.session_state)
-                        or play_session_blocks_canonical_seed(st.session_state)
-                    )
-                    and not did_reset
+                    is_backing_user_dirty(st.session_state)
+                    or play_session_blocks_canonical_seed(st.session_state)
                 )
             except ImportError:
                 keep_user_feel = False

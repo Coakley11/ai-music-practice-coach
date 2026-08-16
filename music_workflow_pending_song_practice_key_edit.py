@@ -207,6 +207,27 @@ def infer_catalog_sections_spelled_in_key(
                     return orig
         except Exception:
             pass
+    reference = catalog if isinstance(catalog, dict) and catalog else home
+    if orig and isinstance(reference, dict) and reference:
+        try:
+            from music_theory import semitone_distance, transpose_chord
+
+            ref_first = ""
+            live_first = ""
+            for name, chs in reference.items():
+                live = sections.get(name)
+                if isinstance(chs, list) and chs and isinstance(live, list) and live:
+                    ref_first = str(chs[0] or "").strip()
+                    live_first = str(live[0] or "").strip()
+                    if ref_first and live_first:
+                        break
+            if ref_first and live_first:
+                steps = semitone_distance(ref_first, live_first)
+                spelled = str(transpose_chord(orig, steps, reference_key=orig) or "").strip()
+                if spelled:
+                    return spelled
+        except Exception:
+            pass
     if orig and dest and dest != orig and isinstance(catalog, dict) and catalog:
         try:
             expected = transpose_sections_dict(catalog, orig, dest)
