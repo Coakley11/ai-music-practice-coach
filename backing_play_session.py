@@ -176,6 +176,15 @@ def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
 def _apply_defaults_to_widgets(session: dict[str, Any], defaults: dict[str, Any]) -> None:
     session["backing_track_bpm"] = int(defaults.get("bpm") or 100)
     session["bpm"] = int(defaults.get("bpm") or 100)
+    try:
+        from backing_context import backing_page_sync_id
+        from songs.playback_defaults import backing_bpm_slider_widget_key
+
+        sid = backing_page_sync_id(session, song_sync_id="")
+        if sid:
+            session[backing_bpm_slider_widget_key(sid)] = int(defaults.get("bpm") or 100)
+    except ImportError:
+        pass
     if defaults.get("groove"):
         session["backing_groove_style"] = str(defaults["groove"])
     session["backing_time_signature"] = str(defaults.get("meter") or "4/4")

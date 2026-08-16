@@ -422,12 +422,22 @@ def canonicalize_backing_defaults_for_song(
                     override_bpm = int(resolved.get("bpm") or 0)
                     if override_bpm > 0:
                         norm_bpm = override_bpm
+                    else:
+                        live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
+                        if live_bpm > 0:
+                            norm_bpm = live_bpm
                     ov_groove = str(resolved.get("groove") or "").strip()
-                    if ov_groove:
-                        norm_groove = normalize_groove_label(ov_groove)
+                    live_groove = ov_groove or str(
+                        st.session_state.get(BACKING_GROOVE_KEY)
+                        or st.session_state.get("backing_groove_style")
+                        or ""
+                    ).strip()
+                    if live_groove:
+                        norm_groove = normalize_groove_label(live_groove)
                     ov_meter = str(resolved.get("meter") or "").strip()
-                    if ov_meter:
-                        norm_meter = normalize_time_signature(ov_meter)
+                    live_meter = ov_meter or str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                    if live_meter:
+                        norm_meter = normalize_time_signature(live_meter)
                 _set_bpm_tracking_ids(st, creative_sync_id, norm_bpm)
                 st.session_state[LAST_PLAYBACK_GROOVE_SONG] = creative_sync_id
                 st.session_state[BACKING_GROOVE_KEY] = norm_groove
@@ -436,7 +446,7 @@ def canonicalize_backing_defaults_for_song(
                     st.session_state[BACKING_METER_OVERRIDE_KEY] = False
                 else:
                     st.session_state[BACKING_METER_OVERRIDE_KEY] = bool(
-                        resolved.get("meter_override") or ov_meter
+                        resolved.get("meter_override") or live_meter
                     )
                 st.session_state[LAST_BACKING_METER_SONG] = creative_sync_id
                 st.session_state.pop(PENDING_BACKING_TRACK_BPM, None)
