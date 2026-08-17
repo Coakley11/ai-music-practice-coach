@@ -304,39 +304,39 @@ def sync_widget_state_from_globals(
     Must be called **before** the widgets render. Each ``*_widget_key``
     is optional - omit it if the surface doesn't render that control.
 
-    The function also clamps any out-of-options value back to the
-    first valid option (and writes the clamped value back to the
-    global key) so widgets never receive a value Streamlit would
-    refuse.
+    Widget display may clamp to a listed option, but an already-selected
+    global instrument/level must **never** be overwritten by options[0]
+    (e.g. page-local Piano must not replace active Guitar).
     """
     ensure_global_setup_defaults(session_state)
 
     instrument = get_active_instrument(session_state)
+    widget_instrument = instrument
     if instrument_options is not None:
         opts = list(instrument_options)
         if opts and instrument not in opts:
-            instrument = opts[0]
-            session_state[GLOBAL_INSTRUMENT_KEY] = instrument
+            # Projection only — keep authoritative global instrument.
+            widget_instrument = opts[0]
     if instrument_widget_key:
-        session_state[instrument_widget_key] = instrument
+        session_state[instrument_widget_key] = widget_instrument
 
     level = get_active_level(session_state)
+    widget_level = level
     if level_options is not None:
         opts = list(level_options)
         if opts and level not in opts:
-            level = opts[0]
-            session_state[GLOBAL_LEVEL_KEY] = level
+            widget_level = opts[0]
     if level_widget_key:
-        session_state[level_widget_key] = level
+        session_state[level_widget_key] = widget_level
 
     focus = get_active_focus(session_state)
+    widget_focus = focus
     if focus_options is not None:
         opts = list(focus_options)
         if opts and focus not in opts:
-            focus = opts[0]
-            session_state[GLOBAL_FOCUS_KEY] = focus
+            widget_focus = opts[0]
     if focus_widget_key:
-        session_state[focus_widget_key] = focus
+        session_state[focus_widget_key] = widget_focus
 
     return instrument, level, focus
 

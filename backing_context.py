@@ -289,21 +289,44 @@ def set_backing_context(
 
     if explicit_route_arg_present and isinstance(creative_return_route, dict):
         payload["creative_return_route"] = dict(creative_return_route)
-        payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = uuid.uuid4().hex
-        preservation_reason = "explicit_new_route"
-    elif isinstance(prev_blob, dict):
-        if prev_launch_id:
+        # Same source identity + existing play session: keep launch_id so ephemeral
+        # Current BPM/style/meter overrides survive Mission/Jam re-open / refresh.
+        same_identity = bool(
+            prev_sig
+            and new_sig
+            and prev_sig == new_sig
+            and str(prev_blob.get("source") or "") == str(payload.get("source") or "")
+            and prev_launch_id
+        ) if isinstance(prev_blob, dict) else False
+        if same_identity:
             payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = prev_launch_id
-        if isinstance(prev_route, dict) and prev_launch_id:
+            preservation_reason = "explicit_route_same_signature"
+        else:
+            payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = uuid.uuid4().hex
+            preservation_reason = "explicit_new_route"
+    elif isinstance(prev_blob, dict):
+        # New source identity (signature/source change) always starts a new
+        # Backing play session — never reuse prior launch_id / ephemeral knobs.
+        signature_changed = bool(prev_sig and new_sig and prev_sig != new_sig)
+        source_changed = str(prev_blob.get("source") or "") != str(payload.get("source") or "")
+        if signature_changed or source_changed:
+            payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = uuid.uuid4().hex
+            preservation_reason = "new_launch_on_signature_change"
+        elif prev_launch_id:
+            payload[BACKING_SESSION_LAUNCH_ID_BLOB_KEY] = prev_launch_id
+        if (
+            not signature_changed
+            and not source_changed
+            and isinstance(prev_route, dict)
+            and prev_launch_id
+        ):
             payload["creative_return_route"] = dict(prev_route)
             preservation_reason = "preserved_same_launch_id"
-        elif isinstance(prev_route, dict):
+        elif isinstance(prev_route, dict) and not signature_changed and not source_changed:
             if not prev_sig:
                 preservation_reason = "previous_signature_missing"
             elif not new_sig:
                 preservation_reason = "new_signature_missing"
-            elif prev_sig != new_sig:
-                preservation_reason = "signature_changed"
             else:
                 payload["creative_return_route"] = dict(prev_route)
                 preservation_reason = "preserved_same_signature"
@@ -1597,6 +1620,35 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     if not target_chord:
         target_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
 
+    # Keep canonical concert identity for theory; player-facing progression for
+    # Mission Backing display must follow the preserved Instrument/Shape context.
+    canonical_target = target_chord
+    try:
+        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+        auth_ch, _auth_sec, _auth_idx = read_authoritative_mission_chord_selection(session)
+        if auth_ch:
+            canonical_target = str(auth_ch).strip() or canonical_target
+    except ImportError:
+        pass
+    try:
+        from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+        concert = str(
+            session.get("concert_key")
+            or session.get("display_key")
+            or concert_key
+            or ""
+        ).strip()
+        chart = musician_facing_chart_key(session, concert) if concert else ""
+        src = canonical_target or target_chord
+        if concert and chart and src:
+            target_chord = musician_facing_chord(src, concert_key=concert, chart_key=chart)
+    except ImportError:
+        pass
+    if canonical_target:
+        session["_mission_backing_canonical_chord"] = canonical_target
+
     section = str(
         session.get("ii_selected_section")
         or session.get("II_SELECTED_SECTION")
@@ -2624,6 +2676,10 @@ def open_backing_from_creative(
     from backing_musical_state import clear_stale_chart_session_keys
     from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
+    # Instrument is user-owned — capture before any hydrate and restore after.
+    _preserved_instrument = str(session.get("instrument") or "").strip()
+    _preserved_level = str(session.get("level") or "").strip()
+    _preserved_focus = str(session.get("focus") or "").strip()
     try:
         from backing_source_navigation import snapshot_practice_source_display_key
 
@@ -2823,13 +2879,10 @@ def open_backing_from_creative(
         trace_caller="open_backing_from_creative",
     )
     # New Creative → Backing play session: Current BPM must initialize from the
-    # generated/source BPM (e.g. Style Jam 130), not a stale catalog slider (96).
+    # generated/source BPM (e.g. Style Jam 130 / Jam 98), not a stale prior
+    # play-session override or catalog slider (95).
     try:
-        from backing_play_session import (
-            backing_play_session_has_override,
-            expire_backing_play_session,
-            play_session_blocks_canonical_seed,
-        )
+        from backing_play_session import expire_backing_play_session
         from songs.playback_defaults import seed_backing_bpm_slider_before_widget
 
         same_sig = bool(
@@ -2837,21 +2890,52 @@ def open_backing_from_creative(
             and existing.source_signature == ctx.source_signature
             and existing.source == ctx.source
         )
-        keep_current_bpm = bool(
-            play_session_blocks_canonical_seed(session)
-            or backing_play_session_has_override(session, "bpm")
+        prev_bpm = int(getattr(existing, "bpm", 0) or 0) if existing else 0
+        new_bpm = int(getattr(ctx, "bpm", 0) or 0)
+        prev_prog = list(getattr(existing, "progression", None) or []) if existing else []
+        new_prog = list(getattr(ctx, "progression", None) or [])
+        # Note: Style/Jam may mint a new jam_id on rebuild — do not treat jam_id
+        # alone as a new play source (that wiped Current BPM on same-jam reopen).
+        identity_shift = bool(
+            not existing
+            or str(existing.source or "") != str(ctx.source or "")
+            or str(getattr(existing, "mission_id", "") or "") != str(getattr(ctx, "mission_id", "") or "")
+            or str(getattr(existing, "entry_mode", "") or "") != str(getattr(ctx, "entry_mode", "") or "")
+            or (prev_bpm > 0 and new_bpm > 0 and prev_bpm != new_bpm)
+            or prev_prog != new_prog
         )
-        if not same_sig and not keep_current_bpm:
+        try:
+            from backing_play_session import (
+                apply_backing_play_session_to_widgets,
+                backing_play_session_has_override,
+            )
+
+            has_bpm_override = backing_play_session_has_override(session, "bpm")
+        except ImportError:
+            apply_backing_play_session_to_widgets = None  # type: ignore[assignment]
+            has_bpm_override = False
+
+        if (not same_sig and identity_shift) or (not same_sig and not has_bpm_override):
+            # New generated/source identity (or first open): initialize from source BPM.
             expire_backing_play_session(session)
-            source_bpm = int(getattr(ctx, "bpm", 0) or 0)
+            source_bpm = new_bpm
             if source_bpm > 0:
-                sync_id = str(
-                    session.get("_active_bpm_sync_id")
-                    or session.get("_backing_trace_sync_id")
-                    or getattr(ctx, "source_signature", "")
-                    or ""
-                ).strip()
+                sync_id = ""
+                try:
+                    sync_id = str(backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")) or "")
+                except Exception:
+                    sync_id = ""
+                if not sync_id:
+                    sync_id = str(
+                        session.get("_active_bpm_sync_id")
+                        or session.get("_backing_trace_sync_id")
+                        or getattr(ctx, "source_signature", "")
+                        or ""
+                    ).strip()
                 seed_backing_bpm_slider_before_widget(session, sync_id=sync_id, bpm=source_bpm)
+        elif has_bpm_override and apply_backing_play_session_to_widgets is not None:
+            # Same play identity (or signature churn): keep Current override BPM.
+            apply_backing_play_session_to_widgets(session)
         # Same play-session / active override: never reseed Current BPM from source.
     except ImportError:
         pass
@@ -2897,7 +2981,42 @@ def open_backing_from_creative(
             apply_transport_bpm=False,
         )
     else:
-        apply_backing_context_to_session(session, ctx, st_like=st_like)
+        # Signature churn with an active play-session BPM override must not
+        # reseal Current BPM from source (Style/Jam refresh / same jam reopen).
+        skip_transport = False
+        try:
+            from backing_play_session import backing_play_session_has_override
+
+            skip_transport = bool(
+                backing_play_session_has_override(session, "bpm")
+                and not (
+                    not existing
+                    or str(existing.source or "") != str(ctx.source or "")
+                    or str(getattr(existing, "mission_id", "") or "") != str(getattr(ctx, "mission_id", "") or "")
+                    or str(getattr(existing, "entry_mode", "") or "") != str(getattr(ctx, "entry_mode", "") or "")
+                    or (
+                        int(getattr(existing, "bpm", 0) or 0) > 0
+                        and int(getattr(ctx, "bpm", 0) or 0) > 0
+                        and int(existing.bpm) != int(ctx.bpm)
+                    )
+                    or list(getattr(existing, "progression", None) or []) != list(getattr(ctx, "progression", None) or [])
+                )
+            )
+        except ImportError:
+            skip_transport = False
+        apply_backing_context_to_session(
+            session,
+            ctx,
+            st_like=st_like,
+            apply_transport_bpm=not skip_transport,
+        )
+        if skip_transport:
+            try:
+                from backing_play_session import apply_backing_play_session_to_widgets
+
+                apply_backing_play_session_to_widgets(session)
+            except ImportError:
+                pass
     set_backing_source_preference(session, BACKING_PREF_CREATIVE)
     sync_live_keys_from_backing_context(session, st_like=st_like)
     try:
@@ -2913,6 +3032,24 @@ def open_backing_from_creative(
         save_page_snapshot(session, "creative")
     except ImportError:
         pass
+    # Restore user-owned instrument/level/focus if any hydrate path overwrote them.
+    if _preserved_instrument:
+        live = str(session.get("instrument") or "").strip()
+        if live != _preserved_instrument:
+            try:
+                from practice_setup_globals import set_active_instrument
+
+                set_active_instrument(
+                    session,
+                    _preserved_instrument,
+                    source="open_backing_preserve_instrument",
+                )
+            except ImportError:
+                session["instrument"] = _preserved_instrument
+    if _preserved_level and not str(session.get("level") or "").strip():
+        session["level"] = _preserved_level
+    if _preserved_focus and not str(session.get("focus") or "").strip():
+        session["focus"] = _preserved_focus
     return ctx
 
 

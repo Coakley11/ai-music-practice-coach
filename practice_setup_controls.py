@@ -130,13 +130,24 @@ def _widget_value_for_global(
 
     Global keys are owned by the sidebar widgets (``key=instrument`` etc.).
     Writing globals after those widgets render causes Streamlit snapback.
+
+    If the authoritative global is already set, never replace it with
+    ``options[0]`` (Piano). Page-local widgets are projections only.
     """
     if not options:
         return str(session_state.get(global_key) or "")
     value = str(session_state.get(global_key) or "").strip()
-    if value not in options:
+    if not value:
+        # Empty global only — seed widget from default option; do not invent ownership.
         value = options[0]
-    session_state[widget_key] = value
+        session_state[widget_key] = value
+        return value
+    if value in options:
+        session_state[widget_key] = value
+        return value
+    # Global is set but not in this page's option list — keep global; show first
+    # listed option in the widget without writing options[0] back to globals.
+    session_state[widget_key] = options[0]
     return value
 
 

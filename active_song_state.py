@@ -1030,6 +1030,19 @@ def _apply_context_to_session_keys(
     for key in ("instrument", "level", "focus"):
         val = str(ctx.get(key) or "").strip()
         if val and apply_global_controls:
+            # Instrument is user-owned global context. Navigation / active-song
+            # hydrate must never replace an already-selected instrument (e.g.
+            # Guitar → Piano from a stale page default or catalog blob).
+            if key == "instrument":
+                live_inst = str(session.get("instrument") or "").strip()
+                allow_instrument_seed = global_control_source in (
+                    "user_pick_apply",
+                    "catalog_pick_apply",
+                    "sidebar_on_change",
+                    "user_instrument_change",
+                )
+                if live_inst and not allow_instrument_seed:
+                    continue
             try:
                 from music_global_control_diagnostics import record_global_control_diag
 

@@ -1958,16 +1958,19 @@ def _example_matches_active_context(
     if not chord_ok:
         ck = str(example.concert_key or "").strip()
         dk = str(example.display_key or "").strip()
-        if ck and dk and ck != dk:
+        base = concert_stored or (candidates[0] if candidates else "")
+        if base and ck and dk:
             try:
                 from effective_practice_context import musician_facing_chord
 
-                base = concert_stored or candidates[0]
-                if base:
-                    facing = musician_facing_chord(base, concert_key=ck, chart_key=dk)
-                    chord_ok = _chords_identity_equal(facing, cur) or _chords_identity_equal(base, cur)
+                facing = musician_facing_chord(base, concert_key=ck, chart_key=dk)
+                chord_ok = _chords_identity_equal(facing, cur) or _chords_identity_equal(base, cur)
             except ImportError:
-                chord_ok = False
+                chord_ok = _chords_identity_equal(base, cur)
+            except Exception:
+                chord_ok = _chords_identity_equal(base, cur)
+        elif base:
+            chord_ok = _chords_identity_equal(base, cur)
     if not chord_ok:
         return False
     ex_sec = str(example.section or "").strip()
@@ -2965,7 +2968,10 @@ def _tab_missions(
     if example and not _example_matches_active_context(
         example, mission=mission, cur_chord=cur_chord, section_label=section_label, song_title=improv_ctx.song_title
     ):
-        example = None
+        # Fresh Generate in this run must still render — projection mismatch is
+        # display-only and must not wipe a just-stored example.
+        if not session_state.get(MISSION_EXAMPLE_FRESH_RUN_KEY):
+            example = None
 
     pre_render_fp = str(session_state.get("_mission_example_output_fp") or "")
     raw_example = session_state.get(MISSION_EXAMPLE_KEY)

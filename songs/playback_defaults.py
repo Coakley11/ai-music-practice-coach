@@ -206,8 +206,41 @@ def resolve_backing_bpm_for_slider(
         st.session_state["bpm"] = canonical
         return canonical
 
+    # Prefer Current domain BPM over a stale slider key left from a prior
+    # play session that shared the same sync_id (e.g. Jam 98 vs leftover 95).
+    try:
+        domain_bpm = normalize_backing_bpm(
+            st.session_state.get("backing_track_bpm")
+            or st.session_state.get(BPM_WIDGET_KEY)
+            or st.session_state.get("bpm")
+            or 0
+        )
+    except Exception:
+        domain_bpm = None
+    if domain_bpm and int(domain_bpm) > 0:
+        source_default = normalize_backing_bpm(default_bpm)
+        if source_default and int(domain_bpm) == int(source_default):
+            st.session_state[slider_key] = int(domain_bpm)
+            st.session_state[BPM_WIDGET_KEY] = int(domain_bpm)
+            st.session_state["bpm"] = int(domain_bpm)
+            st.session_state["backing_track_bpm"] = int(domain_bpm)
+            return int(domain_bpm)
+
     if slider_key in st.session_state:
         slider_val = normalize_backing_bpm(st.session_state[slider_key])
+        # If domain Current BPM already differs from the leftover slider and
+        # matches the new source default, trust domain (new session seed).
+        if (
+            domain_bpm
+            and int(domain_bpm) > 0
+            and int(slider_val or 0) != int(domain_bpm)
+            and normalize_backing_bpm(default_bpm)
+            and int(domain_bpm) == int(normalize_backing_bpm(default_bpm) or 0)
+        ):
+            st.session_state[slider_key] = int(domain_bpm)
+            st.session_state[BPM_WIDGET_KEY] = int(domain_bpm)
+            st.session_state["bpm"] = int(domain_bpm)
+            return int(domain_bpm)
         st.session_state[BPM_WIDGET_KEY] = slider_val
         st.session_state["bpm"] = slider_val
         st.session_state["backing_track_bpm"] = slider_val
@@ -550,13 +583,8 @@ def canonicalize_backing_defaults_for_song(
                         if live_meter:
                             norm_meter = normalize_time_signature(live_meter)
                         # Domain only — never touch slider widget key after it may exist.
-                    else:
-                        norm_bpm = int(creative_ctx.bpm or norm_bpm)
-                        seed_backing_bpm_slider_before_widget(
-                            st.session_state,
-                            sync_id=creative_sync_id,
-                            bpm=norm_bpm,
-                        )
+                    # Same sync_id + no user dirty: do NOT reseal Current knobs from
+                    # source every rerun — that locks catalog/style/meter/BPM edits.
                 except ImportError:
                     norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
             st.session_state[BPM_WIDGET_KEY] = norm_bpm
@@ -572,11 +600,7 @@ def canonicalize_backing_defaults_for_song(
                 )
             except ImportError:
                 keep_user_feel = False
-            if not keep_user_feel:
-                st.session_state[BACKING_GROOVE_KEY] = norm_groove
-                st.session_state["backing_groove_style"] = norm_groove
-                st.session_state[BACKING_METER_KEY] = norm_meter
-            else:
+            if keep_user_feel:
                 live_groove = str(
                     st.session_state.get(BACKING_GROOVE_KEY)
                     or st.session_state.get("backing_groove_style")
@@ -590,13 +614,18 @@ def canonicalize_backing_defaults_for_song(
                 if live_meter:
                     norm_meter = normalize_time_signature(live_meter)
                     st.session_state[BACKING_METER_KEY] = norm_meter
+            # else: leave live groove/meter widgets alone on same-sync reruns
             return {
                 "sync_id": creative_sync_id,
                 "active_song_bpm": int(active_song_bpm),
                 "active_song_groove": normalize_groove_label(active_song_groove),
                 "active_song_meter": norm_meter,
                 "applied_bpm": norm_bpm,
-                "applied_groove": norm_groove,
+                "applied_groove": str(
+                    st.session_state.get(BACKING_GROOVE_KEY)
+                    or st.session_state.get("backing_groove_style")
+                    or norm_groove
+                ),
                 "applied_meter": str(st.session_state.get(BACKING_METER_KEY, norm_meter)),
                 "did_reset": did_reset,
                 "skipped_for_creative_context": True,
@@ -766,23 +795,68 @@ def apply_backing_defaults_for_song(
     if song_changed:
         from .key_state import invalidate_backing_cache
 
-        invalidate_backing_cache(st)
-        invalidate_backing_page_snapshots(st)
+        keep_play = False
         try:
-            from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+            from backing_play_session import (
+                backing_play_session_has_override,
+                effective_backing_play_overrides,
+                play_session_blocks_canonical_seed,
+            )
+            from backing_track_state import is_backing_user_dirty
 
-            pick = resolve_practice_source_pick(st.session_state)
-            if pick:
-                active_bpm = resolve_source_bpm_for_pick(
-                    st.session_state,
-                    pick,
-                    default_bpm=active_bpm,
-                )
+            keep_play = bool(
+                play_session_blocks_canonical_seed(st.session_state)
+                or backing_play_session_has_override(st.session_state, "bpm")
+                or backing_play_session_has_override(st.session_state, "groove")
+                or is_backing_user_dirty(st.session_state)
+            )
         except ImportError:
-            pass
-        _set_bpm_tracking_ids(st, song_id, active_bpm)
-        st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
-        st.session_state[BACKING_GROOVE_KEY] = norm_groove
+            keep_play = False
+        if keep_play:
+            try:
+                resolved = effective_backing_play_overrides(st.session_state)
+                if backing_play_session_has_override(st.session_state, "bpm"):
+                    ov = int(resolved.get("bpm") or 0)
+                    if ov > 0:
+                        active_bpm = ov
+                live_groove = ""
+                if backing_play_session_has_override(st.session_state, "groove"):
+                    live_groove = str(resolved.get("groove") or "").strip()
+                else:
+                    live_groove = str(
+                        st.session_state.get(BACKING_GROOVE_KEY)
+                        or st.session_state.get("backing_groove_style")
+                        or ""
+                    ).strip()
+                if live_groove:
+                    norm_groove = normalize_groove_label(live_groove)
+            except Exception:
+                pass
+            # Do not invalidate / reseal over dirty Current play-session knobs.
+            st.session_state[BPM_WIDGET_KEY] = int(active_bpm)
+            st.session_state["bpm"] = int(active_bpm)
+            st.session_state["backing_track_bpm"] = int(active_bpm)
+            st.session_state[BACKING_GROOVE_KEY] = norm_groove
+            st.session_state["backing_groove_style"] = norm_groove
+            st.session_state[LAST_BACKING_DEFAULTS_SONG_ID] = song_id
+        else:
+            invalidate_backing_cache(st)
+            invalidate_backing_page_snapshots(st)
+            try:
+                from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+
+                pick = resolve_practice_source_pick(st.session_state)
+                if pick:
+                    active_bpm = resolve_source_bpm_for_pick(
+                        st.session_state,
+                        pick,
+                        default_bpm=active_bpm,
+                    )
+            except ImportError:
+                pass
+            _set_bpm_tracking_ids(st, song_id, active_bpm)
+            st.session_state[LAST_PLAYBACK_GROOVE_SONG] = song_id
+            st.session_state[BACKING_GROOVE_KEY] = norm_groove
     elif pending_bpm is not None:
         st.session_state[BPM_WIDGET_KEY] = int(pending_bpm)
         st.session_state[backing_bpm_slider_widget_key(song_id)] = int(pending_bpm)
