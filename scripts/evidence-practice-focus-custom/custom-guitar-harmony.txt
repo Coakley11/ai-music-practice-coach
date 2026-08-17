@@ -1,0 +1,33 @@
+# Practice & Improvisation Exercises
+**Instrument:** Guitar | **Level:** Intermediate | **Focus:** Harmony
+**Key:** G | **Feel:** Pop | **4/4 @ 100 BPM**
+
+## Detected harmonic ideas
+- I-V-vi-IV pop loop
+- blues / dominant-cycle movement
+
+## Practice Focus drills — **Harmony**
+**Instrument:** Guitar  
+**Progression:** G · D · Em · C  
+
+- Spell the chord tones of each harmony in the section. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Practice 3rds and 7ths as a slow guide-tone line through the changes. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Connect adjacent chords with the smallest voice-leading motion. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Spell chord tones for each harmony in **G · D · Em · C**.
+- Guide-tone line (3rds/7ths) through **G → D** with nearest motion.
+- Name the function of the hardest change before improvising.
+- Match the **Pop** feel only after the Focus goal stays clean.
+
+**Listen for:** Chord tones land on strong beats; Guide tones (3rds/7ths) connect smoothly; You can name what the next chord is asking for
+
+## Baseline instrument tips
+### Baseline instrument tips (Guitar)
+- Keep left-hand shapes efficient so right-hand Focus goals stay continuous.
+- Match the **Pop** feel after the Focus goal is clean.
+
+## Section loops
+- **Verse:** loop slowly — G | D | Em | C
+
+## Level guidance
+- Add one Focus variation only after the basic loop is clean.
+- Practice with the backing at 70–80% tempo first.

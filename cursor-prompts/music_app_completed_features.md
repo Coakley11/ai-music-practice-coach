@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-17
 
 ---
 
@@ -23,6 +23,18 @@
 ---
 
 ## Completed Features
+
+### Practice Focus System — Phase 3B Custom + Arrangement advisory (2026-08-17)
+
+- [x] Custom Progression Lab Focus exercises (`practice_focus_custom.py` + `generate_exercises_markdown`)
+- [x] Same progression + different Focus → different drills; explicit request precedence; same-rerun
+- [x] Arrangement Assistant Focus suggestions are advisory only (no arrangement mutation)
+- [x] Section deep-practice exercise text consumes Focus lines
+- [x] Deeper Creative Focus work + Motif Sequence UI remain deferred; Backing Focus card remains optional/deferred
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`; clean park checkpoint)
+- Tests: `tests/test_practice_focus_phase3b_custom.py`
+- Evidence: `scripts/evidence-practice-focus-custom/`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
 
 ### Practice Focus System — Phase 3A Practice Coach & Adaptive Weakness (2026-08-16)
 

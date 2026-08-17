@@ -1002,23 +1002,40 @@ def _section_exercise(
     focus: str,
     groove_style: str = "",
 ) -> str:
-    """Section exercise prompt - now flavoured by the resolved groove feel.
-
-    The base prompt picks up section-role / focus / level (existing behaviour)
-    and we *append* a one-line groove-specific drill so the exercise text
-    visibly changes when the user moves the Rhythm / Groove Feel dropdown.
-    """
+    """Section exercise prompt flavoured by Practice Focus + groove feel."""
     role = section_name.lower()
-    if "chorus" in role:
-        base = "Play the section 4x with backing; last time add dynamics +10%."
-    elif "bridge" in role:
-        base = "Map the first chord change only; then add the full bar line."
-    elif focus == "Rhythm":
-        base = "Metronome: 2 min chord changes only, then 2 min with groove pattern."
-    elif level == "Beginner":
-        base = "3 min: one bar at a time. 3 min: two-bar links. 2 min: full section slow."
-    else:
-        base = "Loop 6x: accuracy pass, then musical pass, then one pass with eyes on chart only."
+    first = chords[0] if chords else ""
+    second = chords[1] if len(chords) > 1 else first
+    path = " | ".join(chords[:6]) if chords else section_name
+
+    base = ""
+    try:
+        from practice_focus_coaching import practice_page_focus_lines
+
+        lines = practice_page_focus_lines(
+            instrument,
+            focus,
+            first_chord=first,
+            second_chord=second,
+            chord_path=path,
+            section_name=section_name,
+        )
+        if lines:
+            base = lines[0]
+    except ImportError:
+        base = ""
+
+    if not base:
+        if "chorus" in role:
+            base = "Play the section 4x with backing; last time add dynamics +10%."
+        elif "bridge" in role:
+            base = "Map the first chord change only; then add the full bar line."
+        elif str(focus or "").strip().lower() in {"rhythm", "strumming", "timing"}:
+            base = "Metronome: 2 min chord changes only, then 2 min with groove pattern."
+        elif level == "Beginner":
+            base = "3 min: one bar at a time. 3 min: two-bar links. 2 min: full section slow."
+        else:
+            base = "Loop 6x: accuracy pass, then musical pass, then one pass with eyes on chart only."
 
     if not groove_style:
         return base

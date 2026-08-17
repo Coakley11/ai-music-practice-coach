@@ -481,6 +481,24 @@ def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
     else:
         out.append("- Use advanced colors deliberately: upper extensions, pedal points, reharm, and rhythmic displacement only where the form needs lift.")
 
+    try:
+        from practice_focus_custom import arrangement_focus_recommendations
+
+        focus_recs = arrangement_focus_recommendations(
+            ctx.get("instrument") or "",
+            ctx.get("focus") or "",
+        )
+        if focus_recs:
+            out.append("\n## Practice Focus suggestions (advisory only)")
+            out.append(
+                "_These bias what to notice — they do not rewrite your arrangement "
+                "unless you choose to apply a change._"
+            )
+            for tip in focus_recs:
+                out.append(f"- {tip}")
+    except ImportError:
+        pass
+
     sections = ctx["sections"]
     if arrangement_section and arrangement_section != "Full song":
         sections = {arrangement_section: ctx["sections"].get(arrangement_section, [])}
@@ -494,6 +512,7 @@ def creativity_arrangement_text(ctx, target_style, arrangement_section=None):
     out.append("\n## Keep It Musical")
     out.append("- Preserve the original song identity: keep the strongest hook, phrase shape, or bass motion recognizable.")
     out.append("- Make contrast audible between verse, pre-chorus, chorus, bridge, and outro; do not make every section equally dense.")
+    out.append("- Practice Focus recommendations stay suggestions until you explicitly apply a change.")
     return "\n".join(out)
 
 

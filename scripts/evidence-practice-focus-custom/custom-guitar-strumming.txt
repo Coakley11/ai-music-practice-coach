@@ -1,0 +1,33 @@
+# Practice & Improvisation Exercises
+**Instrument:** Guitar | **Level:** Intermediate | **Focus:** Strumming
+**Key:** G | **Feel:** Pop | **4/4 @ 100 BPM**
+
+## Detected harmonic ideas
+- I-V-vi-IV pop loop
+- blues / dominant-cycle movement
+
+## Practice Focus drills — **Strumming**
+**Instrument:** Guitar  
+**Progression:** G · D · Em · C  
+
+- Keep the strumming or picking hand moving. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Isolate the strumming pattern on open strings or one chord before adding changes. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Practice downstrokes first, then add upstrokes on a steady eighth-note grid. Use **G -> D** in **custom progression** (G · D · Em · C).
+- Isolate one strumming/groove pattern on **G** for 1 minute.
+- Keep continuous hand motion through **G · D · Em · C** — change chords without stopping the pattern.
+- Add accents (e.g. beats 2 and 4) only after the grid stays even.
+- Match the **Pop** feel only after the Focus goal stays clean.
+
+**Listen for:** The strumming or groove hand keeps moving through changes; Subdivision stays even; accents land where you intended; Chord-transition gaps do not stop the pattern
+
+## Baseline instrument tips
+### Baseline instrument tips (Guitar)
+- Keep left-hand shapes efficient so right-hand Focus goals stay continuous.
+- Match the **Pop** feel after the Focus goal is clean.
+
+## Section loops
+- **Verse:** loop slowly — G | D | Em | C
+
+## Level guidance
+- Add one Focus variation only after the basic loop is clean.
+- Practice with the backing at 70–80% tempo first.

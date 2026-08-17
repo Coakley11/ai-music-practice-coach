@@ -1,0 +1,24 @@
+# Creative Arrangement Assistant - Demo Song
+**Target style:** Pop Rock | **Instrument:** Guitar | **Level:** Intermediate | **Focus:** Phrasing
+
+## Producer Direction
+- **Overall feel:** driving 8ths, bigger chorus lift, sustained power texture.
+- Keep the original form recognizable; change density, register, rhythm, and voicing before rewriting the whole harmony.
+- Add one arrangement device per section: register, rhythm, voicing color, or density.
+
+## Practice Focus suggestions (advisory only)
+_These bias what to notice — they do not rewrite your arrangement unless you choose to apply a change._
+- **Phrasing:** stagger entrances/exits for call-and-response.
+- Avoid phrase-overlap clutter; leave breath/space between answering parts.
+- Shape a clear musical arc across the form (enter small, peak, thin out).
+
+## Focused Section: Verse
+### Verse - 4 bars
+- **Musical job:** I-V-vi-IV pop loop.
+- **Arrangement move:** palm-muted pulse or arpeggiated open voicings.
+- **Guitar part:** Use a capo/open-string color if it fits the key; fingerpick **G -> D** with bass on beat 1 and upper strings on the offbeats.
+
+## Keep It Musical
+- Preserve the original song identity: keep the strongest hook, phrase shape, or bass motion recognizable.
+- Make contrast audible between verse, pre-chorus, chorus, bridge, and outro; do not make every section equally dense.
+- Practice Focus recommendations stay suggestions until you explicitly apply a change.

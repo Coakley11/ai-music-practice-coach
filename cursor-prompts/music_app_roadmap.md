@@ -1,8 +1,8 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-16 · **Branch:** `feature/practice-focus-system` (base `origin/dev` `870a365`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-08-17 · **Branch:** `feature/practice-focus-system` (base `origin/dev` `870a365`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
-**Practice Focus System (active):** [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) on `feature/practice-focus-system`. **Phase 2A–2D + Phase 3A** complete on this branch. Do **not** merge to `dev` until explicit approval.
+**Practice Focus System (park checkpoint after 3B):** [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) on `feature/practice-focus-system`. **Phase 1–3B** complete. Do **not** merge to `dev` until explicit approval. **Next:** resume Creative/Backing @ `44403d4`.
 
 **Parked:** `feature/creative-backing-stabilization` @ `44403d43785a0bdd29c0762f98155efd393ccb70` — do not merge, reset, rebase, or use as Practice Focus base.
 

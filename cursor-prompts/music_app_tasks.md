@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-16 (Practice Focus Phase 3A Practice Coach + Adaptive Weakness on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-17 (Practice Focus Phase 3B Custom + Arrangement advisory — park checkpoint; Creative/Backing still @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -23,7 +23,8 @@
 - [x] Phase 2C: Practice Log + weekly Practice Coach analysis (`practice_focus_history.py`)
 - [x] Phase 2D: Multitrack Focus snapshot + supported ensemble emphasis (`practice_focus_multitrack.py`)
 - [x] Phase 3A: Practice Coach & Session + Adaptive Weakness Detection (`practice_focus_weaknesses.py`); Creative audit + Motif Sequence spec; Backing optional documented
-- [ ] Phase 3B+: optional Backing Focus card + Custom tools (later)
+- [x] Phase 3B: Custom Focus exercises + Arrangement Assistant advisory bias (`practice_focus_custom.py`); park checkpoint
+- [ ] Phase 3B+: optional Backing Focus card (after Creative reconciliation)
 - [ ] Phase 4: Creative integration after parked branch is accepted (incl. Motif Sequence staff view)
 - [ ] Phase 5: Composition (later)
 

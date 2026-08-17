@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-17
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -14,11 +14,12 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 *Phase 1 Items **1–8** **live-accepted & frozen** on `dev` (Item 8 @ **`8ef698e`**). **Phase 2** may proceed per [tasks](./music_app_tasks.md).*
 
-*Creative/Backing stabilization is **parked** @ `44403d4` while Practice Focus runs on a separate branch from `origin/dev`.*
+*Creative/Backing stabilization is **parked** @ `44403d4`. Practice Focus Phase 1–3B is a clean park checkpoint on `feature/practice-focus-system`.*
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active) | Practice Focus System — Phase 3A done; Creative audit + Motif Sequence spec | [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) |
+| **P0** (next) | Resume Creative/Backing stabilization live acceptance | `feature/creative-backing-stabilization` @ `44403d4` |
+| **P0** (parked checkpoint) | Practice Focus System — Phase 1–3B complete | [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) |
 | **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
@@ -31,10 +32,11 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Practice Focus System (P0 — active on feature branch)
 
-- **Phase 2A–2D + Phase 3A** complete on `feature/practice-focus-system`
-- **Backing Focus coaching = optional / user-invoked** (not automatic) — documented; card not built yet
-- Creative audits (Deep Harmony, Harmony Map, Motif & Phrasing, Arrangement Assistant) documented; deep impl deferred until `44403d4` reconciled
-- **NEW:** Motif & Phrasing — Expand Motif as a Sequence → full staff ascending diatonic sequence preserving rhythm (spec in Practice Focus plan)
+- **Phase 1–3B** complete on `feature/practice-focus-system` — ready to **park** after acceptance
+- **Backing Focus coaching = optional / user-invoked** (not automatic) — documented; card not built
+- Creative audits (Deep Harmony, Harmony Map, Motif & Phrasing) documented; deep impl deferred until `44403d4` reconciled
+- Arrangement Assistant: safe advisory Focus bias shipped in Phase 3B
+- **NEW:** Motif & Phrasing — Expand Motif as a Sequence → full staff ascending diatonic sequence preserving rhythm (spec only)
 - Deferred verification: Phase 2B Upload and Phase 2D Multitrack real-audio smoke tests (need `librosa` + WAV fixtures)
 - See [plan](./plans/2026-08-15-practice-focus-system.md)
 

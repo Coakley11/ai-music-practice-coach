@@ -883,6 +883,64 @@ def render_custom_progression_lab_page() -> None:
             ):
                 _open_practice()
 
+        with st.expander("Practice Focus exercises for this progression", expanded=has_chords):
+            from custom_progression_lab import generate_exercises_markdown
+
+            _inst = str(st.session_state.get("instrument") or "Piano").strip() or "Piano"
+            _focus = str(st.session_state.get("focus") or "").strip() or "Technique"
+            _level = str(st.session_state.get("level") or "Intermediate").strip() or "Intermediate"
+            _req = st.text_input(
+                "Optional explicit request (overrides Focus for the primary task)",
+                key="cpl_focus_exercise_request",
+                placeholder="e.g. Give me a chord-tone exercise over this progression",
+            )
+            _sig_prog = "|".join(
+                [
+                    ",".join(
+                        str(e.get("chord") or "")
+                        for name in filled_section_names(home_sections)
+                        for e in (home_sections.get(name) or [])
+                    ),
+                    _inst,
+                    _focus,
+                    _level,
+                    str(_req or "").strip(),
+                    str(active.get("groove_style") or "Auto"),
+                    str(active.get("time_signature") or "4/4"),
+                    str(int(active.get("bpm") or 100)),
+                    str(preview_key or active.get("original_key_center") or "C"),
+                ]
+            )
+            if not has_chords:
+                st.caption("Add chords to a section to generate Focus-aware custom exercises.")
+            else:
+                # Same-rerun: regenerate whenever Focus / instrument / request / chords change.
+                if st.session_state.get("_cpl_focus_exercises_sig") != _sig_prog:
+                    _ex_sections = display_sections_for_key(
+                        active,
+                        preview_key or active.get("original_key_center") or "C",
+                    )
+                    st.session_state["cpl_exercises_md"] = generate_exercises_markdown(
+                        sections=_ex_sections,
+                        instrument=_inst,
+                        level=_level,
+                        focus=_focus,
+                        key_center=str(preview_key or active.get("original_key_center") or "C"),
+                        groove_style=str(active.get("groove_style") or "Auto"),
+                        time_signature=str(active.get("time_signature") or "4/4"),
+                        bpm=int(active.get("bpm") or 100),
+                        user_request=str(_req or ""),
+                    )
+                    st.session_state["_cpl_focus_exercises_sig"] = _sig_prog
+                if st.button("Refresh Focus exercises", key="cpl_refresh_focus_exercises"):
+                    st.session_state.pop("_cpl_focus_exercises_sig", None)
+                    st.rerun()
+                st.caption(
+                    f"Live Practice Focus: **{_focus}** · Instrument: **{_inst}** "
+                    "(change Focus in the sidebar — exercises update without a browser refresh)."
+                )
+                st.markdown(st.session_state.get("cpl_exercises_md") or "_No exercises yet._")
+
         with st.expander("More options", expanded=False):
             if saved_names := list_saved_progression_names(saved):
                 del_pick = st.selectbox("Delete saved", ["—"] + saved_names, key="cpl_del_pick")

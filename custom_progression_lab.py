@@ -1934,57 +1934,29 @@ def harmonic_analysis_markdown(sections, key_center, time_signature="4/4"):
 
 
 def _instrument_exercise_block(instrument, level, focus, chords, key_center, groove_style, patterns):
+    """Legacy instrument tips kept as a short fallback; Focus drills come from policy."""
     blocks = []
     inst = instrument or "General"
     pat_text = ", ".join(patterns[:3]) if patterns else "your progression"
-
+    blocks.append(f"### Baseline instrument tips ({inst})")
     if inst in ["Saxophone", "Flute", "Trumpet", "Clarinet"]:
-        blocks.append("### Horn / wind practice")
-        blocks.append("- Play chord tones through each change: root, 3rd, 5th, 7th (where present).")
-        blocks.append("- Target **3rds and 7ths** on strong beats; use lighter articulation on stable chords.")
-        blocks.append("- Write a **guide-tone line** (3rd to 3rd, 7th to 3rd) through two passes.")
-        blocks.append("- Add **approach notes** (half-step above/below) into target tones on beats 1 and 3.")
+        blocks.append("- Keep air support steady when the Focus drill gets busier.")
         if "ii-V-I" in pat_text:
-            blocks.append("- On ii-V-I: use dorian on ii, mixolydian/altered on V, resolve to chord tones on I.")
-        if level == "Advanced":
-            blocks.append("- Practice rhythmic displacement: start phrases on the & of 2 or beat 4.")
-
+            blocks.append("- On ii-V-I forms, resolve intentionally into I chord tones.")
     elif inst == "Guitar":
-        blocks.append("### Guitar practice")
-        blocks.append("- **Comping:** practice Freddie Green-style quarter-note pulses, then add skips on the &s.")
-        blocks.append("- Map **triad shapes** on the top three strings for each chord; move the nearest shape.")
-        blocks.append("- **Voice-leading grips:** connect 3rds/7ths on the middle strings without jumping.")
-        blocks.append("- Arpeggiate each chord: root–3rd–5th–7th, then 3rd–5th–7th–9th where available.")
-        if focus == "Rhythm":
-            blocks.append(f"- Match the **{groove_style}** feel before adding fills.")
-
+        blocks.append("- Keep left-hand shapes efficient so right-hand Focus goals stay continuous.")
+        if groove_style and groove_style not in {"", "Auto"}:
+            blocks.append(f"- Match the **{groove_style}** feel after the Focus goal is clean.")
     elif inst == "Piano":
-        blocks.append("### Piano practice")
-        blocks.append("- **Shell voicings:** root or 5th in left hand; 3rd and 7th in right hand.")
-        blocks.append("- **Left-hand roots** on beat 1; add fifth or octave on beat 3.")
-        blocks.append("- **Comping rhythm:** Charleston or off-beat hits depending on groove.")
-        blocks.append("- Connect 3rds/7ths by half-step motion between chords.")
-
+        blocks.append("- Prefer small voicing motion so Focus drills stay readable.")
     elif inst == "Bass":
-        blocks.append("### Bass practice")
-        blocks.append("- Lock **root / fifth / octave** pattern per chord first.")
-        blocks.append("- Write a **two-bar walking line** using chord tones and chromatic approaches.")
-        blocks.append("- Approach the next root from above or below by half-step on beat 4.")
-        if "blues" in pat_text.lower():
-            blocks.append("- Blues: emphasize b7 on dominant chords; use shuffle feel.")
-
+        blocks.append("- Lock time with roots first, then apply Focus-specific color.")
     elif inst == "Voice":
-        blocks.append("### Voice practice")
-        blocks.append("- **Sing roots** of each chord on beat 1 to internalize the form.")
-        blocks.append("- **Sing 3rds** to hear major vs minor color changes.")
-        blocks.append("- Improvise **short melodic phrases** (2 bars) that land on a chord tone.")
-        blocks.append("- Mark breaths before long phrases; save strongest dynamic for dominant arrivals.")
-
+        blocks.append("- Mark breaths so Focus phrasing/tone goals stay sustainable.")
     else:
-        blocks.append("### General practice")
-        blocks.append("- Play chord roots, then add 3rds and 5ths through the form.")
-        blocks.append("- Use 2-bar phrases that land on a chord tone on beat 1.")
-
+        blocks.append("- Start simple, then layer the Focus drill on the same progression.")
+    if level == "Advanced":
+        blocks.append("- Advanced: add one controlled variation only after the Focus goal stays clean.")
     return blocks
 
 
@@ -1998,6 +1970,7 @@ def generate_exercises_markdown(
     groove_style,
     time_signature,
     bpm,
+    user_request: str = "",
 ):
     chord_lists = sections_to_chord_lists(sections)
     all_chords = all_chords_from_lab_sections(sections)
@@ -2018,10 +1991,37 @@ def generate_exercises_markdown(
                 lines.append("  - Practice scales: dorian (ii), mixolydian/altered (V), major (I).")
                 lines.append("  - Target notes: 3rd of ii, 7th of V, 3rd/7th of I.")
     else:
-        lines.append("- Work chord-by-chord: root, 3rd, 5th, 7th on each change.")
+        lines.append("- Work chord-by-chord through your custom progression.")
 
-    lines.append("\n## Instrument drills")
-    lines.extend(_instrument_exercise_block(instrument, level, focus, all_chords, key_center, groove_style, patterns))
+    try:
+        from practice_focus_custom import (
+            custom_focus_exercise_blocks,
+            format_custom_focus_markdown,
+        )
+
+        payload = custom_focus_exercise_blocks(
+            instrument,
+            focus,
+            chords=all_chords,
+            user_request=user_request,
+            groove_style=str(groove_style or ""),
+        )
+        lines.append("")
+        lines.append(format_custom_focus_markdown(payload))
+    except ImportError:
+        lines.append("\n## Instrument drills")
+        lines.extend(
+            _instrument_exercise_block(
+                instrument, level, focus, all_chords, key_center, groove_style, patterns
+            )
+        )
+
+    lines.append("\n## Baseline instrument tips")
+    lines.extend(
+        _instrument_exercise_block(
+            instrument, level, focus, all_chords, key_center, groove_style, patterns
+        )
+    )
 
     lines.append("\n## Section loops")
     for sec, chords in chord_lists.items():
@@ -2032,14 +2032,14 @@ def generate_exercises_markdown(
 
     lines.append("\n## Level guidance")
     if level == "Beginner":
-        lines.append("- One chord per bar; roots only, then roots + 3rds.")
+        lines.append("- Keep the Focus drill small: one chord, then two, then the full loop.")
         lines.append("- Record yourself and check that changes land on beat 1.")
     elif level == "Intermediate":
-        lines.append("- Add guide-tone targeting and one repeating 2-bar motif.")
+        lines.append("- Add one Focus variation only after the basic loop is clean.")
         lines.append("- Practice with the backing at 70–80% tempo first.")
     else:
-        lines.append("- Use chromatic approaches, delayed resolutions, and motivic development.")
-        lines.append("- Try playing only on offbeats for one chorus.")
+        lines.append("- Layer one advanced variation (displacement, approach tones) after Focus goals hold.")
+        lines.append("- Try one chorus that exaggerates today's Focus, then one that balances the form.")
 
     return "\n".join(lines)
 

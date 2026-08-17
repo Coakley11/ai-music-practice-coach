@@ -145,7 +145,7 @@ baseline metrics + focus-required metrics (`preferred_metric_ids`) + performance
 
 ### Phase 3 — Practice Coach / Weaknesses first; Creative audit; Backing optional
 
-**Product rule (2026-08-16):** Backing Track Focus coaching is **optional / user-invoked**, not automatic. Backing stays neutral by default. Do not auto-impose Focus drills on every Backing session. Future UX: e.g. “Practice this track with my Focus” or a collapsed optional coaching card. **Not implemented in Phase 3A** — documented only.
+**Product rule (2026-08-16):** Backing Track Focus coaching is **optional / user-invoked**, not automatic. Backing stays neutral by default. Do not auto-impose Focus drills on every Backing session. Future UX: e.g. “Practice this track with my Focus” or a collapsed optional coaching card. **Not implemented in Phase 3A/3B** — documented only; remains deferred until after Creative/Backing reconciliation.
 
 5. [x] **Phase 3A (2026-08-16):** Practice Coach & Session + Adaptive Weakness Detection
    - `build_focus_timed_session` / `practice_page_time_ratios` in `practice_focus_coaching.py`
@@ -155,9 +155,22 @@ baseline metrics + focus-required metrics (`preferred_metric_ids`) + performance
    - Creative Lab Adaptive Weakness Detection uses the ranker + last Upload scores when present
    - Tests: `tests/test_practice_focus_phase3a_session_weakness.py`
    - Evidence: `scripts/evidence-practice-focus-session/`
+5b. [x] **Phase 3B (2026-08-17):** Safe completed surfaces only — Custom tools + Arrangement Assistant advisory bias
+   - `practice_focus_custom.py` adapter (central policy; no new rulebook)
+   - CPL `generate_exercises_markdown` + Custom page expander: same progression, different Focus → different drills; explicit request precedence; same-rerun
+   - Arrangement Assistant: Focus suggestion section is advisory only (no arrangement rewrite)
+   - Practice `section_deep_practice` exercise text consumes Focus lines
+   - **Not implemented (deferred):** Deep Harmony, Harmony Map, Motif & Phrasing, Motif Sequence UI, Missions/Style Jam/Jam Generator, optional Backing Focus card, Composition
+   - Tests: `tests/test_practice_focus_phase3b_custom.py`
+   - Evidence: `scripts/evidence-practice-focus-custom/`
+   - **Checkpoint:** park `feature/practice-focus-system` after acceptance; return to Creative/Backing @ `44403d4`
 6. Backing **optional** Focus coaching card (deferred — product rule above)
-7. Custom tools (later)
+7. Custom tools deeper polish (later if needed)
 8. Other completed surfaces with natural hooks
+
+### Phase 3B parking note
+
+After Phase 3B acceptance, **temporarily park** `feature/practice-focus-system` at its Phase 3B tip. Do **not** merge to `dev` unless explicitly requested. Resume `feature/creative-backing-stabilization` @ `44403d4` for remaining live acceptance items, then reconcile Practice Focus with accepted Creative architecture for Phase 4.
 
 ### Phase 3A — Creative integration audits (implement later; parked branch safe)
 
@@ -168,7 +181,7 @@ Creative/Backing ownership remains parked at `feature/creative-backing-stabiliza
 | **Deep Harmony** | Read-only Focus prompt/coaching overlay that changes *what is taught* about the same progression (Harmony→function/guide tones; Melody→targets/contour; Phrasing→arrival/space; Timing→harmonic rhythm; Strumming→change accents). Underlying chords unchanged. | Any state that depends on Creative workspace ownership, key projection handoffs, or Mission/Jam session keys from `44403d4` |
 | **Harmony Map** | Coaching overlay: what to notice (function vs targets vs phrase boundaries vs harmonic rhythm). Map harmony stays canonical. | Section/chord selection persistence, projection ownership |
 | **Motif & Phrasing** | Prompt-level Focus bias for exercises on the *current motif object* (preserve motif; change coaching). | Motif ownership / Written Key / Guitar Shape projection paths from parked branch |
-| **Creative Arrangement Assistant** | Bias arrangement *suggestions* by Focus (density, groove, call-response, register). Never rewrite arrangement without explicit user action. | Arrangement document ownership / Creative session envelope |
+| **Creative Arrangement Assistant** | **Phase 3B shipped:** advisory Focus suggestion section only (no arrangement rewrite). | Arrangement document ownership / Creative session envelope / auto-apply |
 
 #### NEW Motif feature — Expand Motif as a Sequence (roadmap — do not lose)
 
@@ -185,6 +198,13 @@ Creative/Backing ownership remains parked at `feature/creative-backing-stabiliza
 6. Playback optional for v1.
 
 **Future options (design for, do not build yet):** descending; through progression; rhythmic displacement; transpose by interval; range limit.
+
+**Example (keep explicit):**
+
+Current motif: `G – A – B – D`  
+Ascending diatonic sequence (C major illustration):  
+`G – A – B – D` / `A – B – C – E` / `B – C – D – F` / `C – D – E – G` / `D – E – F – A` …  
+If original rhythm is eighth · eighth · quarter · quarter, each sequenced unit retains that rhythm.
 
 **Integration point:** `motif_engine` / `improvisation_motif` transform on the active motif object → ABC/staff renderer already used by Phrase & Motif. UI button on Motif & Phrasing page only after parked Creative ownership is accepted if projection is required.
 
@@ -207,7 +227,9 @@ Later, once Composition itself is sufficiently complete. Clean `PracticeFocusCon
 
 ## Files / modules
 
-**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `practice_focus_evaluation.py`, `practice_focus_history.py`, `practice_focus_multitrack.py`, `practice_focus_weaknesses.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`, `tests/test_practice_focus_phase2b_upload.py`, `tests/test_practice_focus_phase2c_log.py`, `tests/test_practice_focus_phase2d_multitrack.py`, `tests/test_practice_focus_phase3a_session_weakness.py`
+**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `practice_focus_evaluation.py`, `practice_focus_history.py`, `practice_focus_multitrack.py`, `practice_focus_weaknesses.py`, `practice_focus_custom.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`, `tests/test_practice_focus_phase2b_upload.py`, `tests/test_practice_focus_phase2c_log.py`, `tests/test_practice_focus_phase2d_multitrack.py`, `tests/test_practice_focus_phase3a_session_weakness.py`, `tests/test_practice_focus_phase3b_custom.py`
+
+**Touched in Phase 3B:** `custom_progression_lab.py`, `cpl_page_ui.py`, `creative_lab_text.py`, `practice_studio.py`
 
 **Touched in Phase 3A:** `practice_focus_coaching.py`, `practice_studio.py`, `practice_history_synthesis.py`, `practice_log_insights.py`, `practice_log_coach.py`, `creative_lab_text.py`, `streamlit_music_practice_app.py`
 
