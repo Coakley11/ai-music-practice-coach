@@ -12634,11 +12634,26 @@ elif _studio_page == "backing":
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
         _bpm_sync_id = backing_page_sync_id(st.session_state, song_sync_id=_song_bpm_sync_id)
         _td_bpm, _td_groove, _td_meter = backing_page_transport_defaults(st.session_state)
-        _backing_source_default_bpm = int(_td_bpm)
+        # Immutable catalog/source default for song-change resets + Default badge.
+        _backing_catalog_default_bpm = int(_default_bpm)
+        try:
+            from songs.music_source import catalog_transport_bpm_for_pick
+
+            _pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            _cat_bpm = catalog_transport_bpm_for_pick(st.session_state, _pick) if _pick else 0
+            if _cat_bpm > 0:
+                _backing_catalog_default_bpm = int(_cat_bpm)
+        except Exception:
+            pass
+        # Current session tempo (slider / play-session) — may differ from catalog.
+        _backing_current_bpm = int(_td_bpm) if int(_td_bpm or 0) > 0 else _backing_catalog_default_bpm
+        _backing_source_default_bpm = int(_backing_catalog_default_bpm)
         _backing_source_default_groove = str(_td_groove)
         _backing_source_default_meter = str(_td_meter)
     except Exception:
         _bpm_sync_id = _song_bpm_sync_id
+        _backing_catalog_default_bpm = int(_default_bpm)
+        _backing_current_bpm = int(_default_bpm)
         _backing_source_default_bpm = int(_default_bpm)
         _backing_source_default_groove = str(_default_groove)
         _backing_source_default_meter = str(_default_meter)
@@ -12695,9 +12710,19 @@ elif _studio_page == "backing":
         force_reset=_force_backing_reset,
     )
     _synced_bpm = int(_backing_canon["applied_bpm"])
+    # Prefer live current session tempo over catalog default for "Current BPM".
+    try:
+        _live_session_bpm = int(st.session_state.get("backing_track_bpm") or 0)
+        if _live_session_bpm > 0 and not bool(_backing_canon.get("did_reset")):
+            _synced_bpm = _live_session_bpm
+        elif int(_backing_current_bpm or 0) > 0 and not bool(_backing_canon.get("did_reset")):
+            _synced_bpm = int(_backing_current_bpm)
+    except Exception:
+        pass
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
-
+    # Card Default badge must stay on immutable catalog BPM.
+    _card_default_bpm = int(locals().get("_backing_catalog_default_bpm") or _default_bpm)
     # Seed durable widget keys from canonical before playback widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
     try:
@@ -12795,7 +12820,7 @@ elif _studio_page == "backing":
     _render_v2_chart_debug_pill(_backing_card_record)
     _render_backing_defaults_verification_pill(
         sync_id=_bpm_sync_id,
-        song_card_bpm=int(_default_bpm),
+        song_card_bpm=int(_card_default_bpm),
         applied_bpm=int(_synced_bpm),
         song_card_groove=str(_default_groove),
         applied_groove=str(default_groove_style),
@@ -13069,10 +13094,16 @@ elif _studio_page == "backing":
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
     try:
-        from backing_track_state import normalize_backing_scope, resolve_selected_section_names
+        from backing_track_state import (
+            normalize_backing_scope,
+            resolve_selected_section_names,
+            seed_backing_multi_sections_for_widget,
+        )
 
         playback_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
         if playback_scope == "Selected sections":
+            # Seed before resolve so empty multi does not silently mean "full song".
+            seed_backing_multi_sections_for_widget(st.session_state, _sec_names)
             selected_section_names = resolve_selected_section_names(st.session_state, _sec_names)
     except ImportError:
         playback_scope = st.session_state.get("backing_track_scope", "Full song")
@@ -15049,7 +15080,7 @@ elif _studio_page == "creative":
                 instrument=str(instrument),
                 song_data=_catalog_song_data,
             )
-            _dha_sections = _eff.sections_chart
+            _dha_sections = _eff.sections_concert
             _dha_section_order = list(song_data.get("section_order") or [])
             _dha_improv_ctx = ImprovSessionContext(
                 song_title=str(song),

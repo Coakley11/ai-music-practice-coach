@@ -108,11 +108,37 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
     from backing_musical_state import resolve_current_backing_musical_state
 
     ctx = get_backing_context(session)
-    state = resolve_current_backing_musical_state(session)
+    # Prefer live current BPM (slider / play-session) — never catalog-only ctx.bpm.
+    live_bpm: int | None = None
+    try:
+        from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
+        from songs.bpm_state import BPM_WIDGET_KEY
+        from songs.playback_defaults import backing_bpm_slider_widget_key
+        from backing_context import backing_page_sync_id
+
+        if play_session_blocks_canonical_seed(session):
+            ov = effective_backing_play_overrides(session)
+            if ov.get("bpm"):
+                live_bpm = int(ov["bpm"])
+        if live_bpm is None:
+            sid = backing_page_sync_id(session)
+            slider_key = backing_bpm_slider_widget_key(sid) if sid else BPM_WIDGET_KEY
+            for key in (slider_key, BPM_WIDGET_KEY, "backing_track_bpm"):
+                try:
+                    val = int(session.get(key) or 0)
+                except (TypeError, ValueError):
+                    val = 0
+                if val > 0:
+                    live_bpm = val
+                    break
+    except ImportError:
+        live_bpm = None
+
+    state = resolve_current_backing_musical_state(session, applied_bpm=live_bpm)
     label = format_backing_context_banner(
         ctx,
         practice_concert_key=state.practice_concert_key,
-        applied_bpm=int(state.applied_bpm or 0) or None,
+        applied_bpm=int(live_bpm or state.applied_bpm or 0) or None,
     )
     if not label:
         return False

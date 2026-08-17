@@ -135,11 +135,7 @@ def render_backing_active_song_card(
 
     bpm_badges = (
         f'<span class="ui-backing-badge bpm-default">Default {default_bpm} BPM</span>'
-        + (
-            f'<span class="ui-backing-badge bpm">Backing {bpm} BPM</span>'
-            if bpm != default_bpm
-            else ""
-        )
+        f'<span class="ui-backing-badge bpm">Current {bpm} BPM</span>'
     )
 
     st.markdown(

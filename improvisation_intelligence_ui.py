@@ -1904,6 +1904,28 @@ def _on_mission_pick_change() -> None:
             st.session_state["improv_active_mission"] = pick
 
 
+def _chords_identity_equal(left: str, right: str) -> bool:
+    """True when two chord labels are the same musical identity (ignore display spelling noise)."""
+    a = str(left or "").strip()
+    b = str(right or "").strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    try:
+        from music_theory import normalize_chord_for_theory, normalize_root, split_chord
+
+        na = normalize_chord_for_theory(a)
+        nb = normalize_chord_for_theory(b)
+        if na and nb and na == nb:
+            return True
+        ra, qa = split_chord(na or a)
+        rb, qb = split_chord(nb or b)
+        return bool(ra and rb and normalize_root(ra) == normalize_root(rb) and str(qa) == str(qb))
+    except Exception:
+        return False
+
+
 def _example_matches_active_context(
     example: MissionExample,
     *,
@@ -1916,7 +1938,29 @@ def _example_matches_active_context(
         return False
     if song_title and str(example.song_title or "").strip() not in ("", song_title):
         return False
-    if str(example.chord or "").strip() != str(cur_chord or "").strip():
+    # Chord identity must match across enharmonic spellings and concert vs Shape projection
+    # of the same selection (e.g. stored concert Dm vs UI Em under Guitar Shape).
+    cur = str(cur_chord or "").strip()
+    candidates: list[str] = [str(example.chord or "").strip()]
+    motif = example.motif if isinstance(example.motif, dict) else {}
+    concert_stored = str(motif.get("_concert_chord") or "").strip()
+    if concert_stored:
+        candidates.append(concert_stored)
+    chord_ok = any(_chords_identity_equal(c, cur) for c in candidates if c)
+    if not chord_ok:
+        ck = str(example.concert_key or "").strip()
+        dk = str(example.display_key or "").strip()
+        if ck and dk and ck != dk:
+            try:
+                from effective_practice_context import musician_facing_chord
+
+                base = concert_stored or candidates[0]
+                if base:
+                    facing = musician_facing_chord(base, concert_key=ck, chart_key=dk)
+                    chord_ok = _chords_identity_equal(facing, cur) or _chords_identity_equal(base, cur)
+            except ImportError:
+                chord_ok = False
+    if not chord_ok:
         return False
     ex_sec = str(example.section or "").strip()
     cur_sec = str(section_label or "").strip()

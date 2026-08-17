@@ -31,39 +31,35 @@ def sync_backing_bpm_before_widget(st: Any, song_title: str, default_bpm: int) -
 
         ctx = get_backing_context(st.session_state)
         if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "regular_song":
-            ctx_bpm = int(getattr(ctx, "bpm", 0) or 0)
+            # Current session BPM wins over catalog/context BPM. Never force the
+            # immutable catalog default onto a live slider that the user moved.
+            live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
             try:
-                from backing_play_session import backing_play_session_has_override
+                from backing_play_session import (
+                    backing_play_session_has_override,
+                    effective_backing_play_overrides,
+                )
 
                 if backing_play_session_has_override(st.session_state, "bpm"):
-                    from backing_play_session import effective_backing_play_overrides
-
                     resolved = effective_backing_play_overrides(st.session_state)
                     override_bpm = int(resolved.get("bpm") or 0)
                     if override_bpm > 0:
                         default_bpm = override_bpm
-                        ctx_bpm = 0
-            except ImportError:
-                pass
-            if ctx_bpm > 0:
-                default_bpm = ctx_bpm
-                live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
-                if live_bpm and live_bpm != ctx_bpm:
-                    try:
-                        from backing_track_state import is_backing_user_dirty
-
-                        if is_backing_user_dirty(st.session_state):
+                        if live_bpm and live_bpm != override_bpm:
                             pending = live_bpm
                             song_changed = False
-                        else:
-                            pending = ctx_bpm
-                            song_changed = True
-                    except ImportError:
-                        pending = live_bpm
-                        song_changed = False
-                elif live_bpm != ctx_bpm:
-                    pending = ctx_bpm
-                    song_changed = True
+                        elif not live_bpm:
+                            pending = override_bpm
+                            song_changed = False
+                elif live_bpm > 0:
+                    # Keep the live slider; do not reassert ctx/catalog BPM.
+                    pending = live_bpm
+                    song_changed = False
+                    default_bpm = live_bpm
+            except ImportError:
+                if live_bpm > 0:
+                    pending = live_bpm
+                    song_changed = False
     except ImportError:
         pass
 

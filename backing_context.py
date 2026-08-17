@@ -753,8 +753,21 @@ def _default_groove(session: dict[str, Any]) -> str:
 
 
 def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, str]:
-    """BPM/groove/meter for Backing page widgets from backing_context when present."""
+    """BPM/groove/meter for Backing page widgets from backing_context when present.
+
+    Returned BPM is the *current* session tempo (slider / play-session).
+    Immutable catalog default must be read via ``catalog_transport_bpm_for_pick``.
+    """
     canonical_bpm = _canonical_active_song_bpm(session)
+    try:
+        from songs.music_source import catalog_transport_bpm_for_pick
+
+        pick = _current_pick_key(session)
+        cat = catalog_transport_bpm_for_pick(session, pick) if pick else 0
+        if cat > 0:
+            canonical_bpm = cat
+    except ImportError:
+        pass
     ctx = get_backing_context(session)
     if ctx is None:
         return canonical_bpm, _default_groove(session), "4/4"
@@ -782,39 +795,13 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
             _backing_groove_style_from_ctx(ctx),
             str(ctx.meter or "4/4"),
         )
-    active_pick = _current_pick_key(session)
-    bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
-    ctx_bpm = int(ctx.bpm or 0)
-    use_bpm = canonical_bpm
-    pick_aligned = False
-    if bound and active_pick:
-        try:
-            from songs.music_source import _pick_keys_match
-
-            pick_aligned = _pick_keys_match(bound, active_pick, session_state=session)
-        except ImportError:
-            pick_aligned = bound == active_pick
-    if pick_aligned and ctx_bpm > 0:
-        user_dirty = False
-        try:
-            from backing_track_state import is_backing_user_dirty
-
-            user_dirty = bool(is_backing_user_dirty(session))
-        except ImportError:
-            pass
-        if str(getattr(ctx, "source", "") or "").strip() == "regular_song":
-            try:
-                from songs.practice_key_state import resolve_source_bpm_for_pick
-
-                use_bpm = resolve_source_bpm_for_pick(
-                    session,
-                    active_pick or bound,
-                    default_bpm=canonical_bpm,
-                )
-            except ImportError:
-                use_bpm = ctx_bpm if ctx_bpm > 0 else canonical_bpm
-        elif user_dirty or ctx_bpm == canonical_bpm:
-            use_bpm = ctx_bpm
+    live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+    if live_bpm > 0:
+        use_bpm = live_bpm
+    elif int(ctx.bpm or 0) > 0:
+        use_bpm = int(ctx.bpm)
+    else:
+        use_bpm = canonical_bpm
     return (
         use_bpm,
         _backing_groove_style_from_ctx(ctx),
@@ -924,16 +911,40 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
     except ImportError:
         pass
     if catalog_practice or pref == BACKING_PREF_CATALOG:
-        bpm = _canonical_active_song_bpm(session)
-        groove = _canonical_active_song_groove(session)
+        # Immutable catalog/source default — never overwrite with session slider.
+        catalog_bpm = _canonical_active_song_bpm(session)
         try:
-            from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+            from songs.music_source import catalog_transport_bpm_for_pick
 
-            pick = resolve_practice_source_pick(session)
-            if pick:
-                bpm = resolve_source_bpm_for_pick(session, pick, default_bpm=bpm)
+            pick = _current_pick_key(session)
+            cat = catalog_transport_bpm_for_pick(session, pick) if pick else 0
+            if cat > 0:
+                catalog_bpm = cat
         except ImportError:
             pass
+        groove = _canonical_active_song_groove(session)
+        # Current / session BPM for playback context (may differ from catalog).
+        bpm = catalog_bpm
+        try:
+            from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
+            from songs.bpm_state import BPM_WIDGET_KEY
+
+            if play_session_blocks_canonical_seed(session):
+                ov = effective_backing_play_overrides(session)
+                if ov.get("bpm"):
+                    bpm = int(ov["bpm"])
+            live = int(session.get(BPM_WIDGET_KEY) or session.get("backing_track_bpm") or 0)
+            if live > 0:
+                bpm = live
+        except ImportError:
+            try:
+                from songs.practice_key_state import resolve_practice_source_pick, resolve_source_bpm_for_pick
+
+                pick = resolve_practice_source_pick(session)
+                if pick:
+                    bpm = resolve_source_bpm_for_pick(session, pick, default_bpm=catalog_bpm)
+            except ImportError:
+                pass
     else:
         bpm = _default_bpm(session)
         groove = _default_groove(session)
@@ -1003,14 +1014,20 @@ def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
                     if first:
                         break
             keep = True
-            if first and orig:
+            if first and (dest or orig):
                 try:
                     from music_theory import normalize_root, split_chord
 
                     first_root = normalize_root(split_chord(first)[0])
-                    orig_root = normalize_root(split_chord(orig)[0])
-                    dest_root = normalize_root(split_chord(dest or orig)[0])
-                    if first_root and first_root not in {orig_root, dest_root}:
+                    orig_root = normalize_root(split_chord(orig)[0]) if orig else ""
+                    dest_root = normalize_root(split_chord(dest or orig)[0]) if (dest or orig) else ""
+                    # Concert-pitch cache is only valid at the *practice* destination.
+                    # Keeping catalog-original pitch (first == orig, dest != orig) while
+                    # Practice Key has moved causes Guitar Shape projection to apply the
+                    # shape interval to the wrong pitch class (e.g. Bm + Dm→Em → C#m).
+                    if dest_root and first_root:
+                        keep = first_root == dest_root
+                    elif orig_root and first_root and first_root != orig_root:
                         keep = False
                 except ImportError:
                     keep = True

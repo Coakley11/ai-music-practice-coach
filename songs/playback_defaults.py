@@ -418,24 +418,35 @@ def canonicalize_backing_defaults_for_song(
                 invalidate_backing_cache(st)
                 invalidate_backing_page_snapshots(st)
                 if keep_play_reset:
+                    # effective_* merges source defaults — only trust fields that
+                    # are real play-session overrides; otherwise keep live widgets.
                     resolved = effective_backing_play_overrides(st.session_state)
-                    override_bpm = int(resolved.get("bpm") or 0)
-                    if override_bpm > 0:
-                        norm_bpm = override_bpm
+                    if backing_play_session_has_override(st.session_state, "bpm"):
+                        override_bpm = int(resolved.get("bpm") or 0)
+                        if override_bpm > 0:
+                            norm_bpm = override_bpm
+                        else:
+                            live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
+                            if live_bpm > 0:
+                                norm_bpm = live_bpm
                     else:
                         live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
                         if live_bpm > 0:
                             norm_bpm = live_bpm
-                    ov_groove = str(resolved.get("groove") or "").strip()
-                    live_groove = ov_groove or str(
-                        st.session_state.get(BACKING_GROOVE_KEY)
-                        or st.session_state.get("backing_groove_style")
-                        or ""
-                    ).strip()
+                    if backing_play_session_has_override(st.session_state, "groove"):
+                        live_groove = str(resolved.get("groove") or "").strip()
+                    else:
+                        live_groove = str(
+                            st.session_state.get(BACKING_GROOVE_KEY)
+                            or st.session_state.get("backing_groove_style")
+                            or ""
+                        ).strip()
                     if live_groove:
                         norm_groove = normalize_groove_label(live_groove)
-                    ov_meter = str(resolved.get("meter") or "").strip()
-                    live_meter = ov_meter or str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                    if backing_play_session_has_override(st.session_state, "meter"):
+                        live_meter = str(resolved.get("meter") or "").strip()
+                    else:
+                        live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
                     if live_meter:
                         norm_meter = normalize_time_signature(live_meter)
                 _set_bpm_tracking_ids(st, creative_sync_id, norm_bpm)
@@ -487,22 +498,33 @@ def canonicalize_backing_defaults_for_song(
                         or is_backing_user_dirty(st.session_state)
                     )
                     if keep_play:
+                        # Do not use effective_* defaults as "override" — that
+                        # clobbers a live slider (e.g. 75) with source BPM (60).
                         resolved = effective_backing_play_overrides(st.session_state)
-                        override_bpm = int(resolved.get("bpm") or 0)
-                        if override_bpm > 0:
-                            norm_bpm = override_bpm
+                        if backing_play_session_has_override(st.session_state, "bpm"):
+                            override_bpm = int(resolved.get("bpm") or 0)
+                            if override_bpm > 0:
+                                norm_bpm = override_bpm
+                            else:
+                                norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
                         else:
-                            norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
-                        ov_groove = str(resolved.get("groove") or "").strip()
-                        live_groove = ov_groove or str(
-                            st.session_state.get(BACKING_GROOVE_KEY)
-                            or st.session_state.get("backing_groove_style")
-                            or ""
-                        ).strip()
+                            live_bpm = int(st.session_state.get(BPM_WIDGET_KEY) or 0)
+                            if live_bpm > 0:
+                                norm_bpm = live_bpm
+                        if backing_play_session_has_override(st.session_state, "groove"):
+                            live_groove = str(resolved.get("groove") or "").strip()
+                        else:
+                            live_groove = str(
+                                st.session_state.get(BACKING_GROOVE_KEY)
+                                or st.session_state.get("backing_groove_style")
+                                or ""
+                            ).strip()
                         if live_groove:
                             norm_groove = normalize_groove_label(live_groove)
-                        ov_meter = str(resolved.get("meter") or "").strip()
-                        live_meter = ov_meter or str(st.session_state.get(BACKING_METER_KEY) or "").strip()
+                        if backing_play_session_has_override(st.session_state, "meter"):
+                            live_meter = str(resolved.get("meter") or "").strip()
+                        else:
+                            live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
                         if live_meter:
                             norm_meter = normalize_time_signature(live_meter)
                     else:
