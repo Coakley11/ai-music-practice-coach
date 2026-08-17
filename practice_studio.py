@@ -1110,8 +1110,14 @@ def build_practice_session_from_logs(
     all_records: list[dict[str, Any]],
     *,
     minutes: int = 45,
-) -> dict[str, str]:
-    """AI-style session plan from practice history."""
+    instrument: str = "",
+    focus: str = "",
+) -> dict[str, Any]:
+    """Focus-aware timed session plan from practice history + current Practice Focus.
+
+    Current ``focus`` / ``instrument`` own today's coaching goal. Recent log Focus
+    labels may diversify drills but never override the current Focus category.
+    """
     today = date.today()
     recent = [e for e in logs if e.get("song")][-20:]
 
@@ -1139,22 +1145,65 @@ def build_practice_session_from_logs(
     used.add(warmup_title.split("—")[0].strip())
     main_title, _ = pick_song(avoid=used)
     used.add(main_title.split("—")[0].strip())
-    tech_focus = recent[-1].get("focus", "Technique") if recent else "Rhythm / changes"
     challenge_title, _ = pick_song(avoid=used)
     cooldown_title, _ = pick_song(prefer_easy=True, avoid=used)
 
-    block = max(5, minutes // 5)
-    return {
-        "warmup": f"**{warmup_title}** — {block} min easy groove, one section only.",
-        "technique": f"**{tech_focus}** — {block} min scales / changes from your recent logs.",
-        "main": f"**{main_title}** — {block * 2} min full chart or chorus + verse.",
-        "challenge": f"**{challenge_title}** — {block} min harder chart or faster tempo.",
-        "cooldown": f"**{cooldown_title}** — {block} min slow tempo, dynamics down.",
-        "summary": (
-            f"Session (~{minutes} min) built from **{len(recent)}** recent log entries "
+    live_focus = str(focus or "").strip()
+    live_inst = str(instrument or "").strip()
+    if not live_focus and recent:
+        live_focus = str(
+            recent[-1].get("practice_focus") or recent[-1].get("focus") or ""
+        ).strip()
+    if not live_inst and recent:
+        live_inst = str(recent[-1].get("instrument") or "").strip()
+    if not live_focus:
+        live_focus = "Technique"
+    if not live_inst:
+        live_inst = "Piano"
+
+    recent_focus_labels = [
+        str(e.get("practice_focus") or e.get("focus") or "").strip()
+        for e in recent
+        if str(e.get("practice_focus") or e.get("focus") or "").strip()
+    ]
+    main_song_short = main_title.split("—")[0].strip() if main_title else ""
+
+    try:
+        from practice_focus_coaching import build_focus_timed_session
+
+        plan = build_focus_timed_session(
+            live_inst,
+            live_focus,
+            minutes=minutes,
+            song=main_song_short,
+            recent_focus_labels=recent_focus_labels,
+            warmup_song=warmup_title,
+            main_song=main_title,
+            challenge_song=challenge_title,
+            cooldown_song=cooldown_title,
+        )
+        plan["summary"] = (
+            f"{plan.get('summary', '')} Built from **{len(recent)}** recent log entries "
             f"since {recent[0].get('date', today) if recent else today}."
-        ),
-    }
+        ).strip()
+        plan["listen_for"] = list(plan.get("listen_for") or [])
+        plan["progression"] = list(plan.get("progression") or [])
+        return plan
+    except ImportError:
+        block = max(5, minutes // 5)
+        return {
+            "warmup": f"**{warmup_title}** — {block} min easy groove, one section only.",
+            "technique": f"**{live_focus}** — {block} min scales / changes from your recent logs.",
+            "main": f"**{main_title}** — {block * 2} min full chart or chorus + verse.",
+            "challenge": f"**{challenge_title}** — {block} min harder chart or faster tempo.",
+            "cooldown": f"**{cooldown_title}** — {block} min slow tempo, dynamics down.",
+            "summary": (
+                f"Session (~{minutes} min) built from **{len(recent)}** recent log entries "
+                f"since {recent[0].get('date', today) if recent else today}."
+            ),
+            "focus": live_focus,
+            "instrument": live_inst,
+        }
 
 
 PRACTICE_FOCUS_FULL = "Full Song"

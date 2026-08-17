@@ -1,0 +1,22 @@
+# Adaptive Weakness Detection - Demo
+
+**Instrument:** Guitar  
+**Current Practice Focus:** Strumming  
+
+_Focus changes priority, not truth. Severe non-Focus issues still surface. Focus never invents a weakness without evidence._
+
+## Ranked weaknesses (measured)
+- No measured score weaknesses available yet (upload a take on Upload Analysis, or open this tool after an analysis).
+- Current Focus **Strumming** is noted for coaching, but is **not** recorded as a detected defect.
+
+## Focus practice targets (coaching-only)
+These follow Practice Focus **Strumming** for **Guitar**. Capability: `coaching_only` — not measured defects.
+- Keep the strumming or picking hand moving.
+- Watch chord-transition gaps that stop the groove.
+- Use muting and accents to define the pattern.
+
+## Generated drill
+- Pick the hardest section of the song.
+- Loop it slowly 5 times with today's Focus as the listening filter.
+- Record one take.
+- Re-check measured scores; do not invent Focus-specific defects the pipeline cannot measure.

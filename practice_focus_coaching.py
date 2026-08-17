@@ -343,6 +343,207 @@ def timed_practice_blocks(
     return weights, details
 
 
+def allocate_block_minutes(weights: Mapping[str, float], total_minutes: int) -> dict[str, int]:
+    """Distribute minutes across weighted blocks; sum equals ``total_minutes``."""
+    total = max(10, int(total_minutes))
+    keys = [k for k in weights if float(weights.get(k) or 0) > 0]
+    if not keys:
+        return {"session": total}
+    raw = {k: max(1, int(round(total * float(weights[k])))) for k in keys}
+    drift = total - sum(raw.values())
+    # Prefer adjusting the largest non-review block.
+    adjust_order = sorted(
+        keys,
+        key=lambda k: (0 if "review" in str(k).lower() else 1, raw[k]),
+        reverse=True,
+    )
+    idx = 0
+    while drift != 0 and adjust_order:
+        key = adjust_order[idx % len(adjust_order)]
+        if drift > 0:
+            raw[key] += 1
+            drift -= 1
+        elif raw[key] > 1:
+            raw[key] -= 1
+            drift += 1
+        else:
+            idx += 1
+            if idx > len(adjust_order) * 3:
+                break
+            continue
+        idx += 1
+    return raw
+
+
+def practice_page_time_ratios(instrument: str, focus: str) -> dict[str, float]:
+    """Warmup / section / focus / review ratios for the Practice-page breakdown."""
+    cat = category_for_focus(focus)
+    if cat == CATEGORY_TONE:
+        return {"warmup": 0.28, "section": 0.22, "focus": 0.35, "review": 0.15}
+    if cat == CATEGORY_RHYTHM_GROOVE:
+        return {"warmup": 0.15, "section": 0.25, "focus": 0.45, "review": 0.15}
+    if cat == CATEGORY_TIMING:
+        return {"warmup": 0.20, "section": 0.25, "focus": 0.40, "review": 0.15}
+    if cat == CATEGORY_HARMONY:
+        return {"warmup": 0.15, "section": 0.30, "focus": 0.40, "review": 0.15}
+    if cat == CATEGORY_MELODY:
+        return {"warmup": 0.15, "section": 0.28, "focus": 0.42, "review": 0.15}
+    if cat == CATEGORY_ARTICULATION:
+        return {"warmup": 0.18, "section": 0.22, "focus": 0.45, "review": 0.15}
+    if cat == CATEGORY_PHRASING:
+        return {"warmup": 0.15, "section": 0.30, "focus": 0.40, "review": 0.15}
+    if cat == CATEGORY_IMPROVISATION:
+        return {"warmup": 0.15, "section": 0.25, "focus": 0.45, "review": 0.15}
+    return {"warmup": 0.18, "section": 0.36, "focus": 0.30, "review": 0.16}
+
+
+def _historical_variety_note(
+    focus: str,
+    recent_focus_labels: list[str] | None,
+) -> str:
+    """Hint to vary drills when recent history already emphasized the same Focus.
+
+    Current Focus still owns the session goal — history only diversifies material.
+    """
+    labels = [str(x or "").strip() for x in (recent_focus_labels or []) if str(x or "").strip()]
+    if len(labels) < 3:
+        return ""
+    current_cat = category_for_focus(focus)
+    recent = labels[-5:]
+    same = sum(1 for lab in recent if category_for_focus(lab) == current_cat)
+    if same < 3:
+        return ""
+    profile = resolve_focus_profile("", focus)
+    return (
+        f"Recent logs already emphasized **{profile.label}** "
+        f"({same} of the last {len(recent)} Focus-tagged sessions). "
+        "Keep today's goal the same, but progress into later drills "
+        "(register, dynamics, repertoire, or application) instead of repeating only the first warmup."
+    )
+
+
+def _map_blocks_to_legacy_slots(
+    blocks: list[dict[str, Any]],
+    *,
+    warmup_song: str = "",
+    main_song: str = "",
+    challenge_song: str = "",
+    cooldown_song: str = "",
+) -> dict[str, str]:
+    """Fit Focus-named blocks into the existing warmup/technique/main/challenge/cooldown UI."""
+    if not blocks:
+        return {}
+    texts = [
+        f"**{b['name'].title()}** ({b['minutes']} min) — {b['detail']}"
+        for b in blocks
+    ]
+    n = len(texts)
+    warmup = texts[0]
+    if warmup_song:
+        warmup = f"{warmup} (easy groove: {warmup_song})"
+    cooldown = texts[-1] if n > 1 else texts[0]
+    if cooldown_song and n > 1:
+        cooldown = f"{cooldown} ({cooldown_song})"
+    mid = texts[1:-1] if n > 2 else (texts[1:] if n > 1 else [])
+    technique = mid[0] if mid else texts[min(1, n - 1)]
+    main = mid[1] if len(mid) > 1 else (mid[0] if mid else texts[0])
+    if main_song:
+        main = f"{main} · Repertoire: **{main_song}**"
+    challenge = mid[2] if len(mid) > 2 else (mid[-1] if len(mid) > 1 else technique)
+    if challenge_song:
+        challenge = f"{challenge} · Stretch: **{challenge_song}**"
+    return {
+        "warmup": warmup,
+        "technique": technique,
+        "main": main,
+        "challenge": challenge,
+        "cooldown": cooldown,
+    }
+
+
+def build_focus_timed_session(
+    instrument: str,
+    focus: str,
+    *,
+    minutes: int = 30,
+    song: str = "",
+    section: str = "",
+    level: str = "",
+    recent_focus_labels: list[str] | None = None,
+    warmup_song: str = "",
+    main_song: str = "",
+    challenge_song: str = "",
+    cooldown_song: str = "",
+) -> dict[str, Any]:
+    """Full Focus-aware timed session: blocks, listen-for, progression, legacy slots.
+
+    Current Practice Focus owns the session goal. Historical Focus labels may
+    add a variety note; they never replace today's Focus category or drills.
+    """
+    profile = resolve_focus_profile(instrument, focus)
+    weights, details = timed_practice_blocks(
+        instrument,
+        focus,
+        song=song,
+        section=section,
+        level=level,
+    )
+    # When history is saturated on this Focus, prefer later suggestion text in early slots.
+    variety = _historical_variety_note(focus, recent_focus_labels)
+    if variety and profile.practice_suggestions:
+        later = [str(s).strip() for s in profile.practice_suggestions[1:4] if str(s).strip()]
+        if later:
+            keys = list(weights.keys())
+            # Nudge the first non-review block toward a later suggestion.
+            for key in keys:
+                if "review" in key.lower():
+                    continue
+                details = dict(details)
+                details[key] = later[0]
+                break
+
+    minutes_map = allocate_block_minutes(weights, minutes)
+    blocks = [
+        {
+            "name": name,
+            "minutes": int(minutes_map.get(name, 1)),
+            "detail": str(details.get(name) or "").strip(),
+            "weight": float(weights.get(name) or 0),
+        }
+        for name in weights
+    ]
+    listen, progression = listen_and_progression_for_focus(instrument, focus)
+    legacy = _map_blocks_to_legacy_slots(
+        blocks,
+        warmup_song=warmup_song,
+        main_song=main_song,
+        challenge_song=challenge_song,
+        cooldown_song=cooldown_song,
+    )
+    total = max(10, int(minutes))
+    summary = (
+        f"Session (~{total} min) for **{canonical_instrument_label(instrument) or instrument}** "
+        f"with Practice Focus **{profile.label}** "
+        f"({profile.category.replace('_', ' ')})."
+    )
+    if variety:
+        summary = f"{summary} {variety}"
+    out: dict[str, Any] = {
+        "focus": profile.label,
+        "category": profile.category,
+        "instrument": canonical_instrument_label(instrument) or str(instrument or ""),
+        "minutes": total,
+        "blocks": blocks,
+        "listen_for": listen,
+        "progression": progression,
+        "variety_note": variety,
+        "summary": summary,
+        "signature": f"{instrument}|{profile.label}|{total}|{song}|{section}",
+    }
+    out.update(legacy)
+    return out
+
+
 def listen_and_progression_for_focus(instrument: str, focus: str) -> tuple[list[str], list[str]]:
     profile = resolve_focus_profile(instrument, focus)
     cat = profile.category

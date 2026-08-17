@@ -525,6 +525,8 @@ def generate_practice_log_insights(
     session_analysis: dict[str, Any] | None = None,
     all_song_records: list[dict[str, Any]] | None = None,
     session_minutes: int = 25,
+    instrument: str = "",
+    focus: str = "",
 ) -> PracticeLogInsights:
     """Build coach-style insights from logs and recording analysis."""
     analysis_history = list(analysis_history or [])
@@ -789,6 +791,8 @@ def generate_practice_log_insights(
         logs,
         all_song_records or [],
         minutes=session_minutes,
+        instrument=str(instrument or "").strip(),
+        focus=str(focus or "").strip(),
     )
     if plan:
         block_mins = max(5, session_minutes // 5)

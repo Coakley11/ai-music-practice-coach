@@ -5261,11 +5261,19 @@ def _difficulty_phrase(level, variation):
     ][variation % 3]
 
 
-def _practice_time_blocks(minutes):
+def _practice_time_blocks(minutes, instrument="", focus=""):
     total = max(10, int(minutes or 30))
-    warmup = max(2, int(round(total * 0.18)))
-    section = max(3, int(round(total * 0.36)))
-    focus_block = max(3, int(round(total * 0.30)))
+    ratios = {"warmup": 0.18, "section": 0.36, "focus": 0.30, "review": 0.16}
+    try:
+        from practice_focus_coaching import practice_page_time_ratios
+
+        if focus:
+            ratios = practice_page_time_ratios(instrument or "", focus)
+    except ImportError:
+        pass
+    warmup = max(2, int(round(total * float(ratios.get("warmup", 0.18)))))
+    section = max(3, int(round(total * float(ratios.get("section", 0.36)))))
+    focus_block = max(3, int(round(total * float(ratios.get("focus", 0.30)))))
     review = max(1, total - warmup - section - focus_block)
     return {
         "total": total,
@@ -5817,7 +5825,7 @@ def daily_practice_breakdown_markdown(
 ):
     section_name, section_chords = _section_for_exercise(sections, variation)
     first_chord, second_chord = _transition_pair(section_chords, variation)
-    blocks = _practice_time_blocks(minutes)
+    blocks = _practice_time_blocks(minutes, instrument=instrument, focus=focus)
     span = _exercise_span(level, len(section_chords))
     chord_path = _chord_run(section_chords, span)
     family = _instrument_family(instrument)
@@ -5879,7 +5887,7 @@ def daily_practice_breakdown_markdown(
         except ImportError:
             focus_task = f"make the change **{first_chord} -> {second_chord}** clean, musical, and repeatable"
 
-    return f"""
+    base = f"""
 **Coach assignment for today:** make **{section_name}** feel intentional, not just correct.
 
 - Warmup ({blocks['warmup']} min): prepare **{instrument}** for {warmup_aim}; keep the sound relaxed and even.
@@ -5887,6 +5895,16 @@ def daily_practice_breakdown_markdown(
 - {focus} block ({blocks['focus']} min): {focus_task}.
 - Review ({blocks['review']} min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
 """.strip()
+    try:
+        from practice_focus_coaching import practice_page_watch_for
+
+        listen_bits = practice_page_watch_for(instrument, focus)
+        if listen_bits:
+            listen_md = "\n".join(f"- {bit}" for bit in listen_bits[:3])
+            return base + f"\n\n**Listen for ({focus}):**\n{listen_md}"
+    except ImportError:
+        pass
+    return base
 
 
 def song_practice_plan(
@@ -5908,7 +5926,7 @@ def song_practice_plan(
     bars = len(section_chords)
     cycle = max(1, variation + 1)
     chord_tones = _chord_tone_names(first_chord)
-    blocks = _practice_time_blocks(minutes)
+    blocks = _practice_time_blocks(minutes, instrument=instrument, focus=focus)
     span = _exercise_span(level, bars)
     chord_path = _chord_run(section_chords, span)
     time_signature = default_time_signature(song, sections)
@@ -15105,7 +15123,13 @@ elif _studio_page == "creative":
                     )
                     st.markdown(creativity_arrangement_text(ctx, target_style, arrangement_section))
                 elif lab_mode == "Adaptive Weakness Detection":
-                    st.markdown(adaptive_weakness_detection_text(ctx))
+                    _aw_scores = {}
+                    _aw_result = st.session_state.get("last_analysis_result")
+                    if isinstance(_aw_result, dict):
+                        _aw_scores = _aw_result.get("scores") or {}
+                    st.markdown(
+                        adaptive_weakness_detection_text(ctx, scores=_aw_scores or None)
+                    )
                 else:
                     st.markdown(musical_development_tracker_text())
 
@@ -15853,15 +15877,37 @@ elif _studio_page == "log":
                 5,
                 key="ai_session_builder_minutes",
             )
+            _session_focus = str(st.session_state.get("focus") or focus or "").strip()
+            _session_inst = str(st.session_state.get("instrument") or instrument or "").strip()
+            _session_sig = f"{_session_inst}|{_session_focus}|{int(_session_mins)}"
             if st.button("Build timed session plan", key="build_session_from_logs", use_container_width=False):
                 st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
                     load_entries(st.session_state),
                     ALL_SONG_RECORDS,
                     minutes=int(_session_mins),
+                    instrument=_session_inst,
+                    focus=_session_focus,
                 )
+                st.session_state["_ai_practice_session_plan_sig"] = _session_sig
             _plan = st.session_state.get("_ai_practice_session_plan")
+            if _plan and st.session_state.get("_ai_practice_session_plan_sig") != _session_sig:
+                # Same-rerun: Focus/instrument/minutes changed — rebuild without requiring a click.
+                _plan = build_practice_session_from_logs(
+                    load_entries(st.session_state),
+                    ALL_SONG_RECORDS,
+                    minutes=int(_session_mins),
+                    instrument=_session_inst,
+                    focus=_session_focus,
+                )
+                st.session_state["_ai_practice_session_plan"] = _plan
+                st.session_state["_ai_practice_session_plan_sig"] = _session_sig
             if _plan:
                 st.caption(_plan.get("summary", ""))
+                if _plan.get("listen_for"):
+                    st.markdown(
+                        "**Listen for:** "
+                        + "; ".join(str(x) for x in list(_plan.get("listen_for") or [])[:3])
+                    )
                 for label, icon in (
                     ("warmup", "🌅"),
                     ("technique", "⚙️"),
@@ -15871,6 +15917,8 @@ elif _studio_page == "log":
                 ):
                     if _plan.get(label):
                         st.markdown(f"{icon} **{label.title()}** — {_plan[label]}")
+                if _plan.get("progression"):
+                    st.caption(" · ".join(str(x) for x in list(_plan.get("progression") or [])[:2]))
 
 try:
     from studio_nav_history import flush_deferred_history_nav_save, record_nav_history_trace

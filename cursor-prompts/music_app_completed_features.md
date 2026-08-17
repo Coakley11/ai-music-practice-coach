@@ -24,6 +24,18 @@
 
 ## Completed Features
 
+### Practice Focus System — Phase 3A Practice Coach & Adaptive Weakness (2026-08-16)
+
+- [x] Focus-aware timed session builder (`build_focus_timed_session`) drives Timed Session Planner + Practice-page time ratios + weekly 30-min plan
+- [x] Same instrument/song + change-only Focus yields visibly different session blocks (Guitar Strumming/Timing/Harmony; Sax Tone/Articulation/Phrasing)
+- [x] Same-rerun Focus change rebuilds session plan; historical Focus diversifies without overriding current Focus
+- [x] Adaptive Weakness Detection ranks measured scores with Focus relevance; never invents Focus-only defects; severe non-Focus still surfaces
+- [x] Creative audits + Motif Sequence full-staff feature + optional Backing Focus coaching documented in plan
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`)
+- Tests: `tests/test_practice_focus_phase3a_session_weakness.py`
+- Evidence: `scripts/evidence-practice-focus-session/`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
+
 ### Practice Focus System — Phase 2D Multitrack (2026-08-16)
 
 - [x] Snapshot Practice Focus at Multitrack ensemble analysis start

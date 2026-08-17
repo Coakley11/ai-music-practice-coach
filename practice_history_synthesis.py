@@ -1314,6 +1314,15 @@ def _build_thirty_minute_plan(payload: dict[str, Any]) -> list[str]:
         payload.get("current_practice_focus") or hist.get("current_practice_focus") or ""
     ).strip()
     dominant = str(hist.get("dominant_exact_focus") or "").strip()
+    recent_labels = list(hist.get("recent_exact_focus_labels") or [])
+    if not recent_labels:
+        counts = hist.get("exact_focus_session_counts") or {}
+        if isinstance(counts, dict):
+            # Expand counts into a pseudo-recent list (dominant first) for variety hints.
+            for label, n in sorted(counts.items(), key=lambda kv: -int(kv[1] or 0)):
+                recent_labels.extend([str(label)] * min(3, int(n or 0)))
+                if len(recent_labels) >= 5:
+                    break
     note = ""
     if tone_trends and isinstance(tone_trends[0], dict):
         note = _format_written_note(tone_trends[0].get("note"))
@@ -1321,42 +1330,68 @@ def _build_thirty_minute_plan(payload: dict[str, Any]) -> list[str]:
     plan: list[str] = []
     if current_focus:
         try:
-            from practice_focus_policy import resolve_focus_profile
+            from practice_focus_coaching import build_focus_timed_session
 
-            profile = resolve_focus_profile(top_inst or current_focus, current_focus)
-            for tip in list(profile.practice_suggestions)[:2]:
-                text = str(tip).strip()
-                if text:
-                    plan.append(f"8 min — {text}")
-        except ImportError:
-            pass
-        if dominant and dominant != current_focus:
-            plan.insert(
-                0,
-                f"Bridge from historical **{dominant}** into current Focus **{current_focus}** — "
-                "keep what worked last period while shifting today's goal.",
+            session = build_focus_timed_session(
+                top_inst or "Piano",
+                current_focus,
+                minutes=30,
+                song=top_song or "",
+                recent_focus_labels=[str(x) for x in recent_labels],
             )
+            if dominant and dominant != current_focus:
+                plan.append(
+                    f"Bridge from historical **{dominant}** into current Focus **{current_focus}** — "
+                    "keep what worked last period while shifting today's goal."
+                )
+            if session.get("variety_note"):
+                plan.append(str(session["variety_note"]))
+            for block in list(session.get("blocks") or [])[:5]:
+                name = str(block.get("name") or "block").title()
+                mins = int(block.get("minutes") or 5)
+                detail = str(block.get("detail") or "").strip()
+                plan.append(f"{mins} min — {name}: {detail}")
+            for listen in list(session.get("listen_for") or [])[:2]:
+                plan.append(f"Listen for: {listen}")
+        except ImportError:
+            try:
+                from practice_focus_policy import resolve_focus_profile
+
+                profile = resolve_focus_profile(top_inst or current_focus, current_focus)
+                for tip in list(profile.practice_suggestions)[:2]:
+                    text = str(tip).strip()
+                    if text:
+                        plan.append(f"8 min — {text}")
+            except ImportError:
+                pass
+            if dominant and dominant != current_focus:
+                plan.insert(
+                    0,
+                    f"Bridge from historical **{dominant}** into current Focus **{current_focus}** — "
+                    "keep what worked last period while shifting today's goal.",
+                )
     if not plan:
         plan = [
             f"5 min — Long tones: {note_phrase} with metronome. Focus on steady air and stable center pitch.",
             "8 min — Pitch/intonation drill: Play slow scale tones. Hold each note for 4 beats and listen for center pitch.",
         ]
-    if top_song:
+    if top_song and not any(top_song in str(p) for p in plan):
         plan.append(
             f"10 min — {top_song} section pass: Record one short section of {top_song}, not the whole song. "
-            "Focus on pitch and tone consistency."
+            "Apply today's Practice Focus while you play."
         )
-    else:
+    elif not top_song and not any("Repertoire" in str(p) or "section pass" in str(p) for p in plan):
         plan.append(
-            "10 min — Repertoire pass: Record one short section and focus on pitch and tone consistency."
+            "10 min — Repertoire pass: Record one short section and apply today's Practice Focus."
         )
-    plan.extend(
-        [
-            "5 min — Listen back: Run Upload Analysis and compare pitch/tone against your previous report.",
-            "2 min — Log notes: Save one short reflection on what improved and what still felt unstable.",
-        ]
-    )
-    return plan
+    if not any("Upload Analysis" in str(p) for p in plan):
+        plan.extend(
+            [
+                "5 min — Listen back: Run Upload Analysis and compare against your previous report.",
+                "2 min — Log notes: Save one short reflection on what improved and what still felt unstable.",
+            ]
+        )
+    return plan[:10]
 
 
 def _evidence_counts_from_payload(payload: dict[str, Any]) -> dict[str, Any]:

@@ -525,27 +525,30 @@ def improvisation_intelligence_text(ctx):
     return "\n".join(out)
 
 
-def adaptive_weakness_detection_text(ctx):
-    out = []
-    out.append(f"# Adaptive Weakness Detection - {ctx['song']}")
-    out.append("\n## Current practice targets")
-    if ctx["focus"] == "Improvisation":
-        out.append("- Target stronger chord-tone resolution and less repetitive phrasing.")
-    elif ctx["focus"] == "Rhythm":
-        out.append("- Target steadier pulse, cleaner entrances, and less rushing.")
-    elif ctx["focus"] == "Harmony":
-        out.append("- Target smoother chord transitions and clearer section function.")
-    elif ctx["focus"] == "Melody":
-        out.append("- Target phrase shape, note accuracy, and melodic continuity.")
-    else:
-        out.append("- Target technique, tone, and consistency.")
-    out.append("\n## Generated Drill")
-    out.append("- Pick the hardest section.")
-    out.append("- Loop it slowly 5 times.")
-    out.append("- Record one take.")
-    out.append("- Listen for only one weakness.")
-    out.append("- Repeat with one correction.")
-    return "\n".join(out)
+def adaptive_weakness_detection_text(ctx, scores=None, recurring_keys=None):
+    """Focus-aware Adaptive Weakness Detection (ranks evidence; never invents Focus defects)."""
+    try:
+        from practice_focus_weaknesses import format_adaptive_weakness_markdown
+
+        return format_adaptive_weakness_markdown(
+            ctx.get("instrument") or "",
+            ctx.get("focus") or "",
+            song=ctx.get("song") or "",
+            scores=scores if scores is not None else ctx.get("scores"),
+            recurring_keys=recurring_keys,
+        )
+    except ImportError:
+        out = []
+        out.append(f"# Adaptive Weakness Detection - {ctx['song']}")
+        out.append("\n## Current practice targets")
+        out.append(f"- Current Focus: **{ctx.get('focus') or 'General'}**")
+        out.append("\n## Generated Drill")
+        out.append("- Pick the hardest section.")
+        out.append("- Loop it slowly 5 times.")
+        out.append("- Record one take.")
+        out.append("- Listen for only one weakness.")
+        out.append("- Repeat with one correction.")
+        return "\n".join(out)
 
 
 def musical_development_tracker_text(load_logs_fn):

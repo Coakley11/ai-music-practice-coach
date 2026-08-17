@@ -298,6 +298,16 @@ def build_practice_log_coach_view(
         analysis_history=analysis_history,
         all_song_records=all_song_records,
         session_minutes=session_minutes,
+        instrument=str(
+            (highlight_entry or {}).get("instrument")
+            or (logs[-1].get("instrument") if logs else "")
+            or ""
+        ).strip(),
+        focus=str(
+            (highlight_entry or {}).get("practice_focus")
+            or (highlight_entry or {}).get("focus")
+            or ""
+        ).strip(),
     )
     verified = _verified_override_titles()
 

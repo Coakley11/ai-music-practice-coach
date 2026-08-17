@@ -1,0 +1,29 @@
+# Adaptive Weakness Detection - Demo
+
+**Instrument:** Saxophone  
+**Current Practice Focus:** Tone  
+
+_Focus changes priority, not truth. Severe non-Focus issues still surface. Focus never invents a weakness without evidence._
+
+## Ranked weaknesses (measured)
+- **Timing & rhythm** — score 20/100 (priority 92) [severe]
+  - Evidence: `measured`
+  - Next: Emphasize air support, stable embouchure, resonance, and register consistency.
+- **Tone stability** — score 70/100 (priority 52) [Focus-aligned]
+  - Evidence: `measured`
+  - Next: Emphasize air support, stable embouchure, resonance, and register consistency.
+- **Groove / rhythmic continuity** — score 55/100 (priority 45)
+  - Evidence: `measured`
+  - Next: Emphasize air support, stable embouchure, resonance, and register consistency.
+
+## Focus practice targets (coaching-only)
+These follow Practice Focus **Tone** for **Saxophone**. Capability: `coaching_only` — not measured defects.
+- Emphasize air support, stable embouchure, resonance, and register consistency.
+- Avoid pinched tone; listen for even vibrato only after the core sound is stable.
+- Start with long tones: stable pitch, even air or contact, no pinched sound.
+
+## Generated drill
+- Pick the hardest section of the song.
+- Loop it slowly 5 times with today's Focus as the listening filter.
+- Record one take.
+- Re-check measured scores; do not invent Focus-specific defects the pipeline cannot measure.

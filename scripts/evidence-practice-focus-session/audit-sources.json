@@ -1,0 +1,47 @@
+{
+  "measured_score_keys": [
+    "timing",
+    "pitch",
+    "technique",
+    "groove",
+    "musicality",
+    "confidence",
+    "tone"
+  ],
+  "severe_threshold": 48,
+  "sources": [
+    {
+      "id": "upload_scores",
+      "kind": "measured",
+      "module": "recording_analysis / last_analysis_result.scores"
+    },
+    {
+      "id": "upload_history_trends",
+      "kind": "measured_aggregate",
+      "module": "practice_log_insights._score_trends / ai_performance_history"
+    },
+    {
+      "id": "practice_log_challenges",
+      "kind": "heuristic_self_report",
+      "module": "practice_log_insights / practice_history_synthesis"
+    },
+    {
+      "id": "creative_lab_adaptive",
+      "kind": "ranking_ui",
+      "module": "practice_focus_weaknesses.format_adaptive_weakness_markdown"
+    },
+    {
+      "id": "legacy_adaptive_stub",
+      "kind": "replaced",
+      "module": "creative_lab_text.adaptive_weakness_detection_text"
+    }
+  ],
+  "ranking_principles": [
+    "severity (100 - score)",
+    "Practice Focus relevance boost",
+    "severe non-focus floor",
+    "recurring/repetition boost when keys provided",
+    "never invent Focus-only weaknesses without scores"
+  ],
+  "capability_helper": "capability_for_dimension"
+}

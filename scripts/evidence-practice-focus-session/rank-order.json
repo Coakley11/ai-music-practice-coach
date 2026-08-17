@@ -1,0 +1,38 @@
+[
+  {
+    "id": "timing",
+    "label": "Timing & rhythm",
+    "score": 20,
+    "severity": 80,
+    "focus_relevance": 0.0,
+    "priority": 92.0,
+    "capability": "measured",
+    "recommendation": "Emphasize air support, stable embouchure, resonance, and register consistency.",
+    "severe": true,
+    "focus_matched": false
+  },
+  {
+    "id": "tone",
+    "label": "Tone stability",
+    "score": 70,
+    "severity": 30,
+    "focus_relevance": 1.0,
+    "priority": 52.0,
+    "capability": "measured",
+    "recommendation": "Emphasize air support, stable embouchure, resonance, and register consistency.",
+    "severe": false,
+    "focus_matched": true
+  },
+  {
+    "id": "groove",
+    "label": "Groove / rhythmic continuity",
+    "score": 55,
+    "severity": 45,
+    "focus_relevance": 0.0,
+    "priority": 45.0,
+    "capability": "measured",
+    "recommendation": "Emphasize air support, stable embouchure, resonance, and register consistency.",
+    "severe": false,
+    "focus_matched": false
+  }
+]

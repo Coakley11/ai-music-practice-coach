@@ -18,7 +18,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active) | Practice Focus System — coaching variable across AMI / Practice / Upload / Log | [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) |
+| **P0** (active) | Practice Focus System — Phase 3A done; Creative audit + Motif Sequence spec | [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) |
 | **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
@@ -31,11 +31,20 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Practice Focus System (P0 — active on feature branch)
 
-- App-wide coaching variable (not a badge): **Phase 2A–2D** complete on `feature/practice-focus-system`; next: safe Backing/Custom (Phase 3)
+- **Phase 2A–2D + Phase 3A** complete on `feature/practice-focus-system`
+- **Backing Focus coaching = optional / user-invoked** (not automatic) — documented; card not built yet
+- Creative audits (Deep Harmony, Harmony Map, Motif & Phrasing, Arrangement Assistant) documented; deep impl deferred until `44403d4` reconciled
+- **NEW:** Motif & Phrasing — Expand Motif as a Sequence → full staff ascending diatonic sequence preserving rhythm (spec in Practice Focus plan)
 - Deferred verification: Phase 2B Upload and Phase 2D Multitrack real-audio smoke tests (need `librosa` + WAV fixtures)
-- Deeper Creative waits until parked `feature/creative-backing-stabilization` @ `44403d4` is accepted
-- Composition is hook-only until that page is further along
 - See [plan](./plans/2026-08-15-practice-focus-system.md)
+
+### Motif Sequence / full sheet exercise (Creative — queued)
+
+- Button on Motif & Phrasing: expand current motif as ascending diatonic sequence
+- Preserve pitch shape **and** rhythm; full multi-measure staff (not a short card)
+- Written Key / Guitar Shape projection after Creative ownership reconciliation
+- Future: descending, through progression, rhythmic displacement
+- Spec: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md) § Expand Motif as a Sequence
 
 ### Mission handoff & Upload Analysis (P0 — scheduled)
 

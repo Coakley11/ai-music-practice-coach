@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-16 (Practice Focus Phase 2D Multitrack on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-16 (Practice Focus Phase 3A Practice Coach + Adaptive Weakness on `feature/practice-focus-system`; Creative/Backing parked @ `44403d4`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -13,7 +13,7 @@
 **Branch:** `feature/practice-focus-system` from `origin/dev` (`870a365`). **Do not merge to `dev` until approved.**  
 **Parked:** `feature/creative-backing-stabilization` @ `44403d43785a0bdd29c0762f98155efd393ccb70` — do not touch or use as base.
 
-**Goal:** Practice Focus is an app-wide coaching variable (bias, not prison): AMI, Practice, Upload, Log, Multitrack, then safe Backing/Custom. Deeper Creative waits for the parked branch. Composition is hook-only.
+**Goal:** Practice Focus is an app-wide coaching variable (bias, not prison): AMI, Practice, Upload, Log, Multitrack, Practice Coach/Session, Adaptive Weaknesses; Backing Focus coaching is **optional** (documented, not auto). Deeper Creative waits for the parked branch. Composition is hook-only.
 
 - [x] Branch from clean `origin/dev` (not Creative stabilization)
 - [x] Audit existing `focus` storage, widgets, persistence, lookalikes
@@ -22,8 +22,9 @@
 - [x] Phase 2B: Upload / AI Coach snapshot + supported metric emphasis (`practice_focus_evaluation.py`)
 - [x] Phase 2C: Practice Log + weekly Practice Coach analysis (`practice_focus_history.py`)
 - [x] Phase 2D: Multitrack Focus snapshot + supported ensemble emphasis (`practice_focus_multitrack.py`)
-- [ ] Phase 3: safe Backing instructional layer + Custom tools on current `dev`
-- [ ] Phase 4: Creative integration after parked branch is accepted
+- [x] Phase 3A: Practice Coach & Session + Adaptive Weakness Detection (`practice_focus_weaknesses.py`); Creative audit + Motif Sequence spec; Backing optional documented
+- [ ] Phase 3B+: optional Backing Focus card + Custom tools (later)
+- [ ] Phase 4: Creative integration after parked branch is accepted (incl. Motif Sequence staff view)
 - [ ] Phase 5: Composition (later)
 
 ### P0 — Mission Take → Upload Analysis durable handoff (queued)
