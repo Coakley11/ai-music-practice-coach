@@ -121,9 +121,12 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
             if ov.get("bpm"):
                 live_bpm = int(ov["bpm"])
         if live_bpm is None:
+            # Domain Current BPM is authoritative; slider key is a projection only.
             sid = backing_page_sync_id(session)
-            slider_key = backing_bpm_slider_widget_key(sid) if sid else BPM_WIDGET_KEY
-            for key in (slider_key, BPM_WIDGET_KEY, "backing_track_bpm"):
+            slider_key = backing_bpm_slider_widget_key(sid) if sid else ""
+            for key in ("backing_track_bpm", BPM_WIDGET_KEY, "bpm", slider_key):
+                if not key:
+                    continue
                 try:
                     val = int(session.get(key) or 0)
                 except (TypeError, ValueError):

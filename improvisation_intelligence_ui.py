@@ -2109,6 +2109,8 @@ def _stash_missions_generate_context(
         "live_level": live_level,
         "live_focus": live_focus,
         "bpm": int(bpm),
+        "key_center": str(improv_ctx.key_center or ""),
+        "chart_key": str(improv_ctx.display_key or ""),
         "improv_ctx": {
             "song_title": improv_ctx.song_title,
             "artist": improv_ctx.artist,
@@ -2238,12 +2240,13 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     improv_ctx.display_key = chart_key
 
     if isinstance(snap, dict):
-        snap_key = str(snap.get("chart_key") or snap.get("key_center") or "").strip()
-        if snap_key and snap_key != concert and snap_key != chart_key:
+        snap_concert = str(snap.get("key_center") or (snap.get("improv_ctx") or {}).get("key_center") or "").strip()
+        snap_chart = str(snap.get("chart_key") or (snap.get("improv_ctx") or {}).get("display_key") or "").strip()
+        if (snap_concert and snap_concert != concert) or (snap_chart and snap_chart != chart_key):
+            # Shape/Written or Practice Key changed since stash — drop stale projected chord.
             session_state.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
-            snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+            snap = None
 
-    sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
     if isinstance(snap, dict) and snap.get("cur_chord"):
         cur_chord = str(snap.get("cur_chord"))
         section_label = str(snap.get("section_label") or "Progression")
@@ -2259,17 +2262,8 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     else:
         section_map = resolve_improv_sections(session_state, improv_ctx)
         chords = flatten_section_map(section_map) if section_map else []
-        if not chords:
-            session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
-                "callback": f"mission_example_generate_{variant}",
-                "callback_fired": True,
-                "abort": "no_chords",
-                "improv_ctx_sections": bool(improv_ctx.sections),
-                "home_sections": bool(session_state.get("home_sections")),
-            }
-            return
-        _ensure_chord_selection(session_state, chords, section_map)
-        cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
+        cur_chord = ""
+        chord_idx = 0
         section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         mission = str(
             session_state.get("improv_mission_pick")
@@ -2280,6 +2274,9 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         live_level = str(session_state.get("level") or improv_ctx.level)
         live_focus = str(session_state.get("focus") or improv_ctx.focus)
         bpm = int(session_state.get("backing_track_bpm") or improv_ctx.bpm or 100)
+        if chords:
+            _ensure_chord_selection(session_state, chords, section_map)
+            cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
 
     try:
         from mission_workflow_context import resolve_missions_section_map
@@ -2287,12 +2284,12 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         auth_section_map, _auth_owner = resolve_missions_section_map(session_state, improv_ctx)
     except ImportError:
         auth_section_map = resolve_improv_sections(session_state, improv_ctx)
-    sealed_from_snap = isinstance(snap, dict) and bool(snap.get("cur_chord"))
+    # Prefer live concert map identity over a sealed projected snap chord.
+    sealed_from_snap = False
     if auth_section_map:
         auth_chords = flatten_section_map(auth_section_map)
         if auth_chords:
-            if not sealed_from_snap:
-                _ensure_chord_selection(session_state, auth_chords, auth_section_map)
+            _ensure_chord_selection(session_state, auth_chords, auth_section_map)
             try:
                 from creative_chord_selection_authority import resolve_authoritative_chord_selection
 
@@ -2300,22 +2297,61 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
                     session_state, auth_section_map
                 )
             except ImportError:
-                if not sealed_from_snap:
-                    cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
-                    section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
+                cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
+                section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
+            chords = auth_chords
+            # Index on the concert map is authoritative when symbol drifted to a Shape projection.
+            try:
+                from creative_chord_selection_authority import section_chord_at_global_index
+
+                at_sec, at_ch = section_chord_at_global_index(auth_section_map, int(chord_idx))
+                if at_ch:
+                    cur_chord = at_ch
+                    if at_sec:
+                        section_label = at_sec
+            except ImportError:
+                pass
 
     try:
         from creative_chord_selection_authority import read_authoritative_mission_chord_selection
 
-        auth_ch, auth_sec, auth_idx = read_authoritative_mission_chord_selection(session_state)
-        if auth_ch:
+        auth_ch, auth_sec, auth_idx = read_authoritative_mission_chord_selection(
+            session_state, auth_section_map if auth_section_map else None
+        )
+        if auth_section_map and auth_ch:
+            try:
+                from creative_chord_selection_authority import section_chord_at_global_index
+
+                at_sec, at_ch = section_chord_at_global_index(auth_section_map, int(auth_idx))
+                if at_ch:
+                    cur_chord = at_ch
+                    section_label = at_sec or auth_sec or section_label
+                    chord_idx = int(auth_idx)
+                else:
+                    cur_chord = auth_ch
+                    section_label = auth_sec or section_label
+                    chord_idx = int(auth_idx)
+            except ImportError:
+                cur_chord = auth_ch
+                section_label = auth_sec or section_label
+                chord_idx = int(auth_idx)
+        elif auth_ch:
             cur_chord = auth_ch
             section_label = auth_sec or section_label
             chord_idx = int(auth_idx)
     except ImportError:
         pass
 
-    if not chords or not mission:
+    if not chords:
+        session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
+            "callback": f"mission_example_generate_{variant}",
+            "callback_fired": True,
+            "abort": "no_chords",
+            "improv_ctx_sections": bool(improv_ctx.sections),
+            "home_sections": bool(session_state.get("home_sections")),
+        }
+        return
+    if not mission:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
             "callback": f"mission_example_generate_{variant}",
             "callback_fired": True,

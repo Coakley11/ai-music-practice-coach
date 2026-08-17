@@ -208,7 +208,6 @@ def resolve_backing_bpm_for_slider(
 
     if slider_key in st.session_state:
         slider_val = normalize_backing_bpm(st.session_state[slider_key])
-        st.session_state[slider_key] = slider_val
         st.session_state[BPM_WIDGET_KEY] = slider_val
         st.session_state["bpm"] = slider_val
         st.session_state["backing_track_bpm"] = slider_val
@@ -235,15 +234,16 @@ def resolve_backing_bpm_for_slider(
 
 
 def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
-    """Mirror slider BPM into canonical keys (never mutate the slider widget key after render)."""
+    """Copy slider value into Current Backing-session BPM domain state.
+
+    Never write the Streamlit slider widget key here — that key is owned by the
+    widget after instantiation and assigning it raises StreamlitAPIException.
+    Reseed ``backing_bpm_slider_widget_key`` only in pre-widget helpers.
+    """
     bpm = int(slider_bpm)
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
     st.session_state["backing_track_bpm"] = bpm
-    # Keep the active per-sync slider owner identical to Current BPM / banner.
-    sync_id = str(st.session_state.get("_active_bpm_sync_id") or "").strip()
-    if sync_id:
-        st.session_state[backing_bpm_slider_widget_key(sync_id)] = bpm
     try:
         from backing_play_session import capture_backing_play_session_overrides
 
@@ -251,6 +251,23 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     except ImportError:
         pass
     return bpm
+
+
+def seed_backing_bpm_slider_before_widget(
+    session: dict[str, Any],
+    *,
+    sync_id: str,
+    bpm: int,
+) -> int:
+    """Pre-widget only: align slider key with Current BPM before ``st.slider`` exists."""
+    val = int(normalize_backing_bpm(bpm) or bpm or 100)
+    sid = str(sync_id or session.get("_active_bpm_sync_id") or "").strip()
+    if sid:
+        session[backing_bpm_slider_widget_key(sid)] = val
+    session[BPM_WIDGET_KEY] = val
+    session["bpm"] = val
+    session["backing_track_bpm"] = val
+    return val
 
 
 def invalidate_backing_page_snapshots(session_or_st: Any) -> None:
@@ -532,11 +549,14 @@ def canonicalize_backing_defaults_for_song(
                             live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
                         if live_meter:
                             norm_meter = normalize_time_signature(live_meter)
-                        # Keep per-sync slider key aligned with the same Current BPM owner.
-                        st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = int(norm_bpm)
+                        # Domain only — never touch slider widget key after it may exist.
                     else:
                         norm_bpm = int(creative_ctx.bpm or norm_bpm)
-                        st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = norm_bpm
+                        seed_backing_bpm_slider_before_widget(
+                            st.session_state,
+                            sync_id=creative_sync_id,
+                            bpm=norm_bpm,
+                        )
                 except ImportError:
                     norm_bpm = int(st.session_state.get(BPM_WIDGET_KEY, norm_bpm))
             st.session_state[BPM_WIDGET_KEY] = norm_bpm
@@ -1008,6 +1028,7 @@ __all__ = [
     "apply_song_bpm_defaults",
     "backing_bpm_slider_widget_key",
     "resolve_backing_bpm_for_slider",
+    "seed_backing_bpm_slider_before_widget",
     "sync_backing_bpm_from_slider",
     "canonical_active_song_bpm",
     "canonicalize_backing_defaults_for_song",

@@ -767,6 +767,28 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+    # Sidebar Practice Key wins for subordinate Backing sources (mission / SBI).
+    # Never restore a sealed song-identity key over an explicit user change.
+    preserved_early = _sidebar_preserve_user_display_key_options(
+        st,
+        session,
+        trace_phase="prepare_backing_context_sidebar:preserve_user_key_early",
+    )
+    if preserved_early is not None:
+        session.pop(PENDING_DISPLAY_KEY, None)
+        try:
+            from backing_context import get_backing_context
+            from workflow_key_identity import resolve_song_practice_key_identity
+
+            ctx_lbl = get_backing_context(session)
+            src_lbl = str(getattr(ctx_lbl, "source", "") or "").strip() if ctx_lbl else ""
+            if src_lbl in {"mission", "song_improv"}:
+                song_ident = resolve_song_practice_key_identity(session)
+                if song_ident is not None:
+                    session["_sidebar_key_identity_label"] = song_ident.practice_label
+        except ImportError:
+            pass
+        return preserved_early
     try:
         from backing_context import get_backing_context
         from workflow_key_identity import (
@@ -784,6 +806,15 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 ensure_missions_parent_practice_key_hydrated(session)
             except ImportError:
                 pass
+            # Re-check after hydrate — hydrate must not pin over a same-rerun sidebar edit.
+            preserved_mission = _sidebar_preserve_user_display_key_options(
+                st,
+                session,
+                trace_phase="prepare_backing_context_sidebar:preserve_after_mission_hydrate",
+            )
+            if preserved_mission is not None:
+                session.pop(PENDING_DISPLAY_KEY, None)
+                return preserved_mission
             song_ident = resolve_song_practice_key_identity(session)
             if song_ident is not None:
                 selected = song_ident.practice_key_token
@@ -795,6 +826,19 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 )
                 session["concert_key"] = selected
                 session["_sidebar_key_identity_label"] = song_ident.practice_label
+                return options
+        if ctx_source_early == "song_improv":
+            # SBI Backing is subordinate to live Practice Key — do not force sealed identity.
+            live_sbi = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            if live_sbi:
+                options = _sidebar_key_options_including(session, live_sbi)
+                session["concert_key"] = live_sbi
+                try:
+                    song_ident = resolve_song_practice_key_identity(session)
+                    if song_ident is not None:
+                        session["_sidebar_key_identity_label"] = song_ident.practice_label
+                except Exception:
+                    pass
                 return options
         if generated_workflow_owns_practice_key(session) or ctx_source_early == "entry_jam":
             ident = resolve_practice_key_identity_for_ui(session)
@@ -1018,10 +1062,21 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         return options
     if user_sidebar_display_key_authoritative(session):
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        # Generated Style/Jam owners may still resolve identity; subordinate
+        # mission / song_improv Backing must keep the live sidebar token.
         try:
-            from workflow_key_identity import active_workflow_owns_practice_key, resolve_practice_key_identity_for_ui
+            from workflow_key_identity import (
+                active_workflow_owns_practice_key,
+                generated_workflow_owns_practice_key,
+                resolve_practice_key_identity_for_ui,
+            )
 
-            if active_workflow_owns_practice_key(session):
+            subordinate = ctx_source in {"mission", "song_improv"}
+            if (
+                not subordinate
+                and active_workflow_owns_practice_key(session)
+                and generated_workflow_owns_practice_key(session)
+            ):
                 ident = resolve_practice_key_identity_for_ui(session)
                 if ident is not None:
                     live = ident.practice_key_token

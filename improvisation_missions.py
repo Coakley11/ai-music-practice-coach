@@ -429,6 +429,36 @@ def refresh_mission_example(
     concert_chord = str(display_motif.get("_concert_chord") or example.chord or "").strip()
     concert_notes = display_motif.get("_concert_notes")
     already_projected = str(display_motif.get("_projected_display_key") or "").strip()
+    # Recover when a prior Shape projection was wrongly stored as "_concert_chord".
+    if (
+        already_projected
+        and concert_auth
+        and already_projected != concert_auth
+        and concert_chord
+    ):
+        try:
+            from effective_practice_context import musician_facing_chord
+            from music_theory import semitone_distance, transpose_chord
+
+            motif_display_chord = str(display_motif.get("chord") or "").strip()
+            projected_claim = musician_facing_chord(
+                concert_chord,
+                concert_key=concert_auth,
+                chart_key=already_projected,
+            )
+            looks_like_display = (
+                (motif_display_chord and concert_chord == motif_display_chord)
+                or projected_claim == concert_chord
+            )
+            if looks_like_display:
+                back = semitone_distance(already_projected, concert_auth)
+                if back:
+                    concert_chord = transpose_chord(
+                        concert_chord, back, reference_key=concert_auth
+                    )
+                    display_motif["_concert_chord"] = concert_chord
+        except ImportError:
+            pass
     if not isinstance(concert_notes, list) or not concert_notes:
         live_notes = list(display_motif.get("notes") or [])
         if not already_projected:
@@ -493,12 +523,14 @@ def refresh_mission_example(
             display_motif["_projected_display_key"] = spell_display
             display_motif["_concert_notes"] = list(concert_notes or [])
             display_motif["_concert_chord"] = concert_chord
+            display_motif["chord"] = display_chord
         except ImportError:
             pass
     else:
         display_motif["_projected_display_key"] = spell_display
         display_motif["_concert_notes"] = list(concert_notes or [])
         display_motif["_concert_chord"] = concert_chord
+        display_motif["chord"] = display_chord
     ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord
@@ -540,7 +572,12 @@ def refresh_mission_example(
             example.motif["_concert_notes"] = list(concert_notes)
         example.motif["_concert_chord"] = concert_chord
         example.motif["_projected_display_key"] = spell_display
+        example.motif["chord"] = display_chord
+    # Keep example.chord as canonical concert identity; player-facing fields are projections.
     example.chord = concert_chord or str(example.chord or "")
+    example.display_key = spell_display or example.display_key
+    if concert_auth:
+        example.concert_key = concert_auth
     try:
         from improvisation_intelligence import ImprovSessionContext, chord_coach_insight
 

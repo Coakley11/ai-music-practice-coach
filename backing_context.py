@@ -2211,8 +2211,38 @@ def apply_backing_context_to_session(
         session["backing_track_loops"] = int(ctx.loops or 2)
 
     if not skip_transport:
+        applied_bpm = int(ctx.bpm or 0)
+        preserve_live_bpm = False
+        try:
+            from backing_play_session import backing_play_session_has_override, play_session_blocks_canonical_seed
+
+            preserve_live_bpm = bool(
+                play_session_blocks_canonical_seed(session)
+                or backing_play_session_has_override(session, "bpm")
+            )
+        except ImportError:
+            preserve_live_bpm = False
+        if apply_transport_bpm and applied_bpm > 0 and not preserve_live_bpm:
+            session["backing_track_bpm"] = applied_bpm
+            session["bpm"] = applied_bpm
+            try:
+                from songs.bpm_state import BPM_WIDGET_KEY
+
+                session[BPM_WIDGET_KEY] = applied_bpm
+            except ImportError:
+                pass
+            try:
+                from songs.playback_defaults import seed_backing_bpm_slider_before_widget
+
+                seed_backing_bpm_slider_before_widget(
+                    session, sync_id=str(sync_id or ""), bpm=applied_bpm
+                )
+            except ImportError:
+                pass
         canonical = {
-            "backing_track_bpm": int(session.get("backing_track_bpm") or ctx.bpm),
+            "backing_track_bpm": int(
+                session.get("backing_track_bpm") or applied_bpm or ctx.bpm or 100
+            ),
             "backing_groove_style": backing_style,
             "backing_time_signature": str(ctx.meter or "4/4"),
             "backing_track_scope": str(session.get("backing_track_scope") or ctx.scope or "Full song"),
@@ -2792,6 +2822,39 @@ def open_backing_from_creative(
         creative_return_route=creative_return_route,
         trace_caller="open_backing_from_creative",
     )
+    # New Creative → Backing play session: Current BPM must initialize from the
+    # generated/source BPM (e.g. Style Jam 130), not a stale catalog slider (96).
+    try:
+        from backing_play_session import (
+            backing_play_session_has_override,
+            expire_backing_play_session,
+            play_session_blocks_canonical_seed,
+        )
+        from songs.playback_defaults import seed_backing_bpm_slider_before_widget
+
+        same_sig = bool(
+            existing
+            and existing.source_signature == ctx.source_signature
+            and existing.source == ctx.source
+        )
+        keep_current_bpm = bool(
+            play_session_blocks_canonical_seed(session)
+            or backing_play_session_has_override(session, "bpm")
+        )
+        if not same_sig and not keep_current_bpm:
+            expire_backing_play_session(session)
+            source_bpm = int(getattr(ctx, "bpm", 0) or 0)
+            if source_bpm > 0:
+                sync_id = str(
+                    session.get("_active_bpm_sync_id")
+                    or session.get("_backing_trace_sync_id")
+                    or getattr(ctx, "source_signature", "")
+                    or ""
+                ).strip()
+                seed_backing_bpm_slider_before_widget(session, sync_id=sync_id, bpm=source_bpm)
+        # Same play-session / active override: never reseed Current BPM from source.
+    except ImportError:
+        pass
     try:
         from musical_context_coherence import clear_coherence_handoff_block
 
