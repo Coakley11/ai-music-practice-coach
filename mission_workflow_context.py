@@ -266,10 +266,18 @@ def reconcile_missions_workflow_context(
     except ImportError:
         pass
     section_map, prog_owner = resolve_missions_section_map(session, improv_ctx)
-    if section_map:
-        session["home_sections"] = {str(label): list(chs) for label, chs in section_map if isinstance(chs, list)}
-    elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
-        session["home_sections"] = {k: list(v) for k, v in improv_ctx.sections.items() if isinstance(v, list)}
+    # home_sections must remain catalog-original pitch — never overwrite with concert maps.
+    if not session.get("home_sections"):
+        if section_map:
+            session.setdefault(
+                "home_sections",
+                {str(label): list(chs) for label, chs in section_map if isinstance(chs, list)},
+            )
+        elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
+            session.setdefault(
+                "home_sections",
+                {k: list(v) for k, v in improv_ctx.sections.items() if isinstance(v, list)},
+            )
     report = validate_missions_render_context(
         session,
         improv_ctx,

@@ -236,6 +236,18 @@ def navigate_to_regular_backing(session: dict[str, Any], *, st_like: Any | None 
     except ImportError:
         pass
     sync_backing_session_route_from_context(session)
+    try:
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(session, "backing")
+    except ImportError:
+        session["studio_page"] = "backing"
+    try:
+        from music_rerun_loop_guard import clear_rerun_loop_block
+
+        clear_rerun_loop_block(session, reason="return_regular_backing")
+    except ImportError:
+        pass
 
 
 def render_backing_route_dev_marker(st_module: Any, session: dict[str, Any]) -> None:

@@ -189,33 +189,44 @@ def infer_catalog_sections_spelled_in_key(
     if not isinstance(sections, dict) or not sections:
         return blob or orig or dest
     try:
-        from music_theory import transpose_sections_dict
+        from music_theory import normalize_root, split_chord, transpose_sections_dict
         from workflow_musical_authority import section_maps_equivalent
     except ImportError:
         return blob or orig or dest
+
+    first = ""
+    for chs in sections.values():
+        if isinstance(chs, list) and chs:
+            first = str(chs[0] or "").strip()
+            if first:
+                break
+    first_root = normalize_root(split_chord(first)[0]) if first else ""
+    orig_root = normalize_root(split_chord(orig)[0]) if orig else ""
+    dest_root = normalize_root(split_chord(dest)[0]) if dest else ""
+    blob_root = normalize_root(split_chord(blob)[0]) if blob else ""
+
+    # Pitch-class of the live map wins over polluted home/selected mirrors.
+    if first_root and dest_root and first_root == dest_root:
+        return dest or blob or orig
+    if first_root and blob_root and first_root == blob_root and (not dest_root or blob_root == dest_root):
+        return blob or dest or orig
+    if first_root and orig_root and first_root == orig_root and first_root != dest_root:
+        return orig
+
     if isinstance(catalog, dict) and catalog and section_maps_equivalent(sections, catalog):
         return orig or dest
-    if isinstance(home, dict) and home and section_maps_equivalent(sections, home):
+    # home_sections is often overwritten with practice-pitch concert maps — only treat a
+    # home match as original when home itself still matches catalog original pitch.
+    if (
+        isinstance(home, dict)
+        and home
+        and section_maps_equivalent(sections, home)
+        and isinstance(catalog, dict)
+        and catalog
+        and section_maps_equivalent(home, catalog)
+    ):
         return orig or dest
-    if orig and dest and dest != orig:
-        try:
-            from music_theory import normalize_root, split_chord
-
-            first = ""
-            for chs in sections.values():
-                if isinstance(chs, list) and chs:
-                    first = str(chs[0] or "").strip()
-                    if first:
-                        break
-            if first:
-                orig_root = normalize_root(split_chord(orig)[0])
-                first_root = normalize_root(split_chord(first)[0])
-                dest_root = normalize_root(split_chord(dest)[0])
-                if orig_root and first_root == orig_root and first_root != dest_root:
-                    return orig
-        except Exception:
-            pass
-    reference = catalog if isinstance(catalog, dict) and catalog else home
+    reference = catalog if isinstance(catalog, dict) and catalog else None
     if orig and isinstance(reference, dict) and reference:
         try:
             from music_theory import semitone_distance, transpose_chord

@@ -345,8 +345,10 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             pass
         seed_song_practice_blob_from_live_practice_key(session)
         mirror_mission_keys_from_song_blob(session)
-        rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
+        # Reconcile Practice Key *before* concert rehydrate so sync cannot transpose
+        # using a stale blob token while live identity is already the destination.
         token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
+        rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
@@ -359,8 +361,8 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
 
         if not entry_jam_practice_key_authority_active(session):
             mirror_mission_keys_from_song_blob(session)
-            rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
             token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
+            rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
             try:
                 from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 

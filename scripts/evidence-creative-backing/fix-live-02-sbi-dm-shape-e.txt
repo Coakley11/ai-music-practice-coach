@@ -1,0 +1,209 @@
+keyboard_double_arrow_left
+keyboard_arrow_down
+
+Account & Workspace · Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+← Command Center
+
+keyboard_arrow_down
+
+Saved session
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+🎼 ACTIVE SONG
+
+SONG
+Shape of You — Ed Sheeran
+
+🎼 Songs
+
+Shape of You · Pop
+
+Song Original Key: Bm
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+Practice focus
+
+🎵 MUSIC COACH
+
+Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+Ask the Music Coach
+
+🧭 PAGES
+
+◀
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✏️ Custom Progression
+
+🎹 Composition Studio
+
+🎨 Creative Lab
+
+🎚️ Multitrack
+
+🎙️ Upload Analysis
+
+📓 Practice Log
+
+⏱️ SESSION
+
+Practice length: 30 min (adjust on the Practice page)
+
+🎸 GUITAR CAPO / CHORD SHAPES
+
+Sounding Key: Dm
+
+Capo Shape Mode
+
+Shape Key
+
+Charts in E minor
+
+Capo Fret: 10
+
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+← Back
+
+Forward →
+
+📖 Tutorial
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✏️
+Custom
+
+Open
+
+🎹
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎨
+
+IMPROVISATION LAB
+
+Creative
+
+Creative Lab
+
+Harmony, improvisation, and growth tools for your active song.
+
+🎸
+Guitar practice mode · Chord shapes · strumming · picking · fretboard connection · Explore harmony, improv, and creative tools.
+
+Analysis mode
+
+Working from Shape of You · Guitar · Intermediate
+
+🚪 Entry & Jam
+
+💡 Live Coach
+
+♪ Phrase / Motif
+
+🚩 Missions
+
+🗺️ Harmony Map
+
+🔮 Deep Harmony
+
+📊 Metrics & AI
+
+IMPROVISATION ENTRY MODE
+
+🎶 Play Song-Based Improvisation
+
+🎷 Style Jam Mode
+
+🎲 Jam Session Generator
+
+SONG SOURCE
+
+Active song
+
+✏️ Custom Progression
+
+ACTIVE SONG · SONG SELECTION
+
+Shape of You — Ed Sheeran
+
+Key Dm
+184 chords
+Active song · Song Selection
+
+Uses the song selected in Song Selection (global studio source).
+
+🎼 Songs
+
+Practice concert key: Dm
+
+Concert Practice Key Progression: Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C · Dm · Gm · Bb · C
+
+Written Key Progression (Em): Em · Am · C · D · Em · Am · C · D · Em · Am · C · D · Em · Am · C · D · Em · Am · C · D · Em · Am · C · D · Em · Am · C · D · Em · Am · C · D
+
+🎧 Open in Backing Studio
+
+🎯 Send to Practice Page

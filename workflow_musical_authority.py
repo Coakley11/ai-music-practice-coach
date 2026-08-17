@@ -581,7 +581,24 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
         if not original or original == practice:
             out = base
         else:
-            out = transpose_sections_dict(base, original, practice)
+            # Idempotence: never treat an already-practice-pitch map as catalog original.
+            try:
+                from music_theory import normalize_root, split_chord
+
+                first = ""
+                for chs in base.values():
+                    if chs:
+                        first = str(chs[0] or "").strip()
+                        if first:
+                            break
+                practice_root = normalize_root(split_chord(practice)[0]) if practice else ""
+                first_root = normalize_root(split_chord(first)[0]) if first else ""
+                if practice_root and first_root and first_root == practice_root:
+                    out = base
+                else:
+                    out = transpose_sections_dict(base, original, practice)
+            except Exception:
+                out = transpose_sections_dict(base, original, practice)
         session["improv_song_concert_sections"] = copy.deepcopy(out)
         return out
     except ImportError:

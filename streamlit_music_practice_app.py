@@ -8990,7 +8990,18 @@ def _render_backing_return_source_action() -> None:
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     navigate_to_regular_backing(st.session_state, st_like=st)
-                    st.rerun()
+                    try:
+                        from music_app_rerun import request_app_rerun, request_app_stop
+
+                        request_app_rerun(
+                            st,
+                            st.session_state,
+                            reason="return_regular_backing_click",
+                            stage="post_restore",
+                        )
+                        request_app_stop(st, st.session_state, reason="return_regular_backing_stop")
+                    except ImportError:
+                        st.rerun()
             elif action.action_id == "return_song_catalog":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)

@@ -540,3 +540,151 @@ def test_shape_e_projects_dm_without_mutating_practice_key():
     assert shape_chart_key_for_concert("Dm", "E") == "Em"
     session = {"display_key": "Dm", "concert_key": "Dm", "guitar_capo_shape_key": "E"}
     assert session["display_key"] == "Dm"
+
+
+def test_bm_to_dm_same_rerun_concert_is_dm_not_fm():
+    """Practice Bm→Dm must transpose once — never Dm→Fm double transpose."""
+    import copy
+    from unittest.mock import patch
+
+    from music_theory import transpose_sections_dict
+    from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+    from songs.practice_key_state import set_practice_concert_key
+    from source_session_state import resolve_sbi_preview
+    from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+    from creative_key_sync import creative_progression_display
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    bm = {"Verse": ["Bm", "Em", "G", "A"]}
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "selected_song": {
+            "title": "Shape of You",
+            "key": "Bm",
+            "pick_key": pick,
+            "sections": copy.deepcopy(bm),
+        },
+        "home_sections": copy.deepcopy(bm),
+        "improv_song_concert_sections": copy.deepcopy(bm),
+        "instrument": "Guitar",
+        "guitar_capo_enabled": True,
+        "guitar_capo_shape_key": "E",
+        "catalog_session": {
+            "pick_key": pick,
+            "display_key": "Dm",
+            "original_key": "Bm",
+            "selected_song": {"title": "Shape of You", "key": "Bm", "sections": copy.deepcopy(bm)},
+            "sections": copy.deepcopy(bm),
+        },
+    }
+    set_practice_concert_key(session, "Dm", pick_key=pick)
+    ensure_song_practice_blob_for_active_song(session, practice_key="Dm", original_key="Bm")
+    with patch(
+        "songs.music_source.catalog_chart_sections_for_pick",
+        return_value=copy.deepcopy(bm),
+    ):
+        synced = sync_song_improv_sections_to_practice_key(session)
+        assert list(synced["Verse"][:4]) == ["Dm", "Gm", "Bb", "C"]
+        # Pollute home/selected with already-practice pitch (prior bug path).
+        session["home_sections"] = copy.deepcopy(synced)
+        session["selected_song"]["sections"] = copy.deepcopy(synced)
+        again = sync_song_improv_sections_to_practice_key(session)
+        assert list(again["Verse"][:4]) == ["Dm", "Gm", "Bb", "C"]
+        prev = resolve_sbi_preview(session)
+        first = list((list(prev["sections"].values()) or [[]])[0][:4])
+        assert first == ["Dm", "Gm", "Bb", "C"]
+        assert first[0] != "Fm"
+        disp = creative_progression_display(session, prev["sections"], concert_key="Dm")
+        assert disp["concert_line"].startswith("Dm")
+        assert "Fm" not in disp["concert_line"]
+        assert disp["chart_key"] == "Em"
+        assert disp["chart_line"].startswith("Em")
+        assert not disp["chart_line"].startswith("Gm")
+
+
+def test_song_improv_backing_does_not_retranspose_synced_sections():
+    """sections_dict_from_backing_context must not apply ctx.key after sync."""
+    import copy
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+    from songs.practice_key_state import set_practice_concert_key
+    from backing_context import sections_dict_from_backing_context
+    from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    bm = {"Verse": ["Bm", "Em", "G", "A"]}
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick, "sections": copy.deepcopy(bm)},
+        "home_sections": copy.deepcopy(bm),
+    }
+    set_practice_concert_key(session, "Dm", pick_key=pick)
+    ensure_song_practice_blob_for_active_song(session, practice_key="Dm", original_key="Bm")
+    with patch(
+        "songs.music_source.catalog_chart_sections_for_pick",
+        return_value=copy.deepcopy(bm),
+    ):
+        sync_song_improv_sections_to_practice_key(session)
+        ctx = SimpleNamespace(
+            source="song_improv",
+            concert_key="Dm",
+            display_key="Dm",
+            key="Bm",
+            song_title="Shape of You",
+            progression_label="Shape of You",
+            progression=[],
+            section="",
+            sections=[],
+            entry_mode="",
+            meter="4/4",
+            bpm=96,
+            style="",
+            groove="",
+            mood="",
+            groove_intensity="",
+            difficulty="",
+        )
+        out = sections_dict_from_backing_context(session, ctx)
+        assert list(out["Verse"][:4]) == ["Dm", "Gm", "Bb", "C"]
+
+
+def test_transpose_idempotent_when_sections_already_at_practice():
+    from music_theory import transpose_sections_dict
+    from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+    import copy
+    from unittest.mock import patch
+
+    pick = "Pop::X"
+    dm = {"Verse": ["Dm", "Gm", "Bb", "C"]}
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "selected_song": {"key": "Bm", "sections": copy.deepcopy(dm)},
+        "home_sections": copy.deepcopy(dm),
+    }
+    with patch(
+        "songs.music_source.catalog_chart_sections_for_pick",
+        return_value=copy.deepcopy(dm),
+    ):
+        out = sync_song_improv_sections_to_practice_key(session)
+        assert list(out["Verse"][:4]) == ["Dm", "Gm", "Bb", "C"]
+        # Explicit double-transpose would be Fm — prove we do not.
+        doubled = transpose_sections_dict(dm, "Bm", "Dm")
+        assert list(doubled["Verse"][:1]) == ["Fm"]
+
+
+def test_mission_chord_path_does_not_call_song_blob_key_sync():
+    """Regression: skip_parent_practice_key must not sync_session_practice_key_from_song_blob."""
+    import inspect
+    from music_workflow_legacy_projection import restore_workflow_blob_to_session
+
+    src = inspect.getsource(restore_workflow_blob_to_session)
+    assert "skip_mission_projection_sections" in src
+    assert 'sync_session_practice_key_from_song_blob(session, source=f"skip_mission_projection:' not in src

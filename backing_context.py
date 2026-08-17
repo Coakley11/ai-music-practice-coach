@@ -2087,7 +2087,10 @@ def apply_backing_context_to_session(
         except ImportError:
             pass
         jam_ctx = str(ctx.source or "") == "entry_jam"
-        if concert and not jam_ctx:
+        # song_improv / mission backing seals must never overwrite the sidebar Practice Key.
+        # Live identity (display_key / practice store) owns Practice Key; backing only consumes it.
+        backing_must_not_own_practice_key = str(ctx.source or "") in {"song_improv", "mission"}
+        if concert and not jam_ctx and not backing_must_not_own_practice_key:
             try:
                 from session_widget_safe import safe_assign_display_key
 
@@ -2098,6 +2101,13 @@ def apply_backing_context_to_session(
                     request_display_key(st_like, concert)
                 else:
                     session["display_key"] = concert
+        elif concert and not jam_ctx and backing_must_not_own_practice_key:
+            # Keep concert_key aligned for transport only when live practice already matches.
+            live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            if live:
+                session["concert_key"] = live
+            elif concert:
+                session["concert_key"] = concert
         elif concert and jam_ctx:
             try:
                 from session_widget_safe import safe_session_assign
@@ -2368,6 +2378,9 @@ def sections_dict_from_backing_context(
             ).strip() or "C"
     practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
+        # sync_song_improv_sections_to_practice_key already returns Practice-Key pitch.
+        # Never retranspose again using sealed ctx.key (catalog original) — that yields
+        # Dm→Fm when Practice is Dm and original was Bm.
         try:
             from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
@@ -2377,24 +2390,6 @@ def sections_dict_from_backing_context(
         if not sections and ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Song").strip() or "Song"
             sections = {label: list(ctx.progression)}
-        origin = str(ctx.key or ctx.concert_key or ctx.display_key or "").strip()
-        if not origin:
-            try:
-                from songs.music_source import resolve_catalog_song_for_pick
-                from backing_context import _current_pick_key
-
-                selected, _ = resolve_catalog_song_for_pick(session, _current_pick_key(session))
-                if isinstance(selected, dict):
-                    origin = str(selected.get("key") or selected.get("original_key") or "").strip()
-            except ImportError:
-                origin = str(ctx.concert_key or ctx.display_key or "").strip()
-        if sections and origin and origin != practice_key:
-            try:
-                from creative_key_sync import retranspose_generated_sections
-
-                sections = retranspose_generated_sections(sections, from_key=origin, to_key=practice_key)
-            except ImportError:
-                pass
     elif ctx.source == "custom_progression":
         sections, _ = _custom_progression_sections_at_concert_key(session, concert_key=practice_key)
         if not sections and ctx.progression:

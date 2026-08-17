@@ -2066,17 +2066,24 @@ def _sync_missions_session_from_improv_ctx(
     session_state.setdefault("instrument", improv_ctx.instrument)
     session_state.setdefault("level", improv_ctx.level)
     session_state.setdefault("focus", improv_ctx.focus)
-    if section_map and isinstance(section_map, list):
-        session_state["home_sections"] = {
-            str(label): list(chs) for label, chs in section_map if isinstance(chs, list)
-        }
-    elif section_map and isinstance(section_map, dict):
-        session_state["home_sections"] = {k: list(v) for k, v in section_map.items()}
-    elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
-        session_state.setdefault(
-            "home_sections",
-            {k: list(v) for k, v in improv_ctx.sections.items()},
-        )
+    # home_sections must stay catalog-original pitch. Concert/practice section maps
+    # must never be written back here — that caused Bm→Dm overlay to run twice (Fm).
+    if not session_state.get("home_sections"):
+        if section_map and isinstance(section_map, list):
+            session_state.setdefault(
+                "home_sections",
+                {str(label): list(chs) for label, chs in section_map if isinstance(chs, list)},
+            )
+        elif section_map and isinstance(section_map, dict):
+            session_state.setdefault(
+                "home_sections",
+                {k: list(v) for k, v in section_map.items()},
+            )
+        elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
+            session_state.setdefault(
+                "home_sections",
+                {k: list(v) for k, v in improv_ctx.sections.items()},
+            )
 
 
 def _stash_missions_generate_context(

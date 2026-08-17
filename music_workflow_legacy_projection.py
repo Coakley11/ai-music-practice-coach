@@ -186,12 +186,10 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         projected_sections = _concert_sections_for_legacy_projection(session, blob, owner=owner)
         if owner == "mission_jam" and skip_parent_practice_key:
             try:
-                from music_workflow_song_practice import (
-                    rehydrate_full_song_concert_sections,
-                    sync_session_practice_key_from_song_blob,
-                )
+                from music_workflow_song_practice import rehydrate_full_song_concert_sections
 
-                sync_session_practice_key_from_song_blob(session, source=f"skip_mission_projection:{mutation_source}")
+                # Chord/example paths must not project Practice Key from the song blob.
+                # Only refresh concert sections under the already-authoritative live key.
                 rehydrate_full_song_concert_sections(
                     session,
                     source=f"skip_mission_projection_sections:{mutation_source}",

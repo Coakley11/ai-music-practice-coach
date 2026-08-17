@@ -1,0 +1,26 @@
+{
+  "same_rerun_practice_dm": true,
+  "concert_dm_not_fm": true,
+  "written_em_not_gm": true,
+  "refresh_still_dm": true,
+  "after_key": "Dm",
+  "concert": "Concert Practice Key Progression: Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C",
+  "written": "Written Key Progression (Em): Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D",
+  "notes": [
+    "URL=http://127.0.0.1:8511",
+    "picked Shape of You dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nShape of You \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nShape of You \u00b7 Pop\\n\\nSong Original Key: Bm\\n\\n'",
+    "pick_ok=True",
+    "before_key='Dm'",
+    "reset_bm_key='Bm'",
+    "after_key='Dm'",
+    "fix-sbi analysis-mode switch=True",
+    "instrument Guitar=False",
+    "capo enabled=True",
+    "shape key E=True",
+    "practice_line=Practice concert key: Dm",
+    "concert=Concert Practice Key Progression: Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C",
+    "written=Written Key Progression (Em): Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D",
+    "has_shape_of_you=True",
+    "refresh_concert=Concert Practice Key Progression: Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C"
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "steps": [
+    {
+      "name": "rehydrate_alone",
+      "improv_first": [
+        "Dm",
+        "Gm",
+        "Bb",
+        "C"
+      ]
+    },
+    {
+      "name": "reconcile",
+      "token": "Dm",
+      "improv_first": [
+        "Dm",
+        "Gm",
+        "Bb",
+        "C"
+      ]
+    }
+  ],
+  "before": {
+    "key": "Bm",
+    "first": [
+      "Bm",
+      "Em",
+      "G",
+      "A"
+    ]
+  },
+  "after_callback": {
+    "display_key": "Dm",
+    "blob": "Dm",
+    "store": "Dm",
+    "blob_section_first": [
+      "Bm",
+      "Em",
+      "G",
+      "A"
+    ],
+    "improv_first": [
+      "Bm",
+      "Em",
+      "G",
+      "A"
+    ]
+  },
+  "after_hydrate": {
+    "display_key": "Dm",
+    "blob": "Dm",
+    "synced_first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "inferred": "Dm",
+    "dest": "Dm",
+    "overlaid_first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "wrong_spelled_Bm_first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "sbi_key": "Dm",
+    "sbi_first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "progression_display": {
+      "concert_key": "Dm",
+      "chart_key": "Em",
+      "concert_line": "Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C \u00b7 Dm \u00b7 Gm \u00b7 Bb \u00b7 C",
+      "chart_line": "Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D \u00b7 Em \u00b7 Am \u00b7 C \u00b7 D",
+      "chart_label": "Guitar shape chart"
+    }
+  },
+  "idempotence": {
+    "after_first_sync": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "after_second_sync": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "after_overlay": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "sbi_first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "sbi_key": "Dm"
+  },
+  "infer_on_dm_with_bm_fallback": {
+    "inferred": "Dm",
+    "overlay_from_bm_fallback": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ]
+  },
+  "polluted_selected_sections": {
+    "first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "second": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "sbi": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ]
+  },
+  "song_improv_retranspose": {
+    "first": [
+      "Dm",
+      "Gm",
+      "Bb",
+      "C"
+    ],
+    "note": "ctx.key=Bm + sync already Dm should become Fm if bug"
+  }
+}

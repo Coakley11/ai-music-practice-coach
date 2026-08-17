@@ -211,6 +211,7 @@ def resolve_backing_bpm_for_slider(
         st.session_state[slider_key] = slider_val
         st.session_state[BPM_WIDGET_KEY] = slider_val
         st.session_state["bpm"] = slider_val
+        st.session_state["backing_track_bpm"] = slider_val
         return slider_val
 
     if not song_just_reset:
@@ -239,6 +240,10 @@ def sync_backing_bpm_from_slider(st: Any, *, slider_bpm: int) -> int:
     st.session_state[BPM_WIDGET_KEY] = bpm
     st.session_state["bpm"] = bpm
     st.session_state["backing_track_bpm"] = bpm
+    # Keep the active per-sync slider owner identical to Current BPM / banner.
+    sync_id = str(st.session_state.get("_active_bpm_sync_id") or "").strip()
+    if sync_id:
+        st.session_state[backing_bpm_slider_widget_key(sync_id)] = bpm
     try:
         from backing_play_session import capture_backing_play_session_overrides
 
@@ -527,6 +532,8 @@ def canonicalize_backing_defaults_for_song(
                             live_meter = str(st.session_state.get(BACKING_METER_KEY) or "").strip()
                         if live_meter:
                             norm_meter = normalize_time_signature(live_meter)
+                        # Keep per-sync slider key aligned with the same Current BPM owner.
+                        st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = int(norm_bpm)
                     else:
                         norm_bpm = int(creative_ctx.bpm or norm_bpm)
                         st.session_state[backing_bpm_slider_widget_key(creative_sync_id)] = norm_bpm

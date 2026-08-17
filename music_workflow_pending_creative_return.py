@@ -281,6 +281,17 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
                 st_module.stop()
             except Exception:
                 pass
+    else:
+        # Still stop this backing render so destination cannot wait for a second click.
+        try:
+            from music_app_rerun import request_app_stop
+
+            request_app_stop(st_module, session, reason="creative_return_force_stop")
+        except ImportError:
+            try:
+                st_module.stop()
+            except Exception:
+                pass
 
 
 __all__ = [

@@ -1034,6 +1034,21 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
 
 
 def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int = 100) -> int:
+    def _mirror_slider(bpm_val: int) -> None:
+        sync_id = str(
+            session.get("_active_bpm_sync_id")
+            or session.get("_backing_trace_sync_id")
+            or ""
+        ).strip()
+        if not sync_id:
+            return
+        try:
+            from songs.playback_defaults import backing_bpm_slider_widget_key
+
+            session[backing_bpm_slider_widget_key(sync_id)] = int(bpm_val)
+        except ImportError:
+            pass
+
     try:
         from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
 
@@ -1041,6 +1056,7 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
             resolved = int(effective_backing_play_overrides(session).get("bpm") or 0)
             if resolved > 0:
                 session["backing_track_bpm"] = resolved
+                _mirror_slider(resolved)
                 return resolved
     except ImportError:
         pass
@@ -1049,10 +1065,12 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
         canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
         if canon_bpm is not None:
             session["backing_track_bpm"] = int(canon_bpm)
+            _mirror_slider(int(canon_bpm))
             return int(canon_bpm)
     bpm = normalize_backing_bpm(session.get("backing_track_bpm"), default=default_bpm)
     if bpm is not None and (is_backing_user_dirty(session) or _should_seed_widgets_from_canonical(session)):
         session["backing_track_bpm"] = int(bpm)
+        _mirror_slider(int(bpm))
     return int(bpm or default_bpm)
 
 

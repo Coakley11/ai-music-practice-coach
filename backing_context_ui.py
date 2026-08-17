@@ -289,7 +289,12 @@ def render_backing_creative_context_card(
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
     meter = html.escape(str(live_meter or applied_meter or state.meter or ctx.meter or "4/4"))
-    bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
+    live_bpm = 0
+    try:
+        live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+    except (TypeError, ValueError):
+        live_bpm = 0
+    bpm = int(live_bpm or state.applied_bpm or applied_bpm or ctx.bpm or 100)
     mood = str(ctx.mood or "").strip()
     groove_intensity = str(ctx.groove_intensity or "").strip()
     groove_display = str(ctx.groove or "").strip()
@@ -302,6 +307,34 @@ def render_backing_creative_context_card(
     difficulty = str(ctx.difficulty or "").strip()
 
     display_sections = state.chart_sections or state.concert_sections
+    # Prefer live Backing section multiselect over sealed ctx snapshot (same-rerun).
+    try:
+        from backing_track_state import resolve_selected_section_names
+
+        live_names = resolve_selected_section_names(
+            session,
+            list((display_sections or {}).keys())
+            or list((state.concert_sections or {}).keys())
+            or list((getattr(ctx, "sections", None) or [])),
+        )
+        if live_names and isinstance(display_sections, dict) and display_sections:
+            filtered = {
+                name: list(display_sections[name])
+                for name in live_names
+                if name in display_sections
+            }
+            if filtered:
+                display_sections = filtered
+        elif live_names and isinstance(state.concert_sections, dict):
+            filtered = {
+                name: list(state.concert_sections[name])
+                for name in live_names
+                if name in state.concert_sections
+            }
+            if filtered:
+                display_sections = filtered
+    except ImportError:
+        pass
     if ctx.source == "mission":
         if ctx.progression:
             progression_line = html.escape(" – ".join(ctx.progression))
