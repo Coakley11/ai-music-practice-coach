@@ -227,7 +227,7 @@ Karaoke Performance Setlist (voice): queue on Song Selection, persisted, session
 
 ## Current Priorities
 
-**Active:** Practice Focus System — Phase 3A on [plan](./plans/2026-08-15-practice-focus-system.md) / `feature/practice-focus-system`.
+**Active (park checkpoint):** Practice Focus System — Phase 1–3B on [plan](./plans/2026-08-15-practice-focus-system.md) / `feature/practice-focus-system` @ `5819242`. Next: resume Creative/Backing @ `44403d4`.
 
 **Parked:** Creative/Backing stabilization @ `44403d4`.
 
@@ -247,7 +247,7 @@ See [Major completed milestones](#major-completed-milestones) and [music_app_com
 
 ## Notes
 
-- **Practice Focus (2026-08-16):** Phase 3A complete on `feature/practice-focus-system` (base `origin/dev` `870a365`). Backing Focus coaching is optional (documented). Motif Sequence full-staff feature queued in plan. Parked Creative/Backing @ `44403d4`. Do not merge Practice Focus to `dev` until approved.
+- **Practice Focus (2026-08-17):** Phase 1–3B complete on `feature/practice-focus-system` @ `5819242` — clean park checkpoint (not merged to `dev`). Backing Focus coaching remains optional/deferred. Motif Sequence full-staff feature remains queued. Resume Creative/Backing @ `44403d4` next.
 - When asking Cursor for a **roadmap**, **feature plan**, or **implementation plan**, agents should update all four `cursor-prompts/music_app_*.md` files (see `.cursor/rules/music-app-roadmap-docs.mdc`).
 - **Phase 2A** remains **pending live acceptance** on **`227a55b`** until the deployed Missions/Upload checklist passes.
 - **P0 queued (2026-08-04):** [mission handoff persistence](./plans/2026-08-04-mission-take-upload-analysis-persistence.md), [navigation speed pass](./plans/2026-08-04-music-navigation-speed-pass.md) — implement in isolated commits; do not regress Phase 1 Items 1–8 or Item 8 diagnostics.
