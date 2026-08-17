@@ -1,0 +1,5 @@
+# Old missing Focus
+Practice Focus: Not recorded
+focus field: ''
+has snapshot: False
+current selector ignored: Articulation

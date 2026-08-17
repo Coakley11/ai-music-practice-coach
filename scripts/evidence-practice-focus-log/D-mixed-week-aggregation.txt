@@ -1,0 +1,19 @@
+# Mixed week Focus aggregation
+exact counts: {'Tone': 1, 'Phrasing': 1, 'Strumming': 1, 'Articulation': 1}
+minutes: {'Strumming': 25, 'Tone': 20, 'Articulation': 20, 'Phrasing': 15}
+pairs: {'Saxophone · Tone': 1, 'Saxophone · Phrasing': 1, 'Guitar · Strumming': 1, 'Saxophone · Articulation': 1}
+dominant: Tone
+
+Historical Practice Focus context (past sessions are frozen; do not rewrite them):
+- Sessions in period: 4
+- Recorded minutes (entries with duration only): 80 across 4 sessions; 0 session(s) lack duration.
+- Exact Practice Focus distribution (sessions): Tone (1), Phrasing (1), Strumming (1), Articulation (1)
+- Exact Focus recorded minutes: Strumming (25 min), Tone (20 min), Articulation (20 min), Phrasing (15 min)
+- Instrument · Focus pairings: Saxophone · Tone (1), Saxophone · Phrasing (1), Guitar · Strumming (1), Saxophone · Articulation (1)
+- Current Practice Focus (for next-step recommendations only): Articulation
+- Distinguish past vs present: historical period was mostly **Tone**; current goal is **Articulation**. Interpret past sessions as Tone.
+- Meaning of historical Focus **Tone**: Emphasize air support, stable embouchure, resonance, and register consistency.; Avoid pinched tone; listen for even vibrato only after the core sound is stable.; consistent sound quality; stable air or contact
+- User notes under **Tone**: Long tones + scale work | tone became thinner in upper register
+- Meaning of historical Focus **Phrasing**: phrase length; breathing or picking space; question and answer shapes; resolution
+- User notes under **Phrasing**: phrase shapes
+- Do not invent causal % improvements or unsupported measurements. Prefer session counts, recorded minutes, and the user's own notes.

@@ -1,0 +1,10 @@
+# Current vs historical
+dominant historical: Tone
+current: Articulation
+differs: True
+activity:
+- You logged **4 sessions** totaling about **80** minutes.
+- Exact Practice Focus this period: **Tone** (1), **Phrasing** (1), **Strumming** (1), **Articulation** (1).
+- Recorded minutes by Focus: **Strumming** (25 min), **Tone** (20 min), **Articulation** (20 min), **Phrasing** (15 min).
+- Instrument · Focus: **Saxophone · Tone** (1), **Saxophone · Phrasing** (1), **Guitar · Strumming** (1), **Saxophone · Articulation** (1).
+- Current Practice Focus is **Articulation**, while most sessions in this period were **Tone**-focused — past sessions stay classified as Tone.

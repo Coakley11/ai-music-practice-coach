@@ -1,0 +1,5 @@
+# A Sax Tone historical entry
+Practice Focus: Tone
+focus=Tone
+focus_area=tone
+snapshot={'schema_version': 1, 'instrument': 'Saxophone', 'instrument_display': 'Saxophone', 'instrument_subtype': '', 'practice_focus': 'Tone', 'focus_category': 'tone', 'captured_at': ''}

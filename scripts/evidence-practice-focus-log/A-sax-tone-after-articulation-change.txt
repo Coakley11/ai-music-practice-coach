@@ -1,0 +1,4 @@
+# After current Focus → Articulation
+current session focus: Articulation
+saved caption: Practice Focus: Tone
+saved focus: Tone

@@ -924,19 +924,35 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
         prefill["level"] = str(ss.get("level") or "").strip()
         legacy_focus = str(ss.get("focus") or "").strip()
 
-    prefill["focus_area"] = _normalize_focus_area(None, legacy_focus=legacy_focus)
-    prefill["focus"] = legacy_focus
-    prefill["practice_focus"] = legacy_focus
+    # Prefer exact session focus string (same-rerun + custom labels).
+    # get_active_focus clamps unknown labels; new logs must preserve the exact string.
+    exact_focus = str(ss.get("focus") or "").strip() or legacy_focus
+    prefill["focus_area"] = _normalize_focus_area(None, legacy_focus=exact_focus)
+    prefill["focus"] = exact_focus
+    prefill["practice_focus"] = exact_focus
     try:
-        from practice_focus_snapshot import capture_practice_focus_snapshot
+        from practice_focus_history import freeze_focus_for_new_log_entry
 
-        snap = capture_practice_focus_snapshot(ss)
-        prefill["practice_focus_snapshot"] = snap
-        if snap.get("practice_focus"):
-            prefill["practice_focus"] = str(snap.get("practice_focus") or legacy_focus)
+        frozen = freeze_focus_for_new_log_entry(ss)
+        if frozen.get("practice_focus_snapshot"):
+            prefill["practice_focus_snapshot"] = frozen["practice_focus_snapshot"]
+        if frozen.get("practice_focus"):
+            prefill["practice_focus"] = str(frozen.get("practice_focus") or exact_focus)
             prefill["focus"] = prefill["practice_focus"]
+            prefill["focus_area"] = _normalize_focus_area(
+                None, legacy_focus=prefill["practice_focus"]
+            )
     except ImportError:
-        pass
+        try:
+            from practice_focus_snapshot import capture_practice_focus_snapshot
+
+            snap = capture_practice_focus_snapshot(ss)
+            prefill["practice_focus_snapshot"] = snap
+            if snap.get("practice_focus"):
+                prefill["practice_focus"] = str(snap.get("practice_focus") or exact_focus)
+                prefill["focus"] = prefill["practice_focus"]
+        except ImportError:
+            pass
 
     try:
         from practice_state import gather_practice_filters
@@ -1029,7 +1045,13 @@ def update_practice_log_entry(
     target = next((e for e in visible if e.get("session_id") == sid), None)
     if target is None:
         raise KeyError(sid)
-    merged = {**target, **(updates or {}), "session_id": sid}
+    try:
+        from practice_focus_history import preserve_historical_focus_on_update
+
+        safe_updates = preserve_historical_focus_on_update(target, updates)
+    except ImportError:
+        safe_updates = dict(updates or {})
+    merged = {**target, **safe_updates, "session_id": sid}
     merged["updated_at"] = _utc_now_iso()
     merged.setdefault("created_at", target.get("created_at") or merged["updated_at"])
     updated = migrate_practice_log_entry(merged)

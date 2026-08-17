@@ -638,8 +638,14 @@ def render_session_list(
         mins = int(entry.get("duration_minutes") or entry.get("minutes") or 0)
         log_date = _parse_log_date(entry.get("date"))
         date_label = log_date.strftime("%b %d, %Y") if log_date else html.escape(str(entry.get("date") or ""))
-        focus = html.escape(str(entry.get("focus_area") or entry.get("focus") or ""))
         ptype = html.escape(str(entry.get("practice_type") or entry.get("mode") or ""))
+        try:
+            from practice_focus_history import log_entry_focus_caption
+
+            focus_caption = log_entry_focus_caption(entry)
+        except ImportError:
+            exact = str(entry.get("practice_focus") or entry.get("focus") or "").strip()
+            focus_caption = f"Practice Focus: {exact}" if exact else "Practice Focus: Not recorded"
 
         with st.expander(f"{date_label} · {song} · {mins} min · {instrument}", expanded=False):
             bpm_label = html.escape(format_bpm_display(entry))
@@ -651,7 +657,7 @@ def render_session_list(
             st.markdown(
                 f"{keys_line}  \n"
                 f"**BPM:** {bpm_label} · **Section:** {section_label}  \n"
-                f"**Focus:** {focus} · **Type:** {ptype}"
+                f"**{html.escape(focus_caption)}** · **Type:** {ptype}"
             )
             if entry.get("notes") or entry.get("practice"):
                 st.markdown(f"**Notes:** {entry.get('notes') or entry.get('practice')}")

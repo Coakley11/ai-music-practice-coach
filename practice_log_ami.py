@@ -50,7 +50,7 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
         "display_key_label": PRACTICE_CONCERT_KEY_LABEL,
         "bpm": entry.get("bpm"),
         "section_practiced": entry.get("section_practiced"),
-        "focus_area": entry.get("focus_area") or entry.get("focus"),
+        "focus_area": entry.get("focus_area"),
         "practice_type": entry.get("practice_type") or entry.get("mode"),
         "notes": _entry_notes(entry),
         "what_went_well": entry.get("what_went_well"),
@@ -60,6 +60,13 @@ def _compact_session(entry: dict[str, Any]) -> dict[str, Any]:
         "tags": entry.get("tags") or [],
         "source_page": entry.get("source_page"),
     }
+    try:
+        from practice_focus_history import compact_focus_fields_for_ami
+
+        out.update(compact_focus_fields_for_ami(entry))
+    except ImportError:
+        if entry.get("focus") or entry.get("practice_focus"):
+            out["practice_focus"] = entry.get("practice_focus") or entry.get("focus")
     shape = str(entry.get("guitar_shape_key") or "").strip()
     if shape or is_guitar_instrument(instrument):
         out["guitar_shape_key"] = shape or entry.get("guitar_shape_key")
@@ -234,6 +241,15 @@ def build_practice_log_ami_payload(
         },
         "user_request": "analyze_practice",
     }
+    # Keep historical Focus facts after summary merge
+    if synthesized.get("practice_focus_history"):
+        result["practice_focus_history"] = synthesized["practice_focus_history"]
+    if synthesized.get("practice_focus_history_block"):
+        result["practice_focus_history_block"] = synthesized["practice_focus_history_block"]
+    if synthesized.get("current_practice_focus"):
+        result["current_practice_focus"] = synthesized["current_practice_focus"]
+        practice_log_summary["current_practice_focus"] = synthesized["current_practice_focus"]
+        result["practice_log_summary"] = practice_log_summary
     from practice_history_synthesis import build_log_page_analysis_summary, build_practice_progress_report
 
     result["progress_report"] = build_practice_progress_report(result)

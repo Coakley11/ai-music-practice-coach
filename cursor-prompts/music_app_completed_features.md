@@ -24,6 +24,16 @@
 
 ## Completed Features
 
+### Practice Focus System — Phase 2C Practice Log / Practice Coach (2026-08-16)
+
+- [x] New log entries freeze exact Practice Focus; old rows stay missing when missing
+- [x] Weekly Analyze My Practice receives structured Focus history (exact vs coarse vs missing)
+- [x] Current Focus informs next steps without rewriting historical interpretation
+- [x] Log cards show frozen historical Focus captions
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`)
+- Tests: `tests/test_practice_focus_phase2c_log.py`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
+
 ### Practice Focus System — Phase 2B Upload / AI Coach (2026-08-16)
 
 - [x] Snapshot Practice Focus at analysis start; historical results stay immutable

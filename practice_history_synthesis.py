@@ -552,7 +552,7 @@ def compact_practice_log_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at"),
         "instrument": row.get("instrument"),
         "song_title": row.get("active_song") or row.get("song"),
-        "focus_area": row.get("focus_area") or row.get("focus"),
+        "focus_area": row.get("focus_area"),
         "duration_minutes": row.get("duration_minutes"),
         "notes": row.get("notes"),
         "practice_rating": round(rating, 2) if rating is not None else None,
@@ -563,6 +563,13 @@ def compact_practice_log_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
         "linked_tone_take_ids": row.get("linked_tone_take_ids") or [],
         "linked_export_ids": row.get("linked_export_ids") or [],
     }
+    try:
+        from practice_focus_history import compact_focus_fields_for_ami
+
+        out.update(compact_focus_fields_for_ami(row))
+    except ImportError:
+        if row.get("focus"):
+            out["practice_focus"] = row.get("focus")
     if row.get("linked_upload_analysis_id"):
         ids = list(out.get("linked_upload_analysis_ids") or [])
         lid = str(row.get("linked_upload_analysis_id"))
@@ -595,14 +602,20 @@ def _practice_time_by_key(entries: list[dict[str, Any]], key: str) -> dict[str, 
     return dict(sorted(totals.items(), key=lambda x: x[1], reverse=True)[:8])
 
 
-def build_practice_log_ami_summary(entries: list[dict[str, Any]], *, window_days: int) -> dict[str, Any]:
+def build_practice_log_ami_summary(
+    entries: list[dict[str, Any]],
+    *,
+    window_days: int,
+    current_focus: str = "",
+    current_instrument: str = "",
+) -> dict[str, Any]:
     from practice_log_state import compute_practice_log_summary, filter_practice_log_entries
 
     visible = filter_practice_log_entries(entries, {"window_days": window_days}) if window_days > 0 else entries
     summary = compute_practice_log_summary(entries, window_days=window_days)
     recent = [compact_practice_log_for_ami(e) for e in visible[:30]]
     recent = [r for r in recent if r]
-    return {
+    out: dict[str, Any] = {
         "entry_count_total": summary.get("session_count", len(recent)),
         "recent_entries": recent,
         "focus_area_counts": _focus_area_counts(visible),
@@ -610,6 +623,25 @@ def build_practice_log_ami_summary(entries: list[dict[str, Any]], *, window_days
         "practice_time_by_song": _practice_time_by_key(visible, "active_song"),
         "window_days": window_days,
     }
+    try:
+        from practice_focus_history import aggregate_practice_focus_history
+
+        history = aggregate_practice_focus_history(
+            visible,
+            window_days=0,
+            current_focus=current_focus,
+            current_instrument=current_instrument,
+        )
+        out["practice_focus_history"] = history
+        out["exact_focus_session_counts"] = history.get("exact_focus_session_counts")
+        out["exact_focus_recorded_minutes"] = history.get("exact_focus_recorded_minutes")
+        out["instrument_focus_session_counts"] = history.get("instrument_focus_session_counts")
+        out["sessions_missing_exact_focus"] = history.get("sessions_missing_exact_focus")
+        out["sessions_missing_duration"] = history.get("sessions_missing_duration")
+        out["current_practice_focus"] = history.get("current_practice_focus")
+    except ImportError:
+        pass
+    return out
 
 
 def _recurring_items(analyses: list[dict[str, Any]], field: str) -> list[str]:
@@ -849,14 +881,66 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         activity_lines.append(
             f"You logged **{_plural(int(pl['entry_count_total']), 'session')}** totaling about **{mins}** minutes."
         )
-    if pl.get("focus_area_counts"):
+    focus_history = (
+        payload.get("practice_focus_history")
+        if isinstance(payload.get("practice_focus_history"), dict)
+        else pl.get("practice_focus_history")
+        if isinstance(pl.get("practice_focus_history"), dict)
+        else {}
+    )
+    exact_counts = focus_history.get("exact_focus_session_counts") or pl.get("exact_focus_session_counts") or {}
+    if exact_counts:
+        focus_labels = []
+        for key, count in list(exact_counts.items())[:4]:
+            label = str(key).strip()
+            if label:
+                focus_labels.append(f"**{label}** ({count})")
+        if focus_labels:
+            activity_lines.append(f"Exact Practice Focus this period: {', '.join(focus_labels)}.")
+        recorded_mins = focus_history.get("exact_focus_recorded_minutes") or pl.get("exact_focus_recorded_minutes") or {}
+        if recorded_mins:
+            min_bits = [f"**{k}** ({v} min)" for k, v in list(recorded_mins.items())[:4]]
+            activity_lines.append(f"Recorded minutes by Focus: {', '.join(min_bits)}.")
+        pairs = focus_history.get("instrument_focus_session_counts") or pl.get("instrument_focus_session_counts") or {}
+        if pairs:
+            pair_bits = [f"**{k}** ({v})" for k, v in list(pairs.items())[:4]]
+            activity_lines.append(f"Instrument · Focus: {', '.join(pair_bits)}.")
+        missing_exact = int(focus_history.get("sessions_missing_exact_focus") or pl.get("sessions_missing_exact_focus") or 0)
+        if missing_exact:
+            activity_lines.append(
+                f"**{missing_exact}** session(s) have no exact Practice Focus recorded."
+            )
+        missing_dur = int(focus_history.get("sessions_missing_duration") or pl.get("sessions_missing_duration") or 0)
+        if missing_dur:
+            activity_lines.append(
+                f"**{missing_dur}** session(s) lack recorded duration (minutes not invented)."
+            )
+    elif pl.get("focus_area_counts"):
         focus_labels = []
         for key, count in list(pl["focus_area_counts"].items())[:4]:
             label = _normalize_focus_token(key) or str(key).strip()
             if label:
                 focus_labels.append(f"**{label}** ({count})")
         if focus_labels:
-            activity_lines.append(f"Top focus areas: {', '.join(focus_labels)}.")
+            activity_lines.append(
+                f"Coarse focus areas (exact Practice Focus not always recorded): {', '.join(focus_labels)}."
+            )
+    current_focus = str(
+        payload.get("current_practice_focus")
+        or focus_history.get("current_practice_focus")
+        or pl.get("current_practice_focus")
+        or ""
+    ).strip()
+    dominant = str(focus_history.get("dominant_exact_focus") or "").strip()
+    if current_focus and dominant and current_focus != dominant:
+        activity_lines.append(
+            f"Current Practice Focus is **{current_focus}**, while most sessions in this period "
+            f"were **{dominant}**-focused — past sessions stay classified as {dominant}."
+        )
+    elif current_focus and not dominant:
+        activity_lines.append(
+            f"Current Practice Focus is **{current_focus}** (used for next-step recommendations)."
+        )
     if not activity_lines:
         activity_lines.append("No practice log entries in the current window.")
 
@@ -897,7 +981,14 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         tone_lines.append("No tone/tuner takes in the current window.")
 
     cross_lines: list[str] = []
-    focus_tone = any("tone" in str(k).lower() for k in (pl.get("focus_area_counts") or {}))
+    exact_counts = (
+        (payload.get("practice_focus_history") or {}).get("exact_focus_session_counts")
+        if isinstance(payload.get("practice_focus_history"), dict)
+        else {}
+    ) or pl.get("exact_focus_session_counts") or {}
+    focus_tone = any("tone" in str(k).lower() for k in exact_counts) or any(
+        "tone" in str(k).lower() for k in (pl.get("focus_area_counts") or {})
+    )
     if focus_tone and th.get("tone_take_count_total"):
         cross_lines.append(
             f"Your logs emphasize **tone** and you saved **{_plural(int(th['tone_take_count_total']), 'tone take')}** — "
@@ -911,6 +1002,16 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         cross_lines.append("Link practice-log focus areas to saved analyses and tone takes as you build history.")
 
     improvements: list[str] = []
+    notes_by_focus = (
+        (payload.get("practice_focus_history") or {}).get("notes_by_exact_focus")
+        if isinstance(payload.get("practice_focus_history"), dict)
+        else {}
+    ) or {}
+    for focus_label, notes in list(notes_by_focus.items())[:3]:
+        if notes:
+            improvements.append(
+                f"Under historical Focus **{focus_label}**, your notes include: {notes[0][:160]}"
+            )
     for trend in tone_trends:
         delta = _coerce_float(trend.get("mean_cents_delta") if isinstance(trend, dict) else None)
         if delta is not None and abs(delta) >= 3 and delta < 0 and abs(delta) <= _FAR_CENTS_THRESHOLD:
@@ -985,6 +1086,7 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
     next_plan = _build_thirty_minute_plan(payload)
 
     evidence = _format_evidence_used_line(payload)
+    history_block = str(payload.get("practice_focus_history_block") or "").strip()
 
     return {
         "title": "Analyze My Practice — Progress Report",
@@ -997,6 +1099,17 @@ def build_practice_progress_report(payload: dict[str, Any]) -> dict[str, Any]:
         "needs_work": needs_work[:8],
         "recommended_next_practice_plan": next_plan[:6],
         "evidence_used": evidence,
+        "practice_focus_history": (
+            payload.get("practice_focus_history")
+            if isinstance(payload.get("practice_focus_history"), dict)
+            else pl.get("practice_focus_history")
+        ),
+        "practice_focus_history_block": history_block,
+        "current_practice_focus": str(
+            payload.get("current_practice_focus")
+            or (payload.get("practice_focus_history") or {}).get("current_practice_focus")
+            or ""
+        ).strip(),
         "data_safety_confirmation": {
             "raw_audio_excluded": safety.get("raw_audio_excluded", True),
             "base64_excluded": safety.get("base64_excluded", True),
@@ -1026,6 +1139,15 @@ def format_progress_report_markdown(report: dict[str, Any]) -> str:
         ("Evidence Used", report.get("evidence_used")),
     ]
     lines = [f"# {report.get('title', 'Analyze My Practice — Progress Report')}", ""]
+    hist_block = str(report.get("practice_focus_history_block") or "").strip()
+    if hist_block:
+        lines.append("## Historical Practice Focus")
+        lines.append(hist_block)
+        lines.append("")
+    current = str(report.get("current_practice_focus") or "").strip()
+    if current:
+        lines.append(f"_Current Practice Focus (next steps): **{current}**_")
+        lines.append("")
     for heading, body in sections:
         if isinstance(body, list):
             items = [line for line in (_clean(item) for item in body) if line]
@@ -1109,6 +1231,22 @@ def _build_coach_executive_summary(payload: dict[str, Any]) -> str:
         minute_part = f" totaling {mins} minutes" if mins else ""
         sentences.append(f"You logged {entry_count} practice {session_word}{minute_part}.")
 
+    hist = payload.get("practice_focus_history") if isinstance(payload.get("practice_focus_history"), dict) else {}
+    exact_counts = hist.get("exact_focus_session_counts") or pl.get("exact_focus_session_counts") or {}
+    if exact_counts:
+        top_bits = [f"{k} ({v})" for k, v in list(exact_counts.items())[:3]]
+        sentences.append(f"Exact Practice Focus distribution: {', '.join(top_bits)}.")
+    current_focus = str(
+        payload.get("current_practice_focus") or hist.get("current_practice_focus") or ""
+    ).strip()
+    dominant = str(hist.get("dominant_exact_focus") or "").strip()
+    if current_focus and dominant and current_focus != dominant:
+        sentences.append(
+            f"Most sessions in this period were {dominant}-focused; your current Practice Focus is {current_focus}."
+        )
+    elif current_focus:
+        sentences.append(f"Your current Practice Focus is {current_focus}.")
+
     if top_song:
         inst_line = _executive_practice_instrument_line(top_song, pl, payload=payload)
         if inst_line:
@@ -1159,7 +1297,7 @@ def _build_coach_executive_summary(payload: dict[str, Any]) -> str:
         return (
             "Log practice sessions and save upload analyses or tone takes to build a richer progress report."
         )
-    return " ".join(sentences[:3])
+    return " ".join(sentences[:5])
 
 
 def _build_thirty_minute_plan(payload: dict[str, Any]) -> list[str]:
@@ -1171,14 +1309,38 @@ def _build_thirty_minute_plan(payload: dict[str, Any]) -> list[str]:
         next(iter(pl.get("practice_time_by_instrument") or {}), ""),
         payload=payload,
     )
+    hist = payload.get("practice_focus_history") if isinstance(payload.get("practice_focus_history"), dict) else {}
+    current_focus = str(
+        payload.get("current_practice_focus") or hist.get("current_practice_focus") or ""
+    ).strip()
+    dominant = str(hist.get("dominant_exact_focus") or "").strip()
     note = ""
     if tone_trends and isinstance(tone_trends[0], dict):
         note = _format_written_note(tone_trends[0].get("note"))
     note_phrase = f"{top_inst} {note}".strip() if note else top_inst
-    plan: list[str] = [
-        f"5 min — Long tones: {note_phrase} with metronome. Focus on steady air and stable center pitch.",
-        "8 min — Pitch/intonation drill: Play slow scale tones. Hold each note for 4 beats and listen for center pitch.",
-    ]
+    plan: list[str] = []
+    if current_focus:
+        try:
+            from practice_focus_policy import resolve_focus_profile
+
+            profile = resolve_focus_profile(top_inst or current_focus, current_focus)
+            for tip in list(profile.practice_suggestions)[:2]:
+                text = str(tip).strip()
+                if text:
+                    plan.append(f"8 min — {text}")
+        except ImportError:
+            pass
+        if dominant and dominant != current_focus:
+            plan.insert(
+                0,
+                f"Bridge from historical **{dominant}** into current Focus **{current_focus}** — "
+                "keep what worked last period while shifting today's goal.",
+            )
+    if not plan:
+        plan = [
+            f"5 min — Long tones: {note_phrase} with metronome. Focus on steady air and stable center pitch.",
+            "8 min — Pitch/intonation drill: Play slow scale tones. Hold each note for 4 beats and listen for center pitch.",
+        ]
     if top_song:
         plan.append(
             f"10 min — {top_song} section pass: Record one short section of {top_song}, not the whole song. "
@@ -1478,7 +1640,25 @@ def build_practice_history_ami_payload(
         except Exception:
             tone_summary = {}
 
-    practice_log_summary = build_practice_log_ami_summary(entries, window_days=window_days)
+    current_focus = ""
+    current_instrument = ""
+    try:
+        from practice_setup_globals import get_active_focus, get_active_instrument
+
+        current_focus = str(session_state.get("focus") or get_active_focus(session_state) or "").strip()
+        current_instrument = str(
+            session_state.get("instrument") or get_active_instrument(session_state) or ""
+        ).strip()
+    except ImportError:
+        current_focus = str(session_state.get("focus") or "").strip()
+        current_instrument = str(session_state.get("instrument") or "").strip()
+
+    practice_log_summary = build_practice_log_ami_summary(
+        entries,
+        window_days=window_days,
+        current_focus=current_focus,
+        current_instrument=current_instrument,
+    )
 
     payload: dict[str, Any] = {
         "practice_log_summary": practice_log_summary,
@@ -1487,7 +1667,18 @@ def build_practice_history_ami_payload(
         "multitrack_export_summary": export_summary,
         "user_request": "analyze_practice",
         "generated_at": _utc_now_iso(),
+        "current_practice_focus": current_focus,
+        "current_instrument": current_instrument,
     }
+    try:
+        from practice_focus_history import compact_practice_focus_coach_block
+
+        hist = practice_log_summary.get("practice_focus_history")
+        if isinstance(hist, dict):
+            payload["practice_focus_history"] = hist
+            payload["practice_focus_history_block"] = compact_practice_focus_coach_block(hist)
+    except ImportError:
+        pass
     payload["safety_checks"] = ami_payload_safety_checks(payload)
     payload["diagnostics"] = ami_payload_diagnostics(payload)
     payload["progress_report"] = build_practice_progress_report(payload)

@@ -1,0 +1,4 @@
+# Guitar Strumming
+Practice Focus: Strumming
+exact=Strumming
+coarse=timing/rhythm
