@@ -1,0 +1,3 @@
+# Tone focus + severe timing
+Your current focus is **Tone**, so next steps emphasize sound stability for **Saxophone**. This Multitrack path measures alignment and balance between layers; it does not invent a resonance or embouchure score. Baseline ensemble. A serious timing/alignment issue outside this focus still needs attention: LayerB timing differs from LayerA (~120 ms average onset gap).
+severe_non_focus: ['LayerB timing differs from LayerA (~120 ms average onset gap).']

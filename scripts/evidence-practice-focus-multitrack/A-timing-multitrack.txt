@@ -1,0 +1,28 @@
+# A-timing-multitrack
+Practice Focus at analysis: Timing
+instrument: Guitar
+scores: {'ensemble': 62, 'balance': 70, 'sync': 68}
+
+## Coach summary
+Your current focus is **Timing**, so this ensemble review prioritizes onset alignment and rhythmic lock between layers — using the measured onset-gap and level evidence available (not stroke-by-stroke classification). Multitrack coach read: comparing onset alignment and level balance across layers.
+
+## Findings
+- LayerB timing differs from LayerA (~120 ms average onset gap).
+- LayerB sits quietly in the mix — may sound buried.
+
+## Tips
+- Record one anchor rhythm layer first, then overdub the second part at reduced tempo.
+- Isolate entrances that drift; loop those bars with a click before re-layering.
+- Practice with a metronome on every beat, then on 2 and 4 only.
+- Mix check: solo each layer, then A/B with drums or click.
+- Ensemble drill: record rhythm section first, overdub melody after 2 clean passes.
+
+## Measured comparisons
+[{'layer': 'LayerB', 'reference': 'LayerA', 'mean_onset_gap_sec': 0.12, 'rms_ratio_vs_ref': 0.5}]
+
+## Capability map (excerpt)
+onset_alignment=measured
+rms_balance=measured
+stroke_direction=unsupported
+resonance=unsupported
+chord_identity=unsupported

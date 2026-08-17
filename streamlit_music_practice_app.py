@@ -14586,6 +14586,12 @@ elif _studio_page == "analysis":
                             }
                         )
                     ctx = _recording_analysis_context(recording_type="multitrack")
+                    try:
+                        from practice_focus_multitrack import prepare_multitrack_analysis_context
+
+                        ctx = prepare_multitrack_analysis_context(st.session_state, ctx)
+                    except ImportError:
+                        pass
                     from recording_analysis import analyze_multitrack
 
                     with st.spinner("Comparing layers…"):

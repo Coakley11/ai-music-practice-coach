@@ -1,0 +1,4 @@
+# Raw-score invariance
+Timing scores: {'ensemble': 62, 'balance': 70, 'sync': 68}
+Tone scores: {'ensemble': 62, 'balance': 70, 'sync': 68}
+identical: True

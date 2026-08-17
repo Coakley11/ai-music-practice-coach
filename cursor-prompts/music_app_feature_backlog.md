@@ -31,8 +31,8 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Practice Focus System (P0 — active on feature branch)
 
-- App-wide coaching variable (not a badge): **Phase 2A–2C** (AMI + Practice, Upload / AI Coach, Practice Log / Practice Coach) on `feature/practice-focus-system`; remaining: Multitrack, then safe Backing/Custom
-- Deferred verification: Phase 2B real-audio `analyze_recording` smoke test (needs `librosa` + WAV fixture)
+- App-wide coaching variable (not a badge): **Phase 2A–2D** complete on `feature/practice-focus-system`; next: safe Backing/Custom (Phase 3)
+- Deferred verification: Phase 2B Upload and Phase 2D Multitrack real-audio smoke tests (need `librosa` + WAV fixtures)
 - Deeper Creative waits until parked `feature/creative-backing-stabilization` @ `44403d4` is accepted
 - Composition is hook-only until that page is further along
 - See [plan](./plans/2026-08-15-practice-focus-system.md)

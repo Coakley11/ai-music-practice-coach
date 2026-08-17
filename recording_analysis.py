@@ -739,6 +739,20 @@ def analyze_multitrack(
     if len(tracks) < 2:
         return {"ok": False, "message": "Upload at least two tracks for multitrack comparison."}
 
+    try:
+        from practice_focus_evaluation import attach_frozen_focus_to_context
+        from practice_focus_multitrack import (
+            apply_focus_to_multitrack_outputs,
+            build_multitrack_evaluation_debug,
+            stamp_multitrack_result_with_focus,
+        )
+
+        attach_frozen_focus_to_context(ctx)
+    except ImportError:
+        apply_focus_to_multitrack_outputs = None  # type: ignore
+        stamp_multitrack_result_with_focus = None  # type: ignore
+        build_multitrack_evaluation_debug = None  # type: ignore
+
     layer_features: list[dict[str, Any]] = []
     for tr in tracks:
         name = str(tr.get("name") or "Track")
@@ -754,14 +768,14 @@ def analyze_multitrack(
         return {"ok": False, "message": "Need two valid audio layers."}
 
     findings: list[str] = []
-    tips: list[str] = []
+    measured_comparisons: list[dict[str, Any]] = []
 
     ref = layer_features[0]["features"]
     ref_onsets = ref.onset_times
     for layer in layer_features[1:]:
         f = layer["features"]
+        mean_off = None
         if len(ref_onsets) > 2 and len(f.onset_times) > 2:
-            # Mean onset phase offset vs reference
             offsets = []
             for ot in f.onset_times[: min(40, len(f.onset_times))]:
                 offsets.append(float(np.min(np.abs(ref_onsets - ot))))
@@ -781,28 +795,82 @@ def analyze_multitrack(
             findings.append(f"{layer['name']} sits quietly in the mix — may sound buried.")
         elif rms_bal > 1.6:
             findings.append(f"{layer['name']} dominates the blend — check balance vs other parts.")
+        measured_comparisons.append(
+            {
+                "layer": layer["name"],
+                "reference": layer_features[0]["name"],
+                "mean_onset_gap_sec": mean_off,
+                "rms_ratio_vs_ref": float(rms_bal),
+                "instrument": layer.get("instrument") or "",
+            }
+        )
 
-    tips.append("Mix check: solo each layer, then A/B with drums or click.")
-    tips.append("Ensemble drill: record rhythm section first, overdub melody after 2 clean passes.")
+    tips = [
+        "Mix check: solo each layer, then A/B with drums or click.",
+        "Ensemble drill: record rhythm section first, overdub melody after 2 clean passes.",
+    ]
 
+    # Raw / heuristic scores — Focus must not mutate these numbers.
     scores = {
         "ensemble": _clamp_score(72 - 5 * max(0, len(findings) - 2)),
         "balance": _clamp_score(70),
         "sync": _clamp_score(68),
     }
+    baseline_summary = (
+        "Multitrack coach read: comparing onset alignment and level balance across layers. "
+        "Tighten anything that consistently sits ahead of the grid."
+    )
 
-    return {
+    snap = None
+    focus_label = ""
+    instrument = str(ctx.get("instrument") or "")
+    try:
+        snap = ctx.get("practice_focus_snapshot")
+        focus_label = str((snap or {}).get("practice_focus") or ctx.get("focus") or "")
+        instrument = str(ctx.get("instrument") or instrument)
+    except Exception:
+        focus_label = str(ctx.get("focus") or "")
+
+    coach_summary = baseline_summary
+    applied = None
+    if apply_focus_to_multitrack_outputs is not None:
+        applied = apply_focus_to_multitrack_outputs(
+            findings=findings,
+            tips=tips,
+            coach_summary=baseline_summary,
+            scores=scores,
+            instrument=instrument,
+            focus=focus_label,
+        )
+        findings = list(applied["findings"])
+        tips = list(applied["tips"])
+        coach_summary = str(applied["coach_summary"])
+        # scores intentionally taken from applied["scores"] which is a copy of originals
+
+    result_payload: dict[str, Any] = {
         "ok": True,
         "multitrack": True,
         "layers": [lf["name"] for lf in layer_features],
         "findings": findings,
         "tips": tips,
         "scores": scores,
-        "coach_summary": (
-            "Multitrack coach read: comparing onset alignment and level balance across layers. "
-            "Tighten anything that consistently sits ahead of the grid."
-        ),
+        "coach_summary": coach_summary,
+        "instrument": instrument,
+        "focus": focus_label,
+        "measured_comparisons": measured_comparisons,
+        "baseline_coach_summary": baseline_summary,
     }
+    try:
+        if stamp_multitrack_result_with_focus is not None and build_multitrack_evaluation_debug is not None:
+            debug = build_multitrack_evaluation_debug(
+                instrument=instrument,
+                focus=focus_label,
+                applied=applied,
+            )
+            result_payload = stamp_multitrack_result_with_focus(result_payload, ctx, evaluation=debug)
+    except Exception:
+        pass
+    return result_payload
 
 
 def analysis_context_from_app(

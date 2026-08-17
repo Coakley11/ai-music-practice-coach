@@ -24,6 +24,16 @@
 
 ## Completed Features
 
+### Practice Focus System — Phase 2D Multitrack (2026-08-16)
+
+- [x] Snapshot Practice Focus at Multitrack ensemble analysis start
+- [x] Focus rewrites coaching/tips without mutating measured onset/RMS comparisons or score fields
+- [x] Capability map: onset/RMS measured; stroke/resonance/chord identity unsupported
+- [x] Dashboard + project history preserve frozen Focus
+- **Branch:** `feature/practice-focus-system` (not merged to `dev`)
+- Tests: `tests/test_practice_focus_phase2d_multitrack.py`
+- Plan: [2026-08-15-practice-focus-system.md](./plans/2026-08-15-practice-focus-system.md)
+
 ### Practice Focus System — Phase 2C Practice Log / Practice Coach (2026-08-16)
 
 - [x] New log entries freeze exact Practice Focus; old rows stay missing when missing

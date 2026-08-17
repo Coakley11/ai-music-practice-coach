@@ -1,0 +1,28 @@
+# B-tone-multitrack
+Practice Focus at analysis: Tone
+instrument: Saxophone
+scores: {'ensemble': 62, 'balance': 70, 'sync': 68}
+
+## Coach summary
+Your current focus is **Tone**, so next steps emphasize sound stability for **Saxophone**. This Multitrack path measures alignment and balance between layers; it does not invent a resonance or embouchure score. Multitrack coach read: comparing onset alignment and level balance across layers. A serious timing/alignment issue outside this focus still needs attention: LayerB timing differs from LayerA (~120 ms average onset gap).
+
+## Findings
+- LayerB sits quietly in the mix — may sound buried.
+- LayerB timing differs from LayerA (~120 ms average onset gap).
+
+## Tips
+- Before the next overdub, do long tones or dynamic swells, then compare two takes by ear.
+- Use the more stable take as a reference layer and match its sustain shape.
+- Emphasize air support, stable embouchure, resonance, and register consistency.
+- Mix check: solo each layer, then A/B with drums or click.
+- Ensemble drill: record rhythm section first, overdub melody after 2 clean passes.
+
+## Measured comparisons
+[{'layer': 'LayerB', 'reference': 'LayerA', 'mean_onset_gap_sec': 0.12, 'rms_ratio_vs_ref': 0.5}]
+
+## Capability map (excerpt)
+onset_alignment=measured
+rms_balance=measured
+stroke_direction=unsupported
+resonance=unsupported
+chord_identity=unsupported

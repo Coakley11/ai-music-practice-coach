@@ -79,11 +79,24 @@ def _analysis_summary(session_state: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or not raw.get("multitrack"):
         return None
     clean = sanitize_analysis_result_for_persist(raw)
-    return {
+    out: dict[str, Any] = {
         "coach_summary": str(clean.get("coach_summary") or "")[:500],
         "scores": clean.get("scores") if isinstance(clean.get("scores"), dict) else {},
         "layer_scores": clean.get("layer_scores") if isinstance(clean.get("layer_scores"), list) else [],
+        "findings": clean.get("findings") if isinstance(clean.get("findings"), list) else [],
+        "tips": clean.get("tips") if isinstance(clean.get("tips"), list) else [],
+        "layers": clean.get("layers") if isinstance(clean.get("layers"), list) else [],
+        "instrument": clean.get("instrument") or "",
     }
+    for key in (
+        "practice_focus_snapshot",
+        "practice_focus_at_analysis",
+        "practice_focus_evaluation",
+        "measured_comparisons",
+    ):
+        if key in clean:
+            out[key] = clean[key]
+    return out
 
 
 def default_project_name(session_state: dict[str, Any], *, song_title: str = "") -> str:
@@ -336,13 +349,26 @@ def apply_multitrack_history(session_state: dict[str, Any], payload: dict[str, A
 
     analysis = payload.get("analysis_summary")
     if isinstance(analysis, dict) and analysis.get("coach_summary"):
-        session_state["last_analysis_result"] = {
+        restored: dict[str, Any] = {
             "ok": True,
             "multitrack": True,
             "coach_summary": analysis.get("coach_summary"),
             "scores": analysis.get("scores") or {},
             "layer_scores": analysis.get("layer_scores") or [],
+            "findings": analysis.get("findings") or [],
+            "tips": analysis.get("tips") or [],
+            "layers": analysis.get("layers") or [],
+            "instrument": analysis.get("instrument") or "",
         }
+        for key in (
+            "practice_focus_snapshot",
+            "practice_focus_at_analysis",
+            "practice_focus_evaluation",
+            "measured_comparisons",
+        ):
+            if key in analysis:
+                restored[key] = analysis[key]
+        session_state["last_analysis_result"] = restored
 
     return info
 

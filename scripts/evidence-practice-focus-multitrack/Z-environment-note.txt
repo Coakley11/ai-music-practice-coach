@@ -1,0 +1,5 @@
+# Environment / audio limitations
+Full analyze_multitrack audio execution requires librosa + WAV fixtures.
+This evidence uses the Multitrack Focus coaching adapter + dashboard renderer
+with synthetic measured findings matching the real onset-gap / RMS schema.
+Phase 2B Upload real-audio smoke test remains separately deferred.

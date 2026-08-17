@@ -310,13 +310,34 @@ def _render_multitrack_dashboard(result: dict[str, Any]) -> str:
     findings = "".join(f"<li>{_esc(x)}</li>" for x in result.get("findings", []))
     tips = "".join(f"<li>{_esc(x)}</li>" for x in result.get("tips", []))
     layers = ", ".join(_esc(x) for x in result.get("layers", []))
+    focus_caption = ""
+    try:
+        from practice_focus_evaluation import analysis_focus_caption
+
+        focus_caption = analysis_focus_caption(result)
+    except ImportError:
+        stored = str(result.get("practice_focus_at_analysis") or "").strip()
+        focus_caption = (
+            f"Practice Focus at analysis: {stored}"
+            if stored
+            else "Practice Focus at analysis: Not recorded"
+        )
+    focus_pill = f"<span class='ra-pill'>{_esc(focus_caption)}</span>" if focus_caption else ""
+    instrument_text = _esc(result.get("instrument", ""))
+    inst_pill = (
+        f"<span class='ra-pill'>{instrument_text}</span>" if instrument_text else ""
+    )
     return f"""
 {ANALYSIS_CSS}
 <div class="ra-dashboard">
   <div class="ra-hero">
     <h2>🎚️ Multitrack ensemble analysis</h2>
     <p>{_esc(result.get('coach_summary', ''))}</p>
-    <div class="ra-pills"><span class="ra-pill">Layers: {layers}</span></div>
+    <div class="ra-pills">
+      <span class="ra-pill">Layers: {layers}</span>
+      {inst_pill}
+      {focus_pill}
+    </div>
   </div>
   <div class="ra-card">
     <h3>Ensemble findings</h3>

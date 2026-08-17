@@ -141,7 +141,7 @@ baseline metrics + focus-required metrics (`preferred_metric_ids`) + performance
 1. [x] **Phase 2A (2026-08-16):** AMI + Practice page consume `PracticeFocusContext` / policy via `practice_focus_coaching.py`. Same instrument + same song + change-only Focus produces different AMI plans and Practice drills. Factual theory (e.g. C major notes) is not hijacked. Upload / Log / Multitrack still deferred.
 2. [x] **Phase 2B (2026-08-16):** Upload / AI Coach snapshots Practice Focus at analysis start (`practice_focus_evaluation.py`). Focus unions supported mission metrics, emphasizes measured score keys, rewrites coach summary/next exercises, and keeps historical results immutable. Severe non-focus issues still surface. Unsupported measurements are not fabricated. **Deferred:** real-audio `analyze_recording` smoke test (needs `librosa` + WAV fixture).
 3. [x] **Phase 2C (2026-08-16):** Practice Log + weekly Practice Coach (`practice_focus_history.py`). Exact Focus frozen on new logs; weekly analysis aggregates exact Focus vs coarse `focus_area` vs missing; current Focus informs next steps without rewriting historical interpretation.
-4. [ ] **Phase 2D:** Multitrack — inject context into analysis/guidance where metrics exist
+4. [x] **Phase 2D (2026-08-16):** Multitrack ensemble analysis (`practice_focus_multitrack.py`). Snapshots Focus; coaching uses measured onset/RMS only; no stroke/resonance/chord invention. **Deferred:** full-audio `analyze_multitrack` smoke test (needs `librosa` + fixtures).
 
 ### Phase 3 — Stable instructional layers on current `dev`
 
@@ -161,7 +161,9 @@ Later, once Composition itself is sufficiently complete. Clean `PracticeFocusCon
 
 ## Files / modules
 
-**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `practice_focus_evaluation.py`, `practice_focus_history.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`, `tests/test_practice_focus_phase2b_upload.py`, `tests/test_practice_focus_phase2c_log.py`
+**New:** `practice_focus_policy.py`, `practice_focus_context.py`, `practice_focus_snapshot.py`, `practice_focus_coaching.py`, `practice_focus_evaluation.py`, `practice_focus_history.py`, `practice_focus_multitrack.py`, `tests/test_practice_focus_policy.py`, `tests/test_practice_focus_phase2_ami_practice.py`, `tests/test_practice_focus_phase2b_upload.py`, `tests/test_practice_focus_phase2c_log.py`, `tests/test_practice_focus_phase2d_multitrack.py`
+
+**Touched in Phase 2D:** `recording_analysis.py` (`analyze_multitrack`), `recording_analysis_ui.py`, `streamlit_music_practice_app.py` (Analyze ensemble), `multitrack_history.py`
 
 **Touched in Phase 2C:** `practice_log_state.py`, `practice_log_ami.py`, `practice_history_synthesis.py`, `practice_log_ui.py`, `practice_log_analysis_handoff.py`
 
