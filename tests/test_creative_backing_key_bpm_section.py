@@ -461,3 +461,82 @@ def test_sync_mission_style_does_not_clobber_dirty_live_groove():
     sync_mission_style_from_song(session, force=False)
     assert session.get("backing_groove_style") == "Blues"
     assert session.get("backing_time_signature") == "3/4"
+
+
+def test_catalog_practice_key_init_uses_original_when_no_override():
+    from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Bm",
+        "concert_key": "Bm",
+        "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+    }
+    assert reconcile_catalog_practice_key_owner(session) == "Bm"
+
+
+def test_user_practice_key_bm_to_dm_survives_hydrate_and_heals_blob():
+    """Live Dm must not be overwritten by stale song-blob Bm on SBI hydrate."""
+    from music_workflow_song_practice import (
+        ensure_missions_parent_practice_key_hydrated,
+        ensure_song_practice_blob_for_active_song,
+        resolve_song_practice_key_token,
+    )
+    from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+    from source_session_state import resolve_sbi_preview
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "improv_intelligence_tab": "Song-Based Improvisation",
+        "selected_song": {"title": "Shape of You", "artist": "Ed Sheeran", "key": "Bm", "pick_key": pick},
+        "catalog_session": {
+            "pick_key": pick,
+            "display_key": "Bm",
+            "original_key": "Bm",
+            "selected_song": {"title": "Shape of You", "key": "Bm"},
+            "sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        },
+        "home_sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        "improv_song_concert_sections": {"Verse": ["Bm", "Em", "G", "A"]},
+    }
+    set_practice_concert_key(session, "Dm", pick_key=pick)
+    ensure_song_practice_blob_for_active_song(session, practice_key="Bm", original_key="Bm")
+    session["display_key"] = "Dm"
+    session["concert_key"] = "Dm"
+    assert resolve_song_practice_key_token(session) == "Bm"
+    tok = ensure_missions_parent_practice_key_hydrated(session)
+    assert tok == "Dm"
+    assert session.get("display_key") == "Dm"
+    assert resolve_song_practice_key_token(session) == "Dm"
+    assert get_practice_concert_key(session, pick) == "Dm"
+    prev = resolve_sbi_preview(session)
+    assert prev.get("display_key") == "Dm"
+
+
+def test_persisted_store_dm_restores_when_live_clobbered_to_original_bm():
+    from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+    from songs.practice_key_state import set_practice_concert_key
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Bm",
+        "concert_key": "Bm",
+        "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+    }
+    set_practice_concert_key(session, "Dm", pick_key=pick)
+    assert reconcile_catalog_practice_key_owner(session) == "Dm"
+    assert session.get("display_key") == "Dm"
+
+
+def test_shape_e_projects_dm_without_mutating_practice_key():
+    from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+
+    assert shape_tonic_only("E") == "E"
+    assert shape_chart_key_for_concert("Dm", "E") == "Em"
+    session = {"display_key": "Dm", "concert_key": "Dm", "guitar_capo_shape_key": "E"}
+    assert session["display_key"] == "Dm"

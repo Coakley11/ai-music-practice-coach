@@ -376,6 +376,22 @@ def mark_display_key_changed(st: Any) -> None:
                         sync_catalog_session(st.session_state)
                     except ImportError:
                         pass
+                # Heal song-practice blob immediately so the next pre-widget hydrate
+                # cannot push a stale catalog original (Bm) over this live Dm.
+                try:
+                    from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+                    sel = st.session_state.get("selected_song")
+                    orig = ""
+                    if isinstance(sel, dict):
+                        orig = str(sel.get("key") or "").strip()
+                    ensure_song_practice_blob_for_active_song(
+                        st.session_state,
+                        practice_key=dk,
+                        original_key=orig,
+                    )
+                except ImportError:
+                    pass
             if creative_jam_owns_practice_settings(st.session_state):
                 try:
                     from creative_session_state import sync_creative_session_from_session

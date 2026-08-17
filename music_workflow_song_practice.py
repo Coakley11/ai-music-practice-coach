@@ -246,8 +246,86 @@ def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob:
     save_workflow_blob(session, mission, source="mirror_song_practice_key")
 
 
+def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str = "practice_key_reconcile") -> str:
+    """Authoritative Practice Key for an active catalog song.
+
+    Precedence:
+      1. live ``display_key`` when it differs from catalog original (user selection)
+      2. persisted ``practice_key_by_source`` override for the pick
+      3. song-practice blob token
+      4. catalog original (initialization only)
+
+    Never let a stale blob/original overwrite a live or persisted Practice override.
+    Heals store + song blob to the chosen token.
+    """
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+    original = str((sel or {}).get("key") or "").strip()
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    store = ""
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            store = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            store = ""
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+
+        pending = str(pending_selected_practice_key_token(session) or "").strip()
+    except ImportError:
+        pending = ""
+    if pending:
+        live = pending
+    song_tok = resolve_song_practice_key_token(session)
+
+    if live and original and live != original:
+        chosen = live
+    elif store and original and store != original:
+        chosen = store
+    elif live:
+        chosen = live
+    elif store:
+        chosen = store
+    else:
+        chosen = song_tok or original or ""
+
+    if not chosen:
+        return ""
+
+    try:
+        from songs.practice_key_state import set_practice_concert_key
+
+        if pick:
+            set_practice_concert_key(session, chosen, pick_key=pick)
+    except ImportError:
+        pass
+
+    if song_tok != chosen or song_practice_blob(session) is None:
+        ensure_song_practice_blob_for_active_song(
+            session,
+            practice_key=chosen,
+            original_key=original,
+        )
+        mirror_mission_keys_from_song_blob(session)
+
+    try:
+        from music_workflow_legacy_projection import _project_session_field
+
+        _project_session_field(session, "display_key", chosen)
+        _project_session_field(session, "concert_key", chosen)
+        session["_pending_display_key"] = chosen
+    except ImportError:
+        session["display_key"] = chosen
+        session["concert_key"] = chosen
+        session["_pending_display_key"] = chosen
+    session["_music_practice_key_sync_source"] = source
+    return chosen
+
+
 def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str:
-    """Missions tab — song practice blob owns parent key; never re-apply entry jam after reclaim."""
+    """Keep song/mission Practice Key coherent — live/store override wins over stale blob."""
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
@@ -268,20 +346,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         seed_song_practice_blob_from_live_practice_key(session)
         mirror_mission_keys_from_song_blob(session)
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
-        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        song_tok = resolve_song_practice_key_token(session)
-        if live and song_tok and live != song_tok:
-            # Live Practice Key owns; heal stale song blob instead of pushing Bm onto Dm.
-            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
-            ensure_song_practice_blob_for_active_song(
-                session,
-                practice_key=live,
-                original_key=str((sel or {}).get("key") or ""),
-            )
-            mirror_mission_keys_from_song_blob(session)
-            token = live
-        else:
-            token = sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
+        token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
@@ -295,35 +360,28 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         if not entry_jam_practice_key_authority_active(session):
             mirror_mission_keys_from_song_blob(session)
             rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
-            song_tok = resolve_song_practice_key_token(session)
-            if song_tok:
-                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-                if live != song_tok:
-                    sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
-                try:
-                    from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+            token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
+            try:
+                from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
-                    prime_sidebar_practice_key_from_identity(session)
-                except ImportError:
-                    pass
+                prime_sidebar_practice_key_from_identity(session)
+            except ImportError:
+                pass
+            return token or resolve_song_practice_key_token(session)
     except ImportError:
         pass
     token = resolve_song_practice_key_token(session)
     if not token:
-        return ""
-    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    blob = song_practice_blob(session)
-    if live != token:
-        sync_session_practice_key_from_song_blob(session, source="missions_tab_parent_key")
-    elif blob is not None and isinstance(blob.section_map, dict) and blob.section_map:
-        rehydrate_full_song_concert_sections(session, source="missions_tab_parent_key_sections")
-    return token
+        # Still reconcile live/store for catalog Practice Key even without a blob yet.
+        return reconcile_catalog_practice_key_owner(session, source="missions_tab_parent_key_no_blob")
+    return reconcile_catalog_practice_key_owner(session, source="missions_tab_parent_key")
 
 
 __all__ = [
     "mirror_mission_keys_from_song_blob",
     "mirror_song_practice_key_to_mission_blob",
     "mission_blob_session_id",
+    "reconcile_catalog_practice_key_owner",
     "rehydrate_full_song_concert_sections",
     "resolve_song_practice_key_token",
     "seed_song_practice_blob_from_live_practice_key",
@@ -332,4 +390,5 @@ __all__ = [
     "song_practice_storage_id",
     "sync_session_practice_key_from_song_blob",
     "ensure_missions_parent_practice_key_hydrated",
+    "ensure_song_practice_blob_for_active_song",
 ]

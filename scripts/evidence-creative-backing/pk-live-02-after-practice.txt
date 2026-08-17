@@ -1,0 +1,281 @@
+keyboard_double_arrow_left
+keyboard_arrow_down
+
+Account & Workspace · Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+← Command Center
+
+keyboard_arrow_down
+
+Saved session
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+🎼 ACTIVE SONG
+
+SONG
+Shape of You — Ed Sheeran
+
+🎼 Songs
+
+Shape of You · Pop
+
+Song Original Key: Bm
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+Practice focus
+
+🎵 MUSIC COACH
+
+Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+Ask the Music Coach
+
+🧭 PAGES
+
+◀
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✏️ Custom Progression
+
+🎹 Composition Studio
+
+🎨 Creative Lab
+
+🎚️ Multitrack
+
+🎙️ Upload Analysis
+
+📓 Practice Log
+
+⏱️ SESSION
+
+Practice length: 30 min (adjust on the Practice page)
+
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+← Back
+
+Forward →
+
+📖 Tutorial
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✏️
+Custom
+
+Open
+
+🎹
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎼
+
+SONG CATALOG
+
+Songs
+
+Song Selection
+
+Choose a song from your library. The active song drives Practice, Backing Track, Creative Lab, Karaoke, and Upload/Multitrack. Use Edit Song Chart to customize chords, sections, and song structure.
+
+🎹
+Piano practice mode · Voicings · LH/RH balance · voice-leading between chords · Choose your active song for the whole studio.
+
+BROWSE LIBRARY
+
+Browse, search, or filter songs below.
+
+119 songs in this list
+
+SEARCH
+
+Matches title, artist, genre, style, and chart level.
+
+★ Favorites
+
+GENRES — CLICK TO TOGGLE
+
+Clear filters
+
+Pop
+
+Rock
+
+Jazz
+
+Jewish
+
+Blues
+
+Funk
+
+Classical
+
+Soul
+
+Country
+
+119 songs match your filters · genre pills, search update the Active Song dropdown above
+
+MUSIC SOURCE
+
+Song Selection (catalog song)
+
+Use Custom Progression / Create Your Own Song
+
+CURRENT ACTIVE SONG
+
+Switch active song
+
+🎤
+POP
+
+NOW LOADED FOR PRACTICE
+
+Shape of You
+
+By Ed Sheeran
+
+ORIGINAL KEY
+B minor
+→
+PRACTICE / CONCERT KEY
+D minor
+🎹
+ORIGINAL KEY
+B minor
+🎼
+PRACTICE / CONCERT KEY
+D minor
+⏱
+BPM
+96
+🥁
+METER
+4/4
+✨
+STYLE
+Pop
+📀
+SOURCE
+Catalog Song
+Levels
+Beginner / Intermediate / Advanced
+Level fit
+All levels
+Instruments
+Piano, Guitar, Voice, Bass
+Practice focus
+LH steady on roots; RH stays out of the vocal's way · steady rhythm · clean transitions · musical feel
+
+Challenge: Rushing into the chorus before the verse has settled.
+
+Harmony: Let the harmony support the melody without crowding it.
+
+You're working in D minor at 96 BPM (4/4, Pop). Lock the pop groove feel in Dm — that's what makes Shape of You sound like itself.
+
+Lock the form: Verse 1 → Pre-Chorus 1 → Chorus 1 → Verse 2 → Pre-Chorus 2
+Play each section 4× with metronome before adding backing
+Let the harmony support the melody without crowding it.
+Save strongest dynamics for the chorus arrival
+
+Chord chart
+
+Edit Verse, Chorus, Bridge, and other sections bar-by-bar — saved permanently for this song.
+
+Edit Song Chart
+
+☆
+
+🎯 Practice
+
+🎧 Backing
+
+🎤 Karaoke
+
+🎸 Chord Coach
+
+keyboard_arrow_down
+
+🎵 Original song video
+
+Would you like to hear or watch the original recording? The video only loads when you ask.
+
+Shape of You — Ed Sheeran
+
+Override YouTube URL (optional)
+
+Searching: Shape of You · Ed Sheeran
+
+▶ Watch original on YouTube
+
+Song content editor
+
+Open Lyrics & Cues or Edit Song Chart from the active song card above when you want to edit.
+
+Lyrics & Cues
+
+Edit Song Chart
+
+Open editor
