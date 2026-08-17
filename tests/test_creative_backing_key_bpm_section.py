@@ -260,3 +260,204 @@ def test_same_source_creative_bpm_override_keeps_live_slider():
         )
     assert not canon["did_reset"]
     assert int(canon["applied_bpm"]) == 75
+
+
+def test_live_practice_dm_wins_over_stale_store_bm_for_sbi():
+    """SBI must use live Practice Dm, not stale practice_key_by_source Bm."""
+    from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+    from source_session_state import _catalog_display_key, resolve_sbi_preview
+
+    pick = "Pop::Shape of You — Ed Sheeran"
+    session = {
+        "active_catalog_pick_key": pick,
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "practice_key_by_source": {pick: "Bm"},
+        "selected_song": {"title": "Shape of You", "artist": "Ed Sheeran", "key": "Bm", "pick_key": pick},
+        "catalog_session": {
+            "pick_key": pick,
+            "display_key": "Bm",
+            "original_key": "Bm",
+            "selected_song": {"title": "Shape of You", "key": "Bm"},
+            "sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        },
+        "improv_song_concert_sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        "home_sections": {"Verse": ["Bm", "Em", "G", "A"]},
+    }
+    assert overlay_destination_practice_key(session) == "Dm"
+    assert _catalog_display_key(session, session["catalog_session"]) == "Dm"
+    assert session["practice_key_by_source"].get(pick) == "Dm"
+    prev = resolve_sbi_preview(session)
+    assert prev.get("display_key") == "Dm"
+    first = (list((prev.get("sections") or {}).values()) or [[]])[0]
+    assert first and str(first[0]).startswith("D")
+    assert not str(first[0]).startswith("B")
+
+
+def test_shape_key_control_is_tonic_only_not_major():
+    from custom_progression_lab import format_key_label
+    from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+
+    assert shape_tonic_only("E") == "E"
+    assert "major" not in shape_tonic_only("E").lower()
+    # format_key_label invents major — that must not be used for Shape control.
+    assert "major" in format_key_label("E").lower()
+    assert shape_chart_key_for_concert("Dm", "E") == "Em"
+
+
+def test_mission_chord_selection_does_not_restore_stale_blob_key():
+    """Selecting a Mission chord must not push stale song-blob Bm over live Dm."""
+    from music_workflow_mutation import mutate_mission_chord_selection
+
+    session = {
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "instrument": "Guitar",
+        "ii_selected_chord": "Dm",
+        "ii_selected_section": "Verse",
+        "ii_selected_chord_index": 0,
+        "home_sections": {"Verse": ["Dm", "C", "Bb", "A"]},
+        "improv_song_concert_sections": {"Verse": ["Dm", "C", "Bb", "A"]},
+        "selected_song": {"title": "Shape of You", "key": "Bm"},
+        "active_catalog_pick_key": "Pop::Shape of You — Ed Sheeran",
+    }
+    mutate_mission_chord_selection(
+        session,
+        chord="Am",
+        section="Verse",
+        chord_index=1,
+        chord_label="Am",
+    )
+    assert str(session.get("display_key") or "") == "Dm"
+    assert str(session.get("concert_key") or "") in {"", "Dm"}
+
+
+def test_mission_chord_change_clears_stale_em_example():
+    from improvisation_missions import MISSION_EXAMPLE_KEY
+    from music_workflow_mutation import _invalidate_mission_chord_dependent_session
+
+    session = {
+        MISSION_EXAMPLE_KEY: {
+            "chord": "Dm",
+            "mission": "Chord Tones",
+            "motif": {"_concert_chord": "Dm", "notes": ["D", "F", "A"]},
+        },
+        "_mission_example_output_fp": "stale",
+    }
+    _invalidate_mission_chord_dependent_session(session, new_chord="Am")
+    assert MISSION_EXAMPLE_KEY not in session
+
+
+def test_shape_change_reprojects_mission_example_notes():
+    from improvisation_missions import ChordCoachInsight, MissionExample, refresh_mission_example
+
+    insight = ChordCoachInsight(
+        chord="Dm",
+        scales=[],
+        scale_suggestions=[],
+        chord_tones=["D", "F", "A"],
+        tensions=[],
+        avoid_notes=[],
+        target_notes=[],
+        motif_idea="",
+        resolve_hint="",
+        instrument_tips=[],
+    )
+    example = MissionExample(
+        mission="Chord Tones",
+        variant="normal",
+        chord="Dm",
+        section="Verse",
+        song_title="Demo",
+        display_key="Em",
+        instrument="Guitar",
+        level="Intermediate",
+        focus="Improvisation",
+        motif={
+            "notes": ["E", "G", "B"],
+            "display": "E – G – B",
+            "_concert_notes": ["D", "F", "A"],
+            "_concert_chord": "Dm",
+            "_projected_display_key": "Em",
+        },
+        abc="",
+        tab="",
+        piano_html="",
+        why="",
+        practice_steps=[],
+        insight=insight,
+        show_tab=False,
+        show_piano=False,
+        concert_key="Dm",
+    )
+    example.display_key = "Ebm"
+    refreshed = refresh_mission_example(example, instrument="Guitar", bpm=100, song_concert_key="Dm")
+    notes = list((refreshed.motif or {}).get("notes") or [])
+    assert notes
+    # Concert D/F/A under Shape Ebm must not remain E/G/B.
+    assert notes != ["E", "G", "B"]
+    assert list((refreshed.motif or {}).get("_concert_notes") or []) == ["D", "F", "A"]
+    assert str((refreshed.motif or {}).get("_projected_display_key") or "") == "Ebm"
+
+
+def test_mission_backing_card_prefers_live_style_and_meter():
+    from unittest.mock import MagicMock
+
+    from backing_context import BackingContext
+    from backing_context_ui import render_backing_creative_context_card
+
+    ctx = BackingContext(
+        source="mission",
+        source_label="Mission",
+        active_song_id="mission-test",
+        song_title="Mission jam",
+        key="Dm",
+        display_key="Dm",
+        concert_key="Dm",
+        style="Pop groove",
+        groove="Pop groove",
+        meter="4/4",
+        bpm=96,
+        progression=["Dm", "Am"],
+        progression_label="Dm – Am",
+        section="Verse",
+        source_signature="mission-test",
+    )
+    session = {
+        "backing_groove_style": "Blues",
+        "backing_time_signature": "3/4",
+        "instrument": "Guitar",
+        "display_key": "Dm",
+        "concert_key": "Dm",
+    }
+    st = MagicMock()
+    render_backing_creative_context_card(
+        st,
+        ctx,
+        session,
+        applied_bpm=96,
+        applied_groove="Pop groove",
+        applied_meter="4/4",
+        practice_key="Dm",
+    )
+    html_out = " ".join(str(c.args[0]) for c in st.markdown.call_args_list if c.args)
+    assert "Blues" in html_out
+    assert "3/4" in html_out
+    assert "Current Style" in html_out or "Style: <strong>Blues</strong>" in html_out
+
+
+def test_sync_mission_style_does_not_clobber_dirty_live_groove():
+    from mission_song_backing_style import sync_mission_style_from_song
+    from backing_track_state import BACKING_DIRTY_KEY, BACKING_USER_EDIT_INTENT_KEY
+
+    session = {
+        "active_catalog_pick_key": "Pop::Shape of You — Ed Sheeran",
+        "selected_song": {"title": "Shape of You", "key": "Bm", "genre": "Pop", "bpm": 96},
+        "backing_groove_style": "Blues",
+        "backing_time_signature": "3/4",
+        BACKING_DIRTY_KEY: True,
+        BACKING_USER_EDIT_INTENT_KEY: True,
+    }
+    sync_mission_style_from_song(session, force=False)
+    assert session.get("backing_groove_style") == "Blues"
+    assert session.get("backing_time_signature") == "3/4"

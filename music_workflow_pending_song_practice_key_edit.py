@@ -125,16 +125,26 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
     pending = pending_selected_practice_key_token(session)
     if pending:
         return pending
+    # Live Practice/Concert Key is the current musical owner. The per-pick store is
+    # persistence only — never let a stale Bm store override a live Dm sidebar value.
+    live = str(
+        session.get("display_key") or session.get("concert_key") or session.get("_pending_display_key") or ""
+    ).strip()
     pick = str(session.get("active_catalog_pick_key") or "").strip()
     if pick and not pick.startswith("custom::"):
         try:
-            from songs.practice_key_state import get_practice_concert_key
+            from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
 
             saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if live:
+                if saved and saved != live:
+                    set_practice_concert_key(session, live, pick_key=pick)
+                return live
             if saved:
                 return saved
         except ImportError:
-            pass
+            if live:
+                return live
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key
 
@@ -146,9 +156,7 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
                 return ""
     except ImportError:
         pass
-    return str(
-        session.get("display_key") or session.get("_pending_display_key") or ""
-    ).strip()
+    return live
 
 
 def infer_catalog_sections_spelled_in_key(

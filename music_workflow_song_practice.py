@@ -268,7 +268,20 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         seed_song_practice_blob_from_live_practice_key(session)
         mirror_mission_keys_from_song_blob(session)
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
-        token = sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        song_tok = resolve_song_practice_key_token(session)
+        if live and song_tok and live != song_tok:
+            # Live Practice Key owns; heal stale song blob instead of pushing Bm onto Dm.
+            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+            ensure_song_practice_blob_for_active_song(
+                session,
+                practice_key=live,
+                original_key=str((sel or {}).get("key") or ""),
+            )
+            mirror_mission_keys_from_song_blob(session)
+            token = live
+        else:
+            token = sync_session_practice_key_from_song_blob(session, source="missions_tab_song_blob_reconcile")
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 

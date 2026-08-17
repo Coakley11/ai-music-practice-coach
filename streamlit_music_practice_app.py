@@ -7641,7 +7641,14 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             if _cpl_style:
                 _style_label = str(_cpl_style)
         if _song_key_ctx.shape_key:
-            _written_label = _format_key_label(_song_key_ctx.shape_key)
+            # Shape Key control is tonic-only; mode is inherited from Practice/Concert.
+            # Never run bare "E" through format_key_label (that invents "E major").
+            try:
+                from guitar_capo import shape_tonic_only as _shape_tonic_only
+
+                _written_label = _shape_tonic_only(_song_key_ctx.shape_key)
+            except ImportError:
+                _written_label = str(_song_key_ctx.shape_key or "").strip()
             _written_badge_label = "Shape Key"
         elif (
             _song_key_ctx.chart_key_mode == "written"

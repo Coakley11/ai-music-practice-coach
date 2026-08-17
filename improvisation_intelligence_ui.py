@@ -706,12 +706,16 @@ def _tab_entry_modes(
         if source == "Active song":
             flat_preview = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
             chord_count = len(flat_preview) if flat_preview else len(improv_ctx.progression_flat)
+            practice_key = _authoritative_practice_chart_key(
+                session_state,
+                str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
+            )
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
                     title=str(song_preview.get("title") or improv_ctx.song_title),
                     artist=str(song_preview.get("artist") or improv_ctx.artist),
-                    display_key=str(song_preview.get("display_key") or improv_ctx.display_key),
+                    display_key=practice_key,
                     chord_count=chord_count,
                     source_label="Active song · Song Selection",
                 )
@@ -755,11 +759,15 @@ def _tab_entry_modes(
                     st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
+            practice_key = _authoritative_practice_chart_key(
+                session_state,
+                str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
+            )
             render_creative_progression_block(
                 st,
                 session_state,
                 preview_sections,
-                concert_key=str(song_preview.get("display_key") or ""),
+                concert_key=practice_key,
             )
 
         _render_open_practice_backing_row(
@@ -2179,6 +2187,9 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
 
 
 def _run_mission_example_generate(session_state: dict, variant: str) -> None:
+    practice_key_before = str(
+        session_state.get("display_key") or session_state.get("concert_key") or ""
+    ).strip()
     try:
         from music_workflow_pending_backing_handoff import clear_stale_backing_handoff_for_mission_example_generate
 
@@ -2204,8 +2215,16 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             "callback": f"mission_example_generate_{variant}",
             "callback_fired": True,
             "abort": "no_improv_ctx",
+            "practice_key_before": practice_key_before,
+            "practice_key_after": str(session_state.get("display_key") or ""),
         }
         return
+
+    session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
+        "callback": f"mission_example_generate_{variant}",
+        "callback_fired": True,
+        "practice_key_before": practice_key_before,
+    }
 
     concert, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     improv_ctx.key_center = concert
@@ -2389,7 +2408,14 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             diag["focus_chord_after"] = str(fa.get("selected_concert_chord") or "") if fa else focus_before
         except ImportError:
             diag["focus_chord_after"] = focus_before
-        diag["parent_practice_key"] = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+        practice_after = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+        diag["parent_practice_key"] = practice_after
+        diag["practice_key_before"] = str(diag.get("practice_key_before") or practice_after)
+        diag["practice_key_after"] = practice_after
+        diag["display_key_after"] = str(session_state.get("display_key") or "")
+        diag["concert_key_after"] = str(session_state.get("concert_key") or "")
+        diag["chart_key"] = str(improv_ctx.display_key or "")
+        diag["example_chord"] = str(getattr(example, "chord", "") or "")
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = diag
     try:
         from studio_page_persistence import save_page_snapshot
@@ -2482,6 +2508,18 @@ def _maybe_refresh_mission_example_outputs(
         authoritative_display_key=str(example.display_key or ""),
     )
     session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
+    # Persist reprojected motif so Shape changes survive refresh and later Generate.
+    try:
+        from improvisation_missions import store_mission_example
+
+        store_mission_example(
+            session_state,
+            refreshed,
+            persist_artifact=True,
+            interaction="mission_example_shape_reproject",
+        )
+    except Exception:
+        pass
     return refreshed
 
 

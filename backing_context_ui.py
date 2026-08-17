@@ -227,8 +227,45 @@ def render_backing_creative_context_card(
     elif ctx.source == "mission":
         style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
-    backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
-    concert_raw = str(state.practice_concert_key or practice_key or ctx.concert_key or "C")
+    # Current Style/Meter = live Backing widgets / play-session (same-rerun owner).
+    # Sealed ctx.style/meter are Default/source only when live values are empty.
+    live_groove = ""
+    live_meter = ""
+    try:
+        from backing_play_session import (
+            backing_play_session_has_override,
+            effective_backing_play_overrides,
+        )
+
+        resolved = effective_backing_play_overrides(session)
+        if backing_play_session_has_override(session, "groove"):
+            live_groove = str(resolved.get("groove") or "").strip()
+        if backing_play_session_has_override(session, "meter"):
+            live_meter = str(resolved.get("meter") or "").strip()
+    except ImportError:
+        pass
+    if not live_groove:
+        live_groove = str(
+            session.get("backing_groove_style")
+            or applied_groove
+            or state.groove
+            or ""
+        ).strip()
+    if not live_meter:
+        live_meter = str(
+            session.get("backing_time_signature")
+            or applied_meter
+            or state.meter
+            or ""
+        ).strip()
+    if live_groove:
+        style_label = live_groove
+        backing_style = html.escape(live_groove)
+    else:
+        backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
+    default_style = str(ctx.style or ctx.groove or "").strip()
+    default_meter = str(ctx.meter or "4/4").strip() or "4/4"
+    concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")
     try:
         from music_theory import format_key_label_from_parts, split_key_center
 
@@ -251,7 +288,7 @@ def render_backing_creative_context_card(
     instrument = html.escape(inst_raw)
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
-    meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4"))
+    meter = html.escape(str(live_meter or applied_meter or state.meter or ctx.meter or "4/4"))
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
     mood = str(ctx.mood or "").strip()
     groove_intensity = str(ctx.groove_intensity or "").strip()
@@ -313,6 +350,20 @@ def render_backing_creative_context_card(
             f"<strong>{chart_key}</strong></p>"
         )
 
+    style_line = f"Style: <strong>{backing_style}</strong>"
+    if default_style and live_groove and default_style.lower() != live_groove.lower():
+        style_line = (
+            f"Default Style: <strong>{html.escape(default_style)}</strong>"
+            f" · Current Style: <strong>{backing_style}</strong>"
+        )
+    meter_line = f"Meter: <strong>{meter}</strong>"
+    current_meter_raw = str(live_meter or applied_meter or state.meter or ctx.meter or "4/4").strip()
+    if default_meter and current_meter_raw and default_meter != current_meter_raw:
+        meter_line = (
+            f"Default Meter: <strong>{html.escape(default_meter)}</strong>"
+            f" · Current Meter: <strong>{meter}</strong>"
+        )
+
     st.markdown(
         f'<div class="ui-backing-active-song mode-creative-backing ui-creative-jam-card" '
         f'style="--creative-accent:{theme["accent"]};">'
@@ -325,7 +376,7 @@ def render_backing_creative_context_card(
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
-        f" · BPM: <strong>{bpm}</strong> · Style: <strong>{backing_style}</strong> · Meter: <strong>{meter}</strong></p>"
+        f" · BPM: <strong>{bpm}</strong> · {style_line} · {meter_line}</p>"
         f"{chart_line}"
         f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
         f'<div class="ui-backing-active-badges">{badges_html}</div>'

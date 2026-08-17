@@ -430,10 +430,30 @@ def refresh_mission_example(
     concert_notes = display_motif.get("_concert_notes")
     already_projected = str(display_motif.get("_projected_display_key") or "").strip()
     if not isinstance(concert_notes, list) or not concert_notes:
+        live_notes = list(display_motif.get("notes") or [])
         if not already_projected:
-            concert_notes = list(display_motif.get("notes") or [])
+            concert_notes = live_notes
             display_motif["_concert_notes"] = list(concert_notes)
             display_motif["_concert_chord"] = concert_chord
+        elif live_notes and concert_auth:
+            # Recover concert notes by unprojecting from the previous Shape/Written domain.
+            try:
+                from music_theory import semitone_distance
+                from improvisation_motif import _midi_from_note, _note_from_midi
+
+                back = semitone_distance(already_projected, concert_auth)
+                if back:
+                    recovered = []
+                    for n in live_notes:
+                        midi = _midi_from_note(str(n), 4)
+                        recovered.append(_note_from_midi(midi + back, concert_auth))
+                    concert_notes = recovered
+                else:
+                    concert_notes = live_notes
+                display_motif["_concert_notes"] = list(concert_notes)
+                display_motif["_concert_chord"] = concert_chord
+            except ImportError:
+                concert_notes = None
         else:
             concert_notes = None
     display_chord = concert_chord

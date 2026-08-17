@@ -107,22 +107,30 @@ def render_backing_active_song_card(
     source_badge = html.escape(str(source_label or "Catalog song").strip() or "Catalog song")
     written_badge = ""
     charts_badge = ""
-    _written = html.escape(str(written_key or "").strip())
+    _written_raw = str(written_key or "").strip()
+    _written = html.escape(_written_raw)
     _shape_label = "Written"
     if (
         _session_state is not None
         and _active_instrument == "Guitar"
         and _session_state.get("guitar_capo_enabled")
-        and _written
+        and _written_raw
     ):
         _shape_label = "Shape"
+        try:
+            from guitar_capo import shape_tonic_only
+
+            _written = html.escape(shape_tonic_only(_written_raw))
+        except ImportError:
+            pass
     if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-badge written-key">{html.escape(_shape_label)} {_written}</span>'
         )
         if _shape_label == "Shape":
+            # Charts badge keeps full mode (E minor); Shape control is tonic-only (E).
             charts_badge = (
-                f'<span class="ui-backing-badge written-key">Charts in {_written}</span>'
+                f'<span class="ui-backing-badge written-key">Charts in {html.escape(_written_raw)}</span>'
             )
 
     title = html.escape(str(details.get("title") or record.get("title") or "Active song"))

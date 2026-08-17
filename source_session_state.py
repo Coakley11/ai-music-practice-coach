@@ -157,6 +157,12 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
         original = str(sel.get("key") or catalog.get("original_key") or "C").strip() or "C"
     else:
         original = str(catalog.get("original_key") or "C").strip() or "C"
+    # Prefer live Practice/Concert Key for the active catalog pick — never catalog.original.
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    pick_active = bool(pick) and (not ctx_pick or ctx_pick == pick)
+    if pick_active and live:
+        return live
     if pick:
         try:
             from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
@@ -174,6 +180,8 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
                 return saved
         except ImportError:
             pass
+    if live:
+        return live
     dk = str(catalog.get("display_key") or "").strip()
     return dk or original
 

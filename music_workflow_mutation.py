@@ -597,10 +597,25 @@ def _invalidate_mission_chord_dependent_session(session: dict[str, Any], *, new_
         from improvisation_missions import MISSION_EXAMPLE_KEY
 
         ex = session.get(MISSION_EXAMPLE_KEY)
-        if isinstance(ex, dict) and str(ex.get("chord") or "").strip() not in {"", str(new_chord or "").strip()}:
-            session.pop(MISSION_EXAMPLE_KEY, None)
-            session.pop("_mission_example_output_fp", None)
-            session.pop("_mission_example_material_fp", None)
+        new_sym = str(new_chord or "").strip()
+        if isinstance(ex, dict) and new_sym:
+            ex_chord = str(ex.get("chord") or "").strip()
+            motif = ex.get("motif") if isinstance(ex.get("motif"), dict) else {}
+            concert_chord = str(motif.get("_concert_chord") or ex_chord).strip()
+            same = False
+            try:
+                from improvisation_intelligence_ui import _chords_identity_equal
+
+                same = _chords_identity_equal(ex_chord, new_sym) or _chords_identity_equal(
+                    concert_chord, new_sym
+                )
+            except Exception:
+                same = ex_chord == new_sym or concert_chord == new_sym
+            if not same:
+                session.pop(MISSION_EXAMPLE_KEY, None)
+                session.pop("_mission_example_output_fp", None)
+                session.pop("_mission_example_material_fp", None)
+                session.pop("_mission_example_artifact_id", None)
     except ImportError:
         session.pop("improv_mission_example", None)
     session.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
@@ -769,7 +784,10 @@ def mutate_mission_chord_selection(
             pass
     if chord_changed:
         _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
-    restore_tok = song_token_before or practice_before[0] or practice_before[1]
+    # Restore from the live Practice Key snapshot taken before chord mutation.
+    # Never prefer a stale song-blob token (e.g. Bm) over live Dm — that is a
+    # key-ownership violation (Mission chord must not mutate Practice Key).
+    restore_tok = practice_before[0] or practice_before[1] or song_token_before
     after_display = str(session.get("display_key") or "")
     after_concert = str(session.get("concert_key") or "")
     after_pending = str(session.get("_pending_display_key") or "")
@@ -783,6 +801,7 @@ def mutate_mission_chord_selection(
 
             reconcile_practice_key_fields(session, authoritative=restore_tok)
         except ImportError:
+            session["display_key"] = restore_tok
             session["concert_key"] = restore_tok
             session["_pending_display_key"] = restore_tok
         try:
