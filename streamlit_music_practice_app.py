@@ -10995,11 +10995,16 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
                 st.stop()
 
 if _chart_bundle is None and _chart_bundle_page_exempt:
-    _chart_bundle = minimal_chart_bundle_stub(
-        genre=_catalog_genre,
-        song=_catalog_song,
-        song_data=_catalog_song_data,
-    )
+    try:
+        from songs.chart_bundle_startup import minimal_chart_bundle_stub
+    except ImportError:
+        minimal_chart_bundle_stub = None  # type: ignore[assignment]
+    if callable(minimal_chart_bundle_stub):
+        _chart_bundle = minimal_chart_bundle_stub(
+            genre=_catalog_genre,
+            song=_catalog_song,
+            song_data=_catalog_song_data,
+        )
 elif _chart_bundle is None:
     try:
         from music_app_rerun import request_app_stop
