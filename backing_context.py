@@ -2583,11 +2583,15 @@ def flush_pending_backing_context_handoff(session: dict[str, Any]) -> bool:
     return bool(session.get(PENDING_BACKING_CONTEXT_APPLY))
 
 
-def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str) -> str:
-    """BPM/widget sync id — creative source signature when non-regular backing is active."""
+def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str = "") -> str:
+    """Stable BPM/widget sync id for one backing source identity.
+
+    Must not include live BPM (or the full source signature, which hashes BPM).
+    A BPM-in-id slider remounts on every tempo edit and snaps back to source BPM.
+    """
     ctx = get_backing_context(session)
     if ctx is not None and ctx.source == "custom_progression":
-        sig = str(ctx.custom_revision_id or ctx.bound_pick_key or ctx.source_signature or "").strip()
+        sig = str(ctx.custom_revision_id or ctx.bound_pick_key or "").strip()
         if sig:
             return f"custom:{sig}"
         active_id = str(ctx.active_song_id or "").strip()
@@ -2595,10 +2599,15 @@ def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str) -> str:
     ctx = active_creative_backing_context(session)
     if ctx is None:
         return str(song_sync_id or "").strip()
-    sig = str(ctx.source_signature or "").strip()
-    if sig:
-        return f"creative:{ctx.source}:{sig}"
-    return f"creative:{ctx.source}"
+    source = str(ctx.source or "").strip() or "creative"
+    identity = str(
+        ctx.bound_pick_key
+        or ctx.mission_id
+        or ctx.active_song_id
+        or ctx.entry_mode
+        or source
+    ).strip()
+    return f"creative:{source}:{identity}"
 
 
 def sync_creative_handoff_keys(session: dict[str, Any], *, st_like: Any | None = None) -> None:
@@ -2890,10 +2899,9 @@ def open_backing_from_creative(
             and existing.source_signature == ctx.source_signature
             and existing.source == ctx.source
         )
-        prev_bpm = int(getattr(existing, "bpm", 0) or 0) if existing else 0
-        new_bpm = int(getattr(ctx, "bpm", 0) or 0)
         prev_prog = list(getattr(existing, "progression", None) or []) if existing else []
         new_prog = list(getattr(ctx, "progression", None) or [])
+        new_bpm = int(getattr(ctx, "bpm", 0) or 0)
         # Note: Style/Jam may mint a new jam_id on rebuild — do not treat jam_id
         # alone as a new play source (that wiped Current BPM on same-jam reopen).
         identity_shift = bool(
@@ -2901,7 +2909,6 @@ def open_backing_from_creative(
             or str(existing.source or "") != str(ctx.source or "")
             or str(getattr(existing, "mission_id", "") or "") != str(getattr(ctx, "mission_id", "") or "")
             or str(getattr(existing, "entry_mode", "") or "") != str(getattr(ctx, "entry_mode", "") or "")
-            or (prev_bpm > 0 and new_bpm > 0 and prev_bpm != new_bpm)
             or prev_prog != new_prog
         )
         try:

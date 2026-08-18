@@ -83,6 +83,18 @@ def resolve_authoritative_chord_selection(
     ):
         return sym, sec, idx
 
+    try:
+        from improvisation_motif import flatten_section_map
+
+        flat_early = flatten_section_map(section_map)
+    except ImportError:
+        flat_early = [ch for _l, chs in section_map for ch in chs]
+    if flat_early and 0 <= idx < len(flat_early):
+        at_sec, at_ch = section_chord_at_global_index(section_map, idx)
+        if at_ch and (not sym or at_ch != sym):
+            # Stale original-key symbol after Practice Key / Shape change.
+            return at_ch, at_sec or sec, idx
+
     if sym and sec:
         matches: list[int] = []
         try:
@@ -116,6 +128,19 @@ def resolve_authoritative_chord_selection(
         flat = [ch for _l, chs in section_map for ch in chs]
 
     if flat:
+        # Index is sticky across Practice Key / Shape projection. A leftover
+        # original-key symbol (e.g. F#m while the concert map is now Dm) must
+        # not steal selection away from the highlighted tile.
+        if 0 <= idx < len(flat):
+            at_sec, at_ch = section_chord_at_global_index(section_map, idx)
+            if at_ch:
+                if not sec:
+                    sec = at_sec
+                if not sec or at_sec == sec or (at_sec and not sym):
+                    return at_ch, at_sec or sec, idx
+                if at_ch == sym:
+                    return at_ch, at_sec or sec, idx
+                return at_ch, at_sec or sec, idx
         if 0 <= idx < len(flat) and sym and flat[idx] == sym:
             at_sec, at_ch = section_chord_at_global_index(section_map, idx)
             if at_sec and not sec:

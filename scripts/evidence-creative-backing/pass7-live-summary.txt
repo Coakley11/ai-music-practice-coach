@@ -1,0 +1,21 @@
+URL=http://127.0.0.1:8512
+ts=2026-08-17 23:04:56
+captured_from=pass7-working-tree-pre-commit
+checkpoint=mission-dm-shape-dsharp-dsharp-minor
+missions_labels: tile_D#m=True selected_D#m=True stale_F#m=False charts=True practice_Dm=True
+generate: clicked=True heading_D#m=True dorian_D=False dorian_D#=True tones_DFA=False tones_Dsharp=True
+select_b: clicked=True key_still_dm=True selected_B=True still_D#m=False
+generate_b: clicked=True heading_B=True heading_D#m=False dorian_D=False practice_dm=True
+shape_e: clicked=True charts_e=True tile_Em=True practice_dm=True example='Mission example · C\n\nNotes: C – G – C – E – G – G · Rhythm: ♩ ♩ ♩ ♩ ♩ ♩\n\nWhy it works: On C in Pre-Chorus 2 (Shape of You), chord tones (C, E, G) always sound like they belong — yo'
+mission_backing: guitar=True tempo=True practice_key=True pk_click=True fm_after=False
+sbi_backing: slider_before=None slider_after=None exception=False pk_click=True fm=False card_bpm=False
+notes:
+picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You — Ed Sheeran\n\n🎼 Songs\n\nShape of You · Pop\n\nSong Original Key: Bm\n\n'
+instrument Guitar=True
+capo enabled=True
+shape key D#=True
+creative selects=['Practice / Concert Key', 'Instrument', 'Level', 'Practice focus', 'Shape Key', 'Analysis mode', 'Instrument', 'Level', 'Focus']
+mission open-backing clicked=True
+mission: on backing page
+sbi open-backing clicked=True
+sbi: on backing page

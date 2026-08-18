@@ -222,7 +222,7 @@ def test_same_source_creative_bpm_override_keeps_live_slider():
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from backing_context import build_entry_jam_context, set_backing_context
+    from backing_context import backing_page_sync_id, build_entry_jam_context, set_backing_context
     from songs.bpm_state import BPM_WIDGET_KEY, LAST_BPM_SONG
     from songs.playback_defaults import (
         _CANONICAL_BACKING_ID_KEY,
@@ -244,7 +244,7 @@ def test_same_source_creative_bpm_override_keeps_live_slider():
     }
     ctx = build_entry_jam_context(session)
     set_backing_context(session, ctx)
-    sync_id = f"creative:entry_jam:{ctx.source_signature}"
+    sync_id = backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "jam"))
     session[_CANONICAL_BACKING_ID_KEY] = sync_id
     session[BPM_WIDGET_KEY] = 75
     session[LAST_BPM_SONG] = sync_id

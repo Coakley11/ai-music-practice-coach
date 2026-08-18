@@ -775,20 +775,28 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         trace_phase="prepare_backing_context_sidebar:preserve_user_key_early",
     )
     if preserved_early is not None:
-        session.pop(PENDING_DISPLAY_KEY, None)
+        jam_owns = False
         try:
-            from backing_context import get_backing_context
-            from workflow_key_identity import resolve_song_practice_key_identity
+            from workflow_key_identity import generated_workflow_owns_practice_key
 
-            ctx_lbl = get_backing_context(session)
-            src_lbl = str(getattr(ctx_lbl, "source", "") or "").strip() if ctx_lbl else ""
-            if src_lbl in {"mission", "song_improv"}:
-                song_ident = resolve_song_practice_key_identity(session)
-                if song_ident is not None:
-                    session["_sidebar_key_identity_label"] = song_ident.practice_label
+            jam_owns = bool(generated_workflow_owns_practice_key(session))
         except ImportError:
-            pass
-        return preserved_early
+            jam_owns = False
+        if not jam_owns:
+            session.pop(PENDING_DISPLAY_KEY, None)
+            try:
+                from backing_context import get_backing_context
+                from workflow_key_identity import resolve_song_practice_key_identity
+
+                ctx_lbl = get_backing_context(session)
+                src_lbl = str(getattr(ctx_lbl, "source", "") or "").strip() if ctx_lbl else ""
+                if src_lbl in {"mission", "song_improv"}:
+                    song_ident = resolve_song_practice_key_identity(session)
+                    if song_ident is not None:
+                        session["_sidebar_key_identity_label"] = song_ident.practice_label
+            except ImportError:
+                pass
+            return preserved_early
     try:
         from backing_context import get_backing_context
         from workflow_key_identity import (
@@ -800,6 +808,8 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         ctx_early = get_backing_context(session)
         ctx_source_early = str(getattr(ctx_early, "source", "") or "").strip() if ctx_early else ""
         if ctx_source_early == "mission":
+            live_before = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            user_auth = user_sidebar_display_key_authoritative(session)
             try:
                 from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
 
@@ -815,9 +825,22 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             if preserved_mission is not None:
                 session.pop(PENDING_DISPLAY_KEY, None)
                 return preserved_mission
+            if user_auth and live_before:
+                session["display_key"] = live_before
+                session["concert_key"] = live_before
+                session.pop(PENDING_DISPLAY_KEY, None)
+                return _sidebar_key_options_including(session, live_before)
             song_ident = resolve_song_practice_key_identity(session)
             if song_ident is not None:
-                selected = song_ident.practice_key_token
+                selected = live_before or song_ident.practice_key_token
+                try:
+                    from music_theory import key_mode
+
+                    if live_before and key_mode(live_before) == str(song_ident.practice_mode or key_mode(live_before)):
+                        selected = live_before
+                except Exception:
+                    if live_before:
+                        selected = live_before
                 options = practice_keys_for_mode(song_ident.practice_mode)
                 if selected not in options:
                     options = [selected] + options
@@ -833,6 +856,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             if live_sbi:
                 options = _sidebar_key_options_including(session, live_sbi)
                 session["concert_key"] = live_sbi
+                _apply_display_key_before_widget(st, live_sbi, source="sbi_backing_live_practice_key")
                 try:
                     song_ident = resolve_song_practice_key_identity(session)
                     if song_ident is not None:

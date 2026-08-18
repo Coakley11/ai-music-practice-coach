@@ -2345,6 +2345,25 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     except ImportError:
         pass
 
+    try:
+        from mission_projection_state import resolve_mission_projection_state
+        from creative_chord_selection_authority import read_mission_section_map_from_session
+
+        live_map = auth_section_map or read_mission_section_map_from_session(session_state)
+        proj = resolve_mission_projection_state(
+            session_state,
+            section_map=live_map if live_map else None,
+            fallback_key=str(improv_ctx.key_center or concert or "C"),
+        )
+        if proj.concert_chord:
+            cur_chord = proj.concert_chord
+            section_label = proj.section_label or section_label
+            chord_idx = int(proj.chord_index)
+        improv_ctx.key_center = proj.concert_key or improv_ctx.key_center
+        improv_ctx.display_key = proj.chart_key or improv_ctx.display_key
+    except ImportError:
+        pass
+
     if not chords:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
             "callback": f"mission_example_generate_{variant}",
@@ -2531,15 +2550,38 @@ def _maybe_refresh_mission_example_outputs(
         chart = musician_facing_chart_key(session_state, concert)
     except ImportError:
         chart = str(example.display_key or concert)
-    fp = mission_example_fingerprint(example)
-    projected = str((example.motif or {}).get("_projected_display_key") or "")
-    spell_fp = str((example.motif or {}).get("spelling_reference") or "")
-    needs = (
-        session_state.get("_mission_example_output_fp") != fp
-        or not spell_fp
-        or projected != str(chart or "")
-        or str(example.concert_key or "") != str(concert or "")
-    )
+    try:
+        from mission_projection_state import (
+            example_needs_chart_reproject,
+            resolve_mission_projection_state,
+        )
+
+        sm = session_state.get("_improv_mission_section_map")
+        if not isinstance(sm, list):
+            try:
+                from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                sm = read_mission_section_map_from_session(session_state)
+            except ImportError:
+                sm = None
+        proj = resolve_mission_projection_state(
+            session_state,
+            section_map=sm if isinstance(sm, list) else None,
+            fallback_key=concert,
+        )
+        concert = proj.concert_key or concert
+        chart = proj.chart_key or chart
+        needs = example_needs_chart_reproject(example, proj)
+    except ImportError:
+        fp = mission_example_fingerprint(example)
+        projected = str((example.motif or {}).get("_projected_display_key") or "")
+        spell_fp = str((example.motif or {}).get("spelling_reference") or "")
+        needs = (
+            session_state.get("_mission_example_output_fp") != fp
+            or not spell_fp
+            or projected != str(chart or "")
+            or str(example.concert_key or "") != str(concert or "")
+        )
     if not needs:
         return example
     example.display_key = chart
@@ -2551,10 +2593,9 @@ def _maybe_refresh_mission_example_outputs(
         song_concert_key=concert,
         session_state=session_state,
         authoritative_concert_key=concert,
-        authoritative_display_key=str(example.display_key or ""),
+        authoritative_display_key=str(chart or example.display_key or ""),
     )
     session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
-    # Persist reprojected motif so Shape changes survive refresh and later Generate.
     try:
         from improvisation_missions import store_mission_example
 
@@ -2842,26 +2883,41 @@ def _tab_missions(
     cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
     try:
-        from music_workflow_pending_song_practice_key_edit import overlay_chord_with_pending_practice_key
+        from mission_projection_state import resolve_mission_projection_state
 
-        cur_chord = overlay_chord_with_pending_practice_key(
-            session_state, cur_chord, spelled_in_key=blob_key
+        _proj = resolve_mission_projection_state(
+            session_state,
+            section_map=section_map,
+            fallback_key=concert_key or blob_key,
         )
+        cur_chord = _proj.concert_chord or cur_chord
+        chord_idx = int(_proj.chord_index)
+        section_label = _proj.section_label or section_label
+        practice_key = _proj.concert_key
+        chart_key = _proj.chart_key
+        shown_chord = _proj.display_chord or cur_chord
     except ImportError:
-        pass
-    practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
-    try:
-        from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+        try:
+            from music_workflow_pending_song_practice_key_edit import overlay_chord_with_pending_practice_key
 
-        chart_key = musician_facing_chart_key(session_state, practice_key)
-        shown_chord = musician_facing_chord(
-            cur_chord,
-            concert_key=practice_key,
-            chart_key=chart_key,
-        )
-    except ImportError:
-        shown_chord = cur_chord
-        chart_key = practice_key
+            cur_chord = overlay_chord_with_pending_practice_key(
+                session_state, cur_chord, spelled_in_key=blob_key
+            )
+        except ImportError:
+            pass
+        practice_key = _authoritative_practice_chart_key(session_state, improv_ctx.display_key)
+        try:
+            from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+            chart_key = musician_facing_chart_key(session_state, practice_key)
+            shown_chord = musician_facing_chord(
+                cur_chord,
+                concert_key=practice_key,
+                chart_key=chart_key,
+            )
+        except ImportError:
+            shown_chord = cur_chord
+            chart_key = practice_key
     chart_note = ""
     if chart_key != practice_key:
         try:
@@ -3078,23 +3134,36 @@ def _tab_missions(
         example = _maybe_refresh_mission_example_outputs(
             session_state, example, instrument=live_inst, bpm=bpm
         )
+        try:
+            from improvisation_missions import ensure_mission_sheet_music_authority
+
+            example = ensure_mission_sheet_music_authority(
+                session_state,
+                example,
+                improv_ctx=improv_ctx,
+                instrument=live_inst,
+                bpm=bpm,
+            )
+        except ImportError:
+            pass
         family = instrument_family(live_inst)
 
         st.markdown("##### Optional example (inspiration only)")
         example_heading_chord = shown_chord
         try:
-            from effective_practice_context import musician_facing_chord
+            from mission_projection_state import display_chord_from_concert
 
-            example_heading_chord = musician_facing_chord(
-                str(
-                    (example.motif or {}).get("_concert_chord")
-                    or example.chord
-                    or cur_chord
-                    or shown_chord
-                ),
-                concert_key=practice_key,
-                chart_key=chart_key,
-            )
+            stored_concert = str(
+                (example.motif or {}).get("_concert_chord") or example.chord or cur_chord or ""
+            ).strip()
+            if stored_concert == cur_chord:
+                example_heading_chord = shown_chord
+            else:
+                example_heading_chord = display_chord_from_concert(
+                    stored_concert or cur_chord,
+                    concert_key=practice_key,
+                    chart_key=chart_key,
+                ) or shown_chord
         except ImportError:
             example_heading_chord = shown_chord
         if example_heading_chord:
@@ -3146,24 +3215,6 @@ def _tab_missions(
             except ImportError:
                 pass
             st.rerun()
-
-        example = load_mission_example(session_state, improv_ctx)
-        if example:
-            example = _maybe_refresh_mission_example_outputs(
-                session_state, example, instrument=live_inst, bpm=bpm
-            )
-            try:
-                from improvisation_missions import ensure_mission_sheet_music_authority
-
-                example = ensure_mission_sheet_music_authority(
-                    session_state,
-                    example,
-                    improv_ctx=improv_ctx,
-                    instrument=live_inst,
-                    bpm=bpm,
-                )
-            except ImportError:
-                pass
 
         st.markdown("**Chord tones**")
         st.markdown("`" + " · ".join(example.insight.chord_tones) + "`")
