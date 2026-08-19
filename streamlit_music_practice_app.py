@@ -7728,7 +7728,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _render_v2_chart_debug_pill(rec)
     st.markdown(
         '<div class="ui-chart-edit-cta">'
-        '<p class="ui-chart-edit-cta-label">Chord chart</p>'
+        f'<p class="ui-chart-edit-cta-label">{FEATURE_ICONS["charts_lyrics"]} Chord chart</p>'
         '<p class="ui-chart-edit-cta-hint">'
         "Edit Verse, Chorus, Bridge, and other sections bar-by-bar — "
         "saved permanently for this song."
@@ -7736,7 +7736,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         unsafe_allow_html=True,
     )
     if st.button(
-        "Edit Song Chart",
+        feature_label("charts_lyrics", "Edit Song Chart"),
         key="picker_card_edit_chart",
         type="primary",
         use_container_width=True,
@@ -12428,7 +12428,7 @@ elif _studio_page == "picker":
 
         if not (pp.is_screenshot_mode(st) and not _editor_open):
             with st.container(border=True):
-                st.markdown("#### Song content editor")
+                st.markdown(f"#### {feature_label('charts_lyrics', 'Song content editor')}")
                 if not _editor_open and not _editor_notice and not pp.is_capture_mode(st):
                     st.caption(
                         "Open **Lyrics & Cues** or **Edit Song Chart** from the active song card above when you want to edit."
@@ -12439,6 +12439,7 @@ elif _studio_page == "picker":
                     horizontal=True,
                     key=PICKER_EDITOR_TAB_KEY,
                     label_visibility="collapsed",
+                    format_func=lambda t: feature_label("charts_lyrics", t),
                 )
                 if st.button(
                     "Open editor" if not _editor_open else "Close editor",

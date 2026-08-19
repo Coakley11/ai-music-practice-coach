@@ -985,7 +985,7 @@ def render_karaoke_missing_lyrics_cta(
         unsafe_allow_html=True,
     )
     if st.button(
-        "\u270F\uFE0F  Open Lyrics & Cues editor",
+        feature_label("charts_lyrics", "Open Lyrics & Cues editor"),
         key="karaoke_open_lyrics_editor",
         type="primary",
     ):

@@ -36,6 +36,8 @@ FEATURE_ICONS: dict[str, str] = {
     # Song/chord teaching — not Practice Setup (🎸) and not Music Coach (💬).
     "chord_song_coach": "📖",
     "karaoke": "🎤",
+    # Catalog song chart + lyrics editing / save / revert (Tutorial: Charts & lyrics).
+    "charts_lyrics": "📝",
     "transpose_helpers": "↔️",
     # Session duration / timed practice. Same glyph as metronome by design.
     "session": "⏱️",

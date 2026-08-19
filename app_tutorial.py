@@ -609,7 +609,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "picker",
             },
             {
-                "icon": "📝",
+                "icon": FEATURE_ICONS["charts_lyrics"],
                 "title": "Charts & lyrics",
                 "body": "Save corrected chart / Save Lyrics & Cues. Revert toward catalog if you want.",
                 "tone": "slate",
@@ -648,7 +648,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "try_this": "Use this as a template, then change the instrument and song to yours.",
         "why": "The tools are more useful together than as separate apps.",
         "journey": [
-            "🎷 Choose Clarinet",
+            f"{FEATURE_ICONS['practice_setup']} Choose Clarinet",
             "🎵 Pick a song",
             f"{FEATURE_ICONS['practice_concert_key']} Move it to a comfortable Practice Key",
             f"{FEATURE_ICONS['practice']} Work on one section",

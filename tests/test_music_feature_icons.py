@@ -27,6 +27,7 @@ _MAJOR_UNIQUE = (
     "karaoke",
     "music_coach",
     "chord_song_coach",
+    "charts_lyrics",
 )
 
 
@@ -86,6 +87,7 @@ def test_tutorial_cards_use_canonical_icons() -> None:
         ("recording", "One take", "upload_analysis"),
         ("recording", "Mission take", "mission"),
         ("saving", "Custom songs", "custom"),
+        ("saving", "Charts & lyrics", "charts_lyrics"),
         ("which_tool", "Accompaniment", "backing"),
         ("which_tool", "Create my own progression", "custom"),
         ("which_tool", "Write a fuller song idea", "composition"),
@@ -151,6 +153,44 @@ def test_key_badges_keep_canonical_icons() -> None:
     html = studio_song_meta_badges_html(original_key="G", display_key="A")
     assert FEATURE_ICONS["original_key"] in html
     assert FEATURE_ICONS["practice_concert_key"] in html
+
+
+def test_tutorial_choose_clarinet_uses_practice_setup_not_style_jam() -> None:
+    from music_feature_icons import FEATURE_ICONS
+
+    which = next(s for s in TUTORIAL_STEPS if s.get("id") == "which_tool")
+    journey = which.get("journey") or []
+    clarinet = next(item for item in journey if "Choose Clarinet" in str(item))
+    assert clarinet.startswith(f"{FEATURE_ICONS['practice_setup']} ")
+    assert "🎷" not in clarinet
+
+
+def test_charts_lyrics_identity() -> None:
+    assert FEATURE_ICONS["charts_lyrics"] == "📝"
+    assert feature_label("charts_lyrics", "Song content editor").startswith("📝 ")
+    assert FEATURE_ICONS["charts_lyrics"] != FEATURE_ICONS["karaoke"]
+    assert FEATURE_ICONS["charts_lyrics"] != FEATURE_ICONS["custom"]
+    assert FEATURE_ICONS["charts_lyrics"] != FEATURE_ICONS["composition"]
+
+
+def test_active_page_nav_css_uses_studio_page_accents() -> None:
+    from app_ui import STUDIO_PAGE_ACCENTS, _studio_page_active_nav_css, studio_page_accent
+
+    css = _studio_page_active_nav_css()
+    assert studio_page_accent("log") == "#db2777"
+    assert studio_page_accent("backing") == "#2563eb"
+    assert STUDIO_PAGE_ACCENTS["log"] == "#db2777"
+    # Top nav: page word + Open indicator
+    assert ".ui-nav-art-cell.nav-log.is-active .ui-nav-script-label" in css
+    assert "color: #db2777" in css
+    assert 'st-key-studio_quick_nav_btn_log"' in css or "st-key-studio_quick_nav_btn_log" in css
+    # Sidebar Pages active fill
+    assert ".ui-sb-nav-wrap .sb-nav-log.nav-btn-active button" in css
+    assert "background: #db2777" in css
+    for page_id, accent in STUDIO_PAGE_ACCENTS.items():
+        assert f".ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label" in css
+        assert f".ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button" in css
+        assert accent in css
 
 
 def test_practice_log_header_accent_is_not_custom_green() -> None:

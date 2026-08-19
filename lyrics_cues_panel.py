@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from music_feature_icons import FEATURE_ICONS, feature_label
 from song_catalog.user_overrides import (
     USER_VERIFIED,
     catalog_snapshot_from_record,
@@ -295,7 +296,7 @@ def render_lyrics_and_cues_panel(
 
         with save_a:
             if st.button(
-                "Save Lyrics & Cues",
+                feature_label("charts_lyrics", "Save Lyrics & Cues"),
                 key=f"save_lyrics::{slug}",
                 type="primary",
                 use_container_width=True,
@@ -321,13 +322,13 @@ def render_lyrics_and_cues_panel(
                 except Exception:
                     pass
                 try:
-                    st.toast("Lyrics & cues saved.", icon="🎤")
+                    st.toast("Lyrics & cues saved.", icon=FEATURE_ICONS["charts_lyrics"])
                 except Exception:
                     pass
                 st.rerun()
         with save_b:
             if st.button(
-                "Save as user verified",
+                feature_label("charts_lyrics", "Save as user verified"),
                 key=f"save_lyrics_verified::{slug}",
                 use_container_width=True,
                 help="Mark as your preferred lyrics/cues (and verified chart if present).",
@@ -382,7 +383,7 @@ def render_lyrics_and_cues_panel(
                 st.rerun()
         with save_c:
             if st.button(
-                "Revert my lyrics",
+                feature_label("charts_lyrics", "Revert my lyrics"),
                 key=f"revert_lyrics::{slug}",
                 use_container_width=True,
                 help="Remove your saved lyrics and cues for this song.",
@@ -406,12 +407,13 @@ def render_lyrics_and_cues_panel(
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<p class="ui-card-title" style="font-size:1.05rem;">🎤 Lyrics & Cues'
+            f'<p class="ui-card-title" style="font-size:1.05rem;">'
+            f'{html.escape(FEATURE_ICONS["charts_lyrics"])} Lyrics & Cues'
             f' — {html.escape(title)}</p>',
             unsafe_allow_html=True,
         )
         _body()
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        with st.expander("🎤 Lyrics & Cues", expanded=bool(expanded)):
+        with st.expander(feature_label("charts_lyrics", "Lyrics & Cues"), expanded=bool(expanded)):
             _body()

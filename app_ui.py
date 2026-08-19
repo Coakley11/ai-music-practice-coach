@@ -715,10 +715,9 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-color: rgba(148, 163, 184, 0.28) !important;
 }
 .ui-sb-nav-wrap .nav-btn-active button {
-  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  /* Accent filled by _studio_page_active_nav_css() per page */
   color: #fff !important;
-  border-color: rgba(220, 38, 38, 0.65) !important;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
+  font-weight: 700 !important;
 }
 .ui-global-bar {
   border: none;
@@ -5332,9 +5331,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 .ui-sb-nav-wrap .studio-nav-item:not(.nav-btn-active) button {
   opacity: 0.88;
 }
-.ui-sb-nav-wrap .nav-btn-active button {
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
-}
+/* Active fill comes from _studio_page_active_nav_css() */
 
 /* ---- Page header — calmer top spacing ---- */
 .ui-page-head {
@@ -6444,6 +6441,11 @@ __BACKING_STUDIO_PANEL_CSS__
         """
         .replace("__UI_POLISH_VERSION__", _UI_POLISH_VERSION)
         .replace("__BACKING_STUDIO_PANEL_CSS__", _studio_panels_css()),
+        unsafe_allow_html=True,
+    )
+    # Sidebar Pages + top-nav active identity share STUDIO_PAGE_ACCENTS.
+    st.markdown(
+        f"<style data-ui-active-nav='page-accents'>{_studio_page_active_nav_css()}</style>",
         unsafe_allow_html=True,
     )
 
@@ -7726,6 +7728,71 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
     "openai": {"label": "OpenAI", "icon": "✨", "nav_class": "openai"},
 }
 
+# Canonical page accent colors (SSOT for headers + active nav treatment).
+STUDIO_PAGE_ACCENTS: dict[str, str] = {
+    "practice": "#dc2626",
+    "picker": "#4f46e5",
+    "backing": "#2563eb",
+    "custom": "#059669",
+    "composer": "#b45309",
+    "creative": "#7c3aed",
+    "multitrack": "#c2410c",
+    "analysis": "#ea580c",
+    "log": "#db2777",
+    "openai": "#0891b2",
+}
+
+
+def studio_page_accent(page_id: str) -> str:
+    """Return the canonical accent color for a studio page id."""
+    return STUDIO_PAGE_ACCENTS.get(str(page_id or "").strip(), "#64748b")
+
+
+def _studio_page_active_nav_css() -> str:
+    """Active top-nav + sidebar Pages styling from STUDIO_PAGE_ACCENTS."""
+    chunks: list[str] = [
+        "/* Active page identity — accent from STUDIO_PAGE_ACCENTS */",
+        ".ui-nav-art-cell.is-active .ui-nav-script-label { font-weight: 700 !important; }",
+        ".ui-sb-nav-wrap .nav-btn-active button { color: #ffffff !important; }",
+    ]
+    for page_id, accent in STUDIO_PAGE_ACCENTS.items():
+        soft = f"color-mix(in srgb, {accent} 14%, transparent)"
+        shadow = f"color-mix(in srgb, {accent} 35%, transparent)"
+        chunks.append(
+            f"""
+.ui-studio-script-header--{page_id} {{
+  --ui-studio-header-accent: {accent};
+}}
+.ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label {{
+  color: {accent} !important;
+}}
+.ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-art-face {{
+  border-bottom-color: {accent};
+  background: {soft};
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] .stButton > button[kind="primary"],
+[class*="st-key-studio_quick_nav_btn_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-studio_simple_nav_btn_{page_id}"] .stButton > button[kind="primary"],
+[class*="st-key-studio_simple_nav_btn_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-cross_to_{page_id}"] .stButton > button[kind="primary"],
+[class*="st-key-cross_to_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-global_nav_{page_id}"] .stButton > button[kind="primary"],
+[class*="st-key-global_nav_{page_id}"] .stButton > button[data-testid="baseButton-primary"] {{
+  background: {soft} !important;
+  border: 2px solid {accent} !important;
+  color: {accent} !important;
+  font-weight: 700 !important;
+}}
+.ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button {{
+  background: {accent} !important;
+  border-color: {accent} !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px {shadow} !important;
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
+
 OPENAI_PAGE_ID = "openai"
 
 STUDIO_PAGES: list[tuple[str, str]] = [
@@ -7998,12 +8065,13 @@ def _quick_nav_artistic_css() -> str:
   white-space: nowrap !important;
 }
 .ui-nav-art-cell.is-active .ui-nav-art-face {
-  background: rgba(124, 58, 237, 0.08);
-  border-bottom-color: rgba(220, 38, 38, 0.85);
+  /* Accent wash/border from _studio_page_active_nav_css() per page */
+  background: rgba(148, 163, 184, 0.08);
+  border-bottom-color: rgba(148, 163, 184, 0.45);
 }
 .ui-nav-art-cell.is-active .ui-nav-script-label {
   font-weight: 700 !important;
-  color: #dc2626 !important;
+  /* Color from _studio_page_active_nav_css() per page */
 }
 .ui-nav-art-cell.ui-nav-compact {
   gap: 0.08rem;
@@ -8046,8 +8114,9 @@ def _quick_nav_artistic_css() -> str:
 [class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"],
 [class*="st-key-cross_to_"] .stButton > button[kind="primary"],
 [class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"] {
-  border: 2px solid #7c3aed !important;
-  background: #dc2626 !important;
+  /* Page-specific Open accent from _studio_page_active_nav_css(); fallback below */
+  border: 2px solid #94a3b8 !important;
+  background: #64748b !important;
   color: #ffffff !important;
   font-weight: 700 !important;
 }
@@ -8079,7 +8148,7 @@ def _quick_nav_artistic_css() -> str:
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
 }
-"""
+""" + _studio_page_active_nav_css()
 
 
 def _render_nav_art_cell(
