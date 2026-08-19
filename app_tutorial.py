@@ -250,8 +250,8 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "picker",
             },
             {
-                "icon": "🔁",
-                "title": "Focus",
+                "icon": FEATURE_ICONS["section_focus"],
+                "title": "Section Focus",
                 "body": "Work on one section instead of always playing the entire song.",
                 "tone": "log",
             },
@@ -615,7 +615,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "slate",
             },
             {
-                "icon": "📚",
+                "icon": FEATURE_ICONS["custom"],
                 "title": "Custom songs",
                 "body": "Save to library, then Load selected / Set as Active Song later.",
                 "tone": "custom",

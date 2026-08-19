@@ -19,6 +19,8 @@ import html
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Iterable
 
+from music_feature_icons import FEATURE_ICONS, feature_label
+
 import karaoke_mode as km
 
 __all__ = (
@@ -110,9 +112,9 @@ def render_add_to_queue_button(
         return False
     already = km.is_in_queue(st.session_state, pick_key)
     if already:
-        label = "In Karaoke Setlist"
+        label = feature_label("karaoke", "In Karaoke Setlist")
     else:
-        label = "Add to Karaoke Set"
+        label = feature_label("karaoke", "Add to Karaoke Set")
     clicked = st.button(
         label,
         key=f"karaoke_add_{key_suffix}",
@@ -137,7 +139,7 @@ def render_add_to_queue_button(
                 fallback_title=display_title,
             )
         if display_title:
-            st.toast(f"Added '{display_title}' to the karaoke setlist.", icon="🎤")
+            st.toast(f"Added '{display_title}' to the karaoke setlist.", icon=FEATURE_ICONS["karaoke"])
     return bool(clicked)
 
 
@@ -193,7 +195,7 @@ def render_karaoke_setlist_panel(
             f'<span class="ui-karaoke-setlist-dot" aria-hidden="true"></span>'
             f"Vocal Performance"
             f"</p>"
-            f'<p class="ui-karaoke-setlist-title">{html.escape(title)}'
+            f'<p class="ui-karaoke-setlist-title">{html.escape(feature_label("karaoke", title))}'
             + (
                 f' <small class="ui-karaoke-setlist-count">'
                 f"({total} queued)"
@@ -358,7 +360,7 @@ def render_karaoke_setlist_panel(
         c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
         with c_start:
             if st.button(
-                km.voice_wording("start_session_button", voice=True),
+                feature_label("karaoke", km.voice_wording("start_session_button", voice=True)),
                 key="karaoke_start_session",
                 disabled=active or not queue,
                 type="primary",
@@ -904,7 +906,7 @@ def render_karaoke_queue_preview(
         label = ordinals[i] if i < len(ordinals) else f"#{pos + i + 1}"
         rows_html.append(_row(label, pk))
 
-    header = f"Karaoke Setlist · {pos} of {total}"
+    header = feature_label("karaoke", f"Karaoke Setlist · {pos} of {total}")
     st.markdown(
         '<div class="ui-karaoke-preview">'
         f'<div class="ui-karaoke-preview-header">{html.escape(header)}</div>'

@@ -12,6 +12,7 @@ from studio_page_state import CREATIVE_TOOL_ICONS, creative_song_source_display_
 _MAJOR_UNIQUE = (
     "practice",
     "practice_focus",
+    "section_focus",
     "original_key",
     "practice_concert_key",
     "pitch_tone_tuner",
@@ -22,6 +23,8 @@ _MAJOR_UNIQUE = (
     "creative",
     "composition",
     "custom",
+    "karaoke",
+    "music_coach",
 )
 
 
@@ -51,12 +54,20 @@ def test_custom_uses_writing_hand_not_plain_pencil() -> None:
     assert "✏️" not in feature_label("custom", "Custom")
 
 
-def test_composition_keeps_piano_and_keys_do_not() -> None:
-    piano = FEATURE_ICONS["composition"]
-    assert piano == "🎹"
-    assert FEATURE_ICONS["original_key"] != piano
-    assert FEATURE_ICONS["practice_concert_key"] != piano
-    assert FEATURE_ICONS["practice_concert_key"] != FEATURE_ICONS["songs"]
+def test_composition_is_not_piano_instrument() -> None:
+    assert FEATURE_ICONS["composition"] == "🪶"
+    assert FEATURE_ICONS["composition"] != "🎹"
+    assert FEATURE_ICONS["practice_concert_key"] == "🗝️"
+    assert FEATURE_ICONS["practice_concert_key"] not in {"🔄", "🎵", "🎶", "🎼", "🎹"}
+    assert FEATURE_ICONS["original_key"] != FEATURE_ICONS["practice_concert_key"]
+    assert FEATURE_ICONS["composition"] != FEATURE_ICONS["custom"]
+    assert FEATURE_ICONS["composition"] != FEATURE_ICONS["creative"]
+
+
+def test_practice_focus_and_section_focus_differ() -> None:
+    assert FEATURE_ICONS["practice_focus"] == "🔍"
+    assert FEATURE_ICONS["section_focus"] == "🔁"
+    assert FEATURE_ICONS["practice_focus"] != FEATURE_ICONS["section_focus"]
 
 
 def test_tutorial_cards_use_canonical_icons() -> None:
@@ -66,14 +77,18 @@ def test_tutorial_cards_use_canonical_icons() -> None:
         ("keys", "Practice / Concert Key", "practice_concert_key"),
         ("practice", "Time", "timing_tempo_metronome"),
         ("practice", "Pitch & Tone", "pitch_tone_tuner"),
+        ("practice", "Section Focus", "section_focus"),
         ("composer", "Custom Progression", "custom"),
         ("composer", "Composition Studio", "composition"),
         ("recording", "One take", "upload_analysis"),
         ("recording", "Mission take", "mission"),
+        ("saving", "Custom songs", "custom"),
         ("which_tool", "Accompaniment", "backing"),
         ("which_tool", "Create my own progression", "custom"),
         ("which_tool", "Write a fuller song idea", "composition"),
         ("which_tool", "Feedback on one take", "upload_analysis"),
+        ("which_tool", "Guidance", "music_coach"),
+        ("which_tool", "Sing with lyrics", "karaoke"),
         ("welcome", "Practice", "practice"),
         ("welcome", "Create", "creative"),
     ]
@@ -95,3 +110,10 @@ def test_page_feature_icon_helper() -> None:
     assert page_feature_icon("composer") == FEATURE_ICONS["composition"]
     assert page_feature_icon("analysis") == FEATURE_ICONS["upload_analysis"]
     assert page_feature_icon("custom") == FEATURE_ICONS["custom"]
+
+
+def test_karaoke_and_music_coach_registry_glyphs() -> None:
+    assert FEATURE_ICONS["karaoke"] == "🎤"
+    assert FEATURE_ICONS["music_coach"] == "💬"
+    assert feature_label("karaoke", "Karaoke Performance Setlist").startswith("🎤 ")
+    assert feature_label("music_coach", "Ask the Music Coach").startswith("💬 ")

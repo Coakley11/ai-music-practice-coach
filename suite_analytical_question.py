@@ -8,6 +8,7 @@ Command Center surfaces Continue cards targeting Applied Intelligence.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import re
@@ -18,6 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 from activity_time import format_eastern_time_label, parse_activity_timestamp, utc_now_iso
+from music_feature_icons import feature_label
 
 log = logging.getLogger(__name__)
 
@@ -2005,11 +2007,11 @@ def render_analyze_with_applied_math_sidebar(
     is_music = str(source_app or "").strip().lower() == "music"
     is_nba = str(source_app or "").strip().lower() == "nba"
     if is_music:
-        st.sidebar.markdown("### Ask the Music Coach")
+        st.sidebar.markdown(f"### {feature_label('music_coach', 'Ask the Music Coach')}")
         st.sidebar.caption(
             "Get help with practice, theory, navigation, backing tracks, karaoke, or this app."
         )
-        submit_label = "Ask the Music Coach"
+        submit_label = feature_label("music_coach", "Ask the Music Coach")
     elif is_nba:
         st.sidebar.markdown("### Get Basketball Insight")
         st.sidebar.caption(
@@ -2472,7 +2474,7 @@ def render_music_coach_page_entry(
     ss = session_state if session_state is not None else st.session_state
     st.markdown(
         '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
-        "<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">💬 Ask the Music Coach</p>"
+        f"<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">{html.escape(feature_label('music_coach', 'Ask the Music Coach'))}</p>"
         "<p style=\"margin:0;color:#475569;font-size:0.9rem;\">"
         "Ask about this song, practice, theory, or how to use the app — "
         "without leaving your session context."
@@ -2481,7 +2483,7 @@ def render_music_coach_page_entry(
         unsafe_allow_html=True,
     )
     if st.button(
-        "Ask the Music Coach",
+        feature_label("music_coach", "Ask the Music Coach"),
         key="practice_open_music_coach",
         type="primary",
         use_container_width=True,
@@ -2498,7 +2500,7 @@ def render_music_coach_page_entry(
     send_gen = int(ss.get(f"_ami_send_gen_music_{page_suffix}") or 0)
     question_key = f"ami_question_music_page_{page_suffix}_{send_gen}"
 
-    with st.expander("Ask the Music Coach", expanded=False):
+    with st.expander(feature_label("music_coach", "Ask the Music Coach"), expanded=False):
         st.caption("Practice, theory, app navigation, backing, karaoke, or Creative — same coach as the sidebar.")
         question = st.text_area(
             "Question",
@@ -2509,7 +2511,7 @@ def render_music_coach_page_entry(
             label_visibility="collapsed",
         )
         if st.button(
-            "Ask the Music Coach",
+            feature_label("music_coach", "Ask the Music Coach"),
             key=f"ami_submit_music_page_{page_suffix}",
             use_container_width=True,
             type="primary",

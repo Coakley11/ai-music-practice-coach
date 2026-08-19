@@ -14,15 +14,19 @@ from __future__ import annotations
 FEATURE_ICONS: dict[str, str] = {
     "practice": "🎯",
     "practice_focus": "🔍",
+    # Loop / restrict playback to one song section (not Practice Focus).
+    "section_focus": "🔁",
     "original_key": "📜",
-    "practice_concert_key": "🔄",
+    # Key-related; not Songs (🎼) and not musical-note glyphs (🎵/🎶).
+    "practice_concert_key": "🗝️",
     "pitch_tone_tuner": "🎛️",
     "timing_tempo_metronome": "⏱️",
     "mission": "🚩",
     "upload_analysis": "🎙️",
     "backing": "🎧",
     "creative": "🎨",
-    "composition": "🎹",
+    # Writing/composing — not the Piano instrument glyph (🎹).
+    "composition": "🪶",
     "custom": "✍️",
     "songs": "🎼",
     "multitrack": "🎚️",

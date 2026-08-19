@@ -8887,7 +8887,8 @@ def _render_practice_setup_panel(
                 unsafe_allow_html=True,
             )
             st.markdown(
-                '<p class="ui-practice-focus-title">Section Focus</p>',
+                f'<p class="ui-practice-focus-title">'
+                f'{FEATURE_ICONS["section_focus"]} Section Focus</p>',
                 unsafe_allow_html=True,
             )
             from app_ui import render_section_jump_bar as _render_section_jump_bar
