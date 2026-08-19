@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 from typing import Any, Optional
 
+from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon
+
 __all__ = [
     "STUDIO_PAGES",
     "app_hero",
@@ -6838,11 +6840,11 @@ def active_song_key_row_html(
     return (
         f'<div class="ui-active-song-key-row{shift_cls}">'
         f'<span class="ui-active-song-key-chip original">'
-        f'<span class="ui-active-song-key-label">Original key</span>'
+        f'<span class="ui-active-song-key-label">{html.escape(feature_label("original_key", "Original key"))}</span>'
         f'<span class="ui-active-song-key-value">{orig}</span></span>'
         f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
         f'<span class="ui-active-song-key-chip practice">'
-        f'<span class="ui-active-song-key-label">Practice / Concert Key</span>'
+        f'<span class="ui-active-song-key-label">{html.escape(feature_label("practice_concert_key", "Practice / Concert Key"))}</span>'
         f'<span class="ui-active-song-key-value">{practice}</span></span>'
         f"</div>"
     )
@@ -7106,9 +7108,9 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-badge song" title="Active song">'
         f'<span class="ui-mt-ctx-ico">🎵</span> <strong>{_song}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
-        f'<span class="ui-mt-ctx-ico">🎹</span> Orig <strong>{_orig}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
-        f'<span class="ui-mt-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice <strong>{_practice}</strong></span>'
         f'<span class="ui-mt-ctx-badge bpm" title="Session tempo">'
         f'<span class="ui-mt-ctx-ico">⏱</span> <strong>{int(bpm)}</strong> BPM</span>'
         f'<span class="ui-mt-ctx-badge meter" title="Time signature">'
@@ -7214,10 +7216,22 @@ def studio_song_meta_badges_html(
     """Professional pill badges for CPL preview and Songs page cards."""
     badges: list[str] = []
     if original_key:
-        badges.append(studio_meta_badge("Original Key", original_key, tone="key", icon="🎹"))
+        badges.append(
+            studio_meta_badge(
+                "Original Key",
+                original_key,
+                tone="key",
+                icon=FEATURE_ICONS["original_key"],
+            )
+        )
     if display_key:
         badges.append(
-            studio_meta_badge("Practice / Concert Key", display_key, tone="display", icon="🎼")
+            studio_meta_badge(
+                "Practice / Concert Key",
+                display_key,
+                tone="display",
+                icon=FEATURE_ICONS["practice_concert_key"],
+            )
         )
     if written_key and written_key != display_key:
         badges.append(
@@ -7475,9 +7489,9 @@ def render_backing_setup_context_strip(
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
-        f'<span class="ui-backing-ctx-ico">🎹</span> Original Key <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
-        f'<span class="ui-backing-ctx-ico">🎼</span> Practice / Concert Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
@@ -7698,15 +7712,15 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
 
 
 STUDIO_PAGE_META: dict[str, dict[str, str]] = {
-    "practice": {"label": "Practice", "icon": "🎯", "nav_class": "practice"},
-    "picker": {"label": "Song Selection", "icon": "🎼", "nav_class": "picker"},
-    "backing": {"label": "Backing Track", "icon": "🎧", "nav_class": "backing"},
-    "custom": {"label": "Custom Progression", "icon": "✏️", "nav_class": "custom"},
-    "composer": {"label": "Composition Studio", "icon": "🎹", "nav_class": "composer"},
-    "creative": {"label": "Creative Lab", "icon": "🎨", "nav_class": "creative"},
-    "multitrack": {"label": "Multitrack", "icon": "🎚️", "nav_class": "multitrack"},
-    "analysis": {"label": "Upload Analysis", "icon": "🎙️", "nav_class": "analysis"},
-    "log": {"label": "Practice Log", "icon": "📓", "nav_class": "log"},
+    "practice": {"label": "Practice", "icon": page_feature_icon("practice"), "nav_class": "practice"},
+    "picker": {"label": "Song Selection", "icon": page_feature_icon("picker"), "nav_class": "picker"},
+    "backing": {"label": "Backing Track", "icon": page_feature_icon("backing"), "nav_class": "backing"},
+    "custom": {"label": "Custom Progression", "icon": page_feature_icon("custom"), "nav_class": "custom"},
+    "composer": {"label": "Composition Studio", "icon": page_feature_icon("composer"), "nav_class": "composer"},
+    "creative": {"label": "Creative Lab", "icon": page_feature_icon("creative"), "nav_class": "creative"},
+    "multitrack": {"label": "Multitrack", "icon": page_feature_icon("multitrack"), "nav_class": "multitrack"},
+    "analysis": {"label": "Upload Analysis", "icon": page_feature_icon("analysis"), "nav_class": "analysis"},
+    "log": {"label": "Practice Log", "icon": page_feature_icon("log"), "nav_class": "log"},
     "openai": {"label": "OpenAI", "icon": "✨", "nav_class": "openai"},
 }
 
@@ -7819,16 +7833,7 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
 }
 
 _NAV_COMPACT_ICON: dict[str, str] = {
-    "practice": "🎯",
-    "picker": "🎼",
-    "backing": "🎧",
-    "custom": "✏️",
-    "composer": "🎹",
-    "creative": "🎨",
-    "multitrack": "🎚️",
-    "analysis": "🎙️",
-    "log": "📓",
-    "openai": "✨",
+    page_id: str(meta.get("icon") or "") for page_id, meta in STUDIO_PAGE_META.items()
 }
 
 
@@ -8623,7 +8628,7 @@ def render_global_studio_bar(
         )
     with row1[1]:
         st.selectbox(
-            "Practice key",
+            feature_label("practice_concert_key", "Practice / Concert Key"),
             display_key_options,
             key="display_key",
             help="Transpose charts and backing audio.",
@@ -8634,7 +8639,7 @@ def render_global_studio_bar(
     with row1[3]:
         st.selectbox("Instrument", instrument_options, key="instrument")
     with row1[4]:
-        st.selectbox("Focus", focus_options, key="focus")
+        st.selectbox(feature_label("practice_focus", "Practice focus"), focus_options, key="focus")
     with row1[5]:
         if show_bpm:
             from songs.playback_defaults import BACKING_BPM_MAX, BACKING_BPM_MIN

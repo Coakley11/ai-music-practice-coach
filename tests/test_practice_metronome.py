@@ -41,7 +41,7 @@ class TestPracticeMetronomeWidget(unittest.TestCase):
 
     def test_compact_mode_uses_shorter_title(self) -> None:
         html = build_metronome_widget_html(default_bpm=100, compact=True)
-        self.assertIn(">Metronome<", html)
+        self.assertIn(">⏱️ Metronome<", html)
         self.assertNotIn("Practice Metronome", html)
 
     def test_render_metronome_widget_accepts_streamlit_module(self) -> None:

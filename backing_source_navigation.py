@@ -9,6 +9,7 @@ from backing_context import (
     BackingContext,
     get_backing_context,
 )
+from music_feature_icons import FEATURE_ICONS, feature_label
 
 CreativeReturnPage = Literal["creative", "custom", "picker", "practice"]
 
@@ -1775,10 +1776,10 @@ def return_to_source_button_label(ctx: BackingContext | None) -> str:
     if ctx is None:
         return "Return to source"
     if ctx.source == "custom_progression":
-        return "✏️ Return to Custom Page"
+        return feature_label("custom", "Return to Custom Page")
     if ctx.source == "regular_song":
         return "🎵 Return to Catalog Song"
-    return "🎨 Return to Creative Page"
+    return feature_label("creative", "Return to Creative Page")
 
 
 def edit_in_creative_button_label(ctx: BackingContext | None) -> str:

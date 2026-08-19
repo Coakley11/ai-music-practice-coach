@@ -7,6 +7,7 @@ import re
 from typing import Any, Callable
 
 from app_ui import nav_icon_button_label
+from music_feature_icons import feature_label
 
 II_SELECTED_CHORD = "ii_selected_chord"
 II_SELECTED_SECTION = "ii_selected_section"
@@ -685,7 +686,7 @@ def _tab_entry_modes(
                 _nav1, _ = st.columns([1.2, 3.8])
                 with _nav1:
                     st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
-                    if st.button("✏️ Custom", key="improv_go_custom", type="secondary"):
+                    if st.button(feature_label("custom", "Custom"), key="improv_go_custom", type="secondary"):
                         on_go_custom_progression()
                     st.markdown("</div>", unsafe_allow_html=True)
 

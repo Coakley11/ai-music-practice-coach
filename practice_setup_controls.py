@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from music_feature_icons import feature_label
+
 DEFAULT_INSTRUMENT_OPTIONS: list[str] = [
     "Piano",
     "Guitar",
@@ -358,7 +360,7 @@ def render_setup_quick_controls(
         )
     with c3:
         st_module.selectbox(
-            "Focus",
+            feature_label("practice_focus", "Focus"),
             focus_options_for_instrument(str(session_state.get("instrument") or instrument)),
             key=fk,
             on_change=_apply_focus,

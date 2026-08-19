@@ -716,6 +716,8 @@ except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
+from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, page_feature_label
+
 try:
     from app_ui import (
         app_hero,
@@ -1028,7 +1030,7 @@ if not _APP_UI_LOADED:
 
     def sidebar_goto_song_selection(*, on_navigate) -> None:
         st.sidebar.button(
-            "🎼 Song Selection",
+            page_feature_label("picker", "Song Selection"),
             key="sidebar_goto_song_selection",
             use_container_width=True,
             on_click=on_navigate,
@@ -1050,15 +1052,15 @@ if not _APP_UI_LOADED:
 
     def render_studio_nav(session_state, *, rerun_fn) -> str:
         pages = [
-            ("practice", "🎯 Practice"),
-            ("picker", "🎼 Song Selection"),
-            ("backing", "🎧 Backing Track"),
-            ("custom", "✏️ Custom Progression"),
-            ("composer", "🎹 Composition Studio"),
-            ("creative", "🎨 Creative Lab"),
-            ("multitrack", "🎚️ Multitrack"),
-            ("analysis", "🎙️ Upload Analysis"),
-            ("log", "📓 Practice Log"),
+            ("practice", page_feature_label("practice", "Practice")),
+            ("picker", page_feature_label("picker", "Song Selection")),
+            ("backing", page_feature_label("backing", "Backing Track")),
+            ("custom", page_feature_label("custom", "Custom Progression")),
+            ("composer", page_feature_label("composer", "Composition Studio")),
+            ("creative", page_feature_label("creative", "Creative Lab")),
+            ("multitrack", page_feature_label("multitrack", "Multitrack")),
+            ("analysis", page_feature_label("analysis", "Upload Analysis")),
+            ("log", page_feature_label("log", "Practice Log")),
         ]
         session_state.setdefault("studio_page", "practice")
         labels = [p[1] for p in pages]
@@ -1079,7 +1081,7 @@ if not _APP_UI_LOADED:
             st.caption(kwargs.get("source_label", ""))
         with c2:
             st.selectbox(
-                "Practice / Concert Key",
+                feature_label("practice_concert_key", "Practice / Concert Key"),
                 display_key_options,
                 key="display_key",
                 on_change=kwargs.get("on_display_key_change"),
@@ -1089,7 +1091,7 @@ if not _APP_UI_LOADED:
         with c4:
             st.selectbox("Instrument", instrument_options, key="instrument")
         with c5:
-            st.selectbox("Focus", focus_options, key="focus")
+            st.selectbox(feature_label("practice_focus", "Focus"), focus_options, key="focus")
         if kwargs.get("show_bpm"):
             st.slider(
                 "BPM",
@@ -9777,7 +9779,7 @@ def _active_song_artist_label() -> str:
 
 # SIDEBAR — suite order: Command Center → Saved Session → Active Song → Practice Setup → Pages → Session
 
-sidebar_section("Active Song", icon="🎼", tone="source")
+sidebar_section("Active Song", icon=FEATURE_ICONS["songs"], tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _src_kind, _src_detail = unpack_active_source_banner(
     active_source_banner(
@@ -10095,7 +10097,8 @@ except Exception:
             mark_display_key_changed(st)
 
 st.sidebar.markdown(
-    f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
+    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
+    f"<strong>{original_key}</strong></p>",
     unsafe_allow_html=True,
 )
 if is_fixed_practice_key_mode(st.session_state):
@@ -10117,7 +10120,7 @@ if is_fixed_practice_key_mode(st.session_state):
     )
 else:
     st.sidebar.selectbox(
-        "Practice / Concert Key",
+        feature_label("practice_concert_key", "Practice / Concert Key"),
         _display_key_options,
         key="display_key",
         help="Concert pitch for charts and backing audio.",
@@ -10430,14 +10433,14 @@ st.sidebar.selectbox(
 )
 _focus_options = _sync_focus_options_before_widget(st.session_state.get("instrument", "Piano"))
 st.sidebar.selectbox(
-    "Practice focus",
+    feature_label("practice_focus", "Practice focus"),
     _focus_options,
     key="focus",
     on_change=_on_global_focus_change,
     help="Applies on every page — drives practice goals, suggestions, and video matching.",
 )
 
-sidebar_section("Music Coach", icon="🎵", tone="session")
+sidebar_section("Music Coach", icon=FEATURE_ICONS["music_coach"], tone="session")
 try:
     from music_coach_context import (
         build_music_coach_context,
@@ -11291,7 +11294,7 @@ if _studio_page == "practice":
         pass
     if not pp.is_screenshot_mode(st) and not pp.is_demo_mode(st):
         _studio_page_header(
-            "🎯",
+            page_feature_icon("practice"),
             "Song Practice",
             "Set up your session below — change key in the sidebar; pick songs on Song Selection.",
             page_id="practice",
@@ -11580,16 +11583,20 @@ if _studio_page == "practice":
 
                     prepare_practice_workspace_for_render(st.session_state)
                     _tp_view = resolve_time_pitch_view(st.session_state)
+                    _pitch_ico = FEATURE_ICONS["pitch_tone_tuner"]
                     _view_label_list = [
-                        TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_LIVE_TUNER],
-                        TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_TONE_SUSTAIN],
+                        f"{_pitch_ico} {TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_LIVE_TUNER]}",
+                        f"{_pitch_ico} {TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_TONE_SUSTAIN]}",
                     ]
-                    _view_rev = {label: vid for vid, label in TIME_PITCH_VIEW_UI_LABELS.items()}
-                    _current_label = TIME_PITCH_VIEW_UI_LABELS.get(
+                    _view_rev = {
+                        f"{_pitch_ico} {label}": vid
+                        for vid, label in TIME_PITCH_VIEW_UI_LABELS.items()
+                    }
+                    _current_label = f"{_pitch_ico} " + TIME_PITCH_VIEW_UI_LABELS.get(
                         _tp_view, TIME_PITCH_VIEW_UI_LABELS[TIME_PITCH_VIEW_LIVE_TUNER]
                     )
                     _pick_view = st.radio(
-                        "Tuner view",
+                        feature_label("pitch_tone_tuner", "Tuner view"),
                         _view_label_list,
                         horizontal=True,
                         index=max(0, _view_label_list.index(_current_label)),
@@ -12259,13 +12266,13 @@ elif _studio_page == "picker":
         )
     elif km.is_voice_mode(st.session_state):
         _studio_page_header(
-            "🎤",
+            FEATURE_ICONS["karaoke"],
             "Song Selection",
             "Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.",
         )
     else:
         _studio_page_header(
-            "🎼",
+            page_feature_icon("picker"),
             "Song Selection",
             "Choose a song from your library. The active song drives Practice, Backing Track, "
             "Creative Lab, Karaoke, and Upload/Multitrack. Use Edit Song Chart to customize "
@@ -12674,14 +12681,14 @@ elif _studio_page == "backing":
     if not pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
             _studio_page_header(
-                "🎧",
+                page_feature_icon("backing"),
                 km.voice_wording("backing_page_title", voice=True),
                 km.voice_wording("backing_page_subtitle", voice=True),
                 page_id="backing",
             )
         else:
             _studio_page_header(
-                "🎧",
+                page_feature_icon("backing"),
                 "Backing Track Studio",
                 "Play accompaniment matched to your active song — then play along.",
                 page_id="backing",
@@ -13860,7 +13867,7 @@ elif _studio_page == "analysis":
     inject_upload_studio_styles(st)
     inject_studio_ui_release_marker(st, page="analysis")
     _studio_page_header(
-        "🎙️",
+        page_feature_icon("analysis"),
         "Upload & AI Coach",
         "Drop a take, get timing and pitch feedback, then jump to practice or multitrack.",
     )
@@ -14455,7 +14462,7 @@ elif _studio_page == "custom":
     except Exception:
         pass
     _studio_page_header(
-        "✏️",
+        page_feature_icon("custom"),
         "Custom Progression Lab",
         "Build chord progressions for your active song — then open in Backing Track.",
     )
@@ -14479,7 +14486,7 @@ elif _studio_page == "composer":
     except Exception:
         pass
     _studio_page_header(
-        "🎹",
+        page_feature_icon("composer"),
         "Composition Studio",
         "Start with any musical idea — develop the song with play, form, and harmony.",
     )
@@ -14530,7 +14537,7 @@ elif _studio_page == "creative":
 
     if pp.is_capture_mode(st):
         _studio_page_header(
-            "🎨",
+            page_feature_icon("creative"),
             "Creative Lab",
             "Deep harmonic analysis, improvisation intelligence, and adaptive musical development tools.",
         )
@@ -14542,7 +14549,7 @@ elif _studio_page == "creative":
         )
     else:
         _studio_page_header(
-            "🎨",
+            page_feature_icon("creative"),
             "Creative Lab",
             "Harmony, improvisation, and growth tools for your active song.",
         )
@@ -14971,7 +14978,7 @@ elif _studio_page == "multitrack":
     inject_multitrack_studio_styles(st)
     inject_studio_ui_release_marker(st, page="multitrack")
     _studio_page_header(
-        "🎚️",
+        page_feature_icon("multitrack"),
         "Multitrack Session Workspace",
         "Overdub layers with monitor backing, mix, and export — synced to your active song.",
     )
@@ -15572,7 +15579,7 @@ elif _studio_page == "log":
         st.session_state.get("_suite_active_workspace_id"),
     )
     _studio_page_header(
-        "📓",
+        page_feature_icon("log"),
         "Practice Log",
         "Log sessions and get specific coaching — what to keep working on next.",
         page_id="log",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app_ui import nav_icon_button_label
+from music_feature_icons import feature_label
 
 
 def _pending_chord_key(section: str) -> str:
@@ -350,13 +351,13 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
-        st.selectbox(
-            "Original Key",
-            CPL_KEY_OPTIONS,
-            format_func=format_key_label,
-            key="cpl_original_key",
-            help="The song's base key. Instrument written keys are calculated later from transposition settings.",
-        )
+            st.selectbox(
+                feature_label("original_key", "Original Key"),
+                CPL_KEY_OPTIONS,
+                format_func=format_key_label,
+                key="cpl_original_key",
+                help="The song's base key. Instrument written keys are calculated later from transposition settings.",
+            )
 
         active = sync_cpl_draft_widgets_to_active(
             st.session_state,
