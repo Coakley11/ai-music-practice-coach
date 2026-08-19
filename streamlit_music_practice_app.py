@@ -9658,6 +9658,12 @@ except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
+    from app_ui import note_runtime_sidebar_active_page
+
+    note_runtime_sidebar_active_page(_studio_page)
+except Exception:
+    pass
+try:
     from studio_page_route_trace import trace_run_start_after_ensure
 
     trace_run_start_after_ensure(
@@ -15752,6 +15758,16 @@ try:
     )
 except Exception as exc:
     st.session_state["_ami_deferred_insight_render_error"] = str(exc)
+
+try:
+    from app_ui import refresh_runtime_sidebar_nav_styles
+
+    refresh_runtime_sidebar_nav_styles(
+        st,
+        str(st.session_state.get("studio_page") or _studio_page or "practice"),
+    )
+except Exception:
+    pass
 
 try:
     from music_run_lifecycle import complete_script_run_lifecycle

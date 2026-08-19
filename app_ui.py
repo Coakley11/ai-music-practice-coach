@@ -126,8 +126,16 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   background: linear-gradient(180deg, #0f172a 0%, #111827 42%, #1e293b 100%);
 }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
-[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label,
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: #cbd5e1 !important; }
+[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label {
+  color: #cbd5e1 !important;
+}
+/* Sidebar markdown copy — exclude Pages nav buttons (runtime accent on .st-key-sb_nav_*) */
+[data-testid="stSidebar"] [data-testid="stElementContainer"]:not([class*="st-key-sb_nav_"]) [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stElementContainer"]:not([class*="st-key-sb_nav_"]) [data-testid="stMarkdownContainer"] span,
+[data-testid="stSidebar"] .stAlert p,
+[data-testid="stSidebar"] .stAlert span {
+  color: #cbd5e1 !important;
+}
 [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 { color: #f8fafc !important; }
 [data-testid="stSidebar"] [data-baseweb="select"] > div,
@@ -6407,6 +6415,20 @@ __BACKING_STUDIO_PANEL_CSS__
     )
 
 
+def refresh_runtime_sidebar_nav_styles(st_module: Any, current_page: str) -> None:
+    """Inject sidebar active-page label CSS after page is known (main panel, last)."""
+    note_runtime_sidebar_active_page(current_page)
+    css = _sidebar_active_page_label_css(current_page)
+    if not css:
+        return
+    block = f"<style data-sidebar-active-nav='runtime'>{css}</style>"
+    st_module.markdown(block, unsafe_allow_html=True)
+    try:
+        st_module.sidebar.markdown(block, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
 def _brand_title_html(title: str) -> str:
     if title.startswith("Daniel Cohen"):
         rest = title[len("Daniel Cohen") :].strip()
@@ -7700,6 +7722,13 @@ STUDIO_PAGE_ACCENTS: dict[str, str] = {
 }
 
 _STUDIO_OPEN_BUTTON_RED = "#dc2626"
+_RUNTIME_SIDEBAR_ACTIVE_PAGE = "practice"
+
+
+def note_runtime_sidebar_active_page(page_id: str) -> None:
+    """Current studio page for late sidebar nav CSS (after global theme)."""
+    global _RUNTIME_SIDEBAR_ACTIVE_PAGE
+    _RUNTIME_SIDEBAR_ACTIVE_PAGE = str(page_id or "").strip() or "practice"
 
 
 def studio_page_accent(page_id: str) -> str:
@@ -7736,6 +7765,68 @@ def _studio_page_header_theme_css() -> str:
     return "\n".join(chunks)
 
 
+def _sidebar_active_label_color(accent: str) -> str:
+    """Sidebar label color — Composition black reads as light neutral on dark chrome."""
+    if accent.lower() in {"#0f172a", "#171717", "#000000"}:
+        return "#cbd5e1"
+    return accent
+
+
+def _sidebar_active_page_label_css(current_page: str) -> str:
+    """Sidebar-only active label color — injected at render time (Streamlit DOM-safe)."""
+    page_id = str(current_page or "").strip()
+    if page_id not in STUDIO_PAGE_ACCENTS:
+        return ""
+    accent = studio_page_accent(page_id)
+    sidebar_color = _sidebar_active_label_color(accent)
+    targets = (
+        ".stButton > button",
+        ".stButton > button p",
+        ".stButton > button span",
+        ".stButton > button div",
+        ".stButton > button [data-testid='stMarkdownContainer']",
+        ".stButton > button [data-testid='stMarkdownContainer'] p",
+    )
+    chunks = [
+        f"/* Sidebar active page label — runtime inject for {page_id} */",
+        f'[data-testid="stSidebar"] [class*="st-key-sb_nav_{page_id}"] .stButton > button {{',
+        "  background: rgba(255, 255, 255, 0.06) !important;",
+        "  border-color: rgba(148, 163, 184, 0.28) !important;",
+        "  box-shadow: none !important;",
+        "  font-weight: 700 !important;",
+        "}",
+    ]
+    for target in targets:
+        chunks.append(
+            f'[data-testid="stSidebar"] [class*="st-key-sb_nav_{page_id}"] {target} {{'
+            f"color: {sidebar_color} !important;"
+            f"-webkit-text-fill-color: {sidebar_color} !important;"
+            f"}}"
+        )
+    return "\n".join(chunks)
+
+
+def inject_sidebar_active_page_nav_styles(st_module: Any, current_page: str) -> None:
+    """Inject sidebar active-page label color after global theme (main panel, last wins)."""
+    css = _sidebar_active_page_label_css(current_page)
+    if not css:
+        return
+    st_module.markdown(
+        f"<style data-sidebar-active-nav='1'>{css}</style>",
+        unsafe_allow_html=True,
+    )
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(
+            f"<style data-sidebar-active-nav='fallback'>{css}</style>",
+            height=0,
+            width=0,
+        )
+    except Exception:
+        pass
+
+
 def _studio_page_active_nav_css() -> str:
     """Active top-nav + sidebar Pages styling from STUDIO_PAGE_ACCENTS."""
     chunks: list[str] = [
@@ -7757,6 +7848,14 @@ def _studio_page_active_nav_css() -> str:
   box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
 }}""",
     ]
+    sidebar_label_targets = (
+        ".stButton > button",
+        ".stButton > button p",
+        ".stButton > button span",
+        ".stButton > button div",
+        ".stButton > button [data-testid='stMarkdownContainer']",
+        ".stButton > button [data-testid='stMarkdownContainer'] p",
+    )
     for page_id, accent in STUDIO_PAGE_ACCENTS.items():
         soft = f"color-mix(in srgb, {accent} 14%, transparent)"
         chunks.append(
@@ -7767,13 +7866,6 @@ def _studio_page_active_nav_css() -> str:
 .ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-art-face {{
   border-bottom-color: {accent};
   background: {soft};
-}}
-.ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button {{
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(148, 163, 184, 0.28) !important;
-  color: {accent} !important;
-  box-shadow: none !important;
-  font-weight: 700 !important;
 }}
 """.strip()
         )

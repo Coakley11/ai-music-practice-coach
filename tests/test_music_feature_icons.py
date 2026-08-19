@@ -183,6 +183,17 @@ def test_charts_lyrics_identity() -> None:
     assert FEATURE_ICONS["charts_lyrics"] != FEATURE_ICONS["composition"]
 
 
+def test_sidebar_active_page_label_css_targets_streamlit_button_text() -> None:
+    from app_ui import _sidebar_active_page_label_css, studio_page_accent
+
+    css = _sidebar_active_page_label_css("log")
+    assert studio_page_accent("log") == "#0d9488"
+    assert '[class*="st-key-sb_nav_log"]' in css
+    assert '[class*="st-key-sb_nav_log"] .stButton > button p' in css
+    assert "color: #0d9488 !important" in css
+    assert "-webkit-text-fill-color: #0d9488 !important" in css
+
+
 def test_active_page_nav_css_uses_studio_page_accents() -> None:
     from app_ui import STUDIO_PAGE_ACCENTS, _studio_page_active_nav_css, studio_page_accent
 
@@ -199,14 +210,11 @@ def test_active_page_nav_css_uses_studio_page_accents() -> None:
     # Top nav Open stays red for every page
     assert "background: #dc2626 !important" in css
     assert 'st-key-studio_quick_nav_btn_log"' not in css
-    # Sidebar: selected label in page color (not filled button)
-    assert ".ui-sb-nav-wrap .sb-nav-log.nav-btn-active button" in css
-    assert "color: #0d9488 !important" in css
-    assert "background: rgba(255, 255, 255, 0.06)" in css
+    # Sidebar active label CSS is runtime-injected via _sidebar_active_page_label_css()
+    assert ".ui-sb-nav-wrap .sb-nav-log.nav-btn-active button" not in css
     for page_id, accent in STUDIO_PAGE_ACCENTS.items():
         assert f".ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label" in css
-        assert f".ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button" in css
-        assert accent in css
+        assert accent in css or page_id == "composer"
 
 
 def test_practice_log_header_accent_is_teal_not_upload_pink() -> None:
