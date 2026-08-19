@@ -52,43 +52,46 @@ _PRACTICE_ANALYSIS_SECTIONS: tuple[tuple[str, str], ...] = (
 
 
 def inject_practice_analysis_panel_styles(st: Any) -> None:
-    """Blue-accent styles for Practice Analysis vs Session History."""
+    """Practice Log panel accents — timed planner uses canonical log page color."""
+    from app_ui import studio_page_accent
+
+    log_accent = studio_page_accent("log")
     st.markdown(
-        """
+        f"""
 <style>
-.st-key-log_practice_analysis_panel{
+.st-key-log_practice_analysis_panel{{
   border:1px solid rgba(37,99,235,.35)!important;border-radius:16px!important;
   background:linear-gradient(180deg,rgba(239,246,255,.98),rgba(255,255,255,.96))!important;
   box-shadow:0 14px 32px rgba(37,99,235,.12)!important;padding:.15rem .35rem .55rem!important;
   margin:.65rem 0!important;
-}
-.st-key-log_practice_analysis_panel [data-testid="stExpander"]{
+}}
+.st-key-log_practice_analysis_panel [data-testid="stExpander"]{{
   border:none!important;background:transparent!important;box-shadow:none!important;
-}
-.st-key-log_practice_analysis_panel [data-testid="stExpander"] summary{
+}}
+.st-key-log_practice_analysis_panel [data-testid="stExpander"] summary{{
   font-size:1.02rem!important;font-weight:850!important;color:#1e3a8a!important;
-}
-.ui-plog-analysis-banner{
+}}
+.ui-plog-analysis-banner{{
   border-left:4px solid #2563eb;border-radius:10px;padding:.55rem .75rem;margin:.35rem .2rem .15rem;
   background:rgba(37,99,235,.08);
-}
-.ui-plog-analysis-banner-title{font-size:.92rem;font-weight:850;color:#1e3a8a;margin:0;line-height:1.35;}
-.ui-plog-analysis-banner-sub{font-size:.78rem;color:#475569;margin:.15rem 0 0;}
-.st-key-log_timed_planner_panel{
-  border:1px solid rgba(5,150,105,.32)!important;border-radius:16px!important;
-  background:linear-gradient(180deg,rgba(236,253,245,.98),rgba(255,255,255,.96))!important;
-  box-shadow:0 14px 32px rgba(5,150,105,.10)!important;padding:.55rem .75rem .65rem!important;
+}}
+.ui-plog-analysis-banner-title{{font-size:.92rem;font-weight:850;color:#1e3a8a;margin:0;line-height:1.35;}}
+.ui-plog-analysis-banner-sub{{font-size:.78rem;color:#475569;margin:.15rem 0 0;}}
+.st-key-log_timed_planner_panel{{
+  border:1px solid color-mix(in srgb, {log_accent} 28%, transparent)!important;border-radius:16px!important;
+  background:linear-gradient(180deg,color-mix(in srgb, {log_accent} 6%, #ffffff),rgba(255,255,255,.96))!important;
+  box-shadow:0 14px 32px color-mix(in srgb, {log_accent} 12%, transparent)!important;padding:.55rem .75rem .65rem!important;
   margin:.65rem 0!important;
-}
-.st-key-log_timed_planner_panel [data-testid="stExpander"] summary{
-  font-size:1rem!important;font-weight:850!important;color:#065f46!important;
-}
-.ui-plog-planner-banner{
-  border-left:4px solid #059669;border-radius:10px;padding:.45rem .7rem;margin:0 0 .35rem;
-  background:rgba(5,150,105,.08);
-}
-.ui-plog-planner-banner-title{font-size:.88rem;font-weight:850;color:#065f46;margin:0;}
-.ui-plog-planner-banner-sub{font-size:.76rem;color:#475569;margin:.12rem 0 0;}
+}}
+.st-key-log_timed_planner_panel [data-testid="stExpander"] summary{{
+  font-size:1rem!important;font-weight:850!important;color:{log_accent}!important;
+}}
+.ui-plog-planner-banner{{
+  border-left:4px solid {log_accent};border-radius:10px;padding:.45rem .7rem;margin:0 0 .35rem;
+  background:color-mix(in srgb, {log_accent} 8%, transparent);
+}}
+.ui-plog-planner-banner-title{{font-size:.88rem;font-weight:850;color:{log_accent};margin:0;}}
+.ui-plog-planner-banner-sub{{font-size:.76rem;color:#475569;margin:.12rem 0 0;}}
 </style>
         """,
         unsafe_allow_html=True,

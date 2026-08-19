@@ -6,6 +6,8 @@ import html
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from music_feature_icons import FEATURE_ICONS
+
 PRACTICE_ACTIVE_TOOL_KEY = "practice_active_tool"
 PRACTICE_TIME_PITCH_TOOL_ID = "time_and_pitch"
 PRACTICE_TIME_PITCH_VIEW_KEY = "practice_time_pitch_view"
@@ -51,14 +53,14 @@ PRACTICE_TOOLS: tuple[PracticeToolDef, ...] = (
     PracticeToolDef(
         "coach",
         "Chord & song coach",
-        "🎸",
+        FEATURE_ICONS["chord_song_coach"],
         "Harmony & technique",
         "Section focus, scales, chord coach, and session exercises.",
     ),
     PracticeToolDef(
         "time_and_pitch",
         "Metronome, Tuner & Tone",
-        "🎵",
+        f"{FEATURE_ICONS['timing_tempo_metronome']} {FEATURE_ICONS['pitch_tone_tuner']}",
         "Time & pitch",
         "Metronome click, live tuner, and sustain-tone reference in one place.",
     ),
@@ -79,7 +81,7 @@ PRACTICE_TOOLS: tuple[PracticeToolDef, ...] = (
     PracticeToolDef(
         "transpose",
         "Transpose helpers",
-        "🎹",
+        FEATURE_ICONS["transpose_helpers"],
         "Reference",
         "Capo and transpose calculators — global key stays in Practice setup above.",
     ),

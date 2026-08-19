@@ -10,7 +10,7 @@ def test_custom_progression_song_source_label_uses_pencil() -> None:
     )
 
     assert "Custom progression" in IMPROV_SONG_SOURCES
-    assert creative_song_source_display_label("Custom progression") == "✏️ Custom Progression"
+    assert creative_song_source_display_label("Custom progression") == "✍️ Custom Progression"
     assert creative_song_source_display_label("Active song") == "Active song"
 
 

@@ -6,6 +6,7 @@ import html
 import re
 from typing import Any
 
+from music_feature_icons import FEATURE_ICONS
 from instrument_transposition import (
     is_transposing_instrument,
     selected_transposing_type,
@@ -192,7 +193,7 @@ def render_live_tuner_with_metronome(
             "and tuning is judged against that note while you play."
         )
 
-    st_module.markdown("##### Live tuner")
+    st_module.markdown(f"##### {FEATURE_ICONS['pitch_tone_tuner']} Live tuner")
     st_module.caption(
         "Press **Start Tuner** — your browser listens continuously. "
         "Play any note; the needle shows flat ← in tune → sharp."
@@ -314,7 +315,10 @@ def render_tuner_tone_section(
     """Legacy collapsible Tuner, Tone & Metronome block (non–Practice-Tool entry points)."""
     key_prefix = _normalize_key_prefix(key_prefix)
 
-    expander_title = "🎵 Tuner, Tone & Metronome"
+    expander_title = (
+        f"{FEATURE_ICONS['pitch_tone_tuner']} {FEATURE_ICONS['timing_tempo_metronome']} "
+        "Tuner, Tone & Metronome"
+    )
     with st_module.expander(expander_title, expanded=False):
         mode = st_module.radio(
             "Mode",
@@ -376,7 +380,7 @@ def _render_tone_practice_mode(
         )
         return
 
-    st_module.markdown("##### Tone Sustain Practice")
+    st_module.markdown(f"##### {FEATURE_ICONS['pitch_tone_tuner']} Tone Sustain Practice")
     st_module.caption(
         "Select a **target note**, then record a **3–5 second** steady long tone. "
         "The app analyzes pitch drift, sustain steadiness, and tone consistency."

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import streamlit as st
 
+from music_feature_icons import feature_label
 from song_catalog.user_overrides import (
     USER_CORRECTED,
     USER_VERIFIED,
@@ -320,7 +321,7 @@ def render_chart_editor_panel(
     user_ov = song_data.get("user_override")
     catalog_row = _catalog_record_without_override(all_records, title, artist)
 
-    st.markdown("### Edit Song Chart")
+    st.markdown(f"### {feature_label('charts_lyrics', 'Edit Song Chart')}")
     save_notice = _pop_chart_save_notice(st, title=title, artist=artist)
     if save_notice:
         st.success(str(save_notice.get("message") or "✅ Chart saved successfully"))
@@ -514,11 +515,21 @@ def render_chart_editor_panel(
 
     save_a, save_b, save_c, save_d = st.columns(4)
     with save_a:
-        save_corrected = st.button("Save corrected chart", type="primary", use_container_width=True)
+        save_corrected = st.button(
+            feature_label("charts_lyrics", "Save corrected chart"),
+            type="primary",
+            use_container_width=True,
+        )
     with save_b:
-        save_verified = st.button("Save as user verified", use_container_width=True)
+        save_verified = st.button(
+            feature_label("charts_lyrics", "Save as user verified"),
+            use_container_width=True,
+        )
     with save_c:
-        revert = st.button("Revert to catalog", use_container_width=True)
+        revert = st.button(
+            feature_label("charts_lyrics", "Revert to catalog"),
+            use_container_width=True,
+        )
     with save_d:
         reload_draft = st.button("Reset draft", use_container_width=True)
 

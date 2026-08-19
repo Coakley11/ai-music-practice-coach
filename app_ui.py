@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 from typing import Any, Optional
 
+from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon
+
 __all__ = [
     "STUDIO_PAGES",
     "app_hero",
@@ -124,8 +126,16 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-fi
   background: linear-gradient(180deg, #0f172a 0%, #111827 42%, #1e293b 100%);
 }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
-[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label,
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: #cbd5e1 !important; }
+[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label {
+  color: #cbd5e1 !important;
+}
+/* Sidebar markdown copy — exclude Pages nav buttons (runtime accent on .st-key-sb_nav_*) */
+[data-testid="stSidebar"] [data-testid="stElementContainer"]:not([class*="st-key-sb_nav_"]) [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stElementContainer"]:not([class*="st-key-sb_nav_"]) [data-testid="stMarkdownContainer"] span,
+[data-testid="stSidebar"] .stAlert p,
+[data-testid="stSidebar"] .stAlert span {
+  color: #cbd5e1 !important;
+}
 [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 { color: #f8fafc !important; }
 [data-testid="stSidebar"] [data-baseweb="select"] > div,
@@ -713,10 +723,8 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-color: rgba(148, 163, 184, 0.28) !important;
 }
 .ui-sb-nav-wrap .nav-btn-active button {
-  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
-  color: #fff !important;
-  border-color: rgba(220, 38, 38, 0.65) !important;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
+  /* Per-page label color from _studio_page_active_nav_css() */
+  font-weight: 700 !important;
 }
 .ui-global-bar {
   border: none;
@@ -2084,12 +2092,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   border-color: #bfdbfe;
 }
 .tutorial-mini-card.tone-creative {
-  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
-  border-color: #ddd6fe;
+  background: linear-gradient(135deg, #fdf4ff 0%, #ffffff 72%);
+  border-color: #f0abfc;
 }
 .tutorial-mini-card.tone-analysis {
-  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  border-color: #fed7aa;
+  background: linear-gradient(135deg, #fff1f2 0%, #ffffff 72%);
+  border-color: #fecdd3;
 }
 .tutorial-mini-card.tone-multitrack {
   background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
@@ -3740,7 +3748,7 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   font-weight: 850;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7c3aed;
+  color: #c026d3;
   margin: 0 0 0.28rem;
 }
 .ui-creative-studio-title {
@@ -3831,7 +3839,7 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7c3aed;
+  color: #c026d3;
   margin: 0 0 0.25rem;
 }
 .ui-creative-song-title {
@@ -4682,7 +4690,8 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 
 
 def _decorative_studio_header_css() -> str:
-    return """
+    return (
+        """
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
 .ui-studio-script-header {
@@ -4733,51 +4742,6 @@ def _decorative_studio_header_css() -> str:
   line-height: 1.4 !important;
   color: #475569 !important;
 }
-.ui-studio-script-header--practice {
-  --ui-studio-header-accent: #dc2626;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff5f5 0%, #ffffff 72%);
-  --ui-studio-header-border: #fecaca;
-}
-.ui-studio-script-header--picker {
-  --ui-studio-header-accent: #4f46e5;
-  --ui-studio-header-wash: linear-gradient(135deg, #eef2ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #c7d2fe;
-}
-.ui-studio-script-header--backing {
-  --ui-studio-header-accent: #2563eb;
-  --ui-studio-header-wash: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #bfdbfe;
-}
-.ui-studio-script-header--custom {
-  --ui-studio-header-accent: #059669;
-  --ui-studio-header-wash: linear-gradient(135deg, #ecfdf5 0%, #ffffff 72%);
-  --ui-studio-header-border: #a7f3d0;
-}
-.ui-studio-script-header--creative {
-  --ui-studio-header-accent: #7c3aed;
-  --ui-studio-header-wash: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #ddd6fe;
-}
-.ui-studio-script-header--analysis {
-  --ui-studio-header-accent: #ea580c;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  --ui-studio-header-border: #fed7aa;
-}
-.ui-studio-script-header--multitrack {
-  --ui-studio-header-accent: #c2410c;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  --ui-studio-header-border: #fdba74;
-}
-.ui-studio-script-header--log {
-  --ui-studio-header-accent: #0d9488;
-  --ui-studio-header-wash: linear-gradient(135deg, #f0fdfa 0%, #ffffff 72%);
-  --ui-studio-header-border: #99f6e4;
-}
-.ui-studio-script-header--openai {
-  --ui-studio-header-accent: #0891b2;
-  --ui-studio-header-wash: linear-gradient(135deg, #ecfeff 0%, #ffffff 72%);
-  --ui-studio-header-border: #a5f3fc;
-}
 .ui-chart-key-mode-badge {
   display: inline-flex;
   align-items: center;
@@ -4815,6 +4779,8 @@ def _decorative_studio_header_css() -> str:
 .ui-backing-studio-deck-head { --ui-studio-header-accent: #2563eb; }
 .ui-song-library-head { --ui-studio-header-accent: #4f46e5; }
 """
+        + _studio_page_header_theme_css()
+    )
 
 
 def _ui_polish_phase2_css() -> str:
@@ -5330,9 +5296,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 .ui-sb-nav-wrap .studio-nav-item:not(.nav-btn-active) button {
   opacity: 0.88;
 }
-.ui-sb-nav-wrap .nav-btn-active button {
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35) !important;
-}
+/* Active fill comes from _studio_page_active_nav_css() */
 
 /* ---- Page header — calmer top spacing ---- */
 .ui-page-head {
@@ -6444,6 +6408,25 @@ __BACKING_STUDIO_PANEL_CSS__
         .replace("__BACKING_STUDIO_PANEL_CSS__", _studio_panels_css()),
         unsafe_allow_html=True,
     )
+    # Sidebar Pages + top-nav active identity share STUDIO_PAGE_ACCENTS.
+    st.markdown(
+        f"<style data-ui-active-nav='page-accents'>{_studio_page_active_nav_css()}</style>",
+        unsafe_allow_html=True,
+    )
+
+
+def refresh_runtime_sidebar_nav_styles(st_module: Any, current_page: str) -> None:
+    """Inject sidebar active-page label CSS after page is known (main panel, last)."""
+    note_runtime_sidebar_active_page(current_page)
+    css = _sidebar_active_page_label_css(current_page)
+    if not css:
+        return
+    block = f"<style data-sidebar-active-nav='runtime'>{css}</style>"
+    st_module.markdown(block, unsafe_allow_html=True)
+    try:
+        st_module.sidebar.markdown(block, unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
 def _brand_title_html(title: str) -> str:
@@ -6882,7 +6865,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-06-22-ui-lite-no-song-dump-v1"
+STUDIO_UI_RELEASE = "2026-08-19-sidebar-nav-accents-279051f"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -7128,9 +7111,9 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-badge song" title="Active song">'
         f'<span class="ui-mt-ctx-ico">🎵</span> <strong>{_song}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
-        f'<span class="ui-mt-ctx-ico">🎹</span> Orig <strong>{_orig}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
-        f'<span class="ui-mt-ctx-ico">🎼</span> Practice <strong>{_practice}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice <strong>{_practice}</strong></span>'
         f'<span class="ui-mt-ctx-badge bpm" title="Session tempo">'
         f'<span class="ui-mt-ctx-ico">⏱</span> <strong>{int(bpm)}</strong> BPM</span>'
         f'<span class="ui-mt-ctx-badge meter" title="Time signature">'
@@ -7236,10 +7219,22 @@ def studio_song_meta_badges_html(
     """Professional pill badges for CPL preview and Songs page cards."""
     badges: list[str] = []
     if original_key:
-        badges.append(studio_meta_badge("Original Key", original_key, tone="key", icon="🎹"))
+        badges.append(
+            studio_meta_badge(
+                "Original Key",
+                original_key,
+                tone="key",
+                icon=FEATURE_ICONS["original_key"],
+            )
+        )
     if display_key:
         badges.append(
-            studio_meta_badge("Practice / Concert Key", display_key, tone="display", icon="🎼")
+            studio_meta_badge(
+                "Practice / Concert Key",
+                display_key,
+                tone="display",
+                icon=FEATURE_ICONS["practice_concert_key"],
+            )
         )
     if written_key and written_key != display_key:
         badges.append(
@@ -7391,9 +7386,11 @@ def render_creative_song_context_card(
 
 def render_practice_control_panel_header(st: Any) -> None:
     """Compact hint for the Practice Control Center panel (page title lives in script header)."""
+    setup_title = html.escape(feature_label("practice_setup", "Your practice setup"))
     st.markdown(
         f"""
 <div class="ui-practice-control-head ui-practice-control-head--compact" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
+  <p class="ui-practice-control-title">{setup_title}</p>
   <p class="ui-practice-control-sub">Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.</p>
 </div>
         """,
@@ -7497,9 +7494,9 @@ def render_backing_setup_context_strip(
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
-        f'<span class="ui-backing-ctx-ico">🎹</span> Original Key <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
-        f'<span class="ui-backing-ctx-ico">🎼</span> Practice / Concert Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
@@ -7720,17 +7717,181 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
 
 
 STUDIO_PAGE_META: dict[str, dict[str, str]] = {
-    "practice": {"label": "Practice", "icon": "🎯", "nav_class": "practice"},
-    "picker": {"label": "Song Selection", "icon": "🎼", "nav_class": "picker"},
-    "backing": {"label": "Backing Track", "icon": "🎧", "nav_class": "backing"},
-    "custom": {"label": "Custom Progression", "icon": "✏️", "nav_class": "custom"},
-    "composer": {"label": "Composition Studio", "icon": "🎹", "nav_class": "composer"},
-    "creative": {"label": "Creative Lab", "icon": "🎨", "nav_class": "creative"},
-    "multitrack": {"label": "Multitrack", "icon": "🎚️", "nav_class": "multitrack"},
-    "analysis": {"label": "Upload Analysis", "icon": "🎙️", "nav_class": "analysis"},
-    "log": {"label": "Practice Log", "icon": "📓", "nav_class": "log"},
+    "practice": {"label": "Practice", "icon": page_feature_icon("practice"), "nav_class": "practice"},
+    "picker": {"label": "Song Selection", "icon": page_feature_icon("picker"), "nav_class": "picker"},
+    "backing": {"label": "Backing Track", "icon": page_feature_icon("backing"), "nav_class": "backing"},
+    "custom": {"label": "Custom Progression", "icon": page_feature_icon("custom"), "nav_class": "custom"},
+    "composer": {"label": "Composition Studio", "icon": page_feature_icon("composer"), "nav_class": "composer"},
+    "creative": {"label": "Creative Lab", "icon": page_feature_icon("creative"), "nav_class": "creative"},
+    "multitrack": {"label": "Multitrack", "icon": page_feature_icon("multitrack"), "nav_class": "multitrack"},
+    "analysis": {"label": "Upload Analysis", "icon": page_feature_icon("analysis"), "nav_class": "analysis"},
+    "log": {"label": "Practice Log", "icon": page_feature_icon("log"), "nav_class": "log"},
     "openai": {"label": "OpenAI", "icon": "✨", "nav_class": "openai"},
 }
+
+# Canonical page accent colors (SSOT for headers + active nav treatment).
+STUDIO_PAGE_ACCENTS: dict[str, str] = {
+    "practice": "#dc2626",
+    "picker": "#4f46e5",
+    "backing": "#2563eb",
+    "custom": "#059669",
+    "composer": "#0f172a",
+    "creative": "#c026d3",
+    "multitrack": "#c2410c",
+    "analysis": "#e11d48",
+    "log": "#0d9488",
+    "openai": "#0891b2",
+}
+
+_STUDIO_OPEN_BUTTON_RED = "#dc2626"
+_RUNTIME_SIDEBAR_ACTIVE_PAGE = "practice"
+
+
+def note_runtime_sidebar_active_page(page_id: str) -> None:
+    """Current studio page for late sidebar nav CSS (after global theme)."""
+    global _RUNTIME_SIDEBAR_ACTIVE_PAGE
+    _RUNTIME_SIDEBAR_ACTIVE_PAGE = str(page_id or "").strip() or "practice"
+
+
+def studio_page_accent(page_id: str) -> str:
+    """Return the canonical accent color for a studio page id."""
+    return STUDIO_PAGE_ACCENTS.get(str(page_id or "").strip(), "#64748b")
+
+
+def _studio_page_header_wash_border(accent: str) -> tuple[str, str]:
+    """Derive header wash + border from a page accent (Composition uses slate wash)."""
+    if accent.lower() in {"#0f172a", "#171717", "#000000"}:
+        return (
+            "linear-gradient(135deg, #f1f5f9 0%, #ffffff 72%)",
+            "#cbd5e1",
+        )
+    return (
+        f"linear-gradient(135deg, color-mix(in srgb, {accent} 12%, #ffffff) 0%, #ffffff 72%)",
+        f"color-mix(in srgb, {accent} 30%, #ffffff)",
+    )
+
+
+def _studio_page_header_theme_css() -> str:
+    """Page header accent/wash/border from STUDIO_PAGE_ACCENTS."""
+    chunks: list[str] = ["/* Page header themes — from STUDIO_PAGE_ACCENTS */"]
+    for page_id, accent in STUDIO_PAGE_ACCENTS.items():
+        wash, border = _studio_page_header_wash_border(accent)
+        chunks.append(
+            f"""
+.ui-studio-script-header--{page_id} {{
+  --ui-studio-header-accent: {accent};
+  --ui-studio-header-wash: {wash};
+  --ui-studio-header-border: {border};
+}}""".strip()
+        )
+    return "\n".join(chunks)
+
+
+def _sidebar_active_label_color(accent: str) -> str:
+    """Sidebar label color — Composition black reads as light neutral on dark chrome."""
+    if accent.lower() in {"#0f172a", "#171717", "#000000"}:
+        return "#cbd5e1"
+    return accent
+
+
+def _sidebar_active_page_label_css(current_page: str) -> str:
+    """Sidebar-only active label color — injected at render time (Streamlit DOM-safe)."""
+    page_id = str(current_page or "").strip()
+    if page_id not in STUDIO_PAGE_ACCENTS:
+        return ""
+    accent = studio_page_accent(page_id)
+    sidebar_color = _sidebar_active_label_color(accent)
+    targets = (
+        ".stButton > button",
+        ".stButton > button p",
+        ".stButton > button span",
+        ".stButton > button div",
+        ".stButton > button [data-testid='stMarkdownContainer']",
+        ".stButton > button [data-testid='stMarkdownContainer'] p",
+    )
+    chunks = [
+        f"/* Sidebar active page label — runtime inject for {page_id} */",
+        f'[data-testid="stSidebar"] [class*="st-key-sb_nav_{page_id}"] .stButton > button {{',
+        "  background: rgba(255, 255, 255, 0.06) !important;",
+        "  border-color: rgba(148, 163, 184, 0.28) !important;",
+        "  box-shadow: none !important;",
+        "  font-weight: 700 !important;",
+        "}",
+    ]
+    for target in targets:
+        chunks.append(
+            f'[data-testid="stSidebar"] [class*="st-key-sb_nav_{page_id}"] {target} {{'
+            f"color: {sidebar_color} !important;"
+            f"-webkit-text-fill-color: {sidebar_color} !important;"
+            f"}}"
+        )
+    return "\n".join(chunks)
+
+
+def inject_sidebar_active_page_nav_styles(st_module: Any, current_page: str) -> None:
+    """Inject sidebar active-page label color after global theme (main panel, last wins)."""
+    css = _sidebar_active_page_label_css(current_page)
+    if not css:
+        return
+    st_module.markdown(
+        f"<style data-sidebar-active-nav='1'>{css}</style>",
+        unsafe_allow_html=True,
+    )
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(
+            f"<style data-sidebar-active-nav='fallback'>{css}</style>",
+            height=0,
+            width=0,
+        )
+    except Exception:
+        pass
+
+
+def _studio_page_active_nav_css() -> str:
+    """Active top-nav + sidebar Pages styling from STUDIO_PAGE_ACCENTS."""
+    chunks: list[str] = [
+        "/* Active page identity — accent from STUDIO_PAGE_ACCENTS */",
+        ".ui-nav-art-cell.is-active .ui-nav-script-label { font-weight: 700 !important; }",
+        f"""/* Top nav Open stays practice red ({_STUDIO_OPEN_BUTTON_RED}) for every page */
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[kind="primary"],
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[kind="primary"],
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-cross_to_"] .stButton > button[kind="primary"],
+[class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-global_nav_"] .stButton > button[kind="primary"],
+[class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"] {{
+  background: {_STUDIO_OPEN_BUTTON_RED} !important;
+  border: 2px solid {_STUDIO_OPEN_BUTTON_RED} !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
+}}""",
+    ]
+    sidebar_label_targets = (
+        ".stButton > button",
+        ".stButton > button p",
+        ".stButton > button span",
+        ".stButton > button div",
+        ".stButton > button [data-testid='stMarkdownContainer']",
+        ".stButton > button [data-testid='stMarkdownContainer'] p",
+    )
+    for page_id, accent in STUDIO_PAGE_ACCENTS.items():
+        soft = f"color-mix(in srgb, {accent} 14%, transparent)"
+        chunks.append(
+            f"""
+.ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label {{
+  color: {accent} !important;
+}}
+.ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-art-face {{
+  border-bottom-color: {accent};
+  background: {soft};
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
 
 OPENAI_PAGE_ID = "openai"
 
@@ -7841,16 +8002,7 @@ _NAV_COMPACT_TITLE: dict[str, str] = {
 }
 
 _NAV_COMPACT_ICON: dict[str, str] = {
-    "practice": "🎯",
-    "picker": "🎼",
-    "backing": "🎧",
-    "custom": "✏️",
-    "composer": "🎹",
-    "creative": "🎨",
-    "multitrack": "🎚️",
-    "analysis": "🎙️",
-    "log": "📓",
-    "openai": "✨",
+    page_id: str(meta.get("icon") or "") for page_id, meta in STUDIO_PAGE_META.items()
 }
 
 
@@ -8013,12 +8165,13 @@ def _quick_nav_artistic_css() -> str:
   white-space: nowrap !important;
 }
 .ui-nav-art-cell.is-active .ui-nav-art-face {
-  background: rgba(124, 58, 237, 0.08);
-  border-bottom-color: rgba(220, 38, 38, 0.85);
+  /* Accent wash/border from _studio_page_active_nav_css() per page */
+  background: rgba(148, 163, 184, 0.08);
+  border-bottom-color: rgba(148, 163, 184, 0.45);
 }
 .ui-nav-art-cell.is-active .ui-nav-script-label {
   font-weight: 700 !important;
-  color: #dc2626 !important;
+  /* Color from _studio_page_active_nav_css() per page */
 }
 .ui-nav-art-cell.ui-nav-compact {
   gap: 0.08rem;
@@ -8061,10 +8214,12 @@ def _quick_nav_artistic_css() -> str:
 [class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"],
 [class*="st-key-cross_to_"] .stButton > button[kind="primary"],
 [class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"] {
-  border: 2px solid #7c3aed !important;
+  /* Active Open stays practice red — see _studio_page_active_nav_css() */
+  border: 2px solid #dc2626 !important;
   background: #dc2626 !important;
   color: #ffffff !important;
   font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
 }
 .ui-cross-nav-art {
   margin: 0.35rem 0 0.75rem 0;
@@ -8094,7 +8249,7 @@ def _quick_nav_artistic_css() -> str:
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
 }
-"""
+""" + _studio_page_active_nav_css()
 
 
 def _render_nav_art_cell(
@@ -8645,7 +8800,7 @@ def render_global_studio_bar(
         )
     with row1[1]:
         st.selectbox(
-            "Practice key",
+            feature_label("practice_concert_key", "Practice / Concert Key"),
             display_key_options,
             key="display_key",
             help="Transpose charts and backing audio.",
@@ -8656,7 +8811,7 @@ def render_global_studio_bar(
     with row1[3]:
         st.selectbox("Instrument", instrument_options, key="instrument")
     with row1[4]:
-        st.selectbox("Focus", focus_options, key="focus")
+        st.selectbox(feature_label("practice_focus", "Practice focus"), focus_options, key="focus")
     with row1[5]:
         if show_bpm:
             from songs.playback_defaults import BACKING_BPM_MAX, BACKING_BPM_MIN

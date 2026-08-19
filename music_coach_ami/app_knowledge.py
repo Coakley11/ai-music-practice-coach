@@ -366,7 +366,7 @@ FEATURES: dict[str, AppFeature] = {
         display_name="Custom Progression",
         purpose="Create, edit, save, and reload your own songs/progressions outside the curated catalog.",
         when_to_use="When you are writing or revisiting a custom song you created.",
-        navigation_path="Studio sidebar → **Custom Progression** (✏️).",
+        navigation_path="Studio sidebar → **Custom Progression** (✍️).",
         user_goals=("custom song", "create your own song", "my custom songs", "save to library"),
         usage_steps=(
             "Open **Custom Progression** and build/edit sections and chords.",

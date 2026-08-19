@@ -10,6 +10,7 @@ import html
 import re
 from typing import Any, Callable
 
+from music_feature_icons import FEATURE_ICONS
 from studio_page_state import CREATIVE_TOOL_ICONS
 
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
@@ -54,19 +55,19 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Everything here stays around the music you’re working on today.",
         "cards": [
             {
-                "icon": "🎯",
+                "icon": FEATURE_ICONS["practice"],
                 "title": "Practice",
                 "body": "Work on songs, technique, timing, tone, and specific sections.",
                 "tone": "practice",
             },
             {
-                "icon": "🎨",
+                "icon": FEATURE_ICONS["creative"],
                 "title": "Create",
                 "body": "Jam, explore harmony, generate ideas, and give yourself Missions.",
                 "tone": "creative",
             },
             {
-                "icon": "🎙️",
+                "icon": FEATURE_ICONS["upload_analysis"],
                 "title": "Listen & Improve",
                 "body": "Record, analyze, log your work, and ask Music Coach what to try next.",
                 "tone": "analysis",
@@ -99,7 +100,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "You can change focus anytime without changing songs.",
         "cards": [
             {
-                "icon": "🎷",
+                "icon": FEATURE_ICONS["practice_setup"],
                 "title": "Who are you playing as?",
                 "body": "**Instrument** — Piano, Guitar, Bass, Saxophone, Flute, Trumpet, Clarinet, Voice, or Other.",
                 "tone": "practice",
@@ -111,7 +112,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "picker",
             },
             {
-                "icon": "🎯",
+                "icon": FEATURE_ICONS["practice_focus"],
                 "title": "What do you want to work on?",
                 "body": "**Practice Focus** — tone, phrasing, rhythm, technique, improvisation, or an instrument-specific goal.",
                 "tone": "log",
@@ -141,7 +142,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "music",
         "layer": "quick",
         "page_id": "picker",
-        "icon": "🎼",
+        "icon": FEATURE_ICONS["songs"],
         "script": "Pick music",
         "title": "Choose something to play",
         "summary": "Start with a catalog song, or build your own progression.",
@@ -155,7 +156,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "picker",
             },
             {
-                "icon": "✍️",
+                "icon": FEATURE_ICONS["custom"],
                 "title": "Create your own",
                 "body": "Custom Progression for an original song, lesson, exercise, or improv idea.",
                 "tone": "custom",
@@ -190,13 +191,13 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Same song, easier range — especially useful for singers and transposing instruments.",
         "cards": [
             {
-                "icon": "📜",
+                "icon": FEATURE_ICONS["original_key"],
                 "title": "Original Key",
                 "body": "The song’s original key.",
                 "tone": "slate",
             },
             {
-                "icon": "🎹",
+                "icon": FEATURE_ICONS["practice_concert_key"],
                 "title": "Practice / Concert Key",
                 "body": "The key you want to play or sing it in today.",
                 "tone": "picker",
@@ -223,7 +224,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "practice",
         "layer": "quick",
         "page_id": "practice",
-        "icon": "🎯",
+        "icon": FEATURE_ICONS["practice"],
         "script": "Practice",
         "title": "This is where you actually work",
         "summary": "Pick one goal, work on it for a few minutes, then put it into music with Backing.",
@@ -231,13 +232,13 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "You don’t have to play the whole song every time.",
         "cards": [
             {
-                "icon": "⏱️",
+                "icon": FEATURE_ICONS["timing_tempo_metronome"],
                 "title": "Time",
                 "body": "Metronome and tempo practice.",
                 "tone": "backing",
             },
             {
-                "icon": "🎯",
+                "icon": FEATURE_ICONS["pitch_tone_tuner"],
                 "title": "Pitch & Tone",
                 "body": "Tuner and tone development.",
                 "tone": "practice",
@@ -249,8 +250,8 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "picker",
             },
             {
-                "icon": "🔁",
-                "title": "Focus",
+                "icon": FEATURE_ICONS["section_focus"],
+                "title": "Section Focus",
                 "body": "Work on one section instead of always playing the entire song.",
                 "tone": "log",
             },
@@ -276,7 +277,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "backing",
         "layer": "quick",
         "page_id": "backing",
-        "icon": "🎧",
+        "icon": FEATURE_ICONS["backing"],
         "script": "Play along",
         "title": "Turn the song into something you can play with",
         "summary": "Loop the verse. Slow down the bridge. Improvise over the changes. Raise the tempo when you’re ready.",
@@ -312,7 +313,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "coach",
         "layer": "quick",
         "page_id": "practice",
-        "icon": "💬",
+        "icon": FEATURE_ICONS["music_coach"],
         "script": "Ask",
         "title": "Ask your Music Coach",
         "summary": "You don’t need special prompts. Ask the kinds of questions you would ask a teacher.",
@@ -341,7 +342,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "log",
         "layer": "quick",
         "page_id": "log",
-        "icon": "📓",
+        "icon": FEATURE_ICONS["practice_log"],
         "script": "Remember",
         "title": "Don’t start from zero tomorrow",
         "summary": "Save what you practiced today so you can see your progress and remember where to continue.",
@@ -387,7 +388,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "karaoke",
         "layer": "explore",
         "page_id": "backing",
-        "icon": "🎤",
+        "icon": FEATURE_ICONS["karaoke"],
         "script": "Sing",
         "title": "Singing? Switch to Voice.",
         "summary": "Choose Voice, pick a comfortable Practice Key, then sing with lyrics and accompaniment.",
@@ -438,7 +439,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "creative",
         "layer": "explore",
         "page_id": "creative",
-        "icon": "🎨",
+        "icon": FEATURE_ICONS["creative"],
         "script": "Explore",
         "title": "Creative Lab — when you want more than repeating the song",
         "summary": "Jam, generate a fresh practice situation, take a Mission, or see how the harmony fits together.",
@@ -514,7 +515,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "composer",
         "layer": "explore",
         "page_id": "composer",
-        "icon": "🎹",
+        "icon": FEATURE_ICONS["composition"],
         "script": "Write",
         "title": "Writing a song? Open Composition Studio",
         "summary": "When a custom progression isn’t enough structure, Composition Studio helps you shape a fuller idea.",
@@ -522,13 +523,13 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Custom Progression is great for chords. Composition Studio is for a fuller song idea.",
         "cards": [
             {
-                "icon": "✍️",
+                "icon": FEATURE_ICONS["custom"],
                 "title": "Custom Progression",
                 "body": "Build and save your own harmony, then Set as Active Song.",
                 "tone": "custom",
             },
             {
-                "icon": "🎹",
+                "icon": FEATURE_ICONS["composition"],
                 "title": "Composition Studio",
                 "body": "Vision, structure, chords, melody, lyrics, and review.",
                 "tone": "creative",
@@ -544,7 +545,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "id": "recording",
         "layer": "explore",
         "page_id": "analysis",
-        "icon": "🎙️",
+        "icon": FEATURE_ICONS["upload_analysis"],
         "script": "Record",
         "title": "What do you want to record?",
         "summary": "One take, several parts, or just a note that you practiced — pick the path that matches the job.",
@@ -552,25 +553,25 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Upload Analysis coaches the take. Multitrack builds the arrangement. Practice Log keeps the diary.",
         "cards": [
             {
-                "icon": "🎧",
+                "icon": FEATURE_ICONS["upload_analysis"],
                 "title": "One take",
                 "body": "**Upload Analysis** — feedback on one performance.",
                 "tone": "analysis",
             },
             {
-                "icon": "🎚️",
+                "icon": FEATURE_ICONS["multitrack"],
                 "title": "Several parts",
                 "body": "**Multitrack** — layer recordings or hear parts together.",
                 "tone": "multitrack",
             },
             {
-                "icon": "📓",
+                "icon": FEATURE_ICONS["practice_log"],
                 "title": "Just remember",
                 "body": "**Practice Log** — save that you practiced.",
                 "tone": "log",
             },
             {
-                "icon": "🎯",
+                "icon": FEATURE_ICONS["mission"],
                 "title": "Mission take",
                 "body": "Use the Mission’s play/record options when they appear.",
                 "tone": "practice",
@@ -602,19 +603,19 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "Coming back is easier when the song, key, and notes are still there.",
         "cards": [
             {
-                "icon": "🔑",
+                "icon": FEATURE_ICONS["practice_concert_key"],
                 "title": "Practice Key",
                 "body": "Practice transposition — does not rewrite Original Key.",
                 "tone": "picker",
             },
             {
-                "icon": "📝",
+                "icon": FEATURE_ICONS["charts_lyrics"],
                 "title": "Charts & lyrics",
                 "body": "Save corrected chart / Save Lyrics & Cues. Revert toward catalog if you want.",
                 "tone": "slate",
             },
             {
-                "icon": "📚",
+                "icon": FEATURE_ICONS["custom"],
                 "title": "Custom songs",
                 "body": "Save to library, then Load selected / Set as Active Song later.",
                 "tone": "custom",
@@ -647,36 +648,36 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "try_this": "Use this as a template, then change the instrument and song to yours.",
         "why": "The tools are more useful together than as separate apps.",
         "journey": [
-            "🎷 Choose Clarinet",
+            f"{FEATURE_ICONS['practice_setup']} Choose Clarinet",
             "🎵 Pick a song",
-            "🔑 Move it to a comfortable Practice Key",
-            "🎯 Work on one section",
-            "🎧 Play it with Backing",
-            "💬 Ask Music Coach what to improve",
-            "🎙️ Record one take",
-            "📓 Log the session",
+            f"{FEATURE_ICONS['practice_concert_key']} Move it to a comfortable Practice Key",
+            f"{FEATURE_ICONS['section_focus']} Work on one section",
+            f"{FEATURE_ICONS['backing']} Play it with Backing",
+            f"{FEATURE_ICONS['music_coach']} Ask Music Coach what to improve",
+            f"{FEATURE_ICONS['upload_analysis']} Record one take",
+            f"{FEATURE_ICONS['practice_log']} Log the session",
         ],
         "cards": [
             {
-                "icon": "🎵",
+                "icon": FEATURE_ICONS["practice"],
                 "title": "Practice an existing song",
                 "body": "Song Selection + Practice.",
                 "tone": "picker",
             },
             {
-                "icon": "✍️",
+                "icon": FEATURE_ICONS["custom"],
                 "title": "Create my own progression",
                 "body": "Custom Progression.",
                 "tone": "custom",
             },
             {
-                "icon": "🎧",
+                "icon": FEATURE_ICONS["backing"],
                 "title": "Accompaniment",
                 "body": "Backing Track.",
                 "tone": "backing",
             },
             {
-                "icon": "🎤",
+                "icon": FEATURE_ICONS["karaoke"],
                 "title": "Sing with lyrics",
                 "body": "Voice + Karaoke / Vocal Performance Mode.",
                 "tone": "voice",
@@ -700,31 +701,31 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "tone": "log",
             },
             {
-                "icon": "🎙️",
+                "icon": FEATURE_ICONS["upload_analysis"],
                 "title": "Feedback on one take",
                 "body": "Upload Analysis.",
                 "tone": "analysis",
             },
             {
-                "icon": "🎚️",
+                "icon": FEATURE_ICONS["multitrack"],
                 "title": "Layer several recordings",
                 "body": "Multitrack.",
                 "tone": "multitrack",
             },
             {
-                "icon": "📓",
+                "icon": FEATURE_ICONS["practice_log"],
                 "title": "Remember what I practiced",
                 "body": "Practice Log.",
                 "tone": "log",
             },
             {
-                "icon": "💬",
+                "icon": FEATURE_ICONS["music_coach"],
                 "title": "Guidance",
                 "body": "Music Coach.",
                 "tone": "slate",
             },
             {
-                "icon": "🎹",
+                "icon": FEATURE_ICONS["composition"],
                 "title": "Write a fuller song idea",
                 "body": "Composition Studio.",
                 "tone": "creative",

@@ -8,6 +8,7 @@ Command Center surfaces Continue cards targeting Applied Intelligence.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import re
@@ -18,6 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 from activity_time import format_eastern_time_label, parse_activity_timestamp, utc_now_iso
+from music_feature_icons import feature_label
 
 log = logging.getLogger(__name__)
 
@@ -2005,11 +2007,11 @@ def render_analyze_with_applied_math_sidebar(
     is_music = str(source_app or "").strip().lower() == "music"
     is_nba = str(source_app or "").strip().lower() == "nba"
     if is_music:
-        st.sidebar.markdown("### Ask the Music Coach")
+        st.sidebar.markdown(f"### {feature_label('music_coach', 'Ask the Music Coach')}")
         st.sidebar.caption(
             "Get help with practice, theory, navigation, backing tracks, karaoke, or this app."
         )
-        submit_label = "Ask the Music Coach"
+        submit_label = feature_label("music_coach", "Ask the Music Coach")
     elif is_nba:
         st.sidebar.markdown("### Get Basketball Insight")
         st.sidebar.caption(
@@ -2477,7 +2479,7 @@ def render_music_coach_page_entry(
 
     st.markdown(
         '<div class="ui-card soft" style="margin:0 0 0.85rem 0;">'
-        "<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">💬 Ask the Music Coach</p>"
+        f"<p style=\"margin:0 0 0.2rem 0;font-weight:800;\">{html.escape(feature_label('music_coach', 'Ask the Music Coach'))}</p>"
         "<p style=\"margin:0;color:#475569;font-size:0.9rem;\">"
         "Ask about this song, this practice session, theory, or how to use the app. "
         "Your current song and Practice context stay attached to the question."
@@ -2520,7 +2522,7 @@ def render_music_coach_page_entry(
     )
 
     ask_clicked = st.button(
-        "Ask the Music Coach",
+        feature_label("music_coach", "Ask the Music Coach"),
         key=submit_key,
         type="primary",
         use_container_width=True,

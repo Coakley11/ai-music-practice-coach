@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from music_feature_icons import FEATURE_ICONS
 from music_theory import ENHARMONIC_MAJOR_KEYS
 
 # Creative Lab — Improvisation Intelligence
@@ -20,7 +21,7 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
 IMPROV_SONG_SOURCES: tuple[str, ...] = ("Active song", "Custom progression")
 
 CREATIVE_SONG_SOURCE_DISPLAY_NAMES: dict[str, str] = {
-    "Custom progression": "✏️ Custom Progression",
+    "Custom progression": f"{FEATURE_ICONS['custom']} Custom Progression",
 }
 
 
@@ -43,7 +44,7 @@ CREATIVE_TOOL_ICONS: dict[str, str] = {
     "Jam Session Generator": "🎲",
     "Live Coach": "💡",
     "Phrase / Motif": "♪",
-    "Missions": "🚩",
+    "Missions": FEATURE_ICONS["mission"],
     "Harmony Map": "🗺️",
     "Deep Harmony": "🔮",
     "Metrics & AI": "📊",

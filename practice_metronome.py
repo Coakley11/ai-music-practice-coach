@@ -8,6 +8,7 @@ from typing import Any
 
 import streamlit.components.v1 as components
 
+from music_feature_icons import FEATURE_ICONS
 from songs.meter import meter_timing, metronome_accents
 
 
@@ -36,7 +37,8 @@ def build_metronome_widget_html(
         }
     )
 
-    title = "Metronome" if compact else "Practice Metronome"
+    metro_icon = FEATURE_ICONS["timing_tempo_metronome"]
+    title = f"{metro_icon} Metronome" if compact else f"{metro_icon} Practice Metronome"
     loop_note = ""
     if loop_section and section_bars > 0 and section_label:
         loop_note = (
