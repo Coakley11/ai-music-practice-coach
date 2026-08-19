@@ -165,6 +165,16 @@ def test_tutorial_choose_clarinet_uses_practice_setup_not_style_jam() -> None:
     assert "🎷" not in clarinet
 
 
+def test_tutorial_work_on_one_section_uses_section_focus_not_practice() -> None:
+    from music_feature_icons import FEATURE_ICONS
+
+    tonight = next(s for s in TUTORIAL_STEPS if s.get("script") == "Tonight")
+    journey = tonight.get("journey") or []
+    section_step = next(item for item in journey if "Work on one section" in str(item))
+    assert section_step.startswith(f"{FEATURE_ICONS['section_focus']} ")
+    assert not section_step.startswith(f"{FEATURE_ICONS['practice']} ")
+
+
 def test_charts_lyrics_identity() -> None:
     assert FEATURE_ICONS["charts_lyrics"] == "📝"
     assert feature_label("charts_lyrics", "Song content editor").startswith("📝 ")

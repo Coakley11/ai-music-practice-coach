@@ -651,7 +651,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
             f"{FEATURE_ICONS['practice_setup']} Choose Clarinet",
             "🎵 Pick a song",
             f"{FEATURE_ICONS['practice_concert_key']} Move it to a comfortable Practice Key",
-            f"{FEATURE_ICONS['practice']} Work on one section",
+            f"{FEATURE_ICONS['section_focus']} Work on one section",
             f"{FEATURE_ICONS['backing']} Play it with Backing",
             f"{FEATURE_ICONS['music_coach']} Ask Music Coach what to improve",
             f"{FEATURE_ICONS['upload_analysis']} Record one take",
