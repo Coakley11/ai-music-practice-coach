@@ -587,6 +587,87 @@ class LickMotifArchitectureTests(unittest.TestCase):
         self.assertEqual(meta.get("motif_bars"), 2)
 
 
+class MissingSectionAndTwoHandBlockers(unittest.TestCase):
+    PART_A = ["Am7", "B7", "Emaj7", "Am7"]
+    PART_B = ["Em7", "A7", "Dmaj7", "G7"]
+
+    def test_explicit_missing_part_f_does_not_fall_back_to_part_a(self) -> None:
+        from music_coach_ami.musical_idea_knowledge import extract_requested_section
+
+        q = "Give me an improv over part F."
+        self.assertEqual(extract_requested_section(q), "f")
+        _, resp = run_coach_submit(
+            q,
+            {"instrument": "Piano", "display_key": "Ab", "level": "Intermediate", "instrument_change_source": "sidebar"},
+            ami_ctx={
+                "instrument": "Piano",
+                "level": "Intermediate",
+                "display_key": "Ab",
+                "practice_key": "Ab",
+                "coach_page": "practice",
+                "chart_sections": {"Part A": self.PART_A, "Part B": self.PART_B},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Part A",
+                "active_song": {"title": "All the Things You Are", "key": "Ab"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        answer = resp.direct_answer or ""
+        md = resp.composed_markdown()
+        self.assertIn("Part F", answer)
+        self.assertIn("doesn't have a section labeled", answer)
+        self.assertIn("Part A", answer)
+        self.assertIn("Part B", answer)
+        self.assertFalse(resp.notation_abc)
+        self.assertNotIn("**Section:** Part A", md)
+        self.assertEqual((resp.diagnostics or {}).get("fallback_reason"), "section_not_found")
+        self.assertFalse((resp.diagnostics or {}).get("section_resolution", {}).get("ok"))
+
+    def test_lh_and_rh_piano_improv_renders_grand_staff(self) -> None:
+        from music_coach_ami.musical_idea_request import parse_musical_idea_request
+        from music_coach_ami.musical_idea_engine import infer_piano_role, play_summary
+
+        q = "Give me a LH and RH piano improvisation over part B."
+        idea = parse_musical_idea_request(q, default_object="improvisation")
+        self.assertEqual(idea.piano_role, "both_hands")
+        self.assertEqual(infer_piano_role(idea, q), "both_hands")
+
+        _, resp = run_coach_submit(
+            q,
+            {"instrument": "Piano", "display_key": "Ab", "level": "Intermediate", "instrument_change_source": "sidebar"},
+            ami_ctx={
+                "instrument": "Piano",
+                "level": "Intermediate",
+                "display_key": "Ab",
+                "practice_key": "Ab",
+                "coach_page": "practice",
+                "chart_sections": {"Part A": self.PART_A, "Part B": self.PART_B},
+                "chart_sections_in_practice_key": True,
+                "practice_focus_section": "Part A",
+                "active_song": {"title": "All the Things You Are", "key": "Ab"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        self.assertEqual((resp.diagnostics or {}).get("piano_role"), "both_hands")
+        self.assertEqual((resp.diagnostics or {}).get("resolved_object"), "improvisation")
+        abc = resp.notation_abc or ""
+        self.assertIn("clef=treble", abc)
+        self.assertIn("clef=bass", abc)
+        self.assertIn("%%score", abc)
+        self.assertIn("V:1", abc)
+        self.assertIn("V:2", abc)
+        prose = "\n".join(resp.practice_steps or [])
+        self.assertIn("RH:", prose)
+        self.assertIn("LH:", prose)
+        # Hands must not be identical copies of one line.
+        self.assertNotEqual(
+            [line for line in prose.splitlines() if line.startswith("RH:")],
+            [line for line in prose.splitlines() if line.startswith("LH:")],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 

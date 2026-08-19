@@ -17,10 +17,14 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "solo": ("solo", "instrumental"),
     "outro": ("outro", "ending", "coda"),
     "groove": ("groove",),
-    "a": ("a", "section a", "part a"),
-    "b": ("b", "section b", "part b"),
-    "c": ("c", "section c", "part c"),
 }
+# Lettered parts A–Z (and "part X" / "section X") — explicit requests must not silently fall back.
+for _letter in "abcdefghijklmnopqrstuvwxyz":
+    _SECTION_ALIASES[_letter] = (
+        _letter,
+        f"section {_letter}",
+        f"part {_letter}",
+    )
 
 
 _GENERATION_VERBS = (
@@ -83,9 +87,9 @@ def format_section_display_label(section: str) -> str:
     if not text:
         return ""
     low = re.sub(r"\s+", " ", text.lower()).strip()
-    if low in {"a", "b", "c"}:
+    if len(low) == 1 and low.isalpha():
         return f"Part {text.upper()}"
-    m = re.fullmatch(r"(?:part|section)\s+([abc])", low)
+    m = re.fullmatch(r"(?:part|section)\s+([a-z])", low)
     if m:
         return f"Part {m.group(1).upper()}"
     return text
@@ -95,11 +99,11 @@ def extract_requested_section(question: str) -> str:
     """Pull an explicit chart section from natural wording (part B, verse, …)."""
     low = str(question or "").lower()
     patterns = (
-        r"\bover (?:the )?(?:part|section) ([abc])\b",
-        r"\b(?:for|on|practice) (?:the )?(?:part|section) ([abc])\b",
-        r"\b(?:part|section) ([abc])\b",
-        r"\b([abc]) section\b",
-        r"\bover (?:the )?([abc])\b",
+        r"\bover (?:the )?(?:part|section) ([a-z])\b",
+        r"\b(?:for|on|practice) (?:the )?(?:part|section) ([a-z])\b",
+        r"\b(?:part|section) ([a-z])\b",
+        r"\b([a-z]) section\b",
+        r"\bover (?:the )?([a-z])\b",
         r"\b(?:practice|work on|loop) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\bover (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
         r"\b(?:for|on|of) (?:the )?(intro|verse|chorus|pre[- ]?chorus|bridge|solo|outro|groove)\b",
@@ -209,15 +213,20 @@ def resolve_practice_section_target(
         )
         if res.get("ok") and str(res.get("section") or "").strip():
             return {**res, "source": "explicit_question"}
-        display = format_section_display_label(requested) or str(requested).replace("-", " ").title()
+        # Explicit missing section — never invent ok=True with a display label.
         return {
-            "ok": True,
-            "section": display,
-            "chords": list(res.get("chords") or []),
+            **res,
+            "ok": False,
+            "section": "",
+            "chords": [],
             "explicit": True,
             "requested": requested,
-            "available": list(res.get("available") or []),
             "source": "explicit_question",
+            "message": str(res.get("message") or "").strip()
+            or (
+                f"This chart doesn't have a section labeled "
+                f"**{format_section_display_label(requested) or requested.title()}**."
+            ),
         }
     active = str(active_section or "").strip()
     if active.lower() not in _FULL_SONG_LABELS and active:
@@ -466,7 +475,13 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
                 "musical_idea_content": True,
                 "section_resolution": section_resolve,
                 "fallback_reason": "section_not_found",
-                **musical_idea_to_diagnostics(idea),
+                "resolved_section": "",
+                "song_relative": True,
+                **{
+                    k: v
+                    for k, v in musical_idea_to_diagnostics(idea).items()
+                    if k not in {"resolved_section", "section"}
+                },
             },
         }
 

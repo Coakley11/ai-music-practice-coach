@@ -70,6 +70,18 @@ class PianoRequestModelTests(unittest.TestCase):
         self.assertEqual(idea.piano_role, "both_hands")
         self.assertEqual(infer_piano_role(idea, q), "both_hands")
 
+    def test_lh_and_rh_phrase_is_both_hands(self) -> None:
+        q = "Give me a LH and RH piano improvisation over part B."
+        idea = parse_musical_idea_request(q, default_object="lick")
+        self.assertEqual(idea.piano_role, "both_hands")
+        self.assertEqual(infer_piano_role(idea, q), "both_hands")
+        self.assertEqual(extract_requested_section(q), "b")
+
+    def test_rh_and_lh_phrase_is_both_hands(self) -> None:
+        q = "Give me RH and LH over the verse."
+        idea = parse_musical_idea_request(q, default_object="improvisation")
+        self.assertEqual(idea.piano_role, "both_hands")
+
 
 class PianoSectionHonestyTests(unittest.TestCase):
     def test_missing_chorus_lists_available(self) -> None:
@@ -83,6 +95,23 @@ class PianoSectionHonestyTests(unittest.TestCase):
         self.assertIn("doesn't have a section labeled", resp.direct_answer)
         self.assertIn("Verse", resp.direct_answer)
         self.assertFalse(resp.notation_abc)
+
+    def test_missing_part_f_does_not_use_active_part_a(self) -> None:
+        from music_coach_ami.musical_idea_knowledge import extract_requested_section
+
+        q = "Give me an improv over part F."
+        self.assertEqual(extract_requested_section(q), "f")
+        _, resp = run_coach_submit(
+            q,
+            {"instrument": "Piano", "display_key": "Ab", "level": "Beginner"},
+            ami_ctx=_piano_ctx({"Part A": VERSE, "Part B": PART_B}, key="Ab"),
+        )
+        self.assertIsNotNone(resp)
+        assert resp is not None
+        self.assertIn("Part F", resp.direct_answer)
+        self.assertIn("doesn't have a section labeled", resp.direct_answer)
+        self.assertFalse(resp.notation_abc)
+        self.assertNotIn("**Section:** Part A", resp.composed_markdown())
 
     def test_explicit_section_outranks_active(self) -> None:
         resolved = resolve_chart_section(

@@ -1027,11 +1027,16 @@ def infer_piano_role(idea: MusicalIdeaRequest, question: str = "") -> str:
     if role:
         return role
     low = _clean(question).lower()
-    if re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low):
+    has_lh = bool(re.search(r"\b(left[- ]?hand|\blh\b)\b", low))
+    has_rh = bool(re.search(r"\b(right[- ]?hand|\brh\b)\b", low))
+    if (
+        re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low)
+        or (has_lh and has_rh)
+    ):
         return "both_hands"
-    if re.search(r"\b(left[- ]?hand|\blh\b)\b", low):
+    if has_lh:
         return "left_hand"
-    if re.search(r"\b(right[- ]?hand|\brh\b)\b", low):
+    if has_rh:
         return "right_hand"
     obj = _clean(idea.object_type)
     if obj == "accompaniment":

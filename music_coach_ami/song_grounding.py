@@ -125,13 +125,19 @@ def is_song_grounded_answer(req: CoachRequest, response: CoachResponse) -> bool:
 
 def resolved_section_for_header(req: CoachRequest, response: CoachResponse) -> str:
     diag = response.diagnostics if isinstance(response.diagnostics, dict) else {}
+    sec_res = diag.get("section_resolution")
+    if isinstance(sec_res, dict):
+        # Explicit missing section must never inherit the active/default section label.
+        if sec_res.get("explicit") and not sec_res.get("ok"):
+            return ""
+        if str(sec_res.get("section") or "").strip():
+            return str(sec_res.get("section")).strip()
+    if str(diag.get("fallback_reason") or "") == "section_not_found":
+        return ""
     for key in ("resolved_section", "active_section", "display_song_section"):
         val = diag.get(key)
         if str(val or "").strip():
             return str(val).strip()
-    sec_res = diag.get("section_resolution")
-    if isinstance(sec_res, dict) and str(sec_res.get("section") or "").strip():
-        return str(sec_res.get("section")).strip()
     return str(req.context.active_section or "").strip()
 
 

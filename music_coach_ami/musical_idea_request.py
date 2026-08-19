@@ -239,11 +239,16 @@ def parse_musical_idea_request(
             object_type = "phrase"
 
     piano_role = ""
-    if re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low):
+    has_lh = bool(re.search(r"\b(left[- ]?hand|\blh\b)\b", low))
+    has_rh = bool(re.search(r"\b(right[- ]?hand|\brh\b)\b", low))
+    if (
+        re.search(r"\b(two[- ]?hands?|both hands|grand staff)\b", low)
+        or (has_lh and has_rh)
+    ):
         piano_role = "both_hands"
-    elif re.search(r"\b(left[- ]?hand|\blh\b)\b", low):
+    elif has_lh:
         piano_role = "left_hand"
-    elif re.search(r"\b(right[- ]?hand|\brh\b)\b", low):
+    elif has_rh:
         piano_role = "right_hand"
 
     style = ""
