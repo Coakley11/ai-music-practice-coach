@@ -53,7 +53,7 @@ PRACTICE_TOOLS: tuple[PracticeToolDef, ...] = (
     PracticeToolDef(
         "coach",
         "Chord & song coach",
-        "🎸",
+        FEATURE_ICONS["chord_song_coach"],
         "Harmony & technique",
         "Section focus, scales, chord coach, and session exercises.",
     ),

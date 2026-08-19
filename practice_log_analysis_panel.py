@@ -75,19 +75,19 @@ def inject_practice_analysis_panel_styles(st: Any) -> None:
 .ui-plog-analysis-banner-title{font-size:.92rem;font-weight:850;color:#1e3a8a;margin:0;line-height:1.35;}
 .ui-plog-analysis-banner-sub{font-size:.78rem;color:#475569;margin:.15rem 0 0;}
 .st-key-log_timed_planner_panel{
-  border:1px solid rgba(5,150,105,.32)!important;border-radius:16px!important;
-  background:linear-gradient(180deg,rgba(236,253,245,.98),rgba(255,255,255,.96))!important;
-  box-shadow:0 14px 32px rgba(5,150,105,.10)!important;padding:.55rem .75rem .65rem!important;
+  border:1px solid rgba(219,39,119,.28)!important;border-radius:16px!important;
+  background:linear-gradient(180deg,rgba(253,242,248,.98),rgba(255,255,255,.96))!important;
+  box-shadow:0 14px 32px rgba(219,39,119,.10)!important;padding:.55rem .75rem .65rem!important;
   margin:.65rem 0!important;
 }
 .st-key-log_timed_planner_panel [data-testid="stExpander"] summary{
-  font-size:1rem!important;font-weight:850!important;color:#065f46!important;
+  font-size:1rem!important;font-weight:850!important;color:#9d174d!important;
 }
 .ui-plog-planner-banner{
-  border-left:4px solid #059669;border-radius:10px;padding:.45rem .7rem;margin:0 0 .35rem;
-  background:rgba(5,150,105,.08);
+  border-left:4px solid #db2777;border-radius:10px;padding:.45rem .7rem;margin:0 0 .35rem;
+  background:rgba(219,39,119,.08);
 }
-.ui-plog-planner-banner-title{font-size:.88rem;font-weight:850;color:#065f46;margin:0;}
+.ui-plog-planner-banner-title{font-size:.88rem;font-weight:850;color:#9d174d;margin:0;}
 .ui-plog-planner-banner-sub{font-size:.76rem;color:#475569;margin:.12rem 0 0;}
 </style>
         """,

@@ -100,7 +100,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "why": "You can change focus anytime without changing songs.",
         "cards": [
             {
-                "icon": "🎷",
+                "icon": FEATURE_ICONS["practice_setup"],
                 "title": "Who are you playing as?",
                 "body": "**Instrument** — Piano, Guitar, Bass, Saxophone, Flute, Trumpet, Clarinet, Voice, or Other.",
                 "tone": "practice",

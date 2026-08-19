@@ -11,6 +11,7 @@ from studio_page_state import CREATIVE_TOOL_ICONS, creative_song_source_display_
 
 _MAJOR_UNIQUE = (
     "practice",
+    "practice_setup",
     "practice_focus",
     "section_focus",
     "original_key",
@@ -25,6 +26,7 @@ _MAJOR_UNIQUE = (
     "custom",
     "karaoke",
     "music_coach",
+    "chord_song_coach",
 )
 
 
@@ -72,6 +74,7 @@ def test_practice_focus_and_section_focus_differ() -> None:
 
 def test_tutorial_cards_use_canonical_icons() -> None:
     expected = [
+        ("setup", "Who are you playing as?", "practice_setup"),
         ("setup", "What do you want to work on?", "practice_focus"),
         ("keys", "Original Key", "original_key"),
         ("keys", "Practice / Concert Key", "practice_concert_key"),
@@ -106,14 +109,61 @@ def test_practice_tools_time_pitch_uses_both_canonical_icons() -> None:
     assert transpose.icon != FEATURE_ICONS["composition"]
 
 
+    coach = next(t for t in PRACTICE_TOOLS if t.tool_id == "coach")
+    assert coach.icon == FEATURE_ICONS["chord_song_coach"]
+    assert coach.icon != FEATURE_ICONS["practice_setup"]
+
+
 def test_page_feature_icon_helper() -> None:
     assert page_feature_icon("composer") == FEATURE_ICONS["composition"]
     assert page_feature_icon("analysis") == FEATURE_ICONS["upload_analysis"]
     assert page_feature_icon("custom") == FEATURE_ICONS["custom"]
 
 
-def test_karaoke_and_music_coach_registry_glyphs() -> None:
-    assert FEATURE_ICONS["karaoke"] == "🎤"
-    assert FEATURE_ICONS["music_coach"] == "💬"
-    assert feature_label("karaoke", "Karaoke Performance Setlist").startswith("🎤 ")
-    assert feature_label("music_coach", "Ask the Music Coach").startswith("💬 ")
+def test_practice_setup_and_session_identities() -> None:
+    assert FEATURE_ICONS["practice_setup"] == "🎸"
+    assert FEATURE_ICONS["chord_song_coach"] == "📖"
+    assert FEATURE_ICONS["chord_song_coach"] not in {
+        FEATURE_ICONS["practice_setup"],
+        FEATURE_ICONS["songs"],
+        FEATURE_ICONS["music_coach"],
+        FEATURE_ICONS["creative"],
+        FEATURE_ICONS["karaoke"],
+        FEATURE_ICONS["composition"],
+    }
+    assert FEATURE_ICONS["session"] == "⏱️"
+    assert FEATURE_ICONS["session"] == FEATURE_ICONS["timing_tempo_metronome"]
+
+
+def test_active_song_key_row_is_plain_text() -> None:
+    from app_ui import active_song_key_row_html
+
+    html = active_song_key_row_html("G", "G")
+    assert "Original key" in html
+    assert "Practice / Concert Key" in html
+    assert FEATURE_ICONS["original_key"] not in html
+    assert FEATURE_ICONS["practice_concert_key"] not in html
+
+
+def test_key_badges_keep_canonical_icons() -> None:
+    from app_ui import studio_song_meta_badges_html
+
+    html = studio_song_meta_badges_html(original_key="G", display_key="A")
+    assert FEATURE_ICONS["original_key"] in html
+    assert FEATURE_ICONS["practice_concert_key"] in html
+
+
+def test_practice_log_header_accent_is_not_custom_green() -> None:
+    from pathlib import Path
+
+    css = Path(__file__).resolve().parents[1].joinpath("app_ui.py").read_text(encoding="utf-8")
+    log_css = css.split(".ui-studio-script-header--log")[1].split(".ui-studio-script-header--openai")[0]
+    custom_block = css.split(".ui-studio-script-header--custom")[1].split(
+        ".ui-studio-script-header--creative"
+    )[0]
+    assert "#db2777" in log_css
+    assert "#059669" in custom_block
+    assert "#db2777" not in custom_block
+    assert "#059669" not in log_css
+    assert "#0d9488" not in log_css
+

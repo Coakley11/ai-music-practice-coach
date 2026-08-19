@@ -3271,7 +3271,7 @@ def render_chord_coach_ui(
     if any("–" in c or "-" in c for c in coach_options) is False:
         coach_options = coach_options + ["ii–V–I (in key)"]
 
-    with st.expander("Chord Finder / How to Play", expanded=expanded):
+    with st.expander(feature_label("chord_song_coach", "Chord Finder / How to Play"), expanded=expanded):
         instrument, level, _focus = render_setup_quick_controls(
             st,
             session_state=st.session_state,
@@ -7759,7 +7759,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
             _picker_navigate("backing")
     with b4:
-        if st.button("🎸 Chord Coach", key="picker_card_chord_coach", use_container_width=True):
+        if st.button(feature_label("chord_song_coach", "Chord Coach"), key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
     # Karaoke "Add to Setlist" CTA - only visible when the active
@@ -8812,9 +8812,9 @@ def _render_practice_setup_panel(
         )
 
         st.markdown('<div class="ui-practice-control-field">', unsafe_allow_html=True)
-        render_backing_field_label(st, "Practice length", "Session goal in minutes — coach scales to this.")
+        render_backing_field_label(st, feature_label("session", "Session"), "Session goal in minutes — coach scales to this.")
         st.slider(
-            "Practice length (minutes)",
+            feature_label("session", "Session (minutes)"),
             10,
             120,
             int(st.session_state.get("practice_minutes", _minutes or PRACTICE_MINUTES_DEFAULT)),
@@ -10417,7 +10417,7 @@ def _on_global_level_change() -> None:
         pass
 
 
-sidebar_section("Your practice setup", icon="🎸", tone="session")
+sidebar_section("Your practice setup", icon=FEATURE_ICONS["practice_setup"], tone="session")
 st.sidebar.selectbox(
     "Instrument",
     _instrument_options,
@@ -10501,7 +10501,7 @@ _display_minutes = normalize_practice_minutes(
     default=PRACTICE_MINUTES_DEFAULT,
 )
 st.sidebar.caption(
-    f"**Practice length:** {_display_minutes} min "
+    f"**{feature_label('session', 'Session')}:** {_display_minutes} min "
     "(adjust on the **Practice** page)"
 )
 
@@ -11864,7 +11864,7 @@ if _studio_page == "practice":
                 _coach_from_picker = st.session_state.pop("picker_open_chord_coach", False)
                 _coach_chords = _view_chords or all_chords_from_sections(sections)
                 render_scroll_anchor_marker(st, ANCHOR_CHORD_COACH)
-                with st.expander("Chord coach", expanded=_coach_from_picker):
+                with st.expander(feature_label("chord_song_coach", "Chord coach"), expanded=_coach_from_picker):
                     if _active_section:
                         st.caption(f"Chords from **{_active_section_display}** only.")
                     render_chord_coach_ui(
@@ -15639,22 +15639,22 @@ elif _studio_page == "log":
     with st.container(key="log_timed_planner_panel", border=False):
         st.markdown(
             '<div class="ui-plog-planner-banner">'
-            '<p class="ui-plog-planner-banner-title">Timed Session Planner</p>'
+            f'<p class="ui-plog-planner-banner-title">{FEATURE_ICONS["session"]} Timed Session Planner</p>'
             '<p class="ui-plog-planner-banner-sub">Plan your next practice session by time block</p>'
             "</div>",
             unsafe_allow_html=True,
         )
-        with st.expander("Build a timed session plan", expanded=False):
+        with st.expander(feature_label("session", "Build a timed session plan"), expanded=False):
             st.session_state.setdefault("ai_session_builder_minutes", 30)
             _session_mins = st.slider(
-                "Target session length (minutes)",
+                feature_label("session", "Target session length (minutes)"),
                 20,
                 90,
                 int(st.session_state.get("ai_session_builder_minutes", 30)),
                 5,
                 key="ai_session_builder_minutes",
             )
-            if st.button("Build timed session plan", key="build_session_from_logs", use_container_width=False):
+            if st.button(feature_label("session", "Build timed session plan"), key="build_session_from_logs", use_container_width=False):
                 st.session_state["_ai_practice_session_plan"] = build_practice_session_from_logs(
                     load_entries(st.session_state),
                     ALL_SONG_RECORDS,

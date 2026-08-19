@@ -4771,9 +4771,9 @@ def _decorative_studio_header_css() -> str:
   --ui-studio-header-border: #fdba74;
 }
 .ui-studio-script-header--log {
-  --ui-studio-header-accent: #0d9488;
-  --ui-studio-header-wash: linear-gradient(135deg, #f0fdfa 0%, #ffffff 72%);
-  --ui-studio-header-border: #99f6e4;
+  --ui-studio-header-accent: #db2777;
+  --ui-studio-header-wash: linear-gradient(135deg, #fdf2f8 0%, #ffffff 72%);
+  --ui-studio-header-border: #fbcfe8;
 }
 .ui-studio-script-header--openai {
   --ui-studio-header-accent: #0891b2;
@@ -6840,11 +6840,11 @@ def active_song_key_row_html(
     return (
         f'<div class="ui-active-song-key-row{shift_cls}">'
         f'<span class="ui-active-song-key-chip original">'
-        f'<span class="ui-active-song-key-label">{html.escape(feature_label("original_key", "Original key"))}</span>'
+        f'<span class="ui-active-song-key-label">Original key</span>'
         f'<span class="ui-active-song-key-value">{orig}</span></span>'
         f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
         f'<span class="ui-active-song-key-chip practice">'
-        f'<span class="ui-active-song-key-label">{html.escape(feature_label("practice_concert_key", "Practice / Concert Key"))}</span>'
+        f'<span class="ui-active-song-key-label">Practice / Concert Key</span>'
         f'<span class="ui-active-song-key-value">{practice}</span></span>'
         f"</div>"
     )
@@ -7383,9 +7383,11 @@ def render_creative_song_context_card(
 
 def render_practice_control_panel_header(st: Any) -> None:
     """Compact hint for the Practice Control Center panel (page title lives in script header)."""
+    setup_title = html.escape(feature_label("practice_setup", "Your practice setup"))
     st.markdown(
         f"""
 <div class="ui-practice-control-head ui-practice-control-head--compact" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
+  <p class="ui-practice-control-title">{setup_title}</p>
   <p class="ui-practice-control-sub">Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.</p>
 </div>
         """,

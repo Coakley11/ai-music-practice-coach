@@ -13,6 +13,7 @@ from __future__ import annotations
 # Major product concepts — keep values unique across this map.
 FEATURE_ICONS: dict[str, str] = {
     "practice": "🎯",
+    "practice_setup": "🎸",
     "practice_focus": "🔍",
     # Loop / restrict playback to one song section (not Practice Focus).
     "section_focus": "🔁",
@@ -32,8 +33,12 @@ FEATURE_ICONS: dict[str, str] = {
     "multitrack": "🎚️",
     "practice_log": "📓",
     "music_coach": "💬",
+    # Song/chord teaching — not Practice Setup (🎸) and not Music Coach (💬).
+    "chord_song_coach": "📖",
     "karaoke": "🎤",
     "transpose_helpers": "↔️",
+    # Session duration / timed practice. Same glyph as metronome by design.
+    "session": "⏱️",
 }
 
 # Studio page id → concept key (nav, headers, compact buttons).
