@@ -715,8 +715,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   border-color: rgba(148, 163, 184, 0.28) !important;
 }
 .ui-sb-nav-wrap .nav-btn-active button {
-  /* Accent filled by _studio_page_active_nav_css() per page */
-  color: #fff !important;
+  /* Per-page label color from _studio_page_active_nav_css() */
   font-weight: 700 !important;
 }
 .ui-global-bar {
@@ -2085,12 +2084,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   border-color: #bfdbfe;
 }
 .tutorial-mini-card.tone-creative {
-  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
-  border-color: #ddd6fe;
+  background: linear-gradient(135deg, #fdf4ff 0%, #ffffff 72%);
+  border-color: #f0abfc;
 }
 .tutorial-mini-card.tone-analysis {
-  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  border-color: #fed7aa;
+  background: linear-gradient(135deg, #fff1f2 0%, #ffffff 72%);
+  border-color: #fecdd3;
 }
 .tutorial-mini-card.tone-multitrack {
   background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
@@ -3741,7 +3740,7 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   font-weight: 850;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7c3aed;
+  color: #c026d3;
   margin: 0 0 0.28rem;
 }
 .ui-creative-studio-title {
@@ -3832,7 +3831,7 @@ body[data-creative-studio-ui] .st-key-creative_studio_panel {
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7c3aed;
+  color: #c026d3;
   margin: 0 0 0.25rem;
 }
 .ui-creative-song-title {
@@ -4683,7 +4682,8 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 
 
 def _decorative_studio_header_css() -> str:
-    return """
+    return (
+        """
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap');
 
 .ui-studio-script-header {
@@ -4734,51 +4734,6 @@ def _decorative_studio_header_css() -> str:
   line-height: 1.4 !important;
   color: #475569 !important;
 }
-.ui-studio-script-header--practice {
-  --ui-studio-header-accent: #dc2626;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff5f5 0%, #ffffff 72%);
-  --ui-studio-header-border: #fecaca;
-}
-.ui-studio-script-header--picker {
-  --ui-studio-header-accent: #4f46e5;
-  --ui-studio-header-wash: linear-gradient(135deg, #eef2ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #c7d2fe;
-}
-.ui-studio-script-header--backing {
-  --ui-studio-header-accent: #2563eb;
-  --ui-studio-header-wash: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #bfdbfe;
-}
-.ui-studio-script-header--custom {
-  --ui-studio-header-accent: #059669;
-  --ui-studio-header-wash: linear-gradient(135deg, #ecfdf5 0%, #ffffff 72%);
-  --ui-studio-header-border: #a7f3d0;
-}
-.ui-studio-script-header--creative {
-  --ui-studio-header-accent: #7c3aed;
-  --ui-studio-header-wash: linear-gradient(135deg, #f5f3ff 0%, #ffffff 72%);
-  --ui-studio-header-border: #ddd6fe;
-}
-.ui-studio-script-header--analysis {
-  --ui-studio-header-accent: #ea580c;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  --ui-studio-header-border: #fed7aa;
-}
-.ui-studio-script-header--multitrack {
-  --ui-studio-header-accent: #c2410c;
-  --ui-studio-header-wash: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
-  --ui-studio-header-border: #fdba74;
-}
-.ui-studio-script-header--log {
-  --ui-studio-header-accent: #db2777;
-  --ui-studio-header-wash: linear-gradient(135deg, #fdf2f8 0%, #ffffff 72%);
-  --ui-studio-header-border: #fbcfe8;
-}
-.ui-studio-script-header--openai {
-  --ui-studio-header-accent: #0891b2;
-  --ui-studio-header-wash: linear-gradient(135deg, #ecfeff 0%, #ffffff 72%);
-  --ui-studio-header-border: #a5f3fc;
-}
 .ui-chart-key-mode-badge {
   display: inline-flex;
   align-items: center;
@@ -4816,6 +4771,8 @@ def _decorative_studio_header_css() -> str:
 .ui-backing-studio-deck-head { --ui-studio-header-accent: #2563eb; }
 .ui-song-library-head { --ui-studio-header-accent: #4f46e5; }
 """
+        + _studio_page_header_theme_css()
+    )
 
 
 def _ui_polish_phase2_css() -> str:
@@ -7734,13 +7691,15 @@ STUDIO_PAGE_ACCENTS: dict[str, str] = {
     "picker": "#4f46e5",
     "backing": "#2563eb",
     "custom": "#059669",
-    "composer": "#b45309",
-    "creative": "#7c3aed",
+    "composer": "#0f172a",
+    "creative": "#c026d3",
     "multitrack": "#c2410c",
-    "analysis": "#ea580c",
-    "log": "#db2777",
+    "analysis": "#e11d48",
+    "log": "#0d9488",
     "openai": "#0891b2",
 }
+
+_STUDIO_OPEN_BUTTON_RED = "#dc2626"
 
 
 def studio_page_accent(page_id: str) -> str:
@@ -7748,21 +7707,60 @@ def studio_page_accent(page_id: str) -> str:
     return STUDIO_PAGE_ACCENTS.get(str(page_id or "").strip(), "#64748b")
 
 
+def _studio_page_header_wash_border(accent: str) -> tuple[str, str]:
+    """Derive header wash + border from a page accent (Composition uses slate wash)."""
+    if accent.lower() in {"#0f172a", "#171717", "#000000"}:
+        return (
+            "linear-gradient(135deg, #f1f5f9 0%, #ffffff 72%)",
+            "#cbd5e1",
+        )
+    return (
+        f"linear-gradient(135deg, color-mix(in srgb, {accent} 12%, #ffffff) 0%, #ffffff 72%)",
+        f"color-mix(in srgb, {accent} 30%, #ffffff)",
+    )
+
+
+def _studio_page_header_theme_css() -> str:
+    """Page header accent/wash/border from STUDIO_PAGE_ACCENTS."""
+    chunks: list[str] = ["/* Page header themes — from STUDIO_PAGE_ACCENTS */"]
+    for page_id, accent in STUDIO_PAGE_ACCENTS.items():
+        wash, border = _studio_page_header_wash_border(accent)
+        chunks.append(
+            f"""
+.ui-studio-script-header--{page_id} {{
+  --ui-studio-header-accent: {accent};
+  --ui-studio-header-wash: {wash};
+  --ui-studio-header-border: {border};
+}}""".strip()
+        )
+    return "\n".join(chunks)
+
+
 def _studio_page_active_nav_css() -> str:
     """Active top-nav + sidebar Pages styling from STUDIO_PAGE_ACCENTS."""
     chunks: list[str] = [
         "/* Active page identity — accent from STUDIO_PAGE_ACCENTS */",
         ".ui-nav-art-cell.is-active .ui-nav-script-label { font-weight: 700 !important; }",
-        ".ui-sb-nav-wrap .nav-btn-active button { color: #ffffff !important; }",
+        f"""/* Top nav Open stays practice red ({_STUDIO_OPEN_BUTTON_RED}) for every page */
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[kind="primary"],
+[class*="st-key-studio_quick_nav_btn_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[kind="primary"],
+[class*="st-key-studio_simple_nav_btn_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-cross_to_"] .stButton > button[kind="primary"],
+[class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"],
+[class*="st-key-global_nav_"] .stButton > button[kind="primary"],
+[class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"] {{
+  background: {_STUDIO_OPEN_BUTTON_RED} !important;
+  border: 2px solid {_STUDIO_OPEN_BUTTON_RED} !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
+}}""",
     ]
     for page_id, accent in STUDIO_PAGE_ACCENTS.items():
         soft = f"color-mix(in srgb, {accent} 14%, transparent)"
-        shadow = f"color-mix(in srgb, {accent} 35%, transparent)"
         chunks.append(
             f"""
-.ui-studio-script-header--{page_id} {{
-  --ui-studio-header-accent: {accent};
-}}
 .ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label {{
   color: {accent} !important;
 }}
@@ -7770,24 +7768,12 @@ def _studio_page_active_nav_css() -> str:
   border-bottom-color: {accent};
   background: {soft};
 }}
-[class*="st-key-studio_quick_nav_btn_{page_id}"] .stButton > button[kind="primary"],
-[class*="st-key-studio_quick_nav_btn_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
-[class*="st-key-studio_simple_nav_btn_{page_id}"] .stButton > button[kind="primary"],
-[class*="st-key-studio_simple_nav_btn_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
-[class*="st-key-cross_to_{page_id}"] .stButton > button[kind="primary"],
-[class*="st-key-cross_to_{page_id}"] .stButton > button[data-testid="baseButton-primary"],
-[class*="st-key-global_nav_{page_id}"] .stButton > button[kind="primary"],
-[class*="st-key-global_nav_{page_id}"] .stButton > button[data-testid="baseButton-primary"] {{
-  background: {soft} !important;
-  border: 2px solid {accent} !important;
-  color: {accent} !important;
-  font-weight: 700 !important;
-}}
 .ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button {{
-  background: {accent} !important;
-  border-color: {accent} !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px {shadow} !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: {accent} !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
 }}
 """.strip()
         )
@@ -8114,11 +8100,12 @@ def _quick_nav_artistic_css() -> str:
 [class*="st-key-global_nav_"] .stButton > button[data-testid="baseButton-primary"],
 [class*="st-key-cross_to_"] .stButton > button[kind="primary"],
 [class*="st-key-cross_to_"] .stButton > button[data-testid="baseButton-primary"] {
-  /* Page-specific Open accent from _studio_page_active_nav_css(); fallback below */
-  border: 2px solid #94a3b8 !important;
-  background: #64748b !important;
+  /* Active Open stays practice red — see _studio_page_active_nav_css() */
+  border: 2px solid #dc2626 !important;
+  background: #dc2626 !important;
   color: #ffffff !important;
   font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
 }
 .ui-cross-nav-art {
   margin: 0.35rem 0 0.75rem 0;

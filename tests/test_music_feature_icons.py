@@ -177,33 +177,46 @@ def test_active_page_nav_css_uses_studio_page_accents() -> None:
     from app_ui import STUDIO_PAGE_ACCENTS, _studio_page_active_nav_css, studio_page_accent
 
     css = _studio_page_active_nav_css()
-    assert studio_page_accent("log") == "#db2777"
+    assert studio_page_accent("log") == "#0d9488"
+    assert studio_page_accent("analysis") == "#e11d48"
+    assert studio_page_accent("composer") == "#0f172a"
+    assert studio_page_accent("creative") == "#c026d3"
+    assert studio_page_accent("picker") == "#4f46e5"
     assert studio_page_accent("backing") == "#2563eb"
-    assert STUDIO_PAGE_ACCENTS["log"] == "#db2777"
-    # Top nav: page word + Open indicator
+    # Top nav: page word in page color
     assert ".ui-nav-art-cell.nav-log.is-active .ui-nav-script-label" in css
-    assert "color: #db2777" in css
-    assert 'st-key-studio_quick_nav_btn_log"' in css or "st-key-studio_quick_nav_btn_log" in css
-    # Sidebar Pages active fill
+    assert "color: #0d9488" in css
+    # Top nav Open stays red for every page
+    assert "background: #dc2626 !important" in css
+    assert 'st-key-studio_quick_nav_btn_log"' not in css
+    # Sidebar: selected label in page color (not filled button)
     assert ".ui-sb-nav-wrap .sb-nav-log.nav-btn-active button" in css
-    assert "background: #db2777" in css
+    assert "color: #0d9488 !important" in css
+    assert "background: rgba(255, 255, 255, 0.06)" in css
     for page_id, accent in STUDIO_PAGE_ACCENTS.items():
         assert f".ui-nav-art-cell.nav-{page_id}.is-active .ui-nav-script-label" in css
         assert f".ui-sb-nav-wrap .sb-nav-{page_id}.nav-btn-active button" in css
         assert accent in css
 
 
-def test_practice_log_header_accent_is_not_custom_green() -> None:
-    from pathlib import Path
+def test_practice_log_header_accent_is_teal_not_upload_pink() -> None:
+    from app_ui import STUDIO_PAGE_ACCENTS, _studio_page_header_theme_css
 
-    css = Path(__file__).resolve().parents[1].joinpath("app_ui.py").read_text(encoding="utf-8")
-    log_css = css.split(".ui-studio-script-header--log")[1].split(".ui-studio-script-header--openai")[0]
-    custom_block = css.split(".ui-studio-script-header--custom")[1].split(
-        ".ui-studio-script-header--creative"
-    )[0]
-    assert "#db2777" in log_css
-    assert "#059669" in custom_block
-    assert "#db2777" not in custom_block
-    assert "#059669" not in log_css
-    assert "#0d9488" not in log_css
+    assert STUDIO_PAGE_ACCENTS["log"] == "#0d9488"
+    assert STUDIO_PAGE_ACCENTS["analysis"] == "#e11d48"
+    header_css = _studio_page_header_theme_css()
+    assert "--ui-studio-header-accent: #0d9488" in header_css
+    assert "--ui-studio-header-accent: #e11d48" in header_css
+    assert "--ui-studio-header-accent: #0f172a" in header_css
+    assert "--ui-studio-header-accent: #c026d3" in header_css
+
+
+def test_practice_log_header_accent_is_not_custom_green() -> None:
+    from app_ui import STUDIO_PAGE_ACCENTS
+
+    assert STUDIO_PAGE_ACCENTS["log"] == "#0d9488"
+    assert STUDIO_PAGE_ACCENTS["custom"] == "#059669"
+    assert STUDIO_PAGE_ACCENTS["log"] != STUDIO_PAGE_ACCENTS["custom"]
+    assert STUDIO_PAGE_ACCENTS["analysis"] == "#e11d48"
+    assert STUDIO_PAGE_ACCENTS["log"] != STUDIO_PAGE_ACCENTS["analysis"]
 
