@@ -145,6 +145,17 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
     if chord:
         session["ii_selected_chord"] = chord
         session["II_SELECTED_CHORD"] = chord
+    try:
+        raw_idx = dest.get("chord_index")
+        if raw_idx is not None and str(raw_idx).strip() != "":
+            idx = int(raw_idx)
+            session["ii_selected_chord_index"] = idx
+            if section and chord:
+                session["ii_selected_chord_label"] = f"{section} · {chord}"
+    except (TypeError, ValueError):
+        pass
+    # Return restores sealed selection; a later tile click must outrank this.
+    session.pop("_mission_chord_click_authority", None)
     pick = str(dest.get("song_pick_key") or "").strip()
     if pick:
         session["active_catalog_pick_key"] = pick

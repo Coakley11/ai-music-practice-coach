@@ -53,6 +53,14 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
         "startup_migration",
         "canonical_repair",
         "creative_schema_migration",
+        # Deliberate Custom → Catalog ownership changes must persist even when
+        # startup fingerprint matching would otherwise suppress song_edit saves.
+        "catalog_source_switch",
+        "last_catalog_restore",
+        "catalog_source_switch_fallback",
+        "previous_catalog_restore",
+        "creative_to_catalog",
+        "switch_to_catalog_backing",
     }
 )
 

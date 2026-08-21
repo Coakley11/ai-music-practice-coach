@@ -314,27 +314,9 @@ def catalog_identity_aligns(session: dict[str, Any]) -> bool:
             if ctx_title and expected_title and ctx_title != expected_title:
                 return False
             if bound and _pick_keys_match(bound, pick, session_state=session):
-                expected_bpm = _canonical_active_song_bpm(session)
-                try:
-                    from songs.music_source import catalog_transport_bpm_for_pick
-
-                    row_bpm = catalog_transport_bpm_for_pick(session, pick)
-                    if row_bpm > 0:
-                        expected_bpm = row_bpm
-                except ImportError:
-                    pass
-                try:
-                    from songs.practice_key_state import resolve_source_bpm_for_pick
-
-                    expected_bpm = resolve_source_bpm_for_pick(
-                        session,
-                        pick,
-                        default_bpm=expected_bpm or int(ctx.bpm or 0) or 100,
-                    )
-                except ImportError:
-                    pass
-                if expected_bpm and int(ctx.bpm or 0) != int(expected_bpm):
-                    return False
+                # BPM is a play-session / transport knob, not catalog identity.
+                # Never force-reset Backing because Current BPM differs from catalog default.
+                pass
     except ImportError:
         pass
     return True
@@ -733,6 +715,46 @@ def rebuild_catalog_backing_from_canonical_pick(
         except ImportError:
             is_fixed_practice_key_mode = lambda _session: False  # type: ignore[misc,assignment]
         saved_key = get_practice_concert_key(session, pick)
+        try:
+            from backing_source_navigation import peek_key_transition_intent
+
+            _transition = peek_key_transition_intent(session)
+        except ImportError:
+            _transition = ""
+        if reset_to_original or _transition in {
+            "switch_to_catalog_backing",
+            "catalog_source_switch",
+            "creative_to_catalog",
+        }:
+            try:
+                from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+                from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY, LAST_CATALOG_STATE_KEY
+
+                prev_pick = ""
+                for snap_key in (CATALOG_BEFORE_CREATIVE_KEY, LAST_CATALOG_STATE_KEY):
+                    raw = session.get(snap_key)
+                    if isinstance(raw, dict):
+                        cand = str(raw.get("pick_key") or "").strip()
+                        if cand and cand != pick:
+                            prev_pick = cand
+                            break
+                if not prev_pick:
+                    invalidated = str(session.get("_backing_restore_invalidated_from") or "").strip()
+                    if invalidated.startswith("pk::"):
+                        prev_pick = invalidated[4:]
+                healed = reconcile_practice_key_after_active_source_change(
+                    session,
+                    pick_key=pick,
+                    original_key=catalog_original,
+                    previous_pick_key=prev_pick,
+                    source=f"rebuild_catalog:{_transition or 'reset_to_original'}",
+                    force_source_change=True,
+                )
+                if healed:
+                    saved_key = get_practice_concert_key(session, pick)
+                    practice_concert_key = healed
+            except ImportError:
+                pass
         if saved_key and not is_fixed_practice_key_mode(session):
             target_key = saved_key
         elif reset_to_original:
@@ -752,6 +774,26 @@ def rebuild_catalog_backing_from_canonical_pick(
             target_key = catalog_original
         else:
             target_key = str(practice_concert_key or "").strip() or catalog_original
+    # Capo is player context — Creative→Backing must not apply a sealed Roads PK (A)
+    # while the live song Practice Key still matches the catalog original (Love Story C).
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY
+
+        if session.get(CAPO_ENABLED_KEY):
+            live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            if live_dk and catalog_original:
+                try:
+                    from music_theory import split_key_center
+
+                    live_t, _ = split_key_center(live_dk)
+                    orig_t, _ = split_key_center(catalog_original)
+                    if live_t and orig_t and live_t == orig_t:
+                        target_key = live_dk
+                except ImportError:
+                    if live_dk == catalog_original:
+                        target_key = live_dk
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import peek_key_transition_intent
 
@@ -796,6 +838,17 @@ def rebuild_catalog_backing_from_canonical_pick(
     _sync_catalog_session_surface_keys(session, pick_key=pick, selected_song=selected)
 
     st = st_like or SimpleNamespace(session_state=session)
+    capo_keeps_live_pk = False
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY
+        from music_theory import split_key_center
+
+        if session.get(CAPO_ENABLED_KEY) and target_key and catalog_original:
+            tt, _ = split_key_center(str(target_key))
+            ot, _ = split_key_center(str(catalog_original))
+            capo_keeps_live_pk = bool(tt and ot and tt == ot)
+    except ImportError:
+        capo_keeps_live_pk = False
     bpm, groove, _meter = _apply_catalog_transport_from_record(
         session,
         st_like=st,
@@ -803,7 +856,7 @@ def rebuild_catalog_backing_from_canonical_pick(
         selected=selected,
         original_key=original_key,
         concert_key=target_key,
-        force_display_key=bool(reset_to_original and not saved_key),
+        force_display_key=bool(reset_to_original and not saved_key) or capo_keeps_live_pk,
         force_bpm_reset=force_bpm_reset,
     )
 
@@ -1147,6 +1200,62 @@ def maybe_reset_practice_key_on_source_activation(
     return True
 
 
+def trace_practice_key_owner(
+    session: dict[str, Any],
+    *,
+    phase: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record source-scoped Practice Key ownership for Pass 8 isolation debugging."""
+    ctx_source = ""
+    ctx_id = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_source = str(ctx.source or "")
+            ctx_id = str(ctx.bound_pick_key or ctx.active_song_id or ctx.mission_id or "")
+    except ImportError:
+        pass
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    store_val = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        if pick:
+            store_val = str(get_practice_concert_key(session, pick) or "").strip()
+    except ImportError:
+        store_val = ""
+    owner = ""
+    try:
+        from generated_jam_key_context import generated_jam_owns_practice_key
+
+        if generated_jam_owns_practice_key(session):
+            owner = "generated_jam"
+    except ImportError:
+        owner = ""
+    if not owner:
+        owner = str(intended_practice_owner(session) or "catalog")
+    snap = {
+        "phase": str(phase or ""),
+        "studio_page": str(session.get("studio_page") or ""),
+        "source_kind": ctx_source or str(session.get("improv_entry_mode") or ""),
+        "source_identity": ctx_id or pick,
+        "practice_key_owner": owner,
+        "practice_key_value": str(session.get("display_key") or session.get("concert_key") or ""),
+        "workspace_field": "practice_key_by_source" if store_val else "display_key",
+        "practice_key_by_source": store_val,
+        "improv_jam_key": str(session.get("improv_jam_key") or session.get("improv_style_key") or ""),
+    }
+    if extra:
+        snap.update(extra)
+    buf = list(session.get("_pk_owner_trace") or [])
+    buf.append(snap)
+    session["_pk_owner_trace"] = buf[-24:]
+    return snap
+
+
 __all__ = [
     "PracticeOwner",
     "BackingOwner",
@@ -1173,5 +1282,6 @@ __all__ = [
     "practice_backing_owners_align",
     "rebuild_catalog_backing_from_canonical_pick",
     "reconcile_source_ownership",
+    "trace_practice_key_owner",
     "write_catalog_backing_restore_diag",
 ]

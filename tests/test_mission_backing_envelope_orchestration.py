@@ -70,9 +70,12 @@ class TestMissionBackingEnvelopeOrchestration(unittest.TestCase):
         backing = peek_pending_backing_workflow_handoff(session)
         self.assertIsNotNone(backing)
         assert backing is not None
-        self.assertTrue(backing.get("waiting_for_mission_envelope"))
+        # Explicit click + alignment reconciles synchronously — do not defer on envelope.
+        self.assertFalse(backing.get("waiting_for_mission_envelope"))
+        self.assertTrue(session.get("_mission_backing_envelope_defer_overridden"))
         self.assertEqual(backing.get("handoff_mode"), "practice_in_jam")
-        self.assertIsNotNone(peek_pending_mission_envelope_reconciliation(session))
+        diag = session.get("_mission_explicit_handoff_envelope_diag") or {}
+        self.assertIn("consistent", diag)
 
     def test_orchestrated_pre_widget_opens_backing_one_click(self) -> None:
         session = self._missions_with_jam_ownership()
@@ -149,14 +152,16 @@ class TestMissionBackingEnvelopeOrchestration(unittest.TestCase):
                 phase = consume_pending_backing_workflow_handoff(session)
         self.assertEqual(phase, "applied")
 
-    def test_tab_missions_does_not_queue_envelope_rerun(self) -> None:
+    def test_tab_missions_requests_rerun_without_queuing_envelope(self) -> None:
+        """Missions tab may consume pending envelope work via rerun; queuing stays in orchestration."""
         from pathlib import Path
 
         text = Path(__file__).resolve().parents[1].joinpath("improvisation_intelligence_ui.py").read_text(encoding="utf-8")
         start = text.index("def _tab_missions(")
         end = text.index("\ndef ", start + 1)
         body = text[start:end]
-        self.assertNotIn("request_pending_mission_envelope_rerun", body)
+        self.assertIn("request_pending_mission_envelope_rerun", body)
+        self.assertIn("peek_pending_mission_envelope_reconciliation", body)
         self.assertNotIn("queue_pending_mission_envelope_reconciliation", body)
 
 

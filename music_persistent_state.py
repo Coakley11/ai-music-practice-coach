@@ -590,6 +590,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_quick_section",
     "_backing_play_session",
     "_backing_play_session_expired",
+    "_backing_current_bpm_lock",
     "karaoke_countdown_enabled",
     "karaoke_auto_advance",
     "active_music_source",
@@ -676,6 +677,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "fixed_practice_key",
     "fixed_practice_key_family_id",
     "fixed_practice_key_family_spelling",
+    "song_picker_active_source",
     "sbi_preview_source",
     "catalog_session",
     "custom_session",
@@ -3727,13 +3729,8 @@ def prepare_canonical_music_page_state(
                 session_state = session
 
             reconcile_picker_music_source(session)
-            if song_picker_catalog:
-                apply_pending_catalog_from_picker_before_widgets(
-                    _SessionProxy(),
-                    song_picker_catalog=song_picker_catalog,
-                    song_library=song_library,
-                    invalidate_backing=invalidate_backing_cache,
-                )
+            # Custom Set-as-Active must apply before any pending catalog reclaim so
+            # disk persist cannot stamp Country Roads over Trial Song (E5).
             apply_pending_custom_active_song_activation_before_widgets(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
@@ -3742,6 +3739,25 @@ def prepare_canonical_music_page_state(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
             )
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_sample
+
+                note_e5_reclaim_sample(session, phase="prepare_canonical_after_custom_pending")
+            except ImportError:
+                pass
+            if song_picker_catalog:
+                apply_pending_catalog_from_picker_before_widgets(
+                    _SessionProxy(),
+                    song_picker_catalog=song_picker_catalog,
+                    song_library=song_library,
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_sample
+
+                note_e5_reclaim_sample(session, phase="prepare_canonical_after_catalog_pending")
+            except ImportError:
+                pass
             if song_picker_catalog:
                 apply_pending_previous_catalog_restore_before_widgets(
                     _SessionProxy(),
@@ -3923,6 +3939,12 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
                 "song_edit",
                 "transposing_subtype",
                 "written_key_mode",
+                "catalog_source_switch",
+                "last_catalog_restore",
+                "catalog_source_switch_fallback",
+                "previous_catalog_restore",
+                "creative_to_catalog",
+                "switch_to_catalog_backing",
             )
         )
         if should_flush:
@@ -4753,6 +4775,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "backing_track_bpm",
         "_backing_play_session",
         "_backing_play_session_expired",
+        "_backing_current_bpm_lock",
         "karaoke_countdown_enabled",
         "karaoke_auto_advance",
         "active_music_source",

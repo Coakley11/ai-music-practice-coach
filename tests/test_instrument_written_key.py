@@ -299,7 +299,7 @@ def test_render_guitar_capo_sidebar_passes_persist_st_to_cloud_flush():
     persist_st = MagicMock()
     ss: dict = {}
 
-    with patch("guitar_capo.persist_capo_to_canonical"), patch(
+    with patch("guitar_capo.persist_capo_to_canonical", return_value=True), patch(
         "guitar_capo.flush_capo_edits_to_cloud"
     ) as flush_cloud:
         render_guitar_capo_sidebar(
@@ -309,6 +309,57 @@ def test_render_guitar_capo_sidebar_passes_persist_st_to_cloud_flush():
             persist_st=persist_st,
         )
         flush_cloud.assert_called_once_with(persist_st)
+
+
+def test_capo_widget_seeded_from_canonical_without_value_kwarg():
+    """Restored Capo ON must seed the Streamlit widget key (no value=+key=)."""
+    from unittest.mock import MagicMock, patch
+
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_ENABLED_WIDGET_KEY,
+        CAPO_SHAPE_KEY,
+        CAPO_SHAPE_WIDGET_KEY,
+        render_guitar_capo_sidebar,
+    )
+
+    ui = MagicMock()
+    ui.checkbox.return_value = True
+    ui.selectbox.return_value = "Bb"
+    ss = {
+        CAPO_ENABLED_KEY: True,
+        CAPO_SHAPE_KEY: "Bb",
+        "guitar_capo_sounding_key": "C",
+    }
+    with patch("guitar_capo.persist_capo_to_canonical", return_value=False), patch(
+        "guitar_capo.flush_capo_edits_to_cloud"
+    ):
+        render_guitar_capo_sidebar(ui, ss, practice_display_key="C", persist_st=MagicMock())
+    assert ss[CAPO_ENABLED_WIDGET_KEY] is True
+    cb_kwargs = ui.checkbox.call_args.kwargs
+    assert "value" not in cb_kwargs
+    assert cb_kwargs.get("key") == CAPO_ENABLED_WIDGET_KEY
+    assert ss.get(CAPO_SHAPE_WIDGET_KEY) == "Bb"
+
+
+def test_sync_capo_widgets_overwrites_stale_false_widget():
+    from guitar_capo import (
+        CAPO_ENABLED_KEY,
+        CAPO_ENABLED_WIDGET_KEY,
+        CAPO_SHAPE_KEY,
+        CAPO_SHAPE_WIDGET_KEY,
+        sync_capo_widgets_from_canonical,
+    )
+
+    ss = {
+        CAPO_ENABLED_KEY: True,
+        CAPO_SHAPE_KEY: "Bb",
+        CAPO_ENABLED_WIDGET_KEY: False,
+        CAPO_SHAPE_WIDGET_KEY: "C",
+    }
+    sync_capo_widgets_from_canonical(ss)
+    assert ss[CAPO_ENABLED_WIDGET_KEY] is True
+    assert ss[CAPO_SHAPE_WIDGET_KEY] == "Bb"
 
 
 def test_rehydrate_capo_from_canonical():
@@ -323,4 +374,5 @@ def test_rehydrate_capo_from_canonical():
     }
     rehydrate_capo_from_canonical(session)
     assert session[CAPO_ENABLED_KEY] is True
-    assert session[CAPO_SHAPE_KEY] == "Am"
+    # Shape Key is tonic-only in Capo Shape Mode
+    assert session[CAPO_SHAPE_KEY] == "A"

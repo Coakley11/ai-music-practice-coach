@@ -246,6 +246,180 @@ def mirror_song_practice_key_to_mission_blob(session: dict[str, Any], song_blob:
     save_workflow_blob(session, mission, source="mirror_song_practice_key")
 
 
+def reconcile_practice_key_after_active_source_change(
+    session: dict[str, Any],
+    *,
+    pick_key: str = "",
+    original_key: str = "",
+    previous_pick_key: str = "",
+    source: str = "active_source_change",
+    force_source_change: bool = False,
+) -> str:
+    """Practice Key for a newly committed catalog source after an identity change.
+
+    Precedence:
+      1. pending sidebar Practice Key edit for this pick
+      2. persisted override unique to this pick (not a cross-source leak)
+      3. catalog/custom original key
+
+    Never inherit the previous source live transport or a poisoned store slot that
+    merely duplicates the prior pick's Practice Key (E4: Love Story C → Country Roads A).
+    """
+    pick = str(pick_key or session.get("active_catalog_pick_key") or "").strip()
+    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+    original = str(original_key or (sel or {}).get("key") or "").strip() or "C"
+    prev_pick = str(previous_pick_key or "").strip()
+    if not prev_pick:
+        try:
+            from songs.music_source import _LAST_ACTIVE_PICK_KEY
+
+            prev_pick = str(session.get(_LAST_ACTIVE_PICK_KEY) or "").strip()
+        except ImportError:
+            prev_pick = ""
+    if not prev_pick:
+        # Fall back to the identity we just invalidated (pre-hydrate source commit).
+        invalidated_from = str(session.get("_backing_restore_invalidated_from") or "").strip()
+        if invalidated_from.startswith("pk::"):
+            prev_pick = invalidated_from[4:]
+        elif invalidated_from.startswith("creative:"):
+            # creative:mission:Country\x1fLove Story — …
+            parts = invalidated_from.split(":", 2)
+            if len(parts) >= 3 and "\x1f" in parts[2]:
+                prev_pick = parts[2].split("|", 1)[0] if "|" in parts[2] else parts[2]
+                if prev_pick.startswith("catalog|"):
+                    prev_pick = prev_pick.split("|", 1)[-1]
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+
+        pending = str(pending_selected_practice_key_token(session) or "").strip()
+    except ImportError:
+        pending = ""
+    try:
+        from songs.practice_key_state import (
+            clear_practice_concert_key,
+            get_practice_concert_key,
+            resolve_practice_concert_key_for_pick,
+            set_practice_concert_key,
+        )
+    except ImportError:
+        chosen = original
+    else:
+        source_changed = bool(force_source_change) or bool(prev_pick and pick and prev_pick != pick)
+        prev_saved = str(get_practice_concert_key(session, prev_pick) or "").strip() if prev_pick else ""
+        saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        # Treat live as prior-source residue when it matches another pick's saved key.
+        if (
+            not source_changed
+            and live
+            and original
+            and live != original
+            and isinstance(session.get("practice_key_by_source"), dict)
+        ):
+            for other_pk, other_key in session["practice_key_by_source"].items():
+                if str(other_pk or "").strip() != pick and str(other_key or "").strip() == live:
+                    source_changed = True
+                    if not prev_pick:
+                        prev_pick = str(other_pk).strip()
+                        prev_saved = live
+                    break
+        if (
+            not source_changed
+            and live
+            and original
+            and live != original
+            and not saved
+        ):
+            # Identity just changed but previous pick was unknown — do not keep foreign live key.
+            if force_source_change or str(session.get("_backing_restore_invalidated_from") or "").strip():
+                source_changed = True
+                prev_saved = live
+        # Cross-source leak signature: only when a source change is evident.
+        shared_leak = False
+        if (
+            (source_changed or str(session.get("_backing_restore_invalidated_from") or "").strip())
+            and saved
+            and original
+            and saved != original
+            and pick
+        ):
+            try:
+                store = session.get("practice_key_by_source")
+                if isinstance(store, dict):
+                    for other_pk, other_key in store.items():
+                        if (
+                            str(other_pk or "").strip()
+                            and str(other_pk).strip() != pick
+                            and str(other_key or "").strip() == saved
+                        ):
+                            shared_leak = True
+                            if not prev_pick:
+                                prev_pick = str(other_pk).strip()
+                                prev_saved = saved
+                            break
+            except Exception:
+                shared_leak = False
+        if pending:
+            chosen = pending
+        elif saved and (source_changed or shared_leak) and (
+            (prev_saved and saved == prev_saved) or shared_leak
+        ) and original and saved != original:
+            clear_practice_concert_key(session, pick)
+            chosen = original
+        elif saved and not (
+            (source_changed or shared_leak) and prev_saved and saved == prev_saved
+        ):
+            chosen = saved
+        elif source_changed or shared_leak:
+            # Live transport still belongs to the previous song/jam — use catalog original.
+            chosen = original
+        elif live and original and live != original:
+            chosen = live
+        elif pick:
+            chosen = resolve_practice_concert_key_for_pick(session, pick, original_key=original)
+        else:
+            chosen = original
+        if pick and chosen and not pending:
+            set_practice_concert_key(session, chosen, pick_key=pick)
+    try:
+        from music_source_ownership import trace_practice_key_owner
+
+        trace_practice_key_owner(
+            session,
+            phase=f"source_change:{source}",
+            extra={
+                "pick": pick,
+                "prev_pick": prev_pick,
+                "chosen": chosen,
+                "original": original,
+                "pending": pending,
+            },
+        )
+    except ImportError:
+        pass
+    if chosen:
+        try:
+            ensure_song_practice_blob_for_active_song(
+                session,
+                practice_key=chosen,
+                original_key=original,
+            )
+        except Exception:
+            pass
+        try:
+            from music_workflow_legacy_projection import _project_session_field
+
+            _project_session_field(session, "display_key", chosen)
+            _project_session_field(session, "concert_key", chosen)
+            session["_pending_display_key"] = chosen
+        except ImportError:
+            session["display_key"] = chosen
+            session["concert_key"] = chosen
+            session["_pending_display_key"] = chosen
+        session["_music_practice_key_sync_source"] = source
+    return chosen
+
+
 def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str = "practice_key_reconcile") -> str:
     """Authoritative Practice Key for an active catalog song.
 
@@ -262,6 +436,22 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    prev_pick = ""
+    try:
+        from songs.music_source import _LAST_ACTIVE_PICK_KEY
+
+        prev_pick = str(session.get(_LAST_ACTIVE_PICK_KEY) or "").strip()
+    except ImportError:
+        prev_pick = ""
+    if prev_pick and pick and prev_pick != pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            prev_saved = str(get_practice_concert_key(session, prev_pick) or "").strip()
+            if prev_saved and live == prev_saved and original and live != original:
+                live = ""
+        except ImportError:
+            pass
     store = ""
     if pick:
         try:
@@ -280,16 +470,79 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         live = pending
     song_tok = resolve_song_practice_key_token(session)
 
-    if live and original and live != original:
+    jam_tokens: set[str] = set()
+    try:
+        from generated_jam_key_context import generated_jam_practice_key_tokens
+
+        jam_tokens = generated_jam_practice_key_tokens(session)
+    except ImportError:
+        leftover = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
+        if leftover:
+            jam_tokens.add(leftover)
+
+    def _is_jam_key(tok: str) -> bool:
+        return bool(tok) and tok in jam_tokens
+
+    snap_tok = ""
+    try:
+        from generated_jam_key_context import SONG_PRACTICE_KEY_SNAPSHOT_KEY
+
+        snap = session.get(SONG_PRACTICE_KEY_SNAPSHOT_KEY)
+        if isinstance(snap, dict):
+            snap_pick = str(snap.get("pick_key") or "").strip()
+            if not snap_pick or not pick or snap_pick == pick:
+                snap_tok = str(snap.get("display_key") or snap.get("concert_key") or snap.get("practice_concert_key") or "").strip()
+    except ImportError:
+        snap_tok = ""
+
+    # Generated Jam must never become the active-song Practice Key, including a
+    # poisoned practice_key_by_source slot written on a prior leak.
+    if _is_jam_key(live):
+        if store and not _is_jam_key(store):
+            live = store
+        elif song_tok and not _is_jam_key(song_tok):
+            live = song_tok
+        elif snap_tok and not _is_jam_key(snap_tok):
+            live = snap_tok
+        elif original and not _is_jam_key(original):
+            live = original
+        else:
+            live = ""
+    if _is_jam_key(store):
+        store = ""
+    if _is_jam_key(song_tok):
+        song_tok = ""
+
+    if live and original and live != original and not _is_jam_key(live):
         chosen = live
     elif store and original and store != original:
         chosen = store
-    elif live:
-        chosen = live
     elif store:
         chosen = store
+    elif live and not _is_jam_key(live):
+        chosen = live
+    elif song_tok:
+        chosen = song_tok
+    elif snap_tok and not _is_jam_key(snap_tok):
+        chosen = snap_tok
+    elif original:
+        chosen = original
     else:
-        chosen = song_tok or original or ""
+        chosen = live or ""
+
+    if _is_jam_key(chosen):
+        chosen = snap_tok or original or ""
+
+    try:
+        from music_source_ownership import trace_practice_key_owner
+
+        trace_practice_key_owner(
+            session,
+            phase=f"reconcile:{source}",
+            extra={"chosen": chosen, "live": live, "store": store, "jam_tokens": sorted(jam_tokens)},
+        )
+    except ImportError:
+        pass
 
     if not chosen:
         return ""
@@ -297,7 +550,7 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     try:
         from songs.practice_key_state import set_practice_concert_key
 
-        if pick:
+        if pick and not _is_jam_key(chosen):
             set_practice_concert_key(session, chosen, pick_key=pick)
     except ImportError:
         pass
@@ -383,6 +636,7 @@ __all__ = [
     "mirror_mission_keys_from_song_blob",
     "mirror_song_practice_key_to_mission_blob",
     "mission_blob_session_id",
+    "reconcile_practice_key_after_active_source_change",
     "reconcile_catalog_practice_key_owner",
     "rehydrate_full_song_concert_sections",
     "resolve_song_practice_key_token",

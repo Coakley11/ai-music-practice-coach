@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-04 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-08-18 · **Branch:** `feature/creative-backing-stabilization` (Pass 8 uncommitted; do not merge to `dev`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -55,6 +55,28 @@ We are building **core platform architecture**, not a bag of isolated features.
 | `log` | Practice Log | Live |
 | `openai` | OpenAI | Live (API key required) |
 | `composer` | Composition Studio | Live (Sprint A foundation — **guided UX pending**) |
+
+---
+
+## Current Priorities
+
+- **Pass 8 Creative/Backing stabilization** (uncommitted on `feature/creative-backing-stabilization`): generated Jam BPM, then active-source-change restore epoch (Cases E1–E5). Plan: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md). Do not merge to `dev` until the matrix is green.
+
+## Next Features
+
+- Active-source-change Backing restore: last Backing resumes only while the same catalog/custom source remains active.
+
+## Long-Term Vision
+
+*See Platform architecture above.*
+
+## Completed Features
+
+*See [music_app_completed_features.md](./music_app_completed_features.md).*
+
+## Notes
+
+Pass 8 Case A, Mission B, and Jam key isolation are locally green and frozen.
 
 ---
 

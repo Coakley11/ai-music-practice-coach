@@ -25,6 +25,172 @@ PRACTICE_SOURCE_DISPLAY_KEY = "_practice_source_display_key"
 PRACTICE_SOURCE_PICK_KEY = "_practice_source_pick_key"
 CREATIVE_RESTORE_FROM_BACKING_KEY = "_creative_restore_from_backing"
 
+# Active-source epoch for top-level Backing restore eligibility.
+# Restore last Mission/Jam/SBI Backing only while this matches the current
+# catalog/custom active source identity.
+BACKING_RESTORE_ANCHOR_KEY = "_backing_restore_anchor_source"
+BACKING_RESTORE_EPOCH_KEY = "_backing_restore_epoch"
+
+
+def resolve_active_source_identity_for_restore(session: dict[str, Any]) -> str:
+    """Stable active base-source identity (catalog pick or custom progression).
+
+    Always derive from the live catalog/custom pick — never prefer a stale
+    ``ACTIVE_SONG_IDENTITY_KEY`` that can lag behind ``selected_song`` / sidebar
+    (E4 split-brain: sidebar Country Roads, identity still Love Story).
+    """
+    try:
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            compute_active_song_identity,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        is_custom = bool(
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        )
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        title = ""
+        artist = ""
+        original = ""
+        sel = session.get("selected_song")
+        if isinstance(sel, dict):
+            sel_pick = str(sel.get("pick_key") or "").strip()
+            if sel_pick and not pick:
+                pick = sel_pick
+            title = str(sel.get("title") or sel.get("name") or "").strip()
+            artist = str(sel.get("artist") or "").strip()
+            original = str(sel.get("key") or sel.get("original_key") or "").strip()
+        if not pick and not is_custom:
+            try:
+                from active_song_state import canonical_active_song_context
+
+                ctx = canonical_active_song_context(session)
+                if isinstance(ctx, dict):
+                    pick = str(ctx.get("pick_key") or "").strip()
+            except ImportError:
+                pass
+        custom_rev = str(
+            session.get("custom_progression_revision_id")
+            or session.get("cpl_revision_id")
+            or ""
+        ).strip()
+        computed = compute_active_song_identity(
+            pick_key=pick,
+            title=title,
+            artist=artist,
+            original_key=original,
+            is_custom=is_custom,
+            custom_revision=custom_rev,
+        )
+        existing = str(session.get(ACTIVE_SONG_IDENTITY_KEY) or "").strip()
+        if computed and existing != computed:
+            session[ACTIVE_SONG_IDENTITY_KEY] = computed
+        return computed or existing
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        sel = session.get("selected_song")
+        if isinstance(sel, dict):
+            sel_pick = str(sel.get("pick_key") or "").strip()
+            if sel_pick:
+                pick = sel_pick
+        return f"pk::{pick}" if pick else ""
+
+
+def stamp_backing_restore_anchor(session: dict[str, Any], *, anchor: str = "") -> str:
+    """Record which active source owns the current Backing restore eligibility."""
+    identity = str(anchor or resolve_active_source_identity_for_restore(session) or "").strip()
+    if identity:
+        session[BACKING_RESTORE_ANCHOR_KEY] = identity
+        try:
+            import time
+
+            session[BACKING_RESTORE_EPOCH_KEY] = float(time.time())
+        except Exception:
+            session[BACKING_RESTORE_EPOCH_KEY] = 1
+    return identity
+
+
+def backing_restore_anchor(session: dict[str, Any]) -> str:
+    return str(session.get(BACKING_RESTORE_ANCHOR_KEY) or "").strip()
+
+
+def backing_restore_eligible(session: dict[str, Any]) -> bool:
+    """True when last Backing may be restored for top-level Backing nav."""
+    anchor = backing_restore_anchor(session)
+    current = resolve_active_source_identity_for_restore(session)
+    if not anchor or not current:
+        return False
+    return anchor == current
+
+
+def invalidate_backing_restore_for_active_source_change(
+    session: dict[str, Any],
+    *,
+    previous_identity: str = "",
+    new_identity: str = "",
+    reason: str = "active_source_change",
+) -> bool:
+    """Invalidate CURRENT Backing restore/play-session pointers for a new active source.
+
+    Does not delete separately persisted library history — only clears the current
+    restore eligibility so top-level Backing initializes regular Backing for the
+    newly active source.
+
+    Must prove a real identity change before expiring. Empty previous identity with
+    no restore anchor is a first-commit / same-catalog hydrate (Case A Current BPM
+    must survive ``restore_regular_song_backing`` / ``force_reset`` creative_to_catalog).
+    """
+    prev = str(previous_identity or "").strip()
+    if not prev:
+        prev = backing_restore_anchor(session)
+    nxt = str(new_identity or "").strip()
+    if not nxt:
+        nxt = resolve_active_source_identity_for_restore(session)
+    # No proven change → do not expire play session or clear restore pointers.
+    if not prev or not nxt or prev == nxt:
+        return False
+    try:
+        from backing_play_session import expire_backing_play_session
+
+        expire_backing_play_session(session)
+    except ImportError:
+        session.pop("_backing_play_session", None)
+        session["_backing_play_session_expired"] = True
+    try:
+        from backing_context import clear_backing_context
+
+        clear_backing_context(session)
+    except ImportError:
+        session.pop(BACKING_CONTEXT_KEY, None)
+    session.pop(BACKING_RESTORE_ANCHOR_KEY, None)
+    session.pop(BACKING_RESTORE_EPOCH_KEY, None)
+    session.pop(BACKING_OPEN_INTENT_KEY, None)
+    session.pop(BACKING_ENTRY_CLASS_KEY, None)
+    session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+    session.pop("improv_mission_backing_handoff", None)
+    try:
+        from music_workflow_pending_backing_handoff import PENDING_BACKING_WORKFLOW_KEY
+
+        session.pop(PENDING_BACKING_WORKFLOW_KEY, None)
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import invalidate_creative_backing_context
+
+        invalidate_creative_backing_context(session)
+    except ImportError:
+        pass
+    session["_backing_restore_invalidated_reason"] = str(reason or "active_source_change")
+    session["_backing_restore_invalidated_from"] = prev
+    session["_backing_restore_invalidated_to"] = nxt
+    return True
+
+
 # Page-snapshot keys that must not clobber an explicit Return-to-Creative handoff.
 # ``handle_studio_page_transition`` runs before early Creative hydrate; skipping these
 # prevents stale SBI widget values from winning over entry_jam backing context.
@@ -499,6 +665,77 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         if session.get("improv_mission_backing_handoff"):
             session.pop("improv_mission_backing_handoff", None)
             return activate_mission_ownership(session, st_like=st_like)
+
+        # Specialized Mission handoff may already have cleared the one-shot flag;
+        # prefer existing mission context / pending / active mission_jam owner.
+        try:
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+                return activate_mission_ownership(session, st_like=st_like)
+        except Exception:
+            pass
+        try:
+            from music_workflow_pending_backing_handoff import peek_pending_backing_workflow_handoff
+
+            pending = peek_pending_backing_workflow_handoff(session) or {}
+            if str(pending.get("backing_source") or "").strip() == "mission":
+                return activate_mission_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr and str(ptr.workflow_owner or "") == "mission_jam":
+                return activate_mission_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+        try:
+            from creative_session_state import get_creative_session
+
+            sess = get_creative_session(session)
+            if sess is not None and str(getattr(sess, "tool_type", "") or "") == "mission":
+                return activate_mission_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+
+        # Jam / Style Jam handoff mirrors Mission: prefer sealed ctx + workflow owner
+        # over stale Song-Based Improvisation widget residue.
+        try:
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+                return activate_entry_jam_ownership(session, st_like=st_like)
+        except Exception:
+            pass
+        try:
+            from music_workflow_pending_backing_handoff import peek_pending_backing_workflow_handoff
+
+            pending = peek_pending_backing_workflow_handoff(session) or {}
+            pending_src = str(pending.get("backing_source") or "").strip()
+            if pending_src in {"entry_jam", "jam", "style_jam", "jam_session_generator"}:
+                return activate_entry_jam_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr and str(ptr.workflow_owner or "") in {"jam_session_generator", "style_jam"}:
+                return activate_entry_jam_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+        try:
+            from creative_session_state import get_creative_session
+
+            sess = get_creative_session(session)
+            if sess is not None and str(getattr(sess, "tool_type", "") or "") in {
+                "jam_session_generator",
+                "entry_style_jam",
+            }:
+                return activate_entry_jam_ownership(session, st_like=st_like)
+        except ImportError:
+            pass
+
         entry = _creative_handoff_entry_mode(session)
         if entry in ("Style Jam Mode", "Jam Session Generator"):
             return activate_entry_jam_ownership(session, st_like=st_like)
@@ -555,11 +792,198 @@ def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> boo
     return False
 
 
+def _selected_catalog_pick_key(session: dict[str, Any]) -> str:
+    sel = session.get("selected_song")
+    if not isinstance(sel, dict):
+        return ""
+    return str(sel.get("pick_key") or "").strip()
+
+
+def _visible_song_title(session: dict[str, Any]) -> str:
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        title = str(sel.get("title") or sel.get("name") or "").strip()
+        if title:
+            return title
+    title = str(session.get("song") or session.get("active_song_title") or "").strip()
+    if title:
+        return title
+    try:
+        from active_song_state import canonical_active_song_context
+
+        ctx = canonical_active_song_context(session)
+        if isinstance(ctx, dict):
+            return str(ctx.get("title") or ctx.get("song") or "").strip()
+    except ImportError:
+        pass
+    return ""
+
+
+def _pick_label_for_title_compare(pick: str) -> str:
+    raw = str(pick or "").strip()
+    if "::" in raw:
+        raw = raw.split("::", 1)[-1]
+    if "|" in raw:
+        raw = raw.split("|", 1)[0]
+    return raw.strip().lower()
+
+
+def _fold_title_for_pick_compare(value: str) -> str:
+    raw = str(value or "").lower()
+    out = []
+    prev_space = False
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+            prev_space = False
+        elif not prev_space:
+            out.append(" ")
+            prev_space = True
+    return "".join(out).strip()
+
+
+def _title_conflicts_with_pick(title: str, pick: str) -> bool:
+    label = _fold_title_for_pick_compare(_pick_label_for_title_compare(pick))
+    text = _fold_title_for_pick_compare(title)
+    if not label or not text or label in {"pick", "active"}:
+        return False
+    if label in text or text in label:
+        return False
+    label_tokens = {tok for tok in label.split() if tok}
+    text_tokens = {tok for tok in text.split() if tok}
+    if label_tokens and label_tokens <= text_tokens:
+        return False
+    if len(label_tokens & text_tokens) >= 2:
+        return False
+    return True
+
+
+def _recover_pick_from_visible_title(session: dict[str, Any]) -> str:
+    title = _visible_song_title(session)
+    if not title:
+        return ""
+    sel = session.get("selected_song")
+    blob = dict(sel) if isinstance(sel, dict) else {}
+    blob.setdefault("title", title)
+    try:
+        from songs.music_source import _catalog_picker_from_session
+        from songs.state import _recover_pick_key_by_title
+
+        catalog = _catalog_picker_from_session(session)
+        if isinstance(catalog, dict) and catalog:
+            recovered = _recover_pick_key_by_title(blob, catalog)
+            if recovered:
+                return str(recovered).strip()
+    except ImportError:
+        pass
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY, canonical_active_song_context
+
+        ctx = canonical_active_song_context(session)
+        if isinstance(ctx, dict):
+            pk = str(ctx.get("pick_key") or "").strip()
+            if pk and not _title_conflicts_with_pick(title, pk):
+                return pk
+        meta = session.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict):
+            pk = str(meta.get("pick_key") or "").strip()
+            if pk and not _title_conflicts_with_pick(title, pk):
+                return pk
+    except ImportError:
+        meta = session.get("active_song_state")
+        if isinstance(meta, dict):
+            pk = str(meta.get("pick_key") or "").strip()
+            if pk and not _title_conflicts_with_pick(title, pk):
+                return pk
+    return ""
+
+
+def _authoritative_catalog_pick_for_nav(session: dict[str, Any]) -> str:
+    """Catalog pick for the song the sidebar is showing (not a lagged pick key)."""
+    title = _visible_song_title(session)
+    recovered = _recover_pick_from_visible_title(session)
+    if recovered and not _title_conflicts_with_pick(title, recovered):
+        return recovered
+    sel_pick = _selected_catalog_pick_key(session)
+    if sel_pick and not _title_conflicts_with_pick(title, sel_pick):
+        return sel_pick
+    return ""
+
+
+def _catalog_picks_conflict(session: dict[str, Any], left: str, right: str) -> bool:
+    a = str(left or "").strip()
+    b = str(right or "").strip()
+    if not a or not b:
+        return False
+    if a in {"pick", "active"} or b in {"pick", "active"}:
+        return False
+    try:
+        from songs.music_source import _pick_keys_match
+
+        return not _pick_keys_match(a, b, session_state=session)
+    except ImportError:
+        return a != b
+
+
+def _align_live_catalog_pick_to_selected_song(session: dict[str, Any]) -> None:
+    """Sidebar/selected song wins when catalog pick hydrator lagged (E4 split-brain)."""
+    visible = _authoritative_catalog_pick_for_nav(session)
+    if visible:
+        live = str(session.get("active_catalog_pick_key") or "").strip()
+        if not live or _catalog_picks_conflict(session, visible, live) or _title_conflicts_with_pick(
+            _visible_song_title(session), live
+        ):
+            session["active_catalog_pick_key"] = visible
+        return
+    sel_pick = _selected_catalog_pick_key(session)
+    if not sel_pick or sel_pick.lower().startswith("custom"):
+        return
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    if not live or not _catalog_picks_conflict(session, sel_pick, live):
+        return
+    session["active_catalog_pick_key"] = sel_pick
+
+
+def _backing_ctx_bound_conflicts_with_live_source(session: dict[str, Any], ctx: Any) -> bool:
+    """True when sealed ctx is bound to a different catalog/custom pick than live."""
+    bound = str(getattr(ctx, "bound_pick_key", "") or "").strip()
+    if not bound:
+        return False
+    try:
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        is_custom = bool(
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        )
+    except ImportError:
+        is_custom = False
+    if is_custom:
+        return not bound.lower().startswith("custom")
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if not pick:
+        return False
+    try:
+        from songs.music_source import _pick_keys_match
+
+        return not _pick_keys_match(bound, pick, session_state=session)
+    except ImportError:
+        return bound != pick
+
+
 def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) -> bool:
     """True when Upload/Multitrack/Practice/etc. must restore the last Backing session.
 
     Ordinary top-level navigation must not destroy Mission / Style Jam / Jam Generator /
     Regular Song backing unless that session was intentionally invalidated.
+
+    Restore is CONDITIONAL on the active base source (catalog/custom identity):
+    same active source → restore; different active source → ineligible.
     """
     try:
         from backing_context import get_backing_context, is_backing_context_valid
@@ -573,6 +997,47 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
         return False
     if not is_backing_context_valid(session, ctx):
         return False
+    # Split-brain: sidebar selected_song already moved (Country Roads) while
+    # active_catalog_pick_key / ctx still Love Story — do not restore.
+    sel_pick = _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
+    live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    bound = str(getattr(ctx, "bound_pick_key", "") or "").strip()
+    visible_title = _visible_song_title(session)
+    if (
+        _catalog_picks_conflict(session, sel_pick, live_pick)
+        or _catalog_picks_conflict(session, sel_pick, bound)
+        or _title_conflicts_with_pick(visible_title, bound)
+        or _title_conflicts_with_pick(visible_title, live_pick)
+    ):
+        return False
+    # Regular catalog sessions can lose bound_pick_key after song hops; still refuse
+    # when sealed song_title disagrees with the sidebar active song (Capo/PK drift).
+    # Specialized Mission/Jam titles are not catalog titles — skip this gate for them.
+    if src == "regular_song":
+        ctx_title = str(getattr(ctx, "song_title", "") or "").strip()
+        if _title_conflicts_with_pick(visible_title, ctx_title):
+            return False
+    # Active-source epoch gate: Clocks Mission must not restore after Love Story pick.
+    if not backing_restore_eligible(session):
+        # Legacy bags without an anchor: stamp from *live* active source only when
+        # ctx is not bound to a conflicting catalog/custom pick (stale Say jam
+        # must not become eligible just because we stamped the live custom id).
+        anchor = backing_restore_anchor(session)
+        if not anchor:
+            if _backing_ctx_bound_conflicts_with_live_source(session, ctx):
+                return False
+            try:
+                current = resolve_active_source_identity_for_restore(session)
+                if current:
+                    stamp_backing_restore_anchor(session, anchor=current)
+                else:
+                    stamp_backing_restore_anchor(session)
+            except Exception:
+                stamp_backing_restore_anchor(session)
+            if not backing_restore_eligible(session):
+                return False
+        else:
+            return False
     try:
         from songs.music_source import (
             cpl_session_is_active,
@@ -580,7 +1045,10 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
             is_custom_progression,
         )
 
-        if src != "custom_progression" and (
+        # Custom-in-session must not destroy a sealed Jam/Mission/SBI session
+        # (Jam generated on a custom practice source still restores). Regular
+        # catalog Backing is ineligible while custom owns practice.
+        if src == "regular_song" and (
             cpl_session_is_active(session)
             or is_custom_progression(session)
             or custom_progression_is_active(session)
@@ -615,6 +1083,9 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
             pass
         return True
     if src in SPECIALIZED_BACKING_SOURCES:
+        # Re-seal preference + live keys only. Do NOT call activate_*_ownership /
+        # open_backing_from_creative here — that rebuilds from improv state and
+        # wipes already-valid sealed Mission/Jam envelopes (E1/E3 restore).
         set_backing_source_preference(session, BACKING_PREF_CREATIVE)
         try:
             sync_live_keys_from_backing_context(session, st_like=st_like)
@@ -636,6 +1107,7 @@ def mark_specialized_backing_handoff_entry(session: dict[str, Any]) -> None:
     """Seal explicit specialized Backing entry (consumed once on hydrate)."""
     session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_SPECIALIZED_HANDOFF
     session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+    stamp_backing_restore_anchor(session)
     set_backing_open_intent(session, BACKING_INTENT_FROM_CREATIVE)
 
 
@@ -664,6 +1136,7 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
     try:
         from backing_context import (
             BACKING_PREF_CATALOG,
+            clear_backing_context,
             get_backing_context,
             set_backing_source_preference,
         )
@@ -672,6 +1145,8 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
         if src in {"entry_jam", "song_improv", "mission", "custom_progression"}:
             set_backing_source_preference(session, BACKING_PREF_CATALOG)
+            # Stale specialized ctx must not survive a restore miss (song change → Catalog).
+            clear_backing_context(session)
     except ImportError:
         pass
     session["_backing_released_specialized_context"] = True
@@ -689,8 +1164,190 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         pass
 
 
+def initialize_active_source_backing_after_restore_miss(
+    session: dict[str, Any], *, st_like: Any | None = None
+) -> None:
+    """After same-source restore fails, initialize regular Backing for the live active source.
+
+    Song-change path (E2/E4/E5): Love Story Mission → Country Roads → top-level Backing must
+    open Catalog Country Roads with that song's Practice Key (D), not preserve Love Story C
+    and not keep a stale specialized session.
+    """
+    session["_backing_released_specialized_context"] = True
+    _align_live_catalog_pick_to_selected_song(session)
+    pick = str(session.get("active_catalog_pick_key") or _selected_catalog_pick_key(session) or "").strip()
+    prev_pick = ""
+    try:
+        from songs.music_source import _LAST_ACTIVE_PICK_KEY
+
+        prev_pick = str(session.get(_LAST_ACTIVE_PICK_KEY) or "").strip()
+    except ImportError:
+        prev_pick = ""
+    try:
+        from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        reconcile_practice_key_after_active_source_change(
+            session,
+            pick_key=pick,
+            original_key=str((sel or {}).get("key") or ""),
+            previous_pick_key=prev_pick,
+            source="initialize_active_source_backing",
+        )
+    except ImportError:
+        pass
+    # Reset to the newly active source original/practice owner — do not preserve prior song key.
+    set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
+    try:
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
+            set_key_transition_intent(session, BACKING_INTENT_SWITCH_CUSTOM)
+    except ImportError:
+        pass
+    try:
+        open_backing_for_practice_source(session, st_like=st_like)
+    finally:
+        consume_key_transition_intent(session)
+    stamp_backing_restore_anchor(session)
+
+
+def trace_backing_hydrate_phase(session: dict[str, Any], phase: str, **extra: Any) -> None:
+    """Sequence-numbered trace for early-hydrate vs song-pick commit ordering (E4)."""
+    seq = int(session.get("_backing_hydrate_trace_seq") or 0) + 1
+    session["_backing_hydrate_trace_seq"] = seq
+    ctx = get_backing_context(session)
+    ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    ctx_title = str(getattr(ctx, "song_title", "") or "").strip() if ctx is not None else ""
+    ctx_bound = str(getattr(ctx, "bound_pick_key", "") or "").strip() if ctx is not None else ""
+    row: dict[str, Any] = {
+        "seq": seq,
+        "phase": phase,
+        "route": str(session.get("studio_page") or ""),
+        "visible_title": _visible_song_title(session),
+        "selected_pick": _selected_catalog_pick_key(session),
+        "active_pick": str(session.get("active_catalog_pick_key") or ""),
+        "identity": resolve_active_source_identity_for_restore(session),
+        "ctx_source": ctx_source,
+        "ctx_title": ctx_title,
+        "ctx_bound": ctx_bound,
+        "anchor": backing_restore_anchor(session),
+        "restore_eligible": backing_restore_eligible(session),
+        "intent": str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+        "display_key": str(session.get("display_key") or session.get("concert_key") or ""),
+    }
+    if extra:
+        row.update(extra)
+    trace = session.get("_backing_hydrate_trace")
+    if not isinstance(trace, list):
+        trace = []
+    trace.append(row)
+    if len(trace) > 48:
+        trace = trace[-48:]
+    session["_backing_hydrate_trace"] = trace
+
+
+def commit_active_catalog_source_before_backing_hydrate(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    song_picker_catalog: dict | None = None,
+    song_library: dict | None = None,
+    invalidate_backing: Any | None = None,
+) -> bool:
+    """Commit pending/new catalog source before early Backing hydrate.
+
+    Sidebar Active Song can already show Country Roads while ``catalog_before_creative``
+    and stale BackingContext still reference Love Story. This applies pending picks,
+    aligns the live catalog pick with the visible song, and invalidates stale restore
+    state before ``hydrate_backing_source_for_page`` runs.
+    """
+    trace_backing_hydrate_phase(session, "01_pre_commit_entry")
+    if song_picker_catalog and st_like is not None:
+        try:
+            from songs.state import apply_pending_catalog_pick_before_widgets
+
+            apply_pending_catalog_pick_before_widgets(
+                st_like,
+                song_picker_catalog,
+                song_library=song_library,
+                invalidate_backing=invalidate_backing or (lambda _st: None),
+            )
+        except ImportError:
+            pass
+
+    authoritative = _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    if authoritative and (
+        not live or _catalog_picks_conflict(session, authoritative, live)
+    ):
+        session["active_catalog_pick_key"] = authoritative
+        if isinstance(song_picker_catalog, dict) and song_picker_catalog:
+            try:
+                from songs.state import sync_catalog_pick_identity
+
+                sync_catalog_pick_identity(session, authoritative, song_picker_catalog)
+            except ImportError:
+                pass
+
+    ctx = get_backing_context(session)
+    auth_pick = str(session.get("active_catalog_pick_key") or authoritative or "").strip()
+    if ctx is not None and auth_pick:
+        bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+        title = _visible_song_title(session)
+        stale_ctx = bool(
+            bound
+            and (
+                _catalog_picks_conflict(session, auth_pick, bound)
+                or _title_conflicts_with_pick(title, bound)
+            )
+        )
+        if stale_ctx:
+            prev_id = backing_restore_anchor(session) or (f"pk::{bound}" if bound else "")
+            new_id = resolve_active_source_identity_for_restore(session)
+            prev_pick = bound
+            invalidate_backing_restore_for_active_source_change(
+                session,
+                previous_identity=str(prev_id or ""),
+                new_identity=str(new_id or ""),
+                reason="pre_hydrate_source_commit",
+            )
+            try:
+                from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+
+                sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                reconcile_practice_key_after_active_source_change(
+                    session,
+                    pick_key=auth_pick,
+                    original_key=str((sel or {}).get("key") or ""),
+                    previous_pick_key=prev_pick,
+                    source="pre_hydrate_source_commit",
+                )
+            except ImportError:
+                pass
+            if st_like is not None and invalidate_backing is not None:
+                try:
+                    from songs.music_source import note_active_source_change
+
+                    note_active_source_change(st_like, invalidate_backing=invalidate_backing)
+                except ImportError:
+                    pass
+
+    trace_backing_hydrate_phase(session, "02_post_commit")
+    return True
+
+
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    trace_backing_hydrate_phase(session, "03_hydrate_entry")
     generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
     entry_class = str(session.pop(BACKING_ENTRY_CLASS_KEY, "") or "").strip()
     intent = consume_backing_open_intent(session)
@@ -707,9 +1364,20 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     except ImportError:
         pass
     if generic_entry or entry_class == BACKING_ENTRY_GENERIC_CATALOG:
+        selected_pick_snapshot = (
+            _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
+        )
+        _align_live_catalog_pick_to_selected_song(session)
         if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
             return
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+        # Reconcile during release can restore a lagged catalog pick. Re-apply the
+        # sidebar-selected song before initializing regular Backing (E4).
+        if selected_pick_snapshot:
+            live = str(session.get("active_catalog_pick_key") or "").strip()
+            if _catalog_picks_conflict(session, selected_pick_snapshot, live) or not live:
+                session["active_catalog_pick_key"] = selected_pick_snapshot
+        initialize_active_source_backing_after_restore_miss(session, st_like=st_like)
         return
     elif intent == BACKING_INTENT_FROM_CREATIVE or entry_class == BACKING_ENTRY_SPECIALIZED_HANDOFF:
         open_backing_for_creative_source(session, st_like=st_like)
@@ -719,10 +1387,28 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             sync_live_keys_from_backing_context(session, st_like=st_like)
         except ImportError:
             pass
+        # Handoff is one-shot. open_backing_from_creative re-marks specialized /
+        # from_creative; leave restore_last so the next Backing visit reseals
+        # the same session instead of rebuilding.
+        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+        session.pop(BACKING_ENTRY_CLASS_KEY, None)
+        session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
         return
     if intent == BACKING_INTENT_RESTORE_LAST:
+        selected_pick_snapshot = (
+            _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
+        )
+        _align_live_catalog_pick_to_selected_song(session)
         if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
             return
+        # Restore intent but session ineligible (song change): initialize for live active source.
+        release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+        if selected_pick_snapshot:
+            live = str(session.get("active_catalog_pick_key") or "").strip()
+            if _catalog_picks_conflict(session, selected_pick_snapshot, live) or not live:
+                session["active_catalog_pick_key"] = selected_pick_snapshot
+        initialize_active_source_backing_after_restore_miss(session, st_like=st_like)
+        return
     if intent == BACKING_INTENT_FROM_PRACTICE or intent == BACKING_INTENT_FROM_SONG_TO_BACKING:
         try:
             from custom_progression_lab import (

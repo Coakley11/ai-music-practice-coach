@@ -12,6 +12,7 @@ __all__ = [
     "compact_page_title",
     "ensure_studio_page",
     "navigate_studio_page",
+    "clear_stale_nav_overrides_for_explicit_click",
     "follow_along_status_html",
     "inject_app_theme",
     "page_header",
@@ -7791,9 +7792,54 @@ def sync_sidebar_nav_body_dataset(session_state: dict, st_module: Any) -> None:
     )
 
 
+def clear_stale_nav_overrides_for_explicit_click(
+    session_state: Any,
+    page_id: str,
+) -> list[str]:
+    """Explicit sidebar/quick-nav click beats stale pending restore/return targets.
+
+    Workflow return/handoff consumers may set deferred page targets. A fresh
+    user page click must cancel those so the next run does not open the
+    previous destination (one-click-behind).
+    """
+    cleared: list[str] = []
+    target = str(page_id or "").strip()
+    pending_nav = str(session_state.get("_navigate_to_studio_page") or "").strip()
+    if pending_nav and pending_nav != target:
+        session_state.pop("_navigate_to_studio_page", None)
+        cleared.append("_navigate_to_studio_page")
+    elif pending_nav and pending_nav == target:
+        # Consume so startup pop does not re-apply after this click.
+        session_state.pop("_navigate_to_studio_page", None)
+        cleared.append("_navigate_to_studio_page")
+
+    for key in (
+        "_music_pending_creative_return_handoff",
+        "_music_pending_mission_return_handoff",
+        "_music_pending_mission_return_rerun_for_seq",
+        "_music_pending_creative_return_rerun_for_seq",
+    ):
+        if key in session_state:
+            session_state.pop(key, None)
+            cleared.append(key)
+
+    deferred = str(session_state.get("_suite_deferred_page_change_save") or "").strip()
+    if deferred and deferred != target:
+        session_state.pop("_suite_deferred_page_change_save", None)
+        cleared.append("_suite_deferred_page_change_save")
+
+    if cleared:
+        session_state["_suite_page_user_nav"] = True
+        session_state["nav_target_page"] = target or session_state.get("nav_target_page")
+        session_state["_explicit_nav_cleared_overrides"] = cleared
+    return cleared
+
+
 def navigate_studio_page(session_state: Any, page_id: str) -> bool:
+    """UI navigation entrypoint — explicit click authority over stale pending targets."""
     from studio_nav_history import navigate_studio_page as _nav
 
+    clear_stale_nav_overrides_for_explicit_click(session_state, page_id)
     changed = _nav(session_state, page_id)
     if changed:
         try:
@@ -8106,9 +8152,8 @@ def _render_nav_art_cell(
         use_container_width=True,
         help=f"Open {help_text}",
     ):
-        if (current is None or page_id != current) and navigate_studio_page(
-            session_state, page_id
-        ):
+        # Always run authority clear; rerun only when the page actually changes.
+        if navigate_studio_page(session_state, page_id):
             rerun_fn()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -8152,7 +8197,7 @@ def _render_simple_nav_row(
                 type="primary" if is_active else "secondary",
                 use_container_width=True,
             ):
-                if page_id != current and navigate_studio_page(session_state, page_id):
+                if navigate_studio_page(session_state, page_id):
                     rerun_fn()
 
 
@@ -8485,7 +8530,8 @@ def render_sidebar_studio_nav(
             use_container_width=True,
             type="secondary",
         ):
-            if page_id != current and navigate_studio_page(session_state, page_id):
+            # Explicit click always wins over stale pending restore/return.
+            if navigate_studio_page(session_state, page_id):
                 rerun_fn()
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)

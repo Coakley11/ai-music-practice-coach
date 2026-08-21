@@ -19,6 +19,9 @@ CAPO_ENABLED_KEY = "guitar_capo_enabled"
 CAPO_SOUNDING_KEY = "guitar_capo_sounding_key"
 CAPO_SHAPE_KEY = "guitar_capo_shape_key"
 CAPO_LAST_CONCERT_KEY = "guitar_capo_last_concert_key"
+# Streamlit widget keys — must mirror canonical CAPO_* after restore.
+CAPO_ENABLED_WIDGET_KEY = "guitar_capo_enabled_widget"
+CAPO_SHAPE_WIDGET_KEY = "guitar_capo_shape_widget"
 
 CAPO_PERSIST_KEYS: tuple[str, ...] = (
     CAPO_ENABLED_KEY,
@@ -111,6 +114,53 @@ def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
             val = str(ctx.get(key) or "").strip()
             if val:
                 session_state[key] = shape_tonic_only(val) if key == CAPO_SHAPE_KEY else val
+    applied_shape = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or "").strip())
+    widget_shape = str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or "").strip()
+    # Only re-seed during the restore phase — not for the whole session after
+    # ``_suite_persist_restore_applied`` (that flag stays True and would stomp Bb).
+    restoring = bool(
+        session_state.get("_cloud_workspace_restored_this_run")
+        or session_state.get("_music_disk_restore_this_run")
+    )
+    try:
+        from music_restore_phase import music_restore_phase_complete
+
+        if not music_restore_phase_complete(session_state):
+            restoring = True
+    except ImportError:
+        pass
+    if restoring and applied_shape and applied_shape != widget_shape:
+        session_state.pop("_capo_on_shape_seeded", None)
+        if session_state.get("_capo_widgets_instantiated_this_run"):
+            session_state["_pending_capo_shape_key"] = applied_shape
+        else:
+            session_state[CAPO_SHAPE_WIDGET_KEY] = applied_shape
+    sync_capo_widgets_from_canonical(session_state)
+
+
+def sync_capo_widgets_from_canonical(session_state: dict) -> None:
+    """Align Capo Streamlit widget keys with canonical Capo session fields.
+
+    ``checkbox(value=..., key=...)`` ignores ``value`` once ``key`` exists, so a stale
+    False widget can overwrite restored ``guitar_capo_enabled=True`` and persist the wipe.
+
+    After Capo sidebar widgets are instantiated in this run, Streamlit rejects further
+    writes to those keys — queue a pending hydrate for the next run instead.
+
+    Never queue ``enabled=False`` after instantiate: that pending is applied at the
+    start of the next run and stomps a user Capo-ON click before the checkbox renders.
+    """
+    enabled = bool(session_state.get(CAPO_ENABLED_KEY))
+    shape = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or "").strip())
+    if session_state.get("_capo_widgets_instantiated_this_run"):
+        if enabled:
+            session_state["_pending_capo_enabled_widget"] = True
+        if shape:
+            session_state["_pending_capo_shape_key"] = shape
+        return
+    session_state[CAPO_ENABLED_WIDGET_KEY] = enabled
+    if shape:
+        session_state[CAPO_SHAPE_WIDGET_KEY] = shape
 
 
 def capo_written_display_key(session_state: dict) -> str | None:
@@ -158,20 +208,24 @@ def sync_capo_from_practice_display_key(
     session_state: dict,
     practice_display_key: str,
 ) -> str:
-    """Mirror Practice / Concert Key into capo sounding key (reference only)."""
+    """Mirror Practice / Concert Key into capo sounding key (reference only).
+
+    When Capo Shape Mode is on, Shape Key is player-owned and must survive Practice Key
+    changes and browser refresh. When Capo is off, Shape follows sounding for charts.
+    """
     sounding = str(practice_display_key or "C").strip() or "C"
     session_state[CAPO_SOUNDING_KEY] = sounding
     last = str(session_state.get(CAPO_LAST_CONCERT_KEY) or "").strip()
     if last != sounding:
         session_state[CAPO_LAST_CONCERT_KEY] = sounding
-        if not session_state.get(CAPO_ENABLED_KEY):
-            session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
-    if not session_state.get(CAPO_ENABLED_KEY):
-        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
     session_state.setdefault(CAPO_ENABLED_KEY, False)
-    if CAPO_SHAPE_KEY not in session_state:
+    if not session_state.get(CAPO_ENABLED_KEY):
+        # Capo off: charts follow sounding. Keep Shape aligned to sounding for display.
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
+    elif CAPO_SHAPE_KEY not in session_state or not str(session_state.get(CAPO_SHAPE_KEY) or "").strip():
         session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(sounding)
     else:
+        # Capo on: never overwrite a user Shape Key from Practice / Concert Key.
         session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or ""))
     return sounding
 
@@ -179,17 +233,48 @@ def sync_capo_from_practice_display_key(
 def persist_capo_to_canonical(session_state: dict) -> bool:
     """Push capo state into active_song_state blob when values changed."""
     try:
+        from music_restore_phase import authoritative_restore_in_progress
+
+        # Refresh hydrate can briefly paint Capo off / Shape=C before canonical
+        # Capo lands — never persist that wipe over Bb during restore.
+        if authoritative_restore_in_progress(session_state):
+            return False
+    except ImportError:
+        pass
+    try:
         from active_song_state import (
             ACTIVE_SONG_STATE_KEY,
             gather_active_song_context,
             write_canonical_active_song_blob_only,
         )
 
-        live = capo_fields_from_session(session_state)
+        live_capo = capo_fields_from_session(session_state)
         meta = session_state.get(ACTIVE_SONG_STATE_KEY)
-        if isinstance(meta, dict) and all(meta.get(k) == live.get(k) for k in live):
+        if isinstance(meta, dict) and all(meta.get(k) == live_capo.get(k) for k in live_capo):
             return False
-        ctx = gather_active_song_context(session_state)
+        # Prefer meta Capo-on Shape over a Capo-off / open-fret live wipe.
+        if (
+            isinstance(meta, dict)
+            and meta.get(CAPO_ENABLED_KEY)
+            and str(meta.get(CAPO_SHAPE_KEY) or "").strip()
+            and not live_capo.get(CAPO_ENABLED_KEY)
+        ):
+            return False
+        # Capo is player context — bind Capo fields onto the *live* active identity.
+        # Never stamp Capo onto a stale meta pick (e.g. Country Roads) while the
+        # sidebar still shows Love Story; that poisons Backing restore PK→A.
+        live = gather_active_song_context(session_state)
+        live_pick = str(live.get("pick_key") or "").strip()
+        meta_pick = (
+            str(meta.get("pick_key") or "").strip() if isinstance(meta, dict) else ""
+        )
+        if live_pick:
+            ctx = dict(live)
+        elif isinstance(meta, dict) and meta_pick:
+            ctx = dict(meta)
+        else:
+            ctx = dict(live) if live else (dict(meta) if isinstance(meta, dict) else {})
+        ctx.update(live_capo)
         write_canonical_active_song_blob_only(
             session_state,
             ctx,
@@ -230,8 +315,10 @@ def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
     except ImportError:
         pass
     if session_state.get(CAPO_ENABLED_KEY) and str(session_state.get(CAPO_SHAPE_KEY) or "").strip():
+        sync_capo_widgets_from_canonical(session_state)
         return
     sync_capo_from_practice_display_key(session_state, concert_key)
+    sync_capo_widgets_from_canonical(session_state)
 
 
 @dataclass
@@ -346,25 +433,103 @@ def render_guitar_capo_sidebar(
         f"{html.escape(sounding)}</p>",
         unsafe_allow_html=True,
     )
+    # New run: widgets not yet created. Apply any deferred sync from last flush.
+    session_state["_capo_widgets_instantiated_this_run"] = False
+    if "_pending_capo_enabled_widget" in session_state:
+        session_state[CAPO_ENABLED_WIDGET_KEY] = bool(
+            session_state.pop("_pending_capo_enabled_widget")
+        )
+    # Seed widget keys from canonical before render (never pass value= with key=).
+    # After refresh, Capo canonical is restored before this sidebar runs — widgets
+    # must match that player context before Streamlit instantiates them.
+    if CAPO_ENABLED_WIDGET_KEY not in session_state:
+        session_state[CAPO_ENABLED_WIDGET_KEY] = bool(session_state.get(CAPO_ENABLED_KEY))
+    if bool(session_state.get(CAPO_ENABLED_KEY)):
+        shape_seed = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or "").strip())
+        if shape_seed and (
+            CAPO_SHAPE_WIDGET_KEY not in session_state
+            or not session_state.get("_capo_on_shape_seeded")
+        ):
+            session_state[CAPO_SHAPE_WIDGET_KEY] = shape_seed
+    try:
+        from capo_refresh_trace import note_capo_refresh
+
+        note_capo_refresh(session_state, phase="before_capo_checkbox")
+    except Exception:
+        pass
     session_state[CAPO_ENABLED_KEY] = ui.checkbox(
         "Capo Shape Mode",
-        value=bool(session_state.get(CAPO_ENABLED_KEY)),
-        key="guitar_capo_enabled_widget",
+        key=CAPO_ENABLED_WIDGET_KEY,
         help="Charts/TAB use grip shapes; backing audio stays in the sounding key.",
     )
+    session_state["_capo_widgets_instantiated_this_run"] = True
     if not session_state.get(CAPO_ENABLED_KEY):
+        # Widget Capo-off must not wipe player Capo when canonical meta still has
+        # Capo ON + Shape (refresh race before widget seed lands).
+        meta = session_state.get("active_song_state")
+        meta_on = (
+            isinstance(meta, dict)
+            and bool(meta.get(CAPO_ENABLED_KEY))
+            and str(meta.get(CAPO_SHAPE_KEY) or "").strip()
+        )
+        if meta_on:
+            try:
+                from capo_refresh_trace import note_capo_refresh
+
+                note_capo_refresh(
+                    session_state,
+                    phase="capo_off_blocked_meta_still_on",
+                    reason="preserve_canonical_shape",
+                )
+            except Exception:
+                pass
+            apply_capo_context_fields(session_state, meta if isinstance(meta, dict) else {})
+            session_state["_pending_capo_enabled_widget"] = True
+            session_state.pop("_capo_on_shape_seeded", None)
+            # Show canonical Capo this frame; next run checkbox seeds ON.
+            shape_now = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or ""))
+            chart_label = shape_chart_label_for_concert(sounding, shape_now)
+            capo = capo_fret_for_shape(sounding, shape_now)
+            ui.markdown(
+                f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
+                f"{html.escape(shape_now)} "
+                f"<span style=\"opacity:.75\">(restoring Capo Shape Mode…)</span></p>",
+                unsafe_allow_html=True,
+            )
+            ui.markdown(
+                f'<p class="ui-sidebar-key-caption"><strong>Charts in</strong> '
+                f"{html.escape(chart_label)}</p>",
+                unsafe_allow_html=True,
+            )
+            ui.markdown(
+                f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
+                unsafe_allow_html=True,
+            )
+            try:
+                persist_st.rerun()
+            except Exception:
+                pass
+            return
+
         session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
+        # Capo-off clears the one-shot Shape seed so the next Capo-ON re-seeds
+        # from canonical (refresh / restore) without stomping later user picks.
+        session_state.pop("_capo_on_shape_seeded", None)
+        # Do not sync_capo_widgets_from_canonical here. Widgets already show Capo off;
+        # queuing ``_pending_capo_enabled_widget=False`` after instantiate stomps the
+        # next user Capo-ON click (widget key rewritten before the checkbox renders).
         ui.markdown(
             f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
-            f"{html.escape(shape_tonic_only(sounding))}</p>",
+            f"{html.escape(shape_tonic_only(sounding))} "
+            f"<span style=\"opacity:.75\">(follows sounding while Capo is off)</span></p>",
             unsafe_allow_html=True,
         )
         ui.markdown(
             '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
             unsafe_allow_html=True,
         )
-        persist_capo_to_canonical(session_state)
-        flush_capo_edits_to_cloud(persist_st)
+        if persist_capo_to_canonical(session_state):
+            flush_capo_edits_to_cloud(persist_st)
         return
 
     try:
@@ -380,14 +545,20 @@ def render_guitar_capo_sidebar(
         str(session_state.get(CAPO_SHAPE_KEY) or default_shape_key_for_sounding(sounding))
     )
     shape_opts = shape_tonic_options(selected=cur_shape)
+    widget_shape = str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or "").strip()
+    # One-shot seed per Capo-ON period: beat stale browser widget (C) after refresh
+    # without re-applying canonical over a later user Shape pick (Bb).
+    seed_shape = pending_shape or not session_state.get("_capo_on_shape_seeded")
+    if seed_shape or not widget_shape or widget_shape not in shape_opts:
+        session_state[CAPO_SHAPE_WIDGET_KEY] = cur_shape
     session_state[CAPO_SHAPE_KEY] = ui.selectbox(
         "Shape Key",
         shape_opts,
-        index=shape_opts.index(cur_shape) if cur_shape in shape_opts else 0,
-        key="guitar_capo_shape_widget",
+        key=CAPO_SHAPE_WIDGET_KEY,
         help="Tonic/root only. Charts inherit major/minor from Practice / Concert Key.",
     )
     session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or cur_shape))
+    session_state["_capo_on_shape_seeded"] = True
     chart_label = shape_chart_label_for_concert(sounding, session_state[CAPO_SHAPE_KEY])
     ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Charts in</strong> {html.escape(chart_label)}</p>',
@@ -398,8 +569,8 @@ def render_guitar_capo_sidebar(
         f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
         unsafe_allow_html=True,
     )
-    persist_capo_to_canonical(session_state)
-    flush_capo_edits_to_cloud(persist_st)
+    if persist_capo_to_canonical(session_state):
+        flush_capo_edits_to_cloud(persist_st)
 
 
 def render_guitar_capo_practice_panel(

@@ -1054,7 +1054,11 @@ def handle_user_mission_target_selection(
     chord_label: str,
     button_key: str = "",
 ) -> None:
-    """Canonical-only target update (chord tile on_click — no widget key writes)."""
+    """Chord tile on_click — commit canonical target and seal session index immediately.
+
+    Session keys must update in the click callback. Waiting for next-run CWS projection
+    loses to sticky/restored selection when focus/blob briefly disagree with canonical.
+    """
     canonical_before = _mission_target_canonical_snapshot(session)
     click_args = {
         "chord": chord,
@@ -1093,6 +1097,29 @@ def handle_user_mission_target_selection(
         values=values,
         interaction="chord_tile_on_click",
     )
+    # Click outranks sticky/restored selection — seal index-authoritative session now.
+    # Do not run write_authoritative's resolve remap here: a briefly stale section_map
+    # would map the new click back onto the restored Am/F#m sticky index.
+    sym = str(chord or "").strip()
+    sec = str(section or "").strip()
+    gidx = int(chord_index)
+    label = str(chord_label or "").strip() or (f"{sec} · {sym}" if sec and sym else sym)
+    session["ii_selected_chord"] = sym
+    session["ii_selected_section"] = sec
+    session["ii_selected_chord_index"] = gidx
+    session["ii_selected_chord_label"] = label
+    session["harmony_map_chord"] = sym
+    session["harmony_map_section"] = sec
+    session["II_SELECTED_CHORD"] = sym
+    session["II_SELECTED_SECTION"] = sec
+    session["_mission_chord_click_authority"] = {
+        "chord": sym,
+        "section": sec,
+        "chord_index": gidx,
+        "run_seq": _run_seq(session),
+    }
+    # Projection already applied to session — avoid a later stale-focus block wiping it.
+    session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, None)
     canonical_after = _mission_target_canonical_snapshot(session)
     record_mission_chord_click_trace(
         session,
@@ -1103,6 +1130,7 @@ def handle_user_mission_target_selection(
         canonical_before=canonical_before,
         canonical_after=canonical_after,
         save_requested=True,
+        overwrite_source="session_click_authority",
     )
 
 

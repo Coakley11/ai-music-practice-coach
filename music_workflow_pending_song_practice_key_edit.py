@@ -79,15 +79,32 @@ def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
     if pending:
         token = str(pending.get("selected_key_token") or "").strip()
         if token:
+            pending_owner = str(pending.get("workflow_owner") or "").strip()
             try:
                 from music_workflow_state_store import get_active_workflow_pointer
 
                 ptr = get_active_workflow_pointer(session)
-                if ptr is None:
-                    return ""
-                if str(pending.get("workflow_owner") or "") != str(ptr.workflow_owner or ""):
-                    return ""
-                if str(pending.get("workflow_session_id") or "") != str(ptr.workflow_session_id or ""):
+                ptr_owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+                ptr_sid = str(ptr.workflow_session_id or "").strip() if ptr else ""
+                pending_sid = str(pending.get("workflow_session_id") or "").strip()
+                owner_ok = bool(ptr) and pending_owner == ptr_owner and (
+                    not pending_sid or pending_sid == ptr_sid
+                )
+                # Mission / SBI Backing: pointer may drift to song_based while the
+                # sealed backing source still owns the edit (same as capture).
+                if not owner_ok and pending_owner in {"mission_jam", "song_based_improvisation"}:
+                    try:
+                        from backing_context import get_backing_context
+
+                        ctx = get_backing_context(session)
+                        src = str(getattr(ctx, "source", "") or "").strip() if ctx else ""
+                        if pending_owner == "mission_jam" and src == "mission":
+                            owner_ok = True
+                        elif pending_owner == "song_based_improvisation" and src == "song_improv":
+                            owner_ok = True
+                    except ImportError:
+                        pass
+                if not owner_ok:
                     return ""
             except ImportError:
                 return token
@@ -461,13 +478,35 @@ def _validate_pending(session: dict[str, Any], pending: dict[str, Any]) -> str |
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
         ptr = get_active_workflow_pointer(session)
-        if ptr is None:
+        ptr_owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+        ptr_sid = str(ptr.workflow_session_id or "").strip() if ptr else ""
+        owner_ok = bool(ptr) and ptr_owner == owner and ptr_sid == pending_sid
+        # Mission / SBI Backing: pointer may be song_based while the sealed
+        # backing source still owns the Practice Key edit (Pass 8 Dm→Em).
+        if not owner_ok and owner in {"mission_jam", "song_based_improvisation"}:
+            try:
+                from backing_context import get_backing_context
+
+                ctx = get_backing_context(session)
+                src = str(getattr(ctx, "source", "") or "").strip() if ctx else ""
+                if owner == "mission_jam" and src == "mission":
+                    owner_ok = True
+                elif owner == "song_based_improvisation" and src in {"song_improv", "mission"}:
+                    owner_ok = True
+            except ImportError:
+                pass
+        if not owner_ok:
             return "workflow_owner_mismatch"
-        if str(ptr.workflow_owner or "") != owner:
-            return "workflow_owner_mismatch"
-        if str(ptr.workflow_session_id or "") != pending_sid:
-            return "workflow_session_mismatch"
         if get_workflow_blob(session, owner, pending_sid) is None:
+            # Mission pending may target mission_jam blob that is mirrored from song.
+            if owner == "mission_jam":
+                try:
+                    from music_workflow_song_practice import song_practice_blob
+
+                    if song_practice_blob(session) is not None:
+                        return None
+                except ImportError:
+                    pass
             return "session_id_mismatch"
     except ImportError:
         return "session_id_mismatch"

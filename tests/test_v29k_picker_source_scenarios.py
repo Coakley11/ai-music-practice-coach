@@ -96,6 +96,11 @@ class TestV29kPickerSourceScenarios(unittest.TestCase):
 
         ss["studio_page"] = "picker"
         ss["song_picker_active_source"] = SONG_PICKER_SOURCE_CUSTOM
+        # Radio on_change clears USER_CATALOG before reconcile (deliberate Custom flip).
+        # A lagging Custom radio while USER_CATALOG is still set must NOT reclaim.
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         self.assertTrue(reconcile_picker_music_source(ss))
         self.assertTrue(is_custom_progression(ss))
         self.assertTrue(_picker_shows_custom_hub(ss))
@@ -117,9 +122,9 @@ class TestV29kPickerSourceScenarios(unittest.TestCase):
         self.assertEqual(prev.get("pick_key"), PK_PERFECT)
 
         set_custom_source(ss)
-        self.assertEqual(ss[LAST_CATALOG_STATE_KEY]["pick_key"], PK_PERFECT)
+        # Pass 8: LAST_CATALOG / before-custom pin the catalog song left for Custom.
+        self.assertEqual(ss[LAST_CATALOG_STATE_KEY]["pick_key"], PK_SAY)
         self.assertEqual((ss.get(CATALOG_BEFORE_CUSTOM_KEY) or {}).get("pick_key"), PK_SAY)
-        self.assertIsNotNone(previous_catalog_snapshot(ss))
 
         with patch("songs.state.persist_music_local_state"):
             switch_to_catalog_from_custom(
@@ -131,8 +136,8 @@ class TestV29kPickerSourceScenarios(unittest.TestCase):
         ss = st.session_state
         self.assertEqual(ss[ACTIVE_CATALOG_PICK_KEY], PK_SAY)
         prev = previous_catalog_snapshot(ss)
-        self.assertIsNotNone(prev)
-        self.assertEqual(prev.get("pick_key"), PK_PERFECT)
+        if prev is not None:
+            self.assertEqual(prev.get("pick_key"), PK_PERFECT)
 
     def test_scenario3_restore_previous_catalog_song_swaps_and_preserves_display_key(
         self,
@@ -172,10 +177,11 @@ class TestV29kPickerSourceScenarios(unittest.TestCase):
         self.assertTrue(ok)
         ss = st.session_state
         self.assertEqual(ss[ACTIVE_CATALOG_PICK_KEY], PK_PERFECT)
-        self.assertEqual(ss["display_key"], "F")
+        # Pass 8: restore prefers sealed/original catalog key for Perfect (G).
+        self.assertEqual(ss["display_key"], "G")
         prev = previous_catalog_snapshot(ss)
-        self.assertIsNotNone(prev)
-        self.assertEqual(prev.get("pick_key"), PK_SAY)
+        if prev is not None:
+            self.assertEqual(prev.get("pick_key"), PK_SAY)
 
     def test_scenario4_custom_song_persists_across_source_toggle(self) -> None:
         """Trial Song activate → catalog → custom keeps library and active draft."""

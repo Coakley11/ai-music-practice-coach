@@ -286,16 +286,9 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
             session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
     session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
-    try:
-        from guitar_capo import CAPO_ENABLED_KEY, sync_capo_from_practice_display_key
-
-        session_state[CAPO_ENABLED_KEY] = False
-        practice = str(
-            session_state.get("display_key") or session_state.get("concert_key") or "C"
-        ).strip() or "C"
-        sync_capo_from_practice_display_key(session_state, practice)
-    except ImportError:
-        pass
+    # Do NOT clear guitar Capo here. Capo is Guitar player context and must survive
+    # Saxophone↔Guitar hops and refresh rehydration when the written-key anchor lags.
+    # Written-charts mode is instrument-family-scoped; Capo is not.
     try:
         from backing_musical_state import clear_stale_chart_session_keys
 

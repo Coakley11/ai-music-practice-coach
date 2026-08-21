@@ -103,30 +103,36 @@ def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, st
     return "Charts", chart_key
 
 
-def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
+def render_backing_context_banner(
+    st: Any,
+    session: dict[str, Any],
+    *,
+    applied_bpm: int | None = None,
+) -> bool:
     """Show backing source banner. Returns True when a non-regular source is active."""
     from backing_musical_state import resolve_current_backing_musical_state
 
     ctx = get_backing_context(session)
-    # Prefer live current BPM (slider / play-session) — never catalog-only ctx.bpm.
-    live_bpm: int | None = None
-    try:
-        from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
-        from songs.bpm_state import BPM_WIDGET_KEY
-        from songs.playback_defaults import backing_bpm_slider_widget_key
-        from backing_context import backing_page_sync_id
+    live_bpm: int | None = int(applied_bpm) if applied_bpm is not None and int(applied_bpm) > 0 else None
+    if live_bpm is None:
+        try:
+            from backing_play_session import current_backing_play_bpm
 
-        if play_session_blocks_canonical_seed(session):
-            ov = effective_backing_play_overrides(session)
-            if ov.get("bpm"):
-                live_bpm = int(ov["bpm"])
-        if live_bpm is None:
-            # Domain Current BPM is authoritative; slider key is a projection only.
-            sid = backing_page_sync_id(session)
-            slider_key = backing_bpm_slider_widget_key(sid) if sid else ""
-            for key in ("backing_track_bpm", BPM_WIDGET_KEY, "bpm", slider_key):
-                if not key:
-                    continue
+            live_bpm = int(
+                current_backing_play_bpm(
+                    session,
+                    default=0,
+                    sync_id=str(session.get("_backing_page_bpm_sync_id") or ""),
+                )
+                or 0
+            ) or None
+        except ImportError:
+            live_bpm = None
+    if live_bpm is None:
+        try:
+            from songs.bpm_state import BPM_WIDGET_KEY
+
+            for key in ("backing_track_bpm", BPM_WIDGET_KEY, "bpm"):
                 try:
                     val = int(session.get(key) or 0)
                 except (TypeError, ValueError):
@@ -134,8 +140,8 @@ def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
                 if val > 0:
                     live_bpm = val
                     break
-    except ImportError:
-        live_bpm = None
+        except ImportError:
+            live_bpm = None
 
     state = resolve_current_backing_musical_state(session, applied_bpm=live_bpm)
     label = format_backing_context_banner(
@@ -187,8 +193,46 @@ def render_backing_creative_context_card(
     theme = _resolve_theme(ctx)
     if ctx.source == "mission":
         source_title = "Mission Backing Jam"
-        mission_chord = str(ctx.progression[0] if ctx.progression else ctx.progression_label or "").strip()
-        sec_name = str(ctx.section or "").strip()
+        mission_chord = ""
+        try:
+            from mission_projection_state import resolve_mission_projection_state
+
+            sm = session.get("_improv_mission_section_map")
+            if not isinstance(sm, list):
+                try:
+                    from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                    sm = read_mission_section_map_from_session(session)
+                except ImportError:
+                    sm = None
+            proj = resolve_mission_projection_state(
+                session,
+                section_map=sm if isinstance(sm, list) else None,
+                fallback_key=str(practice_key or ctx.concert_key or "C"),
+            )
+            mission_chord = str(proj.display_chord or "").strip()
+        except ImportError:
+            mission_chord = ""
+        if not mission_chord:
+            # Prefer live selected display chord over sealed ctx progression (stale Gm).
+            mission_chord = str(
+                session.get("ii_selected_chord")
+                or (ctx.progression[0] if ctx.progression else "")
+                or ctx.progression_label
+                or ""
+            ).strip()
+            try:
+                from effective_practice_context import musician_facing_chord, musician_facing_chart_key
+
+                concert = str(practice_key or ctx.concert_key or session.get("display_key") or "C")
+                chart = musician_facing_chart_key(session, concert)
+                if mission_chord and chart and concert and chart != concert:
+                    mission_chord = musician_facing_chord(
+                        mission_chord, concert_key=concert, chart_key=chart
+                    )
+            except ImportError:
+                pass
+        sec_name = str(ctx.section or session.get("ii_selected_section") or "").strip()
         title = html.escape(str(ctx.song_title or "Mission"))
         if ctx.mission_id:
             subtitle = html.escape(
@@ -294,9 +338,14 @@ def render_backing_creative_context_card(
     meter = html.escape(str(live_meter or applied_meter or state.meter or ctx.meter or "4/4"))
     live_bpm = 0
     try:
-        live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
-    except (TypeError, ValueError):
-        live_bpm = 0
+        from backing_play_session import current_backing_play_bpm
+
+        live_bpm = int(current_backing_play_bpm(session, default=0, sync_id=str(session.get("_backing_page_bpm_sync_id") or "")) or 0)
+    except ImportError:
+        try:
+            live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+        except (TypeError, ValueError):
+            live_bpm = 0
     bpm = int(live_bpm or state.applied_bpm or applied_bpm or ctx.bpm or 100)
     mood = str(ctx.mood or "").strip()
     groove_intensity = str(ctx.groove_intensity or "").strip()
@@ -339,8 +388,24 @@ def render_backing_creative_context_card(
     except ImportError:
         pass
     if ctx.source == "mission":
-        if ctx.progression:
-            progression_line = html.escape(" – ".join(ctx.progression))
+        if mission_chord:
+            progression_line = html.escape(mission_chord)
+        elif ctx.progression:
+            # Retranspose sealed progression to live chart when possible.
+            try:
+                from effective_practice_context import musician_facing_chord, musician_facing_chart_key
+
+                concert = str(practice_key or ctx.concert_key or session.get("display_key") or "C")
+                chart = musician_facing_chart_key(session, concert)
+                shown = [
+                    musician_facing_chord(c, concert_key=concert, chart_key=chart)
+                    if chart and concert and chart != concert
+                    else c
+                    for c in ctx.progression
+                ]
+                progression_line = html.escape(" – ".join(shown))
+            except ImportError:
+                progression_line = html.escape(" – ".join(ctx.progression))
         else:
             progression_line = html.escape(str(ctx.progression_label or mission_chord or "Mission chord"))
     elif display_sections:

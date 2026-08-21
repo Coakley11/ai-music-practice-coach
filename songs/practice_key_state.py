@@ -204,6 +204,18 @@ def set_practice_concert_key(
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
+    # Generated Jam / Style Jam keys must never land in a catalog song slot.
+    if is_song_source_pick(pk):
+        try:
+            from generated_jam_key_context import generated_jam_practice_key_tokens
+
+            if key in generated_jam_practice_key_tokens(session):
+                return
+        except ImportError:
+            pass
+        jam_widget = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
+        if jam_widget and key == jam_widget and creative_jam_owns_practice_settings(session):
+            return
     store = _practice_key_store(session)
     store[pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store

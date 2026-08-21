@@ -1,0 +1,70 @@
+branch=feature/creative-backing-stabilization
+sha=533d60fb52e6525babac6e1cb75769566ef7008f
+url=http://127.0.0.1:8512
+streamlit=local 8512
+e_only=True
+e1_only=False
+
+E1: opened=True mission=True clocks=True catalog_bleed=False sbi_not_mission=False syncing=False e1a_mission=True pkEb=True
+E2: prior_mission=True catalog=True love=True love_banner=True mission_stuck=False clocks_stuck=False pkC=True
+E3: jam_opened=True jam_restored=True love_regular=True jam_stuck=False
+E4: prior_mission=True roads=True roads_banner=True catalog=True mission_stuck=False love_stuck=False pk_expected=True pk_actual=A pk_authoritative=A
+E5: custom_ok=False trial=False trial_banner=False custom_src=False roads_stuck=True catalog_stuck=True rerun_ok=False refresh_ok=False pk_ok=False pk_actual=A pre_trial=False clocks_pick=True reverse_clocks=True trial_leak=False
+
+NOTES
+e_only=True skip_shape_setup
+e_only skip_test_C
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+E_pick_ok title=Clocks genre=Pop
+missions_ready attempt=0
+E_generate_example=True
+mission_backing_click=True
+mission_backing_landed=True attempt=0
+upload_nav=True landed=False
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+E_pick_ok title=Clocks genre=Rock
+missions_ready attempt=0
+E_generate_example=True
+E_mission_still_syncing_before_open
+mission_backing_click=True
+mission_backing_waiting_sync attempt=0
+mission_backing_landed=True attempt=1
+picked Love Story dropdown=True landed=False sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+jam_generator_attempt=0 ok=False has_generate=False landed=False
+jam_generator_attempt=1 ok=True has_generate=False landed=True
+jam_generator_attempt=2 ok=True has_generate=True landed=True
+jam_generator_open=True has_generate=True landed=True
+e-jam-Clocks open-backing clicked=True
+e-jam-Clocks: on backing page
+upload_nav=True landed=False
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+E_pick_ok title=Love Story genre=Country
+missions_ready attempt=0
+E_generate_example=True
+mission_backing_click=True
+mission_backing_landed=True attempt=0
+picked Take Me Home, Country Roads dropdown=True landed=True sidebar_song='SONG\n\nSONG\nTake Me Home, Country Roads — John Denver\n\n🎼 Songs\n\nTake Me Home, Country Roads'
+e5_prior_already_catalogish=True
+picked Take Me Home, Country Roads dropdown=True landed=True sidebar_song='SONG\n\nSONG\nTake Me Home, Country Roads — John Denver\n\n🎼 Songs\n\nTake Me Home, Country Roads'
+e5_previous_source=Backing source: Catalog song · Take Me Home, Country Roads · A · 100 BPM
+custom_nav=True
+custom_loaded_saved_trial=True title_ok=True
+custom_activate_attempt=1 clicked=True
+custom_side_on_cpl=False
+custom_side_ok_attempt=1 side_ok=False
+custom_activate_attempt=2 clicked=True
+custom_side_on_cpl=False
+custom_side_ok_attempt=2 side_ok=False
+custom_activate_attempt=3 clicked=True
+custom_side_on_cpl=False
+custom_side_ok_attempt=3 side_ok=False
+custom_active_ok=False after_reload
+e5_pre_backing_trial=False e5_pre_backing_roads=True
+e5_rerun_trial=False
+e5_refresh_trial=False
+e5_already_catalogish=True
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+e5_reverse_banner=Backing source: Catalog song · Clocks · Eb · 100 BPM reverse_clocks=True trial_leak=False

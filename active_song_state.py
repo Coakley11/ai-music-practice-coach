@@ -598,7 +598,18 @@ def _restore_display_key_owner_from_context(session: dict[str, Any], ctx: dict[s
     try:
         from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
         from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, compute_active_song_identity
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
     except ImportError:
+        return
+    # Never let a stale canonical pick overwrite live active-song identity (E4).
+    live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    sel = session.get(SELECTED_SONG_STATE_KEY)
+    if isinstance(sel, dict):
+        sel_pick = str(sel.get("pick_key") or "").strip()
+        if sel_pick:
+            live_pick = sel_pick
+    ctx_pick = str(ctx.get("pick_key") or "").strip()
+    if live_pick and ctx_pick and live_pick != ctx_pick:
         return
     owner = str(ctx.get("display_key_owner_identity") or "").strip()
     if not owner:
@@ -1811,6 +1822,14 @@ def apply_cloud_active_song_state_if_allowed(
             str(custom_ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip() or None
         )
         write_canonical_active_song_state(session, custom_ctx, reason="cloud_restore_custom")
+        # Refresh must not leave Songs radio on Catalog while identity is Custom
+        # (stale radio previously auto-reclaimed last catalog song — E5).
+        try:
+            from songs.music_source import sync_song_picker_source_widget
+
+            sync_song_picker_source_widget(session, force=True, widget_safe=False)
+        except ImportError:
+            pass
         _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
         _restore_display_key_owner_from_context(session, custom_ctx)
         _push_resolved_display_key_to_session(session, custom_ctx)

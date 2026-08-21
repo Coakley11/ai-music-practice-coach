@@ -173,20 +173,35 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
     session_state.setdefault("improv_intelligence_tab", session_state[CREATIVE_IMPROV_INTELLIGENCE_TAB_KEY])
     if "improv_entry_mode" not in session_state:
         session_state["improv_entry_mode"] = IMPROV_ENTRY_MODES[0]
-    if "improv_song_source" not in session_state:
-        session_state["improv_song_source"] = (
-            "Custom progression" if is_custom_active else "Active song"
-        )
     try:
-        from source_session_state import SBI_PREVIEW_SOURCE_KEY, set_sbi_preview_source
+        from source_session_state import (
+            SBI_PREVIEW_SOURCE_KEY,
+            get_sbi_preview_source,
+            set_sbi_preview_source,
+        )
 
+        preview = str(session_state.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
+        if preview in IMPROV_SONG_SOURCES:
+            if "improv_song_source" not in session_state:
+                session_state["improv_song_source"] = preview
+        elif "improv_song_source" not in session_state:
+            session_state["improv_song_source"] = (
+                "Custom progression" if is_custom_active else "Active song"
+            )
         if SBI_PREVIEW_SOURCE_KEY not in session_state:
             set_sbi_preview_source(
                 session_state,
                 str(session_state.get("improv_song_source") or "Active song"),
             )
+        preview = get_sbi_preview_source(session_state)
+        live = str(session_state.get("improv_song_source") or "").strip()
+        if preview == "Custom progression" and live != preview:
+            session_state["improv_song_source"] = preview
     except ImportError:
-        pass
+        if "improv_song_source" not in session_state:
+            session_state["improv_song_source"] = (
+                "Custom progression" if is_custom_active else "Active song"
+            )
     session_state.setdefault("ii_selected_chord_index", 0)
     session_state.setdefault("ii_selected_chord", "")
     session_state.setdefault("ii_selected_section", "")
@@ -366,15 +381,52 @@ def apply_improv_song_source(
 
 
 def flush_pending_improv_song_source(session_state: dict) -> None:
-    """Seed widget key from pending saved source before Creative widgets render."""
+    """Seed widget key from pending/persisted SBI source before Creative widgets render."""
     pending = str(session_state.pop(PENDING_IMPROV_SONG_SOURCE, None) or "").strip()
-    if not pending:
-        return
-    session_state.setdefault("improv_song_source", pending)
-    try:
-        from source_session_state import set_sbi_preview_source
+    if pending:
+        try:
+            from session_widget_safe import safe_session_assign
 
-        set_sbi_preview_source(session_state, pending)
+            safe_session_assign(
+                session_state,
+                "improv_song_source",
+                pending,
+                widget_safe=True,
+            )
+        except ImportError:
+            session_state["improv_song_source"] = pending
+        try:
+            from source_session_state import set_sbi_preview_source
+
+            set_sbi_preview_source(session_state, pending)
+        except ImportError:
+            pass
+        session_state["_last_improv_song_source"] = pending
+        return
+    try:
+        from source_session_state import get_sbi_preview_source, set_sbi_preview_source
+
+        preview = get_sbi_preview_source(session_state)
+        live = str(session_state.get("improv_song_source") or "").strip()
+        if preview == "Custom progression" and live != preview:
+            prev = str(session_state.get("_last_improv_song_source") or "").strip()
+            if prev == "Custom progression" and live == "Active song":
+                set_sbi_preview_source(session_state, live)
+            else:
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        preview,
+                        widget_safe=True,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = preview
+        session_state["_last_improv_song_source"] = str(
+            session_state.get("improv_song_source") or preview or ""
+        )
     except ImportError:
         pass
 

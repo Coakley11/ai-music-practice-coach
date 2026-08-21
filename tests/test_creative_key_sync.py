@@ -74,18 +74,26 @@ class TestCreativeKeySync(unittest.TestCase):
         self.assertIn("Concert Eb", banner)
         self.assertIn("85 BPM", banner)
 
-    def test_reopen_updates_signature_when_key_changes(self) -> None:
+    def test_reopen_signature_stable_when_key_only_mutated(self) -> None:
+        """Player-facing Practice Key fields are not source identity."""
         session = {
             "improv_entry_mode": "Style Jam Mode",
             "improv_style_key": "G",
             "improv_style_meta": {"bpm": 85, "groove": "Medium"},
             "improv_generated_sections": {"Head (Jazz Swing)": ["Dm7", "G7"]},
+            "improv_mood": "Bright",
+            "improv_difficulty": "Intermediate",
         }
         ctx1 = build_entry_jam_context(session)
-        session["improv_style_key"] = "Eb"
-        session["concert_key"] = "Eb"
-        ctx2 = build_entry_jam_context(session)
-        self.assertNotEqual(compute_source_signature(ctx1), compute_source_signature(ctx2))
+        raw = ctx1.to_dict()
+        raw["key"] = "Eb"
+        raw["display_key"] = "Eb"
+        raw["concert_key"] = "Eb"
+        raw["source_signature"] = ""
+        from backing_context import BackingContext
+
+        ctx2 = BackingContext.from_dict(raw)
+        self.assertEqual(compute_source_signature(ctx1), compute_source_signature(ctx2))
 
     def test_creative_entry_concert_key_jam_session(self) -> None:
         session = {"improv_entry_mode": "Jam Session Generator", "improv_jam_key": "Eb"}

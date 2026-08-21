@@ -289,9 +289,15 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
             ctx_source = str(ctx.source or "").strip()
     except ImportError:
         pass
-    song_owns = ctx_source in {"mission", "regular_song", "song_improv"} or (
-        song_or_mission_workflow_owns_practice_key(session) and ctx_source != "entry_jam"
-    )
+    page = str(session.get("studio_page") or "").strip().lower()
+    # Stale entry_jam BackingContext must not keep owning Practice Key after the user
+    # leaves Jam Backing for Shape-of-You Missions/SBI (generated F# must not leak).
+    on_entry_jam_backing = page == "backing" and ctx_source == "entry_jam"
+    song_owns = False
+    if song_or_mission_workflow_owns_practice_key(session) and not on_entry_jam_backing:
+        song_owns = True
+    elif ctx_source in {"mission", "regular_song", "song_improv"}:
+        song_owns = True
     if song_owns:
         if not session.get("_missions_parent_key_hydrate_guard"):
             session["_missions_parent_key_hydrate_guard"] = True

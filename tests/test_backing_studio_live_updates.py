@@ -722,7 +722,7 @@ class TestInstrumentChartModeReset(unittest.TestCase):
         sync_written_key_instrument_anchor(session, "Alto Saxophone")
         self.assertFalse(session[CHART_IN_INSTRUMENT_KEY_KEY])
 
-    def test_switch_sax_to_guitar_capo_off_shape_matches_concert(self) -> None:
+    def test_switch_sax_to_guitar_preserves_capo_clears_written(self) -> None:
         from instrument_transposition import (
             WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
             sync_written_key_instrument_anchor,
@@ -733,13 +733,16 @@ class TestInstrumentChartModeReset(unittest.TestCase):
             WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
             "show_chart_in_instrument_key": True,
             "guitar_capo_enabled": True,
-            "guitar_capo_shape_key": "Am",
+            "guitar_capo_shape_key": "Bb",
             "display_key": "C",
             "concert_key": "C",
         }
         sync_written_key_instrument_anchor(session, "Guitar")
-        self.assertFalse(session["guitar_capo_enabled"])
-        self.assertEqual(session["guitar_capo_shape_key"], "C")
+        # Written charts is instrument-family scoped; Capo is Guitar player context.
+        self.assertFalse(session["show_chart_in_instrument_key"])
+        self.assertTrue(session["guitar_capo_enabled"])
+        self.assertEqual(session["guitar_capo_shape_key"], "Bb")
+        self.assertEqual(session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY], "Guitar")
         self.assertNotIn("_creative_chart_display_key", session)
 
 

@@ -825,13 +825,20 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             if preserved_mission is not None:
                 session.pop(PENDING_DISPLAY_KEY, None)
                 return preserved_mission
-            if user_auth and live_before:
+            # Same-rerun sidebar widget value is already in display_key before hydrate.
+            # Restore it even when change_source is not yet marked authoritative.
+            if live_before:
                 session["display_key"] = live_before
                 session["concert_key"] = live_before
+                session.pop(PENDING_DISPLAY_KEY, None)
+                session["_pending_display_key"] = live_before
+            if user_auth and live_before:
                 session.pop(PENDING_DISPLAY_KEY, None)
                 return _sidebar_key_options_including(session, live_before)
             song_ident = resolve_song_practice_key_identity(session)
             if song_ident is not None:
+                # Mission Backing is subordinate to live Practice Key — never let a
+                # sealed song-blob Dm win after the user already chose Em this run.
                 selected = live_before or song_ident.practice_key_token
                 try:
                     from music_theory import key_mode
@@ -841,14 +848,32 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 except Exception:
                     if live_before:
                         selected = live_before
+                if live_before:
+                    selected = live_before
                 options = practice_keys_for_mode(song_ident.practice_mode)
                 if selected not in options:
                     options = [selected] + options
                 _apply_display_key_before_widget(
-                    st, selected, source="mission_backing_song_practice_identity"
+                    st, selected, source="mission_backing_live_practice_key"
                 )
                 session["concert_key"] = selected
+                session.pop(PENDING_DISPLAY_KEY, None)
                 session["_sidebar_key_identity_label"] = song_ident.practice_label
+                try:
+                    from music_source_ownership import trace_practice_key_owner
+
+                    trace_practice_key_owner(
+                        session,
+                        phase="prepare_backing_mission_key",
+                        extra={
+                            "selected": selected,
+                            "live_before": live_before,
+                            "song_ident": song_ident.practice_key_token,
+                            "source": "mission_backing_live_practice_key",
+                        },
+                    )
+                except ImportError:
+                    pass
                 return options
         if ctx_source_early == "song_improv":
             # SBI Backing is subordinate to live Practice Key — do not force sealed identity.
@@ -1478,6 +1503,16 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     default_mode=default_mode,
                 )
                 if sidebar_song_practice_key_mutation_deferred(session):
+                    # Keep live Practice Key on this run; blob mutation consumes pre-widget next run.
+                    session["display_key"] = new
+                    session["concert_key"] = new
+                    session["_pending_display_key"] = new
+                    try:
+                        from songs.key_state import mark_display_key_changed
+
+                        mark_display_key_changed(st_like or session)
+                    except Exception:
+                        session["display_key_change_source"] = "sidebar_mission_backing_deferred"
                     return
                 result = update_active_practice_key(
                     session, new, source="sidebar_song_improv", transpose_progression=True

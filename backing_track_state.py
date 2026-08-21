@@ -704,9 +704,18 @@ def bind_backing_rendered_widgets_from_canonical(
     slider_key = _per_song_bpm_slider_key(sync_id)
     bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"), default=default_bpm)
     if bpm is not None:
-        session[slider_key] = int(bpm)
-        session["backing_track_bpm"] = int(bpm)
-        session["bpm"] = int(bpm)
+        existing = 0
+        try:
+            existing = int(session.get(slider_key) or 0)
+        except (TypeError, ValueError):
+            existing = 0
+        if existing > 0 and int(existing) != int(bpm):
+            session["backing_track_bpm"] = int(existing)
+            session["bpm"] = int(existing)
+        else:
+            session[slider_key] = int(bpm)
+            session["backing_track_bpm"] = int(bpm)
+            session["bpm"] = int(bpm)
     groove = normalize_backing_groove(canonical.get("backing_groove_style") or default_groove)
     if groove:
         session["backing_groove_style"] = groove
@@ -1045,7 +1054,8 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
         try:
             from songs.playback_defaults import backing_bpm_slider_widget_key
 
-            session[backing_bpm_slider_widget_key(sync_id)] = int(bpm_val)
+            slider_key = backing_bpm_slider_widget_key(sync_id)
+            session[slider_key] = int(bpm_val)
         except ImportError:
             pass
 

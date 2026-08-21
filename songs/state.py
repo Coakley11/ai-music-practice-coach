@@ -233,10 +233,11 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
+    save_reason = str(extra.pop("_persist_reason", None) or "song_edit").strip() or "song_edit"
     try:
         from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
 
-        suppress, why = should_suppress_music_workspace_save(st.session_state, "song_edit")
+        suppress, why = should_suppress_music_workspace_save(st.session_state, save_reason)
         if suppress:
             record_startup_save_suppressed(st.session_state, why)
             return
@@ -249,7 +250,7 @@ def persist_music_local_state(st: Any, **extra: Any) -> None:
     try:
         from music_persistent_state import flush_active_song_edits_and_save
 
-        flush_active_song_edits_and_save(st, reason="song_edit")
+        flush_active_song_edits_and_save(st, reason=save_reason)
         return
     except ImportError:
         pass
@@ -500,6 +501,26 @@ def apply_saved_music_context(
 
     if skip_catalog_pick_key:
         return True
+
+    # Explicit Custom Set-as-Active outranks a stale catalog snapshot on disk/cloud.
+    try:
+        from songs.music_source import explicit_custom_activation_is_authoritative
+
+        if explicit_custom_activation_is_authoritative(st.session_state):
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_writer
+
+                note_e5_reclaim_writer(
+                    st.session_state,
+                    writer="apply_saved_music_context_blocked",
+                    reason="stale_catalog_snapshot",
+                    new_pick=pick_key,
+                )
+            except ImportError:
+                pass
+            return False
+    except ImportError:
+        pass
 
     resolved = resolve_pick_key(pick_key, song_picker_catalog=song_picker_catalog)
     target = resolved or pick_key
@@ -881,6 +902,30 @@ def apply_pick_key(
         else:
             return {}
     pick_key = resolved
+    # Explicit Custom Set-as-Active outranks stale catalog restore/recovery picks.
+    try:
+        from songs.music_source import explicit_custom_activation_is_authoritative
+
+        if (
+            explicit_custom_activation_is_authoritative(st.session_state)
+            and origin in ("restore", "recovery")
+            and not str(pick_key).startswith("custom::")
+        ):
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_writer
+
+                note_e5_reclaim_writer(
+                    st.session_state,
+                    writer="apply_pick_key_blocked",
+                    reason=f"origin={origin}",
+                    new_pick=str(pick_key or ""),
+                )
+            except ImportError:
+                pass
+            existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
+            return existing if isinstance(existing, dict) else {}
+    except ImportError:
+        pass
     prev = st.session_state.get(_LAST_PICK_KEY)
     if origin_enum is not None and may_write_contested is not None:
         if prev and prev != pick_key and not may_write_contested(
@@ -951,10 +996,32 @@ def apply_pick_key(
             st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
             set_custom_source(st.session_state)
         else:
-            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY, set_catalog_source
+            from songs.music_source import (
+                EXPLICIT_CATALOG_SELECTION_EPOCH_KEY,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                set_catalog_source,
+            )
 
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_writer
+
+                note_e5_reclaim_writer(
+                    st.session_state,
+                    writer="apply_pick_key",
+                    reason=str(origin or ""),
+                    new_pick=str(pick_key or ""),
+                )
+            except ImportError:
+                pass
             if not is_restore:
                 st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+                # Intentional catalog pick outranks prior Custom Set-as-Active epoch.
+                try:
+                    import time as _time
+
+                    st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = float(_time.time())
+                except Exception:
+                    st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
             set_catalog_source(st.session_state)
         lib_record = data
         if song_library is not None:
@@ -1251,6 +1318,34 @@ def apply_active_pick_key_reconciliation(
 ) -> str:
     """Stamp session pick_key from cloud/canonical sources during startup restore."""
     ss = st.session_state
+    try:
+        from e5_reclaim_trace import note_e5_reclaim_sample
+
+        note_e5_reclaim_sample(ss, phase="apply_active_pick_key_reconciliation")
+    except ImportError:
+        pass
+    live = str(ss.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    try:
+        from songs.music_source import explicit_custom_activation_is_authoritative
+
+        if explicit_custom_activation_is_authoritative(ss) and (
+            live.startswith("custom::")
+            or str(ss.get("active_music_source") or "") == "custom_progression"
+        ):
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_writer
+
+                note_e5_reclaim_writer(
+                    ss,
+                    writer="apply_active_pick_key_reconciliation_skipped",
+                    reason="explicit_custom_epoch",
+                )
+            except ImportError:
+                pass
+            ss["_music_active_pick_key_reconciled"] = True
+            return live
+    except ImportError:
+        pass
     candidate = reconcile_active_pick_key(ss, song_picker_catalog=song_picker_catalog)
     if not candidate:
         ss["_music_active_pick_key_reconciled"] = False

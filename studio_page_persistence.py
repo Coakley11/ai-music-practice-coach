@@ -62,7 +62,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "workspace_genre_filter",
             "workspace_genre_filters",
             "song_search_text",
-            "song_picker_active_source",
+            # song_picker_active_source is global ownership (also in music persist) —
+            # must not be reclaimed by a stale Songs page snapshot after Custom→Catalog.
         }
     ),
     "backing": frozenset(
@@ -276,6 +277,7 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "global_source_mode",
         "active_music_source",
         "_last_active_music_source",
+        "song_picker_active_source",
         "active_genre",
         "active_song_title",
         "selected_transposing_instrument",
@@ -533,6 +535,16 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
                 continue
+        if key == "sbi_preview_source":
+            live_preview = str(session_state.get("sbi_preview_source") or "").strip()
+            snap_preview = str(val or "").strip()
+            # Do not let a stale Creative page snapshot reclaim catalog preview
+            # when the live/persisted SBI source is already Custom.
+            if live_preview == "Custom progression" and snap_preview != live_preview:
+                continue
+        if key == "song_picker_active_source":
+            # Global music-source ownership — never reclaim from page snapshots.
+            continue
         if key == "multitrack_backing_music_wav":
             snap_project = str(
                 local.get("_last_catalog_multitrack_id")

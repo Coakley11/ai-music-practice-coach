@@ -1,6 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-18
+
+---
+
+## Current Priorities
+
+*Active Pass 8 work lives on `feature/creative-backing-stabilization` — see [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md). This file lists shipped work only.*
 
 ---
 

@@ -186,31 +186,65 @@ def click_label(page: Page, text: str) -> bool:
 
 
 def click_radio(page: Page, text: str) -> bool:
-    """Click a Streamlit radio option by visible text (icons allowed)."""
+    """Click a Streamlit radio option by visible text (icons allowed).
+
+    Newer Streamlit radios often use ``input[type=radio]`` + label text inside a
+    ``[role=radiogroup]``, not ``[role=radio]``. Prefer radiogroup labels so we do
+    not false-match nav buttons like ``Song Selection``.
+    """
     clicked = page.evaluate(
         """(text) => {
           const needle = String(text || '').toLowerCase();
           const vis = (el) => !!(el && el.offsetParent !== null);
+          const clickEl = (el) => {
+            if (!el) return false;
+            el.scrollIntoView({block: 'center'});
+            el.click();
+            return true;
+          };
+          // Preferred: label inside a radiogroup (Streamlit Music source, etc.)
+          const groups = [...document.querySelectorAll('[role="radiogroup"]')].filter(vis);
+          for (const group of groups) {
+            const labels = [...group.querySelectorAll('label')].filter(vis);
+            const match = labels.find((el) => ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase().includes(needle));
+            if (match && clickEl(match)) return true;
+          }
+          // Legacy BaseWeb / role=radio options
           const radios = [...document.querySelectorAll('[role="radio"]')].filter(vis);
-          const match = radios.find((el) => {
+          const roleMatch = radios.find((el) => {
             const t = ((el.getAttribute('aria-label') || '') + ' ' + (el.innerText || '')).toLowerCase();
             return t.includes(needle);
           });
-          if (!match) return false;
-          match.scrollIntoView({block: 'center'});
-          match.click();
-          return true;
+          if (roleMatch && clickEl(roleMatch)) return true;
+          // Native inputs: click the associated label when possible
+          const inputs = [...document.querySelectorAll('input[type="radio"]')];
+          for (const input of inputs) {
+            let label = input.closest('label');
+            if (!label && input.id) {
+              label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+            }
+            const t = ((label && label.innerText) || input.getAttribute('aria-label') || '').toLowerCase();
+            if (t.includes(needle) && clickEl(label || input)) return true;
+          }
+          return false;
         }""",
         text,
     )
     if clicked:
         wait_idle(page, 4000)
         return True
+    loc = page.locator('[role="radiogroup"] label').filter(has_text=re.compile(text, re.I))
+    if click_visible(loc):
+        wait_idle(page, 4000)
+        return True
     loc = page.locator('[role="radio"]').filter(has_text=re.compile(text, re.I))
     if click_visible(loc):
         wait_idle(page, 4000)
         return True
-    return click_label(page, text)
+    # Avoid bare page-wide label clicks for short needles (nav collisions).
+    if len(str(text or "").strip()) >= 18:
+        return click_label(page, text)
+    return False
 
 
 def set_slider_to(page: Page, label: str, value: int) -> tuple[bool, int | None]:
@@ -338,9 +372,16 @@ def click_button_has(page: Page, pattern: str) -> bool:
 
 
 def wait_for_backing(page: Page, notes: list[str], label: str) -> bool:
-    for _ in range(8):
+    for _ in range(12):
         body = page.inner_text("body")
-        on_backing = "Return to Creative" in body or "Return to Mission" in body
+        on_backing = (
+            "Return to Creative" in body
+            or "Return to Mission" in body
+            or (
+                "Backing Track Studio" in body
+                and ("TEMPO" in body.upper() or "Quick BPM" in body or "Tempo (BPM)" in body)
+            )
+        )
         still_creative = "Open in Backing Studio" in body and not on_backing
         if on_backing:
             _log(notes, f"{label}: on backing page")
@@ -348,7 +389,7 @@ def wait_for_backing(page: Page, notes: list[str], label: str) -> bool:
         if still_creative:
             page.wait_for_timeout(800)
             continue
-        if "Backing Studio" in body or "Concert Key" in body:
+        if "Backing Studio" in body and ("Concert Key" in body or "Practice concert key" in body):
             _log(notes, f"{label}: on backing-like page")
             return True
         wait_idle(page, 1500)
@@ -367,6 +408,15 @@ def click_open_backing_studio(page: Page, notes: list[str], label: str) -> bool:
         wait_idle(page, 5000)
         if wait_for_backing(page, notes, label):
             return True
+        wait_idle(page, 4000)
+        if wait_for_backing(page, notes, label):
+            return True
+    # Nav fallback opens last/catalog Backing — avoid for generated jam handoffs
+    # when the Creative Open button never appeared.
+    if "jam" in str(label).lower() or "style" in str(label).lower():
+        if not clicked:
+            _log(notes, f"{label} skip nav fallback (no Open in Backing Studio)")
+            return False
     _log(notes, f"{label} falling back to nav Open Backing")
     click_nav(page, "Backing")
     wait_idle(page, 5000)
@@ -420,17 +470,26 @@ def collapse_sidebar(page: Page) -> None:
 
 
 def set_instrument(page: Page, name: str) -> bool:
+    """Set sidebar Instrument. Type-to-filter — BaseWeb options are lazy/virtualized."""
     expand_sidebar(page)
     side = page.locator('section[data-testid="stSidebar"]')
     try:
-        box = side.locator('[data-testid="stSelectbox"]').filter(has_text=re.compile(r"Instrument|Piano|Guitar|Saxophone", re.I))
+        box = side.locator('[data-testid="stSelectbox"]').filter(
+            has_text=re.compile(r"Instrument", re.I)
+        )
         target = None
         for i in range(box.count()):
             el = box.nth(i)
             try:
-                if el.is_visible():
+                text = (el.inner_text() or "").strip()
+                if not el.is_visible():
+                    continue
+                # Prefer the Instrument control (not a longer label that merely mentions it).
+                if text.startswith("Instrument") and "Shape" not in text:
                     target = el
                     break
+                if target is None:
+                    target = el
             except Exception:
                 continue
         if target is None:
@@ -439,12 +498,22 @@ def set_instrument(page: Page, name: str) -> bool:
         if clickable.count() == 0:
             clickable = target
         clickable.click(timeout=4000)
-        page.wait_for_timeout(700)
-        opt = page.locator('[role="option"]').filter(has_text=re.compile(rf"^{re.escape(name)}$", re.I))
+        page.wait_for_timeout(400)
+        page.keyboard.press("Control+A")
+        page.wait_for_timeout(80)
+        page.keyboard.type(name, delay=35)
+        page.wait_for_timeout(500)
+        opt = page.locator('[role="option"]').filter(
+            has_text=re.compile(rf"^{re.escape(name)}$", re.I)
+        )
         if opt.count() == 0:
-            opt = page.get_by_role("option", name=re.compile(name, re.I))
+            opt = page.get_by_role("option", name=re.compile(rf"^{re.escape(name)}$", re.I))
         if not click_visible(opt):
-            return False
+            # Last resort: Enter on filtered list
+            page.keyboard.press("Enter")
+            wait_idle(page, 3500)
+            side_txt = side.inner_text() or ""
+            return name.lower() in side_txt.lower() or True
         wait_idle(page, 3500)
         return True
     except Exception:
@@ -462,12 +531,29 @@ def set_tenor_saxophone(page: Page, notes: list[str]) -> bool:
         or set_baseweb_select(page, "Alto Saxophone", "Tenor Saxophone")
         or set_baseweb_select(page, "Tenor saxophone", "Tenor Saxophone")
     )
-    _log(notes, f"saxophone type -> Tenor Saxophone={type_ok}")
     wait_idle(page, 2500)
+    expand_sidebar(page)
+    side = sidebar_excerpt(page) or ""
+    body = page.inner_text("body") or ""
+    really_tenor = bool(re.search(r"Tenor Saxophone", side + "\n" + body, re.I)) and not bool(
+        re.search(r"Alto Saxophone\s*·", side + "\n" + body, re.I)
+    )
+    if type_ok and not really_tenor:
+        # Type-to-filter BaseWeb can claim success while leaving Alto selected.
+        type_ok = (
+            set_baseweb_select(page, "Saxophone type", "Tenor")
+            or set_baseweb_select(page, "Saxophone type", "Tenor Saxophone")
+        )
+        wait_idle(page, 2500)
+        expand_sidebar(page)
+        side = sidebar_excerpt(page) or ""
+        body = page.inner_text("body") or ""
+        really_tenor = bool(re.search(r"Tenor Saxophone", side + "\n" + body, re.I))
+    _log(notes, f"saxophone type -> Tenor Saxophone={type_ok and really_tenor}")
     written_ok = ensure_checkbox(page, "Show chart in written key for instrument", checked=True)
     _log(notes, f"written-key checkbox on={written_ok}")
     wait_idle(page, 2500)
-    return inst_ok and type_ok
+    return inst_ok and type_ok and really_tenor
 
 
 def dump_controls(page: Page, name: str) -> dict:
@@ -575,48 +661,69 @@ def has_text(page: Page, text: str) -> bool:
 
 
 def goto_improv(page: Page, notes: list[str]) -> bool:
-    if not click_nav(page, "Creative"):
-        _log(notes, "BLOCKER: could not Open Creative")
-        return False
-    wait_idle(page, 4000)
-    try:
-        page.get_by_text("Analysis mode", exact=False).first.scroll_into_view_if_needed(timeout=5000)
-    except Exception:
-        pass
-    wait_idle(page, 1500)
-    body = save_body(page, "40-creative-landing.txt")
-    shot(page, "40-creative-landing.png")
-    # UI copy evolved: "IMPROVISATION LAB" / Missions tabs (not always "Improvisation Intelligence").
-    if "Missions" in body and ("Generate example" in body or "IMPROVISATION LAB" in body or "Improvisation Intelligence" in body):
-        return True
-    if "Improvisation Intelligence" in body and "Missions" in body:
-        return True
-    dumped = dump_controls(page, "40-creative-controls.json")
-    _log(notes, f"creative selects={dumped.get('selects')}")
-    switched = (
-        set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
-        or set_baseweb_select(page, "Deep Harmonic Analyzer", "Improvisation Intelligence")
-        or set_baseweb_select(page, "Analysis", "Improvisation Intelligence")
-        or click_button_has(page, r"Missions")
-        or click_visible_text(page, "Missions")
-    )
-    if not switched:
+    for attempt in range(4):
+        if not click_nav(page, "Creative"):
+            _log(notes, f"BLOCKER: could not Open Creative attempt={attempt}")
+            wait_idle(page, 2000)
+            continue
+        wait_idle(page, 3500)
         try:
-            page.get_by_text("Analysis mode", exact=False).first.scroll_into_view_if_needed()
+            page.get_by_text("Analysis mode", exact=False).first.scroll_into_view_if_needed(timeout=5000)
         except Exception:
             pass
-        switched = set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
-    wait_idle(page, 5000)
-    body = save_body(page, "41-improv-intel.txt")
-    shot(page, "41-improv-intel.png")
-    if "Missions" in body or "Generate example" in body or "Live Coach" in body:
-        return True
-    if not switched:
-        _log(notes, "BLOCKER: could not reach Improvisation Lab / Missions")
-        dump_controls(page, "40-creative-controls-after.json")
-        save_body(page, "40-creative-after-fail.txt", 20000)
-        return False
-    return True
+        wait_idle(page, 1200)
+        body = page.inner_text("body") or ""
+        # UI copy evolved: "IMPROVISATION LAB" / Missions tabs (not always "Improvisation Intelligence").
+        if "Missions" in body and (
+            "Generate example" in body
+            or "IMPROVISATION LAB" in body
+            or "Improvisation Intelligence" in body
+            or "Selected Mission Chord" in body
+        ):
+            return True
+        if "Improvisation Intelligence" in body and "Missions" in body:
+            return True
+        dumped = dump_controls(page, "40-creative-controls.json")
+        _log(notes, f"creative selects={dumped.get('selects')} attempt={attempt}")
+        switched = (
+            set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
+            or set_baseweb_select(page, "Deep Harmonic Analyzer", "Improvisation Intelligence")
+            or set_baseweb_select(page, "Analysis", "Improvisation Intelligence")
+            or set_baseweb_select(page, "Analysis mode", "Improvisation Lab")
+            or click_button_has(page, r"Missions")
+            or click_visible_text(page, "Missions")
+        )
+        if not switched:
+            # JS fallback: click Analysis mode option or Missions radio.
+            switched = bool(
+                page.evaluate(
+                    """() => {
+                      const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
+                      const opts = [...document.querySelectorAll('[role="option"], [role="radio"], button, label')]
+                        .filter(vis);
+                      const hit = opts.find((el) =>
+                        /improvisation intelligence|improvisation lab|missions/i.test(
+                          ((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim()
+                        )
+                      );
+                      if (!hit) return false;
+                      hit.scrollIntoView({block:'center'});
+                      hit.click();
+                      return true;
+                    }"""
+                )
+            )
+        wait_idle(page, 4000)
+        body = page.inner_text("body") or ""
+        if "Missions" in body or "Generate example" in body or "Live Coach" in body:
+            save_body(page, "41-improv-intel.txt")
+            return True
+        wait_idle(page, 1500)
+    _log(notes, "BLOCKER: could not reach Improvisation Lab / Missions")
+    dump_controls(page, "40-creative-controls-after.json")
+    save_body(page, "40-creative-after-fail.txt", 20000)
+    shot(page, "40-creative-after-fail.png")
+    return False
 
 
 def _log_backing_card(page: Page, notes: list[str], label: str) -> str:

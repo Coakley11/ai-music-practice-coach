@@ -167,11 +167,68 @@ def example_needs_chart_reproject(
     return False
 
 
+def project_complete_mission_example(
+    session: dict[str, Any],
+    example: Any,
+    *,
+    instrument: str = "",
+    bpm: int = 100,
+    section_map: list[tuple[str, list[str]]] | None = None,
+) -> Any:
+    """Canonical concert Mission example + current chart projection → full display example.
+
+    Authority stays on concert chord/notes/mission identity. Player-facing fields
+    (heading, tones, scales, insight, ABC/TAB) are rebuilt from the current Shape/Written chart.
+    """
+    if example is None:
+        return None
+    state = resolve_mission_projection_state(
+        session,
+        section_map=section_map,
+        fallback_key=str(getattr(example, "concert_key", "") or session.get("display_key") or "C"),
+    )
+    inst = str(instrument or session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        tempo = int(bpm or session.get("backing_track_bpm") or 100)
+    except (TypeError, ValueError):
+        tempo = 100
+    # Preserve canonical concert identity on the motif bag.
+    motif = example.motif if isinstance(getattr(example, "motif", None), dict) else {}
+    if isinstance(motif, dict):
+        motif = dict(motif)
+        if state.concert_chord and not str(motif.get("_concert_chord") or "").strip():
+            motif["_concert_chord"] = state.concert_chord
+        # Do not retag `_projected_display_key` to the NEW chart key before refresh.
+        # Refresh uses the prior tag to unproject concert notes, then projects all
+        # display fields together (chord, notes, tones, scales, ABC, TAB).
+        example.motif = motif
+    try:
+        example.display_key = state.chart_key or getattr(example, "display_key", "")
+        example.concert_key = state.concert_key or getattr(example, "concert_key", "")
+    except Exception:
+        pass
+    try:
+        from improvisation_missions import mission_example_for_display
+
+        return mission_example_for_display(
+            example,
+            instrument=inst,
+            bpm=tempo,
+            song_concert_key=state.concert_key,
+            session_state=session,
+            authoritative_concert_key=state.concert_key,
+            authoritative_display_key=state.chart_key,
+        )
+    except Exception:
+        return example
+
+
 __all__ = [
     "MissionProjectionState",
     "concert_and_chart_keys",
     "concert_chord_at_index",
     "display_chord_from_concert",
     "example_needs_chart_reproject",
+    "project_complete_mission_example",
     "resolve_mission_projection_state",
 ]

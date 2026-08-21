@@ -57,6 +57,21 @@ def refresh_generated_jam_key_context_from_blob(session: dict[str, Any]) -> None
     }
 
 
+def generated_jam_practice_key_tokens(session: dict[str, Any]) -> set[str]:
+    """Keys owned by generated Jam — never persist these into catalog Practice Key."""
+    tokens: set[str] = set()
+    for key in ("improv_jam_key", "improv_style_key"):
+        tok = str(session.get(key) or "").strip()
+        if tok:
+            tokens.add(tok)
+    raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+    if isinstance(raw, dict):
+        tok = str(raw.get("practice_key_token") or "").strip()
+        if tok:
+            tokens.add(tok)
+    return tokens
+
+
 def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
     if isinstance(session.get(SONG_PRACTICE_KEY_SNAPSHOT_KEY), dict):
         return
@@ -78,7 +93,22 @@ def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
             pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
     token = song_token or live
+    jam_tokens = generated_jam_practice_key_tokens(session)
+    if token in jam_tokens:
+        token = song_token if song_token and song_token not in jam_tokens else ""
+        if not token:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                pick_live = str(session.get("active_catalog_pick_key") or "").strip()
+                stored = str(get_practice_concert_key(session, pick_live) or "").strip() if pick_live else ""
+                if stored and stored not in jam_tokens:
+                    token = stored
+            except ImportError:
+                pass
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
     session[SONG_PRACTICE_KEY_SNAPSHOT_KEY] = {
+        "pick_key": pick,
         "display_key": token,
         "concert_key": token,
         "practice_concert_key": token,
@@ -88,7 +118,7 @@ def snapshot_song_practice_key_if_needed(session: dict[str, Any]) -> None:
             from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
 
             pick = str(session.get("active_catalog_pick_key") or "").strip()
-            if pick:
+            if pick and token not in jam_tokens:
                 store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
                 if not isinstance(store, dict):
                     store = {}
@@ -122,6 +152,12 @@ def activate_generated_jam_key_ownership(
             return
 
     snapshot_song_practice_key_if_needed(session)
+    try:
+        from music_source_ownership import trace_practice_key_owner
+
+        trace_practice_key_owner(session, phase="jam_activate_before")
+    except ImportError:
+        pass
     pt, pm, blob_token = _practice_key_from_blob(session)
     token = blob_token
     if not token:
@@ -206,6 +242,34 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widge
     pending = authoritative or practice_concert
     if pending and not locked:
         session["_pending_display_key"] = pending
+    # Heal catalog Practice Key map from the snapshot — jam must not leave F#/empty.
+    pick = str(snap.get("pick_key") or session.get("active_catalog_pick_key") or "").strip()
+    heal = str(snap.get("practice_concert_key") or snap.get("display_key") or "").strip()
+    if pick and heal:
+        try:
+            from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY, is_song_source_pick
+
+            if is_song_source_pick(pick):
+                jam_tokens: set[str] = set()
+                try:
+                    jam_tokens = generated_jam_practice_key_tokens(session)
+                except Exception:
+                    jam_tokens = set()
+                if heal not in jam_tokens:
+                    store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
+                    if not isinstance(store, dict):
+                        store = {}
+                    store = dict(store)
+                    store[pick] = heal
+                    session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+        except ImportError:
+            pass
+    try:
+        from music_source_ownership import trace_practice_key_owner
+
+        trace_practice_key_owner(session, phase="jam_deactivate_after")
+    except ImportError:
+        pass
     return True
 
 
@@ -241,6 +305,7 @@ __all__ = [
     "activate_generated_jam_key_ownership",
     "deactivate_generated_jam_key_ownership",
     "generated_jam_owns_practice_key",
+    "generated_jam_practice_key_tokens",
     "refresh_generated_jam_key_context_from_blob",
     "snapshot_song_practice_key_if_needed",
 ]

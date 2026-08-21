@@ -164,14 +164,17 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
     if pick_active and live:
         return live
     if pick:
-        try:
-            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+        # SBI "Active song" preview can resolve a catalog bucket while global ownership
+        # is Custom. Do not let the custom live key overlay that catalog snapshot.
+        if pick_active or not ctx_pick.startswith("custom::"):
+            try:
+                from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
 
-            dest = overlay_destination_practice_key(session)
-            if dest:
-                return dest
-        except ImportError:
-            pass
+                dest = overlay_destination_practice_key(session)
+                if dest:
+                    return dest
+            except ImportError:
+                pass
         try:
             from songs.practice_key_state import get_practice_concert_key
 
@@ -180,7 +183,7 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
                 return saved
         except ImportError:
             pass
-    if live:
+    if pick_active and live:
         return live
     dk = str(catalog.get("display_key") or "").strip()
     return dk or original

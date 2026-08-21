@@ -1377,6 +1377,26 @@ def _ensure_chord_selection(
     except ImportError:
         pass
 
+    # Fresh chord-tile click already sealed index authority — do not resolve/sticky overwrite.
+    click = session_state.get("_mission_chord_click_authority")
+    if isinstance(click, dict):
+        c_sym = str(click.get("chord") or "").strip()
+        c_sec = str(click.get("section") or "").strip()
+        try:
+            c_idx = int(click.get("chord_index"))
+        except (TypeError, ValueError):
+            c_idx = -1
+        if c_sym and c_sec and c_idx >= 0:
+            session_state[II_SELECTED_CHORD] = c_sym
+            session_state[II_SELECTED_SECTION] = c_sec
+            session_state[II_SELECTED_CHORD_INDEX] = c_idx
+            session_state[II_SELECTED_CHORD_LABEL] = f"{c_sec} · {c_sym}"
+            session_state["harmony_map_chord"] = c_sym
+            session_state["harmony_map_section"] = c_sec
+            session_state.pop("harmony_map_section_selections", None)
+            session_state["improv_mission_chord_options"] = list(chords)
+            return
+
     try:
         from creative_chord_selection_authority import (
             authoritative_pair_matches_index,
@@ -1745,14 +1765,16 @@ def _render_section_chord_map(
                         )
                     except ImportError:
                         tile_label = ch
-                    st.button(
+                    pressed = st.button(
                         tile_label,
                         key=button_key,
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
-                        on_click=_chord_tile_on_click,
-                        args=(ch, label, gidx, button_key),
                     )
+                    # Prefer button return value over on_click — Playwright clicks
+                    # reliably set the return True path; on_click alone often misses.
+                    if pressed:
+                        _chord_tile_on_click(ch, label, gidx, button_key)
     cap = (
         "One progression per section — repeated verses/choruses and multi-bar holds "
         "are collapsed. Tap a chord to select."
@@ -1839,20 +1861,135 @@ def render_mission_practice_lick_on_backing(
     if not payload:
         return
     inst = str(payload.get("instrument") or "Piano")
-    chord = str(payload.get("chord") or "")
+    motif = dict(payload.get("motif") or {})
+    concert_chord = str(motif.get("_concert_chord") or payload.get("chord") or "").strip()
+    display_chord = ""
+    sm = None
+    try:
+        from mission_projection_state import resolve_mission_projection_state
+
+        sm = session_state.get("_improv_mission_section_map")
+        if not isinstance(sm, list):
+            try:
+                from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                sm = read_mission_section_map_from_session(session_state)
+            except ImportError:
+                sm = None
+        proj = resolve_mission_projection_state(
+            session_state,
+            section_map=sm if isinstance(sm, list) else None,
+            fallback_key=str(payload.get("key_center") or session_state.get("display_key") or "C"),
+        )
+        if proj.concert_chord:
+            concert_chord = proj.concert_chord
+        display_chord = str(proj.display_chord or "").strip()
+    except ImportError:
+        display_chord = ""
+    if not display_chord:
+        try:
+            from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+            concert_key = str(
+                session_state.get("display_key") or payload.get("key_center") or "C"
+            ).strip() or "C"
+            chart_key = musician_facing_chart_key(session_state, concert_key)
+            src = concert_chord or str(payload.get("chord") or "")
+            display_chord = musician_facing_chord(src, concert_key=concert_key, chart_key=chart_key)
+        except ImportError:
+            display_chord = concert_chord or str(payload.get("chord") or "")
+    chord = display_chord or concert_chord or str(payload.get("chord") or "")
     key_center = str(payload.get("key_center") or "C")
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        key_center = musician_facing_chart_key(
+            session_state,
+            str(session_state.get("display_key") or key_center or "C"),
+        ) or key_center
+    except ImportError:
+        pass
     song = str(payload.get("song_title") or "")
     section = str(payload.get("section_label") or "")
     level = str(payload.get("level") or "")
     example_type = _mission_example_type_label(str(payload.get("example_variant") or "normal"))
-    motif = dict(payload.get("motif") or {})
-    out = rebuild_mission_outputs(
-        motif,
-        chord=chord,
-        instrument=inst,
-        key_center=key_center,
-        bpm=int(applied_bpm),
-    )
+    concert_key = str(
+        session_state.get("display_key") or session_state.get("concert_key") or payload.get("key_center") or "C"
+    ).strip() or "C"
+    out = None
+    try:
+        from improvisation_missions import mission_example_for_display
+        from mission_projection_state import project_complete_mission_example
+
+        example = MissionExample(
+            mission=str(payload.get("mission_title") or ""),
+            variant=str(payload.get("example_variant") or "normal"),
+            chord=concert_chord or str(payload.get("_concert_chord") or payload.get("chord") or ""),
+            section=section,
+            song_title=song,
+            display_key=key_center,
+            concert_key=concert_key,
+            instrument=inst,
+            level=level,
+            focus="",
+            motif=motif,
+            abc=str(payload.get("abc") or ""),
+            tab=str(payload.get("tab") or ""),
+            piano_html="",
+            why="",
+            practice_steps=[],
+            insight=chord_coach_insight(
+                concert_chord or chord,
+                key_center=concert_key,
+                instrument=inst,
+                level=level,
+            ),
+            show_tab=True,
+            show_piano=False,
+        )
+        projected = project_complete_mission_example(
+            session_state,
+            example,
+            instrument=inst,
+            bpm=int(applied_bpm),
+            section_map=sm if isinstance(sm, list) else None,
+        )
+        if projected is None:
+            projected = mission_example_for_display(
+                example,
+                instrument=inst,
+                bpm=int(applied_bpm),
+                song_concert_key=concert_key,
+                session_state=session_state,
+                authoritative_concert_key=concert_key,
+                authoritative_display_key=key_center,
+            )
+        if projected is not None:
+            motif_out = dict(projected.motif or {})
+            insight = getattr(projected, "insight", None)
+            chord = str(
+                motif_out.get("chord")
+                or getattr(insight, "chord", "")
+                or display_chord
+                or chord
+            )
+            out = {
+                "motif": motif_out,
+                "abc": projected.abc,
+                "tab": projected.tab,
+            }
+    except Exception:
+        out = None
+    if out is None:
+        out = rebuild_mission_outputs(
+            motif,
+            chord=chord,
+            instrument=inst,
+            key_center=key_center,
+            bpm=int(applied_bpm),
+            song_display_key=key_center,
+            song_concert_key=concert_key,
+        )
     family = instrument_family(inst)
     st.markdown("---")
     head_l, head_r = st.columns([3, 1])
@@ -2553,6 +2690,7 @@ def _maybe_refresh_mission_example_outputs(
     try:
         from mission_projection_state import (
             example_needs_chart_reproject,
+            project_complete_mission_example,
             resolve_mission_projection_state,
         )
 
@@ -2572,6 +2710,28 @@ def _maybe_refresh_mission_example_outputs(
         concert = proj.concert_key or concert
         chart = proj.chart_key or chart
         needs = example_needs_chart_reproject(example, proj)
+        if needs:
+            refreshed = project_complete_mission_example(
+                session_state,
+                example,
+                instrument=instrument,
+                bpm=bpm,
+                section_map=sm if isinstance(sm, list) else None,
+            )
+            session_state["_mission_example_output_fp"] = mission_example_fingerprint(refreshed)
+            try:
+                from improvisation_missions import store_mission_example
+
+                store_mission_example(
+                    session_state,
+                    refreshed,
+                    persist_artifact=True,
+                    interaction="mission_example_shape_reproject",
+                )
+            except Exception:
+                pass
+            return refreshed
+        return example
     except ImportError:
         fp = mission_example_fingerprint(example)
         projected = str((example.motif or {}).get("_projected_display_key") or "")

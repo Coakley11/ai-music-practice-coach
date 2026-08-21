@@ -1,0 +1,67 @@
+branch=feature/creative-backing-stabilization
+sha=533d60fb52e6525babac6e1cb75769566ef7008f
+url=http://127.0.0.1:8512
+streamlit=local 8512
+e_only=True
+e1_only=False
+
+E1: opened=True mission=True clocks=True catalog_bleed=False sbi_not_mission=False syncing=False e1a_mission=True pkEb=True
+E2: prior_mission=True catalog=True love=True love_banner=True mission_stuck=False clocks_stuck=False pkC=True
+E3: jam_opened=True jam_restored=True love_regular=True jam_stuck=False
+E4: prior_mission=True roads=True roads_banner=True catalog=True mission_stuck=False love_stuck=False pk_expected=True pk_actual=A pk_authoritative=A
+E5: custom_ok=True trial=True trial_banner=True custom_src=True roads_stuck=False catalog_stuck=False rerun_ok=True refresh_ok=True pk_ok=True pk_actual=D pre_trial=True clocks_pick=True reverse_clocks=True trial_leak=False
+
+NOTES
+e_only=True skip_shape_setup
+e_only skip_test_C
+e_matrix_start_already_catalogish=True
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+E_pick_ok title=Clocks genre=Pop
+missions_ready attempt=0
+E_generate_example=True
+mission_backing_click=True
+mission_backing_landed=True attempt=0
+upload_nav=True landed=True
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+E_pick_ok title=Clocks genre=Rock
+missions_ready attempt=0
+E_generate_example=True
+E_mission_still_syncing_before_open
+mission_backing_click=True
+mission_backing_landed=True attempt=0
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+jam_generator_attempt=0 ok=False has_generate=False landed=False
+jam_generator_attempt=1 ok=True has_generate=False landed=True
+jam_generator_attempt=2 ok=True has_generate=True landed=True
+jam_generator_open=True has_generate=True landed=True
+e-jam-Clocks open-backing clicked=True
+e-jam-Clocks: on backing page
+upload_nav=True landed=False
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+E_pick_ok title=Love Story genre=Country
+missions_ready attempt=0
+E_generate_example=True
+mission_backing_click=True
+mission_backing_landed=True attempt=0
+picked Take Me Home, Country Roads dropdown=True landed=True sidebar_song='SONG\n\nSONG\nTake Me Home, Country Roads — John Denver\n\n🎼 Songs\n\nTake Me Home, Country Roads'
+e5_prior_already_catalogish=True
+picked Take Me Home, Country Roads dropdown=True landed=True sidebar_song='SONG\n\nSONG\nTake Me Home, Country Roads — John Denver\n\n🎼 Songs\n\nTake Me Home, Country Roads'
+e5_previous_source=Backing source: Catalog song · Take Me Home, Country Roads · A · 100 BPM · Charts in Bb major
+custom_nav=True
+custom_title_filled=True
+custom_activate_attempt=1 clicked=True
+custom_side_on_cpl=False
+custom_side_ok_attempt=1 side_ok=True
+custom_active_ok=True
+e5_pre_backing_trial=True e5_pre_backing_roads=False
+e5_rerun_trial=True
+e5_refresh_trial=True
+e5_songs_reload_for_hub=True
+e5_flip=hub_button
+e5_flip=radiogroup_text
+e5_flip=click_radio
+e5_catalog_radio=True e5_catalog_ok=True
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+e5_reverse_banner=Backing source: Catalog song · Clocks · Eb · 100 BPM · Charts in Bb major reverse_clocks=True trial_leak=False

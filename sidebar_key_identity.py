@@ -125,9 +125,42 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
 
 
 def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | None = None) -> SidebarKeyIdentity:
-    """Set display_key / concert_key pending values from canonical identity before sidebar widgets."""
+    """Set display_key / concert_key pending values from canonical identity before sidebar widgets.
+
+    Never overwrite a live or queued user Practice Key with a stale song-blob token
+    (Mission Backing Dm→Em regression: prime wrote blob Dm after the sidebar chose Em).
+    """
     ident = resolve_sidebar_key_identity(session)
     token = ident.selector_token
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    pending_tok = ""
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+
+        pending_tok = str(pending_selected_practice_key_token(session) or "").strip()
+    except ImportError:
+        pending_tok = str(session.get("_pending_display_key") or "").strip()
+    protect = pending_tok or live
+    if protect and token and protect != token:
+        try:
+            from music_source_ownership import trace_practice_key_owner
+
+            trace_practice_key_owner(
+                session,
+                phase="prime_sidebar_skip_stale_blob",
+                extra={
+                    "blob_token": token,
+                    "protect": protect,
+                    "pending": pending_tok,
+                    "live": live,
+                    "reason": "user_or_pending_practice_key_outranks_identity",
+                },
+            )
+        except ImportError:
+            pass
+        session["concert_key"] = protect
+        session["_sidebar_key_identity_label"] = ident.label
+        return ident
     try:
         from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
 

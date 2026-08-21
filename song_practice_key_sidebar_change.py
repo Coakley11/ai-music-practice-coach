@@ -116,7 +116,37 @@ def capture_sidebar_song_practice_key_edit_intent(session: dict[str, Any]) -> bo
     except ImportError:
         return False
     ptr = get_active_workflow_pointer(session)
-    if not ptr or str(ptr.workflow_owner or "") not in {"song_based_improvisation", "mission_jam"}:
+    owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+    session_id = str(ptr.workflow_session_id or "").strip() if ptr else ""
+    # Mission / SBI Backing must still queue even if the active pointer drifted
+    # (e.g. after handoff). Sealed backing source is authoritative for ownership.
+    if owner not in {"song_based_improvisation", "mission_jam"}:
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx else ""
+            if src == "mission":
+                owner = "mission_jam"
+                if not session_id:
+                    try:
+                        from music_workflow_song_practice import mission_blob_session_id
+
+                        session_id = mission_blob_session_id(session)
+                    except ImportError:
+                        session_id = ""
+            elif src == "song_improv":
+                owner = "song_based_improvisation"
+                if not session_id:
+                    try:
+                        from music_workflow_song_practice import song_based_blob_session_id
+
+                        session_id = song_based_blob_session_id(session)
+                    except ImportError:
+                        session_id = ""
+        except ImportError:
+            pass
+    if owner not in {"song_based_improvisation", "mission_jam"}:
         return False
     try:
         from music_workflow_pending_song_practice_key_edit import queue_pending_song_practice_key_edit
@@ -124,8 +154,8 @@ def capture_sidebar_song_practice_key_edit_intent(session: dict[str, Any]) -> bo
         pending = queue_pending_song_practice_key_edit(
             session,
             selected_key_token=requested,
-            workflow_owner=str(ptr.workflow_owner or ""),
-            workflow_session_id=str(ptr.workflow_session_id or ""),
+            workflow_owner=owner,
+            workflow_session_id=session_id,
         )
         if not pending:
             return False

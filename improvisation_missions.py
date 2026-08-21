@@ -1254,6 +1254,7 @@ def store_mission_practice_lick_for_backing(
         "song_title": song_title,
         "section_label": section_label,
         "chord": ex.chord,
+        "_concert_chord": str((ex.motif or {}).get("_concert_chord") or ex.chord or ""),
         "mission_title": mission_title,
         "level": ex.level,
         "key_center": ex.display_key,

@@ -69,8 +69,34 @@ def resolve_authoritative_chord_selection(
 ) -> tuple[str, str, int]:
     """
     Return (chord_symbol, section_label, global_index) from session authority fields.
-    Recomputes index from (section, symbol) only when index does not match that pair on the map.
+
+    Precedence:
+      1. explicit user click seal (``_mission_chord_click_authority``)
+      2. session (section, symbol) when present on the map
+      3. sticky index only when there is no newer click / map pair
     """
+    click = session.get("_mission_chord_click_authority")
+    if isinstance(click, dict):
+        c_sym = str(click.get("chord") or "").strip()
+        c_sec = str(click.get("section") or "").strip()
+        try:
+            c_idx = int(click.get("chord_index"))
+        except (TypeError, ValueError):
+            c_idx = -1
+        if c_sym and c_sec and c_idx >= 0:
+            if authoritative_pair_matches_index(
+                section_map, section_label=c_sec, chord_symbol=c_sym, chord_index=c_idx
+            ):
+                return c_sym, c_sec, c_idx
+            mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
+            if mapped is not None:
+                return c_sym, c_sec, mapped
+            # Index from the click is still authoritative when the map row exists.
+            at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
+            if at_ch:
+                return at_ch, at_sec or c_sec, c_idx
+            return c_sym, c_sec, c_idx
+
     sym = str(session.get(II_SELECTED_CHORD) or "").strip()
     sec = str(session.get(II_SELECTED_SECTION) or "").strip()
     try:
@@ -83,18 +109,9 @@ def resolve_authoritative_chord_selection(
     ):
         return sym, sec, idx
 
-    try:
-        from improvisation_motif import flatten_section_map
-
-        flat_early = flatten_section_map(section_map)
-    except ImportError:
-        flat_early = [ch for _l, chs in section_map for ch in chs]
-    if flat_early and 0 <= idx < len(flat_early):
-        at_sec, at_ch = section_chord_at_global_index(section_map, idx)
-        if at_ch and (not sym or at_ch != sym):
-            # Stale original-key symbol after Practice Key / Shape change.
-            return at_ch, at_sec or sec, idx
-
+    # Prefer an explicit (section, symbol) that exists on the map over a sticky
+    # index. Index-wins was intended for stale *original-key* symbols after a
+    # Practice Key / Shape change — not for wiping a fresh user chord click.
     if sym and sec:
         matches: list[int] = []
         try:
@@ -113,11 +130,30 @@ def resolve_authoritative_chord_selection(
             return sym, sec, idx
         if len(matches) > 1:
             return sym, sec, matches[0]
-
-    if sym and sec:
         mapped = global_chord_index_for_section_chord(section_map, sec, sym)
         if mapped is not None:
             return sym, sec, mapped
+
+    try:
+        from improvisation_motif import flatten_section_map
+
+        flat_early = flatten_section_map(section_map)
+    except ImportError:
+        flat_early = [ch for _l, chs in section_map for ch in chs]
+    # Sticky index only when the requested symbol is absent from the map
+    # (stale display / original-key spelling) — never when sym is a new map hit
+    # that simply has a stale index (handled above).
+    if flat_early and 0 <= idx < len(flat_early):
+        at_sec, at_ch = section_chord_at_global_index(section_map, idx)
+        if at_ch and (not sym or at_ch != sym):
+            sym_on_map = False
+            if sym:
+                for _label, chords in section_map:
+                    if any(str(ch or "").strip() == sym for ch in chords):
+                        sym_on_map = True
+                        break
+            if not sym_on_map:
+                return at_ch, at_sec or sec, idx
 
     flat: list[str] = []
     try:

@@ -158,6 +158,44 @@ class BackingEntryClassificationTests(unittest.TestCase):
             BACKING_INTENT_RESTORE_LAST,
         )
 
+    def test_creative_backing_skips_stale_regular_song_restore(self) -> None:
+        """Love Story active must not restore sealed Country Roads (empty bound / title)."""
+        from backing_source_navigation import (
+            BACKING_INTENT_FROM_PRACTICE,
+            last_valid_backing_session_survives_ordinary_nav,
+            stamp_backing_restore_anchor,
+        )
+
+        love = "Pop\x1fLove Story — Taylor Swift"
+        roads = "Country\x1fTake Me Home, Country Roads — John Denver"
+        session: dict = {
+            "studio_page": "creative",
+            "active_catalog_pick_key": love,
+            "selected_song": {"pick_key": love, "title": "Love Story", "key": "C"},
+            "song": "Love Story",
+            "display_key": "C",
+            "concert_key": "C",
+            BACKING_CONTEXT_KEY: {
+                "source": "regular_song",
+                "source_label": "Catalog song",
+                "bound_pick_key": "",
+                "active_song_id": roads,
+                "song_title": "Take Me Home, Country Roads",
+                "key": "A",
+                "display_key": "A",
+                "concert_key": "A",
+                "bpm": 100,
+                "progression": ["A", "G", "C"],
+            },
+        }
+        stamp_backing_restore_anchor(session, anchor=f"pk::{love}")
+        self.assertFalse(last_valid_backing_session_survives_ordinary_nav(session))
+        navigate_studio_page(session, "backing")
+        self.assertEqual(
+            str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+            BACKING_INTENT_FROM_PRACTICE,
+        )
+
     def test_explicit_open_in_backing_still_uses_specialized_handoff(self) -> None:
         session: dict = {
             "studio_page": "creative",

@@ -764,15 +764,20 @@ def mutate_mission_chord_selection(
                 write_authoritative_chord_selection,
             )
 
-            section_map = read_mission_section_map_from_session(session)
-            if section_map:
-                write_authoritative_chord_selection(
-                    session,
-                    section_map,
-                    chord_symbol=new_sym,
-                    section_label=new_sec,
-                    chord_index=int(chord_index),
-                )
+            # Click callback already sealed session index — do not remap via resolve.
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict) and str(click.get("chord") or "").strip() == new_sym:
+                pass
+            else:
+                section_map = read_mission_section_map_from_session(session)
+                if section_map:
+                    write_authoritative_chord_selection(
+                        session,
+                        section_map,
+                        chord_symbol=new_sym,
+                        section_label=new_sec,
+                        chord_index=int(chord_index),
+                    )
         except ImportError:
             pass
     if result.ok:
@@ -1168,11 +1173,31 @@ def mission_example_matches_active_blob(session: dict[str, Any], *, chord: str, 
 
 
 def should_project_mission_config_from_canonical(session: dict[str, Any]) -> bool:
-    """Active blob wins over stale canonical mission config."""
+    """Active blob wins over stale canonical mission config.
+
+    Explicit Mission chord clicks already seal session authority in the callback.
+    Never block those (or a pending widget projection from SAVE_REASON_MISSION_TARGET)
+    behind a briefly stale focus/blob chord — that is the Return→first-click failure.
+    """
     try:
-        from creative_mission_config_persistence import canonical_mission_config_value
+        from creative_mission_config_persistence import (
+            CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY,
+            CREATIVE_MISSION_USER_EVENT_KEY,
+            SAVE_REASON_MISSION_TARGET,
+            canonical_mission_config_value,
+        )
 
         canon_chord = str(canonical_mission_config_value(session, "ii_selected_chord") or "").strip()
+        ev = session.get(CREATIVE_MISSION_USER_EVENT_KEY)
+        if isinstance(ev, dict) and str(ev.get("save_reason") or "") == SAVE_REASON_MISSION_TARGET:
+            return True
+        if session.get(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY) and isinstance(ev, dict):
+            if str(ev.get("interaction") or "") == "chord_tile_on_click":
+                return True
+        click_auth = session.get("_mission_chord_click_authority")
+        if isinstance(click_auth, dict) and str(click_auth.get("chord") or "").strip():
+            # Session already sealed by the click — skip projection fights.
+            return False
     except ImportError:
         canon_chord = ""
     try:
