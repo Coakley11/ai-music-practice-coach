@@ -460,9 +460,12 @@ def prepare_metrics_upload_workflow(session_state: dict) -> None:
     if improv_ids:
         session_state["analysis_ai_metric_ids"] = list(improv_ids)
         session_state["analysis_mission_ids"] = list(improv_ids)
+        session_state["analysis_effective_metric_ids"] = list(improv_ids)
     session_state["analysis_sync_creative_mission"] = False
     session_state[ANALYSIS_CRITERIA_LOCKED] = True
     session_state[ANALYSIS_RETURN_TO_METRICS] = True
+    # Preserve prepared recording / last analysis while navigating Criteria ↔ Upload
+    session_state["analysis_return_preserve_recording"] = True
     try:
         from mission_practice_context import ensure_mission_practice_context, seal_recording_context
 
@@ -470,6 +473,12 @@ def prepare_metrics_upload_workflow(session_state: dict) -> None:
         seal_recording_context(session_state, association="metrics_upload_handoff")
     except ImportError:
         pass
+
+
+def open_upload_analysis_from_metrics(session_state: dict) -> None:
+    """Canonical Open Upload Analysis prep from Metrics & AI (caller navigates)."""
+    prepare_metrics_upload_workflow(session_state)
+    prepare_analysis_from_creative(session_state, locked=True)
 
 
 def is_analysis_criteria_locked(session_state: dict) -> bool:
@@ -517,8 +526,19 @@ def render_analysis_criteria_summary(st: Any, session_state: dict) -> list[str]:
             "and choose what to evaluate."
         )
     if st.button("Change criteria on Metrics & AI", key="analysis_change_criteria_btn"):
+        # Navigate to Metrics & AI so criteria can actually be changed there.
         session_state[ANALYSIS_CRITERIA_LOCKED] = False
         session_state[ANALYSIS_RETURN_TO_METRICS] = False
+        session_state["analysis_return_preserve_recording"] = True
+        session_state["improv_intelligence_tab"] = "Metrics & AI"
+        session_state["creative_lab_analysis_mode"] = "Improvisation Intelligence"
+        try:
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(session_state, "creative")
+        except Exception:
+            session_state["_navigate_to_studio_page"] = "creative"
+            session_state["studio_page"] = "creative"
         st.rerun()
     return resolve_selected_mission_ids(session_state, include_creative=True)
 

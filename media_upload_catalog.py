@@ -140,6 +140,27 @@ def build_upload_recording_fields(
         "legacy_recording_type": recording_type[:80],
     }
 
+    # Prefer durable analysis-context snapshot stored on the result
+    snap = raw.get("analysis_context_snapshot")
+    if not isinstance(snap, dict) or not snap:
+        snap = session_state.get("last_analysis_context_snapshot")
+    if isinstance(snap, dict) and snap:
+        fields["analysis_context_snapshot"] = dict(snap)
+        if snap.get("song_source_name"):
+            fields["song"] = str(snap.get("song_source_name") or fields.get("song") or "").strip()
+        instruments = snap.get("instruments") if isinstance(snap.get("instruments"), list) else []
+        if instruments:
+            fields["instrument"] = str(instruments[0])
+        if snap.get("recording_type"):
+            fields["legacy_recording_type"] = str(snap.get("recording_type"))[:80]
+        fields["workflow"] = str(snap.get("workflow") or "")
+        fields["practice_focus"] = str(snap.get("practice_focus") or "")
+        fields["song_source_type"] = str(snap.get("song_source_type") or "")
+        fields["song_source_id"] = str(snap.get("song_source_id") or "")
+        fields["mission_type"] = str(snap.get("mission_type") or "")
+        fields["evaluating_criteria_ids"] = list(snap.get("evaluating_criteria_ids") or [])
+        fields["evaluating_criteria_labels"] = list(snap.get("evaluating_criteria_labels") or [])
+
     try:
         from media_multitrack_export_catalog import ANALYSIS_EXPORT_HANDOFF_META_KEY
 
@@ -512,9 +533,48 @@ def apply_catalog_recording_to_session(
         return False, "missing_analysis_summary"
     result = dict(summary)
     result.setdefault("ok", True)
+    # Prefer top-level catalog snapshot when summary is older/incomplete
+    snap = rec.get("analysis_context_snapshot")
+    if isinstance(snap, dict) and snap:
+        result["analysis_context_snapshot"] = dict(snap)
+        for key in (
+            "workflow",
+            "recording_type",
+            "practice_focus",
+            "evaluating_criteria_ids",
+            "evaluating_criteria_labels",
+            "instruments",
+            "song_source_type",
+            "song_source_id",
+            "song_source_name",
+            "mission_type",
+            "mission_parameters",
+        ):
+            if key in snap and key not in result:
+                result[key] = snap[key]
     session_state["last_analysis_result"] = compact_analysis_for_history(result)
     session_state["last_analysis_source_label"] = str(rec.get("filename") or "")
     session_state["last_analysis_recording_type"] = str(rec.get("legacy_recording_type") or "Practice take")
+    # Restore recording's own context into Upload setup fields (historical ownership)
+    restored_snap = result.get("analysis_context_snapshot")
+    if isinstance(restored_snap, dict) and restored_snap:
+        session_state["last_analysis_context_snapshot"] = dict(restored_snap)
+        session_state["analysis_context_snapshot"] = dict(restored_snap)
+        if restored_snap.get("workflow"):
+            session_state["analysis_mode"] = restored_snap["workflow"]
+        if restored_snap.get("recording_type"):
+            session_state["analysis_recording_type"] = restored_snap["recording_type"]
+            session_state["last_analysis_recording_type"] = restored_snap["recording_type"]
+        if restored_snap.get("instruments"):
+            session_state["analysis_eval_instruments"] = list(restored_snap["instruments"])
+        if restored_snap.get("song_source_type"):
+            session_state["analysis_song_source_type"] = restored_snap["song_source_type"]
+        if restored_snap.get("song_source_id"):
+            session_state["analysis_song_source_id"] = restored_snap["song_source_id"]
+        if restored_snap.get("song_source_name"):
+            session_state["analysis_song_source_name"] = restored_snap["song_source_name"]
+        if restored_snap.get("target_layer"):
+            session_state["analysis_target_layer_label"] = restored_snap["target_layer"]
     apply_upload_catalog_ui_state(session_state, rec)
 
     status = recording_playback_status(rec, st=st)

@@ -6972,6 +6972,53 @@ def _recording_analysis_context(recording_type: str = "practice") -> dict:
     )
 
 
+def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
+    """Build runtime analysis ctx with durable recording-context snapshot as authority."""
+    from recording_analysis_context import (
+        apply_snapshot_to_analysis_ctx,
+        build_analysis_context_snapshot,
+        persist_snapshot_on_result,
+        store_snapshot_in_session,
+    )
+
+    label = str(recording_type_label or st.session_state.get("analysis_recording_type") or "Practice take")
+    # Keep human-facing type for coaching emphasis; underscore form remains compatible.
+    ctx = _recording_analysis_context(recording_type=label)
+    snapshot = build_analysis_context_snapshot(st.session_state)
+    snapshot["recording_type"] = label
+    # Prefer evaluation instruments from setup over ambient active instrument
+    instruments = list(snapshot.get("instruments") or [])
+    if instruments:
+        ctx["instrument"] = instruments[0]
+        ctx["instruments"] = instruments
+    if snapshot.get("song_source_name"):
+        ctx["song"] = snapshot["song_source_name"]
+    if snapshot.get("practice_focus"):
+        ctx["focus"] = snapshot["practice_focus"]
+    if snapshot.get("level"):
+        ctx["level"] = snapshot["level"]
+    ctx["evaluating_criteria_labels"] = list(snapshot.get("evaluating_criteria_labels") or [])
+    ctx = apply_snapshot_to_analysis_ctx(ctx, snapshot)
+    store_snapshot_in_session(st.session_state, snapshot)
+    ctx["_persist_snapshot"] = persist_snapshot_on_result
+    ctx["_snapshot"] = snapshot
+    return ctx
+
+
+def _finalize_upload_analysis_result(result: dict, ctx: dict) -> dict:
+    snap = ctx.get("_snapshot")
+    persist = ctx.get("_persist_snapshot")
+    if result.get("ok") and callable(persist) and isinstance(snap, dict):
+        result = persist(result, snap)
+        try:
+            from recording_analysis_context import store_snapshot_in_session
+
+            store_snapshot_in_session(st.session_state, snap)
+        except Exception:
+            pass
+    return result
+
+
 def render_recording_analysis_report(result, song, focus):
     """Legacy wrapper — premium dashboard is rendered by the analysis page."""
     from recording_analysis_ui import render_analysis_dashboard
@@ -13900,33 +13947,44 @@ elif _studio_page == "analysis":
         )
 
         with st.container(key="upload_mode_segment", border=False):
-            from upload_analysis_modes import (
-                WORKFLOW_OPTIONS,
-                is_multitrack_workflow,
-                normalize_analysis_workflow,
-            )
+            from upload_analysis_modes import is_multitrack_workflow, normalize_analysis_workflow
+            from upload_analysis_setup_ui import render_upload_analysis_setup
 
             normalize_analysis_workflow(st.session_state)
-            col_mode, col_type = st.columns([1, 1])
-            with col_mode:
-                analysis_mode = st.radio(
-                    "Workflow",
-                    list(WORKFLOW_OPTIONS),
-                    horizontal=True,
-                    key="analysis_mode",
+            _mission_setup_locked = False
+            try:
+                from mission_practice_context import authoritative_mission_type
+                from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+
+                _mission_setup_locked = bool(
+                    st.session_state.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY)
+                    or st.session_state.get("analysis_sync_creative_mission")
+                    or authoritative_mission_type(st.session_state)
                 )
-            with col_type:
-                recording_type = st.selectbox(
-                    "Recording type",
-                    [
-                        "Practice take",
-                        "Solo performance",
-                        "Over backing track",
-                        "Multitrack layer",
-                        "Multitrack mix",
-                    ],
-                    key="analysis_recording_type",
-                )
+            except ImportError:
+                _mission_setup_locked = bool(st.session_state.get("analysis_sync_creative_mission"))
+
+            if _mission_setup_locked:
+                try:
+                    from recording_analysis_context import apply_mission_recording_defaults
+
+                    apply_mission_recording_defaults(st.session_state)
+                except Exception:
+                    pass
+
+            setup_sel = render_upload_analysis_setup(
+                st,
+                st.session_state,
+                instrument_options=list(_instrument_options),
+                default_instrument=str(instrument or ""),
+                default_song_name=str(_song_title or song or ""),
+                mission_locked=_mission_setup_locked,
+            )
+            recording_type = str(
+                setup_sel.get("recording_type")
+                or st.session_state.get("analysis_recording_type")
+                or "Practice take"
+            )
 
         if not is_multitrack_workflow(st.session_state):
             from mission_analysis_ui import (
@@ -14157,9 +14215,7 @@ elif _studio_page == "analysis":
                         else:
                             from recording_analysis import analyze_recording
 
-                            ctx = _recording_analysis_context(
-                                recording_type=recording_type.lower().replace(" ", "_"),
-                            )
+                            ctx = _prepare_upload_analysis_ctx(recording_type)
                             ctx = enrich_analysis_context(st.session_state, ctx)
                             ctx["mission_ids"] = mission_ids
                             if not is_analysis_criteria_locked(st.session_state):
@@ -14188,6 +14244,7 @@ elif _studio_page == "analysis":
                                     getattr(audio_obj, "name", "recording.wav"),
                                     ctx,
                                 )
+                            result = _finalize_upload_analysis_result(result, ctx)
                             if stale:
                                 result["mission_context_stale_warning"] = stale
                             st.session_state["last_analysis_result"] = result
@@ -14249,9 +14306,7 @@ elif _studio_page == "analysis":
                             navigate_studio_page(st.session_state, "creative")
                             st.rerun()
                     except ImportError:
-                        ctx = _recording_analysis_context(
-                            recording_type=recording_type.lower().replace(" ", "_"),
-                        )
+                        ctx = _prepare_upload_analysis_ctx(recording_type)
                         ctx["mission_ids"] = mission_ids
                         if not is_analysis_criteria_locked(st.session_state):
                             ctx["custom_goal"] = str(
@@ -14278,6 +14333,7 @@ elif _studio_page == "analysis":
                                 getattr(audio_obj, "name", "recording.wav"),
                                 ctx,
                             )
+                        result = _finalize_upload_analysis_result(result, ctx)
                         st.session_state["last_analysis_result"] = result
                         st.session_state["last_analysis_audio"] = audio_obj.getvalue()
                         st.session_state["last_analysis_source_label"] = str(
@@ -14403,11 +14459,14 @@ elif _studio_page == "analysis":
                                 "instrument": "",
                             }
                         )
-                    ctx = _recording_analysis_context(recording_type="multitrack")
+                    ctx = _prepare_upload_analysis_ctx(
+                        str(st.session_state.get("analysis_recording_type") or "Multitrack mix")
+                    )
                     from recording_analysis import analyze_multitrack
 
                     with st.spinner("Comparing layers…"):
                         mt_result = analyze_multitrack(tracks, ctx)
+                    mt_result = _finalize_upload_analysis_result(mt_result, ctx)
                     st.session_state["last_analysis_result"] = mt_result
                     if mt_result.get("ok"):
                         from ai_performance_history import (

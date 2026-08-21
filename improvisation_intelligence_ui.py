@@ -3199,9 +3199,9 @@ def _tab_metrics_ai(
             type="primary",
             use_container_width=True,
         ):
-            from mission_analysis_ui import prepare_metrics_upload_workflow
+            from mission_analysis_ui import open_upload_analysis_from_metrics
 
-            prepare_metrics_upload_workflow(session_state)
+            open_upload_analysis_from_metrics(session_state)
             on_open_analysis()
 
     result = session_state.get("last_analysis_result")

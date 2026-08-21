@@ -511,6 +511,33 @@ def build_practice_plan(
     bpm = int(f.tempo or ctx.get("practice_bpm") or 80)
     slow = max(55, bpm - 22)
 
+    # Context-aware lead tips (do not replace score-driven drills)
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    labels = list(ctx.get("evaluating_criteria_labels") or [])
+    practice_focus = str(ctx.get("focus") or "").strip()
+    mission = str(ctx.get("mission_type") or ctx.get("mission_constraint") or "").strip()
+    if mission:
+        plan.append(
+            f"Mission check: replay the take and mark where you left the '{mission}' constraint; "
+            f"fix those bars first."
+        )
+    if labels:
+        plan.append(
+            f"Criteria drill ({labels[0]}): one 8-bar loop focusing only on that emphasis @ {slow} BPM."
+        )
+    if practice_focus:
+        plan.append(f"Practice Focus ({practice_focus}): short intentional block before free playing.")
+    if "practice take" in rtype:
+        plan.append(f"Diagnostic loop: isolate the weakest 2 bars and repeat @ {slow} BPM until clean.")
+    elif "backing" in rtype:
+        plan.append(
+            f"Lock with backing: play only downbeats for 8 bars @ {slow} BPM, then restore the phrase."
+        )
+    elif "multitrack layer" in rtype:
+        plan.append("Layer role drill: mute other stems and check entrances/releases against the form.")
+    elif "multitrack mix" in rtype:
+        plan.append("Mix cohesion drill: listen for balance/groove clashes before re-recording a layer.")
+
     plan.append(f"{dk} major scale @ {slow} BPM — 2 octaves, even subdivisions.")
     for name, _ in weakest:
         if name == "timing":
@@ -534,12 +561,101 @@ def build_practice_plan(
     if ctx.get("song"):
         plan.append(f"Backing track recommendation: replay {ctx['song']} section-by-section.")
 
-    return plan[:8]
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in plan:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out[:8]
+
+
+def _apply_context_emphasis_to_categories(
+    categories: dict[str, dict[str, Any]],
+    ctx: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Augment category findings/tips with recording context without changing scores."""
+    out = {k: {**v, "findings": list(v.get("findings") or []), "tips": list(v.get("tips") or [])} for k, v in categories.items()}
+    rtype = str(ctx.get("recording_type") or "").lower().replace("_", " ")
+    labels = [str(x).lower() for x in (ctx.get("evaluating_criteria_labels") or [])]
+    mission = str(ctx.get("mission_type") or ctx.get("mission_constraint") or "").strip()
+    focus = str(ctx.get("focus") or "").strip()
+
+    if "backing" in rtype and "groove" in out:
+        out["groove"]["findings"].insert(
+            0,
+            "Over-backing context: judge pocket and entrances relative to the accompaniment grid.",
+        )
+        out["groove"]["tips"].insert(
+            0,
+            "Mute yourself for 2 bars, hear the backing pocket, then re-enter on beat 1.",
+        )
+    if "practice take" in rtype and "technique" in out:
+        out["technique"]["findings"].insert(
+            0,
+            "Practice-take lens: treat rough spots as diagnostic signals, not performance flaws.",
+        )
+    if "multitrack mix" in rtype and "musicality" in out:
+        out["musicality"]["findings"].insert(
+            0,
+            "Mix context: musical shape includes how layers interact, not only one voice.",
+        )
+    if "multitrack layer" in rtype and "timing" in out:
+        out["timing"]["findings"].insert(
+            0,
+            "Layer context: timing is judged against the arrangement role of this part.",
+        )
+    if mission and "musicality" in out:
+        out["musicality"]["findings"].insert(
+            0,
+            f"Mission '{mission}': evaluate constraint compliance before free expression notes.",
+        )
+        out["musicality"]["tips"].insert(
+            0,
+            f"Replay and mark bars that leave the '{mission}' rule; repair those first.",
+        )
+    if focus and "confidence" in out:
+        out["confidence"]["tips"].insert(
+            0,
+            f"Keep Practice Focus ({focus}) visible on the stand for the next intentional take.",
+        )
+
+    # Map common criteria labels onto category emphasis
+    criteria_map = {
+        "phras": "musicality",
+        "melodic": "musicality",
+        "motif": "musicality",
+        "rhythm": "timing",
+        "timing": "timing",
+        "tone": "tone",
+        "pitch": "pitch",
+        "inton": "pitch",
+        "articul": "technique",
+        "technique": "technique",
+        "groove": "groove",
+        "express": "musicality",
+        "improvis": "musicality",
+    }
+    for label in labels:
+        for needle, cat in criteria_map.items():
+            if needle in label and cat in out:
+                out[cat]["findings"].insert(
+                    0,
+                    f"Evaluating Criteria emphasis ({label}): deepen coaching on this category while keeping all baseline scores.",
+                )
+                out[cat]["tips"].insert(
+                    0,
+                    f"Next take: one intentional loop focusing on {label} only.",
+                )
+                break
+    return out
 
 
 def build_coach_summary(
     scores: dict[str, int],
     categories: dict[str, dict[str, Any]],
+    ctx: dict[str, Any] | None = None,
 ) -> tuple[str, str, str, str]:
     ranked = sorted(scores.items(), key=lambda x: x[1])
     weakest_name, weakest_score = ranked[0]
@@ -563,11 +679,48 @@ def build_coach_summary(
         "Overall you're building real musical habits — the coach read is based on pulse, pitch, "
         "dynamics, and attack clarity from this recording."
     )
+    ctx = ctx or {}
+    try:
+        from recording_analysis_context import coach_emphasis_notes
+
+        snap = ctx.get("analysis_context_snapshot")
+        if not isinstance(snap, dict):
+            snap = {
+                "recording_type": ctx.get("recording_type"),
+                "practice_focus": ctx.get("focus"),
+                "evaluating_criteria_labels": ctx.get("evaluating_criteria_labels") or [],
+                "evaluating_criteria_ids": ctx.get("mission_ids") or [],
+                "mission_type": ctx.get("mission_type"),
+                "mission_constraint": ctx.get("mission_constraint"),
+                "instruments": ctx.get("instruments") or ([ctx.get("instrument")] if ctx.get("instrument") else []),
+                "level": ctx.get("level"),
+                "song_source_name": ctx.get("song"),
+                "song_source_type": ctx.get("song_source_type"),
+            }
+        emphasis = coach_emphasis_notes(snap)
+        if emphasis:
+            # Keep baseline summary; append context-aware coaching stance.
+            summary = summary + " " + " ".join(
+                note.replace("**", "") for note in emphasis[:3]
+            )
+    except Exception:
+        pass
+
     biggest = categories.get(weakest_name, {}).get("findings", ["Keep practicing with intention."])[0]
     improved = (
         f"{strong_l.title()} — score {strongest_score}/100"
     )
     focus = categories.get(weakest_name, {}).get("tips", ["Loop one section slowly with metronome."])[0]
+
+    # Prefer Evaluating Criteria / Practice Focus for next_focus when present
+    labels = list(ctx.get("evaluating_criteria_labels") or [])
+    practice_focus = str(ctx.get("focus") or "").strip()
+    if labels:
+        focus = (
+            f"Deepen work on {labels[0]} while protecting your gains in {strong_l}."
+        )
+    elif practice_focus:
+        focus = f"Keep your Practice Focus on {practice_focus}: one slow intentional loop, then one musical phrase."
     return summary, biggest, improved, focus
 
 
@@ -620,9 +773,10 @@ def analyze_recording(
                 "score": scores["tone"],
             },
         }
+        categories = _apply_context_emphasis_to_categories(categories, ctx)
 
         practice_plan = build_practice_plan(scores, ctx, features)
-        summary, biggest, improved, next_focus = build_coach_summary(scores, categories)
+        summary, biggest, improved, next_focus = build_coach_summary(scores, categories, ctx)
 
         mission_ids = list(ctx.get("mission_ids") or [])
         mission_block: dict[str, Any] = {}
@@ -655,12 +809,23 @@ def analyze_recording(
             "most_improved": improved,
             "next_focus": next_focus,
             "instrument": instrument,
+            "instruments": list(ctx.get("instruments") or ([instrument] if instrument else [])),
             "level": ctx.get("level"),
             "song": ctx.get("song"),
             "focus": ctx.get("focus"),
             "style_label": ctx.get("style_label"),
             "time_signature": ctx.get("time_signature"),
+            "workflow": ctx.get("workflow"),
+            "evaluating_criteria_ids": list(ctx.get("mission_ids") or ctx.get("evaluating_criteria_ids") or []),
+            "evaluating_criteria_labels": list(ctx.get("evaluating_criteria_labels") or []),
+            "song_source_type": ctx.get("song_source_type"),
+            "song_source_id": ctx.get("song_source_id"),
+            "song_source_name": ctx.get("song") or ctx.get("song_source_name"),
+            "mission_type": ctx.get("mission_type"),
+            "mission_parameters": dict(ctx.get("mission_parameters") or {}),
         }
+        if isinstance(ctx.get("analysis_context_snapshot"), dict):
+            result_payload["analysis_context_snapshot"] = dict(ctx["analysis_context_snapshot"])
         result_payload.update(mission_block)
         return result_payload
     except Exception as e:
@@ -729,6 +894,32 @@ def analyze_multitrack(
         "sync": _clamp_score(68),
     }
 
+    rtype = str(ctx.get("recording_type") or "").lower().replace("_", " ")
+    if "layer" in rtype:
+        summary = (
+            "Multitrack Layer coach read: evaluate this part's timing, role, and support of the arrangement. "
+            "Tighten entrances/releases that sit off the grid."
+        )
+        findings.insert(
+            0,
+            "Layer evaluation: judge this stem in relation to its musical role, not as a solo recital.",
+        )
+    else:
+        summary = (
+            "Multitrack Mix coach read: comparing onset alignment, balance, and groove cohesion across layers. "
+            "Tighten anything that consistently sits ahead of the grid."
+        )
+        findings.insert(
+            0,
+            "Mix evaluation: treat this as an ensemble arrangement, not one isolated instrument.",
+        )
+    labels = list(ctx.get("evaluating_criteria_labels") or [])
+    if labels:
+        findings.insert(0, f"Evaluating Criteria emphasis: {', '.join(labels)}.")
+    focus = str(ctx.get("focus") or "").strip()
+    if focus:
+        tips.insert(0, f"Practice Focus ({focus}): keep the next arrangement take aligned with that goal.")
+
     return {
         "ok": True,
         "multitrack": True,
@@ -736,10 +927,12 @@ def analyze_multitrack(
         "findings": findings,
         "tips": tips,
         "scores": scores,
-        "coach_summary": (
-            "Multitrack coach read: comparing onset alignment and level balance across layers. "
-            "Tighten anything that consistently sits ahead of the grid."
-        ),
+        "coach_summary": summary,
+        "recording_type": ctx.get("recording_type"),
+        "workflow": ctx.get("workflow"),
+        "instruments": list(ctx.get("instruments") or []),
+        "evaluating_criteria_labels": labels,
+        "focus": focus,
     }
 
 
