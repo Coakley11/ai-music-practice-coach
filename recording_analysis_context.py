@@ -19,6 +19,7 @@ WORKFLOW_MULTITRACK = "Multitrack recording"
 RECORDING_TYPE_SOLO = "Solo performance"
 RECORDING_TYPE_PRACTICE = "Practice take"
 RECORDING_TYPE_BACKING = "Over backing track"
+RECORDING_TYPE_MISSION = "Mission Recording"
 RECORDING_TYPE_MT_LAYER = "Multitrack layer"
 RECORDING_TYPE_MT_MIX = "Multitrack mix"
 
@@ -31,6 +32,7 @@ SINGLE_RECORDING_TYPES: tuple[str, ...] = (
     RECORDING_TYPE_SOLO,
     RECORDING_TYPE_PRACTICE,
     RECORDING_TYPE_BACKING,
+    RECORDING_TYPE_MISSION,
 )
 MULTITRACK_RECORDING_TYPES: tuple[str, ...] = (
     RECORDING_TYPE_MT_LAYER,
@@ -50,6 +52,27 @@ ANALYSIS_SONG_SOURCE_TYPE_KEY = "analysis_song_source_type"
 ANALYSIS_SONG_SOURCE_ID_KEY = "analysis_song_source_id"
 ANALYSIS_SONG_SOURCE_NAME_KEY = "analysis_song_source_name"
 ANALYSIS_TARGET_LAYER_KEY = "analysis_target_layer_label"
+ANALYSIS_MISSION_CONSTRAINT_KEY = "analysis_mission_constraint"
+ANALYSIS_PLAYER_LEVEL_KEY = "analysis_player_level"
+ANALYSIS_PRACTICE_FOCUS_KEY = "analysis_practice_focus"
+
+
+def is_genuine_mission_upload_handoff(session_state: dict[str, Any]) -> bool:
+    """True only when a Creative → Missions take was handed off to Upload.
+
+    Do not treat ambient Creative mission state, analysis_sync_creative_mission
+    defaults, or an active improv_active_mission as a handoff.
+    """
+    try:
+        from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+    except ImportError:
+        MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY = "_mission_upload_analysis_handoff"
+    return bool(session_state.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY))
+
+
+def is_mission_recording_type(value: Any) -> bool:
+    text = str(value or "").strip().lower().replace("_", " ")
+    return text in {"mission recording", "mission"}
 
 
 def recording_types_for_workflow(workflow: str) -> tuple[str, ...]:
@@ -143,7 +166,8 @@ def build_analysis_context_snapshot(
         snap["evaluating_criteria_labels"] = list(snap["evaluating_criteria_ids"])
 
     focus = str(
-        session_state.get("focus")
+        session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+        or session_state.get("focus")
         or session_state.get("practice_focus")
         or ""
     ).strip()
@@ -153,7 +177,11 @@ def build_analysis_context_snapshot(
     if not instruments:
         instruments = _as_list(session_state.get("instrument"))
     snap["instruments"] = instruments
-    level = str(session_state.get("level") or "").strip()
+    level = str(
+        session_state.get(ANALYSIS_PLAYER_LEVEL_KEY)
+        or session_state.get("level")
+        or ""
+    ).strip()
     snap["level"] = level
     snap["instrument_levels"] = {inst: level for inst in instruments} if level else {}
 
@@ -186,15 +214,16 @@ def build_analysis_context_snapshot(
         or ""
     ).strip()
 
-    # Mission context
-    try:
-        from mission_practice_context import (
-            authoritative_mission_type,
-            ensure_mission_practice_context,
-        )
+    # Mission context — only when this take is explicitly a Mission Recording
+    if is_mission_recording_type(snap.get("recording_type")):
+        mission_type = str(session_state.get(ANALYSIS_MISSION_CONSTRAINT_KEY) or "").strip()
+        if not mission_type:
+            try:
+                from mission_practice_context import authoritative_mission_type
 
-        mission_type = str(authoritative_mission_type(session_state) or "").strip()
-        ctx = ensure_mission_practice_context(session_state)
+                mission_type = str(authoritative_mission_type(session_state) or "").strip()
+            except Exception:
+                mission_type = ""
         if mission_type:
             snap["mission_type"] = mission_type
             snap["mission_id"] = str(
@@ -204,17 +233,26 @@ def build_analysis_context_snapshot(
             ).strip()
             snap["mission_constraint"] = mission_type
             params: dict[str, Any] = {"mission_type": mission_type}
-            if ctx is not None:
-                chord = getattr(getattr(ctx, "chord", None), "symbol", None)
-                if chord:
-                    params["chord"] = str(chord)
-                for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
-                    val = getattr(ctx, attr, None)
-                    if val not in (None, ""):
-                        params[attr] = val
+            try:
+                from mission_practice_context import ensure_mission_practice_context
+
+                ctx = ensure_mission_practice_context(session_state)
+                if ctx is not None:
+                    chord = getattr(getattr(ctx, "chord", None), "symbol", None)
+                    if chord:
+                        params["chord"] = str(chord)
+                    for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
+                        val = getattr(ctx, attr, None)
+                        if val not in (None, ""):
+                            params[attr] = val
+            except Exception:
+                pass
             snap["mission_parameters"] = params
-    except Exception:
-        pass
+    else:
+        snap["mission_id"] = ""
+        snap["mission_type"] = ""
+        snap["mission_constraint"] = ""
+        snap["mission_parameters"] = {}
 
     snap["target_layer"] = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
     snap["target_instruments"] = list(snap["instruments"])
@@ -341,21 +379,38 @@ def seed_session_setup_from_active(session_state: dict[str, Any]) -> None:
         ).strip()
         if pk:
             session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = pk
+    if not str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip():
+        level = str(session_state.get("level") or "").strip()
+        if level:
+            session_state[ANALYSIS_PLAYER_LEVEL_KEY] = level
+    if not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
+        focus = str(session_state.get("focus") or session_state.get("practice_focus") or "").strip()
+        if focus:
+            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = focus
 
 
 def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
-    """Auto-fill Workflow / Recording Type / song / instrument for Mission takes."""
+    """Prefill Workflow / Recording Type / song / instrument for a Creative Mission handoff.
+
+    Fields remain editable in the Upload UI; this only seeds known answers.
+    """
     from upload_analysis_modes import SINGLE_RECORDING
 
     session_state["analysis_mode"] = SINGLE_RECORDING
-    session_state["analysis_recording_type"] = RECORDING_TYPE_SOLO
+    session_state["analysis_recording_type"] = RECORDING_TYPE_MISSION
     seed_session_setup_from_active(session_state)
     try:
         from mission_practice_context import authoritative_mission_type
 
-        mission = authoritative_mission_type(session_state)
-        if mission and not session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY):
-            seed_session_setup_from_active(session_state)
+        mission = str(authoritative_mission_type(session_state) or "").strip()
+        if not mission:
+            mission = str(
+                session_state.get("improv_active_mission")
+                or session_state.get("improv_mission_pick")
+                or ""
+            ).strip()
+        if mission:
+            session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
     except Exception:
         pass
 
@@ -378,6 +433,11 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
         notes.append(
             "This was recorded Over a Backing Track — emphasize lock with accompaniment, "
             "rhythmic placement, entrances, groove, and phrasing over the harmony."
+        )
+    elif is_mission_recording_type(rtype):
+        notes.append(
+            "This is a Mission Recording — explicitly assess mission-constraint compliance, "
+            "then apply Evaluating Criteria inside that restriction."
         )
     elif rtype == RECORDING_TYPE_MT_LAYER:
         notes.append(

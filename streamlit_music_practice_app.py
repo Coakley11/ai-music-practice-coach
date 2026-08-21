@@ -13951,26 +13951,16 @@ elif _studio_page == "analysis":
             from upload_analysis_setup_ui import render_upload_analysis_setup
 
             normalize_analysis_workflow(st.session_state)
-            _mission_setup_locked = False
-            try:
-                from mission_practice_context import authoritative_mission_type
-                from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+            from recording_analysis_context import (
+                apply_mission_recording_defaults,
+                is_genuine_mission_upload_handoff,
+            )
 
-                _mission_setup_locked = bool(
-                    st.session_state.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY)
-                    or st.session_state.get("analysis_sync_creative_mission")
-                    or authoritative_mission_type(st.session_state)
-                )
-            except ImportError:
-                _mission_setup_locked = bool(st.session_state.get("analysis_sync_creative_mission"))
-
-            if _mission_setup_locked:
-                try:
-                    from recording_analysis_context import apply_mission_recording_defaults
-
-                    apply_mission_recording_defaults(st.session_state)
-                except Exception:
-                    pass
+            # Only a Creative → Missions handoff prefills Mission Recording.
+            # Ambient Creative mission state must NOT lock ordinary Upload.
+            _from_mission_handoff = is_genuine_mission_upload_handoff(st.session_state)
+            if _from_mission_handoff:
+                apply_mission_recording_defaults(st.session_state)
 
             setup_sel = render_upload_analysis_setup(
                 st,
@@ -13978,7 +13968,7 @@ elif _studio_page == "analysis":
                 instrument_options=list(_instrument_options),
                 default_instrument=str(instrument or ""),
                 default_song_name=str(_song_title or song or ""),
-                mission_locked=_mission_setup_locked,
+                from_mission_handoff=_from_mission_handoff,
             )
             recording_type = str(
                 setup_sel.get("recording_type")
@@ -13996,17 +13986,23 @@ elif _studio_page == "analysis":
 
             with st.container(key="upload_capture_panel", border=False):
                 try:
-                    from mission_analysis_ui import (
-                        render_mission_upload_compact_context,
+                    from mission_analysis_ui import render_mission_upload_compact_context
+                    from recording_analysis_context import (
+                        is_genuine_mission_upload_handoff,
+                        is_mission_recording_type,
                     )
-                    from mission_practice_context import authoritative_mission_type
 
-                    if (
-                        st.session_state.get("_analysis_prepared_upload")
-                        or st.session_state.get("analysis_sync_creative_mission")
-                        or authoritative_mission_type(st.session_state)
-                    ):
-                        render_mission_upload_compact_context(st, st.session_state)
+                    _is_handoff = is_genuine_mission_upload_handoff(st.session_state)
+                    _is_mission_type = is_mission_recording_type(
+                        st.session_state.get("analysis_recording_type")
+                    )
+                    if _is_handoff or _is_mission_type:
+                        if (
+                            st.session_state.get("analysis_mission_constraint")
+                            or st.session_state.get("improv_active_mission")
+                            or _is_handoff
+                        ):
+                            render_mission_upload_compact_context(st, st.session_state)
                         try:
                             from mission_pending_upload_analysis import is_prepared_pending_upload
                             from mission_pending_upload_persistence import (
@@ -14014,15 +14010,16 @@ elif _studio_page == "analysis":
                                 render_pending_upload_dev_diagnostics,
                             )
 
-                            render_pending_upload_dev_diagnostics(st, st.session_state)
-                            if is_prepared_pending_upload(st.session_state):
-                                if st.button(
-                                    "Clear prepared take",
-                                    key="analysis_clear_prepared_mission_take",
-                                    use_container_width=True,
-                                ):
-                                    clear_prepared_mission_upload(st.session_state, st=st)
-                                    st.rerun()
+                            if _is_handoff:
+                                render_pending_upload_dev_diagnostics(st, st.session_state)
+                                if is_prepared_pending_upload(st.session_state):
+                                    if st.button(
+                                        "Clear prepared take",
+                                        key="analysis_clear_prepared_mission_take",
+                                        use_container_width=True,
+                                    ):
+                                        clear_prepared_mission_upload(st.session_state, st=st)
+                                        st.rerun()
                         except ImportError:
                             pass
                         st.markdown("---")

@@ -533,6 +533,10 @@ def build_practice_plan(
         plan.append(
             f"Lock with backing: play only downbeats for 8 bars @ {slow} BPM, then restore the phrase."
         )
+    elif "mission" in rtype:
+        plan.append(
+            f"Mission constraint loop: stay inside the mission rule for 8 bars @ {slow} BPM, then widen expression."
+        )
     elif "multitrack layer" in rtype:
         plan.append("Layer role drill: mute other stems and check entrances/releases against the form.")
     elif "multitrack mix" in rtype:

@@ -6,9 +6,11 @@ import unittest
 
 from recording_analysis_context import (
     ANALYSIS_EVAL_INSTRUMENTS_KEY,
+    ANALYSIS_MISSION_CONSTRAINT_KEY,
     ANALYSIS_SONG_SOURCE_NAME_KEY,
     ANALYSIS_SONG_SOURCE_TYPE_KEY,
     RECORDING_TYPE_BACKING,
+    RECORDING_TYPE_MISSION,
     RECORDING_TYPE_MT_LAYER,
     RECORDING_TYPE_MT_MIX,
     RECORDING_TYPE_PRACTICE,
@@ -20,6 +22,7 @@ from recording_analysis_context import (
     apply_snapshot_to_analysis_ctx,
     build_analysis_context_snapshot,
     coach_emphasis_notes,
+    is_genuine_mission_upload_handoff,
     load_snapshot_from_result,
     normalize_recording_type_for_workflow,
     persist_snapshot_on_result,
@@ -32,13 +35,22 @@ from upload_analysis_modes import MULTITRACK_RECORDING, SINGLE_RECORDING
 class RecordingTypesByWorkflowTests(unittest.TestCase):
     def test_single_recording_types(self) -> None:
         types = recording_types_for_workflow(WORKFLOW_SINGLE)
-        self.assertEqual(types, (RECORDING_TYPE_SOLO, RECORDING_TYPE_PRACTICE, RECORDING_TYPE_BACKING))
+        self.assertEqual(
+            types,
+            (
+                RECORDING_TYPE_SOLO,
+                RECORDING_TYPE_PRACTICE,
+                RECORDING_TYPE_BACKING,
+                RECORDING_TYPE_MISSION,
+            ),
+        )
         self.assertNotIn(RECORDING_TYPE_MT_MIX, types)
 
     def test_multitrack_types(self) -> None:
         types = recording_types_for_workflow(WORKFLOW_MULTITRACK)
         self.assertEqual(types, (RECORDING_TYPE_MT_LAYER, RECORDING_TYPE_MT_MIX))
         self.assertNotIn(RECORDING_TYPE_SOLO, types)
+        self.assertNotIn(RECORDING_TYPE_MISSION, types)
 
     def test_normalize_swaps_invalid_type(self) -> None:
         session = {
@@ -48,6 +60,49 @@ class RecordingTypesByWorkflowTests(unittest.TestCase):
         out = normalize_recording_type_for_workflow(session)
         self.assertEqual(out, RECORDING_TYPE_MT_MIX)
         self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_MT_MIX)
+
+
+class HandoffDetectionTests(unittest.TestCase):
+    def test_ordinary_upload_not_treated_as_handoff(self) -> None:
+        session = {
+            "analysis_sync_creative_mission": True,
+            "improv_active_mission": "Only Chord Tones",
+            "improv_mission_pick": "Only Chord Tones",
+        }
+        self.assertFalse(is_genuine_mission_upload_handoff(session))
+
+    def test_genuine_handoff_flag_detected(self) -> None:
+        session = {"_mission_upload_analysis_handoff": True}
+        self.assertTrue(is_genuine_mission_upload_handoff(session))
+
+    def test_non_mission_type_excludes_ambient_mission_from_snapshot(self) -> None:
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            "improv_active_mission": "Only Chord Tones",
+            "analysis_sync_creative_mission": True,
+            "instrument": "Piano",
+            "focus": "Improvisation",
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Say",
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["recording_type"], RECORDING_TYPE_PRACTICE)
+        self.assertEqual(snap["mission_type"], "")
+        self.assertEqual(snap["mission_constraint"], "")
+
+    def test_mission_recording_includes_selected_constraint(self) -> None:
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_MISSION,
+            ANALYSIS_MISSION_CONSTRAINT_KEY: "Only Chord Tones",
+            "instrument": "Tenor Sax",
+            "focus": "Improvisation",
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Say",
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["recording_type"], RECORDING_TYPE_MISSION)
+        self.assertEqual(snap["mission_type"], "Only Chord Tones")
+        self.assertEqual(snap["mission_constraint"], "Only Chord Tones")
 
 
 class SnapshotBuildTests(unittest.TestCase):
@@ -121,17 +176,19 @@ class SnapshotBuildTests(unittest.TestCase):
 
 
 class MissionDefaultsTests(unittest.TestCase):
-    def test_mission_defaults_solo_single(self) -> None:
+    def test_mission_defaults_mission_recording_single(self) -> None:
         session = {
             "instrument": "Guitar",
             "song": "Autumn Leaves",
             "level": "Intermediate",
             "focus": "Improvisation",
+            "improv_active_mission": "Only Chord Tones",
         }
         apply_mission_recording_defaults(session)
         self.assertEqual(session["analysis_mode"], SINGLE_RECORDING)
-        self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_SOLO)
+        self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_MISSION)
         self.assertEqual(session.get(ANALYSIS_EVAL_INSTRUMENTS_KEY), ["Guitar"])
+        self.assertEqual(session.get(ANALYSIS_MISSION_CONSTRAINT_KEY), "Only Chord Tones")
 
 
 class CoachEmphasisTests(unittest.TestCase):

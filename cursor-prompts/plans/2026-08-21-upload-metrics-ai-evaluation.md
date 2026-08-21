@@ -25,7 +25,8 @@ Keep existing Upload core performance analysis (scores, radar, deep dive, tips, 
 7. **Change criteria** navigates to Creative → Metrics & AI.
 8. **Open Upload Analysis** uses `open_upload_analysis_from_metrics` and preserves prepared recording.
 
-## Tests
-
-- `tests/test_recording_analysis_context.py`
-- `tests/test_upload_metrics_nav.py`
+# Correct behavior notes (2026-08-21 follow-up)
+# - Ordinary Upload must keep Workflow/Recording Type editable.
+# - Mission Recording is an explicit Single Recording type.
+# - Auto-prefill only for genuine Creative Mission handoff (`_mission_upload_analysis_handoff`).
+# - Ambient analysis_sync_creative_mission / active mission must not lock Upload.

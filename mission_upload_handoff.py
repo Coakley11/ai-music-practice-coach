@@ -64,7 +64,7 @@ def handoff_mission_take_to_upload_analysis(
     session["last_analysis_audio"] = bytes(audio_bytes)
     session["last_analysis_source_label"] = prepared.name
     session["analysis_mode"] = "Single recording"
-    session["analysis_recording_type"] = "Solo performance"
+    session["analysis_recording_type"] = "Mission Recording"
     session["mission_upload_capture_mode"] = source
     session["_mission_upload_handoff_source"] = source
     session["_mission_upload_is_live_take"] = source == "live"
