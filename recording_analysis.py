@@ -740,6 +740,13 @@ def _apply_context_emphasis_to_categories(
     labels = [str(x).lower() for x in (ctx.get("evaluating_criteria_labels") or [])]
     mission = str(ctx.get("mission_type") or ctx.get("mission_constraint") or "").strip()
     focus = str(ctx.get("focus") or "").strip()
+    _ctx_focuses = [
+        str(x).strip()
+        for x in (ctx.get("practice_focuses") or ctx.get("focuses") or [])
+        if str(x).strip()
+    ]
+    if not _ctx_focuses and focus:
+        _ctx_focuses = [focus]
 
     if "backing" in rtype and "groove" in out:
         out["groove"]["findings"].insert(
@@ -774,11 +781,23 @@ def _apply_context_emphasis_to_categories(
             0,
             f"Replay and mark bars that leave the '{mission}' rule; repair those first.",
         )
-    if focus and "confidence" in out:
-        out["confidence"]["tips"].insert(
-            0,
-            f"Keep Practice Focus ({focus}) visible on the stand for the next intentional take.",
-        )
+    if _ctx_focuses and "confidence" in out:
+        if len(_ctx_focuses) >= 2:
+            try:
+                from recording_analysis_context import format_focus_list
+
+                focus_txt = format_focus_list(_ctx_focuses)
+            except Exception:
+                focus_txt = ", ".join(_ctx_focuses[:-1]) + f", and {_ctx_focuses[-1]}"
+            out["confidence"]["tips"].insert(
+                0,
+                f"Keep your Practice Focuses — {focus_txt} — visible for the next intentional take.",
+            )
+        else:
+            out["confidence"]["tips"].insert(
+                0,
+                f"Keep Practice Focus ({_ctx_focuses[0]}) visible on the stand for the next intentional take.",
+            )
 
     # Map Evaluating Criteria onto category emphasis with criterion-specific depth
     # (baseline scores stay; observations/tips deepen for the requested criteria).
@@ -951,6 +970,9 @@ def build_coach_summary(
             snap = {
                 "recording_type": ctx.get("recording_type"),
                 "practice_focus": ctx.get("focus"),
+                "practice_focuses": list(ctx.get("practice_focuses") or ctx.get("focuses") or []),
+                "instrument_focuses": dict(ctx.get("instrument_focuses") or {}),
+                "target_layer": ctx.get("target_layer"),
                 "evaluating_criteria_labels": ctx.get("evaluating_criteria_labels") or [],
                 "evaluating_criteria_ids": ctx.get("mission_ids") or [],
                 "mission_type": ctx.get("mission_type"),

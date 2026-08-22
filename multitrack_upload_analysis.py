@@ -46,10 +46,16 @@ def _feature_attr(features: Any, name: str, default: Any = None) -> Any:
 
 
 def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | None:
-    """Map a Practice Focus to an existing performance score when the signal is real."""
+    """Map a Practice Focus to an existing performance score when the signal is real.
+
+    Dynamics intentionally returns None — there is no dedicated Dynamics score in the
+    baseline performance map, and Musicality must not be borrowed as a stand-in.
+    """
     scores = dict(scores or {})
     key = " ".join(str(focus or "").strip().lower().replace("/", " ").split())
     if not key:
+        return None
+    if "dynamic" in key:
         return None
     if "articulation" in key or key in {"technique", "tonguing", "attack"}:
         val = scores.get("technique")
@@ -62,8 +68,6 @@ def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | 
         val = scores.get("groove")
         if val is None:
             val = scores.get("timing")
-    elif "dynamic" in key:
-        val = scores.get("musicality")
     elif "pitch" in key or "intonation" in key:
         val = scores.get("pitch")
     else:
@@ -74,6 +78,62 @@ def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | 
         return None
 
 
+def prune_instrument_focuses_to_project(
+    instrument_focuses: Any,
+    instruments: list[str] | None,
+) -> dict[str, list[str]]:
+    """Keep Focus maps aligned with the current Project instruments list only."""
+    selected = [str(i).strip() for i in (instruments or []) if str(i).strip()]
+    mapping = normalize_instrument_focuses_map(instrument_focuses)
+    if not selected:
+        return mapping
+    return {inst: list(mapping.get(inst) or []) for inst in selected}
+
+
+def _dynamics_qualitative_label(*, dyn_flatness: float, dyn_range: float) -> str:
+    """Human Dynamics assessment from energy contrast — never a borrowed score."""
+    # dyn_flatness ≈ 1 means little contrast; lower means more amplitude variation.
+    if dyn_range <= 0 and dyn_flatness >= 0.95:
+        return "Limited measurable contrast"
+    if dyn_flatness < 0.35:
+        return "Clear contrast"
+    if dyn_flatness < 0.55:
+        return "Moderate contrast"
+    if dyn_flatness < 0.75:
+        return "Developing contrast"
+    return "Limited contrast"
+
+
+def _energy_trajectory_note(features: Any) -> str:
+    energy = _feature_attr(features, "energy_curve", None)
+    try:
+        import numpy as np
+
+        if energy is None:
+            return ""
+        arr = np.asarray(energy, dtype=float).ravel()
+        if arr.size < 8:
+            return ""
+        third = max(1, arr.size // 3)
+        first = float(np.mean(arr[:third]))
+        mid = float(np.mean(arr[third : 2 * third]))
+        last = float(np.mean(arr[-third:]))
+        peak = max(first, mid, last)
+        floor = min(first, mid, last)
+        if peak <= 1e-9:
+            return "Energy contour stayed near the noise floor."
+        rise = (last - first) / max(peak, 1e-9)
+        if rise > 0.18:
+            return "Energy generally increased through the take (build / crescendo tendency)."
+        if rise < -0.18:
+            return "Energy generally decreased through the take (release / decrescendo tendency)."
+        if (mid - floor) / max(peak, 1e-9) > 0.2 and (peak - mid) / max(peak, 1e-9) > 0.12:
+            return "Energy rose into phrase peaks and then settled — some intentional contour."
+        return "Energy stayed relatively even across early/mid/late regions."
+    except Exception:
+        return ""
+
+
 def build_layer_arrangement_context(
     ctx: dict[str, Any] | None,
     *,
@@ -81,8 +141,11 @@ def build_layer_arrangement_context(
 ) -> str:
     """Describe non-target project instruments as arrangement context only."""
     ctx = dict(ctx or {})
+    instruments = [
+        str(x).strip() for x in (ctx.get("instruments") or []) if str(x).strip()
+    ]
     target = resolve_multitrack_target_layer(ctx)
-    mapping = normalize_instrument_focuses_map(ctx.get("instrument_focuses"))
+    mapping = prune_instrument_focuses_to_project(ctx.get("instrument_focuses"), instruments)
     heard = {str(x).strip() for x in (heard_instruments or []) if str(x).strip()}
     if target:
         heard.add(target)
@@ -118,8 +181,14 @@ def build_target_layer_focus_analysis(
     Focuses are never scored here (they belong in arrangement context only).
     """
     ctx = dict(ctx or {})
+    instruments = [
+        str(x).strip() for x in (ctx.get("instruments") or []) if str(x).strip()
+    ]
     target = resolve_multitrack_target_layer(ctx)
-    mapping = normalize_instrument_focuses_map(ctx.get("instrument_focuses"))
+    if target and instruments and target not in instruments:
+        # Stale target after project-instrument edit — fall back to first project instrument.
+        target = instruments[0]
+    mapping = prune_instrument_focuses_to_project(ctx.get("instrument_focuses"), instruments)
     focuses = coerce_focus_list(mapping.get(target) if target else None)
     if not focuses:
         focuses = coerce_focus_list(
@@ -134,6 +203,7 @@ def build_target_layer_focus_analysis(
     groove = float(_feature_attr(features, "groove_tightness", 0.0) or 0.0)
     centroid = float(_feature_attr(features, "spectral_centroid_mean", 0.0) or 0.0)
     dyn_flat = float(_feature_attr(features, "dyn_flatness", 0.0) or 0.0)
+    dyn_range = float(_feature_attr(features, "dyn_range", 0.0) or 0.0)
     pitch_std = _feature_attr(features, "pitch_cents_std", None)
     tech_cat = categories.get("technique") or {}
     tone_cat = categories.get("tone") or {}
@@ -240,6 +310,52 @@ def build_target_layer_focus_analysis(
                 if mapped is not None
                 else "Qualitative tone-color read from spectral cues"
             )
+        elif "dynamic" in fl:
+            # Real RMS/energy contrast only — never borrow Musicality/technique scores.
+            mapped = None
+            label = _dynamics_qualitative_label(dyn_flatness=dyn_flat, dyn_range=dyn_range)
+            findings.append(
+                f"Dynamic range (RMS p90−p10) ≈ {dyn_range:.4f}; "
+                f"flatness estimate ≈ {dyn_flat:.2f} (lower usually means more contrast)."
+            )
+            traj = _energy_trajectory_note(features)
+            if traj:
+                findings.append(traj)
+            else:
+                findings.append(
+                    "Phrase-level loudness contour was limited or too short to summarize confidently."
+                )
+            if dyn_flat < 0.55 and dyn_range > 0:
+                went_well = (
+                    f"{target or 'This layer'} shows usable dynamic contrast between softer and "
+                    "louder regions."
+                )
+                improve_to = (
+                    "Increase intentional contrast between phrase peaks and releases — plan "
+                    "pp/mf/f shapes rather than accidental spikes."
+                )
+            elif dyn_range > 0:
+                went_well = (
+                    f"{target or 'This layer'} has some amplitude variation to shape more deliberately."
+                )
+                improve_to = (
+                    "Widen intentional dynamic contrast: softer approaches, fuller phrase peaks, "
+                    "and controlled releases."
+                )
+            else:
+                went_well = (
+                    f"{target or 'This layer'} holds a steady energy level — a clean base for "
+                    "adding contrast."
+                )
+                improve_to = (
+                    "Add intentional crescendo/decrescendo inside phrases while keeping timing "
+                    "and tone stable."
+                )
+            drill = (
+                f"{target or 'Layer'} dynamics drill: play the same phrase pp → mf → f while "
+                "keeping timing and tone stable."
+            )
+            assessment = label
         elif "phras" in fl:
             findings.extend(str(x) for x in (musicality_cat.get("findings") or [])[:3])
             went_well = (
@@ -331,8 +447,16 @@ def enrich_layer_analysis_result(
     """Stamp Layer ownership fields, Focus blocks, and stem-aware plan tips."""
     out = dict(result or {})
     ctx = dict(ctx or {})
+    instruments = [
+        str(x).strip() for x in (ctx.get("instruments") or out.get("instruments") or []) if str(x).strip()
+    ]
     target = resolve_multitrack_target_layer(ctx)
-    mapping = normalize_instrument_focuses_map(ctx.get("instrument_focuses"))
+    if target and instruments and target not in instruments:
+        target = instruments[0]
+        ctx["target_layer"] = target
+    mapping = prune_instrument_focuses_to_project(ctx.get("instrument_focuses"), instruments)
+    ctx["instruments"] = instruments
+    ctx["instrument_focuses"] = mapping
     target_focuses = coerce_focus_list(mapping.get(target) if target else None)
     if not target_focuses:
         target_focuses = coerce_focus_list(
@@ -340,11 +464,14 @@ def enrich_layer_analysis_result(
             or ctx.get("practice_focuses")
             or ctx.get("focuses")
         )
+        # If legacy focuses came from a stale instrument, keep only when target is current.
+        if target and instruments and target not in instruments:
+            target_focuses = []
 
     out["multitrack"] = True
     out["multitrack_mode"] = "layer"
     out["target_layer"] = target
-    out["instruments"] = list(ctx.get("instruments") or out.get("instruments") or [])
+    out["instruments"] = instruments
     out["instrument_focuses"] = dict(mapping)
     out["practice_focuses"] = list(target_focuses)
     out["uploaded_track_count"] = int(uploaded_track_count or 1)
@@ -500,6 +627,14 @@ def run_multitrack_upload_analysis(
     instruments = [str(x).strip() for x in (ctx.get("instruments") or []) if str(x).strip()]
     target = resolve_multitrack_target_layer(ctx)
     ctx["target_layer"] = target
+    ctx["instruments"] = instruments
+    ctx["instrument_focuses"] = prune_instrument_focuses_to_project(
+        ctx.get("instrument_focuses"),
+        instruments,
+    )
+    if target and instruments and target not in instruments:
+        target = instruments[0]
+        ctx["target_layer"] = target
 
     tracks = assign_instruments_to_tracks(
         list(tracks or []),

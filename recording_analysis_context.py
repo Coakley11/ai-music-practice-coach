@@ -586,8 +586,18 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
         out["focus"] = practice_focuses[0]
     # Layer coaching: complete Focus list for the target layer/instrument.
     target = str(snap.get("target_layer") or out.get("target_layer") or "").strip()
+    if target and instruments and target not in instruments:
+        target = instruments[0]
+        out["target_layer"] = target
     if target and target in instrument_focuses:
         target_focuses = list(instrument_focuses.get(target) or [])
+        out["practice_focuses"] = target_focuses
+        out["focuses"] = target_focuses
+        if target_focuses:
+            out["focus"] = target_focuses[0]
+    elif instruments and not practice_focuses:
+        # Single-instrument Layer after pruning stale parts.
+        target_focuses = list(instrument_focuses.get(instruments[0]) or [])
         out["practice_focuses"] = target_focuses
         out["focuses"] = target_focuses
         if target_focuses:
@@ -938,6 +948,12 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
     multi_instrument = len(instrument_focuses) > 1 or len(snap_instruments) > 1
     if rtype == RECORDING_TYPE_MT_LAYER:
         target = str(snap.get("target_layer") or "").strip()
+        if target and snap_instruments and target not in snap_instruments:
+            target = snap_instruments[0]
+        instrument_focuses = normalize_instrument_focuses_map(
+            instrument_focuses,
+            snap_instruments or None,
+        )
         target_focuses = coerce_focus_list(
             instrument_focuses.get(target) if target else None
         ) or practice_focuses

@@ -421,5 +421,172 @@ class TestMultitrackLayerPracticePlan(unittest.TestCase):
         self.assertIn("mute other stems", " | ".join(plan).lower())
 
 
+class TestDynamicsFocusEvidence(unittest.TestCase):
+    def test_dynamics_uses_energy_evidence_not_musicality_score(self) -> None:
+        from multitrack_upload_analysis import (
+            _mapped_score_for_focus,
+            build_target_layer_focus_analysis,
+        )
+
+        self.assertIsNone(_mapped_score_for_focus("Dynamics", {"musicality": 88, "tone": 70}))
+        blocks = build_target_layer_focus_analysis(
+            features={
+                "dyn_range": 0.045,
+                "dyn_flatness": 0.42,
+                "energy_curve": [0.1] * 10 + [0.25] * 10 + [0.4] * 10 + [0.2] * 10,
+                "onset_strength_mean": 1.0,
+                "onset_density": 1.0,
+                "groove_tightness": 0.5,
+                "spectral_centroid_mean": 1800.0,
+            },
+            scores={"musicality": 88, "technique": 74, "tone": 68},
+            categories={
+                "technique": {
+                    "tips": [
+                        "Intermediate coaching: keep fundamentals solid while stretching one musical risk per take."
+                    ]
+                },
+                "musicality": {"findings": ["should not replace dynamics evidence"]},
+            },
+            ctx={
+                "recording_type": RECORDING_TYPE_MT_LAYER,
+                "instruments": ["Alto Saxophone"],
+                "target_layer": "Alto Saxophone",
+                "instrument_focuses": {"Alto Saxophone": ["Dynamics"]},
+            },
+        )
+        self.assertEqual(len(blocks), 1)
+        dyn = blocks[0]
+        self.assertEqual(dyn["focus"], "Dynamics")
+        self.assertIsNone(dyn.get("score"))
+        assessment = str(dyn.get("assessment") or "")
+        self.assertNotIn("88", assessment)
+        self.assertNotIn("/100", assessment)
+        self.assertTrue(
+            any(
+                token in assessment.lower()
+                for token in ("contrast", "developing", "limited", "moderate", "clear")
+            ),
+            assessment,
+        )
+        findings = " ".join(dyn.get("findings") or []).lower()
+        self.assertIn("dynamic range", findings)
+        self.assertIn("rms", findings)
+        self.assertNotIn("intermediate coaching", findings)
+        self.assertNotIn("musical risk", findings)
+        self.assertIn("pp", (dyn.get("drill") or "").lower())
+
+
+class TestStaleProjectInstrumentCleanup(unittest.TestCase):
+    def test_removing_guitar_clears_focus_context_from_next_analysis(self) -> None:
+        from multitrack_upload_analysis import (
+            build_layer_arrangement_context,
+            enrich_layer_analysis_result,
+            prune_instrument_focuses_to_project,
+            run_multitrack_upload_analysis,
+        )
+        from recording_analysis_context import (
+            ANALYSIS_EVAL_INSTRUMENTS_KEY,
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            ANALYSIS_TARGET_LAYER_KEY,
+            build_analysis_context_snapshot,
+            collect_instrument_focuses,
+            instrument_focus_widget_key,
+            prepare_instrument_focus_ui,
+        )
+        from upload_analysis_modes import MULTITRACK_RECORDING
+
+        session = {
+            "analysis_mode": MULTITRACK_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_MT_LAYER,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Alto Saxophone", "Guitar"],
+            ANALYSIS_TARGET_LAYER_KEY: "Alto Saxophone",
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
+                "Alto Saxophone": ["Articulation", "Tone", "Dynamics"],
+                "Guitar": ["Rhythm Guitar"],
+            },
+            instrument_focus_widget_key("Alto Saxophone"): ["Articulation", "Tone", "Dynamics"],
+            instrument_focus_widget_key("Guitar"): ["Rhythm Guitar"],
+        }
+        prepare_instrument_focus_ui(session, ["Alto Saxophone", "Guitar"])
+        self.assertIn("Guitar", session[ANALYSIS_INSTRUMENT_FOCUSES_KEY])
+
+        # User removes Guitar from Project instruments.
+        session[ANALYSIS_EVAL_INSTRUMENTS_KEY] = ["Alto Saxophone"]
+        prepared = prepare_instrument_focus_ui(session, ["Alto Saxophone"])
+        self.assertEqual(set(prepared.keys()), {"Alto Saxophone"})
+        self.assertNotIn("Guitar", session[ANALYSIS_INSTRUMENT_FOCUSES_KEY])
+        self.assertNotIn(instrument_focus_widget_key("Guitar"), session)
+        collected = collect_instrument_focuses(session, ["Alto Saxophone"])
+        self.assertNotIn("Guitar", collected)
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["instruments"], ["Alto Saxophone"])
+        self.assertNotIn("Guitar", snap["instrument_focuses"])
+        self.assertNotIn("Rhythm Guitar", str(snap))
+
+        pruned = prune_instrument_focuses_to_project(
+            {
+                "Alto Saxophone": ["Articulation", "Tone", "Dynamics"],
+                "Guitar": ["Rhythm Guitar"],
+            },
+            ["Alto Saxophone"],
+        )
+        self.assertEqual(set(pruned.keys()), {"Alto Saxophone"})
+        ctx = {
+            "recording_type": RECORDING_TYPE_MT_LAYER,
+            "instruments": ["Alto Saxophone"],
+            "target_layer": "Alto Saxophone",
+            "instrument_focuses": {
+                "Alto Saxophone": ["Articulation", "Tone", "Dynamics"],
+                "Guitar": ["Rhythm Guitar"],  # stale leftover in a dirty ctx
+            },
+            "practice_focuses": ["Articulation", "Tone", "Dynamics"],
+        }
+        self.assertEqual(build_layer_arrangement_context(ctx), "")
+        enriched = enrich_layer_analysis_result(
+            {"ok": True, "coach_summary": "ok", "scores": {}, "features": {}, "categories": {}, "practice_plan": []},
+            ctx,
+            uploaded_track_count=1,
+        )
+        self.assertNotIn("Guitar", enriched.get("instrument_focuses") or {})
+        self.assertNotIn("rhythm guitar", (enriched.get("layer_arrangement_context") or "").lower())
+        self.assertNotIn("guitar", (enriched.get("coach_summary") or "").lower())
+
+        with patch(
+            "recording_analysis.analyze_recording",
+            return_value={"ok": True, "coach_summary": "clean", "scores": {"tone": 70}},
+        ):
+            result = run_multitrack_upload_analysis(
+                [{"name": "alto.wav", "filename": "alto.wav", "bytes": b"RIFF"}],
+                ctx,
+            )
+        self.assertNotIn("Guitar", result.get("instrument_focuses") or {})
+        self.assertNotIn("rhythm guitar", (result.get("layer_arrangement_context") or "").lower())
+
+
+class TestMultiFocusUserFacingCopy(unittest.TestCase):
+    def test_confidence_tip_lists_all_selected_focuses(self) -> None:
+        from recording_analysis import _apply_context_emphasis_to_categories
+
+        cats = {
+            "confidence": {"title": "Confidence", "findings": [], "tips": ["base tip"]},
+            "technique": {"title": "Technique", "findings": [], "tips": []},
+        }
+        out = _apply_context_emphasis_to_categories(
+            cats,
+            {
+                "focus": "Articulation",
+                "practice_focuses": ["Articulation", "Tone", "Dynamics"],
+                "recording_type": RECORDING_TYPE_MT_LAYER,
+            },
+        )
+        tip = " ".join(out["confidence"]["tips"])
+        self.assertIn("Practice Focuses", tip)
+        self.assertIn("Articulation", tip)
+        self.assertIn("Tone", tip)
+        self.assertIn("Dynamics", tip)
+        self.assertNotIn("Practice Focus (Articulation)", tip)
+
+
 if __name__ == "__main__":
     unittest.main()
