@@ -161,7 +161,9 @@ class TestUploadAnalysisHistoryUi(unittest.TestCase):
         app_source = (root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
         modes_source = (root / "upload_analysis_modes.py").read_text(encoding="utf-8")
         self.assertIn("upload_analysis_modes", app_source)
-        self.assertIn("WORKFLOW_OPTIONS", app_source)
+        # WORKFLOW_OPTIONS is SSOT in upload_analysis_modes; the app imports helpers,
+        # not necessarily the constant name itself.
+        self.assertIn("WORKFLOW_OPTIONS", modes_source)
         self.assertIn("Multitrack recording", modes_source)
         self.assertNotIn("Multitrack comparison", app_source)
 

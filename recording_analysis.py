@@ -1161,6 +1161,12 @@ def _apply_context_emphasis_to_categories(
     return out
 
 
+def _is_mixed_backing_ctx(ctx: dict[str, Any] | None) -> bool:
+    ctx = dict(ctx or {})
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    return "backing" in rtype or bool(ctx.get("backing_track_context"))
+
+
 def build_coach_summary(
     scores: dict[str, int],
     categories: dict[str, dict[str, Any]],
@@ -1182,13 +1188,32 @@ def build_coach_summary(
     weak_l = label_map.get(weakest_name, weakest_name)
     strong_l = label_map.get(strongest_name, strongest_name)
 
-    summary = (
-        f"Your {strong_l} is the brightest spot in this take (score {strongest_score}/100). "
-        f"Biggest growth edge: {weak_l} (score {weakest_score}/100). "
-        "Overall you're building real musical habits — the coach read is based on pulse, pitch, "
-        "dynamics, and attack clarity from this recording."
-    )
     ctx = ctx or {}
+    mixed = _is_mixed_backing_ctx(ctx)
+    low_conf = {"pitch", "tone"} if mixed else set()
+    growth_name, growth_score = weakest_name, weakest_score
+    growth_l = weak_l
+    if growth_name in low_conf:
+        alts = [p for p in ranked if p[0] not in low_conf]
+        if alts:
+            growth_name, growth_score = alts[0]
+            growth_l = label_map.get(growth_name, growth_name)
+    if mixed and weakest_name in low_conf:
+        summary = (
+            f"Your {strong_l} is the brightest spot in this take (score {strongest_score}/100). "
+            f"Mixed-recording {weak_l} evidence was weak ({weakest_score}/100), but "
+            "target-only attribution confidence is limited because a backing track is present — "
+            "treat that as a cautious signal, not a definitive personal weakness. "
+            f"A clearer growth edge from higher-confidence evidence: {growth_l} "
+            f"(score {growth_score}/100)."
+        )
+    else:
+        summary = (
+            f"Your {strong_l} is the brightest spot in this take (score {strongest_score}/100). "
+            f"Biggest growth edge: {growth_l} (score {growth_score}/100). "
+            "Overall you're building real musical habits — the coach read is based on pulse, pitch, "
+            "dynamics, and attack clarity from this recording."
+        )
     try:
         from recording_analysis_context import coach_emphasis_notes
 
@@ -1218,11 +1243,11 @@ def build_coach_summary(
     except Exception:
         pass
 
-    biggest = categories.get(weakest_name, {}).get("findings", ["Keep practicing with intention."])[0]
+    biggest = categories.get(growth_name, {}).get("findings", ["Keep practicing with intention."])[0]
     improved = (
         f"{strong_l.title()} — score {strongest_score}/100"
     )
-    focus = categories.get(weakest_name, {}).get("tips", ["Loop one section slowly with metronome."])[0]
+    focus = categories.get(growth_name, {}).get("tips", ["Loop one section slowly with metronome."])[0]
 
     # Prefer Evaluating Criteria / Practice Focus for next_focus when present
     labels = list(ctx.get("evaluating_criteria_labels") or [])
@@ -1402,6 +1427,10 @@ def analyze_recording(
             )
         if isinstance(ctx.get("analysis_context_snapshot"), dict):
             result_payload["analysis_context_snapshot"] = dict(ctx["analysis_context_snapshot"])
+        if isinstance(mission_block, dict):
+            mission_block["mission_evaluation_active"] = bool(
+                ctx.get("mission_evaluation_active")
+            )
         result_payload.update(mission_block)
         if musical_metrics and not result_payload.get("musical_metrics"):
             result_payload["musical_metrics"] = musical_metrics

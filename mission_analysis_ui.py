@@ -399,6 +399,30 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
     mission_eval = bool(result.get("mission_evaluation_active"))
     heading = criteria_report_heading(mission_evaluation_active=mission_eval)
     overall_label = criteria_overall_score_label(mission_evaluation_active=mission_eval)
+    # Avoid repeating the same criterion drill in a footer "Recommended next practice".
+    rec_raw = str(result.get("mission_next_recommendation") or "").strip()
+    covered = " ".join(
+        f"{m.get('drill') or ''} {' '.join(m.get('tips') or [])}" for m in missions
+    ).lower()
+    show_rec = bool(rec_raw) and (
+        not covered
+        or not any(
+            chunk and chunk in covered
+            for chunk in (
+                rec_raw.lower()[:48],
+                rec_raw.lower().split(".")[0][:48],
+            )
+        )
+    )
+    rec_footer = (
+        f"""
+  <div class="ma-card">
+    <h4>Recommended next practice</h4>
+    <p>{_esc(rec_raw)}</p>
+  </div>"""
+        if show_rec
+        else ""
+    )
     return f"""
 {MISSION_ANALYSIS_CSS}
 <div class="ma-block">
@@ -423,10 +447,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
       {metric_rows}
     </div>
   </div>
-  <div class="ma-card">
-    <h4>Recommended next practice</h4>
-    <p>{rec}</p>
-  </div>
+  {rec_footer}
 </div>
 """
 

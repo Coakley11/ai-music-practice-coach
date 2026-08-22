@@ -52,7 +52,14 @@ MISSION_GOALS: tuple[MissionGoal, ...] = (
     MissionGoal("space_silence", "Use of space/rests", _w(space_rests=0.55, phrase_pacing=0.25, dynamic_contrast=0.2)),
     MissionGoal("dynamic_contrast", "Dynamics", _w(dynamic_contrast=0.6, phrase_pacing=0.2, musical_expression=0.2)),
     MissionGoal("pentatonic_focus", "Pentatonic focus", _w(pentatonic_adherence=0.55, scale_adherence=0.25, melodic_diversity=0.2)),
-    MissionGoal("scale_connection", "Scale/mode usage", _w(scale_adherence=0.45, phrase_contour_variety=0.25, melodic_diversity=0.3)),
+    # Scale/mode usage is scored from tonal/harmonic membership evidence only.
+    # Melodic diversity and phrase-contour variety are separate criteria and must
+    # not dilute this score when they are low.
+    MissionGoal(
+        "scale_connection",
+        "Scale/mode usage",
+        _w(scale_adherence=0.75, chord_tone_accuracy=0.15, guide_tone_usage=0.10),
+    ),
     MissionGoal("voice_leading", "Voice leading", _w(voice_leading_smoothness=0.5, resolution_strength=0.25, chord_tone_accuracy=0.25)),
     MissionGoal("repetition_variation", "Repetition and variation", _w(repetition_variation=0.45, motif_transformation=0.35, rhythmic_diversity=0.2)),
     MissionGoal("guide_tones", "Guide-tone targeting", _w(guide_tone_usage=0.55, landing_note_quality=0.3, resolution_strength=0.15)),
@@ -491,15 +498,40 @@ def _mission_feedback(
         )
 
     if mission.id == "scale_connection":
+        # Interpret from scale/mode evidence magnitude — not melodic diversity /
+        # phrase-contour variety (those belong to other criteria).
         adherence = float(metrics.get("scale_adherence", 0) or 0)
-        if score >= 72:
+        chord_tone = metrics.get("chord_tone_accuracy")
+        guide_tone = metrics.get("guide_tone_usage")
+        support_bits: list[str] = []
+        if chord_tone is not None:
+            support_bits.append(f"chord-tone fit {float(chord_tone):.0f}/100")
+        if guide_tone is not None:
+            support_bits.append(
+                f"guide-tone usage {float(guide_tone):.0f}/100 "
+                "(3rds; 7ths only where encoded)"
+            )
+        support = ("; " + "; ".join(support_bits)) if support_bits else ""
+        song = str(ctx.get("song") or ctx.get("song_source_name") or "the selected song").strip()
+        key = str(ctx.get("display_key") or "").strip()
+        key_bit = f" in {key}" if key else ""
+        if adherence >= 85:
             return (
-                f"Most note choices stayed inside the selected key/mode (scale adherence {adherence:.0f}/100).",
-                f"Contour variety ({metrics.get('phrase_contour_variety', 0):.0f}/100) kept the line from sounding mechanical.",
+                f"Scale adherence was strong at about {adherence:.0f}/100{key_bit}, "
+                "with only a small number of notes outside the selected tonal material.",
+                f"Primary evidence is scale/key membership vs {song}{support}.",
+            )
+        if adherence >= 70:
+            return (
+                f"Scale adherence was solid at about {adherence:.0f}/100{key_bit}, "
+                "with some notes outside the selected tonal material to clean up.",
+                f"Primary evidence is scale/key membership vs {song}{support}.",
             )
         return (
-            f"Scale adherence is about {adherence:.0f}/100 — several notes sat outside the selected key/mode.",
-            "Loop one scale/mode slowly with a drone; land on stable degrees (1, 3, 5) at phrase endings.",
+            f"Scale adherence is about {adherence:.0f}/100{key_bit} — "
+            "a meaningful share of notes sat outside the selected key/mode.",
+            f"Constrain the next pass to {key or 'the song'} scale tones against "
+            f"{song}'s chords; resolve non-chord tones into chord tones.",
         )
 
     if mission.id == "deep_harmony":
@@ -775,6 +807,13 @@ def _instrument_mission_tips(instrument: str, mission_id: str, score: int) -> li
     elif fam == "voice":
         if mission_id in ("phrase_structure", "phrasing"):
             tips.append("Mark breath spots every 2 bars before singing the take again.")
+    if mission_id == "scale_connection":
+        tips = [
+            "Play the Concert Key scale against the song's actual chord progression; "
+            "land chord tones that each symbol encodes on strong beats.",
+            "Loop one section and constrain note choices to the relevant scale/mode, "
+            "resolving approach tones into stable chord tones.",
+        ]
     # Song-form-gated tip only when harmony exists.
     # (Caller may pass ctx via score_missions — keep mission-local here.)
     _ = score  # reserved for future severity gating
@@ -878,6 +917,13 @@ def score_missions(
         drill = ""
         if tips:
             drill = str(tips[0])
+        if goal.id == "scale_connection" and not drill:
+            key = str(ctx.get("display_key") or "the song").strip() or "the song"
+            song = str(ctx.get("song") or "the selected song").strip() or "the selected song"
+            drill = (
+                f"Play the {key} scale against {song}'s chord progression; "
+                "resolve approach tones into chord tones that each symbol encodes."
+            )
         results.append(
             {
                 "id": goal.id,
@@ -894,7 +940,20 @@ def score_missions(
                 "limited_evidence": not has_primary,
             }
         )
-        if score < 65:
+        # Breath/tempo logistics must not attach to scale/mode or other harmonic criteria.
+        _harmonic_ids = {
+            "scale_connection",
+            "chord_tone_targeting",
+            "guide_tones",
+            "deep_harmony",
+            "voice_leading",
+            "pentatonic_focus",
+        }
+        try:
+            score_i = int(score) if score is not None else 0
+        except (TypeError, ValueError):
+            score_i = 0
+        if score_i < 65 and goal.id not in _harmonic_ids:
             if fam == "flute":
                 shared_tips.append("Record one pass focusing on breath — longer notes need supported air.")
             elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
@@ -906,9 +965,25 @@ def score_missions(
 
     shared_tips = dedupe_recommendations(shared_tips, limit=2)
     if shared_tips and results:
-        # Attach shared advice once to the weakest criterion only.
-        weakest = min(results, key=lambda r: int(r.get("score") or 0) if r.get("score") is not None else 0)
-        weakest["tips"] = dedupe_recommendations(list(weakest.get("tips") or []) + shared_tips, limit=4)
+        _harmonic_ids = {
+            "scale_connection",
+            "chord_tone_targeting",
+            "guide_tones",
+            "deep_harmony",
+            "voice_leading",
+            "pentatonic_focus",
+        }
+        candidates = [r for r in results if r.get("id") not in _harmonic_ids]
+        if not candidates:
+            candidates = []
+        if candidates:
+            weakest = min(
+                candidates,
+                key=lambda r: int(r.get("score") or 0) if r.get("score") is not None else 0,
+            )
+            weakest["tips"] = dedupe_recommendations(list(weakest.get("tips") or []) + shared_tips, limit=4)
+            if not weakest.get("drill") and weakest.get("tips"):
+                weakest["drill"] = str(weakest["tips"][0])
     return results
 
 
@@ -920,8 +995,11 @@ def build_mission_recommendation(
     from analysis_coach_quality import has_song_form_context
 
     if not mission_results:
-        return "Select improvisation missions above, then upload a take for goal-specific feedback."
-    weakest = min(mission_results, key=lambda x: x["score"])
+        return "Select Evaluating Criteria above, then upload a take for criterion-specific feedback."
+    weakest = min(
+        mission_results,
+        key=lambda x: int(x["score"]) if x.get("score") is not None else 0,
+    )
     bpm = int(ctx.get("practice_bpm") or 70)
     section_hint = ""
     if has_song_form_context(ctx):
@@ -965,16 +1043,25 @@ def analyze_improvisation_missions(
     if not results:
         return {**empty, "musical_metrics": metrics}
 
-    ranked = sorted(results, key=lambda x: x["score"])
+    ranked = sorted(
+        results,
+        key=lambda x: int(x["score"]) if x.get("score") is not None else 0,
+    )
     weakest = ranked[0]
     strongest = ranked[-1]
-    avg = sum(r["score"] for r in results) / len(results)
+    scored = [r for r in results if r.get("score") is not None]
+    avg = (sum(int(r["score"]) for r in scored) / len(scored)) if scored else 0
     overall = int(round(avg))
 
+    mission_eval = bool(ctx.get("mission_evaluation_active"))
+    if mission_eval:
+        overall_line = f"Overall improvisation score: **{overall}%**."
+    else:
+        overall_line = f"Overall selected-criteria assessment: **{overall}%**."
     summary = (
         f"Evaluated {len(results)} criteria against **{ctx.get('song') or 'your take'}** "
         f"({ctx.get('display_key') or ''}, {ctx.get('instrument') or ''}). "
-        f"Overall improvisation score: **{overall}%**. "
+        f"{overall_line} "
         f"Strongest: **{strongest['label']}** ({strongest['score']}%). "
         f"Grow next: **{weakest['label']}** ({weakest['score']}%)."
     )

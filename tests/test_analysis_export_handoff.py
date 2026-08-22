@@ -301,7 +301,8 @@ class TestAnalysisExportHandoff(unittest.TestCase):
         self.assertIn("apply_pending_multitrack_export_analysis", bootstrap_source)
         self.assertIn("Multitrack mix", app_source)
         self.assertIn("upload_analysis_modes", app_source)
-        self.assertIn("WORKFLOW_OPTIONS", app_source)
+        # WORKFLOW_OPTIONS is SSOT in upload_analysis_modes; the app imports helpers.
+        self.assertIn("WORKFLOW_OPTIONS", modes_source)
         self.assertIn("Multitrack recording", modes_source)
         self.assertNotIn(MULTITRACK_RECORDING_LEGACY, WORKFLOW_OPTIONS)
         self.assertNotIn("Multitrack comparison", app_source)

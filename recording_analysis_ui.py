@@ -228,13 +228,8 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         from mission_analysis_ui import render_mission_analysis_html
 
         mission_html = render_mission_analysis_html(result)
-        for m in result.get("mission_results") or []:
-            tips = m.get("tips") or []
-            if tips:
-                plan_items += "".join(
-                    f"<li><strong>{_esc(m.get('label', ''))}:</strong> {_esc(t)}</li>"
-                    for t in tips[:2]
-                )
+        # Criterion tips already appear in Selected Evaluating Criteria cards — do not
+        # duplicate them into Recommended next practice.
 
     focus_blocks_html = ""
     focus_blocks = (
@@ -264,6 +259,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
   <summary><span>{foc}</span><span class="ra-badge">{assessment}</span></summary>
   <div class="ra-section-body">
     {"<strong>What was detected</strong><ul>" + findings + "</ul>" if findings else ""}
+    {("<p><strong>Evidence confidence:</strong> " + _esc(block.get("attribution_confidence") or "") + "</p>") if block.get("attribution_confidence") else ""}
     {"<p><strong>What went well:</strong> " + went + "</p>" if went else ""}
     {"<p><strong>To improve:</strong> " + improve + "</p>" if improve else ""}
     {"<p><strong>Drill:</strong> " + drill + "</p>" if drill else ""}
@@ -399,7 +395,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
   <div class="ra-card">
     <h3>Recommended next practice</h3>
     <ul class="ra-plan">{plan_items}</ul>
-    {f'<p class="ra-muted">{_esc(result.get("mission_next_recommendation", ""))}</p>' if result.get("mission_next_recommendation") else ""}
+    {"" if mission_html else (f'<p class="ra-muted">{_esc(result.get("mission_next_recommendation", ""))}</p>' if result.get("mission_next_recommendation") else "")}
   </div>
 </div>
 """

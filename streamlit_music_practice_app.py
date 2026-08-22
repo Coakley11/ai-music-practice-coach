@@ -14580,40 +14580,9 @@ elif _studio_page == "analysis":
                         render_analysis_dashboard(last),
                         unsafe_allow_html=True,
                     )
-                    mission_rows = last.get("mission_results") or []
-                    if mission_rows:
-                        from analysis_coach_quality import (
-                            criteria_overall_score_label,
-                            criteria_report_heading,
-                        )
-
-                        _mission_eval = bool(last.get("mission_evaluation_active"))
-                        st.markdown(
-                            f"#### {criteria_report_heading(mission_evaluation_active=_mission_eval)}"
-                        )
-                        overall = last.get("overall_improv_score")
-                        if overall:
-                            st.metric(
-                                criteria_overall_score_label(
-                                    mission_evaluation_active=_mission_eval
-                                ),
-                                f"{overall}%",
-                            )
-                        _detail_label = (
-                            "AI mission feedback (detail)"
-                            if _mission_eval
-                            else "AI criteria feedback (detail)"
-                        )
-                        with st.expander(_detail_label, expanded=True):
-                            for m in mission_rows:
-                                st.markdown(f"#### {m.get('label', '')} — {m.get('score', 0)}%")
-                                st.markdown(m.get("summary", ""))
-                                if m.get("went_well"):
-                                    st.success(f"**What went well:** {m.get('went_well')}")
-                                if m.get("improve_to"):
-                                    st.warning(f"**To improve:** {m.get('improve_to')}")
-                                for tip in m.get("tips") or []:
-                                    st.markdown(f"- {tip}")
+                    # Selected Evaluating Criteria cards already render inside the dashboard
+                    # HTML (render_mission_analysis_html). Do not emit a second Streamlit
+                    # "Selected Evaluating Criteria" section here.
                     if st.session_state.get("last_analysis_audio"):
                         with st.expander("Playback — analyzed take", expanded=False):
                             st.audio(st.session_state["last_analysis_audio"], format="audio/wav")

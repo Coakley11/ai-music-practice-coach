@@ -134,6 +134,28 @@ def _energy_trajectory_note(features: Any) -> str:
         return ""
 
 
+
+def _is_mixed_backing(ctx: dict[str, Any] | None) -> bool:
+    ctx = dict(ctx or {})
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    return "backing" in rtype or bool(ctx.get("backing_track_context"))
+
+
+def _mixed_backing_subject(ctx: dict[str, Any] | None, target: str = "") -> str:
+    if _is_mixed_backing(ctx):
+        return "The mixed recording"
+    return (str(target or "").strip() or "This take")
+
+
+def _mixed_attribution_confidence(ctx: dict[str, Any] | None, *, family: str = "") -> str:
+    if not _is_mixed_backing(ctx):
+        return "High target attribution (no backing track in this take)."
+    return (
+        "Limited/moderate target attribution — onset/spectrum/RMS/pitch-class evidence may "
+        "partly reflect the backing track as well as the target instrument."
+    )
+
+
 def build_layer_arrangement_context(
     ctx: dict[str, Any] | None,
     *,
@@ -297,7 +319,7 @@ def _scales_focus_block(
 
         if mapped is not None and mapped >= 70:
             went_well = (
-                f"{target or 'This layer'} shows strong tonal alignment with "
+                f"{_mixed_backing_subject(ctx, target)} shows strong tonal alignment with "
                 f"{song_name or 'the selected song'}'s scale/harmony."
             )
             improve_to = (
@@ -306,7 +328,7 @@ def _scales_focus_block(
             )
         elif mapped is not None and mapped >= 50:
             went_well = (
-                f"{target or 'This layer'} has usable scale material inside "
+                f"{_mixed_backing_subject(ctx, target)} has usable scale material inside "
                 f"{song_name or 'the selected song'}, with room to fit local chords more tightly."
             )
             improve_to = (
@@ -315,7 +337,7 @@ def _scales_focus_block(
             )
         else:
             went_well = (
-                f"{target or 'This layer'} establishes pitch material to reshape toward "
+                f"{_mixed_backing_subject(ctx, target)} establishes pitch material to reshape toward "
                 f"{song_name or 'the selected song'}'s harmony."
             )
             improve_to = (
@@ -362,7 +384,7 @@ def _scales_focus_block(
                 "center pitch as a song key."
             )
         went_well = (
-            f"{target or 'This layer'} provides pitch material for scale practice."
+            f"{_mixed_backing_subject(ctx, target)} provides pitch material for scale practice."
         )
         improve_to = (
             "Choose an exercise key deliberately, then isolate one scale pattern for an 8-bar loop."
@@ -462,17 +484,17 @@ def build_target_layer_focus_analysis(
                 )
             if onset_strength >= 1.2 and groove >= 0.45:
                 went_well = (
-                    f"{target or 'This layer'} shows clear, intentional attacks with useful "
+                    f"{_mixed_backing_subject(ctx, target)} shows clear, intentional attacks with useful "
                     "contrast between notes."
                 )
             elif onset_strength >= 0.8:
                 went_well = (
-                    f"{target or 'This layer'} produces audible attacks — a usable articulation "
+                    f"{_mixed_backing_subject(ctx, target)} produces audible attacks — a usable articulation "
                     "foundation is present."
                 )
             else:
                 went_well = (
-                    f"{target or 'This layer'} has a starting articulation profile, but attacks "
+                    f"{_mixed_backing_subject(ctx, target)} has a starting articulation profile, but attacks "
                     "are often soft or blended."
                 )
             if onset_strength < 0.9 or groove < 0.4:
@@ -512,12 +534,12 @@ def build_target_layer_focus_analysis(
                     pass
             if mapped is not None and mapped >= 70:
                 went_well = (
-                    f"{target or 'This layer'} keeps a relatively consistent tone color through "
+                    f"{_mixed_backing_subject(ctx, target)} keeps a relatively consistent tone color through "
                     "the take."
                 )
             else:
                 went_well = (
-                    f"{target or 'This layer'} establishes a recognizable tone center to refine."
+                    f"{_mixed_backing_subject(ctx, target)} establishes a recognizable tone center to refine."
                 )
             if mapped is not None and mapped < 70:
                 improve_to = (
@@ -559,7 +581,7 @@ def build_target_layer_focus_analysis(
                 )
             if dyn_flat < 0.55 and dyn_range > 0:
                 went_well = (
-                    f"{target or 'This layer'} shows usable dynamic contrast between softer and "
+                    f"{_mixed_backing_subject(ctx, target)} shows usable dynamic contrast between softer and "
                     "louder regions."
                 )
                 improve_to = (
@@ -568,7 +590,7 @@ def build_target_layer_focus_analysis(
                 )
             elif dyn_range > 0:
                 went_well = (
-                    f"{target or 'This layer'} has some amplitude variation to shape more deliberately."
+                    f"{_mixed_backing_subject(ctx, target)} has some amplitude variation to shape more deliberately."
                 )
                 improve_to = (
                     "Widen intentional dynamic contrast: softer approaches, fuller phrase peaks, "
@@ -576,7 +598,7 @@ def build_target_layer_focus_analysis(
                 )
             else:
                 went_well = (
-                    f"{target or 'This layer'} holds a steady energy level — a clean base for "
+                    f"{_mixed_backing_subject(ctx, target)} holds a steady energy level — a clean base for "
                     "adding contrast."
                 )
                 improve_to = (
@@ -591,9 +613,9 @@ def build_target_layer_focus_analysis(
         elif "phras" in fl:
             findings.extend(str(x) for x in (musicality_cat.get("findings") or [])[:3])
             went_well = (
-                f"{target or 'This layer'} shows phrase shape you can build on."
+                f"{_mixed_backing_subject(ctx, target)} shows phrase shape you can build on."
                 if (mapped or 0) >= 65
-                else f"{target or 'This layer'} has phrase material — contour can be clearer."
+                else f"{_mixed_backing_subject(ctx, target)} has phrase material — contour can be clearer."
             )
             improve_to = (
                 "Shape longer arcs: breathe/plan destinations, leave space, and vary density."
@@ -612,9 +634,9 @@ def build_target_layer_focus_analysis(
             if groove:
                 findings.append(f"Groove tightness estimate ≈ {groove * 100:.0f}%.")
             went_well = (
-                f"{target or 'This layer'} locks usefully with the pulse."
+                f"{_mixed_backing_subject(ctx, target)} locks usefully with the pulse."
                 if (mapped or 0) >= 65
-                else f"{target or 'This layer'} has a rhythmic outline to tighten."
+                else f"{_mixed_backing_subject(ctx, target)} has a rhythmic outline to tighten."
             )
             improve_to = (
                 "Place entrances and releases more deliberately against the grid or click."
@@ -631,7 +653,7 @@ def build_target_layer_focus_analysis(
         else:
             # Generic Focus: still explicit, without inventing unsupported scores.
             went_well = (
-                f"{target or 'This layer'} was analyzed with {focus} as an explicit coaching goal."
+                f"{_mixed_backing_subject(ctx, target)} was analyzed with {focus} as an explicit coaching goal."
             )
             improve_to = (
                 f"On the next take, isolate {focus} for one deliberate 8-bar loop before free playing."
@@ -667,6 +689,27 @@ def build_target_layer_focus_analysis(
                 "drill": drill,
             }
         )
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        fl = str(block.get("focus") or "").lower()
+        family = (
+            "scales" if "scale" in fl else
+            "tone" if "tone" in fl else
+            "articulation" if "articulation" in fl else
+            "dynamics" if "dynamic" in fl else
+            "general"
+        )
+        block["attribution_confidence"] = _mixed_attribution_confidence(ctx, family=family)
+        if _is_mixed_backing(ctx):
+            findings = list(block.get("findings") or [])
+            if not any("mixed" in str(x).lower() or "backing" in str(x).lower() for x in findings):
+                findings.append(
+                    "Mixed-recording note: treat target-instrument attribution with limited "
+                    "confidence unless an isolated stem is available."
+                )
+            block["findings"] = findings
+
     return blocks
 
 
