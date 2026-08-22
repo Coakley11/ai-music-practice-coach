@@ -463,17 +463,37 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
         tips.append(f"Loop chorus entrances at {max(50, bpm_hint - 18)} BPM with one-bar count-in.")
     elif f.tempo_drift_pct < -6:
         findings.append("Tempo relaxes as the take goes on — watch dragging in transitions.")
-        tips.append("Practice with metronome on beats 2 & 4 only to lock groove without over-tensing.")
+        from analysis_coach_quality import (
+            instrument_family,
+            meter_aware_groove_click_tip,
+            resolve_analysis_meter,
+        )
+
+        tips.append(
+            meter_aware_groove_click_tip(
+                resolve_analysis_meter(ctx),
+                family=instrument_family(str(ctx.get("instrument") or "")),
+            )
+        )
 
     if f.groove_tightness < 0.35:
         findings.append("Attacks don't always line up with the beat grid — subdivision control can tighten.")
-        from analysis_coach_quality import instrument_family
+        from analysis_coach_quality import (
+            instrument_family,
+            meter_aware_subdivision_drill,
+            resolve_analysis_meter,
+        )
 
         fam = instrument_family(str(ctx.get("instrument") or ""))
         if fam == "guitar":
             tips.append("Strumming subdivision exercise: 8ths on one chord, mute between downbeats.")
         else:
-            tips.append("Subdivision exercise: even 8ths on one pitch, rest on beats 2 and 4.")
+            tips.append(
+                meter_aware_subdivision_drill(
+                    resolve_analysis_meter(ctx),
+                    family=fam,
+                )
+            )
     elif f.groove_tightness > 0.55:
         findings.append("Strong groove feel — attacks align well with the pulse.")
 
@@ -719,9 +739,11 @@ def _musicality_analysis(f: AudioFeatures) -> dict[str, Any]:
         tail = float(np.mean(f.energy_curve[len(f.energy_curve) // 2 :]))
         head = float(np.mean(f.energy_curve[: len(f.energy_curve) // 2]))
         if tail > head * 1.1:
-            findings.append("Energy builds through the take — confidence grows after the intro.")
+            findings.append(
+                "Energy builds through the take — confidence grows after the opening portion of the take."
+            )
         elif tail < head * 0.9:
-            findings.append("Energy tapers — performance may sound hesitant in later sections.")
+            findings.append("Energy tapers — performance may sound hesitant later in the take.")
 
     tips.append("Musicality drill: play the same 4 bars at three dynamic levels without changing tempo.")
 
@@ -917,10 +939,14 @@ def build_practice_plan(
                     + ": center each note before connecting the scale."
                 )
         elif name == "groove":
-            if fam == "guitar":
-                plan.append("Subdivision exercise: clap 8ths, mute on 2 & 4, then play on guitar.")
-            else:
-                plan.append("Subdivision exercise: clap 8ths, rest on 2 & 4, then play the phrase.")
+            from analysis_coach_quality import meter_aware_subdivision_drill, resolve_analysis_meter
+
+            plan.append(
+                meter_aware_subdivision_drill(
+                    resolve_analysis_meter(ctx),
+                    family=fam,
+                )
+            )
         elif name == "technique":
             if fam == "guitar":
                 plan.append(f"{inst} transition loop — 2 chords, 2 bars each, zero buzz.")
@@ -1101,7 +1127,8 @@ def _apply_context_emphasis_to_categories(
         ),
         "groove": (
             "Timing/groove deep-dive: place attacks relative to the pocket, not only average tempo.",
-            "Play with click on 2 & 4; feel backbeat before adding fills.",
+            # Tip filled below with meter-aware wording once ctx meter is known.
+            "Play with a metronome on the main pulse; feel the groove before adding fills.",
         ),
         "scale": (
             "Scale/mode usage deep-dive: choose tones that fit chord function, not scale-run autopilot.",
@@ -1125,6 +1152,17 @@ def _apply_context_emphasis_to_categories(
                     f"Evaluating Criteria emphasis ({label}): deepen coaching on this category while keeping all baseline scores.",
                     f"Next take: one intentional loop focusing on {label} only.",
                 )
+                if cat == "groove" or "groove" in label or "timing" in label:
+                    from analysis_coach_quality import (
+                        meter_aware_groove_click_tip,
+                        resolve_analysis_meter,
+                        instrument_family,
+                    )
+
+                    tip = meter_aware_groove_click_tip(
+                        resolve_analysis_meter(ctx),
+                        family=instrument_family(str(ctx.get("instrument") or "")),
+                    )
                 out[cat]["findings"].insert(0, finding)
                 out[cat]["tips"].insert(0, tip)
                 placed = True
@@ -1286,6 +1324,12 @@ def analyze_recording(
         instrument = str(ctx.get("instrument") or "Piano")
         scores = compute_performance_scores(features, instrument)
 
+        from analysis_coach_quality import (
+            instrument_family as _inst_fam,
+            meter_aware_groove_click_tip,
+            resolve_analysis_meter,
+        )
+
         categories = {
             "timing": {**_timing_analysis(features, ctx), "score": scores["timing"]},
             "pitch": {**_pitch_analysis(features, instrument, ctx), "score": scores["pitch"]},
@@ -1297,7 +1341,12 @@ def analyze_recording(
                     f"Groove tightness estimate: {features.groove_tightness * 100:.0f}% of attacks near beat.",
                     "Strong pocket = listener trusts the time.",
                 ],
-                "tips": ["Play with the metronome on 2 & 4; feel the backbeat before adding fills."],
+                "tips": [
+                    meter_aware_groove_click_tip(
+                        resolve_analysis_meter(ctx),
+                        family=_inst_fam(instrument),
+                    )
+                ],
                 "score": scores["groove"],
             },
             "confidence": {

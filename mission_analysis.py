@@ -547,13 +547,23 @@ def _mission_feedback(
         )
 
     if mission.id == "timing_groove":
+        from analysis_coach_quality import (
+            meter_aware_groove_click_tip,
+            resolve_analysis_meter,
+            instrument_family,
+        )
+
         if score >= 75:
             return (
                 "Your time feels steady and grooves with the pulse.",
                 f"Groove ({metrics.get('groove_consistency', 0):.0f}/100) and timing ({metrics.get('timing_stability', 0):.0f}/100) are solid.",
             )
+        tip = meter_aware_groove_click_tip(
+            resolve_analysis_meter(ctx),
+            family=instrument_family(str(ctx.get("instrument") or "")),
+        )
         return (
-            "Rhythm wavers against the beat — practice with metronome on 2 & 4 first.",
+            f"Rhythm wavers against the beat — {tip}",
             "Clap the groove, then play only long tones in time before restoring the phrase.",
         )
 

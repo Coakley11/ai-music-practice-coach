@@ -358,6 +358,127 @@ def has_song_form_context(ctx: dict[str, Any] | None) -> bool:
     return bool(_named_song_sections(ctx))
 
 
+def has_audio_form_timeline_alignment(ctx: dict[str, Any] | None) -> bool:
+    """True only when audio timestamps are aligned to song-form sections.
+
+    Catalog form metadata alone (Intro/Verse/Chorus labels) is NOT alignment.
+    """
+    ctx = dict(ctx or {})
+    if ctx.get("audio_form_timeline_aligned") is True:
+        return True
+    if ctx.get("form_timeline_alignment") is True:
+        return True
+    stamps = ctx.get("section_timestamps") or ctx.get("form_section_timestamps")
+    if isinstance(stamps, (list, tuple, dict)) and stamps:
+        return True
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        if song_ctx.get("audio_form_timeline_aligned") is True:
+            return True
+        nested = song_ctx.get("section_timestamps") or song_ctx.get("form_section_timestamps")
+        if isinstance(nested, (list, tuple, dict)) and nested:
+            return True
+    return False
+
+
+def has_chord_timeline_alignment(ctx: dict[str, Any] | None) -> bool:
+    """True only when played pitches are scored against time-aligned active chords.
+
+    A chord-progression list / union pool alone is NOT chord-by-chord alignment.
+    """
+    ctx = dict(ctx or {})
+    if ctx.get("chord_timeline_aligned") is True:
+        return True
+    if ctx.get("audio_chord_timeline_aligned") is True:
+        return True
+    timeline = ctx.get("chord_timeline") or ctx.get("active_chord_timeline")
+    if isinstance(timeline, (list, tuple)) and timeline:
+        return True
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        if song_ctx.get("chord_timeline_aligned") is True:
+            return True
+        nested = song_ctx.get("chord_timeline") or song_ctx.get("active_chord_timeline")
+        if isinstance(nested, (list, tuple)) and nested:
+            return True
+    return False
+
+
+def resolve_analysis_meter(ctx: dict[str, Any] | None) -> str:
+    """Best-effort meter string from analysis context / selected song."""
+    ctx = dict(ctx or {})
+    for key in ("time_signature", "meter", "song_meter"):
+        raw = str(ctx.get(key) or "").strip()
+        if raw:
+            return raw.replace(" ", "")
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        for key in ("time_signature", "meter"):
+            raw = str(song_ctx.get(key) or "").strip()
+            if raw:
+                return raw.replace(" ", "")
+    return ""
+
+
+def meter_aware_groove_click_tip(meter: str = "", *, family: str = "") -> str:
+    """Groove click/metronome tip that respects simple vs compound meter.
+
+    4/4-style backbeat ("2 & 4") is appropriate for simple duple meters.
+    6/8 / 9/8 / 12/8 use two (or three/four) large dotted-quarter pulses — not 2 & 4.
+    """
+    meter_l = str(meter or "").strip().lower().replace(" ", "")
+    fam = str(family or "").strip().lower()
+    if meter_l in {"6/8", "6|8"} or meter_l.startswith("6/8"):
+        return (
+            "Feel two big dotted-quarter pulses per bar (groups 1–2–3 / 4–5–6); "
+            "put the metronome on the two main pulses (around 1 and 4), then restore the phrase."
+        )
+    if meter_l in {"9/8", "9|8"} or meter_l.startswith("9/8"):
+        return (
+            "Feel three big dotted-quarter pulses per bar; "
+            "put the metronome on those main pulses before adding fills."
+        )
+    if meter_l in {"12/8", "12|8"} or meter_l.startswith("12/8"):
+        return (
+            "Feel four big dotted-quarter pulses per bar; "
+            "put the metronome on the large pulses before adding fills."
+        )
+    if meter_l in {"3/4", "3|4"} or meter_l.startswith("3/4"):
+        return (
+            "Feel the three-beat waltz pulse; "
+            "put the metronome on all three beats (or emphasize beat 1) before adding fills."
+        )
+    if meter_l in {"2/4", "2|4"} or meter_l.startswith("2/4"):
+        return (
+            "Feel the two-beat pulse; put the metronome on both beats before adding fills."
+        )
+    # Default / 4/4 / simple duple — backbeat coaching is appropriate.
+    if fam == "guitar":
+        return "Play with the metronome on 2 & 4; feel the backbeat before adding fills."
+    return "Play with the metronome on 2 & 4; feel the backbeat before adding fills."
+
+
+def meter_aware_subdivision_drill(meter: str = "", *, family: str = "") -> str:
+    """Subdivision drill wording that avoids 4/4-only 2 & 4 language in compound meters."""
+    meter_l = str(meter or "").strip().lower().replace(" ", "")
+    fam = str(family or "").strip().lower()
+    if meter_l in {"6/8", "6|8"} or meter_l.startswith("6/8"):
+        if fam == "guitar":
+            return (
+                "Subdivision exercise: clap the two big pulses (1 and 4), mute between them, "
+                "then play on guitar."
+            )
+        return (
+            "Subdivision exercise: clap the two big pulses (1 and 4), rest between them, "
+            "then play the phrase."
+        )
+    if meter_l in {"3/4", "3|4"} or meter_l.startswith("3/4"):
+        return "Subdivision exercise: clap all three waltz beats evenly, then play the phrase."
+    if fam == "guitar":
+        return "Subdivision exercise: clap 8ths, mute on 2 & 4, then play on guitar."
+    return "Subdivision exercise: clap 8ths, rest on 2 & 4, then play the phrase."
+
+
 def instrument_family(instrument: str) -> str:
     text = str(instrument or "").strip().lower()
     if not text:

@@ -298,12 +298,14 @@ def _scales_focus_block(
             )
         if chord_tone is not None:
             findings.append(
-                f"Chord-tone hit rate vs selected-song chords ≈ {float(chord_tone):.0f}%."
+                f"Harmonic-material overlap with the selected song ≈ {float(chord_tone):.0f}% "
+                "(detected pitch classes vs the union of tones from the song's chord symbols — "
+                "not a timestamp-aligned chord-by-chord hit rate)."
             )
         if guide_tone is not None:
             findings.append(
-                f"Guide-tone usage vs selected-song harmony ≈ {float(guide_tone):.0f}% "
-                "(3rds; 7ths only where the chord symbol includes them)."
+                f"Guide-tone material overlap across the selected song harmony ≈ {float(guide_tone):.0f}% "
+                "(3rds / encoded 7ths pooled from the progression — not per-active-chord timeline usage)."
             )
         if scale_adh is None and chord_tone is None:
             findings.append(
@@ -611,7 +613,25 @@ def build_target_layer_focus_analysis(
             )
             assessment = label
         elif "phras" in fl:
-            findings.extend(str(x) for x in (musicality_cat.get("findings") or [])[:3])
+            from analysis_coach_quality import has_audio_form_timeline_alignment
+
+            raw_findings = [str(x) for x in (musicality_cat.get("findings") or [])[:3]]
+            aligned = has_audio_form_timeline_alignment(ctx)
+            for text in raw_findings:
+                low = text.lower()
+                if not aligned and (
+                    "after the intro" in low
+                    or "after the intro" in low
+                    or "into chorus" in low
+                    or "into the chorus" in low
+                ):
+                    text = (
+                        text.replace("after the intro", "after the opening portion of the take")
+                        .replace("After the intro", "After the opening portion of the take")
+                        .replace("into chorus", "later in the take")
+                        .replace("into the chorus", "later in the take")
+                    )
+                findings.append(text)
             went_well = (
                 f"{_mixed_backing_subject(ctx, target)} shows phrase shape you can build on."
                 if (mapped or 0) >= 65
@@ -629,7 +649,42 @@ def build_target_layer_focus_analysis(
                 if mapped is not None
                 else "Qualitative phrasing read"
             )
+        elif "ear" in fl and "train" in fl:
+            # Ear Training is qualitative unless a dedicated recognition task was captured.
+            mapped = None
+            song_ctx = ctx.get("selected_song_analysis_context")
+            if not isinstance(song_ctx, dict):
+                song_ctx = {}
+            song_key = str(song_ctx.get("key") or ctx.get("display_key") or "").strip() or "the song key"
+            chords = [
+                str(c).strip()
+                for c in (song_ctx.get("chord_progression") or ctx.get("target_chords") or [])
+                if str(c).strip()
+            ]
+            chord_bit = " → ".join(chords[:4]) if chords else song_key
+            findings = [
+                "Limited direct Ear Training evidence from this recording.",
+                "The take provides pitch/harmonic material that can support an ear-training exercise.",
+                "No dedicated call-and-response / pitch-recognition / interval-matching task was captured.",
+            ]
+            went_well = ""
+            improve_to = (
+                "This take does not directly measure Ear Training strongly enough for a numeric score. "
+                "Use a short sing-then-play recognition loop next."
+            )
+            drill = (
+                f"Ear Training drill: sing then play scale degrees in {song_key}; "
+                f"hear-and-match 1–3–5–7; sing chord roots of {chord_bit} before playing; "
+                "identify whether a target note is root / 3rd / 5th against a held chord."
+            )
+            assessment = "Limited direct evidence — qualitative Ear Training coaching (no numeric meter)"
         elif "timing" in fl or "rhythm" in fl or "groove" in fl:
+            from analysis_coach_quality import (
+                meter_aware_groove_click_tip,
+                resolve_analysis_meter,
+                instrument_family,
+            )
+
             findings.extend(str(x) for x in (timing_cat.get("findings") or [])[:3])
             if groove:
                 findings.append(f"Groove tightness estimate ≈ {groove * 100:.0f}%.")
@@ -641,9 +696,9 @@ def build_target_layer_focus_analysis(
             improve_to = (
                 "Place entrances and releases more deliberately against the grid or click."
             )
-            drill = (
-                f"{target or 'Layer'} rhythm drill: entrances on beat 1 only for 8 bars, then "
-                "restore the phrase against a click."
+            drill = meter_aware_groove_click_tip(
+                resolve_analysis_meter(ctx),
+                family=instrument_family(str(target or ctx.get("instrument") or "")),
             )
             assessment = (
                 f"{mapped}/100 (timing/groove proxy)"
