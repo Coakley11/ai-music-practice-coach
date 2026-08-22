@@ -236,6 +236,47 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
                     for t in tips[:2]
                 )
 
+    focus_blocks_html = ""
+    focus_blocks = result.get("target_layer_focus_analysis") or []
+    if isinstance(focus_blocks, list) and focus_blocks:
+        target_name = _esc(
+            result.get("target_layer") or result.get("instrument") or "Target layer"
+        )
+        block_parts: list[str] = []
+        for block in focus_blocks:
+            if not isinstance(block, dict):
+                continue
+            foc = _esc(block.get("focus") or "Focus")
+            assessment = _esc(block.get("assessment") or "")
+            findings = "".join(
+                f"<li>{_esc(x)}</li>" for x in (block.get("findings") or []) if str(x).strip()
+            )
+            went = _esc(block.get("went_well") or "")
+            improve = _esc(block.get("improve_to") or "")
+            drill = _esc(block.get("drill") or "")
+            block_parts.append(
+                f"""
+<details class="ra-section" open>
+  <summary><span>{foc}</span><span class="ra-badge">{assessment}</span></summary>
+  <div class="ra-section-body">
+    {"<strong>What was detected</strong><ul>" + findings + "</ul>" if findings else ""}
+    {"<p><strong>What went well:</strong> " + went + "</p>" if went else ""}
+    {"<p><strong>To improve:</strong> " + improve + "</p>" if improve else ""}
+    {"<p><strong>Drill:</strong> " + drill + "</p>" if drill else ""}
+  </div>
+</details>"""
+            )
+        arrangement = str(result.get("layer_arrangement_context") or "").strip()
+        arrangement_html = (
+            f"<p class='ra-muted'>{_esc(arrangement)}</p>" if arrangement else ""
+        )
+        focus_blocks_html = f"""
+  <div class="ra-card" style="margin-bottom:14px">
+    <h3>Target layer focus analysis — {target_name}</h3>
+    {arrangement_html}
+    {"".join(block_parts)}
+  </div>"""
+
     tempo_line = ""
     tempo_val = result.get("tempo")
     if tempo_val is not None:
@@ -249,6 +290,11 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     duration = float(result.get("duration", 0) or 0)
     duration_text = _esc(f"{duration:.1f}s")
     instrument_text = _esc(result.get("instrument", ""))
+    target_pill = ""
+    if result.get("target_layer"):
+        target_pill = (
+            f"<span class='ra-pill focus'>Layer: {_esc(result.get('target_layer'))}</span>"
+        )
 
     return f"""
 {ANALYSIS_CSS}
@@ -259,10 +305,13 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <div class="ra-pills">
       {tempo_line}
       <span class="ra-pill">{duration_text} · {instrument_text}</span>
+      {target_pill}
       <span class="ra-pill issue">⚠ {_esc(result.get('biggest_issue', ''))}</span>
       <span class="ra-pill focus">→ {_esc(result.get('next_focus', ''))}</span>
     </div>
   </div>
+
+  {focus_blocks_html}
 
   <div class="ra-card" style="margin-bottom:14px">
     <h3>Playback timeline</h3>

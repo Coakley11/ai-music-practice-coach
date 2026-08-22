@@ -919,9 +919,12 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
             "then apply Evaluating Criteria inside that restriction."
         )
     elif rtype == RECORDING_TYPE_MT_LAYER:
+        target = str(snap.get("target_layer") or "").strip()
         notes.append(
-            "This is a Multitrack Layer — evaluate the selected part for timing, role fulfillment, "
-            "placement, and how it supports the arrangement."
+            "This is a Multitrack Layer — analyze only the uploaded target-layer audio for "
+            "timing, role fulfillment, placement, and how it supports the arrangement. "
+            "Other project instruments are context, not heard performances."
+            + (f" Target layer: **{target}**." if target else "")
         )
     elif rtype == RECORDING_TYPE_MT_MIX:
         notes.append(
@@ -933,18 +936,48 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
     practice_focuses = coerce_focus_list(snap.get("practice_focuses") or snap.get("practice_focus"))
     snap_instruments = _as_list(snap.get("instruments"))
     multi_instrument = len(instrument_focuses) > 1 or len(snap_instruments) > 1
-    if multi_instrument and instrument_focuses:
+    if rtype == RECORDING_TYPE_MT_LAYER:
+        target = str(snap.get("target_layer") or "").strip()
+        target_focuses = coerce_focus_list(
+            instrument_focuses.get(target) if target else None
+        ) or practice_focuses
+        if target and target_focuses:
+            notes.append(
+                f"Target-layer Practice Focuses for **{target}**: "
+                f"**{format_focus_list(target_focuses)}** — analyze each Focus explicitly "
+                "from the uploaded layer audio."
+            )
+        context_bits = []
+        for inst, foc_list in instrument_focuses.items():
+            if not inst or inst == target:
+                continue
+            if foc_list:
+                context_bits.append(f"**{inst}** → {format_focus_list(foc_list)}")
+        if context_bits:
+            notes.append(
+                "Project-instrument Focuses (arrangement context only — not scored without "
+                "their own audio): " + "; ".join(context_bits) + "."
+            )
+    elif multi_instrument and instrument_focuses:
         mapped_bits = []
         for inst, foc_list in instrument_focuses.items():
             if foc_list:
                 mapped_bits.append(f"**{inst}** → {format_focus_list(foc_list)}")
             else:
                 mapped_bits.append(f"**{inst}** → (no Practice Focus selected)")
-        notes.append(
-            "Practice Focuses by instrument — "
-            + "; ".join(mapped_bits)
-            + ". Coach each part toward its own intended goals."
-        )
+        if rtype == RECORDING_TYPE_MT_MIX:
+            notes.append(
+                "Practice Focuses by instrument — "
+                + "; ".join(mapped_bits)
+                + ". Use them as ensemble-coaching intent; avoid claiming isolated "
+                "instrument performances unless separate stems support that evidence."
+            )
+        else:
+            notes.append(
+                "Practice Focuses by instrument — "
+                + "; ".join(mapped_bits)
+                + ". Coach each part toward its own intended goals."
+            )
     elif instrument_focuses:
         inst, foc_list = next(iter(instrument_focuses.items()))
         if foc_list:

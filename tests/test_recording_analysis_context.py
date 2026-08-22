@@ -641,6 +641,8 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
 
         src = Path("upload_analysis_setup_ui.py").read_text(encoding="utf-8")
         self.assertIn("{inst} — Practice Focus", src)
+        self.assertIn("Project instruments", src)
+        self.assertIn("Layer being analyzed", src)
         self.assertIn("st.multiselect", src)
         self.assertIn("prepare_instrument_focus_ui", src)
 
@@ -789,6 +791,28 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
         self.assertEqual(ctx.get("focuses"), ["Comping", "Voicings"])
         self.assertEqual(ctx.get("focus"), "Comping")
         self.assertEqual(ctx.get("instrument_focuses"), snap["instrument_focuses"])
+
+    def test_layer_emphasis_notes_keep_non_target_as_context(self) -> None:
+        notes = coach_emphasis_notes(
+            {
+                "workflow": WORKFLOW_MULTITRACK,
+                "recording_type": RECORDING_TYPE_MT_LAYER,
+                "instruments": ["Alto Saxophone", "Guitar"],
+                "target_layer": "Alto Saxophone",
+                "instrument_focuses": {
+                    "Alto Saxophone": ["Articulation", "Tone"],
+                    "Guitar": ["Rhythm Guitar"],
+                },
+                "practice_focuses": ["Articulation", "Tone"],
+            }
+        )
+        joined = " ".join(notes).lower()
+        self.assertIn("alto saxophone", joined)
+        self.assertIn("articulation", joined)
+        self.assertIn("tone", joined)
+        self.assertIn("rhythm guitar", joined)
+        self.assertIn("arrangement context", joined)
+        self.assertNotIn("coach each part toward its own intended goals", joined)
 
     def test_mix_coaching_retains_full_mapping(self) -> None:
         from recording_analysis import analyze_multitrack

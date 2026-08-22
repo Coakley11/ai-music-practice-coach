@@ -673,7 +673,16 @@ def build_practice_plan(
             f"Mission constraint loop: stay inside the mission rule for 8 bars @ {slow} BPM, then widen expression."
         )
     elif "multitrack layer" in rtype:
-        plan.append("Layer role drill: mute other stems and check entrances/releases against the form.")
+        stem_count = int(ctx.get("comparison_stem_count") or ctx.get("uploaded_track_count") or 1)
+        if stem_count >= 2:
+            plan.append(
+                "Layer role drill: mute other stems and check entrances/releases against the form."
+            )
+        else:
+            plan.append(
+                "Practice entrances/releases against a click or project reference track "
+                "(no other stems were uploaded for this Layer take)."
+            )
     elif "multitrack mix" in rtype:
         plan.append("Mix cohesion drill: listen for balance/groove clashes before re-recording a layer.")
 

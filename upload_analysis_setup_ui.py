@@ -228,13 +228,25 @@ def render_upload_analysis_setup(
             session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [options[0]]
         )[0]
 
+    # Recording type is chosen above — branch Multitrack labels by Layer vs Mix.
+    _rtype_for_instruments = str(session_state.get("analysis_recording_type") or "")
+    _is_mt_layer_ui = (
+        is_multitrack_workflow(session_state)
+        and _rtype_for_instruments == RECORDING_TYPE_MT_LAYER
+    )
+
     if is_multitrack_workflow(session_state):
         st.multiselect(
-            "Instrument(s) / parts to evaluate",
+            "Project instruments" if _is_mt_layer_ui else "Instrument(s) / parts in this mix",
             options=options,
             key=ANALYSIS_EVAL_INSTRUMENTS_KEY,
             disabled=identity_locked,
-            help="Which instruments or parts should the coach judge?",
+            help=(
+                "Instruments that belong to this Multitrack project/arrangement. "
+                "You can select one or many — Multitrack Layer does not require multiple instruments."
+                if _is_mt_layer_ui
+                else "Which instruments or parts are in this Multitrack Mix?"
+            ),
         )
         selected_instruments = [
             str(x).strip()
@@ -246,6 +258,28 @@ def render_upload_analysis_setup(
             session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = list(selected_instruments)
         selected_instrument = selected_instruments[0]
         session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = selected_instrument
+        if _is_mt_layer_ui:
+            st.caption(
+                "Project instruments describe the overall arrangement. "
+                "Only the Layer being analyzed is scored from the uploaded audio — "
+                "a single-instrument Layer project is valid."
+            )
+            _layer_options = list(selected_instruments)
+            _current_target = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
+            if _current_target and _current_target not in _layer_options:
+                _layer_options = [_current_target] + _layer_options
+            if session_state.get(ANALYSIS_TARGET_LAYER_KEY) not in _layer_options:
+                session_state[ANALYSIS_TARGET_LAYER_KEY] = _layer_options[0]
+            st.selectbox(
+                "Layer being analyzed",
+                options=_layer_options,
+                key=ANALYSIS_TARGET_LAYER_KEY,
+                disabled=identity_locked,
+                help=(
+                    "The one instrument whose uploaded audio is analyzed. "
+                    "Other project instruments remain arrangement context only."
+                ),
+            )
     else:
         current_inst = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or options[0])
         if current_inst not in options:
@@ -300,10 +334,17 @@ def render_upload_analysis_setup(
             identity_locked=identity_locked,
             single_recording=False,
         )
-        st.caption(
-            "Choose any number of Practice Focuses for each selected instrument/part "
-            "(zero, one, or many)."
-        )
+        _target_for_focus = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
+        if _is_mt_layer_ui:
+            st.caption(
+                "Practice Focuses on the Layer being analyzed are scored from the uploaded audio. "
+                "Focuses on other project instruments are arrangement context only."
+            )
+        else:
+            st.caption(
+                "Choose any number of Practice Focuses for each selected instrument/part "
+                "(zero, one, or many)."
+            )
         for inst in selected_instruments:
             focus_options = list(_focus_options_for_instrument(inst) or []) or ["Improvisation"]
             widget_key = instrument_focus_widget_key(inst)
@@ -316,12 +357,31 @@ def render_upload_analysis_setup(
                 pruned = [f for f in current if f in focus_options]
                 if pruned != current:
                     session_state[widget_key] = pruned
+            _is_target_inst = _is_mt_layer_ui and inst == _target_for_focus
+            _focus_label = (
+                f"{inst} — Practice Focus (layer being analyzed)"
+                if _is_target_inst
+                else (
+                    f"{inst} — Practice Focus (project context)"
+                    if _is_mt_layer_ui
+                    else f"{inst} — Practice Focus"
+                )
+            )
             st.multiselect(
-                f"{inst} — Practice Focus",
+                _focus_label,
                 focus_options,
                 key=widget_key,
                 disabled=identity_locked,
-                help=f"Any number of Practice Focuses for {inst} on this Multitrack recording.",
+                help=(
+                    f"These Focuses are analyzed from the uploaded {inst} audio."
+                    if _is_target_inst
+                    else (
+                        f"Arrangement context for {inst} — not scored unless that instrument's "
+                        "audio is uploaded."
+                        if _is_mt_layer_ui
+                        else f"Any number of Practice Focuses for {inst} on this Multitrack recording."
+                    )
+                ),
             )
         instrument_focuses = {
             inst: coerce_focus_list(session_state.get(instrument_focus_widget_key(inst)))
@@ -453,34 +513,7 @@ def render_upload_analysis_setup(
             if bits:
                 st.caption(" · ".join(str(b) for b in bits))
 
-    if is_multitrack_workflow(session_state) and rtype == RECORDING_TYPE_MT_LAYER:
-        _layer_instruments = [
-            str(x).strip()
-            for x in (session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [])
-            if str(x).strip()
-        ]
-        _current_target = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
-        _layer_options = list(_layer_instruments)
-        if _current_target and _current_target not in _layer_options:
-            _layer_options = [_current_target] + _layer_options
-        if not _layer_options:
-            st.warning(
-                "Select at least one instrument above, then choose the target layer to analyze."
-            )
-        else:
-            # Ensure widget value is a valid option (empty legacy text_input must not no-op).
-            if session_state.get(ANALYSIS_TARGET_LAYER_KEY) not in _layer_options:
-                session_state[ANALYSIS_TARGET_LAYER_KEY] = _layer_options[0]
-            st.selectbox(
-                "Target layer instrument",
-                options=_layer_options,
-                key=ANALYSIS_TARGET_LAYER_KEY,
-                disabled=identity_locked,
-                help=(
-                    "Upload one recording for this instrument. "
-                    "Other selected parts are context only."
-                ),
-            )
+    # Layer target is chosen earlier (with Project instruments) for clearer ownership.
 
     return {
         "workflow": str(session_state.get("analysis_mode") or ""),
