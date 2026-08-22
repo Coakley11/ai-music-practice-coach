@@ -14203,7 +14203,8 @@ elif _studio_page == "analysis":
 
                 from upload_media import (
                     PreparedUpload,
-                    UPLOAD_ACCEPT_TYPES,
+                    UPLOAD_AUDIO_FILE_TYPES,
+                    UnsupportedUploadTypeError,
                     VideoExtractionError,
                     is_video_filename,
                 )
@@ -14243,7 +14244,7 @@ elif _studio_page == "analysis":
                 with _capture_expander:
                     analysis_audio = st.file_uploader(
                         "Drop your recording here",
-                        type=UPLOAD_ACCEPT_TYPES,
+                        type=UPLOAD_AUDIO_FILE_TYPES,
                         key="analysis_audio_upload",
                     )
                     try:
@@ -14285,13 +14286,20 @@ elif _studio_page == "analysis":
                                         st.markdown("**Developer · video extraction diagnostics**")
                                         st.json(_vid_exc.meta)
                                     audio_obj = None
+                                except UnsupportedUploadTypeError as _type_exc:
+                                    st.error(str(_type_exc))
+                                    audio_obj = None
                                 except Exception as _vid_exc:
                                     st.warning("Could not extract audio from this video.")
                                     if _developer_mode_enabled():
                                         st.caption(f"Developer · {type(_vid_exc).__name__}: {_vid_exc}")
                                     audio_obj = None
                         else:
-                            audio_obj = PreparedUpload(_raw, _raw_name)
+                            try:
+                                audio_obj = PreparedUpload.from_uploaded(analysis_audio)
+                            except UnsupportedUploadTypeError as _type_exc:
+                                st.error(str(_type_exc))
+                                audio_obj = None
                         if audio_obj is not None:
                             st.session_state["_analysis_upload_prep_sig"] = _sig
                             st.session_state["_analysis_prepared_upload"] = audio_obj
@@ -14645,9 +14653,16 @@ elif _studio_page == "analysis":
                     )
                     _uploader_label = "Ensemble mix or stems"
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
+                from upload_media import (
+                    UPLOAD_AUDIO_FILE_TYPES,
+                    UnsupportedUploadTypeError,
+                    VideoExtractionError,
+                    prepare_multitrack_track_payload,
+                )
+
                 mt_files = st.file_uploader(
                     _uploader_label,
-                    type=["wav", "mp3", "m4a", "ogg"],
+                    type=UPLOAD_AUDIO_FILE_TYPES,
                     accept_multiple_files=True,
                     key="analysis_multitrack_upload",
                 )
@@ -14682,73 +14697,109 @@ elif _studio_page == "analysis":
                         }
                     else:
                         tracks = []
+                        _mt_prep_failed = False
                         for f in (mt_files or [])[:6]:
-                            tracks.append(
-                                {
-                                    "name": f.name,
-                                    "filename": f.name,
-                                    "bytes": f.getvalue(),
-                                    "instrument": "",
-                                }
-                            )
-                        try:
-                            ctx = _prepare_upload_analysis_ctx(_mt_rtype)
-                            from analysis_coach_quality import build_analysis_status_message
-
-                            _mt_spin = build_analysis_status_message(
-                                ctx,
-                                mission_ids=list(ctx.get("mission_ids") or []),
-                                multitrack=True,
-                                session_state=st.session_state,
-                                mission_evaluation_active=bool(
-                                    ctx.get("mission_evaluation_active")
-                                ),
-                            )
-                            with st.spinner(_mt_spin):
-                                mt_result = run_multitrack_upload_analysis(tracks, ctx)
-                            mt_result = _finalize_upload_analysis_result(mt_result, ctx)
-                            st.session_state["last_analysis_result"] = mt_result
-                            if not mt_result.get("ok"):
-                                st.error(
-                                    mt_result.get("message")
-                                    or "Multitrack analysis failed."
-                                )
-                            elif mt_result.get("ok"):
-                                from ai_performance_history import (
-                                    SOURCE_MULTITRACK,
-                                    append_performance_record,
-                                )
-
-                                append_performance_record(
-                                    mt_result, ctx=ctx, source=SOURCE_MULTITRACK
-                                )
+                            _fname = str(getattr(f, "name", None) or "upload.wav")
                             try:
-                                from analysis_session_persistence import save_analysis_session
-                                from music_persistent_state import force_save_music_state
+                                tracks.append(
+                                    prepare_multitrack_track_payload(
+                                        f.getvalue(),
+                                        _fname,
+                                    )
+                                )
+                            except UnsupportedUploadTypeError as _type_exc:
+                                st.error(str(_type_exc))
+                                st.session_state["last_analysis_result"] = {
+                                    "ok": False,
+                                    "multitrack": True,
+                                    "message": str(_type_exc),
+                                    "recording_type": _mt_rtype,
+                                }
+                                _mt_prep_failed = True
+                                break
+                            except VideoExtractionError as _vid_exc:
+                                st.error(str(_vid_exc))
+                                st.caption(
+                                    "MP4/MOV files need a usable audio track. "
+                                    "Try a shorter clip or re-export with audio."
+                                )
+                                st.session_state["last_analysis_result"] = {
+                                    "ok": False,
+                                    "multitrack": True,
+                                    "message": str(_vid_exc),
+                                    "recording_type": _mt_rtype,
+                                }
+                                _mt_prep_failed = True
+                                break
+                        if _mt_prep_failed:
+                            tracks = []
+                        elif tracks:
+                            try:
+                                ctx = _prepare_upload_analysis_ctx(_mt_rtype)
+                                from analysis_coach_quality import build_analysis_status_message
 
-                                save_analysis_session(st.session_state, st=st)
-                                force_save_music_state(st, reason="analysis_complete")
+                                _mt_spin = build_analysis_status_message(
+                                    ctx,
+                                    mission_ids=list(ctx.get("mission_ids") or []),
+                                    multitrack=True,
+                                    session_state=st.session_state,
+                                    mission_evaluation_active=bool(
+                                        ctx.get("mission_evaluation_active")
+                                    ),
+                                )
+                                with st.spinner(_mt_spin):
+                                    mt_result = run_multitrack_upload_analysis(tracks, ctx)
+                                mt_result = _finalize_upload_analysis_result(mt_result, ctx)
+                                st.session_state["last_analysis_result"] = mt_result
+                                if not mt_result.get("ok"):
+                                    st.error(
+                                        mt_result.get("message")
+                                        or "Multitrack analysis failed."
+                                    )
+                                elif mt_result.get("ok"):
+                                    from ai_performance_history import (
+                                        SOURCE_MULTITRACK,
+                                        append_performance_record,
+                                    )
+
+                                    append_performance_record(
+                                        mt_result, ctx=ctx, source=SOURCE_MULTITRACK
+                                    )
                                 try:
-                                    from media_upload_catalog import (
-                                        register_upload_analysis_in_catalog,
-                                    )
+                                    from analysis_session_persistence import save_analysis_session
+                                    from music_persistent_state import force_save_music_state
 
-                                    register_upload_analysis_in_catalog(
-                                        st.session_state, st=st
-                                    )
+                                    save_analysis_session(st.session_state, st=st)
+                                    force_save_music_state(st, reason="analysis_complete")
+                                    try:
+                                        from media_upload_catalog import (
+                                            register_upload_analysis_in_catalog,
+                                        )
+
+                                        register_upload_analysis_in_catalog(
+                                            st.session_state, st=st
+                                        )
+                                    except Exception:
+                                        pass
                                 except Exception:
                                     pass
-                            except Exception:
-                                pass
-                        except Exception as _mt_exc:
-                            _mt_fail = {
+                            except Exception as _mt_exc:
+                                _mt_fail = {
+                                    "ok": False,
+                                    "multitrack": True,
+                                    "message": f"Multitrack analysis failed: {_mt_exc}",
+                                    "recording_type": _mt_rtype,
+                                }
+                                st.session_state["last_analysis_result"] = _mt_fail
+                                st.error(_mt_fail["message"])
+                        else:
+                            st.error("Could not prepare uploaded files for analysis.")
+                            st.session_state["last_analysis_result"] = {
                                 "ok": False,
                                 "multitrack": True,
-                                "message": f"Multitrack analysis failed: {_mt_exc}",
+                                "message": "Could not prepare uploaded files for analysis.",
                                 "recording_type": _mt_rtype,
                             }
-                            st.session_state["last_analysis_result"] = _mt_fail
-                            st.error(_mt_fail["message"])
             _mt_last = st.session_state.get("last_analysis_result") or {}
             if isinstance(_mt_last, dict) and (
                 _mt_last.get("multitrack")
@@ -15467,9 +15518,11 @@ elif _studio_page == "multitrack":
                             value=st.session_state.get(f"mt_name_{slot}", slot),
                             key=f"mt_name_{slot}",
                         )
+                        from upload_media import UPLOAD_AUDIO_FILE_TYPES
+
                         uploaded = st.file_uploader(
                             f"Upload — {slot}",
-                            type=["wav", "mp3", "m4a", "ogg"],
+                            type=UPLOAD_AUDIO_FILE_TYPES,
                             key=f"mt_upload_{slot}",
                         )
                         try:

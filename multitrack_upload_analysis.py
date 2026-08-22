@@ -896,6 +896,19 @@ def run_multitrack_upload_analysis(
         }
 
     try:
+        from upload_media import prepare_multitrack_track_payload
+
+        prepared_tracks: list[dict[str, Any]] = []
+        for track in tracks:
+            prepared_tracks.append(
+                prepare_multitrack_track_payload(
+                    track.get("bytes") or b"",
+                    str(track.get("filename") or track.get("name") or "upload.wav"),
+                    instrument=str(track.get("instrument") or ""),
+                )
+            )
+        tracks = prepared_tracks
+
         if is_multitrack_layer_type(rtype):
             # Layer contract: one target-layer take is enough.
             primary = tracks[0]

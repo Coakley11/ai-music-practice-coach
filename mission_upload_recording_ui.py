@@ -373,10 +373,12 @@ def render_mission_file_upload_capture(
     key_prefix: str = "mission_upload_analysis",
 ) -> None:
     """Existing-file capture for Upload Analysis workflows (not Missions)."""
+    from upload_media import UPLOAD_AUDIO_FILE_TYPES
+
     st.caption("Upload a take to analyze — live recording stays on the Missions tab.")
     uploaded = st.file_uploader(
         "Select audio file",
-        type=["wav", "mp3", "m4a", "ogg", "flac"],
+        type=UPLOAD_AUDIO_FILE_TYPES,
         key=f"{key_prefix}_file",
     )
     if uploaded is not None:

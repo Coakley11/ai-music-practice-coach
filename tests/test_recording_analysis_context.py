@@ -508,7 +508,7 @@ class MultitrackStepLabelTests(unittest.TestCase):
         src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
         btn_idx = src.find('key="analysis_mt_btn"')
         self.assertGreater(btn_idx, 0, "Analyze ensemble button missing")
-        region = src[max(0, btn_idx - 3500) : btn_idx + 5500]
+        region = src[max(0, btn_idx - 3500) : btn_idx + 9000]
         self.assertIn("### Step 2 — Capture audio", region)
         self.assertIn("Upload the target layer take", region)
         self.assertIn("Upload the ensemble mix (or stems)", region)
@@ -516,6 +516,8 @@ class MultitrackStepLabelTests(unittest.TestCase):
         self.assertIn("Coach report", region)
         self.assertIn("run_multitrack_upload_analysis", region)
         self.assertIn("validate_multitrack_analyze_request", region)
+        self.assertIn("UPLOAD_AUDIO_FILE_TYPES", region)
+        self.assertIn("prepare_multitrack_track_payload", region)
 
 
 class AmiUploadContextTests(unittest.TestCase):

@@ -9,24 +9,32 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
-AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
-
-UPLOAD_ACCEPT_TYPES = [
+# Canonical Upload-compatible recording types (SSOT for pickers, chips, validation).
+# Keep this list in sync with visible Upload format copy — do not fork a second list.
+UPLOAD_AUDIO_FILE_TYPES: list[str] = [
     "wav",
     "mp3",
     "m4a",
-    "ogg",
-    "flac",
     "mp4",
     "mov",
-    "m4v",
-    "avi",
+    "ogg",
+    "flac",
 ]
+UPLOAD_AUDIO_FILE_TYPES_SET = frozenset(UPLOAD_AUDIO_FILE_TYPES)
+# Alias used by existing Streamlit call sites.
+UPLOAD_ACCEPT_TYPES = list(UPLOAD_AUDIO_FILE_TYPES)
+
+VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
+AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
 
 VIDEO_EXTRACTION_UNAVAILABLE_MSG = (
     "Could not extract audio from this video on the server. "
     "Try a shorter clip or a different MP4/MOV file."
+)
+UNSUPPORTED_UPLOAD_TYPE_MSG = (
+    "Unsupported file type. Upload one of: "
+    + ", ".join(t.upper() for t in UPLOAD_AUDIO_FILE_TYPES)
+    + "."
 )
 
 
@@ -38,11 +46,46 @@ class VideoExtractionError(Exception):
         self.meta = meta
 
 
+class UnsupportedUploadTypeError(ValueError):
+    """Filename extension is outside the canonical Upload accept list."""
+
+    def __init__(self, message: str, *, filename: str = "", extension: str = "") -> None:
+        super().__init__(message)
+        self.filename = filename
+        self.extension = extension
+
+
 def file_extension(filename: str) -> str:
     name = str(filename or "").strip().lower()
     if "." not in name:
         return ""
     return "." + name.rsplit(".", 1)[-1]
+
+
+def upload_format_labels() -> tuple[str, ...]:
+    """Human-facing format chips (WAV, MP3, …) from the canonical accept list."""
+    return tuple(ext.upper() for ext in UPLOAD_AUDIO_FILE_TYPES)
+
+
+def is_accepted_upload_filename(filename: str, *, allow_missing_extension: bool = True) -> bool:
+    """True when the filename uses a canonical Upload type (or has no extension)."""
+    ext = file_extension(filename).lstrip(".")
+    if not ext:
+        return bool(allow_missing_extension)
+    return ext in UPLOAD_AUDIO_FILE_TYPES_SET
+
+
+def validate_upload_filename(filename: str, *, allow_missing_extension: bool = True) -> str:
+    """Return a normalized filename or raise UnsupportedUploadTypeError."""
+    name = str(filename or "upload.wav").strip() or "upload.wav"
+    if not is_accepted_upload_filename(name, allow_missing_extension=allow_missing_extension):
+        ext = file_extension(name) or "(none)"
+        raise UnsupportedUploadTypeError(
+            UNSUPPORTED_UPLOAD_TYPE_MSG,
+            filename=name,
+            extension=ext,
+        )
+    return name
 
 
 def is_video_filename(filename: str) -> bool:
@@ -250,7 +293,8 @@ def extract_audio_from_video(video_bytes: bytes, filename: str) -> tuple[bytes, 
                 raise VideoExtractionError(VIDEO_EXTRACTION_UNAVAILABLE_MSG, meta=meta)
             raise VideoExtractionError(
                 "Could not extract audio from this video file. "
-                "Try a shorter clip or a different MP4/MOV file.",
+                "The file may have no usable audio track — try a different MP4/MOV, "
+                "or re-export with an audio track.",
                 meta=meta,
             )
 
@@ -291,14 +335,36 @@ def prepare_upload_for_analysis(
     file_bytes: bytes,
     filename: str,
 ) -> tuple[bytes, str, dict[str, Any]]:
-    """Return audio bytes, analysis filename, and metadata for UI messaging."""
-    name = str(filename or "upload.wav").strip() or "upload.wav"
+    """Return audio bytes, analysis filename, and metadata for UI messaging.
+
+    Video containers (MP4/MOV/…) are decoded to mono WAV. Unsupported extensions
+    raise ``UnsupportedUploadTypeError`` with a clear validation message.
+    """
+    name = validate_upload_filename(filename)
     if not is_video_filename(name):
         return file_bytes, name, {"was_video": False, "ok": True, "source_filename": name}
 
     wav_bytes, meta = extract_audio_from_video(file_bytes, name)
     stem = Path(name).stem or "upload"
     return wav_bytes, f"{stem}.wav", meta
+
+
+def prepare_multitrack_track_payload(
+    file_bytes: bytes,
+    filename: str,
+    *,
+    instrument: str = "",
+) -> dict[str, Any]:
+    """Normalize one Multitrack upload (including MP4/MOV extraction) for analysis."""
+    data, name, meta = prepare_upload_for_analysis(file_bytes, filename)
+    return {
+        "name": name,
+        "filename": name,
+        "bytes": data,
+        "instrument": str(instrument or "").strip(),
+        "source_filename": str(meta.get("source_filename") or filename),
+        "upload_meta": meta,
+    }
 
 
 class PreparedUpload:
