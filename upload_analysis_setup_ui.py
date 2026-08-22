@@ -145,6 +145,13 @@ def render_upload_analysis_setup(
     seed_session_setup_from_active(session_state)
     identity_locked = bool(from_mission_handoff)
 
+    # CRITICAL: apply Mission defaults BEFORE any widgets whose keys they may write.
+    # On the rerun after the user picks Mission Recording, analysis_recording_type is
+    # already the new value in session_state. Mutating widget-backed keys after
+    # st.radio/st.selectbox instantiation causes StreamlitAPIException.
+    if not identity_locked:
+        maybe_apply_manual_mission_defaults(session_state)
+
     st.markdown("### Step 1 — What should the coach evaluate?")
     st.caption(
         "Tell the coach what this recording represents before capturing audio. "
@@ -187,9 +194,6 @@ def render_upload_analysis_setup(
             ),
         )
 
-    if not identity_locked:
-        maybe_apply_manual_mission_defaults(session_state)
-
     options = list(instrument_options or [])
     if default_instrument and default_instrument not in options:
         options = [default_instrument] + options
@@ -214,6 +218,11 @@ def render_upload_analysis_setup(
             disabled=identity_locked,
             help="Which instruments or parts should the coach judge?",
         )
+        selected_instrument = str(
+            (session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [options[0]])[0]
+            if session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)
+            else options[0]
+        )
     else:
         current_inst = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or options[0])
         if current_inst not in options:
@@ -228,6 +237,7 @@ def render_upload_analysis_setup(
             help="Single Recording evaluates exactly one instrument.",
         )
         session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = [str(picked_inst)]
+        selected_instrument = str(picked_inst)
 
     level_options = list(_LEVEL_OPTIONS)
     current_level = str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip()
@@ -244,15 +254,51 @@ def render_upload_analysis_setup(
         disabled=identity_locked,
     )
 
-    if not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
-        session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = str(
+    # Practice Focus: one selectable focus for the chosen instrument (not free text).
+    try:
+        from practice_setup_controls import focus_options_for_instrument
+
+        focus_options = list(focus_options_for_instrument(selected_instrument) or [])
+    except Exception:
+        focus_options = [
+            "Melody",
+            "Harmony",
+            "Rhythm",
+            "Dynamics",
+            "Improvisation",
+            "Technique",
+            "Ear Training",
+        ]
+    current_focus = str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip()
+    if focus_options and current_focus not in focus_options:
+        # Instrument changed (or seeded focus invalid for this instrument).
+        if identity_locked and current_focus:
+            focus_options = [current_focus] + focus_options
+        else:
+            active_focus = str(
+                session_state.get("focus") or session_state.get("practice_focus") or ""
+            ).strip()
+            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = (
+                active_focus if active_focus in focus_options else focus_options[0]
+            )
+    elif not current_focus and focus_options:
+        active_focus = str(
             session_state.get("focus") or session_state.get("practice_focus") or ""
         ).strip()
-    st.text_input(
+        session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = (
+            active_focus if active_focus in focus_options else focus_options[0]
+        )
+    focus_idx = 0
+    if focus_options:
+        cur = str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or focus_options[0])
+        focus_idx = focus_options.index(cur) if cur in focus_options else 0
+    st.selectbox(
         "Practice Focus",
+        focus_options or ["Improvisation"],
+        index=focus_idx,
         key=ANALYSIS_PRACTICE_FOCUS_KEY,
         disabled=identity_locked,
-        help="What the musician is currently working on (separate from Evaluating Criteria).",
+        help="One Practice Focus for the selected instrument (separate from Evaluating Criteria).",
     )
 
     source_type = st.selectbox(

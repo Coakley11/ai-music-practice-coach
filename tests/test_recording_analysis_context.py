@@ -319,7 +319,254 @@ class CoachEmphasisTests(unittest.TestCase):
             {"evaluating_criteria_labels": ["Phrasing"], "recording_type": RECORDING_TYPE_SOLO},
         )
         self.assertEqual(out["musicality"]["score"], 71)
-        self.assertTrue(any("Evaluating Criteria" in f for f in out["musicality"]["findings"]))
+        joined = " ".join(out["musicality"]["findings"])
+        self.assertTrue(
+            "Phrasing" in joined or "Evaluating Criteria" in joined,
+            joined,
+        )
+        # Chord-tone criteria should deepen pitch coaching without score mutation
+        pitch_out = _apply_context_emphasis_to_categories(
+            {
+                "pitch": {"title": "Pitch", "findings": ["base"], "tips": ["base tip"], "score": 66},
+                "musicality": {"title": "Musicality", "findings": ["m"], "tips": ["mt"], "score": 70},
+            },
+            {
+                "evaluating_criteria_labels": ["Chord-tone targeting"],
+                "recording_type": RECORDING_TYPE_MISSION,
+                "mission_type": "Only Chord Tones",
+                "level": "Advanced",
+            },
+        )
+        self.assertEqual(pitch_out["pitch"]["score"], 66)
+        self.assertTrue(any("Chord-tone" in f or "chord tone" in f.lower() for f in pitch_out["pitch"]["findings"]))
+
+
+class ManualMissionLifecycleTests(unittest.TestCase):
+    def test_manual_mission_defaults_apply_before_widget_keys_would_bind(self) -> None:
+        """Simulate Streamlit rerun: type already Mission; defaults must run pre-widget."""
+        from recording_analysis_context import (
+            ANALYSIS_PLAYER_LEVEL_KEY,
+            ANALYSIS_PRACTICE_FOCUS_KEY,
+        )
+
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_SOLO,
+            "instrument": "Saxophone",
+            "level": "Intermediate",
+            "focus": "Tone",
+            "song": "Blue Bossa",
+            ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CATALOG,
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Blue Bossa",
+        }
+        # First paint records previous type
+        maybe_apply_manual_mission_defaults(session)
+        # User selects Mission Recording → Streamlit reruns with new value already in state
+        session["analysis_recording_type"] = RECORDING_TYPE_MISSION
+        # Defaults MUST run before any widget bind (we only mutate session_state here)
+        applied = maybe_apply_manual_mission_defaults(session)
+        self.assertTrue(applied)
+        self.assertEqual(session["analysis_mode"], SINGLE_RECORDING)
+        self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_MISSION)
+        self.assertFalse(bool(session.get(ANALYSIS_IDENTITY_LOCKED_KEY)))
+        instruments = session.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or []
+        self.assertTrue(instruments)
+        self.assertTrue(
+            any("Sax" in str(x) for x in instruments),
+            instruments,
+        )
+        self.assertEqual(session.get(ANALYSIS_PLAYER_LEVEL_KEY), "Intermediate")
+        # Fields remain editable (not identity-locked)
+        session[ANALYSIS_EVAL_INSTRUMENT_KEY] = "Flute"
+        session[ANALYSIS_EVAL_INSTRUMENTS_KEY] = ["Flute"]
+        session[ANALYSIS_PRACTICE_FOCUS_KEY] = "Articulation"
+        self.assertEqual(session[ANALYSIS_EVAL_INSTRUMENTS_KEY], ["Flute"])
+        self.assertEqual(session[ANALYSIS_PRACTICE_FOCUS_KEY], "Articulation")
+
+
+class SnapshotPersistenceTests(unittest.TestCase):
+    def test_snapshot_survives_global_song_instrument_focus_change(self) -> None:
+        from recording_analysis_context import (
+            ANALYSIS_PLAYER_LEVEL_KEY,
+            ANALYSIS_PRACTICE_FOCUS_KEY,
+        )
+
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Tenor Sax"],
+            ANALYSIS_PLAYER_LEVEL_KEY: "Intermediate",
+            ANALYSIS_PRACTICE_FOCUS_KEY: "Tone",
+            ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CATALOG,
+            ANALYSIS_SONG_SOURCE_ID_KEY: "Jazz::Blue Bossa — Kenny Dorham",
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Blue Bossa — Kenny Dorham",
+            "analysis_effective_metric_ids": ["phrasing"],
+            "instrument": "Tenor Sax",
+            "song": "Blue Bossa — Kenny Dorham",
+            "level": "Intermediate",
+            "focus": "Tone",
+        }
+        snap = build_analysis_context_snapshot(session)
+        result = persist_snapshot_on_result({"ok": True, "scores": {"timing": 70}}, snap)
+        # Ambient globals change after save
+        session["song"] = "Song A Ambient"
+        session["instrument"] = "Piano"
+        session["focus"] = "Voicings"
+        session[ANALYSIS_SONG_SOURCE_NAME_KEY] = "Song A Ambient"
+        loaded = load_snapshot_from_result(result)
+        self.assertEqual(loaded["song_source_name"], "Blue Bossa — Kenny Dorham")
+        self.assertEqual(loaded["instruments"], ["Tenor Sax"])
+        self.assertEqual(loaded["practice_focus"], "Tone")
+        self.assertEqual(loaded["level"], "Intermediate")
+        self.assertEqual(loaded["recording_type"], RECORDING_TYPE_PRACTICE)
+
+
+class SelectedSongHarmonyTests(unittest.TestCase):
+    def test_upload_selected_song_b_not_ambient_song_a(self) -> None:
+        from custom_progression_lab import CPL_SAVED_KEY
+        from recording_analysis_context import (
+            SONG_SOURCE_CUSTOM,
+            attach_selected_song_harmony_to_snapshot,
+        )
+
+        song_a_chords = ["Cmaj7", "Am7"]
+        session = {
+            "song": "Song A",
+            "active_song_name": "Song A",
+            ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CUSTOM,
+            ANALYSIS_SONG_SOURCE_ID_KEY: "custom::Song B",
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Song B",
+            CPL_SAVED_KEY: {
+                "Song B": {
+                    "name": "Song B",
+                    "original_key_center": "E minor",
+                    "original_sections": {
+                        "A": [{"chord": "F#m7b5"}, {"chord": "B7"}, {"chord": "Em"}],
+                    },
+                },
+                "Song A": {
+                    "name": "Song A",
+                    "original_sections": {
+                        "A": [{"chord": "Cmaj7"}, {"chord": "Am7"}],
+                    },
+                },
+            },
+        }
+        snap = build_analysis_context_snapshot(session)
+        snap = attach_selected_song_harmony_to_snapshot(session, snap)
+        self.assertTrue(snap.get("target_chords"))
+        self.assertEqual(snap["song_source_name"], "Song B")
+        # Must be Song B harmony, not Song A
+        self.assertIn("F#m7b5", snap["target_chords"])
+        self.assertNotIn("Cmaj7", snap["target_chords"])
+        ambient_ctx = {
+            "song": "Song A",
+            "sections": {"A": song_a_chords},
+            "target_chords": song_a_chords,
+            "evaluating_criteria_labels": ["Chord-tone targeting"],
+        }
+        merged = apply_snapshot_to_analysis_ctx(ambient_ctx, snap)
+        self.assertEqual(merged["song"], "Song B")
+        self.assertIn("F#m7b5", merged["target_chords"])
+        self.assertNotEqual(merged["target_chords"], song_a_chords)
+
+
+class PracticeFocusSelectionTests(unittest.TestCase):
+    def test_single_recording_one_instrument_one_focus_from_options(self) -> None:
+        from pathlib import Path
+
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import ANALYSIS_PRACTICE_FOCUS_KEY
+
+        options = focus_options_for_instrument("Saxophone")
+        self.assertTrue(options)
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            ANALYSIS_EVAL_INSTRUMENT_KEY: "Saxophone",
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone"],
+            ANALYSIS_PRACTICE_FOCUS_KEY: options[0],
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(len(snap["instruments"]), 1)
+        self.assertEqual(snap["instruments"][0], "Saxophone")
+        self.assertEqual(snap["practice_focus"], options[0])
+        src = Path("upload_analysis_setup_ui.py").read_text(encoding="utf-8")
+        self.assertIn('"Practice Focus"', src)
+        self.assertIn("focus_options_for_instrument", src)
+        # Practice Focus must be a selectbox, not free-text for the focus field
+        focus_idx = src.find('"Practice Focus"')
+        window = src[max(0, focus_idx - 80) : focus_idx + 40]
+        self.assertIn("selectbox", window)
+
+
+class MultitrackStepLabelTests(unittest.TestCase):
+    def test_multitrack_capture_is_step_2(self) -> None:
+        from pathlib import Path
+
+        src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        marker = "Upload stems for multitrack analysis"
+        idx = src.find(marker)
+        self.assertGreater(idx, 0, "Multitrack capture kicker not found")
+        window = src[max(0, idx - 250) : idx + 80]
+        self.assertIn("Step 2", window)
+        self.assertIn("Capture audio", window)
+
+
+class AmiUploadContextTests(unittest.TestCase):
+    def test_compact_recording_for_ami_keeps_analysis_context(self) -> None:
+        from media_state import build_media_ami_payload_from_catalog, compact_recording_for_ami
+
+        entry = {
+            "recording_id": "rec-1",
+            "created_at": "2026-08-01T12:00:00",
+            "filename": "take.wav",
+            "song": "Blue Bossa — Kenny Dorham",
+            "instrument": "Tenor Sax",
+            "duration_seconds": 12.0,
+            "analysis_summary": {
+                "coach_summary": "Solid take.",
+                "scores": {"timing": 70},
+                "weakest_category": "timing",
+                "strongest_category": "tone",
+            },
+            "analysis_context_snapshot": {
+                "workflow": WORKFLOW_SINGLE,
+                "recording_type": RECORDING_TYPE_MISSION,
+                "instruments": ["Tenor Sax"],
+                "level": "Intermediate",
+                "practice_focus": "Tone",
+                "evaluating_criteria_ids": ["phrasing"],
+                "evaluating_criteria_labels": ["Phrasing"],
+                "song_source_type": SONG_SOURCE_CATALOG,
+                "song_source_id": "Jazz::Blue Bossa — Kenny Dorham",
+                "song_source_name": "Blue Bossa — Kenny Dorham",
+                "mission_type": "Only Chord Tones",
+                "mission_constraint": "Only Chord Tones",
+                "mission_parameters": {"backing_track": True},
+            },
+        }
+        compact = compact_recording_for_ami(entry)
+        self.assertEqual(compact.get("practice_focus"), "Tone")
+        self.assertEqual(compact.get("evaluating_criteria_labels"), ["Phrasing"])
+        self.assertEqual(compact.get("recording_type"), RECORDING_TYPE_MISSION)
+        self.assertEqual(compact.get("song_source_name"), "Blue Bossa — Kenny Dorham")
+        self.assertEqual(compact.get("mission_type"), "Only Chord Tones")
+        self.assertEqual(compact.get("level"), "Intermediate")
+        payload = build_media_ami_payload_from_catalog(
+            {
+                "uploaded_recordings": [entry],
+                "multitrack_sessions": [],
+                "tone_takes": [],
+                "multitrack_exports": [],
+            },
+            window_days=3650,
+        )
+        rows = payload.get("recording_analysis_context") or []
+        self.assertTrue(rows)
+        self.assertEqual(rows[0].get("practice_focus"), "Tone")
+        self.assertEqual(rows[0].get("evaluating_criteria_labels"), ["Phrasing"])
+        self.assertEqual(rows[0].get("recording_type"), RECORDING_TYPE_MISSION)
 
 
 if __name__ == "__main__":

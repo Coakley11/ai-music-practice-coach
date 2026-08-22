@@ -625,34 +625,138 @@ def _apply_context_emphasis_to_categories(
             f"Keep Practice Focus ({focus}) visible on the stand for the next intentional take.",
         )
 
-    # Map common criteria labels onto category emphasis
+    # Map Evaluating Criteria onto category emphasis with criterion-specific depth
+    # (baseline scores stay; observations/tips deepen for the requested criteria).
     criteria_map = {
         "phras": "musicality",
         "melodic": "musicality",
         "motif": "musicality",
         "rhythm": "timing",
         "timing": "timing",
+        "groove": "groove",
         "tone": "tone",
         "pitch": "pitch",
         "inton": "pitch",
         "articul": "technique",
         "technique": "technique",
-        "groove": "groove",
         "express": "musicality",
         "improvis": "musicality",
+        "chord-tone": "pitch",
+        "chord tone": "pitch",
+        "guide-tone": "pitch",
+        "guide tone": "pitch",
+        "voice lead": "musicality",
+        "scale": "pitch",
+        "mode": "pitch",
+        "dynamic": "musicality",
+    }
+    criterion_deep_dives = {
+        "phras": (
+            "Phrasing deep-dive: shape start/middle/end of each phrase; leave intentional space.",
+            "Loop 4 bars and mark breath/space points before replaying for phrase arc.",
+        ),
+        "melodic": (
+            "Melodic development deep-dive: track how motifs return, sequence, or contrast.",
+            "Take one 2-bar cell and develop it across the form before inventing new material.",
+        ),
+        "motif": (
+            "Motif development deep-dive: vary rhythm/interval while keeping the cell recognizable.",
+            "State the motif, then sequence it up/down a step for 8 bars.",
+        ),
+        "chord-tone": (
+            "Chord-tone targeting deep-dive: land chord tones (esp. 3rds/7ths) on strong beats.",
+            "Over each chord, outline root–3rd–5th–7th before freer lines.",
+        ),
+        "chord tone": (
+            "Chord-tone targeting deep-dive: land chord tones (esp. 3rds/7ths) on strong beats.",
+            "Over each chord, outline root–3rd–5th–7th before freer lines.",
+        ),
+        "guide-tone": (
+            "Guide-tone targeting deep-dive: connect 3rds/7ths smoothly across changes.",
+            "Walk only guide tones through the progression, then ornament lightly.",
+        ),
+        "guide tone": (
+            "Guide-tone targeting deep-dive: connect 3rds/7ths smoothly across changes.",
+            "Walk only guide tones through the progression, then ornament lightly.",
+        ),
+        "voice lead": (
+            "Voice-leading deep-dive: prefer small intervals when chord tones change.",
+            "Connect each chord's 3rd/7th by half/whole step before wider leaps.",
+        ),
+        "rhythm": (
+            "Rhythmic diversity deep-dive: vary subdivision density and placement, not only notes.",
+            "Alternate 8ths / syncopation / rests across consecutive 2-bar cells.",
+        ),
+        "dynamic": (
+            "Dynamics deep-dive: plan crescendo/decrescendo inside phrases, not only loudness spikes.",
+            "Play the same line pp → mf → f without changing pitches.",
+        ),
+        "articul": (
+            "Articulation deep-dive: contrast legato vs detached attacks with intention.",
+            "Alternate tongued/legato 8ths on one scale pattern for 8 bars.",
+        ),
+        "tone": (
+            "Instrument tone deep-dive: keep color consistent through phrase peaks and soft endings.",
+            "Sustain long tones at three dynamics, matching timbre at each level.",
+        ),
+        "groove": (
+            "Timing/groove deep-dive: place attacks relative to the pocket, not only average tempo.",
+            "Play with click on 2 & 4; feel backbeat before adding fills.",
+        ),
+        "scale": (
+            "Scale/mode usage deep-dive: choose tones that fit chord function, not scale-run autopilot.",
+            "For each chord, name the parent scale/mode then play only chord tones + one approach.",
+        ),
+        "mode": (
+            "Scale/mode usage deep-dive: choose tones that fit chord function, not scale-run autopilot.",
+            "For each chord, name the parent scale/mode then play only chord tones + one approach.",
+        ),
     }
     for label in labels:
+        placed = False
         for needle, cat in criteria_map.items():
             if needle in label and cat in out:
-                out[cat]["findings"].insert(
-                    0,
+                deep = None
+                for key, pair in criterion_deep_dives.items():
+                    if key in label:
+                        deep = pair
+                        break
+                finding, tip = deep or (
                     f"Evaluating Criteria emphasis ({label}): deepen coaching on this category while keeping all baseline scores.",
-                )
-                out[cat]["tips"].insert(
-                    0,
                     f"Next take: one intentional loop focusing on {label} only.",
                 )
+                out[cat]["findings"].insert(0, finding)
+                out[cat]["tips"].insert(0, tip)
+                placed = True
                 break
+        if not placed and "musicality" in out:
+            out["musicality"]["findings"].insert(
+                0,
+                f"Evaluating Criteria emphasis ({label}): prioritize this lens in observations and next steps.",
+            )
+            out["musicality"]["tips"].insert(
+                0,
+                f"Next take: one intentional loop focusing on {label} only.",
+            )
+
+    # Player level shapes coaching language only — never rewrite measured scores.
+    level = str(ctx.get("level") or "").strip().lower()
+    if "beginner" in level and "confidence" in out:
+        out["confidence"]["tips"].insert(
+            0,
+            "Beginner coaching: celebrate clear wins, then assign one tiny measurable next step.",
+        )
+    elif "advanced" in level and "musicality" in out:
+        out["musicality"]["findings"].insert(
+            0,
+            "Advanced coaching: expect clearer intent, stronger story arc, and tighter harmonic choices.",
+        )
+    elif "intermediate" in level and "technique" in out:
+        out["technique"]["tips"].insert(
+            0,
+            "Intermediate coaching: keep fundamentals solid while stretching one musical risk per take.",
+        )
+
     return out
 
 

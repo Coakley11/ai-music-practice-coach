@@ -237,7 +237,7 @@ def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
     if not song and filename:
         song = filename.rsplit(".", 1)[0][:120]
 
-    return {
+    result = {
         "recording_id": rid,
         "created_at": created,
         "updated_at": updated,
@@ -267,6 +267,11 @@ def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
         "storage_error": str(out.get("storage_error") or "").strip(),
         "deleted": False,
     }
+    # Keep durable Upload analysis-context for Practice Log / AMI (no audio blobs).
+    snap = out.get("analysis_context_snapshot")
+    if isinstance(snap, dict) and snap:
+        result["analysis_context_snapshot"] = dict(snap)
+    return result
 
 
 def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
@@ -696,17 +701,62 @@ def _within_window(entry: dict[str, Any], *, window_days: int, today: date | Non
     return False
 
 
+def _ami_analysis_context_fields(entry: dict[str, Any]) -> dict[str, Any]:
+    """Preserve Upload analysis-context intent for Practice Log / AMI (no audio blobs)."""
+    snap = entry.get("analysis_context_snapshot")
+    if not isinstance(snap, dict):
+        summary = entry.get("analysis_summary") if isinstance(entry.get("analysis_summary"), dict) else {}
+        snap = summary.get("analysis_context_snapshot") if isinstance(summary, dict) else None
+    if not isinstance(snap, dict):
+        snap = {}
+    instruments = snap.get("instruments")
+    if not isinstance(instruments, list):
+        instruments = [entry.get("instrument")] if entry.get("instrument") else []
+    instruments = [str(x) for x in instruments if str(x).strip()]
+    criteria_ids = list(snap.get("evaluating_criteria_ids") or [])
+    criteria_labels = list(snap.get("evaluating_criteria_labels") or [])
+    return {
+        "workflow": str(snap.get("workflow") or entry.get("workflow") or ""),
+        "recording_type": str(snap.get("recording_type") or entry.get("recording_type") or ""),
+        "instruments": instruments,
+        "level": str(snap.get("level") or entry.get("level") or ""),
+        "practice_focus": str(snap.get("practice_focus") or entry.get("practice_focus") or ""),
+        "evaluating_criteria_ids": [str(x) for x in criteria_ids if str(x).strip()],
+        "evaluating_criteria_labels": [str(x) for x in criteria_labels if str(x).strip()],
+        "song_source_type": str(snap.get("song_source_type") or entry.get("song_source_type") or ""),
+        "song_source_id": str(snap.get("song_source_id") or entry.get("song_source_id") or ""),
+        "song_source_name": str(
+            snap.get("song_source_name") or entry.get("song_source_name") or entry.get("song") or ""
+        ),
+        "mission_type": str(snap.get("mission_type") or entry.get("mission_type") or ""),
+        "mission_constraint": str(
+            snap.get("mission_constraint") or entry.get("mission_constraint") or ""
+        ),
+        "mission_parameters": dict(snap.get("mission_parameters") or {})
+        if isinstance(snap.get("mission_parameters"), dict)
+        else {},
+        "multitrack_project_id": str(snap.get("multitrack_project_id") or ""),
+        "multitrack_project_name": str(snap.get("multitrack_project_name") or ""),
+        "target_layer": str(snap.get("target_layer") or entry.get("target_layer") or ""),
+        "target_instruments": list(snap.get("target_instruments") or [])
+        if isinstance(snap.get("target_instruments"), list)
+        else [],
+    }
+
+
 def compact_recording_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
     row = migrate_uploaded_recording(entry)
     if is_recording_tombstone(row):
         return {}
     summary = row.get("analysis_summary") if isinstance(row.get("analysis_summary"), dict) else {}
+    ctx_fields = _ami_analysis_context_fields(row)
     return {
         "recording_id": row.get("recording_id"),
         "created_at": row.get("created_at"),
         "filename": row.get("filename"),
-        "song": row.get("song"),
-        "instrument": row.get("instrument"),
+        "song": row.get("song") or ctx_fields.get("song_source_name"),
+        "instrument": row.get("instrument")
+        or ((ctx_fields.get("instruments") or [None])[0]),
         "duration_seconds": row.get("duration_seconds"),
         "practice_concert_key": row.get("practice_concert_key"),
         "written_key": row.get("written_key"),
@@ -717,6 +767,7 @@ def compact_recording_for_ami(entry: dict[str, Any]) -> dict[str, Any]:
         "weakest_category": summary.get("weakest_category"),
         "strongest_category": summary.get("strongest_category"),
         "linked_practice_session_id": row.get("linked_practice_session_id"),
+        **ctx_fields,
     }
 
 
@@ -999,6 +1050,25 @@ def build_media_ami_payload_from_catalog(
                 "weakest_category": row.get("weakest_category"),
                 "strongest_category": row.get("strongest_category"),
                 "source": "uploaded_recording",
+                "workflow": row.get("workflow"),
+                "recording_type": row.get("recording_type"),
+                "instruments": list(row.get("instruments") or []),
+                "level": row.get("level"),
+                "practice_focus": row.get("practice_focus"),
+                "evaluating_criteria_ids": list(row.get("evaluating_criteria_ids") or []),
+                "evaluating_criteria_labels": list(row.get("evaluating_criteria_labels") or []),
+                "song_source_type": row.get("song_source_type"),
+                "song_source_id": row.get("song_source_id"),
+                "song_source_name": row.get("song_source_name"),
+                "mission_type": row.get("mission_type"),
+                "mission_constraint": row.get("mission_constraint"),
+                "mission_parameters": dict(row.get("mission_parameters") or {})
+                if isinstance(row.get("mission_parameters"), dict)
+                else {},
+                "multitrack_project_id": row.get("multitrack_project_id"),
+                "multitrack_project_name": row.get("multitrack_project_name"),
+                "target_layer": row.get("target_layer"),
+                "target_instruments": list(row.get("target_instruments") or []),
             }
         )
     for row in mt_compact:

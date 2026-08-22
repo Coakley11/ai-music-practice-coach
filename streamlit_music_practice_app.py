@@ -6976,6 +6976,7 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
     """Build runtime analysis ctx with durable recording-context snapshot as authority."""
     from recording_analysis_context import (
         apply_snapshot_to_analysis_ctx,
+        attach_selected_song_harmony_to_snapshot,
         build_analysis_context_snapshot,
         persist_snapshot_on_result,
         store_snapshot_in_session,
@@ -6986,6 +6987,16 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
     ctx = _recording_analysis_context(recording_type=label)
     snapshot = build_analysis_context_snapshot(st.session_state)
     snapshot["recording_type"] = label
+    # Resolve Upload-selected song harmony (not ambient globally active song).
+    try:
+        snapshot = attach_selected_song_harmony_to_snapshot(
+            st.session_state,
+            snapshot,
+            song_picker_catalog=globals().get("SONG_PICKER_CATALOG"),
+            catalog_records=globals().get("ALL_SONG_RECORDS"),
+        )
+    except Exception:
+        pass
     # Prefer evaluation instruments from setup over ambient active instrument
     instruments = list(snapshot.get("instruments") or [])
     if instruments:
@@ -14483,8 +14494,9 @@ elif _studio_page == "analysis":
 
         else:
             with st.container(key="upload_capture_panel", border=False):
+                st.markdown("### Step 2 — Capture audio")
                 st.markdown(
-                    '<p class="ui-upload-step-kicker">Step 1 · Upload stems</p>',
+                    '<p class="ui-upload-step-kicker">Upload stems for multitrack analysis</p>',
                     unsafe_allow_html=True,
                 )
                 st.caption(

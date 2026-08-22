@@ -129,6 +129,11 @@ def empty_analysis_context_snapshot() -> dict[str, Any]:
         "association": "",
         "identity_locked": False,
         "backing_track_context": False,
+        # Harmonic context owned by the selected Upload song (not ambient active song)
+        "sections": {},
+        "target_chords": [],
+        "practice_bpm": None,
+        "time_signature": "",
     }
 
 
@@ -339,6 +344,17 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
     out["target_layer"] = snap.get("target_layer")
     out["multitrack_project_id"] = snap.get("multitrack_project_id")
     out["multitrack_project_name"] = snap.get("multitrack_project_name")
+    # Selected-song harmonic authority (snapshot wins over ambient globals)
+    sections = snap.get("sections")
+    if isinstance(sections, dict) and sections:
+        out["sections"] = {str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in sections.items()}
+    chords = snap.get("target_chords")
+    if isinstance(chords, (list, tuple)) and chords:
+        out["target_chords"] = [str(c) for c in chords if str(c).strip()]
+    if snap.get("practice_bpm") not in (None, ""):
+        out["practice_bpm"] = snap["practice_bpm"]
+    if snap.get("time_signature"):
+        out["time_signature"] = snap["time_signature"]
     return out
 
 
@@ -499,11 +515,17 @@ def seed_session_setup_from_active(session_state: dict[str, Any], *, force: bool
 
 
 def apply_manual_mission_recording_defaults(session_state: dict[str, Any]) -> None:
-    """Intelligent editable defaults when the user manually chooses Mission Recording."""
+    """Intelligent editable defaults when the user manually chooses Mission Recording.
+
+    Must be called before Streamlit widgets that bind analysis_mode /
+    analysis_recording_type / instrument / song / focus / level are created.
+    """
     from upload_analysis_modes import SINGLE_RECORDING
 
+    # Ensure identity fields match Mission Recording; safe only pre-widget.
     session_state["analysis_mode"] = SINGLE_RECORDING
-    session_state["analysis_recording_type"] = RECORDING_TYPE_MISSION
+    if not is_mission_recording_type(session_state.get("analysis_recording_type")):
+        session_state["analysis_recording_type"] = RECORDING_TYPE_MISSION
     session_state[ANALYSIS_IDENTITY_LOCKED_KEY] = False
     seed_session_setup_from_active(session_state, force=True)
     try:
@@ -523,17 +545,24 @@ def apply_manual_mission_recording_defaults(session_state: dict[str, Any]) -> No
     session_state[_MANUAL_MISSION_DEFAULTS_APPLIED_KEY] = True
 
 
-def maybe_apply_manual_mission_defaults(session_state: dict[str, Any]) -> None:
-    """Apply manual Mission defaults once when Recording Type becomes Mission Recording."""
+def maybe_apply_manual_mission_defaults(session_state: dict[str, Any]) -> bool:
+    """Apply manual Mission defaults once when Recording Type becomes Mission Recording.
+
+    Returns True when defaults were applied. Call near the top of the Upload setup
+    render — before any widgets whose keys these defaults may write.
+    """
     if is_genuine_mission_upload_handoff(session_state):
-        return
+        return False
     current = str(session_state.get("analysis_recording_type") or "").strip()
     previous = str(session_state.get(_PREV_RECORDING_TYPE_KEY) or "").strip()
+    applied = False
     if is_mission_recording_type(current) and not is_mission_recording_type(previous):
         apply_manual_mission_recording_defaults(session_state)
+        applied = True
     if not is_mission_recording_type(current):
         session_state.pop(_MANUAL_MISSION_DEFAULTS_APPLIED_KEY, None)
     session_state[_PREV_RECORDING_TYPE_KEY] = current
+    return applied
 
 
 def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
@@ -631,8 +660,266 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
         inst_txt = ", ".join(instruments)
         level_txt = f" ({level})" if level else ""
         notes.append(f"Evaluate instrument(s): **{inst_txt}**{level_txt}.")
+    level_l = level.lower()
+    if "beginner" in level_l:
+        notes.append(
+            "Player Level Beginner — keep measured timing/pitch scores unchanged, but coach with "
+            "encouraging, foundational expectations and concrete next steps."
+        )
+    elif "advanced" in level_l:
+        notes.append(
+            "Player Level Advanced — keep measured scores unchanged, but hold higher musical "
+            "standards in observations, refinements, and practice recommendations."
+        )
+    elif "intermediate" in level_l:
+        notes.append(
+            "Player Level Intermediate — keep measured scores unchanged; balance encouragement "
+            "with clear growth targets."
+        )
     song = str(snap.get("song_source_name") or "").strip()
     source = str(snap.get("song_source_type") or "").strip()
     if song:
         notes.append(f"Associated music: {source or 'Song'} — **{song}**.")
     return notes
+
+
+def _flatten_section_chords(sections: dict[str, Any] | None) -> list[str]:
+    out: list[str] = []
+    for _name, entries in (sections or {}).items():
+        if isinstance(entries, (list, tuple)):
+            for item in entries:
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+                elif isinstance(item, dict):
+                    chord = str(item.get("chord") or item.get("symbol") or "").strip()
+                    if chord:
+                        out.append(chord)
+    return out
+
+
+def resolve_selected_song_harmony(
+    session_state: dict[str, Any],
+    *,
+    snapshot: dict[str, Any] | None = None,
+    song_picker_catalog: dict[str, Any] | None = None,
+    catalog_records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Resolve harmonic context from the Upload-selected song (not ambient active song).
+
+    Returns sections, target_chords, display_key, practice_bpm, time_signature, and
+    song identity fields. Prefer attaching this onto the analysis-context snapshot so
+    historical takes keep their own harmony.
+    """
+    snap = dict(snapshot or {})
+    source_type = str(
+        snap.get("song_source_type")
+        or session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY)
+        or ""
+    ).strip()
+    source_id = str(
+        snap.get("song_source_id")
+        or session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY)
+        or ""
+    ).strip()
+    source_name = str(
+        snap.get("song_source_name")
+        or session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY)
+        or ""
+    ).strip()
+
+    result: dict[str, Any] = {
+        "song_source_type": source_type,
+        "song_source_id": source_id,
+        "song_source_name": source_name,
+        "sections": {},
+        "target_chords": [],
+        "display_key": str(snap.get("display_key") or ""),
+        "practice_bpm": snap.get("practice_bpm"),
+        "time_signature": str(snap.get("time_signature") or ""),
+        "resolved": False,
+    }
+
+    # Already captured on a prior snapshot — trust that over ambient globals.
+    prior_sections = snap.get("sections")
+    prior_chords = snap.get("target_chords")
+    if isinstance(prior_sections, dict) and prior_sections:
+        result["sections"] = {
+            str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in prior_sections.items()
+        }
+        result["target_chords"] = (
+            [str(c) for c in prior_chords]
+            if isinstance(prior_chords, (list, tuple)) and prior_chords
+            else _flatten_section_chords(result["sections"])
+        )
+        result["resolved"] = True
+        return result
+
+    try:
+        if source_type == SONG_SOURCE_CATALOG and (source_id or source_name):
+            records = catalog_records
+            picker = song_picker_catalog
+            if records is None or picker is None:
+                try:
+                    from song_catalog.catalog import load_song_catalog
+
+                    _lib, loaded_picker, _genres, loaded_records = load_song_catalog()
+                    picker = picker if picker is not None else loaded_picker
+                    records = records if records is not None else loaded_records
+                except Exception:
+                    picker = picker or {}
+                    records = records or []
+            rec = None
+            if records is not None:
+                try:
+                    from song_catalog.catalog import record_for_pick_key
+
+                    rec = record_for_pick_key(list(records), source_id or source_name)
+                except Exception:
+                    rec = None
+            if rec is None and isinstance(picker, dict) and source_id:
+                try:
+                    from song_catalog.catalog import parse_pick_key
+
+                    genre, label = parse_pick_key(source_id)
+                    bucket = (picker or {}).get(genre) or {}
+                    if isinstance(bucket, dict) and label in bucket:
+                        rec = bucket[label]
+                except Exception:
+                    pass
+            if isinstance(rec, dict):
+                sections = rec.get("sections") if isinstance(rec.get("sections"), dict) else {}
+                # Normalize to list[str] chords per section
+                norm: dict[str, list[str]] = {}
+                for sec_name, entries in sections.items():
+                    if isinstance(entries, (list, tuple)):
+                        norm[str(sec_name)] = [
+                            str(x).strip()
+                            for x in entries
+                            if str(x).strip() and not isinstance(x, dict)
+                        ] or [
+                            str(x.get("chord") or x.get("symbol") or "").strip()
+                            for x in entries
+                            if isinstance(x, dict)
+                            and str(x.get("chord") or x.get("symbol") or "").strip()
+                        ]
+                result["sections"] = norm
+                result["target_chords"] = _flatten_section_chords(norm)
+                result["display_key"] = str(
+                    rec.get("key") or result["display_key"] or ""
+                ).strip()
+                ext = rec.get("extensions") if isinstance(rec.get("extensions"), dict) else {}
+                bpm = ext.get("default_bpm") or rec.get("bpm")
+                if bpm not in (None, ""):
+                    result["practice_bpm"] = bpm
+                ts = ext.get("time_signature") or rec.get("time_signature")
+                if ts:
+                    result["time_signature"] = str(ts)
+                if not result["song_source_name"]:
+                    title = str(rec.get("title") or "").strip()
+                    artist = str(rec.get("artist") or "").strip()
+                    result["song_source_name"] = f"{title} — {artist}" if artist else title
+                result["resolved"] = bool(norm)
+                return result
+
+        if source_type == SONG_SOURCE_CUSTOM and (source_id or source_name):
+            from custom_progression_lab import CPL_SAVED_KEY
+
+            saved = session_state.get(CPL_SAVED_KEY) or {}
+            name = source_name
+            if source_id.startswith("custom::"):
+                name = source_id.split("custom::", 1)[-1].strip() or name
+            active = saved.get(name) if isinstance(saved, dict) else None
+            if isinstance(active, dict):
+                sections = (
+                    active.get("original_sections")
+                    or active.get("sections")
+                    or {}
+                )
+                if isinstance(sections, dict):
+                    try:
+                        from custom_progression_lab import sections_to_chord_lists
+
+                        norm = sections_to_chord_lists(sections)
+                    except Exception:
+                        norm = {
+                            str(k): [str(x) for x in (v or []) if str(x).strip()]
+                            if isinstance(v, (list, tuple))
+                            else []
+                            for k, v in sections.items()
+                        }
+                    result["sections"] = norm
+                    result["target_chords"] = _flatten_section_chords(norm)
+                    result["display_key"] = str(
+                        active.get("original_key_center")
+                        or active.get("key")
+                        or result["display_key"]
+                        or ""
+                    ).strip()
+                    if active.get("bpm") not in (None, ""):
+                        result["practice_bpm"] = active.get("bpm")
+                    if active.get("time_signature"):
+                        result["time_signature"] = str(active.get("time_signature"))
+                    result["song_source_name"] = name or result["song_source_name"]
+                    result["resolved"] = bool(norm)
+                    return result
+
+        if source_type == SONG_SOURCE_COMPOSED and source_id:
+            try:
+                from composition_session_state import COMPOSER_LIBRARY_KEY
+                from composition_document import chords_for_playback, playback_globals
+
+                lib = session_state.get(COMPOSER_LIBRARY_KEY) or {}
+                doc = lib.get(source_id) if isinstance(lib, dict) else None
+                if isinstance(doc, dict):
+                    chords = chords_for_playback(doc, scope="song")
+                    result["target_chords"] = [str(c) for c in chords if str(c).strip()]
+                    # Preserve a simple single-section map for mission analysis
+                    result["sections"] = {"Form": list(result["target_chords"])}
+                    g = playback_globals(doc)
+                    result["practice_bpm"] = g.get("bpm")
+                    result["time_signature"] = str(g.get("time_signature") or "")
+                    meta = doc.get("metadata") or {}
+                    result["display_key"] = str(
+                        meta.get("key") or doc.get("key") or result["display_key"] or ""
+                    ).strip()
+                    if not result["song_source_name"]:
+                        result["song_source_name"] = str(
+                            doc.get("title") or doc.get("name") or source_id
+                        ).strip()
+                    result["resolved"] = bool(result["target_chords"])
+                    return result
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return result
+
+
+def attach_selected_song_harmony_to_snapshot(
+    session_state: dict[str, Any],
+    snapshot: dict[str, Any],
+    *,
+    song_picker_catalog: dict[str, Any] | None = None,
+    catalog_records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Resolve Upload-selected song harmony into the snapshot (mutates + returns snap)."""
+    snap = dict(snapshot or {})
+    harmony = resolve_selected_song_harmony(
+        session_state,
+        snapshot=snap,
+        song_picker_catalog=song_picker_catalog,
+        catalog_records=catalog_records,
+    )
+    if harmony.get("sections"):
+        snap["sections"] = harmony["sections"]
+    if harmony.get("target_chords"):
+        snap["target_chords"] = list(harmony["target_chords"])
+    if harmony.get("display_key"):
+        snap["display_key"] = harmony["display_key"]
+    if harmony.get("practice_bpm") not in (None, ""):
+        snap["practice_bpm"] = harmony["practice_bpm"]
+    if harmony.get("time_signature"):
+        snap["time_signature"] = harmony["time_signature"]
+    if harmony.get("song_source_name") and not snap.get("song_source_name"):
+        snap["song_source_name"] = harmony["song_source_name"]
+    return snap
