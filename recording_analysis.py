@@ -526,7 +526,14 @@ def build_practice_plan(
             f"Criteria drill ({labels[0]}): one 8-bar loop focusing only on that emphasis @ {slow} BPM."
         )
     if practice_focus:
-        plan.append(f"Practice Focus ({practice_focus}): short intentional block before free playing.")
+        _pfs = [str(x).strip() for x in (ctx.get("practice_focuses") or ctx.get("focuses") or []) if str(x).strip()]
+        if not _pfs and practice_focus:
+            _pfs = [practice_focus]
+        _pf_txt = (
+            _pfs[0] if len(_pfs) == 1 else
+            (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
+        )
+        plan.append(f"Practice Focuses ({_pf_txt}): short intentional block before free playing.")
     if "practice take" in rtype:
         plan.append(f"Diagnostic loop: isolate the weakest 2 bars and repeat @ {slow} BPM until clean.")
     elif "backing" in rtype:
@@ -828,7 +835,14 @@ def build_coach_summary(
             f"Deepen work on {labels[0]} while protecting your gains in {strong_l}."
         )
     elif practice_focus:
-        focus = f"Keep your Practice Focus on {practice_focus}: one slow intentional loop, then one musical phrase."
+        _pfs = [str(x).strip() for x in (ctx.get("practice_focuses") or ctx.get("focuses") or []) if str(x).strip()]
+        if not _pfs and practice_focus:
+            _pfs = [practice_focus]
+        _pf_txt = (
+            _pfs[0] if len(_pfs) == 1 else
+            (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
+        )
+        focus = f"Keep your Practice Focuses on {_pf_txt}: one slow intentional loop, then one musical phrase."
     return summary, biggest, improved, focus
 
 
@@ -1027,15 +1041,42 @@ def analyze_multitrack(
 
     instrument_focuses = ctx.get("instrument_focuses")
     if isinstance(instrument_focuses, dict):
-        instrument_focuses = {
-            str(k).strip(): str(v).strip()
-            for k, v in instrument_focuses.items()
-            if str(k).strip() and str(v).strip()
-        }
+        cleaned_map: dict[str, list[str]] = {}
+        for k, v in instrument_focuses.items():
+            inst = str(k).strip()
+            if not inst:
+                continue
+            if isinstance(v, (list, tuple)):
+                focuses = [str(x).strip() for x in v if str(x).strip()]
+            else:
+                focuses = [str(v).strip()] if str(v).strip() else []
+            # Deduplicate while preserving order.
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for foc in focuses:
+                if foc not in seen:
+                    seen.add(foc)
+                    ordered.append(foc)
+            cleaned_map[inst] = ordered
+        instrument_focuses = cleaned_map
     else:
         instrument_focuses = {}
 
-    focus = str(ctx.get("focus") or "").strip()
+    practice_focuses = ctx.get("practice_focuses") or ctx.get("focuses") or []
+    if not isinstance(practice_focuses, list):
+        practice_focuses = [str(practice_focuses).strip()] if str(practice_focuses).strip() else []
+    practice_focuses = [str(x).strip() for x in practice_focuses if str(x).strip()]
+    focus = str(ctx.get("focus") or (practice_focuses[0] if practice_focuses else "")).strip()
+
+    def _fmt(focuses: list[str]) -> str:
+        if not focuses:
+            return ""
+        if len(focuses) == 1:
+            return focuses[0]
+        if len(focuses) == 2:
+            return f"{focuses[0]} and {focuses[1]}"
+        return ", ".join(focuses[:-1]) + f", and {focuses[-1]}"
+
     if "layer" in rtype:
         target = str(
             ctx.get("target_layer")
@@ -1043,30 +1084,41 @@ def analyze_multitrack(
             or ((ctx.get("instruments") or [None])[0])
             or ""
         ).strip()
-        layer_focus = instrument_focuses.get(target) or focus
-        if layer_focus:
-            focus = layer_focus
+        layer_focuses = list(instrument_focuses.get(target) or practice_focuses or [])
+        if not layer_focuses and focus:
+            layer_focuses = [focus]
+        if layer_focuses:
+            practice_focuses = list(layer_focuses)
+            focus = layer_focuses[0]
             tips.insert(
                 0,
-                f"Layer Practice Focus ({target or 'selected part'} → {layer_focus}): "
-                "judge this stem against that intended role.",
+                f"Layer Practice Focuses ({target or 'selected part'} → {_fmt(layer_focuses)}): "
+                "judge this stem against all of those intended roles.",
             )
             findings.insert(
                 0,
-                f"Target-layer Practice Focus is {layer_focus}"
+                f"Target-layer Practice Focuses are {_fmt(layer_focuses)}"
                 + (f" for {target}" if target else "")
                 + ".",
             )
     elif instrument_focuses:
-        mapped = "; ".join(f"{inst} → {foc}" for inst, foc in instrument_focuses.items())
+        mapped = "; ".join(
+            f"{inst} → {_fmt(foc_list)}" if foc_list else f"{inst} → (none)"
+            for inst, foc_list in instrument_focuses.items()
+        )
         tips.insert(
             0,
             f"Instrument Practice Focuses — {mapped}. "
-            "Coach each selected part toward its own intended goal.",
+            "Coach each selected part toward its own intended goals.",
         )
         findings.insert(
             0,
             f"Multitrack Mix retains per-instrument Practice Focus mapping: {mapped}.",
+        )
+    elif practice_focuses:
+        tips.insert(
+            0,
+            f"Practice Focuses ({_fmt(practice_focuses)}): keep the next arrangement take aligned with those goals.",
         )
     elif focus:
         tips.insert(0, f"Practice Focus ({focus}): keep the next arrangement take aligned with that goal.")
@@ -1084,6 +1136,7 @@ def analyze_multitrack(
         "instruments": list(ctx.get("instruments") or []),
         "evaluating_criteria_labels": labels,
         "focus": focus,
+        "practice_focuses": list(practice_focuses),
         "instrument_focuses": dict(instrument_focuses),
     }
 

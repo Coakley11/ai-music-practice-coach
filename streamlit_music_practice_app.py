@@ -7004,8 +7004,16 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
         ctx["instruments"] = instruments
     if snapshot.get("song_source_name"):
         ctx["song"] = snapshot["song_source_name"]
-    if snapshot.get("practice_focus"):
-        ctx["focus"] = snapshot["practice_focus"]
+    focuses = list(snapshot.get("practice_focuses") or [])
+    if not focuses and snapshot.get("practice_focus"):
+        focuses = [str(snapshot.get("practice_focus"))]
+    focuses = [str(x).strip() for x in focuses if str(x).strip()]
+    if focuses:
+        ctx["focus"] = focuses[0]
+        ctx["focuses"] = focuses
+        ctx["practice_focuses"] = focuses
+    if isinstance(snapshot.get("instrument_focuses"), dict):
+        ctx["instrument_focuses"] = dict(snapshot.get("instrument_focuses") or {})
     if snapshot.get("level"):
         ctx["level"] = snapshot["level"]
     ctx["evaluating_criteria_labels"] = list(snapshot.get("evaluating_criteria_labels") or [])

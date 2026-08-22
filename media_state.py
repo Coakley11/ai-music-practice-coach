@@ -721,10 +721,29 @@ def _ami_analysis_context_fields(entry: dict[str, Any]) -> dict[str, Any]:
         "instruments": instruments,
         "level": str(snap.get("level") or entry.get("level") or ""),
         "practice_focus": str(snap.get("practice_focus") or entry.get("practice_focus") or ""),
+        "practice_focuses": [
+            str(x).strip()
+            for x in list(snap.get("practice_focuses") or [])
+            if str(x).strip()
+        ]
+        if isinstance(snap.get("practice_focuses"), list)
+        else (
+            [str(snap.get("practice_focus")).strip()]
+            if str(snap.get("practice_focus") or entry.get("practice_focus") or "").strip()
+            else []
+        ),
         "instrument_focuses": {
-            str(k).strip(): str(v).strip()
+            str(k).strip(): (
+                [str(x).strip() for x in v if str(x).strip()]
+                if isinstance(v, (list, tuple))
+                else ([str(v).strip()] if str(v).strip() else [])
+            )
             for k, v in dict(snap.get("instrument_focuses") or {}).items()
-            if str(k).strip() and str(v).strip()
+            if str(k).strip()
+            and (
+                (isinstance(v, (list, tuple)) and any(str(x).strip() for x in v))
+                or (not isinstance(v, (list, tuple)) and str(v).strip())
+            )
         }
         if isinstance(snap.get("instrument_focuses"), dict)
         else {},
@@ -1062,6 +1081,9 @@ def build_media_ami_payload_from_catalog(
                 "instruments": list(row.get("instruments") or []),
                 "level": row.get("level"),
                 "practice_focus": row.get("practice_focus"),
+                "practice_focuses": list(row.get("practice_focuses") or [])
+                if isinstance(row.get("practice_focuses"), list)
+                else [],
                 "instrument_focuses": dict(row.get("instrument_focuses") or {})
                 if isinstance(row.get("instrument_focuses"), dict)
                 else {},

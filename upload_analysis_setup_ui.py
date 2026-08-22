@@ -11,6 +11,7 @@ from recording_analysis_context import (
     ANALYSIS_MISSION_CONSTRAINT_KEY,
     ANALYSIS_PLAYER_LEVEL_KEY,
     ANALYSIS_PRACTICE_FOCUS_KEY,
+    ANALYSIS_PRACTICE_FOCUSES_KEY,
     ANALYSIS_SONG_SOURCE_ID_KEY,
     ANALYSIS_SONG_SOURCE_NAME_KEY,
     ANALYSIS_SONG_SOURCE_TYPE_KEY,
@@ -21,13 +22,14 @@ from recording_analysis_context import (
     SONG_SOURCE_CUSTOM,
     SONG_SOURCE_OPTIONS,
     SONG_SOURCE_OTHER,
+    coerce_focus_list,
     instrument_focus_widget_key,
     is_mission_recording_type,
     maybe_apply_manual_mission_defaults,
     normalize_recording_type_for_workflow,
+    prepare_instrument_focus_ui,
     recording_types_for_workflow,
     seed_session_setup_from_active,
-    sync_instrument_focuses,
 )
 from upload_analysis_modes import (
     WORKFLOW_OPTIONS,
@@ -263,7 +265,7 @@ def render_upload_analysis_setup(
         disabled=identity_locked,
     )
 
-    # Practice Focus — Single: one Focus; Multitrack: one Focus per selected instrument.
+    # Practice Focus — any number of Focuses per instrument (Single + Multitrack).
     try:
         from practice_setup_controls import focus_options_for_instrument as _focus_options_for_instrument
     except Exception:
@@ -279,48 +281,52 @@ def render_upload_analysis_setup(
             ]
 
     if is_multitrack_workflow(session_state):
-        sync_instrument_focuses(
+        prepare_instrument_focus_ui(
             session_state,
             selected_instruments,
             identity_locked=identity_locked,
+            single_recording=False,
         )
-        st.caption("Choose one Practice Focus for each selected instrument/part.")
+        st.caption(
+            "Choose any number of Practice Focuses for each selected instrument/part "
+            "(zero, one, or many)."
+        )
         for inst in selected_instruments:
             focus_options = list(_focus_options_for_instrument(inst) or []) or ["Improvisation"]
             widget_key = instrument_focus_widget_key(inst)
-            current_focus = str(session_state.get(widget_key) or "").strip()
-            if current_focus and current_focus not in focus_options:
-                if identity_locked:
-                    focus_options = [current_focus] + focus_options
-                else:
-                    session_state[widget_key] = focus_options[0]
-                    current_focus = focus_options[0]
-            if not current_focus:
-                session_state[widget_key] = focus_options[0]
-            focus_idx = (
-                focus_options.index(session_state[widget_key])
-                if session_state.get(widget_key) in focus_options
-                else 0
-            )
-            st.selectbox(
+            current = coerce_focus_list(session_state.get(widget_key))
+            if identity_locked:
+                for foc in current:
+                    if foc and foc not in focus_options:
+                        focus_options = [foc] + focus_options
+            else:
+                pruned = [f for f in current if f in focus_options]
+                if pruned != current:
+                    session_state[widget_key] = pruned
+            st.multiselect(
                 f"{inst} — Practice Focus",
                 focus_options,
-                index=focus_idx,
                 key=widget_key,
                 disabled=identity_locked,
-                help=f"One Practice Focus for {inst} on this Multitrack recording.",
+                help=f"Any number of Practice Focuses for {inst} on this Multitrack recording.",
             )
-        # Rebuild mapping from widget values after selectboxes run.
         instrument_focuses = {
-            inst: str(session_state.get(instrument_focus_widget_key(inst)) or "").strip()
+            inst: coerce_focus_list(session_state.get(instrument_focus_widget_key(inst)))
             for inst in selected_instruments
         }
         session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = instrument_focuses
         if selected_instruments:
-            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = instrument_focuses.get(
-                selected_instruments[0], ""
-            )
+            first_focuses = instrument_focuses.get(selected_instruments[0], [])
+            session_state[ANALYSIS_PRACTICE_FOCUSES_KEY] = list(first_focuses)
+            # Legacy scalar mirror only (not a Streamlit widget key).
+            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = first_focuses[0] if first_focuses else ""
     else:
+        prepare_instrument_focus_ui(
+            session_state,
+            [selected_instrument] if selected_instrument else [],
+            identity_locked=identity_locked,
+            single_recording=True,
+        )
         focus_options = list(_focus_options_for_instrument(selected_instrument) or [])
         if not focus_options:
             focus_options = [
@@ -332,39 +338,29 @@ def render_upload_analysis_setup(
                 "Technique",
                 "Ear Training",
             ]
-        current_focus = str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip()
-        if focus_options and current_focus not in focus_options:
-            if identity_locked and current_focus:
-                focus_options = [current_focus] + focus_options
-            else:
-                active_focus = str(
-                    session_state.get("focus") or session_state.get("practice_focus") or ""
-                ).strip()
-                session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = (
-                    active_focus if active_focus in focus_options else focus_options[0]
-                )
-        elif not current_focus and focus_options:
-            active_focus = str(
-                session_state.get("focus") or session_state.get("practice_focus") or ""
-            ).strip()
-            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = (
-                active_focus if active_focus in focus_options else focus_options[0]
-            )
-        focus_idx = 0
-        if focus_options:
-            cur = str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or focus_options[0])
-            focus_idx = focus_options.index(cur) if cur in focus_options else 0
-        st.selectbox(
+        current = coerce_focus_list(session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY))
+        if identity_locked:
+            for foc in current:
+                if foc and foc not in focus_options:
+                    focus_options = [foc] + focus_options
+        else:
+            pruned = [f for f in current if f in focus_options]
+            if pruned != current:
+                session_state[ANALYSIS_PRACTICE_FOCUSES_KEY] = pruned
+        st.multiselect(
             "Practice Focus",
             focus_options or ["Improvisation"],
-            index=focus_idx,
-            key=ANALYSIS_PRACTICE_FOCUS_KEY,
+            key=ANALYSIS_PRACTICE_FOCUSES_KEY,
             disabled=identity_locked,
-            help="One Practice Focus for the selected instrument (separate from Evaluating Criteria).",
+            help=(
+                "Any number of Practice Focuses for the selected instrument "
+                "(separate from Evaluating Criteria)."
+            ),
         )
-        session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = {
-            selected_instrument: str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "")
-        }
+        focuses = coerce_focus_list(session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY))
+        session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = {selected_instrument: list(focuses)}
+        # Legacy scalar mirror only (not a Streamlit widget key).
+        session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = focuses[0] if focuses else ""
 
     source_type = st.selectbox(
         "What music/song is this recording?",
@@ -461,6 +457,7 @@ def render_upload_analysis_setup(
         "song_source_id": str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or ""),
         "target_layer": str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or ""),
         "practice_focus": str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or ""),
+        "practice_focuses": list(session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY) or []),
         "instrument_focuses": dict(session_state.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY) or {}),
         "level": str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or ""),
         "mission_constraint": str(session_state.get(ANALYSIS_MISSION_CONSTRAINT_KEY) or ""),

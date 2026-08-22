@@ -56,6 +56,7 @@ ANALYSIS_TARGET_LAYER_KEY = "analysis_target_layer_label"
 ANALYSIS_MISSION_CONSTRAINT_KEY = "analysis_mission_constraint"
 ANALYSIS_PLAYER_LEVEL_KEY = "analysis_player_level"
 ANALYSIS_PRACTICE_FOCUS_KEY = "analysis_practice_focus"
+ANALYSIS_PRACTICE_FOCUSES_KEY = "analysis_practice_focuses"
 ANALYSIS_INSTRUMENT_FOCUSES_KEY = "analysis_instrument_focuses"
 ANALYSIS_IDENTITY_LOCKED_KEY = "analysis_identity_locked"
 _MANUAL_MISSION_DEFAULTS_APPLIED_KEY = "_analysis_manual_mission_defaults_applied"
@@ -68,14 +69,33 @@ def instrument_focus_widget_key(instrument: str) -> str:
     return f"_analysis_instrument_focus__{safe}"
 
 
-def default_focus_for_instrument(instrument: str, session_state: dict[str, Any] | None = None) -> str:
-    """Pick a sensible default Practice Focus for an instrument."""
+def coerce_focus_list(value: Any) -> list[str]:
+    """Normalize legacy scalar / list Focus values into a deduped list (order preserved)."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text_value = value.strip()
+        return [text_value] if text_value else []
+    if isinstance(value, (list, tuple)):
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            for part in coerce_focus_list(item):
+                if part not in seen:
+                    seen.add(part)
+                    out.append(part)
+        return out
+    text_value = str(value).strip()
+    return [text_value] if text_value else []
+
+
+def focus_options_for_instrument_safe(instrument: str) -> list[str]:
     try:
         from practice_setup_controls import focus_options_for_instrument
 
-        options = list(focus_options_for_instrument(instrument) or [])
+        return list(focus_options_for_instrument(instrument) or [])
     except Exception:
-        options = [
+        return [
             "Melody",
             "Harmony",
             "Rhythm",
@@ -84,19 +104,161 @@ def default_focus_for_instrument(instrument: str, session_state: dict[str, Any] 
             "Technique",
             "Ear Training",
         ]
+
+
+def default_focus_for_instrument(
+    instrument: str, session_state: dict[str, Any] | None = None
+) -> str:
+    """Pick a sensible default Practice Focus for an instrument (legacy scalar helper)."""
+    options = focus_options_for_instrument_safe(instrument)
     if not options:
         return "Improvisation"
     ss = session_state or {}
-    active = str(
-        ss.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+    active_list = coerce_focus_list(
+        ss.get(ANALYSIS_PRACTICE_FOCUSES_KEY)
+        or ss.get(ANALYSIS_PRACTICE_FOCUS_KEY)
         or ss.get("focus")
         or ss.get("practice_focus")
-        or ""
-    ).strip()
-    if active:
-        # Prefer an option match; still keep explicit legacy / restored values.
-        return active
-    return options[0]
+    )
+    if active_list:
+        return active_list[0]
+    return str(options[0])
+
+
+def normalize_instrument_focuses_map(
+    raw: Any,
+    instruments: list[str] | None = None,
+) -> dict[str, list[str]]:
+    """Migrate legacy instrument->str maps to instrument->list[str]; optionally prune."""
+    cleaned: dict[str, list[str]] = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            inst = str(key).strip()
+            if not inst:
+                continue
+            cleaned[inst] = coerce_focus_list(value)
+    if instruments is None:
+        return cleaned
+    selected = [str(i).strip() for i in instruments if str(i).strip()]
+    return {inst: list(cleaned.get(inst) or []) for inst in selected}
+
+
+def format_focus_list(focuses: list[str]) -> str:
+    """Human-readable Focus list for coach copy (not a serialization format)."""
+    items = [str(f).strip() for f in focuses if str(f).strip()]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
+def collect_instrument_focuses(
+    session_state: dict[str, Any],
+    instruments: list[str],
+    *,
+    prune_to_options: bool = False,
+) -> dict[str, list[str]]:
+    """Read-only Focus collection for snapshot/analysis. Never mutates session_state."""
+    selected = [str(i).strip() for i in instruments if str(i).strip()]
+    raw_map = normalize_instrument_focuses_map(session_state.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY))
+    result: dict[str, list[str]] = {}
+    for inst in selected:
+        widget_key = instrument_focus_widget_key(inst)
+        focuses: list[str] = []
+        if widget_key in session_state:
+            focuses = coerce_focus_list(session_state.get(widget_key))
+        elif inst in raw_map:
+            focuses = list(raw_map[inst])
+        elif len(selected) == 1:
+            if ANALYSIS_PRACTICE_FOCUSES_KEY in session_state:
+                focuses = coerce_focus_list(session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY))
+            else:
+                focuses = coerce_focus_list(
+                    session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+                    or session_state.get("focus")
+                    or session_state.get("practice_focus")
+                )
+        if prune_to_options:
+            options = set(focus_options_for_instrument_safe(inst))
+            if options:
+                focuses = [f for f in focuses if f in options]
+        result[inst] = focuses
+    return result
+
+
+def prepare_instrument_focus_ui(
+    session_state: dict[str, Any],
+    instruments: list[str],
+    *,
+    identity_locked: bool = False,
+    single_recording: bool = False,
+) -> dict[str, list[str]]:
+    """UI-only Focus sync: seed/prune widget state BEFORE Focus widgets are instantiated.
+
+    Must not be called from build_analysis_context_snapshot / Run Analysis paths.
+    """
+    selected = [str(i).strip() for i in instruments if str(i).strip()]
+    collected = collect_instrument_focuses(
+        session_state,
+        selected,
+        prune_to_options=not identity_locked,
+    )
+
+    for inst in selected:
+        widget_key = instrument_focus_widget_key(inst)
+        options = focus_options_for_instrument_safe(inst)
+        focuses = list(collected.get(inst) or [])
+        if widget_key not in session_state:
+            session_state[widget_key] = list(focuses)
+        else:
+            current = coerce_focus_list(session_state.get(widget_key))
+            if not identity_locked and options:
+                pruned = [f for f in current if f in options]
+                if pruned != current:
+                    session_state[widget_key] = pruned
+                focuses = pruned
+            else:
+                focuses = current
+        collected[inst] = list(focuses)
+
+    if single_recording and selected:
+        inst = selected[0]
+        options = focus_options_for_instrument_safe(inst)
+        if ANALYSIS_PRACTICE_FOCUSES_KEY not in session_state:
+            legacy = coerce_focus_list(
+                session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+                or collected.get(inst)
+                or session_state.get("focus")
+                or session_state.get("practice_focus")
+            )
+            if not identity_locked and options:
+                legacy = [f for f in legacy if f in options]
+            session_state[ANALYSIS_PRACTICE_FOCUSES_KEY] = list(legacy)
+        else:
+            current = coerce_focus_list(session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY))
+            if not identity_locked and options:
+                pruned = [f for f in current if f in options]
+                if pruned != current:
+                    session_state[ANALYSIS_PRACTICE_FOCUSES_KEY] = pruned
+                current = pruned
+            collected[inst] = list(current)
+            session_state[instrument_focus_widget_key(inst)] = list(current)
+
+    stale_keys = [
+        k for k in list(session_state.keys()) if str(k).startswith("_analysis_instrument_focus__")
+    ]
+    keep_keys = {instrument_focus_widget_key(i) for i in selected}
+    for key in stale_keys:
+        if key not in keep_keys:
+            session_state.pop(key, None)
+
+    session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = {
+        inst: list(collected.get(inst) or []) for inst in selected
+    }
+    return dict(session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY])
 
 
 def sync_instrument_focuses(
@@ -104,66 +266,20 @@ def sync_instrument_focuses(
     instruments: list[str],
     *,
     identity_locked: bool = False,
-) -> dict[str, str]:
-    """Ensure exactly one Focus per selected instrument; drop stale entries.
+    mutate_session: bool = True,
+) -> dict[str, list[str]]:
+    """Compatibility wrapper.
 
-    Prefers existing per-instrument values (widget keys or mapping), then initializes
-    a sensible default for newly added instruments.
+    mutate_session=True -> UI path (prepare_instrument_focus_ui)
+    mutate_session=False -> read-only snapshot path (collect_instrument_focuses)
     """
-    selected = [str(i).strip() for i in instruments if str(i).strip()]
-    raw = session_state.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY)
-    current: dict[str, str] = {}
-    if isinstance(raw, dict):
-        current = {
-            str(k).strip(): str(v).strip()
-            for k, v in raw.items()
-            if str(k).strip() and str(v).strip()
-        }
-
-    synced: dict[str, str] = {}
-    for inst in selected:
-        widget_key = instrument_focus_widget_key(inst)
-        from_widget = str(session_state.get(widget_key) or "").strip()
-        from_map = str(current.get(inst) or "").strip()
-        focus = from_widget or from_map
-        try:
-            from practice_setup_controls import focus_options_for_instrument
-
-            options = list(focus_options_for_instrument(inst) or [])
-        except Exception:
-            options = []
-        # Keep an explicit map/widget Focus even when options differ (legacy labels /
-        # restored snapshots). Only invent a default when nothing is set yet.
-        if not focus:
-            focus = default_focus_for_instrument(inst, session_state)
-            if options and focus not in options:
-                focus = str(options[0])
-        synced[inst] = focus
-        # Seed widget key before Streamlit instantiates the selectbox.
-        widget_val = str(session_state.get(widget_key) or "").strip()
-        if widget_key not in session_state or (
-            not identity_locked
-            and not from_widget
-            and options
-            and widget_val
-            and widget_val not in options
-        ):
-            # Prefer an in-options value for the selectbox when seeding.
-            seed = focus if (not options or focus in options) else str(options[0])
-            session_state[widget_key] = seed
-
-    # Drop stale instrument→focus pairs (and orphan widget seeds for removed instruments).
-    stale_keys = [k for k in list(session_state.keys()) if str(k).startswith("_analysis_instrument_focus__")]
-    keep_keys = {instrument_focus_widget_key(i) for i in selected}
-    for key in stale_keys:
-        if key not in keep_keys:
-            session_state.pop(key, None)
-
-    session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = synced
-    if selected:
-        # Backward-compatible single Practice Focus = first selected instrument's Focus.
-        session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = synced.get(selected[0], "")
-    return synced
+    if mutate_session:
+        return prepare_instrument_focus_ui(
+            session_state,
+            instruments,
+            identity_locked=identity_locked,
+        )
+    return collect_instrument_focuses(session_state, instruments)
 
 
 def is_genuine_mission_upload_handoff(session_state: dict[str, Any]) -> bool:
@@ -215,7 +331,8 @@ def empty_analysis_context_snapshot() -> dict[str, Any]:
         "evaluating_criteria_ids": [],
         "evaluating_criteria_labels": [],
         "practice_focus": "",
-        # Multitrack: one Practice Focus per selected instrument (Single uses one entry).
+        "practice_focuses": [],
+        # Canonical: instrument -> list of Practice Focuses (Single and Multitrack).
         "instrument_focuses": {},
         "instruments": [],
         "instrument_levels": {},
@@ -292,47 +409,27 @@ def build_analysis_context_snapshot(
         instruments = _as_list(session_state.get("instrument"))
     snap["instruments"] = instruments
 
-    # Capture Single Practice Focus before sync (sync may rewrite the shared key
-    # from instrument defaults / option coercion).
-    explicit_single_focus = ""
-    if not mt:
-        explicit_single_focus = str(
-            session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+    # READ-ONLY Focus collection. Never write widget-backed Streamlit keys here
+    # (Run Analysis runs after Focus widgets already exist).
+    instrument_focuses = collect_instrument_focuses(session_state, instruments)
+    snap["instrument_focuses"] = {
+        inst: list(focuses) for inst, focuses in instrument_focuses.items()
+    }
+    practice_focuses: list[str] = []
+    if instruments:
+        practice_focuses = list(instrument_focuses.get(instruments[0]) or [])
+    if not practice_focuses and not mt:
+        practice_focuses = coerce_focus_list(
+            session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY)
+            or session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
             or session_state.get("focus")
             or session_state.get("practice_focus")
-            or ""
-        ).strip()
-        if explicit_single_focus and instruments:
-            seeded = dict(session_state.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY) or {})
-            if not isinstance(seeded, dict):
-                seeded = {}
-            seeded[instruments[0]] = explicit_single_focus
-            session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = seeded
-
-    # One Practice Focus per selected instrument (pruned to current selection).
-    instrument_focuses = sync_instrument_focuses(
-        session_state,
-        instruments,
-        identity_locked=bool(session_state.get(ANALYSIS_IDENTITY_LOCKED_KEY)),
-    )
-    # For Single Recording, the shared Practice Focus widget is authoritative.
-    if not mt and instruments:
-        single_focus = explicit_single_focus or str(
-            instrument_focuses.get(instruments[0]) or ""
-        ).strip()
-        if single_focus:
-            instrument_focuses = {instruments[0]: single_focus}
-            session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = dict(instrument_focuses)
-            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = single_focus
-    snap["instrument_focuses"] = dict(instrument_focuses)
-    focus = str(
-        session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
-        or (instrument_focuses.get(instruments[0]) if instruments else "")
-        or session_state.get("focus")
-        or session_state.get("practice_focus")
-        or ""
-    ).strip()
-    snap["practice_focus"] = focus
+        )
+        if practice_focuses and instruments:
+            snap["instrument_focuses"][instruments[0]] = list(practice_focuses)
+    snap["practice_focuses"] = list(practice_focuses)
+    # Legacy scalar = first selected Focus only (never a comma-joined string).
+    snap["practice_focus"] = practice_focuses[0] if practice_focuses else ""
 
     level = str(
         session_state.get(ANALYSIS_PLAYER_LEVEL_KEY)
@@ -466,22 +563,35 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
         out["instruments"] = instruments
     if snap.get("level"):
         out["level"] = snap["level"]
-    if snap.get("practice_focus"):
-        out["focus"] = snap["practice_focus"]
-    instrument_focuses = snap.get("instrument_focuses")
-    if isinstance(instrument_focuses, dict) and instrument_focuses:
-        cleaned = {
-            str(k).strip(): str(v).strip()
-            for k, v in instrument_focuses.items()
-            if str(k).strip() and str(v).strip()
-        }
-        out["instrument_focuses"] = cleaned
-        # Layer coaching: use the target layer/instrument Focus when present.
-        target = str(snap.get("target_layer") or out.get("target_layer") or "").strip()
-        if target and target in cleaned:
-            out["focus"] = cleaned[target]
-        elif instruments and instruments[0] in cleaned and not out.get("focus"):
-            out["focus"] = cleaned[instruments[0]]
+    instrument_focuses = normalize_instrument_focuses_map(
+        snap.get("instrument_focuses"),
+        instruments or None,
+    )
+    if not instrument_focuses and instruments:
+        legacy_focuses = coerce_focus_list(
+            snap.get("practice_focuses") or snap.get("practice_focus")
+        )
+        if legacy_focuses:
+            instrument_focuses = {instruments[0]: legacy_focuses}
+    out["instrument_focuses"] = instrument_focuses
+    practice_focuses = coerce_focus_list(snap.get("practice_focuses"))
+    if not practice_focuses and instruments:
+        practice_focuses = list(instrument_focuses.get(instruments[0]) or [])
+    if not practice_focuses:
+        practice_focuses = coerce_focus_list(snap.get("practice_focus"))
+    out["practice_focuses"] = list(practice_focuses)
+    out["focuses"] = list(practice_focuses)
+    # Legacy scalar = first Focus only (complete list lives in practice_focuses).
+    if practice_focuses:
+        out["focus"] = practice_focuses[0]
+    # Layer coaching: complete Focus list for the target layer/instrument.
+    target = str(snap.get("target_layer") or out.get("target_layer") or "").strip()
+    if target and target in instrument_focuses:
+        target_focuses = list(instrument_focuses.get(target) or [])
+        out["practice_focuses"] = target_focuses
+        out["focuses"] = target_focuses
+        if target_focuses:
+            out["focus"] = target_focuses[0]
     if snap.get("song_source_name"):
         out["song"] = snap["song_source_name"]
     if snap.get("song_artist"):
@@ -522,7 +632,10 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["workflow"] = snapshot.get("workflow")
     out["recording_type"] = snapshot.get("recording_type") or out.get("recording_type")
     out["practice_focus"] = snapshot.get("practice_focus")
-    out["instrument_focuses"] = dict(snapshot.get("instrument_focuses") or {})
+    out["practice_focuses"] = list(snapshot.get("practice_focuses") or [])
+    out["instrument_focuses"] = normalize_instrument_focuses_map(
+        snapshot.get("instrument_focuses")
+    )
     out["evaluating_criteria_ids"] = list(snapshot.get("evaluating_criteria_ids") or [])
     out["evaluating_criteria_labels"] = list(snapshot.get("evaluating_criteria_labels") or [])
     out["instruments"] = list(snapshot.get("instruments") or [])
@@ -549,11 +662,22 @@ def load_snapshot_from_result(result: dict[str, Any] | None) -> dict[str, Any]:
     snap = empty_analysis_context_snapshot()
     snap["recording_type"] = str(result.get("recording_type") or RECORDING_TYPE_PRACTICE)
     snap["song_source_name"] = str(result.get("song") or "")
-    snap["practice_focus"] = str(result.get("focus") or "")
+    focuses = coerce_focus_list(
+        result.get("practice_focuses")
+        or result.get("focus")
+        or result.get("practice_focus")
+    )
+    snap["practice_focuses"] = list(focuses)
+    snap["practice_focus"] = focuses[0] if focuses else ""
     snap["level"] = str(result.get("level") or "")
     inst = str(result.get("instrument") or "").strip()
     if inst:
         snap["instruments"] = [inst]
+        if focuses:
+            snap["instrument_focuses"] = {inst: list(focuses)}
+    raw_map = result.get("instrument_focuses")
+    if isinstance(raw_map, dict) and raw_map:
+        snap["instrument_focuses"] = normalize_instrument_focuses_map(raw_map)
     return snap
 
 
@@ -666,9 +790,21 @@ def seed_session_setup_from_active(session_state: dict[str, Any], *, force: bool
     if force or not str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip():
         if level:
             session_state[ANALYSIS_PLAYER_LEVEL_KEY] = level
-    if force or not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
+    existing_focuses = coerce_focus_list(
+        session_state.get(ANALYSIS_PRACTICE_FOCUSES_KEY)
+        or session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY)
+    )
+    if force or not existing_focuses:
         if focus:
-            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = focus
+            focus_list = coerce_focus_list(focus)
+            session_state[ANALYSIS_PRACTICE_FOCUSES_KEY] = list(focus_list)
+            # Legacy scalar mirror for older readers (not a Streamlit widget key anymore).
+            session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = focus_list[0] if focus_list else ""
+            instruments = _as_list(session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY))
+            if instruments:
+                session_state[ANALYSIS_INSTRUMENT_FOCUSES_KEY] = {
+                    instruments[0]: list(focus_list)
+                }
 
 
 def apply_manual_mission_recording_defaults(session_state: dict[str, Any]) -> None:
@@ -793,29 +929,34 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
             "and how parts work together rather than as a single solo instrument."
         )
 
-    focus = str(snap.get("practice_focus") or "").strip()
-    instrument_focuses = snap.get("instrument_focuses")
-    if isinstance(instrument_focuses, dict):
-        instrument_focuses = {
-            str(k).strip(): str(v).strip()
-            for k, v in instrument_focuses.items()
-            if str(k).strip() and str(v).strip()
-        }
-    else:
-        instrument_focuses = {}
-    if len(instrument_focuses) > 1:
-        mapped = "; ".join(f"**{inst}** → {foc}" for inst, foc in instrument_focuses.items())
+    instrument_focuses = normalize_instrument_focuses_map(snap.get("instrument_focuses"))
+    practice_focuses = coerce_focus_list(snap.get("practice_focuses") or snap.get("practice_focus"))
+    snap_instruments = _as_list(snap.get("instruments"))
+    multi_instrument = len(instrument_focuses) > 1 or len(snap_instruments) > 1
+    if multi_instrument and instrument_focuses:
+        mapped_bits = []
+        for inst, foc_list in instrument_focuses.items():
+            if foc_list:
+                mapped_bits.append(f"**{inst}** → {format_focus_list(foc_list)}")
+            else:
+                mapped_bits.append(f"**{inst}** → (no Practice Focus selected)")
         notes.append(
-            f"Practice Focus by instrument — {mapped}. Coach each part toward its own intended goal."
+            "Practice Focuses by instrument — "
+            + "; ".join(mapped_bits)
+            + ". Coach each part toward its own intended goals."
         )
-    elif len(instrument_focuses) == 1:
-        inst, foc = next(iter(instrument_focuses.items()))
+    elif instrument_focuses:
+        inst, foc_list = next(iter(instrument_focuses.items()))
+        if foc_list:
+            notes.append(
+                f"Practice Focuses for **{inst}**: **{format_focus_list(foc_list)}** — "
+                "keep recommendations aligned with all selected Focuses."
+            )
+    elif practice_focuses:
         notes.append(
-            f"Practice Focus for **{inst}** is **{foc}** — keep recommendations aligned with that work."
+            f"Practice Focuses: **{format_focus_list(practice_focuses)}** — "
+            "keep recommendations aligned with all selected Focuses."
         )
-    elif focus:
-        notes.append(f"Current Practice Focus is **{focus}** — keep recommendations aligned with that work.")
-
     labels = list(snap.get("evaluating_criteria_labels") or [])
     if labels:
         joined = ", ".join(labels)

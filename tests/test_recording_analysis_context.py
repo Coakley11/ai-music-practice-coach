@@ -494,10 +494,11 @@ class PracticeFocusSelectionTests(unittest.TestCase):
         src = Path("upload_analysis_setup_ui.py").read_text(encoding="utf-8")
         self.assertIn('"Practice Focus"', src)
         self.assertIn("focus_options_for_instrument", src)
-        # Practice Focus must be a selectbox, not free-text for the focus field
+        # Practice Focus must be a multiselect (any number of Focuses), not free-text.
         focus_idx = src.find('"Practice Focus"')
-        window = src[max(0, focus_idx - 80) : focus_idx + 40]
-        self.assertIn("selectbox", window)
+        window = src[max(0, focus_idx - 120) : focus_idx + 80]
+        self.assertIn("multiselect", window)
+        self.assertIn("ANALYSIS_PRACTICE_FOCUSES_KEY", src)
 
 
 class MultitrackStepLabelTests(unittest.TestCase):
@@ -569,15 +570,41 @@ class AmiUploadContextTests(unittest.TestCase):
         self.assertEqual(rows[0].get("recording_type"), RECORDING_TYPE_MISSION)
 
 
+
 class MultitrackInstrumentFocusTests(unittest.TestCase):
-    def test_two_instruments_get_independent_focuses_and_options(self) -> None:
+    def test_single_recording_multiple_focuses_from_instrument_options(self) -> None:
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            ANALYSIS_PRACTICE_FOCUSES_KEY,
+        )
+
+        flute_opts = focus_options_for_instrument("Flute")
+        self.assertTrue(flute_opts)
+        selected = [flute_opts[0], flute_opts[1], flute_opts[2]]
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Flute"],
+            ANALYSIS_PRACTICE_FOCUSES_KEY: list(selected),
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {"Flute": list(selected)},
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["instruments"], ["Flute"])
+        self.assertEqual(snap["instrument_focuses"]["Flute"], selected)
+        self.assertEqual(snap["practice_focuses"], selected)
+        self.assertEqual(snap["practice_focus"], selected[0])
+        for foc in selected:
+            self.assertIn(foc, flute_opts)
+
+    def test_multitrack_independent_focus_lists_and_ui_labels(self) -> None:
         from pathlib import Path
 
         from practice_setup_controls import focus_options_for_instrument
         from recording_analysis_context import (
             ANALYSIS_INSTRUMENT_FOCUSES_KEY,
             instrument_focus_widget_key,
-            sync_instrument_focuses,
+            prepare_instrument_focus_ui,
         )
 
         sax_opts = focus_options_for_instrument("Saxophone")
@@ -586,38 +613,39 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
         self.assertTrue(piano_opts)
         self.assertNotEqual(sax_opts, piano_opts)
 
+        sax_focuses = [sax_opts[0], sax_opts[1]]
+        piano_focuses = [piano_opts[0], piano_opts[1]]
         session = {
             "analysis_mode": MULTITRACK_RECORDING,
             "analysis_recording_type": RECORDING_TYPE_MT_MIX,
             ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano"],
             ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
-                "Saxophone": sax_opts[0],
-                "Piano": piano_opts[0],
+                "Saxophone": list(sax_focuses),
+                "Piano": list(piano_focuses),
             },
         }
-        session[instrument_focus_widget_key("Saxophone")] = sax_opts[0]
-        session[instrument_focus_widget_key("Piano")] = piano_opts[0]
-        synced = sync_instrument_focuses(session, ["Saxophone", "Piano"])
-        self.assertEqual(set(synced.keys()), {"Saxophone", "Piano"})
-        self.assertEqual(synced["Saxophone"], sax_opts[0])
-        self.assertEqual(synced["Piano"], piano_opts[0])
-        self.assertIn(synced["Saxophone"], sax_opts)
-        self.assertIn(synced["Piano"], piano_opts)
+        session[instrument_focus_widget_key("Saxophone")] = list(sax_focuses)
+        session[instrument_focus_widget_key("Piano")] = list(piano_focuses)
+        prepared = prepare_instrument_focus_ui(session, ["Saxophone", "Piano"])
+        self.assertEqual(prepared["Saxophone"], sax_focuses)
+        self.assertEqual(prepared["Piano"], piano_focuses)
 
         snap = build_analysis_context_snapshot(session)
-        self.assertEqual(snap["instrument_focuses"]["Saxophone"], sax_opts[0])
-        self.assertEqual(snap["instrument_focuses"]["Piano"], piano_opts[0])
+        self.assertEqual(snap["instrument_focuses"]["Saxophone"], sax_focuses)
+        self.assertEqual(snap["instrument_focuses"]["Piano"], piano_focuses)
         self.assertEqual(len(snap["instrument_focuses"]), 2)
 
         src = Path("upload_analysis_setup_ui.py").read_text(encoding="utf-8")
         self.assertIn("{inst} — Practice Focus", src)
-        self.assertIn("sync_instrument_focuses", src)
+        self.assertIn("st.multiselect", src)
+        self.assertIn("prepare_instrument_focus_ui", src)
 
-    def test_removing_instrument_drops_stale_focus_from_snapshot(self) -> None:
+    def test_removing_instrument_prunes_focus_list_from_snapshot_and_ui(self) -> None:
         from practice_setup_controls import focus_options_for_instrument
         from recording_analysis_context import (
             ANALYSIS_INSTRUMENT_FOCUSES_KEY,
             instrument_focus_widget_key,
+            prepare_instrument_focus_ui,
         )
 
         sax_opts = focus_options_for_instrument("Saxophone")
@@ -628,13 +656,14 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
             "analysis_recording_type": RECORDING_TYPE_MT_MIX,
             ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano", "Guitar"],
             ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
-                "Saxophone": sax_opts[0],
-                "Piano": piano_opts[0],
-                "Guitar": guitar_opts[0],
+                "Saxophone": [sax_opts[0]],
+                "Piano": [piano_opts[0], piano_opts[1]],
+                "Guitar": [guitar_opts[0]],
             },
         }
         for inst, foc in session[ANALYSIS_INSTRUMENT_FOCUSES_KEY].items():
-            session[instrument_focus_widget_key(inst)] = foc
+            session[instrument_focus_widget_key(inst)] = list(foc)
+
         snap = build_analysis_context_snapshot(session)
         self.assertEqual(set(snap["instrument_focuses"]), {"Saxophone", "Piano", "Guitar"})
 
@@ -642,9 +671,48 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
         snap2 = build_analysis_context_snapshot(session)
         self.assertEqual(set(snap2["instrument_focuses"]), {"Saxophone", "Piano"})
         self.assertNotIn("Guitar", snap2["instrument_focuses"])
-        self.assertNotIn("Guitar", session.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY) or {})
 
-    def test_history_reload_and_ami_preserve_instrument_focuses(self) -> None:
+        # UI sync (pre-widget) is responsible for pruning session map / widget seeds.
+        prepare_instrument_focus_ui(session, ["Saxophone", "Piano"])
+        self.assertNotIn("Guitar", session.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY) or {})
+        self.assertNotIn(instrument_focus_widget_key("Guitar"), session)
+
+    def test_changing_single_instrument_prunes_invalid_focuses(self) -> None:
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            ANALYSIS_PRACTICE_FOCUSES_KEY,
+            prepare_instrument_focus_ui,
+        )
+
+        flute_opts = set(focus_options_for_instrument("Flute"))
+        guitar_opts = focus_options_for_instrument("Guitar")
+        # Force a Flute-only Focus into session, then switch instrument to Guitar.
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Guitar"],
+            ANALYSIS_PRACTICE_FOCUSES_KEY: ["Tone", "Articulation", guitar_opts[0]],
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
+                "Guitar": ["Tone", "Articulation", guitar_opts[0]],
+            },
+        }
+        prepared = prepare_instrument_focus_ui(
+            session,
+            ["Guitar"],
+            single_recording=True,
+        )
+        kept = prepared["Guitar"]
+        for foc in kept:
+            self.assertIn(foc, guitar_opts)
+        if "Tone" not in guitar_opts:
+            self.assertNotIn("Tone", kept)
+        # Snapshot should also omit invalid Flute Focuses after UI prune.
+        snap = build_analysis_context_snapshot(session)
+        for foc in snap["instrument_focuses"]["Guitar"]:
+            self.assertIn(foc, guitar_opts)
+            self.assertTrue(foc not in flute_opts or foc in guitar_opts)
+
+    def test_history_reload_and_ami_preserve_focus_lists(self) -> None:
         from media_state import build_media_ami_payload_from_catalog, compact_recording_for_ami
         from practice_setup_controls import focus_options_for_instrument
         from recording_analysis_context import (
@@ -654,17 +722,20 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
 
         sax_opts = focus_options_for_instrument("Saxophone")
         piano_opts = focus_options_for_instrument("Piano")
-        mapping = {"Saxophone": sax_opts[0], "Piano": piano_opts[0]}
+        mapping = {
+            "Saxophone": [sax_opts[0], sax_opts[1]],
+            "Piano": [piano_opts[0], piano_opts[1]],
+        }
         session = {
             "analysis_mode": MULTITRACK_RECORDING,
             "analysis_recording_type": RECORDING_TYPE_MT_MIX,
             ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano"],
-            ANALYSIS_INSTRUMENT_FOCUSES_KEY: dict(mapping),
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {k: list(v) for k, v in mapping.items()},
             ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CATALOG,
             ANALYSIS_SONG_SOURCE_NAME_KEY: "Blue Bossa",
         }
         for inst, foc in mapping.items():
-            session[instrument_focus_widget_key(inst)] = foc
+            session[instrument_focus_widget_key(inst)] = list(foc)
         snap = build_analysis_context_snapshot(session)
         result = persist_snapshot_on_result({"ok": True}, snap)
         loaded = load_snapshot_from_result(result)
@@ -682,6 +753,7 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
         }
         compact = compact_recording_for_ami(entry)
         self.assertEqual(compact.get("instrument_focuses"), mapping)
+        self.assertEqual(compact.get("practice_focuses"), mapping["Saxophone"])
         payload = build_media_ami_payload_from_catalog(
             {
                 "uploaded_recordings": [entry],
@@ -695,21 +767,123 @@ class MultitrackInstrumentFocusTests(unittest.TestCase):
         self.assertTrue(rows)
         self.assertEqual(rows[0].get("instrument_focuses"), mapping)
 
-    def test_layer_coaching_uses_target_instrument_focus(self) -> None:
+    def test_layer_coaching_receives_all_target_focuses(self) -> None:
         snap = {
             "workflow": WORKFLOW_MULTITRACK,
             "recording_type": RECORDING_TYPE_MT_LAYER,
             "instruments": ["Saxophone", "Piano"],
             "target_layer": "Piano",
             "practice_focus": "Improvisation",
+            "practice_focuses": ["Improvisation"],
             "instrument_focuses": {
-                "Saxophone": "Improvisation",
-                "Piano": "Comping",
+                "Saxophone": ["Improvisation", "Phrasing"],
+                "Piano": ["Comping", "Voicings"],
             },
         }
         ctx = apply_snapshot_to_analysis_ctx({"recording_type": RECORDING_TYPE_MT_LAYER}, snap)
+        self.assertEqual(ctx.get("practice_focuses"), ["Comping", "Voicings"])
+        self.assertEqual(ctx.get("focuses"), ["Comping", "Voicings"])
         self.assertEqual(ctx.get("focus"), "Comping")
         self.assertEqual(ctx.get("instrument_focuses"), snap["instrument_focuses"])
+
+    def test_mix_coaching_retains_full_mapping(self) -> None:
+        from recording_analysis import analyze_multitrack
+
+        ctx = {
+            "recording_type": RECORDING_TYPE_MT_MIX,
+            "workflow": WORKFLOW_MULTITRACK,
+            "instruments": ["Saxophone", "Piano"],
+            "instrument_focuses": {
+                "Saxophone": ["Improvisation", "Phrasing"],
+                "Piano": ["Comping", "Voicings"],
+            },
+            "practice_focuses": ["Improvisation", "Phrasing"],
+            "focus": "Improvisation",
+            "evaluating_criteria_labels": [],
+        }
+        # Minimal fake layer features path: call helper body via importing analyze if audio-free path exists.
+        # If analyze_multitrack requires audio, assert apply/coach notes instead.
+        notes = coach_emphasis_notes(
+            {
+                "workflow": WORKFLOW_MULTITRACK,
+                "recording_type": RECORDING_TYPE_MT_MIX,
+                "instruments": ["Saxophone", "Piano"],
+                "instrument_focuses": ctx["instrument_focuses"],
+            }
+        )
+        joined = " ".join(notes)
+        self.assertIn("Saxophone", joined)
+        self.assertIn("Piano", joined)
+        self.assertIn("Improvisation", joined)
+        self.assertIn("Comping", joined)
+
+    def test_legacy_scalar_instrument_focus_migrates_to_list(self) -> None:
+        from recording_analysis_context import normalize_instrument_focuses_map
+
+        self.assertEqual(
+            normalize_instrument_focuses_map({"Flute": "Tone"}),
+            {"Flute": ["Tone"]},
+        )
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Flute"],
+            "analysis_instrument_focuses": {"Flute": "Tone"},
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["instrument_focuses"]["Flute"], ["Tone"])
+        self.assertEqual(snap["practice_focuses"], ["Tone"])
+        self.assertEqual(snap["practice_focus"], "Tone")
+
+    def test_legacy_practice_focus_scalar_still_usable(self) -> None:
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Flute"],
+            "analysis_practice_focus": "Tone",
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["practice_focus"], "Tone")
+        self.assertEqual(snap["practice_focuses"], ["Tone"])
+        self.assertEqual(snap["instrument_focuses"]["Flute"], ["Tone"])
+
+    def test_build_snapshot_does_not_mutate_widget_backed_keys(self) -> None:
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            ANALYSIS_PRACTICE_FOCUS_KEY,
+            ANALYSIS_PRACTICE_FOCUSES_KEY,
+            instrument_focus_widget_key,
+        )
+
+        wk = instrument_focus_widget_key("Flute")
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_PRACTICE,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Flute"],
+            ANALYSIS_PRACTICE_FOCUSES_KEY: ["Tone", "Phrasing"],
+            ANALYSIS_PRACTICE_FOCUS_KEY: "Tone",
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {"Flute": ["Tone", "Phrasing"]},
+            wk: ["Tone", "Phrasing"],
+        }
+        before = {
+            ANALYSIS_PRACTICE_FOCUS_KEY: session[ANALYSIS_PRACTICE_FOCUS_KEY],
+            ANALYSIS_PRACTICE_FOCUSES_KEY: list(session[ANALYSIS_PRACTICE_FOCUSES_KEY]),
+            wk: list(session[wk]),
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
+                k: list(v) for k, v in session[ANALYSIS_INSTRUMENT_FOCUSES_KEY].items()
+            },
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["practice_focuses"], ["Tone", "Phrasing"])
+        # Widget-backed / Focus UI keys must remain untouched by snapshot construction.
+        self.assertEqual(session[ANALYSIS_PRACTICE_FOCUS_KEY], before[ANALYSIS_PRACTICE_FOCUS_KEY])
+        self.assertEqual(session[ANALYSIS_PRACTICE_FOCUSES_KEY], before[ANALYSIS_PRACTICE_FOCUSES_KEY])
+        self.assertEqual(session[wk], before[wk])
+        self.assertEqual(
+            session[ANALYSIS_INSTRUMENT_FOCUSES_KEY],
+            before[ANALYSIS_INSTRUMENT_FOCUSES_KEY],
+        )
+
 
 
 if __name__ == "__main__":
