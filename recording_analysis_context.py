@@ -528,6 +528,65 @@ def _as_list(value: Any) -> list[str]:
     return [text] if text else []
 
 
+
+def split_song_title_artist(label: str) -> tuple[str, str]:
+    """Split ``Title — Artist`` style labels without inventing an artist."""
+    text = str(label or "").strip()
+    if not text:
+        return "", ""
+    for sep in (" — ", " – ", " - "):
+        if sep in text:
+            left, right = text.split(sep, 1)
+            left, right = left.strip(), right.strip()
+            if left and right:
+                return left, right
+    return text, ""
+
+
+def resolve_upload_song_artist(
+    *,
+    upload_title: str,
+    snap_artist: str = "",
+    harmony_artist: str = "",
+    catalog_artist: str = "",
+) -> tuple[str, str]:
+    """Return (display_title, artist) owned by the Upload-selected song.
+
+    Ambient Practice artists must not survive when Upload selected a different song.
+    """
+    title = str(upload_title or "").strip()
+    parsed_title, parsed_artist = split_song_title_artist(title)
+    artist = (
+        str(catalog_artist or "").strip()
+        or str(harmony_artist or "").strip()
+        or parsed_artist
+        or ""
+    )
+    # If the Upload label already embeds an artist, prefer that spelling over ambient snap.
+    if parsed_artist:
+        title = parsed_title or title
+        if not catalog_artist and not harmony_artist:
+            artist = parsed_artist
+        elif artist and parsed_artist and artist.lower() != parsed_artist.lower():
+            # Prefer the artist encoded with the Upload selection label / catalog.
+            if catalog_artist:
+                artist = str(catalog_artist).strip()
+            else:
+                artist = parsed_artist
+    elif not artist:
+        # Do not fall back to ambient snap_artist here — caller must omit it for Upload picks.
+        artist = ""
+    # Ignore ambient snap_artist unless it matches the Upload-owned artist.
+    ambient = str(snap_artist or "").strip()
+    if ambient and artist and ambient.lower() != artist.lower():
+        pass  # keep Upload-owned artist
+    elif ambient and not artist and not parsed_artist:
+        # Only allow ambient when Upload has no identity of its own (caller decides).
+        artist = ambient
+    return title, artist
+
+
+
 def build_analysis_context_snapshot(
     session_state: dict[str, Any],
     *,
@@ -629,10 +688,17 @@ def build_analysis_context_snapshot(
         ).strip()
     snap["song_source_name"] = upload_song_name or str(session_state.get("song") or "").strip()
     selected = session_state.get("selected_song")
-    if isinstance(selected, dict):
+    # Upload-selected identity owns artist. Do NOT copy ambient Practice selected_song.artist
+    # onto a different Upload song (e.g. Perfect — Ed Sheeran vs John Mayer ambient).
+    _title_guess, _artist_from_label = split_song_title_artist(snap["song_source_name"])
+    if upload_song_id or upload_song_name:
+        snap["song_artist"] = _artist_from_label
+    elif isinstance(selected, dict):
         snap["song_artist"] = str(selected.get("artist") or "").strip()
         if not snap["song_source_name"] and song_type != SONG_SOURCE_OTHER:
             snap["song_source_name"] = str(selected.get("title") or selected.get("name") or "").strip()
+    else:
+        snap["song_artist"] = ""
 
     # display_key / harmony are owned by attach_selected_song_harmony_to_snapshot.
     # Leave empty here so ambient chart_key cannot leak before resolve.
@@ -1403,10 +1469,14 @@ def resolve_selected_song_harmony(
                 ts = ext.get("time_signature") or rec.get("time_signature")
                 if ts:
                     result["time_signature"] = str(ts)
-                if not result["song_source_name"]:
-                    title = str(rec.get("title") or "").strip()
-                    artist = str(rec.get("artist") or "").strip()
+                title = str(rec.get("title") or "").strip()
+                artist = str(rec.get("artist") or "").strip()
+                if artist:
+                    result["song_artist"] = artist
+                if title:
                     result["song_source_name"] = f"{title} — {artist}" if artist else title
+                elif not result["song_source_name"] and artist:
+                    result["song_source_name"] = artist
                 result["resolved"] = bool(norm)
                 return result
 
@@ -1550,11 +1620,26 @@ def selected_song_analysis_context(
         resolved = has_harmony
         authority = "selected" if resolved else "unresolved"
 
-    title = str(harmony.get("song_source_name") or snap.get("song_source_name") or "").strip()
+    raw_title = str(harmony.get("song_source_name") or snap.get("song_source_name") or "").strip()
     source_id = str(
         harmony.get("song_source_id") or snap.get("song_source_id") or ""
     ).strip()
-    artist = str(snap.get("song_artist") or "").strip()
+    title, artist = resolve_upload_song_artist(
+        upload_title=raw_title,
+        snap_artist="",  # never trust ambient snap artist here
+        harmony_artist=str(harmony.get("song_artist") or "").strip(),
+        catalog_artist=str(harmony.get("song_artist") or "").strip(),
+    )
+    if not artist:
+        # Fall back to snap only when it matches the Upload title embedding or snap was
+        # already Upload-owned (no ambient Practice song artist).
+        snap_artist = str(snap.get("song_artist") or "").strip()
+        _pt, _pa = split_song_title_artist(raw_title)
+        if snap_artist and _pa and snap_artist.lower() == _pa.lower():
+            artist = snap_artist
+            title = _pt or title
+        elif snap_artist and not _pa and not source_id and not raw_title:
+            artist = snap_artist
     if not is_other:
         has_song_harmony = bool(display_key or chords)
         has_song_form = bool(named_sections)

@@ -366,17 +366,30 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
 
     mission_cards = ""
     for m in missions:
-        sc = int(m.get("score", 0))
+        sc_raw = m.get("score")
+        try:
+            sc = int(sc_raw) if sc_raw is not None else None
+        except (TypeError, ValueError):
+            sc = None
+        score_label = f"{sc}%" if sc is not None else "qualitative"
+        bar_w = max(8, sc) if sc is not None else 8
+        evidence = "".join(
+            f"<li>{_esc(x)}</li>" for x in (m.get("observed_evidence") or []) if str(x).strip()
+        )
+        assessment = _esc(m.get("assessment") or score_label)
         mission_cards += f"""
 <div class="ma-mission-row">
   <div class="ma-mission-head">
     <span class="ma-mission-title">{_esc(m.get('label', ''))}</span>
-    <span class="ma-mission-score">{sc}%</span>
+    <span class="ma-mission-score">{score_label}</span>
   </div>
-  <div class="ma-bar-track"><div class="ma-bar-fill" style="width:{max(8, sc)}%"></div></div>
-  <p class="ma-why">{_esc(m.get('summary', ''))}</p>
+  <div class="ma-bar-track"><div class="ma-bar-fill" style="width:{bar_w}%"></div></div>
+  <p class="ma-sub"><strong>Assessment:</strong> {assessment}</p>
+  {"<p class='ma-sub'><strong>Observed evidence:</strong></p><ul>" + evidence + "</ul>" if evidence else ""}
+  <p class="ma-why"><strong>Interpretation:</strong> {_esc(m.get('summary', '') or m.get('why', ''))}</p>
   <p class="ma-sub ma-good"><strong>What went well:</strong> {_esc(m.get('went_well', ''))}</p>
-  <p class="ma-sub ma-grow"><strong>To improve:</strong> {_esc(m.get('improve_to', ''))}</p>
+  <p class="ma-sub ma-grow"><strong>Growth edge:</strong> {_esc(m.get('improve_to', ''))}</p>
+  {f"<p class='ma-sub'><strong>Next drill:</strong> {_esc(m.get('drill') or ((m.get('tips') or [''])[0]))}</p>" if (m.get('drill') or m.get('tips')) else ""}
 </div>"""
 
     rec = _esc(result.get("mission_next_recommendation", ""))

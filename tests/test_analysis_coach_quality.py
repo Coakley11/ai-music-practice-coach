@@ -194,7 +194,7 @@ class AnalysisStatusMessageTests(unittest.TestCase):
     def test_report_heading_and_score_label_are_ownership_aware(self) -> None:
         self.assertEqual(
             criteria_report_heading(mission_evaluation_active=False),
-            "🎯 Focused AI evaluation",
+            "Selected Evaluating Criteria",
         )
         self.assertEqual(
             criteria_report_heading(mission_evaluation_active=True),
@@ -228,7 +228,7 @@ class AnalysisStatusMessageTests(unittest.TestCase):
                 "musical_metrics": {"scale_adherence": 70},
             }
         )
-        self.assertIn("Focused AI evaluation", practice_html)
+        self.assertIn("Selected Evaluating Criteria", practice_html)
         self.assertIn("Overall criteria score", practice_html)
         self.assertNotIn("AI improvisation evaluation", practice_html)
         self.assertIn("Scale/mode usage", practice_html)

@@ -385,6 +385,42 @@ def compute_performance_scores(f: AudioFeatures, instrument: str) -> dict[str, i
     }
 
 
+
+def _meter_aware_tempo_delta(detected: int, reference: int, meter: str = "") -> tuple[str, int | None]:
+    """Compare detected vs reference BPM with half/double and compound-meter awareness.
+
+    Returns (caution_note_or_empty, comparable_delta_or_None).
+    Only return a numeric delta when detected and reference likely share the same beat unit.
+    """
+    det = int(detected)
+    ref = int(reference)
+    meter_l = str(meter or "").strip().lower().replace(" ", "")
+    compound = meter_l in {"6/8", "9/8", "12/8"} or meter_l.endswith("/8")
+    candidates = [float(det), float(det) / 2.0, float(det) * 2.0]
+    if compound:
+        candidates.extend([float(det) * 2.0 / 3.0, float(det) * 3.0 / 2.0])
+    best = min(candidates, key=lambda c: abs(c - ref))
+    raw_err = abs(float(det) - ref)
+    best_err = abs(best - ref)
+    # Detected itself is the best interpretation → comparable.
+    if abs(float(det) - best) < 0.51:
+        return "", det - ref
+    # A reinterpretation is clearly closer → do not claim "N BPM too fast/slow".
+    if best_err + 2 < raw_err:
+        if best_err <= 8:
+            return (
+                f"Detected pulse ≈ {det} BPM is broadly consistent with reference {ref} BPM"
+                + (f" in {meter}" if meter else "")
+                + " when allowing for a common subdivision/beat-unit mapping."
+            ), 0
+        return (
+            f"Detected pulse ≈ {det} BPM while the song reference is {ref} BPM"
+            + (f" in {meter}" if meter else "")
+            + "; the detector may be tracking a different subdivision/beat unit, "
+            "so treat a direct BPM gap cautiously."
+        ), None
+    return "", det - ref
+
 def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
     findings: list[str] = []
     tips: list[str] = []
@@ -396,11 +432,19 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
         try:
             ref_i = int(float(ref_bpm))
             det_i = int(float(f.tempo))
-            delta = det_i - ref_i
-            if abs(delta) >= 4:
+            meter = str(
+                ctx.get("time_signature")
+                or ctx.get("meter")
+                or ((ctx.get("selected_song_analysis_context") or {}) if isinstance(ctx.get("selected_song_analysis_context"), dict) else {}).get("meter")
+                or ""
+            ).strip()
+            note, comparable_delta = _meter_aware_tempo_delta(det_i, ref_i, meter)
+            if note:
+                findings.append(note)
+            elif comparable_delta is not None and abs(comparable_delta) >= 4:
                 findings.append(
                     f"Detected performance tempo ≈ {det_i} BPM vs song reference {ref_i} BPM "
-                    f"({abs(delta)} BPM {'above' if delta > 0 else 'below'} the reference)."
+                    f"({abs(comparable_delta)} BPM {'above' if comparable_delta > 0 else 'below'} the reference)."
                 )
             else:
                 findings.append(
@@ -450,9 +494,26 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
             sec_names = list(ctx["sections"].keys())
             if any("chorus" in s.lower() for s in sec_names):
                 findings.append(
-                    "Chorus entrances are a common rush point — compare your downbeat to the metronome."
+                    "Prospective coaching: when you reach a Chorus entrance, compare your "
+                    "downbeat to the metronome or backing (song form lists a Chorus — this is "
+                    "not an observed rush timestamp from this take)."
                 )
-    tips.append(f"Try slower metronome practice at {max(55, bpm_hint - 20)} BPM, then notch up 4 BPM per clean pass.")
+    try:
+        _ref_for_drill = int(float(ref_bpm)) if ref_bpm not in (None, "") else None
+    except (TypeError, ValueError):
+        _ref_for_drill = None
+    if _ref_for_drill:
+        tips.append(
+            f"Song-tempo ladder toward {_ref_for_drill} BPM: "
+            f"{max(55, int(round(_ref_for_drill * 0.8)))} → "
+            f"{max(55, int(round(_ref_for_drill * 0.9)))} → {_ref_for_drill} "
+            "(do not jump above the song reference without a stated reason)."
+        )
+    else:
+        tips.append(
+            f"Try slower metronome practice at {max(55, bpm_hint - 20)} BPM, "
+            "then notch up 4 BPM per clean pass."
+        )
 
     return {
         "title": "Timing / Rhythm",
@@ -474,6 +535,13 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
             f"Estimated center pitch: {f.pitch_note} "
             f"(observed from the recording — not the selected song key; "
             f"voiced {f.voiced_ratio * 100:.0f}% of frames)."
+        )
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    if "backing" in rtype or ctx.get("backing_track_context"):
+        findings.append(
+            "Mixed-recording pitch estimate: backing track content may influence F0 — "
+            "treat target-instrument intonation with lower confidence unless an isolated "
+            "stem is available."
         )
     else:
         findings.append("Pitch contour was unclear — try a brighter tone or less room noise.")
@@ -660,6 +728,38 @@ def _musicality_analysis(f: AudioFeatures) -> dict[str, Any]:
     return {"title": "Musicality / Expression", "findings": findings, "tips": tips}
 
 
+
+def _plan_bpm(ctx: dict[str, Any], fallback: int) -> int:
+    """Prefer song reference BPM for drills; only use detected when no reference exists."""
+    ref = ctx.get("reference_bpm")
+    if ref in (None, ""):
+        ref = ctx.get("practice_bpm")
+    try:
+        if ref not in (None, ""):
+            return int(float(ref))
+    except (TypeError, ValueError):
+        pass
+    return int(fallback)
+
+
+def _chord_tone_coaching_hint(chords: list[str]) -> str:
+    """Chord-quality-aware target wording (no invented 7ths on triads)."""
+    try:
+        from music_theory import classify_chord_quality, spell_chord_tones
+    except Exception:
+        return "chord tones present in each symbol"
+    hints: list[str] = []
+    for raw in chords[:4]:
+        tones = spell_chord_tones(raw)
+        quality = classify_chord_quality(raw)
+        if len(tones) >= 4 or quality in {"dom", "maj7", "m7", "half-dim", "dim"}:
+            hints.append(f"{raw}: 3rd+7th")
+        elif len(tones) >= 3:
+            hints.append(f"{raw}: root/3rd/5th")
+        else:
+            hints.append(f"{raw}: chord tones")
+    return "; ".join(hints) if hints else "chord tones present in each symbol"
+
 def build_practice_plan(
     scores: dict[str, int],
     ctx: dict[str, Any],
@@ -687,9 +787,17 @@ def build_practice_plan(
     ref_bpm = ctx.get("reference_bpm")
     if ref_bpm in (None, ""):
         ref_bpm = ctx.get("practice_bpm")
-    # Practice tempo from observed take when available; keep reference BPM separate.
-    bpm = int(detected_bpm or ref_bpm or 80)
-    slow = max(55, bpm - 22)
+    # Anchor drills to the song reference BPM when present (not unexplained faster targets).
+    try:
+        ref_i = int(float(ref_bpm)) if ref_bpm not in (None, "") else None
+    except (TypeError, ValueError):
+        ref_i = None
+    bpm = int(ref_i or detected_bpm or 80)
+    if ref_i:
+        # Intentional slower ladder toward the song reference.
+        slow = max(55, int(round(ref_i * 0.85)))
+    else:
+        slow = max(55, bpm - 22)
 
     rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
     labels = list(ctx.get("evaluating_criteria_labels") or [])
@@ -768,11 +876,14 @@ def build_practice_plan(
                 )
         if len(chords) >= 3:
             plan.append(
-                f"Target the 3rd and 7th through {' → '.join(chords[:3])} @ {slow} BPM."
+                f"Target chord tones that actually appear in {' → '.join(chords[:3])} "
+                f"@ {_plan_bpm(ctx, slow)} BPM "
+                f"({_chord_tone_coaching_hint(chords[:3])})."
             )
         elif chords:
             plan.append(
-                f"Outline {' → '.join(chords[:4])} @ {slow} BPM — land chord tones on strong beats."
+                f"Outline {' → '.join(chords[:4])} @ {_plan_bpm(ctx, slow)} BPM — "
+                f"land {_chord_tone_coaching_hint(chords[:4])} on strong beats."
             )
         if song_key:
             plan.append(
@@ -789,8 +900,15 @@ def build_practice_plan(
         elif name == "pitch":
             if song_harmony:
                 plan.append(
-                    f"Chord-tone targeting in {dk or 'the song key'}: root–3rd–5th–7th "
-                    "over the first 4 song chords."
+                    "Chord-tone targeting in "
+                    + (dk or "the song key")
+                    + ": "
+                    + (
+                        _chord_tone_coaching_hint(chords[:4])
+                        if chords
+                        else "chord tones present in each symbol"
+                    )
+                    + " over the first 4 song chords."
                 )
             else:
                 plan.append(
@@ -946,19 +1064,19 @@ def _apply_context_emphasis_to_categories(
             "State the motif, then sequence it up/down a step for 8 bars.",
         ),
         "chord-tone": (
-            "Chord-tone targeting deep-dive: land chord tones (esp. 3rds/7ths) on strong beats.",
-            "Over each chord, outline root–3rd–5th–7th before freer lines.",
+            "Chord-tone targeting deep-dive: land chord tones that the symbol actually encodes (3rds; 7ths only when present) on strong beats.",
+            "Over each chord, outline only the tones encoded in the chord symbol (triads: root/3rd/5th; 7th chords: include the 7th) before freer lines.",
         ),
         "chord tone": (
-            "Chord-tone targeting deep-dive: land chord tones (esp. 3rds/7ths) on strong beats.",
-            "Over each chord, outline root–3rd–5th–7th before freer lines.",
+            "Chord-tone targeting deep-dive: land chord tones that the symbol actually encodes (3rds; 7ths only when present) on strong beats.",
+            "Over each chord, outline only the tones encoded in the chord symbol (triads: root/3rd/5th; 7th chords: include the 7th) before freer lines.",
         ),
         "guide-tone": (
-            "Guide-tone targeting deep-dive: connect 3rds/7ths smoothly across changes.",
+            "Guide-tone targeting deep-dive: connect 3rds (and 7ths only when the chord includes them) smoothly across changes.",
             "Walk only guide tones through the progression, then ornament lightly.",
         ),
         "guide tone": (
-            "Guide-tone targeting deep-dive: connect 3rds/7ths smoothly across changes.",
+            "Guide-tone targeting deep-dive: connect 3rds (and 7ths only when the chord includes them) smoothly across changes.",
             "Walk only guide tones through the progression, then ornament lightly.",
         ),
         "voice lead": (
@@ -1287,6 +1405,55 @@ def analyze_recording(
         result_payload.update(mission_block)
         if musical_metrics and not result_payload.get("musical_metrics"):
             result_payload["musical_metrics"] = musical_metrics
+
+        # Explicit Practice Focus analysis (one evidence block per selected Focus).
+        try:
+            from multitrack_upload_analysis import build_target_layer_focus_analysis
+
+            focus_ctx = dict(ctx)
+            focus_ctx.setdefault("instruments", [instrument] if instrument else [])
+            if not focus_ctx.get("target_layer"):
+                focus_ctx["target_layer"] = instrument
+            focus_blocks = build_target_layer_focus_analysis(
+                features=features,
+                scores=scores,
+                categories=categories,
+                ctx=focus_ctx,
+                musical_metrics=musical_metrics,
+            )
+            result_payload["practice_focus_analysis"] = list(focus_blocks)
+            # Dashboard currently reads the Layer key — reuse for Single too.
+            result_payload["target_layer_focus_analysis"] = list(focus_blocks)
+        except Exception:
+            result_payload.setdefault("practice_focus_analysis", [])
+
+        # Mixed backing-track attribution caveat (no source separation claimed).
+        rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+        if "backing" in rtype or ctx.get("backing_track_context"):
+            caveat = (
+                "Mixed-recording note: this take includes a backing track. Pitch, tone, and "
+                "pitch-class metrics may partly reflect the mix, not only the target instrument — "
+                "treat target-only claims with lower confidence unless an isolated stem is used."
+            )
+            summary = str(result_payload.get("coach_summary") or "")
+            if "Mixed-recording note" not in summary:
+                result_payload["coach_summary"] = f"{summary} {caveat}".strip()
+            result_payload["mixed_backing_attribution_caveat"] = caveat
+
+        # Summarize that selected Focuses + Criteria were evaluated explicitly.
+        _pfs = list(result_payload.get("practice_focuses") or [])
+        _crit = list(result_payload.get("evaluating_criteria_labels") or [])
+        if _pfs or _crit:
+            bits = []
+            if _pfs:
+                bits.append("Practice Focuses: " + ", ".join(_pfs))
+            if _crit:
+                bits.append("Evaluating Criteria: " + ", ".join(_crit))
+            lead = "You asked me to evaluate " + " · ".join(bits) + "."
+            summary = str(result_payload.get("coach_summary") or "")
+            if "You asked me to evaluate" not in summary:
+                result_payload["coach_summary"] = f"{lead} {summary}".strip()
+
         return result_payload
     except Exception as e:
         return {"ok": False, "message": f"Could not analyze recording: {e}"}

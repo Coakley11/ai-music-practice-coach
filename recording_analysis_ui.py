@@ -237,7 +237,11 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
                 )
 
     focus_blocks_html = ""
-    focus_blocks = result.get("target_layer_focus_analysis") or []
+    focus_blocks = (
+        result.get("practice_focus_analysis")
+        or result.get("target_layer_focus_analysis")
+        or []
+    )
     if isinstance(focus_blocks, list) and focus_blocks:
         target_name = _esc(
             result.get("target_layer") or result.get("instrument") or "Target layer"
@@ -270,9 +274,15 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         arrangement_html = (
             f"<p class='ra-muted'>{_esc(arrangement)}</p>" if arrangement else ""
         )
+        _is_layer = bool(result.get("multitrack") or result.get("target_layer"))
+        _focus_heading = (
+            f"Practice Focus analysis — {target_name}"
+            if _is_layer
+            else "Practice Focus analysis"
+        )
         focus_blocks_html = f"""
   <div class="ra-card" style="margin-bottom:14px">
-    <h3>Target layer focus analysis — {target_name}</h3>
+    <h3>{_focus_heading}</h3>
     {arrangement_html}
     {"".join(block_parts)}
   </div>"""

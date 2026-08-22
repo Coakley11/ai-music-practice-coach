@@ -158,7 +158,7 @@ def criteria_report_heading(*, mission_evaluation_active: bool) -> str:
     """Report block title — Mission language only when Mission evaluation is active."""
     if mission_evaluation_active:
         return "🎯 AI improvisation evaluation"
-    return "🎯 Focused AI evaluation"
+    return "Selected Evaluating Criteria"
 
 
 def criteria_overall_score_label(*, mission_evaluation_active: bool) -> str:

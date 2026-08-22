@@ -409,9 +409,13 @@ def _clamp(v: float, lo: float = 12.0, hi: float = 96.0) -> float:
 
 
 def _score_from_weights(weights: dict[str, float], metrics: dict[str, float]) -> int:
-    total = 0.0
-    for k, w in weights.items():
-        total += metrics.get(k, 55.0) * w
+    present = {k: float(metrics[k]) for k in weights if k in metrics}
+    if not present:
+        # No defensible primary signal — return neutral qualitative placeholder.
+        return 0
+    # Renormalize over available metrics only (do not invent 55 defaults).
+    wsum = sum(weights[k] for k in present) or 1.0
+    total = sum(present[k] * (weights[k] / wsum) for k in present)
     return int(round(_clamp(total)))
 
 
@@ -506,7 +510,8 @@ def _mission_feedback(
             )
         return (
             "Harmony is implied but fuzzy — sing the root of each chord before improvising.",
-            "Target 3rds and 7ths at phrase endings to lock in the progression.",
+            "Target chord tones that each symbol encodes at phrase endings "
+            "(3rds always; 7ths only when the chord includes them).",
         )
 
     if mission.id == "timing_groove":
@@ -590,12 +595,13 @@ def _mission_feedback(
     if mission.id == "guide_tones":
         if score >= 75:
             return (
-                "3rds and 7ths show up as clear phrase destinations.",
+                "Guide tones (3rds; 7ths only when encoded) show up as clear phrase destinations.",
                 f"Guide-tone usage ({metrics.get('guide_tone_usage', 0):.0f}/100) tracks the progression.",
             )
         return (
-            "Land on chord 3rds and 7ths at phrase endings — they define the harmony.",
-            "End each 2-bar phrase on the current chord’s 3rd or 7th.",
+            "Land on guide tones at phrase endings — 3rds for triads, 3rds+7ths when the "
+            "chord symbol includes a 7th.",
+            "End each 2-bar phrase on the current chord’s 3rd (and 7th only if present).",
         )
 
     if mission.id == "custom" and custom_text:
@@ -775,6 +781,53 @@ def _instrument_mission_tips(instrument: str, mission_id: str, score: int) -> li
     return tips[:3]
 
 
+
+def _criterion_observed_evidence(
+    mission: MissionGoal,
+    metrics: dict[str, float],
+    ctx: dict[str, Any],
+) -> tuple[list[str], bool]:
+    """Build evidence lines for a selected Evaluating Criterion.
+
+    Returns (evidence_lines, has_defensible_primary_metric).
+    """
+    lines: list[str] = []
+    primary_keys = [k for k, w in sorted(mission.weights.items(), key=lambda kv: -kv[1])[:3]]
+    present = [k for k in primary_keys if k in metrics]
+    limited = len(present) == 0
+    for k in present:
+        lines.append(f"{k.replace('_', ' ')} ≈ {float(metrics[k]):.0f}/100")
+    if mission.id in {"scale_connection", "chord_tone_targeting", "guide_tones", "deep_harmony"}:
+        song = str(ctx.get("song") or ctx.get("song_source_name") or "").strip()
+        key = str(ctx.get("display_key") or "").strip()
+        if song or key:
+            lines.append(
+                "Harmonic frame: "
+                + (song if song else "selected song")
+                + (f" / {key}" if key else "")
+            )
+        rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+        if "backing" in rtype or ctx.get("backing_track_context"):
+            lines.append(
+                "Mixed-recording caution: pitch-class evidence may include backing content."
+            )
+    if mission.id in {"dynamic_contrast"}:
+        if "dynamic_contrast" in metrics:
+            lines.append(f"Dynamic contrast signal ≈ {float(metrics['dynamic_contrast']):.0f}/100")
+    if mission.id in {"articulation"}:
+        if "articulation" in metrics:
+            lines.append(f"Articulation signal ≈ {float(metrics['articulation']):.0f}/100")
+    if mission.id in {"instrument_tone"}:
+        if "instrument_tone" in metrics:
+            lines.append(f"Tone signal ≈ {float(metrics['instrument_tone']):.0f}/100")
+    if limited:
+        lines.append(
+            "Limited direct metric coverage for this criterion on this take — "
+            "coaching stays qualitative rather than inventing a borrowed score."
+        )
+    return lines, not limited
+
+
 def score_missions(
     mission_ids: list[str],
     metrics: dict[str, float],
@@ -816,16 +869,29 @@ def score_missions(
                     why = why.replace("Mirror the backing:", "Shape the phrase:")
         went_well, improve_to = _coach_result_fields(score, summary, why)
         tips = _instrument_mission_tips(str(ctx.get("instrument") or ""), goal.id, score)
+        evidence_lines, has_primary = _criterion_observed_evidence(goal, metrics, ctx)
+        assessment = (
+            f"{score}/100"
+            if has_primary and score > 0
+            else "Limited evidence / qualitative assessment"
+        )
+        drill = ""
+        if tips:
+            drill = str(tips[0])
         results.append(
             {
                 "id": goal.id,
                 "label": goal.label,
-                "score": score,
+                "score": score if has_primary else None,
+                "assessment": assessment,
                 "summary": summary,
                 "why": why,
+                "observed_evidence": evidence_lines,
                 "went_well": went_well,
                 "improve_to": improve_to,
+                "drill": drill,
                 "tips": tips,
+                "limited_evidence": not has_primary,
             }
         )
         if score < 65:
@@ -841,7 +907,7 @@ def score_missions(
     shared_tips = dedupe_recommendations(shared_tips, limit=2)
     if shared_tips and results:
         # Attach shared advice once to the weakest criterion only.
-        weakest = min(results, key=lambda r: int(r.get("score") or 0))
+        weakest = min(results, key=lambda r: int(r.get("score") or 0) if r.get("score") is not None else 0)
         weakest["tips"] = dedupe_recommendations(list(weakest.get("tips") or []) + shared_tips, limit=4)
     return results
 

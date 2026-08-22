@@ -280,12 +280,19 @@ def _scales_focus_block(
             )
         if guide_tone is not None:
             findings.append(
-                f"Guide-tone (3rds/7ths) usage vs selected-song harmony ≈ {float(guide_tone):.0f}%."
+                f"Guide-tone usage vs selected-song harmony ≈ {float(guide_tone):.0f}% "
+                "(3rds; 7ths only where the chord symbol includes them)."
             )
         if scale_adh is None and chord_tone is None:
             findings.append(
                 "Pitch-class harmonic fit was limited in this take — coach from the selected "
                 "song key/chords on the next loop."
+            )
+        rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+        if "backing" in rtype or ctx.get("backing_track_context"):
+            findings.append(
+                "Mixed-recording caution: pitch-class / scale evidence may include backing-track "
+                "content as well as the target instrument."
             )
 
         if mapped is not None and mapped >= 70:
@@ -294,8 +301,8 @@ def _scales_focus_block(
                 f"{song_name or 'the selected song'}'s scale/harmony."
             )
             improve_to = (
-                "Tighten weaker chords in the progression — land chord tones on strong beats, "
-                "especially 3rds and 7ths through ii–V motion."
+                "Tighten weaker chords in the progression — land chord tones that each symbol "
+                "actually encodes on strong beats (3rds always; 7ths only when present)."
             )
         elif mapped is not None and mapped >= 50:
             went_well = (
@@ -324,9 +331,15 @@ def _scales_focus_block(
                 f"target the 3rd of each chord in {' → '.join(chords[:4])}."
             )
         elif chords:
+            try:
+                from recording_analysis import _chord_tone_coaching_hint
+
+                tone_hint = _chord_tone_coaching_hint(chords[:4])
+            except Exception:
+                tone_hint = "chord tones that appear in each symbol"
             drill = (
-                f"Play {' → '.join(chords[:4])} slowly — hold the 3rd and 7th of each chord "
-                f"for two beats before connecting with {song_key or 'the song'} scale tones."
+                f"Play {' → '.join(chords[:4])} slowly — hold {tone_hint} "
+                f"before connecting with {song_key or 'the song'} scale tones."
             )
         else:
             drill = (
