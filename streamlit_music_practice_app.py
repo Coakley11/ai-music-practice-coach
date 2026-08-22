@@ -6986,6 +6986,14 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
     label = str(recording_type_label or st.session_state.get("analysis_recording_type") or "Practice take")
     # Keep human-facing type for coaching emphasis; underscore form remains compatible.
     ctx = _recording_analysis_context(recording_type=label)
+    # Clear ambient Practice-chart harmony before Upload-selected song owns analysis.
+    # Observed audio metrics stay; expected song structure comes only from the snapshot.
+    ctx["sections"] = {}
+    ctx["target_chords"] = []
+    ctx["display_key"] = ""
+    ctx.pop("practice_bpm", None)
+    ctx.pop("reference_bpm", None)
+    ctx.pop("time_signature", None)
     snapshot = build_analysis_context_snapshot(st.session_state)
     snapshot["recording_type"] = label
     # Resolve Upload-selected song harmony (not ambient globally active song).
@@ -6997,7 +7005,10 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
             catalog_records=globals().get("ALL_SONG_RECORDS"),
         )
     except Exception:
-        pass
+        # Still clear ambient on failure — never silently keep Practice song A.
+        snapshot.setdefault("sections", {})
+        snapshot.setdefault("target_chords", [])
+        snapshot.setdefault("song_harmony_authority", "unresolved")
     # Prefer evaluation instruments from setup over ambient active instrument
     instruments = list(snapshot.get("instruments") or [])
     if instruments:
@@ -7015,10 +7026,14 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
         ctx["practice_focuses"] = focuses
     if isinstance(snapshot.get("instrument_focuses"), dict):
         ctx["instrument_focuses"] = dict(snapshot.get("instrument_focuses") or {})
+    # Current Upload player level wins over ambient Practice level.
     if snapshot.get("level"):
         ctx["level"] = snapshot["level"]
     ctx["evaluating_criteria_labels"] = list(snapshot.get("evaluating_criteria_labels") or [])
     ctx = apply_snapshot_to_analysis_ctx(ctx, snapshot)
+    if isinstance(snapshot.get("selected_song_analysis_context"), dict):
+        ctx["selected_song_analysis_context"] = dict(snapshot["selected_song_analysis_context"])
+    ctx["reference_bpm"] = snapshot.get("practice_bpm")
     store_snapshot_in_session(st.session_state, snapshot)
     ctx["_persist_snapshot"] = persist_snapshot_on_result
     ctx["_snapshot"] = snapshot

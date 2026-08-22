@@ -276,16 +276,27 @@ def extract_improv_metrics(
                 pass
 
     key = str(ctx.get("display_key") or "C")
-    is_minor = str(key).endswith("m")
+    is_minor = str(key).endswith("m") or "minor" in str(key).lower()
     scale_pcs = _minor_scale_pcs(key) if is_minor else _major_scale_pcs(key)
     pent_pcs = _pentatonic_pcs(key)
-    chords = list(ctx.get("target_chords") or [])
-    if not chords:
-        for sec_chords in (ctx.get("sections") or {}).values():
-            chords.extend(sec_chords or [])
-    chords = [str(c) for c in chords if c][:24]
-    chord_pool = _chord_tone_pool(chords) if chords else scale_pcs
+    # Chord / guide-tone pools only when Upload-selected song provides real harmony
+    # (key and/or chords). Named Verse/Chorus form is NOT required.
+    try:
+        from analysis_coach_quality import has_song_harmony_context
+
+        song_harmony = has_song_harmony_context(ctx)
+    except Exception:
+        song_harmony = bool(ctx.get("target_chords") or ctx.get("display_key") or ctx.get("sections"))
+    chords: list[str] = []
+    if song_harmony:
+        chords = list(ctx.get("target_chords") or [])
+        if not chords:
+            for sec_chords in (ctx.get("sections") or {}).values():
+                chords.extend(sec_chords or [])
+        chords = [str(c) for c in chords if c][:24]
+    chord_pool = _chord_tone_pool(chords) if chords else set()
     guide_pool = _guide_tone_pcs(chords) if chords else set()
+    # Scale adherence uses selected-song key when present; otherwise observed-only.
 
     if pitch_pcs:
         unique_ratio = len(set(pitch_pcs)) / max(len(pitch_pcs), 1)
@@ -304,6 +315,10 @@ def extract_improv_metrics(
         if guide_pool:
             gt_hits = sum(1 for p in pitch_pcs if p in guide_pool) / len(pitch_pcs)
             metrics["guide_tone_usage"] = _clamp(gt_hits * 100)
+        elif not song_harmony:
+            # No song harmony — do not invent chord-tone scores from a parent scale.
+            metrics.pop("chord_tone_accuracy", None)
+            metrics.pop("guide_tone_usage", None)
 
         chromatic = sum(
             1 for i in range(1, len(pitch_midi)) if abs(pitch_midi[i] - pitch_midi[i - 1]) in (1, 6)
@@ -767,12 +782,13 @@ def score_missions(
     *,
     custom_goal: str = "",
 ) -> list[dict[str, Any]]:
-    from analysis_coach_quality import dedupe_recommendations, has_song_form_context, instrument_family
+    from analysis_coach_quality import dedupe_recommendations, has_song_form_context, has_song_harmony_context, instrument_family
 
     results: list[dict[str, Any]] = []
     shared_tips: list[str] = []
     fam = instrument_family(str(ctx.get("instrument") or ""))
     song_form = has_song_form_context(ctx)
+    song_harmony = has_song_harmony_context(ctx)
 
     for mid in mission_ids:
         goal = MISSION_BY_ID.get(mid)
@@ -817,7 +833,7 @@ def score_missions(
                 shared_tips.append("Record one pass focusing on breath — longer notes need supported air.")
             elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
                 shared_tips.append("Record one pass focusing on breath — longer notes need supported air.")
-            if song_form:
+            if song_harmony:
                 shared_tips.append("Slow the backing track 10–15 BPM and record two takes back-to-back.")
             else:
                 shared_tips.append("Slow the metronome 10–15 BPM and record two takes back-to-back.")

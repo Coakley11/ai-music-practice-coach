@@ -454,28 +454,33 @@ def build_analysis_context_snapshot(
     if song_type not in SONG_SOURCE_OPTIONS:
         song_type = SONG_SOURCE_CATALOG
     snap["song_source_type"] = song_type
-    snap["song_source_id"] = str(
-        session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY)
-        or session_state.get("active_catalog_pick_key")
-        or session_state.get("pick_key")
-        or ""
-    ).strip()
-    snap["song_source_name"] = str(
-        session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY)
-        or session_state.get("song")
-        or ""
-    ).strip()
+    upload_song_id = str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or "").strip()
+    upload_song_name = str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip()
+    # Do not fall back to ambient Practice pick_key when Upload already chose a source.
+    if upload_song_id:
+        snap["song_source_id"] = upload_song_id
+    elif song_type == SONG_SOURCE_OTHER:
+        snap["song_source_id"] = ""
+    else:
+        snap["song_source_id"] = str(
+            session_state.get("active_catalog_pick_key")
+            or session_state.get("pick_key")
+            or ""
+        ).strip()
+    snap["song_source_name"] = upload_song_name or str(session_state.get("song") or "").strip()
     selected = session_state.get("selected_song")
     if isinstance(selected, dict):
         snap["song_artist"] = str(selected.get("artist") or "").strip()
-        if not snap["song_source_name"]:
+        if not snap["song_source_name"] and song_type != SONG_SOURCE_OTHER:
             snap["song_source_name"] = str(selected.get("title") or selected.get("name") or "").strip()
 
-    snap["display_key"] = str(
-        session_state.get("display_key")
-        or session_state.get("chart_key")
-        or ""
-    ).strip()
+    # display_key / harmony are owned by attach_selected_song_harmony_to_snapshot.
+    # Leave empty here so ambient chart_key cannot leak before resolve.
+    snap["display_key"] = ""
+    snap["sections"] = {}
+    snap["target_chords"] = []
+    snap["practice_bpm"] = None
+    snap["time_signature"] = ""
 
     # Mission context — only when this take is explicitly a Mission Recording
     if is_mission_recording_type(snap.get("recording_type")):
@@ -620,17 +625,42 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
     out["target_layer"] = snap.get("target_layer")
     out["multitrack_project_id"] = snap.get("multitrack_project_id")
     out["multitrack_project_name"] = snap.get("multitrack_project_name")
-    # Selected-song harmonic authority (snapshot wins over ambient globals)
-    sections = snap.get("sections")
-    if isinstance(sections, dict) and sections:
-        out["sections"] = {str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in sections.items()}
-    chords = snap.get("target_chords")
-    if isinstance(chords, (list, tuple)) and chords:
-        out["target_chords"] = [str(c) for c in chords if str(c).strip()]
-    if snap.get("practice_bpm") not in (None, ""):
-        out["practice_bpm"] = snap["practice_bpm"]
-    if snap.get("time_signature"):
-        out["time_signature"] = snap["time_signature"]
+    # Selected-song harmonic authority — when Upload declares a song source type,
+    # always stamp (including empty clears) so ambient Practice chart cannot leak.
+    if snap.get("song_source_type"):
+        sections = snap.get("sections")
+        if isinstance(sections, dict):
+            out["sections"] = {
+                str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in sections.items()
+            }
+        else:
+            out["sections"] = {}
+        chords = snap.get("target_chords")
+        if isinstance(chords, (list, tuple)):
+            out["target_chords"] = [str(c) for c in chords if str(c).strip()]
+        else:
+            out["target_chords"] = []
+        out["display_key"] = str(snap.get("display_key") or "")
+        out["practice_bpm"] = snap.get("practice_bpm")
+        out["reference_bpm"] = snap.get("practice_bpm")
+        out["time_signature"] = str(snap.get("time_signature") or "")
+        if isinstance(snap.get("selected_song_analysis_context"), dict):
+            out["selected_song_analysis_context"] = dict(snap["selected_song_analysis_context"])
+        out["song_harmony_resolved"] = bool(snap.get("song_harmony_resolved"))
+        out["song_harmony_authority"] = str(snap.get("song_harmony_authority") or "")
+    else:
+        sections = snap.get("sections")
+        if isinstance(sections, dict) and sections:
+            out["sections"] = {
+                str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in sections.items()
+            }
+        chords = snap.get("target_chords")
+        if isinstance(chords, (list, tuple)) and chords:
+            out["target_chords"] = [str(c) for c in chords if str(c).strip()]
+        if snap.get("practice_bpm") not in (None, ""):
+            out["practice_bpm"] = snap["practice_bpm"]
+        if snap.get("time_signature"):
+            out["time_signature"] = snap["time_signature"]
     return out
 
 
@@ -652,6 +682,14 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["song_source_type"] = snapshot.get("song_source_type")
     out["song_source_id"] = snapshot.get("song_source_id")
     out["song_source_name"] = snapshot.get("song_source_name")
+    out["display_key"] = snapshot.get("display_key")
+    out["practice_bpm"] = snapshot.get("practice_bpm")
+    out["reference_bpm"] = snapshot.get("practice_bpm")
+    out["time_signature"] = snapshot.get("time_signature")
+    out["song_harmony_resolved"] = bool(snapshot.get("song_harmony_resolved"))
+    out["song_harmony_authority"] = snapshot.get("song_harmony_authority")
+    if isinstance(snapshot.get("selected_song_analysis_context"), dict):
+        out["selected_song_analysis_context"] = dict(snapshot["selected_song_analysis_context"])
     out["mission_type"] = snapshot.get("mission_type")
     out["mission_parameters"] = dict(snapshot.get("mission_parameters") or {})
     return out
@@ -1106,18 +1144,33 @@ def resolve_selected_song_harmony(
     }
 
     # Already captured on a prior snapshot — trust that over ambient globals.
+    # Flat progressions may have chords/key with empty named sections.
     prior_sections = snap.get("sections")
     prior_chords = snap.get("target_chords")
-    if isinstance(prior_sections, dict) and prior_sections:
+    prior_key = str(snap.get("display_key") or "").strip()
+    has_prior_sections = isinstance(prior_sections, dict) and any(
+        str(k).strip() for k in prior_sections.keys()
+    )
+    has_prior_chords = isinstance(prior_chords, (list, tuple)) and any(
+        str(c).strip() for c in prior_chords
+    )
+    if has_prior_sections or has_prior_chords or (prior_key and snap.get("song_harmony_authority") == "selected"):
         result["sections"] = {
-            str(k): list(v) if isinstance(v, (list, tuple)) else v for k, v in prior_sections.items()
-        }
+            str(k): list(v) if isinstance(v, (list, tuple)) else v
+            for k, v in (prior_sections or {}).items()
+        } if isinstance(prior_sections, dict) else {}
         result["target_chords"] = (
-            [str(c) for c in prior_chords]
-            if isinstance(prior_chords, (list, tuple)) and prior_chords
+            [str(c) for c in prior_chords if str(c).strip()]
+            if has_prior_chords
             else _flatten_section_chords(result["sections"])
         )
-        result["resolved"] = True
+        if prior_key:
+            result["display_key"] = prior_key
+        if snap.get("practice_bpm") not in (None, ""):
+            result["practice_bpm"] = snap.get("practice_bpm")
+        if snap.get("time_signature"):
+            result["time_signature"] = str(snap.get("time_signature") or "")
+        result["resolved"] = bool(result["target_chords"] or result["display_key"] or result["sections"])
         return result
 
     try:
@@ -1201,7 +1254,8 @@ def resolve_selected_song_harmony(
                     or active.get("sections")
                     or {}
                 )
-                if isinstance(sections, dict):
+                norm: dict[str, list[str]] = {}
+                if isinstance(sections, dict) and any(str(k).strip() for k in sections.keys()):
                     try:
                         from custom_progression_lab import sections_to_chord_lists
 
@@ -1212,22 +1266,31 @@ def resolve_selected_song_harmony(
                             if isinstance(v, (list, tuple))
                             else []
                             for k, v in sections.items()
+                            if str(k).strip()
                         }
-                    result["sections"] = norm
-                    result["target_chords"] = _flatten_section_chords(norm)
-                    result["display_key"] = str(
-                        active.get("original_key_center")
-                        or active.get("key")
-                        or result["display_key"]
-                        or ""
-                    ).strip()
-                    if active.get("bpm") not in (None, ""):
-                        result["practice_bpm"] = active.get("bpm")
-                    if active.get("time_signature"):
-                        result["time_signature"] = str(active.get("time_signature"))
-                    result["song_source_name"] = name or result["song_source_name"]
-                    result["resolved"] = bool(norm)
-                    return result
+                flat_chords: list[str] = []
+                for key in ("original_chords", "chords", "chord_progression", "target_chords"):
+                    raw = active.get(key)
+                    if isinstance(raw, (list, tuple)) and raw:
+                        flat_chords = [str(c).strip() for c in raw if str(c).strip()]
+                        break
+                result["sections"] = norm
+                result["target_chords"] = (
+                    _flatten_section_chords(norm) if norm else list(flat_chords)
+                )
+                result["display_key"] = str(
+                    active.get("original_key_center")
+                    or active.get("key")
+                    or result["display_key"]
+                    or ""
+                ).strip()
+                if active.get("bpm") not in (None, ""):
+                    result["practice_bpm"] = active.get("bpm")
+                if active.get("time_signature"):
+                    result["time_signature"] = str(active.get("time_signature"))
+                result["song_source_name"] = name or result["song_source_name"]
+                result["resolved"] = bool(result["target_chords"] or result["display_key"])
+                return result
 
         if source_type == SONG_SOURCE_COMPOSED and source_id:
             try:
@@ -1239,8 +1302,8 @@ def resolve_selected_song_harmony(
                 if isinstance(doc, dict):
                     chords = chords_for_playback(doc, scope="song")
                     result["target_chords"] = [str(c) for c in chords if str(c).strip()]
-                    # Preserve a simple single-section map for mission analysis
-                    result["sections"] = {"Form": list(result["target_chords"])}
+                    # Keep chords as a flat progression — do not invent Verse/Chorus labels.
+                    result["sections"] = {}
                     g = playback_globals(doc)
                     result["practice_bpm"] = g.get("bpm")
                     result["time_signature"] = str(g.get("time_signature") or "")
@@ -1252,13 +1315,99 @@ def resolve_selected_song_harmony(
                         result["song_source_name"] = str(
                             doc.get("title") or doc.get("name") or source_id
                         ).strip()
-                    result["resolved"] = bool(result["target_chords"])
+                    result["resolved"] = bool(result["target_chords"] or result["display_key"])
                     return result
             except Exception:
                 pass
     except Exception:
         pass
     return result
+
+
+def selected_song_analysis_context(
+    session_state: dict[str, Any],
+    *,
+    snapshot: dict[str, Any] | None = None,
+    song_picker_catalog: dict[str, Any] | None = None,
+    catalog_records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Canonical Upload-selected song evidence for analysis (Catalog/Custom/Composed/Other).
+
+    This is the musical authority for Upload analysis — not the ambient Practice
+    active song. Observed audio evidence stays separate (detected tempo, pitches, etc.).
+    """
+    snap = dict(snapshot or {})
+    harmony = resolve_selected_song_harmony(
+        session_state,
+        snapshot=snap,
+        song_picker_catalog=song_picker_catalog,
+        catalog_records=catalog_records,
+    )
+    source_type = str(harmony.get("song_source_type") or "").strip()
+    source_lower = source_type.lower()
+    is_other = ("other" in source_lower) or ("not a song" in source_lower)
+    sections = harmony.get("sections") if isinstance(harmony.get("sections"), dict) else {}
+    chords = [
+        str(c).strip()
+        for c in (harmony.get("target_chords") or [])
+        if str(c).strip()
+    ]
+    # Chords may live only inside named sections — still count as harmony.
+    if not chords and isinstance(sections, dict):
+        for sec_chords in sections.values():
+            if isinstance(sec_chords, (list, tuple)):
+                chords.extend(str(c).strip() for c in sec_chords if str(c).strip())
+    named_sections = {
+        str(k): list(v) if isinstance(v, (list, tuple)) else v
+        for k, v in (sections or {}).items()
+        if str(k).strip()
+    }
+    if is_other:
+        sections = {}
+        named_sections = {}
+        chords = []
+        resolved = False
+        authority = "none"
+        display_key = ""
+        bpm = None
+        meter = ""
+    else:
+        display_key = str(harmony.get("display_key") or "").strip()
+        bpm = harmony.get("practice_bpm")
+        meter = str(harmony.get("time_signature") or "").strip()
+        has_harmony = bool(display_key or chords)
+        # Usable key/chords are enough — do not require named form for "resolved".
+        resolved = has_harmony
+        authority = "selected" if resolved else "unresolved"
+
+    title = str(harmony.get("song_source_name") or snap.get("song_source_name") or "").strip()
+    source_id = str(
+        harmony.get("song_source_id") or snap.get("song_source_id") or ""
+    ).strip()
+    artist = str(snap.get("song_artist") or "").strip()
+    if not is_other:
+        has_song_harmony = bool(display_key or chords)
+        has_song_form = bool(named_sections)
+    else:
+        has_song_harmony = False
+        has_song_form = False
+
+    return {
+        "source_type": source_type,
+        "source_id": source_id,
+        "title": title,
+        "artist": artist,
+        "key": display_key if not is_other else "",
+        "bpm": bpm if not is_other else None,
+        "meter": meter if not is_other else "",
+        "sections": dict(named_sections) if not is_other else {},
+        "chord_progression": list(chords) if not is_other else [],
+        "section_chords": dict(named_sections) if not is_other else {},
+        "resolved": resolved,
+        "authority": authority,
+        "has_song_harmony": has_song_harmony,
+        "has_song_form": has_song_form,
+    }
 
 
 def attach_selected_song_harmony_to_snapshot(
@@ -1268,24 +1417,86 @@ def attach_selected_song_harmony_to_snapshot(
     song_picker_catalog: dict[str, Any] | None = None,
     catalog_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Resolve Upload-selected song harmony into the snapshot (mutates + returns snap)."""
+    """Resolve Upload-selected song harmony into the snapshot (mutates + returns snap).
+
+    When an Upload song source type is set, harmonic fields are always stamped —
+    including empty clears for Other / unresolved — so ambient Practice chart
+    harmony cannot leak into analysis.
+    """
     snap = dict(snapshot or {})
-    harmony = resolve_selected_song_harmony(
+    song_ctx = selected_song_analysis_context(
         session_state,
         snapshot=snap,
         song_picker_catalog=song_picker_catalog,
         catalog_records=catalog_records,
     )
-    if harmony.get("sections"):
-        snap["sections"] = harmony["sections"]
-    if harmony.get("target_chords"):
-        snap["target_chords"] = list(harmony["target_chords"])
-    if harmony.get("display_key"):
-        snap["display_key"] = harmony["display_key"]
-    if harmony.get("practice_bpm") not in (None, ""):
-        snap["practice_bpm"] = harmony["practice_bpm"]
-    if harmony.get("time_signature"):
-        snap["time_signature"] = harmony["time_signature"]
-    if harmony.get("song_source_name") and not snap.get("song_source_name"):
-        snap["song_source_name"] = harmony["song_source_name"]
+    source_type = str(
+        snap.get("song_source_type") or song_ctx.get("source_type") or ""
+    ).strip()
+    snap["selected_song_analysis_context"] = dict(song_ctx)
+    snap["song_harmony_resolved"] = bool(song_ctx.get("resolved"))
+    snap["song_harmony_authority"] = str(song_ctx.get("authority") or "none")
+
+    if not source_type:
+        return snap
+
+    # Ownership stamp — always overwrite ambient-seeded harmonic slots.
+    snap["sections"] = dict(song_ctx.get("sections") or {})
+    snap["target_chords"] = list(song_ctx.get("chord_progression") or [])
+    snap["display_key"] = str(song_ctx.get("key") or "")
+    snap["practice_bpm"] = song_ctx.get("bpm")
+    snap["time_signature"] = str(song_ctx.get("meter") or "")
+    if song_ctx.get("title") and not snap.get("song_source_name"):
+        snap["song_source_name"] = song_ctx["title"]
+    if song_ctx.get("source_id") and not snap.get("song_source_id"):
+        snap["song_source_id"] = song_ctx["source_id"]
     return snap
+
+
+def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> list[str]:
+    """Concise Step 3 / QA lines for the Upload-selected song authority."""
+    ctx = dict(song_ctx or {})
+    if not ctx:
+        return []
+    lines: list[str] = []
+    title = str(ctx.get("title") or "").strip()
+    source = str(ctx.get("source_type") or "").strip()
+    source_id = str(ctx.get("source_id") or "").strip()
+    artist = str(ctx.get("artist") or "").strip()
+    if title:
+        lines.append(f"Song: {title}")
+    elif source:
+        lines.append(f"Song source: {source}")
+    if artist:
+        lines.append(f"Artist: {artist}")
+    if source:
+        lines.append(f"Source: {source}")
+    if source_id:
+        lines.append(f"Source ID: {source_id}")
+    key = str(ctx.get("key") or "").strip()
+    if key:
+        lines.append(f"Key: {key}")
+    bpm = ctx.get("bpm")
+    if bpm not in (None, ""):
+        try:
+            lines.append(f"Reference tempo: {int(float(bpm))} BPM")
+        except (TypeError, ValueError):
+            lines.append(f"Reference tempo: {bpm}")
+    meter = str(ctx.get("meter") or "").strip()
+    if meter:
+        lines.append(f"Meter: {meter}")
+    chords = [
+        str(c).strip() for c in (ctx.get("chord_progression") or []) if str(c).strip()
+    ]
+    if chords:
+        lines.append(f"Harmony: {len(chords)} chord(s) — " + " → ".join(chords[:4]))
+    elif ctx.get("has_song_harmony") and key:
+        lines.append(f"Harmony: {key} (key context)")
+    sections = ctx.get("sections") or {}
+    if isinstance(sections, dict) and sections and ctx.get("has_song_form", True):
+        names = [str(k).strip() for k in sections.keys() if str(k).strip()]
+        if names:
+            lines.append("Form: " + ", ".join(names[:6]))
+    elif ctx.get("has_song_harmony") and not ctx.get("has_song_form"):
+        lines.append("Form: (flat progression — no named sections)")
+    return lines

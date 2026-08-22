@@ -268,17 +268,94 @@ def build_analysis_status_message(
     return f"Analyzing {body}…"
 
 
-def has_song_form_context(ctx: dict[str, Any] | None) -> bool:
-    """True when Upload-selected song has real sections/chords (not Other / exercise-only)."""
-    ctx = dict(ctx or {})
+def _is_other_or_not_a_song(ctx: dict[str, Any]) -> bool:
     source = str(ctx.get("song_source_type") or "").strip().lower()
-    if "other" in source or "not a song" in source:
-        return False
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        source = source or str(song_ctx.get("source_type") or "").strip().lower()
+    return ("other" in source) or ("not a song" in source)
+
+
+def _collect_song_chords(ctx: dict[str, Any]) -> list[str]:
+    """Flatten chord tokens from target_chords, sections, and selected-song context."""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(token: object) -> None:
+        text = str(token or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+
+    for c in ctx.get("target_chords") or []:
+        _add(c)
     sections = ctx.get("sections")
-    has_sections = isinstance(sections, dict) and any(str(k).strip() for k in sections.keys())
-    chords = ctx.get("target_chords") or []
-    has_chords = isinstance(chords, (list, tuple)) and any(str(c).strip() for c in chords)
-    return bool(has_sections or has_chords)
+    if isinstance(sections, dict):
+        for sec_chords in sections.values():
+            if isinstance(sec_chords, (list, tuple)):
+                for c in sec_chords:
+                    _add(c)
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        for c in song_ctx.get("chord_progression") or []:
+            _add(c)
+        nested = song_ctx.get("sections")
+        if isinstance(nested, dict):
+            for sec_chords in nested.values():
+                if isinstance(sec_chords, (list, tuple)):
+                    for c in sec_chords:
+                        _add(c)
+    return out
+
+
+def _named_song_sections(ctx: dict[str, Any]) -> list[str]:
+    """Named form labels (Verse/Chorus/A/B/…) — empty when only a flat progression exists."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for sections in (
+        ctx.get("sections"),
+        (ctx.get("selected_song_analysis_context") or {}).get("sections")
+        if isinstance(ctx.get("selected_song_analysis_context"), dict)
+        else None,
+    ):
+        if not isinstance(sections, dict):
+            continue
+        for key in sections.keys():
+            text = str(key or "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                names.append(text)
+    return names
+
+
+def has_song_harmony_context(ctx: dict[str, Any] | None) -> bool:
+    """True when Upload-selected song provides real key and/or chord progression.
+
+    Named Verse/Chorus/A/B form is NOT required. Other / Not a Song is always False.
+    """
+    ctx = dict(ctx or {})
+    if _is_other_or_not_a_song(ctx):
+        return False
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict) and "has_song_harmony" in song_ctx:
+        return bool(song_ctx.get("has_song_harmony"))
+    key = str(ctx.get("display_key") or "").strip()
+    if isinstance(song_ctx, dict):
+        key = key or str(song_ctx.get("key") or "").strip()
+    if key:
+        return True
+    return bool(_collect_song_chords(ctx))
+
+
+def has_song_form_context(ctx: dict[str, Any] | None) -> bool:
+    """True when Upload-selected song has named form sections (Verse/Chorus/A/B/…).
+
+    Key + flat chord progression alone do NOT count as form.
+    """
+    ctx = dict(ctx or {})
+    if _is_other_or_not_a_song(ctx):
+        return False
+    return bool(_named_song_sections(ctx))
 
 
 def instrument_family(instrument: str) -> str:

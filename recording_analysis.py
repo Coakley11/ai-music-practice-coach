@@ -388,7 +388,26 @@ def compute_performance_scores(f: AudioFeatures, instrument: str) -> dict[str, i
 def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
     findings: list[str] = []
     tips: list[str] = []
-    bpm_hint = int(ctx.get("practice_bpm") or f.tempo or 80)
+    bpm_hint = int(f.tempo or ctx.get("practice_bpm") or 80)
+    ref_bpm = ctx.get("reference_bpm")
+    if ref_bpm in (None, ""):
+        ref_bpm = ctx.get("practice_bpm")
+    if ref_bpm not in (None, "") and f.tempo:
+        try:
+            ref_i = int(float(ref_bpm))
+            det_i = int(float(f.tempo))
+            delta = det_i - ref_i
+            if abs(delta) >= 4:
+                findings.append(
+                    f"Detected performance tempo ≈ {det_i} BPM vs song reference {ref_i} BPM "
+                    f"({abs(delta)} BPM {'above' if delta > 0 else 'below'} the reference)."
+                )
+            else:
+                findings.append(
+                    f"Detected tempo ≈ {det_i} BPM is near the song reference ({ref_i} BPM)."
+                )
+        except (TypeError, ValueError):
+            pass
 
     if f.beat_interval_cv > 0.14:
         findings.append("Beat spacing is uneven — rhythm may rush or drag between measures.")
@@ -452,7 +471,9 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
 
     if f.pitch_note:
         findings.append(
-            f"Estimated center pitch: {f.pitch_note} (voiced {f.voiced_ratio * 100:.0f}% of frames)."
+            f"Estimated center pitch: {f.pitch_note} "
+            f"(observed from the recording — not the selected song key; "
+            f"voiced {f.voiced_ratio * 100:.0f}% of frames)."
         )
     else:
         findings.append("Pitch contour was unclear — try a brighter tone or less room noise.")
@@ -502,7 +523,27 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
     elif fam == "guitar":
         tips.append("When harmony context exists, target chord tones — root on 1, 3rd on 3, 7th on 4.")
 
-    tips.append(f"Ear training: sing then play {dk} major scale roots against a drone.")
+    from analysis_coach_quality import has_song_harmony_context
+
+    song_harmony = has_song_harmony_context(ctx)
+    song_key = str(ctx.get("display_key") or "").strip()
+    if song_harmony and song_key:
+        key_is_minor = song_key.lower().endswith("m") or "minor" in song_key.lower()
+        scale_bits = f"{song_key} {'natural minor' if key_is_minor else 'major'}"
+        tips.append(
+            f"Ear training: sing then play {scale_bits} degrees against the song's harmony "
+            "(observed center pitch is not the song key)."
+        )
+    elif song_key:
+        tips.append(
+            f"Ear training: sing then play degrees of {song_key} against a drone "
+            "(observed center pitch is not automatically the key)."
+        )
+    else:
+        tips.append(
+            "Ear training: sing then play scale degrees against a drone "
+            "(observed center pitch is not the song key)."
+        )
 
     return {"title": "Pitch / Intonation", "findings": findings, "tips": tips}
 
@@ -627,22 +668,46 @@ def build_practice_plan(
     from analysis_coach_quality import (
         dedupe_recommendations,
         has_song_form_context,
+        has_song_harmony_context,
         instrument_family,
     )
 
-    dk = str(ctx.get("display_key") or "C")
+    song_harmony = has_song_harmony_context(ctx)
+    song_form = has_song_form_context(ctx)
+    song_name = str(ctx.get("song") or ctx.get("song_source_name") or "").strip()
+    song_key = str(ctx.get("display_key") or "").strip()
+    dk = song_key or "C"
+    key_is_minor = dk.lower().endswith("m") or "minor" in dk.lower()
+    scale_label = f"{dk} natural minor" if key_is_minor else f"{dk} major"
     inst = str(ctx.get("instrument") or "Instrument")
     fam = instrument_family(inst)
-    song_form = has_song_form_context(ctx)
     weakest = sorted(scores.items(), key=lambda x: x[1])[:3]
     plan: list[str] = []
-    bpm = int(f.tempo or ctx.get("practice_bpm") or 80)
+    detected_bpm = f.tempo
+    ref_bpm = ctx.get("reference_bpm")
+    if ref_bpm in (None, ""):
+        ref_bpm = ctx.get("practice_bpm")
+    # Practice tempo from observed take when available; keep reference BPM separate.
+    bpm = int(detected_bpm or ref_bpm or 80)
     slow = max(55, bpm - 22)
 
     rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
     labels = list(ctx.get("evaluating_criteria_labels") or [])
     practice_focus = str(ctx.get("focus") or "").strip()
     mission = str(ctx.get("mission_type") or ctx.get("mission_constraint") or "").strip()
+    sections = ctx.get("sections") if isinstance(ctx.get("sections"), dict) else {}
+    chords = [str(c).strip() for c in (ctx.get("target_chords") or []) if str(c).strip()]
+    if not chords and sections:
+        for sec_chords in sections.values():
+            if isinstance(sec_chords, (list, tuple)):
+                chords.extend(str(c).strip() for c in sec_chords if str(c).strip())
+
+    if song_harmony and song_name:
+        plan.append(
+            f"Song context drill ({song_name}"
+            + (f", {song_key}" if song_key else "")
+            + f"): keep the next loop inside this piece's harmony @ {slow} BPM."
+        )
     if mission:
         plan.append(
             f"Mission check: replay the take and mark where you left the '{mission}' constraint; "
@@ -656,11 +721,16 @@ def build_practice_plan(
     if not _pfs and practice_focus:
         _pfs = [practice_focus]
     if _pfs:
-        _pf_txt = (
-            _pfs[0]
-            if len(_pfs) == 1
-            else (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
-        )
+        try:
+            from recording_analysis_context import format_focus_list
+
+            _pf_txt = format_focus_list(_pfs)
+        except Exception:
+            _pf_txt = (
+                _pfs[0]
+                if len(_pfs) == 1
+                else (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
+            )
         plan.append(f"Practice Focuses ({_pf_txt}): short intentional block before free playing.")
     if "practice take" in rtype:
         plan.append(f"Diagnostic loop: isolate the weakest 2 bars and repeat @ {slow} BPM until clean.")
@@ -686,15 +756,48 @@ def build_practice_plan(
     elif "multitrack mix" in rtype:
         plan.append("Mix cohesion drill: listen for balance/groove clashes before re-recording a layer.")
 
-    plan.append(f"{dk} major scale @ {slow} BPM — 2 octaves, even subdivisions.")
+    # Harmonic recommendations use real key/chords; named-form tips are additive only.
+    if song_harmony:
+        if song_form:
+            first_sec = next((str(k) for k in sections.keys() if str(k).strip()), "")
+            if first_sec:
+                plan.append(
+                    f"Loop the first eight bars of {first_sec}"
+                    + (f" from {song_name}" if song_name else "")
+                    + f" @ {slow} BPM against the actual chord progression."
+                )
+        if len(chords) >= 3:
+            plan.append(
+                f"Target the 3rd and 7th through {' → '.join(chords[:3])} @ {slow} BPM."
+            )
+        elif chords:
+            plan.append(
+                f"Outline {' → '.join(chords[:4])} @ {slow} BPM — land chord tones on strong beats."
+            )
+        if song_key:
+            plan.append(
+                f"{scale_label} scale @ {slow} BPM — relate each degree to the song's chords, "
+                "not as a free exercise."
+            )
+    else:
+        # Other / Not a Song — generic exercise language is appropriate.
+        plan.append(f"{scale_label} scale @ {slow} BPM — 2 octaves, even subdivisions.")
+
     for name, _ in weakest:
         if name == "timing":
             plan.append(f"Metronome loop: weakest section @ {slow} BPM, 4-bar phrases.")
         elif name == "pitch":
-            if song_form:
-                plan.append(f"Chord-tone targeting in {dk}: root–3rd–5th–7th over first 4 song chords.")
+            if song_harmony:
+                plan.append(
+                    f"Chord-tone targeting in {dk or 'the song key'}: root–3rd–5th–7th "
+                    "over the first 4 song chords."
+                )
             else:
-                plan.append(f"Tuner/drone long tones in {dk}: center each note before connecting the scale.")
+                plan.append(
+                    f"Tuner/drone long tones"
+                    + (f" in {dk}" if song_key else "")
+                    + ": center each note before connecting the scale."
+                )
         elif name == "groove":
             if fam == "guitar":
                 plan.append("Subdivision exercise: clap 8ths, mute on 2 & 4, then play on guitar.")
@@ -714,15 +817,20 @@ def build_practice_plan(
         elif name == "musicality":
             plan.append("Dynamics map: one 8-bar phrase at pp / mf / f without tempo change.")
 
-    if song_form:
-        sections = ctx.get("sections") or {}
-        for sec in sections:
-            if "chorus" in sec.lower():
-                plan.append(f"Chorus transition loop with backing track @ {slow + 8} BPM.")
-                break
-        plan.append("Ear training: sing the root of each chord before playing the section.")
-        if ctx.get("song"):
-            plan.append(f"Backing track recommendation: replay {ctx['song']} section-by-section.")
+    if song_harmony:
+        if song_form:
+            for sec in sections:
+                if "chorus" in sec.lower() or "bridge" in sec.lower():
+                    plan.append(
+                        f"Practice {sec} entrances against the actual progression @ {slow + 8} BPM."
+                    )
+                    break
+            if song_name:
+                plan.append(f"Backing/reference recommendation: replay {song_name} section-by-section.")
+        if song_name:
+            plan.append(f"Ear training: sing chord roots of {song_name} before replaying the take.")
+        else:
+            plan.append("Ear training: sing the root of each chord before playing the phrase.")
     else:
         plan.append("Ear training: sing each scale degree against a drone before playing it.")
         plan.append("Exercise loop: one octave ascending/descending with intentional phrase shape.")
@@ -914,6 +1022,7 @@ def _apply_context_emphasis_to_categories(
             )
 
     # Player level shapes coaching language only — never rewrite measured scores.
+    # Prefer Upload snapshot level (already on ctx) over any stale ambient label.
     level = str(ctx.get("level") or "").strip().lower()
     if "beginner" in level and "confidence" in out:
         out["confidence"]["tips"].insert(
@@ -1070,6 +1179,32 @@ def analyze_recording(
         practice_plan = build_practice_plan(scores, ctx, features)
         summary, biggest, improved, next_focus = build_coach_summary(scores, categories, ctx)
 
+        # Selected-song authority in the summary (Single + Layer/Mix via this path).
+        song_ctx = ctx.get("selected_song_analysis_context")
+        if not isinstance(song_ctx, dict):
+            song_ctx = {}
+        song_name = str(
+            song_ctx.get("title") or ctx.get("song") or ctx.get("song_source_name") or ""
+        ).strip()
+        song_key = str(song_ctx.get("key") or ctx.get("display_key") or "").strip()
+        if song_name and song_name.lower() not in summary.lower():
+            song_line = f"Song context: {song_name}"
+            if song_key:
+                song_line += f" — {song_key}"
+            meter = str(song_ctx.get("meter") or ctx.get("time_signature") or "").strip()
+            if meter:
+                song_line += f", {meter}"
+            ref_bpm = song_ctx.get("bpm")
+            if ref_bpm in (None, ""):
+                ref_bpm = ctx.get("reference_bpm") or ctx.get("practice_bpm")
+            if ref_bpm not in (None, ""):
+                try:
+                    song_line += f", reference tempo {int(float(ref_bpm))} BPM"
+                except (TypeError, ValueError):
+                    song_line += f", reference tempo {ref_bpm}"
+            song_line += "."
+            summary = f"{song_line} {summary}".strip()
+
         mission_ids = list(ctx.get("mission_ids") or [])
         mission_block: dict[str, Any] = {}
         if mission_ids:
@@ -1085,12 +1220,36 @@ def analyze_recording(
                 performance_scores=scores,
             )
 
+        # Song-aware Scales / chord-tone metrics even when Evaluating Criteria are empty.
+        musical_metrics = dict(mission_block.get("musical_metrics") or {})
+        try:
+            from analysis_coach_quality import has_song_harmony_context
+            from mission_analysis import extract_improv_metrics
+
+            focuses = [
+                str(x).strip().lower()
+                for x in (ctx.get("practice_focuses") or ctx.get("focuses") or [])
+                if str(x).strip()
+            ]
+            want_scales = any("scale" in f for f in focuses) or any(
+                "scale" in str(x).lower() or "chord" in str(x).lower() or "guide" in str(x).lower()
+                for x in (ctx.get("evaluating_criteria_labels") or [])
+            )
+            if has_song_harmony_context(ctx) and want_scales and not musical_metrics:
+                musical_metrics = extract_improv_metrics(y, sr, features, ctx)
+        except Exception:
+            pass
+
         result_payload = {
             "ok": True,
             "recording_type": ctx.get("recording_type", "practice"),
             "filename": filename,
             "duration": features.duration,
             "tempo": features.tempo,
+            "detected_tempo": features.tempo,
+            "reference_bpm": ctx.get("reference_bpm")
+            if ctx.get("reference_bpm") not in (None, "")
+            else ctx.get("practice_bpm"),
             "beat_count": int(len(features.beat_times)),
             "features": features,
             "scores": scores,
@@ -1105,8 +1264,10 @@ def analyze_recording(
             "level": ctx.get("level"),
             "song": ctx.get("song"),
             "focus": ctx.get("focus"),
+            "practice_focuses": list(ctx.get("practice_focuses") or ctx.get("focuses") or []),
             "style_label": ctx.get("style_label"),
             "time_signature": ctx.get("time_signature"),
+            "display_key": ctx.get("display_key"),
             "workflow": ctx.get("workflow"),
             "evaluating_criteria_ids": list(ctx.get("mission_ids") or ctx.get("evaluating_criteria_ids") or []),
             "evaluating_criteria_labels": list(ctx.get("evaluating_criteria_labels") or []),
@@ -1115,10 +1276,17 @@ def analyze_recording(
             "song_source_name": ctx.get("song") or ctx.get("song_source_name"),
             "mission_type": ctx.get("mission_type"),
             "mission_parameters": dict(ctx.get("mission_parameters") or {}),
+            "musical_metrics": musical_metrics,
         }
+        if isinstance(ctx.get("selected_song_analysis_context"), dict):
+            result_payload["selected_song_analysis_context"] = dict(
+                ctx["selected_song_analysis_context"]
+            )
         if isinstance(ctx.get("analysis_context_snapshot"), dict):
             result_payload["analysis_context_snapshot"] = dict(ctx["analysis_context_snapshot"])
         result_payload.update(mission_block)
+        if musical_metrics and not result_payload.get("musical_metrics"):
+            result_payload["musical_metrics"] = musical_metrics
         return result_payload
     except Exception as e:
         return {"ok": False, "message": f"Could not analyze recording: {e}"}

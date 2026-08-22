@@ -286,6 +286,15 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
             )
         except (TypeError, ValueError):
             pass
+    ref_bpm = result.get("reference_bpm")
+    ref_line = ""
+    if ref_bpm not in (None, ""):
+        try:
+            ref_line = (
+                f"<span class='ra-pill'>Song reference {int(float(ref_bpm))} BPM</span>"
+            )
+        except (TypeError, ValueError):
+            ref_line = f"<span class='ra-pill'>Song reference {_esc(str(ref_bpm))}</span>"
 
     duration = float(result.get("duration", 0) or 0)
     duration_text = _esc(f"{duration:.1f}s")
@@ -296,6 +305,34 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
             f"<span class='ra-pill focus'>Layer: {_esc(result.get('target_layer'))}</span>"
         )
 
+    song_ctx = result.get("selected_song_analysis_context")
+    if not isinstance(song_ctx, dict):
+        song_ctx = {}
+        snap = result.get("analysis_context_snapshot")
+        if isinstance(snap, dict) and isinstance(snap.get("selected_song_analysis_context"), dict):
+            song_ctx = dict(snap["selected_song_analysis_context"])
+    song_authority_html = ""
+    try:
+        from recording_analysis_context import format_selected_song_authority_lines
+
+        lines = format_selected_song_authority_lines(song_ctx) if song_ctx else []
+        if not lines and result.get("song_source_name"):
+            lines = [f"Song: {result.get('song_source_name')}"]
+            if result.get("song_source_type"):
+                lines.append(f"Source: {result.get('song_source_type')}")
+            if result.get("display_key"):
+                lines.append(f"Key: {result.get('display_key')}")
+        if lines:
+            pills = "".join(f"<span class='ra-pill'>{_esc(line)}</span>" for line in lines)
+            song_authority_html = f"""
+  <div class="ra-card" style="margin-bottom:14px">
+    <h3>Selected song authority</h3>
+    <div class="ra-pills">{pills}</div>
+    <p class="ra-muted">Expected musical context for this analysis. Detected tempo/pitch stay separate from song key and reference BPM.</p>
+  </div>"""
+    except Exception:
+        song_authority_html = ""
+
     return f"""
 {ANALYSIS_CSS}
 <div class="ra-dashboard">
@@ -304,12 +341,15 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <p>{_esc(result.get('coach_summary', ''))}</p>
     <div class="ra-pills">
       {tempo_line}
+      {ref_line}
       <span class="ra-pill">{duration_text} · {instrument_text}</span>
       {target_pill}
       <span class="ra-pill issue">⚠ {_esc(result.get('biggest_issue', ''))}</span>
       <span class="ra-pill focus">→ {_esc(result.get('next_focus', ''))}</span>
     </div>
   </div>
+
+  {song_authority_html}
 
   {focus_blocks_html}
 

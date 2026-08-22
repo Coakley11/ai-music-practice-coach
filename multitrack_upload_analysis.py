@@ -161,11 +161,201 @@ def build_layer_arrangement_context(
     if not bits:
         return ""
     roles = "; ".join(bits)
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if not isinstance(song_ctx, dict):
+        song_ctx = {}
+    song_name = str(
+        song_ctx.get("title") or ctx.get("song") or ctx.get("song_source_name") or ""
+    ).strip()
+    song_key = str(song_ctx.get("key") or ctx.get("display_key") or "").strip()
+    sections = song_ctx.get("sections") or ctx.get("sections") or {}
+    form_bit = ""
+    if isinstance(sections, dict) and sections:
+        from analysis_coach_quality import has_song_form_context
+
+        if has_song_form_context(ctx) or bool(song_ctx.get("has_song_form")):
+            names = [str(k).strip() for k in sections.keys() if str(k).strip()]
+            if names:
+                form_bit = f" around {', '.join(names[:3])} transitions"
+    song_bit = ""
+    if song_name:
+        song_bit = f" in {song_name}" + (f" ({song_key})" if song_key else "")
     return (
-        f"Arrangement context: {roles}. Evaluate the {target or 'target'} layer for how "
-        f"clearly its entrances, phrasing, and rhythmic placement leave room for that role. "
-        f"No audio was scored for those other project instruments."
+        f"Arrangement context: {roles}. Evaluate the {target or 'target'} layer{song_bit} for "
+        f"how clearly its entrances, phrasing, and rhythmic placement leave room for that role"
+        f"{form_bit}. No audio was scored for those other project instruments."
     )
+
+
+def _scales_focus_block(
+    *,
+    target: str,
+    features: Any,
+    categories: dict[str, Any],
+    ctx: dict[str, Any],
+    musical_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Evidence-based Scales coaching using selected-song harmony + observed pitches."""
+    from analysis_coach_quality import has_song_form_context, has_song_harmony_context
+
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if not isinstance(song_ctx, dict):
+        song_ctx = {}
+    song_name = str(
+        song_ctx.get("title") or ctx.get("song") or ctx.get("song_source_name") or ""
+    ).strip()
+    song_key = str(song_ctx.get("key") or ctx.get("display_key") or "").strip()
+    chords = [
+        str(c).strip()
+        for c in (
+            song_ctx.get("chord_progression")
+            or ctx.get("target_chords")
+            or []
+        )
+        if str(c).strip()
+    ]
+    sections = song_ctx.get("sections") or ctx.get("sections") or {}
+    song_harmony = bool(song_ctx.get("has_song_harmony")) or has_song_harmony_context(ctx)
+    song_form = bool(song_ctx.get("has_song_form")) or has_song_form_context(ctx)
+    metrics = dict(musical_metrics or {})
+    scale_adh = metrics.get("scale_adherence")
+    chord_tone = metrics.get("chord_tone_accuracy")
+    guide_tone = metrics.get("guide_tone_usage")
+    findings: list[str] = []
+    mapped = None
+    try:
+        if scale_adh is not None:
+            mapped = int(scale_adh)
+    except (TypeError, ValueError):
+        mapped = None
+
+    pitch_note = _feature_attr(features, "pitch_note", None)
+    if pitch_note:
+        findings.append(
+            f"Observed center pitch ≈ {pitch_note} (audio statistic — not the selected song key)."
+        )
+
+    if song_harmony and (song_key or chords):
+        if song_name and song_key:
+            findings.append(
+                f"Selected song harmonic context: {song_name} in {song_key}."
+            )
+        elif song_key:
+            findings.append(f"Selected song key for Scales coaching: {song_key}.")
+        if chords:
+            preview = " → ".join(chords[:6])
+            findings.append(f"Chord progression sample used for harmonic fit: {preview}.")
+        if song_form and isinstance(sections, dict) and sections:
+            findings.append(
+                "Form sections available: " + ", ".join(str(k) for k in list(sections.keys())[:5]) + "."
+            )
+        elif song_harmony and not song_form:
+            findings.append(
+                "Harmony is a flat progression (no named Verse/Chorus sections) — "
+                "coaching uses key/chords only."
+            )
+        if scale_adh is not None:
+            findings.append(
+                f"Scale/mode adherence vs selected-song tonal material ≈ {float(scale_adh):.0f}%."
+            )
+        if chord_tone is not None:
+            findings.append(
+                f"Chord-tone hit rate vs selected-song chords ≈ {float(chord_tone):.0f}%."
+            )
+        if guide_tone is not None:
+            findings.append(
+                f"Guide-tone (3rds/7ths) usage vs selected-song harmony ≈ {float(guide_tone):.0f}%."
+            )
+        if scale_adh is None and chord_tone is None:
+            findings.append(
+                "Pitch-class harmonic fit was limited in this take — coach from the selected "
+                "song key/chords on the next loop."
+            )
+
+        if mapped is not None and mapped >= 70:
+            went_well = (
+                f"{target or 'This layer'} shows strong tonal alignment with "
+                f"{song_name or 'the selected song'}'s scale/harmony."
+            )
+            improve_to = (
+                "Tighten weaker chords in the progression — land chord tones on strong beats, "
+                "especially 3rds and 7ths through ii–V motion."
+            )
+        elif mapped is not None and mapped >= 50:
+            went_well = (
+                f"{target or 'This layer'} has usable scale material inside "
+                f"{song_name or 'the selected song'}, with room to fit local chords more tightly."
+            )
+            improve_to = (
+                f"Over the next take, outline chord tones of "
+                f"{' → '.join(chords[:3]) if chords else song_key} before freer scale runs."
+            )
+        else:
+            went_well = (
+                f"{target or 'This layer'} establishes pitch material to reshape toward "
+                f"{song_name or 'the selected song'}'s harmony."
+            )
+            improve_to = (
+                "Prioritize chord tones from the selected progression; treat non-chord tones as "
+                "approach notes that resolve."
+            )
+        first_sec = ""
+        if song_form and isinstance(sections, dict) and sections:
+            first_sec = next((str(k) for k in sections.keys() if str(k).strip()), "")
+        if first_sec and chords:
+            drill = (
+                f"Loop {first_sec} of {song_name or 'the selected song'} @ a slower tempo and "
+                f"target the 3rd of each chord in {' → '.join(chords[:4])}."
+            )
+        elif chords:
+            drill = (
+                f"Play {' → '.join(chords[:4])} slowly — hold the 3rd and 7th of each chord "
+                f"for two beats before connecting with {song_key or 'the song'} scale tones."
+            )
+        else:
+            drill = (
+                f"Practice the {song_key} scale against the selected song's harmony, resolving "
+                "each phrase to a stable chord tone."
+            )
+        assessment = (
+            f"{mapped}/100 (scale adherence vs selected-song tonal material)"
+            if mapped is not None
+            else "Qualitative Scales read from selected-song harmony + observed pitches"
+        )
+    else:
+        findings.append(
+            "No resolved Upload song harmony — Scales coaching stays exercise-oriented "
+            "(Other / Not a Song or unresolved source)."
+        )
+        if pitch_note:
+            findings.append(
+                "Use a tuner/drone and a chosen exercise key; do not treat the observed "
+                "center pitch as a song key."
+            )
+        went_well = (
+            f"{target or 'This layer'} provides pitch material for scale practice."
+        )
+        improve_to = (
+            "Choose an exercise key deliberately, then isolate one scale pattern for an 8-bar loop."
+        )
+        drill = (
+            f"{target or 'Layer'} Scales drill: one octave ascending/descending with even "
+            "subdivisions, then resolve to the tonic."
+        )
+        assessment = "Qualitative Scales coaching (exercise context — no song harmony)"
+
+    # Never import technique long-tone tips as Scales "evidence".
+    _ = categories  # reserved for future pitch-category harmonic notes only
+    return {
+        "focus": "Scales",
+        "target_layer": target,
+        "assessment": assessment,
+        "score": mapped,
+        "findings": findings,
+        "went_well": went_well,
+        "improve_to": improve_to,
+        "drill": drill,
+    }
 
 
 def build_target_layer_focus_analysis(
@@ -174,6 +364,7 @@ def build_target_layer_focus_analysis(
     scores: dict[str, Any] | None = None,
     categories: dict[str, Any] | None = None,
     ctx: dict[str, Any] | None = None,
+    musical_metrics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Explicit per-Focus coaching blocks for the Layer being analyzed.
 
@@ -218,6 +409,18 @@ def build_target_layer_focus_analysis(
         improve_to = ""
         drill = ""
         assessment = ""
+
+        if "scale" in fl:
+            block = _scales_focus_block(
+                target=target,
+                features=features,
+                categories=categories,
+                ctx=ctx,
+                musical_metrics=musical_metrics,
+            )
+            block["focus"] = focus  # preserve user label (Scales / Scale/mode / etc.)
+            blocks.append(block)
+            continue
 
         if "articulation" in fl:
             findings.append(
@@ -483,19 +686,50 @@ def enrich_layer_analysis_result(
             scores=out.get("scores") or {},
             categories=out.get("categories") or {},
             ctx=ctx,
+            musical_metrics=out.get("musical_metrics") or {},
         )
         out["target_layer_focus_analysis"] = blocks
         arrangement = build_layer_arrangement_context(ctx, heard_instruments=[target] if target else [])
         out["layer_arrangement_context"] = arrangement
 
-        # Prefixed summary ownership — analyzed target, not every project instrument.
+        song_ctx = ctx.get("selected_song_analysis_context")
+        if not isinstance(song_ctx, dict):
+            song_ctx = {}
+        out["selected_song_analysis_context"] = dict(song_ctx) if song_ctx else out.get("selected_song_analysis_context")
+        song_name = str(
+            (song_ctx or {}).get("title") or ctx.get("song") or ctx.get("song_source_name") or ""
+        ).strip()
+        song_key = str((song_ctx or {}).get("key") or ctx.get("display_key") or "").strip()
+        ref_bpm = (song_ctx or {}).get("bpm")
+        if ref_bpm in (None, ""):
+            ref_bpm = ctx.get("reference_bpm") or ctx.get("practice_bpm")
+        meter = str((song_ctx or {}).get("meter") or ctx.get("time_signature") or "").strip()
+
+        # Prefixed summary ownership — analyzed target + selected song authority.
         focus_txt = format_focus_list(target_focuses) if target_focuses else "selected Practice Focuses"
         ownership = (
             f"Multitrack Layer — analyzing {target or 'the uploaded part'} only "
             f"(Practice Focuses: {focus_txt})."
         )
+        if song_name:
+            song_line = f"Song context: {song_name}"
+            if song_key:
+                song_line += f" — {song_key}"
+            if meter:
+                song_line += f", {meter}"
+            if ref_bpm not in (None, ""):
+                try:
+                    song_line += f", reference tempo {int(float(ref_bpm))} BPM"
+                except (TypeError, ValueError):
+                    song_line += f", reference tempo {ref_bpm}"
+            song_line += "."
+            ownership = (
+                f"Analyzing your {target or 'uploaded'} layer in {song_name}. {ownership} {song_line}"
+            )
         summary = str(out.get("coach_summary") or "").strip()
-        if ownership.lower() not in summary.lower():
+        if "analyzing your" not in summary.lower() and ownership.lower() not in summary.lower():
+            out["coach_summary"] = f"{ownership} {summary}".strip()
+        elif ownership.lower() not in summary.lower():
             out["coach_summary"] = f"{ownership} {summary}".strip()
         if arrangement:
             # Keep arrangement as its own field; also append once to summary if absent.
@@ -732,6 +966,19 @@ def run_multitrack_upload_analysis(
         result.setdefault("instruments", instruments)
         result.setdefault("instrument_focuses", dict(ctx.get("instrument_focuses") or {}))
         result.setdefault("practice_focuses", list(ctx.get("practice_focuses") or []))
+        if isinstance(ctx.get("selected_song_analysis_context"), dict):
+            result["selected_song_analysis_context"] = dict(ctx["selected_song_analysis_context"])
+            song_name = str(ctx["selected_song_analysis_context"].get("title") or "").strip()
+            if song_name and result.get("ok"):
+                summary = str(result.get("coach_summary") or "")
+                if song_name.lower() not in summary.lower():
+                    result["coach_summary"] = (
+                        f"Song context: {song_name}. {summary}"
+                    ).strip()
+        result["reference_bpm"] = ctx.get("reference_bpm") or ctx.get("practice_bpm")
+        result["display_key"] = ctx.get("display_key")
+        result["song_source_name"] = ctx.get("song") or ctx.get("song_source_name")
+        result["song_source_type"] = ctx.get("song_source_type")
         return result
     except Exception as exc:
         return {

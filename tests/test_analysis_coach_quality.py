@@ -12,6 +12,7 @@ from analysis_coach_quality import (
     criteria_report_heading,
     dedupe_recommendations,
     has_song_form_context,
+    has_song_harmony_context,
     instrument_family,
     is_mission_evaluation_active,
 )
@@ -352,9 +353,41 @@ class InstrumentCoachingLeakageTests(unittest.TestCase):
         self.assertNotIn("chorus", joined)
         self.assertTrue("flute" in joined or "breath" in joined or "long-tone" in joined or "long tone" in joined)
         self.assertTrue(has_song_form_context({"song_source_type": SONG_SOURCE_OTHER}) is False)
+        self.assertTrue(has_song_harmony_context({"song_source_type": SONG_SOURCE_OTHER}) is False)
 
 
-class PitchIntonationArchitectureTests(unittest.TestCase):
+class SongHarmonyVsFormGateTests(unittest.TestCase):
+    def test_flat_progression_has_harmony_without_form(self) -> None:
+        ctx = {
+            "song_source_type": "Custom Progression",
+            "display_key": "Eb",
+            "target_chords": ["Cm7", "Fm7", "Bb7", "Ebmaj7"],
+            "sections": {},
+        }
+        self.assertTrue(has_song_harmony_context(ctx))
+        self.assertFalse(has_song_form_context(ctx))
+
+    def test_named_sections_enable_form(self) -> None:
+        ctx = {
+            "song_source_type": "Custom Progression",
+            "display_key": "Eb",
+            "target_chords": ["Cm7", "Fm7"],
+            "sections": {"Verse": ["Cm7"], "Chorus": ["Ebmaj7"]},
+        }
+        self.assertTrue(has_song_harmony_context(ctx))
+        self.assertTrue(has_song_form_context(ctx))
+
+    def test_chords_alone_no_longer_count_as_form(self) -> None:
+        # Legacy bug: chords alone made has_song_form_context True.
+        ctx = {
+            "song_source_type": "Catalog",
+            "display_key": "F",
+            "target_chords": ["Fmaj7", "Gm7", "C7"],
+            "sections": {},
+        }
+        self.assertTrue(has_song_harmony_context(ctx))
+        self.assertFalse(has_song_form_context(ctx))
+
     def test_stable_scale_not_penalized_like_drifting_sustain(self) -> None:
         # Stable ascending scale: each note flat within ~5 cents, large melodic range.
         notes_hz = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]
