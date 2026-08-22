@@ -569,5 +569,148 @@ class AmiUploadContextTests(unittest.TestCase):
         self.assertEqual(rows[0].get("recording_type"), RECORDING_TYPE_MISSION)
 
 
+class MultitrackInstrumentFocusTests(unittest.TestCase):
+    def test_two_instruments_get_independent_focuses_and_options(self) -> None:
+        from pathlib import Path
+
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            instrument_focus_widget_key,
+            sync_instrument_focuses,
+        )
+
+        sax_opts = focus_options_for_instrument("Saxophone")
+        piano_opts = focus_options_for_instrument("Piano")
+        self.assertTrue(sax_opts)
+        self.assertTrue(piano_opts)
+        self.assertNotEqual(sax_opts, piano_opts)
+
+        session = {
+            "analysis_mode": MULTITRACK_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_MT_MIX,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano"],
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
+                "Saxophone": sax_opts[0],
+                "Piano": piano_opts[0],
+            },
+        }
+        session[instrument_focus_widget_key("Saxophone")] = sax_opts[0]
+        session[instrument_focus_widget_key("Piano")] = piano_opts[0]
+        synced = sync_instrument_focuses(session, ["Saxophone", "Piano"])
+        self.assertEqual(set(synced.keys()), {"Saxophone", "Piano"})
+        self.assertEqual(synced["Saxophone"], sax_opts[0])
+        self.assertEqual(synced["Piano"], piano_opts[0])
+        self.assertIn(synced["Saxophone"], sax_opts)
+        self.assertIn(synced["Piano"], piano_opts)
+
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["instrument_focuses"]["Saxophone"], sax_opts[0])
+        self.assertEqual(snap["instrument_focuses"]["Piano"], piano_opts[0])
+        self.assertEqual(len(snap["instrument_focuses"]), 2)
+
+        src = Path("upload_analysis_setup_ui.py").read_text(encoding="utf-8")
+        self.assertIn("{inst} — Practice Focus", src)
+        self.assertIn("sync_instrument_focuses", src)
+
+    def test_removing_instrument_drops_stale_focus_from_snapshot(self) -> None:
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            instrument_focus_widget_key,
+        )
+
+        sax_opts = focus_options_for_instrument("Saxophone")
+        piano_opts = focus_options_for_instrument("Piano")
+        guitar_opts = focus_options_for_instrument("Guitar")
+        session = {
+            "analysis_mode": MULTITRACK_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_MT_MIX,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano", "Guitar"],
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: {
+                "Saxophone": sax_opts[0],
+                "Piano": piano_opts[0],
+                "Guitar": guitar_opts[0],
+            },
+        }
+        for inst, foc in session[ANALYSIS_INSTRUMENT_FOCUSES_KEY].items():
+            session[instrument_focus_widget_key(inst)] = foc
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(set(snap["instrument_focuses"]), {"Saxophone", "Piano", "Guitar"})
+
+        session[ANALYSIS_EVAL_INSTRUMENTS_KEY] = ["Saxophone", "Piano"]
+        snap2 = build_analysis_context_snapshot(session)
+        self.assertEqual(set(snap2["instrument_focuses"]), {"Saxophone", "Piano"})
+        self.assertNotIn("Guitar", snap2["instrument_focuses"])
+        self.assertNotIn("Guitar", session.get(ANALYSIS_INSTRUMENT_FOCUSES_KEY) or {})
+
+    def test_history_reload_and_ami_preserve_instrument_focuses(self) -> None:
+        from media_state import build_media_ami_payload_from_catalog, compact_recording_for_ami
+        from practice_setup_controls import focus_options_for_instrument
+        from recording_analysis_context import (
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY,
+            instrument_focus_widget_key,
+        )
+
+        sax_opts = focus_options_for_instrument("Saxophone")
+        piano_opts = focus_options_for_instrument("Piano")
+        mapping = {"Saxophone": sax_opts[0], "Piano": piano_opts[0]}
+        session = {
+            "analysis_mode": MULTITRACK_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_MT_MIX,
+            ANALYSIS_EVAL_INSTRUMENTS_KEY: ["Saxophone", "Piano"],
+            ANALYSIS_INSTRUMENT_FOCUSES_KEY: dict(mapping),
+            ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CATALOG,
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Blue Bossa",
+        }
+        for inst, foc in mapping.items():
+            session[instrument_focus_widget_key(inst)] = foc
+        snap = build_analysis_context_snapshot(session)
+        result = persist_snapshot_on_result({"ok": True}, snap)
+        loaded = load_snapshot_from_result(result)
+        self.assertEqual(loaded["instrument_focuses"], mapping)
+
+        entry = {
+            "recording_id": "rec-mt-1",
+            "created_at": "2026-08-01T12:00:00",
+            "filename": "mix.wav",
+            "song": "Blue Bossa",
+            "instrument": "Saxophone",
+            "duration_seconds": 20.0,
+            "analysis_summary": {"coach_summary": "Ensemble take."},
+            "analysis_context_snapshot": loaded,
+        }
+        compact = compact_recording_for_ami(entry)
+        self.assertEqual(compact.get("instrument_focuses"), mapping)
+        payload = build_media_ami_payload_from_catalog(
+            {
+                "uploaded_recordings": [entry],
+                "multitrack_sessions": [],
+                "tone_takes": [],
+                "multitrack_exports": [],
+            },
+            window_days=3650,
+        )
+        rows = payload.get("recording_analysis_context") or []
+        self.assertTrue(rows)
+        self.assertEqual(rows[0].get("instrument_focuses"), mapping)
+
+    def test_layer_coaching_uses_target_instrument_focus(self) -> None:
+        snap = {
+            "workflow": WORKFLOW_MULTITRACK,
+            "recording_type": RECORDING_TYPE_MT_LAYER,
+            "instruments": ["Saxophone", "Piano"],
+            "target_layer": "Piano",
+            "practice_focus": "Improvisation",
+            "instrument_focuses": {
+                "Saxophone": "Improvisation",
+                "Piano": "Comping",
+            },
+        }
+        ctx = apply_snapshot_to_analysis_ctx({"recording_type": RECORDING_TYPE_MT_LAYER}, snap)
+        self.assertEqual(ctx.get("focus"), "Comping")
+        self.assertEqual(ctx.get("instrument_focuses"), snap["instrument_focuses"])
+
+
 if __name__ == "__main__":
     unittest.main()

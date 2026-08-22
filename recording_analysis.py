@@ -1024,8 +1024,51 @@ def analyze_multitrack(
     labels = list(ctx.get("evaluating_criteria_labels") or [])
     if labels:
         findings.insert(0, f"Evaluating Criteria emphasis: {', '.join(labels)}.")
+
+    instrument_focuses = ctx.get("instrument_focuses")
+    if isinstance(instrument_focuses, dict):
+        instrument_focuses = {
+            str(k).strip(): str(v).strip()
+            for k, v in instrument_focuses.items()
+            if str(k).strip() and str(v).strip()
+        }
+    else:
+        instrument_focuses = {}
+
     focus = str(ctx.get("focus") or "").strip()
-    if focus:
+    if "layer" in rtype:
+        target = str(
+            ctx.get("target_layer")
+            or ctx.get("instrument")
+            or ((ctx.get("instruments") or [None])[0])
+            or ""
+        ).strip()
+        layer_focus = instrument_focuses.get(target) or focus
+        if layer_focus:
+            focus = layer_focus
+            tips.insert(
+                0,
+                f"Layer Practice Focus ({target or 'selected part'} → {layer_focus}): "
+                "judge this stem against that intended role.",
+            )
+            findings.insert(
+                0,
+                f"Target-layer Practice Focus is {layer_focus}"
+                + (f" for {target}" if target else "")
+                + ".",
+            )
+    elif instrument_focuses:
+        mapped = "; ".join(f"{inst} → {foc}" for inst, foc in instrument_focuses.items())
+        tips.insert(
+            0,
+            f"Instrument Practice Focuses — {mapped}. "
+            "Coach each selected part toward its own intended goal.",
+        )
+        findings.insert(
+            0,
+            f"Multitrack Mix retains per-instrument Practice Focus mapping: {mapped}.",
+        )
+    elif focus:
         tips.insert(0, f"Practice Focus ({focus}): keep the next arrangement take aligned with that goal.")
 
     return {
@@ -1041,6 +1084,7 @@ def analyze_multitrack(
         "instruments": list(ctx.get("instruments") or []),
         "evaluating_criteria_labels": labels,
         "focus": focus,
+        "instrument_focuses": dict(instrument_focuses),
     }
 
 

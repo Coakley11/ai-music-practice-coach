@@ -721,6 +721,13 @@ def _ami_analysis_context_fields(entry: dict[str, Any]) -> dict[str, Any]:
         "instruments": instruments,
         "level": str(snap.get("level") or entry.get("level") or ""),
         "practice_focus": str(snap.get("practice_focus") or entry.get("practice_focus") or ""),
+        "instrument_focuses": {
+            str(k).strip(): str(v).strip()
+            for k, v in dict(snap.get("instrument_focuses") or {}).items()
+            if str(k).strip() and str(v).strip()
+        }
+        if isinstance(snap.get("instrument_focuses"), dict)
+        else {},
         "evaluating_criteria_ids": [str(x) for x in criteria_ids if str(x).strip()],
         "evaluating_criteria_labels": [str(x) for x in criteria_labels if str(x).strip()],
         "song_source_type": str(snap.get("song_source_type") or entry.get("song_source_type") or ""),
@@ -1055,6 +1062,9 @@ def build_media_ami_payload_from_catalog(
                 "instruments": list(row.get("instruments") or []),
                 "level": row.get("level"),
                 "practice_focus": row.get("practice_focus"),
+                "instrument_focuses": dict(row.get("instrument_focuses") or {})
+                if isinstance(row.get("instrument_focuses"), dict)
+                else {},
                 "evaluating_criteria_ids": list(row.get("evaluating_criteria_ids") or []),
                 "evaluating_criteria_labels": list(row.get("evaluating_criteria_labels") or []),
                 "song_source_type": row.get("song_source_type"),
