@@ -1,10 +1,11 @@
-"""Upload Analysis setup UI: workflow → recording type → instruments → song source."""
+"""Upload Analysis setup UI — Step 1 recording-analysis context."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from recording_analysis_context import (
+    ANALYSIS_EVAL_INSTRUMENT_KEY,
     ANALYSIS_EVAL_INSTRUMENTS_KEY,
     ANALYSIS_MISSION_CONSTRAINT_KEY,
     ANALYSIS_PLAYER_LEVEL_KEY,
@@ -14,9 +15,13 @@ from recording_analysis_context import (
     ANALYSIS_SONG_SOURCE_TYPE_KEY,
     ANALYSIS_TARGET_LAYER_KEY,
     RECORDING_TYPE_MT_LAYER,
+    SONG_SOURCE_CATALOG,
+    SONG_SOURCE_COMPOSED,
+    SONG_SOURCE_CUSTOM,
     SONG_SOURCE_OPTIONS,
     SONG_SOURCE_OTHER,
     is_mission_recording_type,
+    maybe_apply_manual_mission_defaults,
     normalize_recording_type_for_workflow,
     recording_types_for_workflow,
     seed_session_setup_from_active,
@@ -52,6 +57,73 @@ def _mission_options(session_state: dict[str, Any]) -> list[str]:
     return options or ["Chord-tone targeting"]
 
 
+def _choice_labels(choices: list[dict[str, str]]) -> list[str]:
+    labels: list[str] = []
+    for row in choices:
+        label = str(row.get("label") or row.get("id") or "").strip()
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _id_for_label(choices: list[dict[str, str]], label: str) -> str:
+    for row in choices:
+        if str(row.get("label") or "") == label:
+            return str(row.get("id") or "").strip()
+    return ""
+
+
+def _select_from_library(
+    st: Any,
+    *,
+    label: str,
+    choices: list[dict[str, str]],
+    session_state: dict[str, Any],
+    disabled: bool,
+    empty_message: str,
+    widget_key: str,
+) -> None:
+    labels = _choice_labels(choices)
+    if not labels:
+        st.caption(empty_message)
+        st.text_input(
+            "Song / piece name",
+            key=ANALYSIS_SONG_SOURCE_NAME_KEY,
+            disabled=disabled,
+        )
+        return
+
+    current_name = str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip()
+    current_id = str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or "").strip()
+    if not current_name and current_id:
+        for row in choices:
+            if str(row.get("id") or "") == current_id:
+                current_name = str(row.get("label") or "")
+                break
+    if current_name not in labels:
+        if current_name:
+            labels = [current_name] + labels
+        else:
+            current_name = labels[0]
+            session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = current_name
+            session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = _id_for_label(choices, current_name)
+
+    idx = labels.index(current_name) if current_name in labels else 0
+    picked = st.selectbox(
+        label,
+        labels,
+        index=idx,
+        key=widget_key,
+        disabled=disabled,
+    )
+    session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = str(picked)
+    matched_id = _id_for_label(choices, str(picked))
+    if matched_id:
+        session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = matched_id
+    elif current_id:
+        session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = current_id
+
+
 def render_upload_analysis_setup(
     st: Any,
     session_state: dict[str, Any],
@@ -60,20 +132,30 @@ def render_upload_analysis_setup(
     default_instrument: str = "",
     default_song_name: str = "",
     from_mission_handoff: bool = False,
+    catalog_song_choices: list[dict[str, str]] | None = None,
+    custom_song_choices: list[dict[str, str]] | None = None,
+    composed_song_choices: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Render Workflow → Recording Type → evaluation context. Returns current selections.
+    """Render Step 1: what the coach should evaluate.
 
-    Controls stay editable for ordinary Uploads and for Mission handoffs.
-    Handoff only prefills known mission/song/instrument answers.
+    Genuine Creative Mission handoff locks recording identity fields.
+    Manual Mission Recording only receives intelligent editable defaults.
     """
     normalize_analysis_workflow(session_state)
     seed_session_setup_from_active(session_state)
+    identity_locked = bool(from_mission_handoff)
 
-    if from_mission_handoff:
+    st.markdown("### Step 1 — What should the coach evaluate?")
+    st.caption(
+        "Tell the coach what this recording represents before capturing audio. "
+        "These answers are saved with the recording for Practice Log."
+    )
+
+    if identity_locked:
         st.info(
-            "Prefill from Creative Mission handoff — Single Recording · Mission Recording, "
-            "plus the mission, song, and instrument from the take you just recorded. "
-            "You can still edit these fields."
+            "Creative Mission handoff — recording identity is locked "
+            "(workflow, type, instrument, song, and mission). "
+            "You can still change Evaluating Criteria / Metrics before analysis."
         )
 
     col_mode, col_type = st.columns([1, 1])
@@ -83,6 +165,7 @@ def render_upload_analysis_setup(
             list(WORKFLOW_OPTIONS),
             horizontal=True,
             key="analysis_mode",
+            disabled=identity_locked,
         )
     normalize_recording_type_for_workflow(session_state)
     allowed = recording_types_for_workflow(
@@ -96,17 +179,17 @@ def render_upload_analysis_setup(
             list(allowed),
             index=idx,
             key="analysis_recording_type",
+            disabled=identity_locked,
             help=(
-                "Recording type shapes how the coach interprets this take. "
-                "Baseline playing scores stay; emphasis and recommendations change. "
-                "Choose Mission Recording only when evaluating a Mission constraint."
+                "Shapes how the coach interprets this take. Baseline playing scores stay; "
+                "emphasis and recommendations change. Choose Mission Recording only when "
+                "evaluating a Mission constraint."
             ),
         )
 
-    st.markdown(
-        '<p class="ui-upload-step-kicker">Step 2 · What should the coach evaluate?</p>',
-        unsafe_allow_html=True,
-    )
+    if not identity_locked:
+        maybe_apply_manual_mission_defaults(session_state)
+
     options = list(instrument_options or [])
     if default_instrument and default_instrument not in options:
         options = [default_instrument] + options
@@ -115,36 +198,60 @@ def render_upload_analysis_setup(
 
     existing = session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)
     if not isinstance(existing, list) or not existing:
-        seed = default_instrument or (options[0] if options else "Piano")
+        seed = default_instrument or options[0]
         session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = [seed]
+        session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = seed
+    if not str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or "").strip():
+        session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = list(
+            session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [options[0]]
+        )[0]
 
-    st.multiselect(
-        "Instrument(s) to evaluate",
-        options=options,
-        key=ANALYSIS_EVAL_INSTRUMENTS_KEY,
-        help="Which instrument or part should the coach judge on this recording?",
-    )
+    if is_multitrack_workflow(session_state):
+        st.multiselect(
+            "Instrument(s) / parts to evaluate",
+            options=options,
+            key=ANALYSIS_EVAL_INSTRUMENTS_KEY,
+            disabled=identity_locked,
+            help="Which instruments or parts should the coach judge?",
+        )
+    else:
+        current_inst = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or options[0])
+        if current_inst not in options:
+            options = [current_inst] + options
+        inst_idx = options.index(current_inst) if current_inst in options else 0
+        picked_inst = st.selectbox(
+            "Instrument to evaluate",
+            options,
+            index=inst_idx,
+            key=ANALYSIS_EVAL_INSTRUMENT_KEY,
+            disabled=identity_locked,
+            help="Single Recording evaluates exactly one instrument.",
+        )
+        session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = [str(picked_inst)]
 
     level_options = list(_LEVEL_OPTIONS)
     current_level = str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip()
     if current_level and current_level not in level_options:
         level_options = [current_level] + level_options
     if not current_level:
-        session_state[ANALYSIS_PLAYER_LEVEL_KEY] = level_options[1] if len(level_options) > 1 else level_options[0]
+        session_state[ANALYSIS_PLAYER_LEVEL_KEY] = (
+            level_options[1] if len(level_options) > 1 else level_options[0]
+        )
     st.selectbox(
         "Player level",
         level_options,
         key=ANALYSIS_PLAYER_LEVEL_KEY,
+        disabled=identity_locked,
     )
 
-    focus_seed = str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip()
-    if not focus_seed:
+    if not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
         session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = str(
             session_state.get("focus") or session_state.get("practice_focus") or ""
         ).strip()
     st.text_input(
-        "Current Practice Focus",
+        "Practice Focus",
         key=ANALYSIS_PRACTICE_FOCUS_KEY,
+        disabled=identity_locked,
         help="What the musician is currently working on (separate from Evaluating Criteria).",
     )
 
@@ -152,47 +259,85 @@ def render_upload_analysis_setup(
         "What music/song is this recording?",
         list(SONG_SOURCE_OPTIONS),
         key=ANALYSIS_SONG_SOURCE_TYPE_KEY,
+        disabled=identity_locked,
     )
     if not str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip() and default_song_name:
         session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = default_song_name
 
     if source_type == SONG_SOURCE_OTHER:
         st.text_input(
-            "Describe the recording context",
-            key=ANALYSIS_SONG_SOURCE_NAME_KEY,
-            placeholder="e.g. Free improvisation over blues form",
-        )
-    else:
-        st.text_input(
             "Song / piece name",
             key=ANALYSIS_SONG_SOURCE_NAME_KEY,
-            help="Stable identity for this recording — not rewritten when you later change the active song.",
+            disabled=identity_locked,
+            placeholder="e.g. Free improvisation over blues form",
         )
-        st.text_input(
-            "Stable song/source ID (optional)",
-            key=ANALYSIS_SONG_SOURCE_ID_KEY,
-            help="Catalog pick key, custom song id, or composition project id when known.",
+        session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = ""
+    elif source_type == SONG_SOURCE_CATALOG:
+        _select_from_library(
+            st,
+            label="Catalog song",
+            choices=list(catalog_song_choices or []),
+            session_state=session_state,
+            disabled=identity_locked,
+            empty_message="No catalog songs available — type the piece name.",
+            widget_key="_analysis_song_pick_catalog",
+        )
+    elif source_type == SONG_SOURCE_CUSTOM:
+        _select_from_library(
+            st,
+            label="Custom song",
+            choices=list(custom_song_choices or []),
+            session_state=session_state,
+            disabled=identity_locked,
+            empty_message="No saved Custom songs yet — type the piece name.",
+            widget_key="_analysis_song_pick_custom",
+        )
+    elif source_type == SONG_SOURCE_COMPOSED:
+        _select_from_library(
+            st,
+            label="Composed song",
+            choices=list(composed_song_choices or []),
+            session_state=session_state,
+            disabled=identity_locked,
+            empty_message="No saved Composed songs yet — type the piece name.",
+            widget_key="_analysis_song_pick_composed",
         )
 
     rtype = str(session_state.get("analysis_recording_type") or "")
     if is_mission_recording_type(rtype):
-        st.markdown("##### Mission constraint")
+        st.markdown("##### Mission")
         mission_opts = _mission_options(session_state)
         if not str(session_state.get(ANALYSIS_MISSION_CONSTRAINT_KEY) or "").strip():
             session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission_opts[0]
         current_mission = str(session_state.get(ANALYSIS_MISSION_CONSTRAINT_KEY) or mission_opts[0])
         m_idx = mission_opts.index(current_mission) if current_mission in mission_opts else 0
         st.selectbox(
-            "Which Mission / constraint should the coach evaluate?",
+            "Mission / constraint",
             mission_opts,
             index=m_idx,
             key=ANALYSIS_MISSION_CONSTRAINT_KEY,
+            disabled=identity_locked,
             help="Mission compliance is evaluated in addition to Evaluating Criteria emphasis.",
         )
+        params = session_state.get("analysis_mission_parameters")
+        if identity_locked and isinstance(params, dict) and params:
+            bits = []
+            if params.get("chord"):
+                bits.append(f"Chord: {params['chord']}")
+            if params.get("section"):
+                bits.append(f"Section: {params['section']}")
+            if params.get("tempo_bpm"):
+                bits.append(f"Tempo: {params['tempo_bpm']}")
+            if params.get("backing_track"):
+                bits.append("Backing track: yes")
+            if bits:
+                st.caption(" · ".join(str(b) for b in bits))
+
     if is_multitrack_workflow(session_state) and rtype == RECORDING_TYPE_MT_LAYER:
         st.text_input(
             "Target layer / part label",
             key=ANALYSIS_TARGET_LAYER_KEY,
+            disabled=identity_locked,
             placeholder="e.g. Tenor sax overdub, Bass stem",
         )
 
@@ -208,5 +353,6 @@ def render_upload_analysis_setup(
         "level": str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or ""),
         "mission_constraint": str(session_state.get(ANALYSIS_MISSION_CONSTRAINT_KEY) or ""),
         "from_mission_handoff": bool(from_mission_handoff),
+        "identity_locked": identity_locked,
         "is_mission_recording": is_mission_recording_type(rtype),
     }

@@ -5,8 +5,11 @@ from __future__ import annotations
 import unittest
 
 from recording_analysis_context import (
+    ANALYSIS_EVAL_INSTRUMENT_KEY,
     ANALYSIS_EVAL_INSTRUMENTS_KEY,
+    ANALYSIS_IDENTITY_LOCKED_KEY,
     ANALYSIS_MISSION_CONSTRAINT_KEY,
+    ANALYSIS_SONG_SOURCE_ID_KEY,
     ANALYSIS_SONG_SOURCE_NAME_KEY,
     ANALYSIS_SONG_SOURCE_TYPE_KEY,
     RECORDING_TYPE_BACKING,
@@ -18,12 +21,14 @@ from recording_analysis_context import (
     SONG_SOURCE_CATALOG,
     WORKFLOW_MULTITRACK,
     WORKFLOW_SINGLE,
+    apply_manual_mission_recording_defaults,
     apply_mission_recording_defaults,
     apply_snapshot_to_analysis_ctx,
     build_analysis_context_snapshot,
     coach_emphasis_notes,
     is_genuine_mission_upload_handoff,
     load_snapshot_from_result,
+    maybe_apply_manual_mission_defaults,
     normalize_recording_type_for_workflow,
     persist_snapshot_on_result,
     recording_types_for_workflow,
@@ -189,6 +194,71 @@ class MissionDefaultsTests(unittest.TestCase):
         self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_MISSION)
         self.assertEqual(session.get(ANALYSIS_EVAL_INSTRUMENTS_KEY), ["Guitar"])
         self.assertEqual(session.get(ANALYSIS_MISSION_CONSTRAINT_KEY), "Only Chord Tones")
+        self.assertTrue(session.get("analysis_identity_locked"))
+
+    def test_manual_mission_defaults_editable_not_locked(self) -> None:
+        session = {
+            "instrument": "Tenor Sax",
+            "song": "Say",
+            "level": "Intermediate",
+            "focus": "Improvisation",
+            "pick_key": "Jazz\x1fSay — John Legend",
+            "selected_song": {"title": "Say", "artist": "John Legend"},
+            "improv_active_mission": "Only Chord Tones",
+            "analysis_recording_type": RECORDING_TYPE_SOLO,
+        }
+        maybe_apply_manual_mission_defaults(session)  # no-op until type flips
+        session["analysis_recording_type"] = RECORDING_TYPE_MISSION
+        maybe_apply_manual_mission_defaults(session)
+        self.assertEqual(session["analysis_recording_type"], RECORDING_TYPE_MISSION)
+        self.assertFalse(bool(session.get(ANALYSIS_IDENTITY_LOCKED_KEY)))
+        self.assertEqual(session.get(ANALYSIS_EVAL_INSTRUMENTS_KEY), ["Tenor Sax"])
+        self.assertEqual(session.get(ANALYSIS_SONG_SOURCE_NAME_KEY), "Say")
+        self.assertEqual(session.get(ANALYSIS_SONG_SOURCE_TYPE_KEY), SONG_SOURCE_CATALOG)
+
+    def test_handoff_locks_identity_ambient_does_not(self) -> None:
+        ambient = {
+            "analysis_sync_creative_mission": True,
+            "improv_active_mission": "Only Chord Tones",
+            "analysis_recording_type": RECORDING_TYPE_SOLO,
+            "instrument": "Piano",
+        }
+        self.assertFalse(is_genuine_mission_upload_handoff(ambient))
+        handoff = {
+            "_mission_upload_analysis_handoff": True,
+            "instrument": "Tenor Sax",
+            "song": "Say",
+            "improv_active_mission": "Only Chord Tones",
+            "selected_song": {"title": "Say", "artist": "John Legend"},
+        }
+        apply_mission_recording_defaults(handoff)
+        self.assertTrue(handoff.get(ANALYSIS_IDENTITY_LOCKED_KEY))
+        snap = build_analysis_context_snapshot(handoff)
+        self.assertTrue(snap.get("identity_locked"))
+        self.assertEqual(snap.get("recording_type"), RECORDING_TYPE_MISSION)
+        self.assertEqual(snap.get("instruments"), ["Tenor Sax"])
+
+    def test_single_instrument_key_feeds_snapshot(self) -> None:
+        session = {
+            "analysis_mode": SINGLE_RECORDING,
+            "analysis_recording_type": RECORDING_TYPE_SOLO,
+            ANALYSIS_EVAL_INSTRUMENT_KEY: "Tenor Sax",
+            ANALYSIS_SONG_SOURCE_TYPE_KEY: SONG_SOURCE_CATALOG,
+            ANALYSIS_SONG_SOURCE_NAME_KEY: "Say",
+            ANALYSIS_SONG_SOURCE_ID_KEY: "catalog:say",
+        }
+        snap = build_analysis_context_snapshot(session)
+        self.assertEqual(snap["instruments"], ["Tenor Sax"])
+        self.assertEqual(snap["song_source_id"], "catalog:say")
+
+
+class MultitrackHeadingTests(unittest.TestCase):
+    def test_multitrack_heading_uses_bpm_loop_groove(self) -> None:
+        from pathlib import Path
+
+        src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertIn('section_open_fn(st, "BPM / Loop / Groove", icon="⏱")', src)
+        self.assertNotIn('section_open_fn(st, "Key / BPM / meter", icon="⏱")', src)
 
 
 class CoachEmphasisTests(unittest.TestCase):

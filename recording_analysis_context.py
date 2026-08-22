@@ -48,6 +48,7 @@ SONG_SOURCE_OPTIONS: tuple[str, ...] = (
 
 # Session keys for Upload setup (pre-analysis UI)
 ANALYSIS_EVAL_INSTRUMENTS_KEY = "analysis_eval_instruments"
+ANALYSIS_EVAL_INSTRUMENT_KEY = "analysis_eval_instrument"
 ANALYSIS_SONG_SOURCE_TYPE_KEY = "analysis_song_source_type"
 ANALYSIS_SONG_SOURCE_ID_KEY = "analysis_song_source_id"
 ANALYSIS_SONG_SOURCE_NAME_KEY = "analysis_song_source_name"
@@ -55,6 +56,9 @@ ANALYSIS_TARGET_LAYER_KEY = "analysis_target_layer_label"
 ANALYSIS_MISSION_CONSTRAINT_KEY = "analysis_mission_constraint"
 ANALYSIS_PLAYER_LEVEL_KEY = "analysis_player_level"
 ANALYSIS_PRACTICE_FOCUS_KEY = "analysis_practice_focus"
+ANALYSIS_IDENTITY_LOCKED_KEY = "analysis_identity_locked"
+_MANUAL_MISSION_DEFAULTS_APPLIED_KEY = "_analysis_manual_mission_defaults_applied"
+_PREV_RECORDING_TYPE_KEY = "_analysis_prev_recording_type"
 
 
 def is_genuine_mission_upload_handoff(session_state: dict[str, Any]) -> bool:
@@ -123,6 +127,8 @@ def empty_analysis_context_snapshot() -> dict[str, Any]:
         "display_key": "",
         "level": "",
         "association": "",
+        "identity_locked": False,
+        "backing_track_context": False,
     }
 
 
@@ -175,6 +181,10 @@ def build_analysis_context_snapshot(
 
     instruments = _as_list(session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY))
     if not instruments:
+        single = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or "").strip()
+        if single:
+            instruments = [single]
+    if not instruments:
         instruments = _as_list(session_state.get("instrument"))
     snap["instruments"] = instruments
     level = str(
@@ -184,6 +194,15 @@ def build_analysis_context_snapshot(
     ).strip()
     snap["level"] = level
     snap["instrument_levels"] = {inst: level for inst in instruments} if level else {}
+    snap["identity_locked"] = bool(
+        session_state.get(ANALYSIS_IDENTITY_LOCKED_KEY)
+        or is_genuine_mission_upload_handoff(session_state)
+    )
+    snap["backing_track_context"] = bool(
+        session_state.get("analysis_backing_track_context")
+        or session_state.get("_mission_upload_with_backing")
+        or (snap["identity_locked"] and is_mission_recording_type(snap.get("recording_type")))
+    )
 
     song_type = str(
         session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or SONG_SOURCE_CATALOG
@@ -247,7 +266,17 @@ def build_analysis_context_snapshot(
                             params[attr] = val
             except Exception:
                 pass
+            stored = session_state.get("analysis_mission_parameters")
+            if isinstance(stored, dict):
+                params.update({k: v for k, v in stored.items() if v not in (None, "")})
+            if snap.get("backing_track_context"):
+                params.setdefault("backing_track", True)
             snap["mission_parameters"] = params
+        else:
+            snap["mission_id"] = ""
+            snap["mission_type"] = ""
+            snap["mission_constraint"] = ""
+            snap["mission_parameters"] = {}
     else:
         snap["mission_id"] = ""
         snap["mission_type"] = ""
@@ -355,50 +384,128 @@ def load_snapshot_from_result(result: dict[str, Any] | None) -> dict[str, Any]:
     return snap
 
 
-def seed_session_setup_from_active(session_state: dict[str, Any]) -> None:
-    """Prefill Upload setup fields from active studio state when unset."""
-    if not _as_list(session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)):
-        inst = str(session_state.get("instrument") or "").strip()
-        if inst:
-            session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = [inst]
-    if not str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or "").strip():
-        session_state[ANALYSIS_SONG_SOURCE_TYPE_KEY] = SONG_SOURCE_CATALOG
-    if not str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip():
+def resolve_active_song_source(session_state: dict[str, Any]) -> dict[str, str]:
+    """Resolve the active song's source type, stable id, and display name."""
+    source_type = SONG_SOURCE_CATALOG
+    source_id = ""
+    source_name = ""
+    artist = ""
+
+    try:
+        from songs.music_source import custom_progression_is_active
+    except ImportError:
+        custom_progression_is_active = lambda _s: False  # type: ignore[assignment,misc]
+
+    try:
+        from composition_session_state import get_active_document
+    except ImportError:
+        get_active_document = lambda _s: None  # type: ignore[assignment,misc]
+
+    composed_doc = None
+    try:
+        composed_doc = get_active_document(session_state)
+    except Exception:
+        composed_doc = None
+
+    if isinstance(composed_doc, dict) and (
+        str(session_state.get("studio_page") or "") == "composition"
+        or session_state.get("analysis_prefer_composed_source")
+    ):
+        source_type = SONG_SOURCE_COMPOSED
+        source_id = str(composed_doc.get("id") or "").strip()
+        source_name = str(composed_doc.get("title") or composed_doc.get("name") or "").strip()
+    elif custom_progression_is_active(session_state):
+        source_type = SONG_SOURCE_CUSTOM
+        active = session_state.get("cpl_active_progression") or session_state.get("cpl_active")
+        if isinstance(active, dict):
+            source_name = str(active.get("name") or active.get("title") or "").strip()
+            source_id = str(active.get("id") or active.get("name") or source_name).strip()
+            if source_id and not source_id.startswith("custom::"):
+                source_id = f"custom::{source_id}"
+        if not source_name:
+            source_name = str(session_state.get("song") or "").strip()
+        if not source_id and source_name:
+            source_id = f"custom::{source_name}"
+    else:
+        source_type = SONG_SOURCE_CATALOG
         selected = session_state.get("selected_song")
-        title = ""
         if isinstance(selected, dict):
-            title = str(selected.get("title") or selected.get("name") or "").strip()
-        title = title or str(session_state.get("song") or "").strip()
-        if title:
-            session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = title
-    if not str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or "").strip():
-        pk = str(
+            source_name = str(selected.get("title") or selected.get("name") or "").strip()
+            artist = str(selected.get("artist") or "").strip()
+        source_name = source_name or str(session_state.get("song") or "").strip()
+        source_id = str(
             session_state.get("active_catalog_pick_key")
             or session_state.get("pick_key")
             or ""
         ).strip()
-        if pk:
-            session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = pk
-    if not str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip():
+
+    # Prefer composed library only when explicitly active elsewhere didn't match catalog/custom
+    if not source_name and isinstance(composed_doc, dict):
+        source_type = SONG_SOURCE_COMPOSED
+        source_id = str(composed_doc.get("id") or "").strip()
+        source_name = str(composed_doc.get("title") or composed_doc.get("name") or "").strip()
+
+    return {
+        "song_source_type": source_type,
+        "song_source_id": source_id,
+        "song_source_name": source_name,
+        "song_artist": artist,
+    }
+
+
+def seed_session_setup_from_active(session_state: dict[str, Any], *, force: bool = False) -> None:
+    """Prefill Upload setup fields from active studio state when unset (or force=True)."""
+    try:
+        from practice_setup_globals import get_active_focus, get_active_instrument, get_active_level
+
+        inst = str(get_active_instrument(session_state) or session_state.get("instrument") or "").strip()
+        try:
+            from practice_setup_globals import get_active_instrument_display_name
+
+            inst = str(get_active_instrument_display_name(session_state) or inst).strip()
+        except Exception:
+            pass
+        level = str(get_active_level(session_state) or session_state.get("level") or "").strip()
+        focus = str(get_active_focus(session_state) or session_state.get("focus") or "").strip()
+    except Exception:
+        inst = str(session_state.get("instrument") or "").strip()
         level = str(session_state.get("level") or "").strip()
+        focus = str(session_state.get("focus") or session_state.get("practice_focus") or "").strip()
+
+    if force or not _as_list(session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)):
+        if inst:
+            session_state[ANALYSIS_EVAL_INSTRUMENTS_KEY] = [inst]
+            session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = inst
+    elif not str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or "").strip():
+        instruments = _as_list(session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY))
+        if instruments:
+            session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = instruments[0]
+
+    song = resolve_active_song_source(session_state)
+    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or "").strip():
+        session_state[ANALYSIS_SONG_SOURCE_TYPE_KEY] = song["song_source_type"]
+    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip():
+        if song["song_source_name"]:
+            session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = song["song_source_name"]
+    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or "").strip():
+        if song["song_source_id"]:
+            session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = song["song_source_id"]
+    if force or not str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip():
         if level:
             session_state[ANALYSIS_PLAYER_LEVEL_KEY] = level
-    if not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
-        focus = str(session_state.get("focus") or session_state.get("practice_focus") or "").strip()
+    if force or not str(session_state.get(ANALYSIS_PRACTICE_FOCUS_KEY) or "").strip():
         if focus:
             session_state[ANALYSIS_PRACTICE_FOCUS_KEY] = focus
 
 
-def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
-    """Prefill Workflow / Recording Type / song / instrument for a Creative Mission handoff.
-
-    Fields remain editable in the Upload UI; this only seeds known answers.
-    """
+def apply_manual_mission_recording_defaults(session_state: dict[str, Any]) -> None:
+    """Intelligent editable defaults when the user manually chooses Mission Recording."""
     from upload_analysis_modes import SINGLE_RECORDING
 
     session_state["analysis_mode"] = SINGLE_RECORDING
     session_state["analysis_recording_type"] = RECORDING_TYPE_MISSION
-    seed_session_setup_from_active(session_state)
+    session_state[ANALYSIS_IDENTITY_LOCKED_KEY] = False
+    seed_session_setup_from_active(session_state, force=True)
     try:
         from mission_practice_context import authoritative_mission_type
 
@@ -413,6 +520,56 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
             session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
     except Exception:
         pass
+    session_state[_MANUAL_MISSION_DEFAULTS_APPLIED_KEY] = True
+
+
+def maybe_apply_manual_mission_defaults(session_state: dict[str, Any]) -> None:
+    """Apply manual Mission defaults once when Recording Type becomes Mission Recording."""
+    if is_genuine_mission_upload_handoff(session_state):
+        return
+    current = str(session_state.get("analysis_recording_type") or "").strip()
+    previous = str(session_state.get(_PREV_RECORDING_TYPE_KEY) or "").strip()
+    if is_mission_recording_type(current) and not is_mission_recording_type(previous):
+        apply_manual_mission_recording_defaults(session_state)
+    if not is_mission_recording_type(current):
+        session_state.pop(_MANUAL_MISSION_DEFAULTS_APPLIED_KEY, None)
+    session_state[_PREV_RECORDING_TYPE_KEY] = current
+
+
+def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
+    """Authoritative prefills for a genuine Creative Mission handoff (identity locked)."""
+    from upload_analysis_modes import SINGLE_RECORDING
+
+    session_state["analysis_mode"] = SINGLE_RECORDING
+    session_state["analysis_recording_type"] = RECORDING_TYPE_MISSION
+    session_state[ANALYSIS_IDENTITY_LOCKED_KEY] = True
+    session_state["analysis_backing_track_context"] = True
+    seed_session_setup_from_active(session_state, force=True)
+    try:
+        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+
+        mission = str(authoritative_mission_type(session_state) or "").strip()
+        if not mission:
+            mission = str(
+                session_state.get("improv_active_mission")
+                or session_state.get("improv_mission_pick")
+                or ""
+            ).strip()
+        if mission:
+            session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
+        ctx = ensure_mission_practice_context(session_state)
+        params: dict[str, Any] = {"mission_type": mission, "backing_track": True}
+        if ctx is not None:
+            chord = getattr(getattr(ctx, "chord", None), "symbol", None)
+            if chord:
+                params["chord"] = str(chord)
+            for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
+                val = getattr(ctx, attr, None)
+                if val not in (None, ""):
+                    params[attr] = val
+        session_state["analysis_mission_parameters"] = params
+    except Exception:
+        session_state.setdefault("analysis_mission_parameters", {"backing_track": True})
 
 
 def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:

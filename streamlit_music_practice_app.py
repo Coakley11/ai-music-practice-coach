@@ -6543,7 +6543,7 @@ def _render_multitrack_session_setup_panel(
         )
     section_close_fn(st)
 
-    section_open_fn(st, "Key / BPM / meter", icon="⏱")
+    section_open_fn(st, "BPM / Loop / Groove", icon="⏱")
     _kbpm_c1, _kbpm_c2, _kbpm_c3 = st.columns(3, gap="small")
     with _kbpm_c1:
         mt_bpm = st.slider(
@@ -13949,18 +13949,60 @@ elif _studio_page == "analysis":
         with st.container(key="upload_mode_segment", border=False):
             from upload_analysis_modes import is_multitrack_workflow, normalize_analysis_workflow
             from upload_analysis_setup_ui import render_upload_analysis_setup
-
-            normalize_analysis_workflow(st.session_state)
             from recording_analysis_context import (
+                ANALYSIS_IDENTITY_LOCKED_KEY,
                 apply_mission_recording_defaults,
                 is_genuine_mission_upload_handoff,
             )
 
-            # Only a Creative → Missions handoff prefills Mission Recording.
-            # Ambient Creative mission state must NOT lock ordinary Upload.
+            normalize_analysis_workflow(st.session_state)
             _from_mission_handoff = is_genuine_mission_upload_handoff(st.session_state)
             if _from_mission_handoff:
                 apply_mission_recording_defaults(st.session_state)
+            else:
+                st.session_state.pop(ANALYSIS_IDENTITY_LOCKED_KEY, None)
+
+            # Song library choices for Step 1 selectors
+            _catalog_song_choices: list[dict[str, str]] = []
+            try:
+                for _rec in ALL_SONG_RECORDS:
+                    _title = str(_rec.get("title") or "").strip()
+                    _artist = str(_rec.get("artist") or "").strip()
+                    _genre = str(_rec.get("genre") or "").strip()
+                    if not _title:
+                        continue
+                    _label = f"{_title} — {_artist}" if _artist else _title
+                    _catalog_song_choices.append(
+                        {
+                            "id": format_pick_key(_genre, _label) if _genre else _label,
+                            "label": _label,
+                        }
+                    )
+            except Exception:
+                _catalog_song_choices = []
+
+            _custom_song_choices: list[dict[str, str]] = []
+            try:
+                from custom_progression_lab import CPL_SAVED_KEY, list_saved_progression_names
+
+                for _name in list_saved_progression_names(st.session_state.get(CPL_SAVED_KEY) or {}):
+                    _custom_song_choices.append({"id": f"custom::{_name}", "label": str(_name)})
+            except Exception:
+                _custom_song_choices = []
+
+            _composed_song_choices: list[dict[str, str]] = []
+            try:
+                from composition_session_state import list_library_documents
+
+                for _doc in list_library_documents(st.session_state):
+                    if not isinstance(_doc, dict):
+                        continue
+                    _cid = str(_doc.get("id") or "").strip()
+                    _ctitle = str(_doc.get("title") or _doc.get("name") or _cid).strip()
+                    if _cid and _ctitle:
+                        _composed_song_choices.append({"id": _cid, "label": _ctitle})
+            except Exception:
+                _composed_song_choices = []
 
             setup_sel = render_upload_analysis_setup(
                 st,
@@ -13969,6 +14011,9 @@ elif _studio_page == "analysis":
                 default_instrument=str(instrument or ""),
                 default_song_name=str(_song_title or song or ""),
                 from_mission_handoff=_from_mission_handoff,
+                catalog_song_choices=_catalog_song_choices,
+                custom_song_choices=_custom_song_choices,
+                composed_song_choices=_composed_song_choices,
             )
             recording_type = str(
                 setup_sel.get("recording_type")
@@ -13976,13 +14021,29 @@ elif _studio_page == "analysis":
                 or "Practice take"
             )
 
+            # Evaluating Criteria belongs in Step 1 (editable even on Mission handoff)
+            if not is_multitrack_workflow(st.session_state):
+                from mission_analysis_ui import (
+                    is_analysis_criteria_locked,
+                    render_analysis_criteria_summary,
+                    render_mission_goals_selector,
+                )
+
+                st.markdown("##### Evaluating Criteria / Metrics")
+                if is_analysis_criteria_locked(st.session_state) and not _from_mission_handoff:
+                    # Locked only when opened from Metrics & AI workflow; still editable via Change Criteria.
+                    mission_ids = render_analysis_criteria_summary(st, st.session_state)
+                elif _from_mission_handoff:
+                    # Handoff: identity locked, criteria remain editable.
+                    st.caption("Recording identity is locked. You may still change evaluation emphasis.")
+                    mission_ids = render_mission_goals_selector(st, st.session_state)
+                else:
+                    mission_ids = render_mission_goals_selector(st, st.session_state)
+            else:
+                mission_ids = []
+
         if not is_multitrack_workflow(st.session_state):
-            from mission_analysis_ui import (
-                is_analysis_criteria_locked,
-                render_analysis_criteria_summary,
-                render_mission_goals_selector,
-                ANALYSIS_RETURN_TO_METRICS,
-            )
+            from mission_analysis_ui import ANALYSIS_RETURN_TO_METRICS
 
             with st.container(key="upload_capture_panel", border=False):
                 try:
@@ -14025,8 +14086,9 @@ elif _studio_page == "analysis":
                         st.markdown("---")
                 except ImportError:
                     pass
+                st.markdown("### Step 2 — Capture audio")
                 st.markdown(
-                    '<p class="ui-upload-step-kicker">Step 1 · Capture audio</p>',
+                    '<p class="ui-upload-step-kicker">Upload or record the take to analyze</p>',
                     unsafe_allow_html=True,
                 )
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
@@ -14035,17 +14097,12 @@ elif _studio_page == "analysis":
                     "MP4/MOV uploads extract audio automatically."
                 )
 
-                if is_analysis_criteria_locked(st.session_state):
-                    mission_ids = render_analysis_criteria_summary(st, st.session_state)
-                else:
-                    mission_ids = render_mission_goals_selector(st, st.session_state)
-
                 try:
                     from mission_practice_context import mission_capture_allowed
 
                     _cap_ok, _cap_msg = mission_capture_allowed(
                         st.session_state,
-                        require_mission_workflow=is_analysis_criteria_locked(st.session_state),
+                        require_mission_workflow=False,
                     )
                     if not _cap_ok and _cap_msg:
                         st.warning(_cap_msg.replace("**", ""))
