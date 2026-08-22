@@ -7021,6 +7021,44 @@ def _prepare_upload_analysis_ctx(recording_type_label: str) -> dict:
     store_snapshot_in_session(st.session_state, snapshot)
     ctx["_persist_snapshot"] = persist_snapshot_on_result
     ctx["_snapshot"] = snapshot
+    try:
+        from analysis_coach_quality import is_mission_evaluation_active
+        from recording_analysis_context import (
+            is_genuine_mission_upload_handoff,
+            is_mission_recording_type,
+        )
+        from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
+    except ImportError:
+        ctx["mission_evaluation_active"] = False
+        ctx["from_mission_handoff"] = False
+    else:
+        # Ordinary Practice/Solo/Backing takes must not inherit a stale Mission handoff.
+        if label and not is_mission_recording_type(label):
+            st.session_state.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)
+            ctx.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)
+            ctx["from_mission_handoff"] = False
+            ctx["mission_evaluation_active"] = False
+            if isinstance(snapshot, dict):
+                snapshot["mission_evaluation_active"] = False
+                snapshot["from_mission_handoff"] = False
+                snapshot.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)
+        else:
+            mission_active = is_mission_evaluation_active(
+                recording_type=label,
+                session_state=st.session_state,
+                ctx=ctx,
+            )
+            ctx["mission_evaluation_active"] = bool(mission_active)
+            if is_genuine_mission_upload_handoff(st.session_state):
+                ctx["from_mission_handoff"] = True
+                ctx[MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY] = True
+            else:
+                ctx["from_mission_handoff"] = False
+            if isinstance(snapshot, dict):
+                snapshot["mission_evaluation_active"] = bool(
+                    ctx.get("mission_evaluation_active")
+                )
+                snapshot["from_mission_handoff"] = bool(ctx.get("from_mission_handoff"))
     return ctx
 
 
@@ -7035,6 +7073,20 @@ def _finalize_upload_analysis_result(result: dict, ctx: dict) -> dict:
             store_snapshot_in_session(st.session_state, snap)
         except Exception:
             pass
+    try:
+        from analysis_coach_quality import is_mission_evaluation_active
+
+        result["mission_evaluation_active"] = bool(
+            ctx.get("mission_evaluation_active")
+            if "mission_evaluation_active" in ctx
+            else is_mission_evaluation_active(
+                recording_type=ctx.get("recording_type"),
+                session_state=st.session_state,
+                ctx=ctx,
+            )
+        )
+    except Exception:
+        result.setdefault("mission_evaluation_active", False)
     return result
 
 
@@ -14312,6 +14364,10 @@ elif _studio_page == "analysis":
                                 ctx,
                                 mission_ids=mission_ids,
                                 multitrack=False,
+                                session_state=st.session_state,
+                                mission_evaluation_active=bool(
+                                    ctx.get("mission_evaluation_active")
+                                ),
                             )
                             with st.spinner(spin):
                                 result = analyze_recording(
@@ -14403,6 +14459,10 @@ elif _studio_page == "analysis":
                             ctx,
                             mission_ids=mission_ids,
                             multitrack=False,
+                            session_state=st.session_state,
+                            mission_evaluation_active=bool(
+                                ctx.get("mission_evaluation_active")
+                            ),
                         )
                         with st.spinner(spin):
                             result = analyze_recording(
@@ -14477,7 +14537,7 @@ elif _studio_page == "analysis":
             ):
                 with st.container(key="upload_results_panel", border=False):
                     st.markdown(
-                        '<p class="ui-upload-step-kicker">Step 2 · Coach report</p>',
+                        '<p class="ui-upload-step-kicker">Step 3 · Coach report</p>',
                         unsafe_allow_html=True,
                     )
                     last = st.session_state["last_analysis_result"]
@@ -14487,10 +14547,29 @@ elif _studio_page == "analysis":
                     )
                     mission_rows = last.get("mission_results") or []
                     if mission_rows:
+                        from analysis_coach_quality import (
+                            criteria_overall_score_label,
+                            criteria_report_heading,
+                        )
+
+                        _mission_eval = bool(last.get("mission_evaluation_active"))
+                        st.markdown(
+                            f"#### {criteria_report_heading(mission_evaluation_active=_mission_eval)}"
+                        )
                         overall = last.get("overall_improv_score")
                         if overall:
-                            st.metric("Overall Improvisation Score", f"{overall}%")
-                        with st.expander("AI metric feedback (detail)", expanded=True):
+                            st.metric(
+                                criteria_overall_score_label(
+                                    mission_evaluation_active=_mission_eval
+                                ),
+                                f"{overall}%",
+                            )
+                        _detail_label = (
+                            "AI mission feedback (detail)"
+                            if _mission_eval
+                            else "AI criteria feedback (detail)"
+                        )
+                        with st.expander(_detail_label, expanded=True):
                             for m in mission_rows:
                                 st.markdown(f"#### {m.get('label', '')} — {m.get('score', 0)}%")
                                 st.markdown(m.get("summary", ""))
@@ -14547,6 +14626,10 @@ elif _studio_page == "analysis":
                         ctx,
                         mission_ids=list(ctx.get("mission_ids") or []),
                         multitrack=True,
+                        session_state=st.session_state,
+                        mission_evaluation_active=bool(
+                            ctx.get("mission_evaluation_active")
+                        ),
                     )
                     with st.spinner(_mt_spin):
                         mt_result = analyze_multitrack(tracks, ctx)
@@ -14576,7 +14659,7 @@ elif _studio_page == "analysis":
             if st.session_state.get("last_analysis_result", {}).get("multitrack"):
                 with st.container(key="upload_results_panel", border=False):
                     st.markdown(
-                        '<p class="ui-upload-step-kicker">Step 2 · Ensemble report</p>',
+                        '<p class="ui-upload-step-kicker">Step 3 · Coach report</p>',
                         unsafe_allow_html=True,
                     )
                     st.markdown(

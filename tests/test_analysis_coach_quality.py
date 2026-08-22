@@ -8,11 +8,15 @@ import numpy as np
 
 from analysis_coach_quality import (
     build_analysis_status_message,
+    criteria_overall_score_label,
+    criteria_report_heading,
     dedupe_recommendations,
     has_song_form_context,
     instrument_family,
+    is_mission_evaluation_active,
 )
 from mission_analysis import _coach_result_fields, score_missions
+from mission_upload_handoff import MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY
 from recording_analysis import (
     AudioFeatures,
     _intonation_stats_from_f0,
@@ -22,9 +26,11 @@ from recording_analysis import (
     compute_performance_scores,
 )
 from recording_analysis_context import (
+    RECORDING_TYPE_MISSION,
     RECORDING_TYPE_PRACTICE,
     SONG_SOURCE_OTHER,
 )
+from mission_analysis_ui import render_mission_analysis_html
 
 
 def _blank_features(**overrides) -> AudioFeatures:
@@ -60,26 +66,203 @@ def _blank_features(**overrides) -> AudioFeatures:
 
 
 class AnalysisStatusMessageTests(unittest.TestCase):
-    def test_includes_criteria_focuses_baselines_and_missions(self) -> None:
+    def test_practice_take_omits_improvisation_missions_wording(self) -> None:
+        """Ordinary Practice Take + selected criteria/focuses is NOT a Mission."""
+        ctx = {
+            "recording_type": RECORDING_TYPE_PRACTICE,
+            "evaluating_criteria_labels": [
+                "Scale/mode usage",
+                "Dynamics",
+                "Articulation",
+            ],
+            "practice_focuses": ["Phrasing", "Articulation", "Scales"],
+        }
         msg = build_analysis_status_message(
-            {
-                "evaluating_criteria_labels": [
-                    "Phrase structure",
-                    "Scale/mode usage",
-                    "Timing/groove",
-                    "Articulation",
-                ],
-                "practice_focuses": ["Articulation", "Dynamics", "Phrasing"],
-            },
-            mission_ids=["phrase_structure", "scale_connection"],
+            ctx,
+            mission_ids=["scale_connection", "dynamics", "articulation"],
         )
         lower = msg.lower()
         self.assertTrue(msg.startswith("Analyzing "))
-        self.assertIn("phrase structure", lower)
-        self.assertTrue("phrasing" in lower or "dynamics" in lower)
-        self.assertIn("improvisation missions", lower)
+        self.assertIn("scale/mode usage", lower)
+        self.assertIn("dynamics", lower)
+        self.assertTrue("phrasing" in lower or "scales" in lower)
+        self.assertNotIn("improvisation missions", lower)
+        self.assertFalse(is_mission_evaluation_active(recording_type=RECORDING_TYPE_PRACTICE, ctx=ctx))
         # Avoid exact duplicate articulation token twice as bare repeats.
         self.assertEqual(lower.count("articulation"), 1)
+
+    def test_manual_mission_recording_includes_improvisation_missions(self) -> None:
+        ctx = {
+            "recording_type": RECORDING_TYPE_MISSION,
+            "evaluating_criteria_labels": ["Scale/mode usage", "Articulation"],
+            "practice_focuses": ["Phrasing"],
+        }
+        msg = build_analysis_status_message(
+            ctx,
+            mission_ids=["scale_connection", "articulation"],
+        )
+        self.assertIn("improvisation missions", msg.lower())
+        self.assertTrue(
+            is_mission_evaluation_active(recording_type=RECORDING_TYPE_MISSION, ctx=ctx)
+        )
+
+    def test_genuine_creative_mission_handoff_includes_improvisation_missions(self) -> None:
+        # Genuine Creative → Upload handoff seals Mission Recording identity.
+        session = {MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY: True}
+        ctx = {
+            "recording_type": RECORDING_TYPE_MISSION,
+            "evaluating_criteria_labels": ["Scale/mode usage"],
+            "practice_focuses": ["Phrasing"],
+            "from_mission_handoff": True,
+        }
+        msg = build_analysis_status_message(
+            ctx,
+            mission_ids=["scale_connection"],
+            session_state=session,
+        )
+        self.assertIn("improvisation missions", msg.lower())
+        self.assertTrue(
+            is_mission_evaluation_active(
+                recording_type=RECORDING_TYPE_MISSION,
+                session_state=session,
+                ctx=ctx,
+            )
+        )
+
+    def test_stale_handoff_marker_does_not_force_mission_wording_on_practice_take(self) -> None:
+        """Leftover session handoff must not make a later ordinary Practice Take a Mission."""
+        session = {
+            MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY: True,
+            "improv_active_mission": "Motif development",
+        }
+        ctx = {
+            "recording_type": RECORDING_TYPE_PRACTICE,
+            "evaluating_criteria_labels": [
+                "Scale/mode usage",
+                "Dynamics",
+                "Articulation",
+            ],
+            "practice_focuses": ["Phrasing", "Articulation", "Scales"],
+            # Stale durable flags from a prior Mission analysis must not win.
+            "mission_evaluation_active": True,
+            "from_mission_handoff": True,
+        }
+        msg = build_analysis_status_message(
+            ctx,
+            mission_ids=["scale_connection", "articulation"],
+            session_state=session,
+        )
+        self.assertNotIn("improvisation missions", msg.lower())
+        self.assertFalse(
+            is_mission_evaluation_active(
+                recording_type=RECORDING_TYPE_PRACTICE,
+                session_state=session,
+                ctx=ctx,
+            )
+        )
+
+    def test_stale_ambient_creative_mission_does_not_trigger_mission_wording(self) -> None:
+        session = {
+            "improv_active_mission": "Motif development",
+            "analysis_sync_creative_mission": True,
+            "creative_lab_analysis_mode": "Improvisation Intelligence",
+        }
+        ctx = {
+            "recording_type": RECORDING_TYPE_PRACTICE,
+            "evaluating_criteria_labels": [
+                "Scale/mode usage",
+                "Dynamics",
+                "Articulation",
+            ],
+            "practice_focuses": ["Phrasing", "Articulation", "Scales"],
+        }
+        msg = build_analysis_status_message(
+            ctx,
+            mission_ids=["scale_connection", "articulation"],
+            session_state=session,
+        )
+        self.assertNotIn("improvisation missions", msg.lower())
+        self.assertFalse(
+            is_mission_evaluation_active(
+                recording_type=RECORDING_TYPE_PRACTICE,
+                session_state=session,
+                ctx=ctx,
+            )
+        )
+
+    def test_report_heading_and_score_label_are_ownership_aware(self) -> None:
+        self.assertEqual(
+            criteria_report_heading(mission_evaluation_active=False),
+            "🎯 Focused AI evaluation",
+        )
+        self.assertEqual(
+            criteria_report_heading(mission_evaluation_active=True),
+            "🎯 AI improvisation evaluation",
+        )
+        self.assertEqual(
+            criteria_overall_score_label(mission_evaluation_active=False),
+            "Overall criteria score",
+        )
+        self.assertEqual(
+            criteria_overall_score_label(mission_evaluation_active=True),
+            "Overall Improvisation Score",
+        )
+        practice_html = render_mission_analysis_html(
+            {
+                "mission_evaluation_active": False,
+                "mission_results": [
+                    {
+                        "label": "Scale/mode usage",
+                        "score": 72,
+                        "summary": "Solid scale coverage.",
+                        "went_well": "Clear scale outline.",
+                        "improve_to": "Add more contour.",
+                    }
+                ],
+                "overall_improv_score": 72,
+                "mission_coach_summary": "Criteria look intentional.",
+                "mission_strongest": "Scale/mode usage",
+                "mission_weakest": "Articulation",
+                "mission_next_recommendation": "Keep drilling scales slowly.",
+                "musical_metrics": {"scale_adherence": 70},
+            }
+        )
+        self.assertIn("Focused AI evaluation", practice_html)
+        self.assertIn("Overall criteria score", practice_html)
+        self.assertNotIn("AI improvisation evaluation", practice_html)
+        self.assertIn("Scale/mode usage", practice_html)
+
+        mission_html = render_mission_analysis_html(
+            {
+                "mission_evaluation_active": True,
+                "mission_results": [
+                    {
+                        "label": "Scale/mode usage",
+                        "score": 72,
+                        "summary": "Solid scale coverage.",
+                        "went_well": "Clear scale outline.",
+                        "improve_to": "Add more contour.",
+                    }
+                ],
+                "overall_improv_score": 72,
+                "mission_coach_summary": "Mission feedback.",
+                "mission_strongest": "Scale/mode usage",
+                "mission_weakest": "Articulation",
+                "mission_next_recommendation": "Keep drilling scales slowly.",
+                "musical_metrics": {"scale_adherence": 70},
+            }
+        )
+        self.assertIn("AI improvisation evaluation", mission_html)
+        self.assertIn("Overall Improvisation Score", mission_html)
+
+    def test_coach_report_step_kicker_is_step_3(self) -> None:
+        from pathlib import Path
+
+        app = Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
+        text = app.read_text(encoding="utf-8")
+        self.assertIn("Step 3 · Coach report", text)
+        self.assertNotIn("Step 2 · Coach report", text)
+        self.assertNotIn("Step 2 · Ensemble report", text)
 
     def test_dedupes_related_labels(self) -> None:
         msg = build_analysis_status_message(

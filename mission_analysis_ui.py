@@ -6,6 +6,11 @@ import html
 import math
 from typing import Any
 
+from analysis_coach_quality import (
+    criteria_overall_score_label,
+    criteria_report_heading,
+)
+
 from mission_analysis import (
     AI_IMPROV_METRIC_IDS,
     AI_IMPROV_METRIC_LABELS,
@@ -378,12 +383,15 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
     strongest = _esc(result.get("mission_strongest", ""))
     weakest = _esc(result.get("mission_weakest", ""))
 
+    mission_eval = bool(result.get("mission_evaluation_active"))
+    heading = criteria_report_heading(mission_evaluation_active=mission_eval)
+    overall_label = criteria_overall_score_label(mission_evaluation_active=mission_eval)
     return f"""
 {MISSION_ANALYSIS_CSS}
 <div class="ma-block">
   <div class="ma-hero">
-    <h3>🎯 AI improvisation evaluation</h3>
-    <p class="ma-overall">Overall Improvisation Score: {overall}%</p>
+    <h3>{heading}</h3>
+    <p class="ma-overall">{overall_label}: {overall}%</p>
     <p>{_esc(result.get('mission_coach_summary', ''))}</p>
     <div style="margin-top:10px">
       <span class="ma-pill good">Strongest: {strongest}</span>
@@ -555,7 +563,12 @@ def render_improv_metrics_results(st: Any, result: dict[str, Any]) -> None:
     )
     overall = result.get("overall_improv_score")
     if overall:
-        st.metric("Overall Improvisation Score", f"{overall}%")
+        st.metric(
+            criteria_overall_score_label(
+                mission_evaluation_active=bool(result.get("mission_evaluation_active"))
+            ),
+            f"{overall}%",
+        )
     if result.get("mission_strongest"):
         st.success(f"Strongest: {result.get('mission_strongest')}")
     if result.get("mission_weakest"):

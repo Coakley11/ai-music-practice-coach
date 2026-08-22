@@ -92,13 +92,94 @@ def _instrument_short(name: str) -> str:
     return text.split()[0].lower()
 
 
+def is_mission_evaluation_active(
+    *,
+    recording_type: Any = None,
+    session_state: dict[str, Any] | None = None,
+    ctx: dict[str, Any] | None = None,
+) -> bool:
+    """True only for explicit Mission Recording or genuine Creative Mission handoff.
+
+    Selected Evaluating Criteria / Focuses alone must NOT activate Mission wording.
+    Ambient Creative mission state alone must NOT activate Mission wording.
+
+    Ownership rule: when the *current* recording type is an ordinary take
+    (Practice / Solo / Backing / etc.), stale session handoff markers and old
+    ``mission_evaluation_active`` flags must NOT keep Mission wording alive.
+    Those flags are owned by the current recording/context snapshot and must be
+    recomputed per take.
+    """
+    ctx = dict(ctx or {})
+    rtype = (
+        recording_type
+        or ctx.get("recording_type")
+        or ctx.get("analysis_recording_type")
+        or (session_state or {}).get("analysis_recording_type")
+    )
+    try:
+        from recording_analysis_context import (
+            is_genuine_mission_upload_handoff,
+            is_mission_recording_type,
+        )
+    except ImportError:
+        text = str(rtype or "").strip().lower().replace("_", " ")
+        mission_type = text in {"mission recording", "mission"}
+        if rtype and not mission_type:
+            return False
+        if mission_type:
+            return True
+        ss = session_state or {}
+        return bool(
+            ss.get("_mission_upload_analysis_handoff")
+            or ctx.get("_mission_upload_analysis_handoff")
+            or ctx.get("from_mission_handoff") is True
+            or ctx.get("mission_evaluation_active") is True
+        )
+
+    # Explicit ordinary recording type wins over stale session/ctx Mission flags.
+    if rtype and not is_mission_recording_type(rtype):
+        return False
+
+    if is_mission_recording_type(rtype):
+        return True
+    if ctx.get("mission_evaluation_active") is True:
+        return True
+    if ctx.get("from_mission_handoff") is True:
+        return True
+    if session_state is not None and is_genuine_mission_upload_handoff(session_state):
+        return True
+    # Handoff marker copied onto durable analysis context/result.
+    if ctx.get("_mission_upload_analysis_handoff"):
+        return True
+    return False
+
+
+def criteria_report_heading(*, mission_evaluation_active: bool) -> str:
+    """Report block title — Mission language only when Mission evaluation is active."""
+    if mission_evaluation_active:
+        return "🎯 AI improvisation evaluation"
+    return "🎯 Focused AI evaluation"
+
+
+def criteria_overall_score_label(*, mission_evaluation_active: bool) -> str:
+    if mission_evaluation_active:
+        return "Overall Improvisation Score"
+    return "Overall criteria score"
+
+
 def build_analysis_status_message(
     ctx: dict[str, Any] | None = None,
     *,
     mission_ids: Sequence[str] | None = None,
     multitrack: bool = False,
+    mission_evaluation_active: bool | None = None,
+    session_state: dict[str, Any] | None = None,
 ) -> str:
-    """Compose a concise spinner/status line from selected criteria + Focuses + baselines."""
+    """Compose a concise spinner/status line from selected criteria + Focuses + baselines.
+
+    ``mission_ids`` (Evaluating Criteria) may drive analysis content, but they do
+    **not** by themselves add \"improvisation missions\" to the status line.
+    """
     ctx = dict(ctx or {})
     criteria = _as_str_list(
         ctx.get("evaluating_criteria_labels")
@@ -120,8 +201,13 @@ def build_analysis_status_message(
         if mt_bits and multitrack:
             focuses = mt_bits
 
-    ids = [str(x).strip() for x in (mission_ids or ctx.get("mission_ids") or []) if str(x).strip()]
-    improv_active = bool(ids)
+    # Keep mission_ids available for callers/tests, but ignore for Mission wording.
+    _ = [str(x).strip() for x in (mission_ids or ctx.get("mission_ids") or []) if str(x).strip()]
+    if mission_evaluation_active is None:
+        mission_evaluation_active = is_mission_evaluation_active(
+            ctx=ctx,
+            session_state=session_state,
+        )
 
     parts: list[str] = []
     parts.extend(_dedupe_labels(criteria, limit=3))
@@ -166,7 +252,7 @@ def build_analysis_status_message(
     parts.extend(baseline_pick)
 
     parts = _dedupe_labels(parts)
-    if improv_active and "improvisation missions" not in {p.lower() for p in parts}:
+    if mission_evaluation_active and "improvisation missions" not in {p.lower() for p in parts}:
         parts.append("improvisation missions")
 
     if not parts:
