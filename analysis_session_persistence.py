@@ -25,7 +25,36 @@ def _active_workspace_id(*, st: Any | None = None) -> str:
 
 
 def _json_safe(value: Any) -> Any:
+    """Legacy helper — prefer ``_to_json_safe`` (no ``default=str`` masking)."""
     return json.loads(json.dumps(value, default=str))
+
+
+def _to_json_safe(value: Any) -> Any:
+    """Recursively coerce values to plain JSON types without ``default=str``.
+
+    Numpy scalars become Python int/float/bool. Ndarrays and other runtime
+    objects are dropped (``None``) — durable analysis state must not carry them.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    # Numpy scalars before int/float — ``np.float64`` subclasses ``float``.
+    item = getattr(value, "item", None)
+    shape = getattr(value, "shape", None)
+    if callable(item) and shape == ():
+        return _to_json_safe(item())
+    if isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_json_safe(v) for v in value]
+    if shape is not None and hasattr(value, "tolist"):
+        return None
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_persistable_features(features: Any) -> dict[str, Any] | None:
@@ -58,14 +87,29 @@ def sanitize_analysis_result_for_persist(result: Any) -> dict[str, Any]:
         if key == "features":
             feat = _extract_persistable_features(val)
             if feat:
-                out["features"] = feat
+                out["features"] = _to_json_safe(feat)
             continue
-        try:
-            json.dumps(val, default=str)
-            out[key] = val
-        except (TypeError, ValueError):
-            out[key] = str(val)
-    return _json_safe(out)
+        safe = _to_json_safe(val)
+        if safe is not None or val is None:
+            out[key] = safe
+    return out
+
+
+def sanitize_analysis_in_page_snapshots(snapshots: Any) -> dict[str, Any]:
+    """Sanitize ``last_analysis_result`` nested in studio page snapshots."""
+    if not isinstance(snapshots, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for page_id, snap in snapshots.items():
+        if not isinstance(snap, dict):
+            continue
+        cleaned = dict(snap)
+        if "last_analysis_result" in cleaned:
+            cleaned["last_analysis_result"] = sanitize_analysis_result_for_persist(
+                cleaned.get("last_analysis_result")
+            )
+        out[str(page_id)] = cleaned
+    return out
 
 
 def analysis_result_ready(result: Any) -> bool:

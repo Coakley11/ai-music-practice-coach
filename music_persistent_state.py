@@ -2525,6 +2525,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     if isinstance(snapshots, dict) and snapshots:
         snap_copy = copy.deepcopy(snapshots)
         try:
+            from analysis_session_persistence import sanitize_analysis_in_page_snapshots
+
+            snap_copy = sanitize_analysis_in_page_snapshots(snap_copy)
+        except ImportError:
+            pass
+        try:
             from music_egress_config import sanitize_studio_page_snapshots_for_persist
 
             snap_copy = sanitize_studio_page_snapshots_for_persist(snap_copy)
@@ -2538,6 +2544,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         if count_mt_layers(ss.get("mt_tracks") or {}) > 0:
             save_page_snapshot(ss, "multitrack")
             snap = copy.deepcopy(ss.get("_studio_page_snapshots") or {})
+            try:
+                from analysis_session_persistence import sanitize_analysis_in_page_snapshots
+
+                snap = sanitize_analysis_in_page_snapshots(snap)
+            except ImportError:
+                pass
             mt_snap = snap.get("multitrack")
             if isinstance(mt_snap, dict):
                 mt_snap.pop("mt_tracks", None)

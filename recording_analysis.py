@@ -83,13 +83,74 @@ def _load_audio(audio_bytes: bytes, filename: str) -> tuple[np.ndarray, int, str
     return y, int(sr), tmp_path
 
 
-def _pyin_features(y: np.ndarray, sr: int) -> dict[str, Any]:
+def _intonation_stats_from_f0(f0: np.ndarray, *, min_run: int = 6) -> dict[str, Any]:
+    """Compute within-note intonation stats from a pyin-like f0 track (NaNs = unvoiced)."""
     out: dict[str, Any] = {
         "pitch_median_hz": None,
         "pitch_note": None,
         "pitch_cents_std": None,
         "pitch_sharp_bias": 0.0,
         "voiced_ratio": 0.0,
+        "pitch_melody_range_cents": None,
+        "pitch_note_segment_count": 0,
+    }
+    voiced_mask = ~np.isnan(f0)
+    voiced = f0[voiced_mask]
+    if len(voiced) < 12:
+        return out
+    median_hz = float(np.median(voiced))
+    global_cents = 1200 * np.log2(voiced / np.maximum(median_hz, 1e-6))
+    out["pitch_median_hz"] = median_hz
+    try:
+        out["pitch_note"] = str(librosa.hz_to_note(median_hz)) if librosa is not None else None
+    except Exception:
+        out["pitch_note"] = None
+    out["pitch_melody_range_cents"] = float(np.std(global_cents))
+    out["voiced_ratio"] = float(len(voiced) / max(1, len(f0)))
+
+    local_stds: list[float] = []
+    local_biases: list[float] = []
+    run: list[float] = []
+
+    def _flush(segment: list[float]) -> None:
+        if len(segment) < min_run:
+            return
+        arr = np.asarray(segment, dtype=float)
+        local_med = float(np.median(arr))
+        if local_med <= 0:
+            return
+        cents = 1200 * np.log2(arr / local_med)
+        local_stds.append(float(np.std(cents)))
+        local_biases.append(float(np.mean(cents)))
+
+    for hz, is_v in zip(f0, voiced_mask):
+        if is_v and not np.isnan(hz):
+            run.append(float(hz))
+        else:
+            _flush(run)
+            run = []
+    _flush(run)
+
+    out["pitch_note_segment_count"] = int(len(local_stds))
+    if local_stds:
+        out["pitch_cents_std"] = float(np.mean(local_stds))
+        out["pitch_sharp_bias"] = float(np.mean(local_biases))
+    else:
+        out["pitch_cents_std"] = float(min(35.0, np.std(global_cents) * 0.15))
+        out["pitch_sharp_bias"] = float(np.mean(global_cents) * 0.1)
+    return out
+
+
+def _pyin_features(y: np.ndarray, sr: int) -> dict[str, Any]:
+    """Pitch features that measure *intonation stability*, not melodic range."""
+    out: dict[str, Any] = {
+        "pitch_median_hz": None,
+        "pitch_note": None,
+        "pitch_cents_std": None,
+        "pitch_sharp_bias": 0.0,
+        "voiced_ratio": 0.0,
+        "pitch_melody_range_cents": None,
+        "pitch_note_segment_count": 0,
     }
     try:
         f0, _, _ = librosa.pyin(
@@ -97,19 +158,9 @@ def _pyin_features(y: np.ndarray, sr: int) -> dict[str, Any]:
             fmin=librosa.note_to_hz("C2"),
             fmax=librosa.note_to_hz("C7"),
         )
-        voiced = f0[~np.isnan(f0)]
-        if len(voiced) < 12:
-            return out
-        median_hz = float(np.median(voiced))
-        cents = 1200 * np.log2(voiced / median_hz)
-        out["pitch_median_hz"] = median_hz
-        out["pitch_note"] = str(librosa.hz_to_note(median_hz))
-        out["pitch_cents_std"] = float(np.std(cents))
-        out["pitch_sharp_bias"] = float(np.mean(cents))
-        out["voiced_ratio"] = float(len(voiced) / max(1, len(f0)))
+        return _intonation_stats_from_f0(np.asarray(f0, dtype=float))
     except Exception:
-        pass
-    return out
+        return out
 
 
 def extract_audio_features(y: np.ndarray, sr: int) -> AudioFeatures:
@@ -353,19 +404,35 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
 
     if f.groove_tightness < 0.35:
         findings.append("Attacks don't always line up with the beat grid — subdivision control can tighten.")
-        tips.append("Strumming subdivision exercise: 8ths on one chord, mute between downbeats.")
+        from analysis_coach_quality import instrument_family
+
+        fam = instrument_family(str(ctx.get("instrument") or ""))
+        if fam == "guitar":
+            tips.append("Strumming subdivision exercise: 8ths on one chord, mute between downbeats.")
+        else:
+            tips.append("Subdivision exercise: even 8ths on one pitch, rest on beats 2 and 4.")
     elif f.groove_tightness > 0.55:
         findings.append("Strong groove feel — attacks align well with the pulse.")
 
     if f.onset_density > 3.2:
-        findings.append("High attack density — check for rushed fills or inconsistent strumming.")
+        from analysis_coach_quality import instrument_family as _fam
+
+        if _fam(str(ctx.get("instrument") or "")) == "guitar":
+            findings.append("High attack density — check for rushed fills or inconsistent strumming.")
+        else:
+            findings.append("High attack density — check for rushed fills or crowded phrases.")
     elif f.onset_density < 0.6:
         findings.append("Sparse attacks — long sustains or very soft articulation detected.")
 
     if ctx.get("sections"):
-        sec_names = list(ctx["sections"].keys())
-        if any("chorus" in s.lower() for s in sec_names):
-            findings.append("Chorus entrances are a common rush point — compare your downbeat to the metronome.")
+        from analysis_coach_quality import has_song_form_context
+
+        if has_song_form_context(ctx):
+            sec_names = list(ctx["sections"].keys())
+            if any("chorus" in s.lower() for s in sec_names):
+                findings.append(
+                    "Chorus entrances are a common rush point — compare your downbeat to the metronome."
+                )
     tips.append(f"Try slower metronome practice at {max(55, bpm_hint - 20)} BPM, then notch up 4 BPM per clean pass.")
 
     return {
@@ -379,6 +446,9 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
     findings: list[str] = []
     tips: list[str] = []
     dk = str(ctx.get("display_key") or "C")
+    from analysis_coach_quality import instrument_family
+
+    fam = instrument_family(instrument)
 
     if f.pitch_note:
         findings.append(
@@ -388,28 +458,49 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
         findings.append("Pitch contour was unclear — try a brighter tone or less room noise.")
 
     if f.pitch_cents_std is not None:
+        # pitch_cents_std is within-note stability (not melodic range).
         if f.pitch_cents_std < 28:
-            findings.append("Pitch center is relatively stable — good note targeting.")
+            findings.append("Note-level intonation is relatively stable — good targeting within held notes.")
         elif f.pitch_cents_std < 52:
-            findings.append("Moderate pitch movement — musical vibrato or mild drift.")
+            findings.append(
+                "Moderate within-note pitch movement — light vibrato or mild drift on sustains."
+            )
         else:
-            findings.append("Pitch spread is wide — intonation drifts under sustain.")
+            findings.append("Within-note pitch wavers — intonation drifts under sustain.")
 
     if f.pitch_sharp_bias > 12:
-        findings.append("High register tendency: notes lean sharp on average.")
-        tips.append("Long-tone exercise: descend from target pitch, not push up into it.")
+        findings.append("High register tendency: notes lean sharp on average within holds.")
+        tips.append("Long-tone exercise: descend into the target pitch; do not push up into it.")
     elif f.pitch_sharp_bias < -12:
-        findings.append("Sustains trend flat — common on sax/voice when support drops.")
-        tips.append("Support from the core — keep air speed through the end of the note.")
+        findings.append("Sustains trend flat — support often drops at the end of the note.")
+        if fam == "flute":
+            tips.append("Keep a steady air stream through the release — support from the core.")
+        elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
+            tips.append("Keep air speed through the end of the note — support from the core.")
+        elif fam == "voice":
+            tips.append("Keep breath support through the release — do not collapse at the end of the vowel.")
+        else:
+            tips.append("Support the end of each sustain — pitch often drops when energy fades.")
 
-    fam = instrument.lower()
     if fam == "voice":
         findings.append("Vocal pitch is often strongest in the middle register — warm up there first.")
         tips.append("Voice sustain exercise: 5-note scale in key, hold beat 4 of each bar.")
-    elif fam in ("saxophone", "trumpet", "flute", "clarinet"):
-        findings.append("Wind intonation: check mouthpiece angle and steady air on long tones.")
+    elif fam == "flute":
+        findings.append(
+            "Flute intonation: prioritize steady air stream, embouchure stability, and consistent aperture."
+        )
+        tips.append("Long tones with a tuner/drone — match pitch, then add gentle vibrato only after center is steady.")
+    elif fam == "clarinet":
+        findings.append("Clarinet intonation: watch embouchure firmness and air speed across the break.")
+        tips.append("Long tones across the break — keep air speed even, avoid biting for sharp notes.")
+    elif fam == "saxophone":
+        findings.append("Sax intonation: check embouchure and reed response on long tones.")
+        tips.append("Long tones with steady air — avoid pinching the reed to chase pitch.")
+    elif fam == "trumpet":
+        findings.append("Brass intonation: center each pitch with steady air before adding volume.")
+        tips.append("Long tones on middle C–G — buzz freely, then match the mouthpiece pitch on the horn.")
     elif fam == "guitar":
-        tips.append("Target chord tones over dominant chords — root on 1, 3rd on 3, 7th on 4.")
+        tips.append("When harmony context exists, target chord tones — root on 1, 3rd on 3, 7th on 4.")
 
     tips.append(f"Ear training: sing then play {dk} major scale roots against a drone.")
 
@@ -419,9 +510,11 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
 def _technique_analysis(f: AudioFeatures, instrument: str) -> dict[str, Any]:
     findings: list[str] = []
     tips: list[str] = []
-    inst = instrument.lower()
+    from analysis_coach_quality import instrument_family
 
-    if inst == "guitar":
+    fam = instrument_family(instrument)
+
+    if fam == "guitar":
         findings.append("Chord clarity: listen for muted strings on changes — common when transitions rush.")
         if f.zcr_mean > 0.08:
             findings.append("Noisy transients — may indicate scraping or incomplete muting.")
@@ -431,7 +524,7 @@ def _technique_analysis(f: AudioFeatures, instrument: str) -> dict[str, Any]:
                 "Alternate picking on one string — match onset strength left vs right.",
             ]
         )
-    elif inst == "piano":
+    elif fam == "piano":
         findings.append("Check hand synchronization — melody vs comping should not fight rhythmically.")
         if f.dyn_flatness > 0.7:
             findings.append("Voicings may be dynamically even — bring out top voice or bass pulse.")
@@ -441,15 +534,42 @@ def _technique_analysis(f: AudioFeatures, instrument: str) -> dict[str, Any]:
                 "Dynamic balance: practice one phrase pp → mf → p over 4 bars.",
             ]
         )
-    elif inst in ("saxophone", "trumpet", "flute", "clarinet"):
-        findings.append("Articulation: note attacks should be consistent — not every note equally accented.")
+    elif fam == "flute":
+        findings.append(
+            "Flute articulation: keep tonguing clean and consistent — not every note equally accented."
+        )
+        tips.extend(
+            [
+                "Long-tone pitch/tone drill: 8 beats per note with steady air and stable embouchure.",
+                "Tongued vs legato scale pattern — same notes, contrast the attacks.",
+                "Register transition loop: low–middle–high on one scale degree with matched tone.",
+            ]
+        )
+    elif fam == "clarinet":
+        findings.append("Clarinet articulation: consistent tongue and air across the break.")
+        tips.extend(
+            [
+                "Long tones across the break — same attack, same release, same pitch center.",
+                "Phrase shaping: crescendo into bar 3, release on bar 4.",
+            ]
+        )
+    elif fam == "saxophone":
+        findings.append("Sax articulation: note attacks should be consistent — shape accents with intention.")
         tips.extend(
             [
                 "Long tones 60s — same attack, same release, same pitch.",
                 "Phrase shaping: crescendo into bar 3, release on bar 4.",
             ]
         )
-    elif inst == "voice":
+    elif fam in ("trumpet", "trombone"):
+        findings.append("Brass articulation: match tongue and air so attacks stay centered.")
+        tips.extend(
+            [
+                "Long tones with steady air — release without collapsing the embouchure.",
+                "Phrase shaping: crescendo into bar 3, release on bar 4.",
+            ]
+        )
+    elif fam == "voice":
         findings.append("Breath support drives pitch stability and resonance.")
         tips.extend(
             [
@@ -504,14 +624,21 @@ def build_practice_plan(
     ctx: dict[str, Any],
     f: AudioFeatures,
 ) -> list[str]:
+    from analysis_coach_quality import (
+        dedupe_recommendations,
+        has_song_form_context,
+        instrument_family,
+    )
+
     dk = str(ctx.get("display_key") or "C")
     inst = str(ctx.get("instrument") or "Instrument")
+    fam = instrument_family(inst)
+    song_form = has_song_form_context(ctx)
     weakest = sorted(scores.items(), key=lambda x: x[1])[:3]
     plan: list[str] = []
     bpm = int(f.tempo or ctx.get("practice_bpm") or 80)
     slow = max(55, bpm - 22)
 
-    # Context-aware lead tips (do not replace score-driven drills)
     rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
     labels = list(ctx.get("evaluating_criteria_labels") or [])
     practice_focus = str(ctx.get("focus") or "").strip()
@@ -525,13 +652,14 @@ def build_practice_plan(
         plan.append(
             f"Criteria drill ({labels[0]}): one 8-bar loop focusing only on that emphasis @ {slow} BPM."
         )
-    if practice_focus:
-        _pfs = [str(x).strip() for x in (ctx.get("practice_focuses") or ctx.get("focuses") or []) if str(x).strip()]
-        if not _pfs and practice_focus:
-            _pfs = [practice_focus]
+    _pfs = [str(x).strip() for x in (ctx.get("practice_focuses") or ctx.get("focuses") or []) if str(x).strip()]
+    if not _pfs and practice_focus:
+        _pfs = [practice_focus]
+    if _pfs:
         _pf_txt = (
-            _pfs[0] if len(_pfs) == 1 else
-            (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
+            _pfs[0]
+            if len(_pfs) == 1
+            else (" and ".join(_pfs) if len(_pfs) == 2 else (", ".join(_pfs[:-1]) + f", and {_pfs[-1]}"))
         )
         plan.append(f"Practice Focuses ({_pf_txt}): short intentional block before free playing.")
     if "practice take" in rtype:
@@ -554,32 +682,43 @@ def build_practice_plan(
         if name == "timing":
             plan.append(f"Metronome loop: weakest section @ {slow} BPM, 4-bar phrases.")
         elif name == "pitch":
-            plan.append(f"Chord-tone targeting in {dk}: root–3rd–5th–7th over first 4 song chords.")
+            if song_form:
+                plan.append(f"Chord-tone targeting in {dk}: root–3rd–5th–7th over first 4 song chords.")
+            else:
+                plan.append(f"Tuner/drone long tones in {dk}: center each note before connecting the scale.")
         elif name == "groove":
-            plan.append("Subdivision exercise: clap 8ths, mute on 2 & 4, then play on guitar/keys.")
+            if fam == "guitar":
+                plan.append("Subdivision exercise: clap 8ths, mute on 2 & 4, then play on guitar.")
+            else:
+                plan.append("Subdivision exercise: clap 8ths, rest on 2 & 4, then play the phrase.")
         elif name == "technique":
-            plan.append(f"{inst} transition loop — 2 chords, 2 bars each, zero buzz.")
+            if fam == "guitar":
+                plan.append(f"{inst} transition loop — 2 chords, 2 bars each, zero buzz.")
+            elif fam == "flute":
+                plan.append("Flute breath-controlled phrase loop — 4 bars tongued, 4 bars legato, same air.")
+            elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
+                plan.append(f"{inst} long-tone + articulation loop — same pitch, contrast attacks.")
+            elif fam == "piano":
+                plan.append("Piano two-hand sync loop — LH whole notes, RH even 8ths for 8 bars.")
+            else:
+                plan.append(f"{inst} clean-attack loop — 8 notes, matched starts and releases.")
         elif name == "musicality":
             plan.append("Dynamics map: one 8-bar phrase at pp / mf / f without tempo change.")
 
-    sections = ctx.get("sections") or {}
-    for sec in sections:
-        if "chorus" in sec.lower():
-            plan.append(f"Chorus transition loop with backing track @ {slow + 8} BPM.")
-            break
+    if song_form:
+        sections = ctx.get("sections") or {}
+        for sec in sections:
+            if "chorus" in sec.lower():
+                plan.append(f"Chorus transition loop with backing track @ {slow + 8} BPM.")
+                break
+        plan.append("Ear training: sing the root of each chord before playing the section.")
+        if ctx.get("song"):
+            plan.append(f"Backing track recommendation: replay {ctx['song']} section-by-section.")
+    else:
+        plan.append("Ear training: sing each scale degree against a drone before playing it.")
+        plan.append("Exercise loop: one octave ascending/descending with intentional phrase shape.")
 
-    plan.append("Ear training: sing the root of each chord before playing the section.")
-    if ctx.get("song"):
-        plan.append(f"Backing track recommendation: replay {ctx['song']} section-by-section.")
-
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in plan:
-        if item not in seen:
-            seen.add(item)
-            out.append(item)
-    return out[:8]
+    return dedupe_recommendations(plan, limit=8)
 
 
 def _apply_context_emphasis_to_categories(

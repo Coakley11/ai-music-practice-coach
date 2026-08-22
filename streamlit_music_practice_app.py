@@ -14306,10 +14306,12 @@ elif _studio_page == "analysis":
                             stale = str(ctx.get("mission_context_stale_warning") or "")
                             if stale:
                                 st.warning(stale)
-                            spin = (
-                                "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
-                                if mission_ids
-                                else "Analyzing timing, pitch, groove, and musicality…"
+                            from analysis_coach_quality import build_analysis_status_message
+
+                            spin = build_analysis_status_message(
+                                ctx,
+                                mission_ids=mission_ids,
+                                multitrack=False,
                             )
                             with st.spinner(spin):
                                 result = analyze_recording(
@@ -14395,10 +14397,12 @@ elif _studio_page == "analysis":
                         ctx["display_key"] = chart_key
                         from recording_analysis import analyze_recording
 
-                        spin = (
-                            "Analyzing timing, pitch, groove, musicality, and improvisation missions…"
-                            if mission_ids
-                            else "Analyzing timing, pitch, groove, and musicality…"
+                        from analysis_coach_quality import build_analysis_status_message
+
+                        spin = build_analysis_status_message(
+                            ctx,
+                            mission_ids=mission_ids,
+                            multitrack=False,
                         )
                         with st.spinner(spin):
                             result = analyze_recording(
@@ -14537,8 +14541,14 @@ elif _studio_page == "analysis":
                         str(st.session_state.get("analysis_recording_type") or "Multitrack mix")
                     )
                     from recording_analysis import analyze_multitrack
+                    from analysis_coach_quality import build_analysis_status_message
 
-                    with st.spinner("Comparing layers…"):
+                    _mt_spin = build_analysis_status_message(
+                        ctx,
+                        mission_ids=list(ctx.get("mission_ids") or []),
+                        multitrack=True,
+                    )
+                    with st.spinner(_mt_spin):
                         mt_result = analyze_multitrack(tracks, ctx)
                     mt_result = _finalize_upload_analysis_result(mt_result, ctx)
                     st.session_state["last_analysis_result"] = mt_result

@@ -467,8 +467,20 @@ def _mission_feedback(
                 f"Melodic variety ({metrics.get('melodic_diversity', 0):.0f}/100) stays musical, not random.",
             )
         return (
-            "The melody stays in a narrow band — explore one octave higher or lower in the chorus.",
-            "Keep chord tones on downbeats while using passing tones between them.",
+            "The melody stays in a narrow band — explore one octave higher or lower on the next take.",
+            "Keep stable tones on downbeats while using passing tones between them.",
+        )
+
+    if mission.id == "scale_connection":
+        adherence = float(metrics.get("scale_adherence", 0) or 0)
+        if score >= 72:
+            return (
+                f"Most note choices stayed inside the selected key/mode (scale adherence {adherence:.0f}/100).",
+                f"Contour variety ({metrics.get('phrase_contour_variety', 0):.0f}/100) kept the line from sounding mechanical.",
+            )
+        return (
+            f"Scale adherence is about {adherence:.0f}/100 — several notes sat outside the selected key/mode.",
+            "Loop one scale/mode slowly with a drone; land on stable degrees (1, 3, 5) at phrase endings.",
         )
 
     if mission.id == "deep_harmony":
@@ -485,12 +497,12 @@ def _mission_feedback(
     if mission.id == "timing_groove":
         if score >= 75:
             return (
-                "Your time feels steady and grooves with the pulse of the song.",
+                "Your time feels steady and grooves with the pulse.",
                 f"Groove ({metrics.get('groove_consistency', 0):.0f}/100) and timing ({metrics.get('timing_stability', 0):.0f}/100) are solid.",
             )
         return (
             "Rhythm wavers against the beat — practice with metronome on 2 & 4 first.",
-            "Clap the groove of the song, then play only roots in time.",
+            "Clap the groove, then play only long tones in time before restoring the phrase.",
         )
 
     if mission.id == "articulation":
@@ -501,13 +513,13 @@ def _mission_feedback(
             )
         return (
             "Every note has the same attack — try softer starts and clearer accents on phrase peaks.",
-            "Mirror the backing: lighter in the verse, clearer in the chorus.",
+            "Shape the phrase: lighter on approach notes, clearer accents on destination notes.",
         )
 
     if mission.id == "instrument_tone":
         if score >= 72:
             return (
-                "Tone stays consistent and supports the emotional mood of the song.",
+                "Tone stays consistent and supports the mood of the take.",
                 f"Tone steadiness ({metrics.get('instrument_tone', 0):.0f}/100) reads well on this recording.",
             )
         return (
@@ -595,16 +607,98 @@ def _mission_feedback(
     )
 
 
+def _looks_like_praise(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    negative = (
+        "try ",
+        "every note has the same",
+        "wavers",
+        "wanders",
+        "fuzzy",
+        "narrow",
+        "thins",
+        "dense —",
+        "room to grow",
+        "does not yet",
+        "float outside",
+        "tighten",
+        "leave a beat",
+        "aim at",
+        "add rests",
+        "land on",
+        "hold one color",
+        "mute for",
+        "re-record",
+        "narrow the focus",
+    )
+    if any(n in t for n in negative):
+        return False
+    positive = (
+        "solid",
+        "good ",
+        "clear",
+        "strong",
+        "varied",
+        "consistent",
+        "healthy",
+        "aligns",
+        "are solid",
+        "well with",
+        "recognizable",
+        "real development",
+        "breathing room",
+        "tracks the chart",
+        "tracks the progression",
+        "shows intentional",
+        "reads well",
+    )
+    return any(p in t for p in positive)
+
+
 def _coach_result_fields(score: int, summary: str, why: str) -> tuple[str, str]:
-    """Split feedback into what went well vs what to improve."""
+    """Split feedback into evidence-based praise vs actionable improvement."""
+    summary = str(summary or "").strip()
+    why = str(why or "").strip()
+    summary_praise = _looks_like_praise(summary)
+    why_praise = _looks_like_praise(why)
+
     if score >= 78:
-        went_well = summary
-        improve_to = why if score < 90 else "Push this skill in one harder section next time."
-    elif score >= 62:
-        went_well = summary if summary else "You are on the right track for this criterion."
-        improve_to = why
+        went_well = summary if summary else why
+        if why and not why_praise and why != summary:
+            improve_to = why
+        else:
+            improve_to = (
+                "Push this strength into a slightly harder context "
+                "(faster tempo, longer form, or denser phrase)."
+            )
+        return went_well, improve_to
+
+    if score >= 62:
+        if summary_praise:
+            went_well = summary
+            if why and not why_praise:
+                improve_to = why
+            else:
+                improve_to = (
+                    "Keep refining consistency so the strong moments become the default."
+                )
+        else:
+            went_well = (
+                "There are usable moments in this take — keep the intentional shapes you already found."
+            )
+            improve_to = summary or why or "Loop one section slowly and record again."
+            if why and why != summary and not why_praise:
+                improve_to = f"{improve_to} {why}".strip()
+        return went_well, improve_to
+
+    went_well = "Your take gives a clear starting point — keep ideas shorter and more focused."
+    if summary and not summary_praise:
+        improve_to = summary
+        if why and not why_praise and why != summary:
+            improve_to = f"{summary} {why}".strip()
     else:
-        went_well = "Your take gives a clear starting point — keep ideas shorter and more focused."
         improve_to = why or "Loop one section at a slower tempo and record again."
     return went_well, improve_to
 
@@ -628,26 +722,42 @@ def _blend_performance_metrics(
 
 
 def _instrument_mission_tips(instrument: str, mission_id: str, score: int) -> list[str]:
-    inst = (instrument or "").lower()
+    """Criterion-specific tips only. Shared breath/tempo advice is attached once later."""
+    from analysis_coach_quality import has_song_form_context, instrument_family
+
+    fam = instrument_family(instrument)
     tips: list[str] = []
-    if "guitar" in inst:
-        tips.append("Listen for fret-hand shifts — smooth position changes support phrasing missions.")
-        if mission_id in ("chord_tone_targeting", "guide_tones"):
+    if fam == "guitar":
+        if mission_id in ("chord_tone_targeting", "guide_tones", "deep_harmony"):
             tips.append("Arpeggiate chord shapes in one position; land on the top voice for phrase endings.")
         if mission_id in ("one_motif", "motif_development"):
             tips.append("Keep the motif on adjacent strings so you can vary rhythm without jumping positions.")
-    elif "piano" in inst:
-        if mission_id in ("voice_leading", "chord_tone_targeting"):
+        if mission_id in ("phrase_structure", "phrasing"):
+            tips.append("Listen for fret-hand shifts — smooth position changes support clean phrase endings.")
+    elif fam == "piano":
+        if mission_id in ("voice_leading", "chord_tone_targeting", "deep_harmony"):
             tips.append("LH shell voicings + RH chord tones on beats 1 and 3 clarify harmony.")
         if mission_id == "dynamic_contrast":
             tips.append("Practice one chorus at mp, one at mf — keep time identical.")
-    elif any(x in inst for x in ("sax", "trumpet", "flute", "clarinet")):
-        tips.append("Record one pass focusing on breath — longer notes need supported air.")
-        if mission_id == "phrasing":
+    elif fam == "flute":
+        if mission_id in ("phrase_structure", "phrasing"):
+            tips.append("Think question–answer: 2 bars in, 1 beat rest, 2 bars out — keep the air stream steady.")
+        if mission_id == "articulation":
+            tips.append("Alternate tongued vs legato on the same scale pattern — match air, change only the tongue.")
+        if mission_id in ("instrument_tone", "timing_groove"):
+            tips.append("Long tones with a drone — stabilize embouchure before adding phrase shape.")
+    elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
+        if mission_id in ("phrase_structure", "phrasing"):
             tips.append("Think question–answer: 2 bars in, 1 beat rest, 2 bars out.")
-    if score < 65:
-        tips.append("Slow the backing track 10–15 BPM and record two takes back-to-back.")
-    return tips[:4]
+        if mission_id == "articulation":
+            tips.append("Practice one pitch with soft–accent–soft attacks while air stays constant.")
+    elif fam == "voice":
+        if mission_id in ("phrase_structure", "phrasing"):
+            tips.append("Mark breath spots every 2 bars before singing the take again.")
+    # Song-form-gated tip only when harmony exists.
+    # (Caller may pass ctx via score_missions — keep mission-local here.)
+    _ = score  # reserved for future severity gating
+    return tips[:3]
 
 
 def score_missions(
@@ -657,7 +767,13 @@ def score_missions(
     *,
     custom_goal: str = "",
 ) -> list[dict[str, Any]]:
+    from analysis_coach_quality import dedupe_recommendations, has_song_form_context, instrument_family
+
     results: list[dict[str, Any]] = []
+    shared_tips: list[str] = []
+    fam = instrument_family(str(ctx.get("instrument") or ""))
+    song_form = has_song_form_context(ctx)
+
     for mid in mission_ids:
         goal = MISSION_BY_ID.get(mid)
         if not goal:
@@ -672,7 +788,18 @@ def score_missions(
             if sub:
                 score = int(round(sum(sub) / len(sub)))
         summary, why = _mission_feedback(goal, score, metrics, ctx, custom_text=custom_goal)
+        # Gate song-section wording in generic feedback when no form exists.
+        if not song_form:
+            for bad in ("verse", "chorus", "backing"):
+                if bad in summary.lower():
+                    summary = summary.replace("Verse", "phrase").replace("verse", "phrase")
+                    summary = summary.replace("Chorus", "peak phrase").replace("chorus", "peak phrase")
+                if bad in why.lower():
+                    why = why.replace("Verse", "phrase").replace("verse", "phrase")
+                    why = why.replace("Chorus", "peak phrase").replace("chorus", "peak phrase")
+                    why = why.replace("Mirror the backing:", "Shape the phrase:")
         went_well, improve_to = _coach_result_fields(score, summary, why)
+        tips = _instrument_mission_tips(str(ctx.get("instrument") or ""), goal.id, score)
         results.append(
             {
                 "id": goal.id,
@@ -682,9 +809,24 @@ def score_missions(
                 "why": why,
                 "went_well": went_well,
                 "improve_to": improve_to,
-                "tips": _instrument_mission_tips(str(ctx.get("instrument") or ""), goal.id, score),
+                "tips": tips,
             }
         )
+        if score < 65:
+            if fam == "flute":
+                shared_tips.append("Record one pass focusing on breath — longer notes need supported air.")
+            elif fam in ("saxophone", "clarinet", "trumpet", "trombone"):
+                shared_tips.append("Record one pass focusing on breath — longer notes need supported air.")
+            if song_form:
+                shared_tips.append("Slow the backing track 10–15 BPM and record two takes back-to-back.")
+            else:
+                shared_tips.append("Slow the metronome 10–15 BPM and record two takes back-to-back.")
+
+    shared_tips = dedupe_recommendations(shared_tips, limit=2)
+    if shared_tips and results:
+        # Attach shared advice once to the weakest criterion only.
+        weakest = min(results, key=lambda r: int(r.get("score") or 0))
+        weakest["tips"] = dedupe_recommendations(list(weakest.get("tips") or []) + shared_tips, limit=4)
     return results
 
 
@@ -693,20 +835,23 @@ def build_mission_recommendation(
     ctx: dict[str, Any],
     metrics: dict[str, float],
 ) -> str:
+    from analysis_coach_quality import has_song_form_context
+
     if not mission_results:
         return "Select improvisation missions above, then upload a take for goal-specific feedback."
     weakest = min(mission_results, key=lambda x: x["score"])
-    song = str(ctx.get("song") or "your song")
     bpm = int(ctx.get("practice_bpm") or 70)
     section_hint = ""
-    for sec in (ctx.get("sections") or {}):
-        if "verse" in sec.lower():
-            section_hint = f" over only the **{sec}** section"
-            break
+    if has_song_form_context(ctx):
+        for sec in (ctx.get("sections") or {}):
+            if "verse" in sec.lower():
+                section_hint = f" over only the **{sec}** section"
+                break
+    action = str(weakest.get("improve_to") or weakest.get("summary") or "").strip()
     return (
         f"Next practice: work on {weakest['label']}{section_hint} "
         f"at {max(55, bpm - 12)} BPM on {ctx.get('instrument', 'your instrument')}. "
-        f"{weakest['summary']}"
+        f"{action}"
     )
 
 

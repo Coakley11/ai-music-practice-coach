@@ -437,6 +437,11 @@ def _encode_snapshot_value(val: Any) -> Any:
         return {k: _encode_snapshot_value(v) for k, v in val.items()}
     if isinstance(val, list):
         return [_encode_snapshot_value(v) for v in val]
+    # Numpy scalars (scores, evidence counts) — coerce before durable snapshot write.
+    item = getattr(val, "item", None)
+    shape = getattr(val, "shape", None)
+    if callable(item) and shape == ():
+        return _encode_snapshot_value(item())
     return val
 
 
@@ -482,6 +487,13 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
             out[key] = copy.deepcopy(val)
         except Exception:
             out[key] = val
+        if key == "last_analysis_result":
+            try:
+                from analysis_session_persistence import sanitize_analysis_result_for_persist
+
+                out[key] = sanitize_analysis_result_for_persist(out[key])
+            except ImportError:
+                pass
     return _encode_page_snapshot(out)
 
 
