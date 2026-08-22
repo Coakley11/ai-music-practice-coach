@@ -320,15 +320,22 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
             lines = [f"Song: {result.get('song_source_name')}"]
             if result.get("song_source_type"):
                 lines.append(f"Source: {result.get('song_source_type')}")
+        try:
+            from recording_analysis_context import format_recording_key_authority_lines
+
+            lines.extend(format_recording_key_authority_lines(result))
+        except Exception:
             if result.get("display_key"):
-                lines.append(f"Key: {result.get('display_key')}")
+                lines.append(f"Concert Key: {result.get('display_key')}")
+            if result.get("written_key"):
+                lines.append(f"Written Key: {result.get('written_key')}")
         if lines:
             pills = "".join(f"<span class='ra-pill'>{_esc(line)}</span>" for line in lines)
             song_authority_html = f"""
   <div class="ra-card" style="margin-bottom:14px">
     <h3>Selected song authority</h3>
     <div class="ra-pills">{pills}</div>
-    <p class="ra-muted">Expected musical context for this analysis. Detected tempo/pitch stay separate from song key and reference BPM.</p>
+    <p class="ra-muted">Expected musical context for this analysis. Detected audio is scored in concert/sounding pitch; written keys are for musician-facing coaching only.</p>
   </div>"""
     except Exception:
         song_authority_html = ""

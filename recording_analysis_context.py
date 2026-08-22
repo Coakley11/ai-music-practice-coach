@@ -59,8 +59,163 @@ ANALYSIS_PRACTICE_FOCUS_KEY = "analysis_practice_focus"
 ANALYSIS_PRACTICE_FOCUSES_KEY = "analysis_practice_focuses"
 ANALYSIS_INSTRUMENT_FOCUSES_KEY = "analysis_instrument_focuses"
 ANALYSIS_IDENTITY_LOCKED_KEY = "analysis_identity_locked"
+ANALYSIS_RECORDING_CONCERT_KEY_KEY = "analysis_recording_concert_key"
+_ANALYSIS_CONCERT_KEY_SONG_SIG_KEY = "_analysis_concert_key_song_sig"
 _MANUAL_MISSION_DEFAULTS_APPLIED_KEY = "_analysis_manual_mission_defaults_applied"
 _PREV_RECORDING_TYPE_KEY = "_analysis_prev_recording_type"
+
+# Explicit Upload choice when the take has no key center (exercise / atonal).
+RECORDING_CONCERT_KEY_UNSPECIFIED = "No key / unspecified"
+
+
+def recording_concert_key_choice_labels() -> list[str]:
+    """Dropdown labels: major + minor with distinct enharmonic spellings + unspecified.
+
+    C# minor and Db minor remain separate choices. Labels are the spelling SSOT
+    for musician-facing Concert Key identity on Upload.
+    """
+    from music_theory import ENHARMONIC_MAJOR_KEYS, ENHARMONIC_MINOR_KEYS, display_key_label
+
+    labels: list[str] = []
+    seen: set[str] = set()
+    for token in list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR_KEYS):
+        label = display_key_label(token)
+        if label and label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return [RECORDING_CONCERT_KEY_UNSPECIFIED] + labels
+
+
+def coerce_concert_key_choice(choice: str, *, fallback: str = RECORDING_CONCERT_KEY_UNSPECIFIED) -> str:
+    """Return a label that is always present in ``recording_concert_key_choice_labels()``."""
+    options = recording_concert_key_choice_labels()
+    text = str(choice or "").strip()
+    if text in options:
+        return text
+    if text:
+        try:
+            from music_theory import display_key_label
+
+            mapped = str(display_key_label(text) or "").strip()
+            if mapped in options:
+                return mapped
+        except Exception:
+            pass
+    if fallback in options:
+        return fallback
+    return RECORDING_CONCERT_KEY_UNSPECIFIED
+
+
+def concert_key_token_from_choice(choice: str) -> str:
+    """Map UI label ('Eb major') → theory token ('Eb'); unspecified → ''."""
+    text = str(choice or "").strip()
+    if not text or text == RECORDING_CONCERT_KEY_UNSPECIFIED:
+        return ""
+    if "unspecified" in text.lower() and "key" in text.lower():
+        return ""
+    try:
+        from music_theory import split_key_center
+
+        tonic, mode = split_key_center(text)
+        tonic = str(tonic or "").strip()
+        if not tonic:
+            return ""
+        if str(mode).lower() == "minor":
+            return tonic if tonic.endswith("m") else f"{tonic}m"
+        return tonic
+    except Exception:
+        return text
+
+
+def concert_key_choice_from_token(token: str) -> str:
+    """Map theory token ('Ebm') → UI label ('Eb minor'), preserving tonic spelling."""
+    text = str(token or "").strip()
+    if not text:
+        return RECORDING_CONCERT_KEY_UNSPECIFIED
+    try:
+        from music_theory import display_key_label
+
+        return coerce_concert_key_choice(display_key_label(text))
+    except Exception:
+        return coerce_concert_key_choice(text)
+
+
+def build_instrument_written_key_map(
+    concert_key_token: str,
+    instruments: list[str] | None,
+    *,
+    session_state: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Derive musician-facing written-key labels from one concert key.
+
+    Non-transposing instruments map to the concert label. Empty concert key → {}.
+    """
+    token = str(concert_key_token or "").strip()
+    if not token:
+        return {}
+    session = dict(session_state or {})
+    try:
+        from instrument_transposition import (
+            is_transposing_instrument,
+            written_key_for_instrument,
+        )
+        from music_theory import display_key_label
+    except Exception:
+        return {}
+
+    concert_label = display_key_label(token)
+    out: dict[str, str] = {}
+    for raw in instruments or []:
+        inst = str(raw or "").strip()
+        if not inst:
+            continue
+        if is_transposing_instrument(inst):
+            written_token = written_key_for_instrument(token, inst, session)
+            out[inst] = display_key_label(written_token)
+        else:
+            out[inst] = concert_label
+    return out
+
+
+def transpose_song_harmony_to_recording_key(
+    *,
+    canonical_key: str,
+    recording_key: str,
+    sections: dict[str, Any] | None,
+    chords: list[str] | None,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Transpose selected-song harmony into the recording concert key (non-mutating).
+
+    Returns (sections, flat_chords). If either key is missing, returns inputs unchanged.
+    """
+    from_key = str(canonical_key or "").strip()
+    to_key = str(recording_key or "").strip()
+    src_sections = {
+        str(k): [str(c).strip() for c in (v or []) if str(c).strip()]
+        if isinstance(v, (list, tuple))
+        else []
+        for k, v in (sections or {}).items()
+        if str(k).strip()
+    }
+    src_chords = [str(c).strip() for c in (chords or []) if str(c).strip()]
+    if not from_key or not to_key or from_key == to_key:
+        return src_sections, src_chords
+    try:
+        from music_theory import transpose_chord, transpose_sections_dict, semitone_distance
+
+        new_sections = transpose_sections_dict(src_sections, from_key, to_key) if src_sections else {}
+        if src_chords:
+            steps = semitone_distance(from_key, to_key)
+            new_chords = [
+                transpose_chord(c, steps, reference_key=to_key) for c in src_chords
+            ]
+        else:
+            new_chords = []
+            for sec_chords in new_sections.values():
+                new_chords.extend(sec_chords)
+        return new_sections, new_chords
+    except Exception:
+        return src_sections, src_chords
 
 
 def instrument_focus_widget_key(instrument: str) -> str:
@@ -349,6 +504,11 @@ def empty_analysis_context_snapshot() -> dict[str, Any]:
         "target_layer": "",
         "target_instruments": [],
         "display_key": "",
+        "recording_concert_key": "",
+        "recording_concert_key_label": "",
+        "song_canonical_key": "",
+        "written_key": "",
+        "instrument_written_keys": {},
         "level": "",
         "association": "",
         "identity_locked": False,
@@ -641,6 +801,11 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
         else:
             out["target_chords"] = []
         out["display_key"] = str(snap.get("display_key") or "")
+        out["recording_concert_key"] = str(snap.get("recording_concert_key") or "")
+        out["recording_concert_key_label"] = str(snap.get("recording_concert_key_label") or "")
+        out["song_canonical_key"] = str(snap.get("song_canonical_key") or "")
+        out["written_key"] = str(snap.get("written_key") or "")
+        out["instrument_written_keys"] = dict(snap.get("instrument_written_keys") or {})
         out["practice_bpm"] = snap.get("practice_bpm")
         out["reference_bpm"] = snap.get("practice_bpm")
         out["time_signature"] = str(snap.get("time_signature") or "")
@@ -683,6 +848,11 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["song_source_id"] = snapshot.get("song_source_id")
     out["song_source_name"] = snapshot.get("song_source_name")
     out["display_key"] = snapshot.get("display_key")
+    out["recording_concert_key"] = snapshot.get("recording_concert_key")
+    out["recording_concert_key_label"] = snapshot.get("recording_concert_key_label")
+    out["song_canonical_key"] = snapshot.get("song_canonical_key")
+    out["written_key"] = snapshot.get("written_key")
+    out["instrument_written_keys"] = dict(snapshot.get("instrument_written_keys") or {})
     out["practice_bpm"] = snapshot.get("practice_bpm")
     out["reference_bpm"] = snapshot.get("practice_bpm")
     out["time_signature"] = snapshot.get("time_signature")
@@ -1422,6 +1592,10 @@ def attach_selected_song_harmony_to_snapshot(
     When an Upload song source type is set, harmonic fields are always stamped —
     including empty clears for Other / unresolved — so ambient Practice chart
     harmony cannot leak into analysis.
+
+    Recording concert key (session) may differ from the saved song key: analysis
+    ``display_key`` / sections / chords are transposed for THIS take only. The
+    selected-song context keeps the canonical saved key/harmony.
     """
     snap = dict(snapshot or {})
     song_ctx = selected_song_analysis_context(
@@ -1440,12 +1614,64 @@ def attach_selected_song_harmony_to_snapshot(
     if not source_type:
         return snap
 
-    # Ownership stamp — always overwrite ambient-seeded harmonic slots.
-    snap["sections"] = dict(song_ctx.get("sections") or {})
-    snap["target_chords"] = list(song_ctx.get("chord_progression") or [])
-    snap["display_key"] = str(song_ctx.get("key") or "")
+    canonical_key = str(song_ctx.get("key") or "").strip()
+    canonical_sections = dict(song_ctx.get("sections") or {})
+    canonical_chords = list(song_ctx.get("chord_progression") or [])
+    snap["song_canonical_key"] = canonical_key
+
+    # Recording-specific concert key (defaults to song key when unset).
+    choice = str(
+        session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY)
+        or snap.get("recording_concert_key_label")
+        or ""
+    ).strip()
+    if not choice:
+        choice = (
+            concert_key_choice_from_token(canonical_key)
+            if canonical_key
+            else RECORDING_CONCERT_KEY_UNSPECIFIED
+        )
+    recording_token = concert_key_token_from_choice(choice)
+    if not recording_token and choice != RECORDING_CONCERT_KEY_UNSPECIFIED and canonical_key:
+        recording_token = canonical_key
+        choice = concert_key_choice_from_token(canonical_key)
+
+    snap["recording_concert_key"] = recording_token
+    # Preserve the musician-facing spelling from the UI choice (Db minor ≠ C# minor).
+    snap["recording_concert_key_label"] = coerce_concert_key_choice(
+        choice
+        if choice
+        else (
+            concert_key_choice_from_token(recording_token)
+            if recording_token
+            else RECORDING_CONCERT_KEY_UNSPECIFIED
+        )
+    )
+
+    analysis_sections, analysis_chords = transpose_song_harmony_to_recording_key(
+        canonical_key=canonical_key,
+        recording_key=recording_token,
+        sections=canonical_sections,
+        chords=canonical_chords,
+    )
+    # Ownership stamp — analysis fields use recording concert harmony.
+    snap["sections"] = dict(analysis_sections)
+    snap["target_chords"] = list(analysis_chords)
+    snap["display_key"] = recording_token
     snap["practice_bpm"] = song_ctx.get("bpm")
     snap["time_signature"] = str(song_ctx.get("meter") or "")
+
+    instruments = _as_list(snap.get("instruments"))
+    written_map = build_instrument_written_key_map(
+        recording_token,
+        instruments,
+        session_state=session_state,
+    )
+    snap["instrument_written_keys"] = dict(written_map)
+    target = str(snap.get("target_layer") or "").strip()
+    primary = target if target in written_map else (instruments[0] if instruments else "")
+    snap["written_key"] = str(written_map.get(primary) or "")
+
     if song_ctx.get("title") and not snap.get("song_source_name"):
         snap["song_source_name"] = song_ctx["title"]
     if song_ctx.get("source_id") and not snap.get("song_source_id"):
@@ -1475,7 +1701,12 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
         lines.append(f"Source ID: {source_id}")
     key = str(ctx.get("key") or "").strip()
     if key:
-        lines.append(f"Key: {key}")
+        try:
+            from music_theory import display_key_label
+
+            lines.append(f"Saved song key: {display_key_label(key)}")
+        except Exception:
+            lines.append(f"Saved song key: {key}")
     bpm = ctx.get("bpm")
     if bpm not in (None, ""):
         try:
@@ -1499,4 +1730,64 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
             lines.append("Form: " + ", ".join(names[:6]))
     elif ctx.get("has_song_harmony") and not ctx.get("has_song_form"):
         lines.append("Form: (flat progression — no named sections)")
+    return lines
+
+
+def format_recording_key_authority_lines(
+    snapshot_or_result: dict[str, Any] | None,
+) -> list[str]:
+    """Step 3 lines for recording Concert Key + written projections."""
+    payload = dict(snapshot_or_result or {})
+    snap = payload.get(ANALYSIS_CONTEXT_SNAPSHOT_KEY)
+    if isinstance(snap, dict) and snap:
+        src = snap
+    else:
+        src = payload
+    lines: list[str] = []
+    concert_label = str(
+        src.get("recording_concert_key_label") or ""
+    ).strip()
+    concert_token = str(src.get("recording_concert_key") or src.get("display_key") or "").strip()
+    if concert_label == RECORDING_CONCERT_KEY_UNSPECIFIED or (
+        not concert_token and not concert_label
+    ):
+        lines.append("Concert Key: No key / unspecified")
+    else:
+        if not concert_label and concert_token:
+            concert_label = concert_key_choice_from_token(concert_token)
+        if concert_label:
+            lines.append(f"Concert Key: {concert_label}")
+    written_map = src.get("instrument_written_keys")
+    if isinstance(written_map, dict) and written_map:
+        target = str(src.get("target_layer") or "").strip()
+        instruments = _as_list(src.get("instruments"))
+        ordered = []
+        if target and target in written_map:
+            ordered.append(target)
+        for inst in instruments:
+            if inst not in ordered:
+                ordered.append(inst)
+        for inst in ordered:
+            label = str(written_map.get(inst) or "").strip()
+            if not label:
+                continue
+            if concert_label and label == concert_label and inst != target:
+                # Non-transposing: skip redundant lines unless single-instrument.
+                if len(written_map) > 1:
+                    continue
+            prefix = "Target-layer Written Key" if inst == target else f"{inst} Written Key"
+            # For non-transposing primary, say Concert Key only once.
+            try:
+                from instrument_transposition import is_transposing_instrument
+
+                if not is_transposing_instrument(inst):
+                    if len(instruments) <= 1:
+                        continue
+                    lines.append(f"{inst}: {label} (concert)")
+                    continue
+            except Exception:
+                pass
+            lines.append(f"{prefix}: {label}")
+    elif str(src.get("written_key") or "").strip():
+        lines.append(f"Written Key: {src.get('written_key')}")
     return lines

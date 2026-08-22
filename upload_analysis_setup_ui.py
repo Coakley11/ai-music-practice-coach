@@ -12,23 +12,32 @@ from recording_analysis_context import (
     ANALYSIS_PLAYER_LEVEL_KEY,
     ANALYSIS_PRACTICE_FOCUS_KEY,
     ANALYSIS_PRACTICE_FOCUSES_KEY,
+    ANALYSIS_RECORDING_CONCERT_KEY_KEY,
     ANALYSIS_SONG_SOURCE_ID_KEY,
     ANALYSIS_SONG_SOURCE_NAME_KEY,
     ANALYSIS_SONG_SOURCE_TYPE_KEY,
     ANALYSIS_TARGET_LAYER_KEY,
+    RECORDING_CONCERT_KEY_UNSPECIFIED,
     RECORDING_TYPE_MT_LAYER,
     SONG_SOURCE_CATALOG,
     SONG_SOURCE_COMPOSED,
     SONG_SOURCE_CUSTOM,
     SONG_SOURCE_OPTIONS,
     SONG_SOURCE_OTHER,
+    _ANALYSIS_CONCERT_KEY_SONG_SIG_KEY,
+    build_instrument_written_key_map,
+    coerce_concert_key_choice,
     coerce_focus_list,
+    concert_key_choice_from_token,
+    concert_key_token_from_choice,
     instrument_focus_widget_key,
     is_mission_recording_type,
     maybe_apply_manual_mission_defaults,
     normalize_recording_type_for_workflow,
     prepare_instrument_focus_ui,
+    recording_concert_key_choice_labels,
     recording_types_for_workflow,
+    resolve_selected_song_harmony,
     seed_session_setup_from_active,
 )
 from upload_analysis_modes import (
@@ -483,6 +492,113 @@ def render_upload_analysis_setup(
             widget_key="_analysis_song_pick_composed",
         )
 
+    # Concert Key of this recording — always render after song pickers (Single / Layer / Mix).
+    # Coerce session values into the official option list so Streamlit never aborts the selectbox.
+    written_map: dict[str, str] = {}
+    concert_token = ""
+    try:
+        try:
+            song_harmony = resolve_selected_song_harmony(session_state)
+            song_default_token = str(song_harmony.get("display_key") or "").strip()
+        except Exception:
+            song_default_token = ""
+        song_sig = "|".join(
+            [
+                str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or ""),
+                str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or ""),
+                str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or ""),
+                song_default_token,
+            ]
+        )
+        default_choice = coerce_concert_key_choice(
+            concert_key_choice_from_token(song_default_token)
+            if song_default_token
+            else RECORDING_CONCERT_KEY_UNSPECIFIED
+        )
+        prev_song_sig = session_state.get(_ANALYSIS_CONCERT_KEY_SONG_SIG_KEY)
+        if prev_song_sig != song_sig:
+            session_state[_ANALYSIS_CONCERT_KEY_SONG_SIG_KEY] = song_sig
+            if not identity_locked:
+                # Song change → reset to song default. First paint keeps a restored /
+                # pre-seeded take override when already present.
+                existing = str(session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or "").strip()
+                if prev_song_sig is not None or not existing:
+                    session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = default_choice
+        key_choices = recording_concert_key_choice_labels()
+        current_choice = coerce_concert_key_choice(
+            str(session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or "").strip(),
+            fallback=default_choice,
+        )
+        if current_choice not in key_choices:
+            current_choice = default_choice
+        session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = current_choice
+        st.selectbox(
+            "Concert Key of this recording",
+            key_choices,
+            key=ANALYSIS_RECORDING_CONCERT_KEY_KEY,
+            disabled=identity_locked,
+            help=(
+                "Defaults to the selected song's saved key spelling (e.g. Eb major stays "
+                "Eb major). Override for this take only — the saved song is not modified."
+            ),
+        )
+        concert_token = concert_key_token_from_choice(
+            session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY)
+        )
+        instruments_for_keys = [
+            str(x).strip()
+            for x in (session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [])
+            if str(x).strip()
+        ]
+        if not instruments_for_keys:
+            single = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or "").strip()
+            if single:
+                instruments_for_keys = [single]
+        target_for_keys = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
+        written_map = build_instrument_written_key_map(
+            concert_token,
+            instruments_for_keys,
+            session_state=session_state,
+        )
+        if concert_token and written_map:
+            try:
+                from instrument_transposition import is_transposing_instrument
+            except Exception:
+                is_transposing_instrument = lambda _i: False  # type: ignore
+            show_insts: list[str] = []
+            if target_for_keys and target_for_keys in written_map and is_transposing_instrument(
+                target_for_keys
+            ):
+                show_insts.append(target_for_keys)
+            for inst in instruments_for_keys:
+                if inst in show_insts:
+                    continue
+                if is_transposing_instrument(inst):
+                    show_insts.append(inst)
+            for inst in show_insts[:4]:
+                label = written_map.get(inst)
+                if label:
+                    st.caption(f"Written Key for {inst}: **{label}**")
+    except Exception as exc:
+        try:
+            st.error(f"Concert Key control failed to render: {exc}")
+        except Exception:
+            pass
+        key_choices = recording_concert_key_choice_labels()
+        session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = coerce_concert_key_choice(
+            str(session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or ""),
+            fallback=RECORDING_CONCERT_KEY_UNSPECIFIED,
+        )
+        try:
+            st.selectbox(
+                "Concert Key of this recording",
+                key_choices,
+                key=ANALYSIS_RECORDING_CONCERT_KEY_KEY,
+                disabled=identity_locked,
+            )
+        except Exception:
+            pass
+
     rtype = str(session_state.get("analysis_recording_type") or "")
     if is_mission_recording_type(rtype):
         st.markdown("##### Mission")
@@ -531,4 +647,9 @@ def render_upload_analysis_setup(
         "from_mission_handoff": bool(from_mission_handoff),
         "identity_locked": identity_locked,
         "is_mission_recording": is_mission_recording_type(rtype),
+        "recording_concert_key": concert_token,
+        "recording_concert_key_label": str(
+            session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or ""
+        ),
+        "instrument_written_keys": dict(written_map),
     }

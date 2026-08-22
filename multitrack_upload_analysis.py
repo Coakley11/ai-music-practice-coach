@@ -238,10 +238,26 @@ def _scales_focus_block(
     if song_harmony and (song_key or chords):
         if song_name and song_key:
             findings.append(
-                f"Selected song harmonic context: {song_name} in {song_key}."
+                f"Selected song harmonic context: {song_name} in {song_key} (concert/sounding)."
             )
         elif song_key:
-            findings.append(f"Selected song key for Scales coaching: {song_key}.")
+            findings.append(f"Selected song key for Scales coaching: {song_key} (concert/sounding).")
+        written_label = str(ctx.get("written_key") or "").strip()
+        written_map = ctx.get("instrument_written_keys")
+        if isinstance(written_map, dict) and target and written_map.get(target):
+            written_label = str(written_map.get(target) or written_label).strip()
+        concert_label = ""
+        try:
+            from music_theory import display_key_label
+
+            concert_label = display_key_label(song_key) if song_key else ""
+        except Exception:
+            concert_label = song_key
+        if written_label and concert_label and written_label.lower() != concert_label.lower():
+            findings.append(
+                f"Musician-facing written key for {target or 'this layer'}: {written_label} "
+                "(scoring uses concert harmony; coaching may use written spelling)."
+            )
         if chords:
             preview = " → ".join(chords[:6])
             findings.append(f"Chord progression sample used for harmonic fit: {preview}.")
