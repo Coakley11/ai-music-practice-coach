@@ -108,18 +108,58 @@ GLOBAL_CONTROL_TRACE_KEY = "_global_control_widget_trace"
 
 
 def focus_options_for_instrument(instrument: str) -> list[str]:
-    return FOCUS_OPTIONS_BY_INSTRUMENT.get(
-        instrument,
-        [
-            "Melody",
-            "Harmony",
-            "Rhythm",
-            "Dynamics",
-            "Improvisation",
-            "Technique",
-            "Ear Training",
-        ],
-    )
+    name = str(instrument or "").strip()
+    if name in FOCUS_OPTIONS_BY_INSTRUMENT:
+        return list(FOCUS_OPTIONS_BY_INSTRUMENT[name])
+    # Canonical sax display names (Alto/Tenor/…) share Saxophone Practice Focuses.
+    # Legacy generic "Saxophone" remains in FOCUS_OPTIONS_BY_INSTRUMENT above.
+    if "sax" in name.lower():
+        return list(FOCUS_OPTIONS_BY_INSTRUMENT["Saxophone"])
+    return [
+        "Melody",
+        "Harmony",
+        "Rhythm",
+        "Dynamics",
+        "Improvisation",
+        "Technique",
+        "Ear Training",
+    ]
+
+
+def instrument_options_for_upload(
+    base_options: list[str] | None = None,
+) -> list[str]:
+    """Instrument list for Upload Single + Multitrack evaluation selectors.
+
+    Expands family ``Saxophone`` into the four canonical display names used by
+    Practice Log / Tone / AMI. Does not invent a parallel taxonomy.
+    """
+    try:
+        from instrument_transposition import saxophone_display_names
+    except ImportError:
+        saxophone_display_names = lambda: (  # type: ignore[assignment,misc]
+            "Soprano Saxophone",
+            "Alto Saxophone",
+            "Tenor Saxophone",
+            "Baritone Saxophone",
+        )
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in base_options or DEFAULT_INSTRUMENT_OPTIONS:
+        name = str(raw or "").strip()
+        if not name:
+            continue
+        if name == "Saxophone":
+            for sax in saxophone_display_names():
+                if sax not in seen:
+                    seen.add(sax)
+                    out.append(sax)
+            continue
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
 
 
 def _widget_value_for_global(

@@ -506,12 +506,16 @@ class MultitrackStepLabelTests(unittest.TestCase):
         from pathlib import Path
 
         src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        marker = "Upload stems for multitrack analysis"
-        idx = src.find(marker)
-        self.assertGreater(idx, 0, "Multitrack capture kicker not found")
-        window = src[max(0, idx - 250) : idx + 80]
-        self.assertIn("Step 2", window)
-        self.assertIn("Capture audio", window)
+        btn_idx = src.find('key="analysis_mt_btn"')
+        self.assertGreater(btn_idx, 0, "Analyze ensemble button missing")
+        region = src[max(0, btn_idx - 3500) : btn_idx + 5500]
+        self.assertIn("### Step 2 — Capture audio", region)
+        self.assertIn("Upload the target layer take", region)
+        self.assertIn("Upload the ensemble mix (or stems)", region)
+        self.assertIn("Analyze ensemble", region)
+        self.assertIn("Coach report", region)
+        self.assertIn("run_multitrack_upload_analysis", region)
+        self.assertIn("validate_multitrack_analyze_request", region)
 
 
 class AmiUploadContextTests(unittest.TestCase):

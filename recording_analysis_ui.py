@@ -183,7 +183,12 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     if not result.get("ok"):
         return f"<div class='ra-dashboard'><p>{_esc(result.get('message', 'Analysis failed.'))}</p></div>"
 
-    if result.get("multitrack"):
+    # Stem-comparison Mix (2+ layers) uses the ensemble dashboard.
+    # Layer / single-mix takes that already have full coach categories use the
+    # standard report so Step 3 is not an empty findings shell.
+    if result.get("multitrack") and not (
+        result.get("categories") or result.get("features")
+    ):
         return _render_multitrack_dashboard(result)
 
     features = result.get("features")

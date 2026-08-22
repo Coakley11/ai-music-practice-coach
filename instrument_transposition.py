@@ -13,6 +13,14 @@ SAXOPHONE_TYPES: tuple[str, ...] = (
     "Baritone saxophone (Eb)",
 )
 
+# Display order for Upload / Practice Log style selectors (canonical labels).
+_SAXOPHONE_DISPLAY_ORDER: tuple[str, ...] = (
+    "Soprano saxophone (Bb)",
+    "Alto saxophone (Eb)",
+    "Tenor saxophone (Bb)",
+    "Baritone saxophone (Eb)",
+)
+
 BB_INSTRUMENT_TYPES: tuple[str, ...] = (
     "Bb Trumpet",
     "Bb Clarinet",
@@ -148,7 +156,12 @@ def transposing_instrument_names() -> tuple[str, ...]:
 
 def is_transposing_instrument(instrument: str) -> bool:
     inst = str(instrument or "").strip()
-    return inst in USER_TRANSPOSING_INSTRUMENTS or inst in TRANSPOSING_INSTRUMENT_METADATA
+    if inst in USER_TRANSPOSING_INSTRUMENTS or inst in TRANSPOSING_INSTRUMENT_METADATA:
+        return True
+    # Upload / Log may store canonical display names (Alto Saxophone, …).
+    if saxophone_type_for_display_name(inst):
+        return True
+    return False
 
 
 def semitone_steps_for_label(label: str) -> int:
@@ -159,6 +172,9 @@ def semitone_steps_for_label(label: str) -> int:
     meta = TRANSPOSING_INSTRUMENT_METADATA.get(key)
     if meta:
         return int(meta.get("semitones_up", 0))
+    sax_type = saxophone_type_for_display_name(key)
+    if sax_type:
+        return int(TRANSPOSING_SEMITONE_STEPS.get(sax_type, 0))
     return int(TRANSPOSING_SEMITONE_STEPS.get(key, 0))
 
 
@@ -166,6 +182,9 @@ def options_for_instrument(instrument: str) -> list[str]:
     inst = str(instrument or "").strip()
     if inst == "Saxophone":
         return list(SAXOPHONE_TYPES)
+    sax_type = saxophone_type_for_display_name(inst)
+    if sax_type:
+        return [sax_type]
     if inst == "Trumpet":
         return ["Bb Trumpet"]
     if inst == "Clarinet":
@@ -383,6 +402,40 @@ def instrument_display_name(transposing_type: str, instrument: str = "") -> str:
     if "clarinet" in low:
         return "Clarinet"
     return str(instrument or transposing_type or "Instrument")
+
+
+def saxophone_display_names() -> tuple[str, ...]:
+    """Canonical saxophone labels used by Upload, Practice Log, Tone, AMI.
+
+    Derived from :data:`SAXOPHONE_TYPES` via :func:`instrument_display_name` —
+    do not invent a parallel naming scheme.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in _SAXOPHONE_DISPLAY_ORDER:
+        if t not in SAXOPHONE_TYPES:
+            continue
+        label = instrument_display_name(t, "Saxophone")
+        if label and label not in seen:
+            seen.add(label)
+            out.append(label)
+    for t in SAXOPHONE_TYPES:
+        label = instrument_display_name(t, "Saxophone")
+        if label and label not in seen:
+            seen.add(label)
+            out.append(label)
+    return tuple(out)
+
+
+def saxophone_type_for_display_name(display_name: str) -> str:
+    """Map ``Alto Saxophone`` → ``Alto saxophone (Eb)`` (empty if unknown)."""
+    want = str(display_name or "").strip()
+    if not want:
+        return ""
+    for t in SAXOPHONE_TYPES:
+        if instrument_display_name(t, "Saxophone") == want:
+            return t
+    return ""
 
 
 def is_eb_instrument(transposing_type: str) -> bool:
@@ -898,6 +951,8 @@ __all__ = [
     "get_instrument_transposition_simple",
     "get_written_key_for_instrument",
     "instrument_display_name",
+    "saxophone_display_names",
+    "saxophone_type_for_display_name",
     "is_eb_instrument",
     "is_transposing_instrument",
     "options_for_instrument",

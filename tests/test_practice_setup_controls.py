@@ -9,6 +9,7 @@ from practice_setup_controls import (
     LEVEL_OPTIONS,
     _widget_value_for_global,
     focus_options_for_instrument,
+    instrument_options_for_upload,
 )
 
 
@@ -56,6 +57,40 @@ class TestPracticeSetupControls(unittest.TestCase):
         )
         self.assertEqual(session["instrument"], "NotARealInstrument")
         self.assertEqual(session["backing_panel::qc_instrument"], "Piano")
+
+    def test_upload_instrument_options_include_four_saxophones(self) -> None:
+        from instrument_transposition import saxophone_display_names
+
+        opts = instrument_options_for_upload(DEFAULT_INSTRUMENT_OPTIONS)
+        expected = list(saxophone_display_names())
+        self.assertEqual(
+            expected,
+            [
+                "Soprano Saxophone",
+                "Alto Saxophone",
+                "Tenor Saxophone",
+                "Baritone Saxophone",
+            ],
+        )
+        for name in expected:
+            self.assertIn(name, opts)
+        # Family label expanded — do not leave a bare Saxophone-only Upload choice.
+        self.assertNotIn("Saxophone", opts)
+        # Shared non-sax instruments remain.
+        for name in ("Piano", "Guitar", "Flute", "Voice"):
+            self.assertIn(name, opts)
+
+    def test_sax_display_names_share_saxophone_focus_options(self) -> None:
+        base = focus_options_for_instrument("Saxophone")
+        for name in (
+            "Soprano Saxophone",
+            "Alto Saxophone",
+            "Tenor Saxophone",
+            "Baritone Saxophone",
+        ):
+            self.assertEqual(focus_options_for_instrument(name), base)
+        # Legacy generic label still works for old saved analyses.
+        self.assertIn("Tone", focus_options_for_instrument("Saxophone"))
 
 
 if __name__ == "__main__":

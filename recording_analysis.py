@@ -1099,9 +1099,17 @@ def analyze_multitrack(
 ) -> dict[str, Any]:
     """Compare multiple uploaded layers (timing, balance, ensemble)."""
     if librosa is None:
-        return {"ok": False, "message": "Multitrack analysis requires librosa."}
+        return {
+            "ok": False,
+            "multitrack": True,
+            "message": "Multitrack analysis requires librosa.",
+        }
     if len(tracks) < 2:
-        return {"ok": False, "message": "Upload at least two tracks for multitrack comparison."}
+        return {
+            "ok": False,
+            "multitrack": True,
+            "message": "Upload at least two tracks for multitrack stem comparison.",
+        }
 
     layer_features: list[dict[str, Any]] = []
     for tr in tracks:
@@ -1115,7 +1123,11 @@ def analyze_multitrack(
         layer_features.append({"name": name, "instrument": tr.get("instrument", ""), "features": f})
 
     if len(layer_features) < 2:
-        return {"ok": False, "message": "Need two valid audio layers."}
+        return {
+            "ok": False,
+            "multitrack": True,
+            "message": "Need two valid audio layers for stem comparison.",
+        }
 
     findings: list[str] = []
     tips: list[str] = []

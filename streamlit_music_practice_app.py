@@ -429,6 +429,7 @@ from practice_metronome import render_metronome_widget
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
     focus_options_for_instrument,
+    instrument_options_for_upload,
     render_setup_quick_controls,
 )
 from guitar_capo import (
@@ -14020,6 +14021,7 @@ elif _studio_page == "analysis":
         with st.container(key="upload_mode_segment", border=False):
             from upload_analysis_modes import is_multitrack_workflow, normalize_analysis_workflow
             from upload_analysis_setup_ui import render_upload_analysis_setup
+            from practice_setup_globals import get_active_instrument_display_name
             from recording_analysis_context import (
                 ANALYSIS_IDENTITY_LOCKED_KEY,
                 apply_mission_recording_defaults,
@@ -14078,8 +14080,12 @@ elif _studio_page == "analysis":
             setup_sel = render_upload_analysis_setup(
                 st,
                 st.session_state,
-                instrument_options=list(_instrument_options),
-                default_instrument=str(instrument or ""),
+                instrument_options=list(instrument_options_for_upload(_instrument_options)),
+                default_instrument=str(
+                    get_active_instrument_display_name(st.session_state)
+                    or instrument
+                    or ""
+                ),
                 default_song_name=str(_song_title or song or ""),
                 from_mission_handoff=_from_mission_handoff,
                 catalog_song_choices=_catalog_song_choices,
@@ -14584,86 +14590,165 @@ elif _studio_page == "analysis":
                             st.audio(st.session_state["last_analysis_audio"], format="audio/wav")
 
         else:
+            from multitrack_upload_analysis import (
+                is_multitrack_layer_type,
+                run_multitrack_upload_analysis,
+                validate_multitrack_analyze_request,
+            )
+            from recording_analysis_context import (
+                ANALYSIS_EVAL_INSTRUMENTS_KEY,
+                ANALYSIS_TARGET_LAYER_KEY,
+            )
+
+            _mt_rtype = str(
+                recording_type
+                or st.session_state.get("analysis_recording_type")
+                or "Multitrack mix"
+            )
+            _mt_is_layer = is_multitrack_layer_type(_mt_rtype)
             with st.container(key="upload_capture_panel", border=False):
                 st.markdown("### Step 2 — Capture audio")
-                st.markdown(
-                    '<p class="ui-upload-step-kicker">Upload stems for multitrack analysis</p>',
-                    unsafe_allow_html=True,
-                )
-                st.caption(
-                    "Upload 2–6 layers (e.g. guitar, vocal, keys) for multitrack recording analysis."
-                )
+                if _mt_is_layer:
+                    st.markdown(
+                        '<p class="ui-upload-step-kicker">Upload the target layer take</p>',
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        "Multitrack Layer: upload one audio file for the target layer instrument. "
+                        "Other selected instruments provide project context and do not need their own uploads."
+                    )
+                    _uploader_label = "Target layer recording"
+                else:
+                    st.markdown(
+                        '<p class="ui-upload-step-kicker">Upload the ensemble mix (or stems)</p>',
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        "Multitrack Mix: upload one mixed ensemble recording, or 2–6 separate stems "
+                        "for layer comparison. Selected instruments and their Practice Focuses are "
+                        "kept as coaching context either way."
+                    )
+                    _uploader_label = "Ensemble mix or stems"
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
                 mt_files = st.file_uploader(
-                    "Multitrack layers",
+                    _uploader_label,
                     type=["wav", "mp3", "m4a", "ogg"],
                     accept_multiple_files=True,
                     key="analysis_multitrack_upload",
                 )
-                if mt_files and st.button(
+                if st.button(
                     "Analyze ensemble",
                     type="primary",
                     key="analysis_mt_btn",
                     use_container_width=True,
                 ):
-                    tracks = []
-                    for f in mt_files[:6]:
-                        tracks.append(
-                            {
-                                "name": f.name,
-                                "filename": f.name,
-                                "bytes": f.getvalue(),
-                                "instrument": "",
-                            }
-                        )
-                    ctx = _prepare_upload_analysis_ctx(
-                        str(st.session_state.get("analysis_recording_type") or "Multitrack mix")
+                    _mt_instruments = [
+                        str(x).strip()
+                        for x in (st.session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [])
+                        if str(x).strip()
+                    ]
+                    _mt_target = str(
+                        st.session_state.get(ANALYSIS_TARGET_LAYER_KEY) or ""
+                    ).strip()
+                    _mt_file_count = len(mt_files or [])
+                    _mt_setup_err = validate_multitrack_analyze_request(
+                        recording_type=_mt_rtype,
+                        file_count=_mt_file_count,
+                        instruments=_mt_instruments,
+                        target_layer=_mt_target if _mt_is_layer else None,
                     )
-                    from recording_analysis import analyze_multitrack
-                    from analysis_coach_quality import build_analysis_status_message
-
-                    _mt_spin = build_analysis_status_message(
-                        ctx,
-                        mission_ids=list(ctx.get("mission_ids") or []),
-                        multitrack=True,
-                        session_state=st.session_state,
-                        mission_evaluation_active=bool(
-                            ctx.get("mission_evaluation_active")
-                        ),
-                    )
-                    with st.spinner(_mt_spin):
-                        mt_result = analyze_multitrack(tracks, ctx)
-                    mt_result = _finalize_upload_analysis_result(mt_result, ctx)
-                    st.session_state["last_analysis_result"] = mt_result
-                    if mt_result.get("ok"):
-                        from ai_performance_history import (
-                            SOURCE_MULTITRACK,
-                            append_performance_record,
-                        )
-
-                        append_performance_record(mt_result, ctx=ctx, source=SOURCE_MULTITRACK)
-                    try:
-                        from analysis_session_persistence import save_analysis_session
-                        from music_persistent_state import force_save_music_state
-
-                        save_analysis_session(st.session_state, st=st)
-                        force_save_music_state(st, reason="analysis_complete")
+                    if _mt_setup_err:
+                        st.error(_mt_setup_err)
+                        st.session_state["last_analysis_result"] = {
+                            "ok": False,
+                            "multitrack": True,
+                            "message": _mt_setup_err,
+                            "recording_type": _mt_rtype,
+                        }
+                    else:
+                        tracks = []
+                        for f in (mt_files or [])[:6]:
+                            tracks.append(
+                                {
+                                    "name": f.name,
+                                    "filename": f.name,
+                                    "bytes": f.getvalue(),
+                                    "instrument": "",
+                                }
+                            )
                         try:
-                            from media_upload_catalog import register_upload_analysis_in_catalog
+                            ctx = _prepare_upload_analysis_ctx(_mt_rtype)
+                            from analysis_coach_quality import build_analysis_status_message
 
-                            register_upload_analysis_in_catalog(st.session_state, st=st)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-            if st.session_state.get("last_analysis_result", {}).get("multitrack"):
+                            _mt_spin = build_analysis_status_message(
+                                ctx,
+                                mission_ids=list(ctx.get("mission_ids") or []),
+                                multitrack=True,
+                                session_state=st.session_state,
+                                mission_evaluation_active=bool(
+                                    ctx.get("mission_evaluation_active")
+                                ),
+                            )
+                            with st.spinner(_mt_spin):
+                                mt_result = run_multitrack_upload_analysis(tracks, ctx)
+                            mt_result = _finalize_upload_analysis_result(mt_result, ctx)
+                            st.session_state["last_analysis_result"] = mt_result
+                            if not mt_result.get("ok"):
+                                st.error(
+                                    mt_result.get("message")
+                                    or "Multitrack analysis failed."
+                                )
+                            elif mt_result.get("ok"):
+                                from ai_performance_history import (
+                                    SOURCE_MULTITRACK,
+                                    append_performance_record,
+                                )
+
+                                append_performance_record(
+                                    mt_result, ctx=ctx, source=SOURCE_MULTITRACK
+                                )
+                            try:
+                                from analysis_session_persistence import save_analysis_session
+                                from music_persistent_state import force_save_music_state
+
+                                save_analysis_session(st.session_state, st=st)
+                                force_save_music_state(st, reason="analysis_complete")
+                                try:
+                                    from media_upload_catalog import (
+                                        register_upload_analysis_in_catalog,
+                                    )
+
+                                    register_upload_analysis_in_catalog(
+                                        st.session_state, st=st
+                                    )
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        except Exception as _mt_exc:
+                            _mt_fail = {
+                                "ok": False,
+                                "multitrack": True,
+                                "message": f"Multitrack analysis failed: {_mt_exc}",
+                                "recording_type": _mt_rtype,
+                            }
+                            st.session_state["last_analysis_result"] = _mt_fail
+                            st.error(_mt_fail["message"])
+            _mt_last = st.session_state.get("last_analysis_result") or {}
+            if isinstance(_mt_last, dict) and (
+                _mt_last.get("multitrack")
+                or str(_mt_last.get("recording_type") or "").lower().find("multitrack")
+                >= 0
+            ):
                 with st.container(key="upload_results_panel", border=False):
                     st.markdown(
                         '<p class="ui-upload-step-kicker">Step 3 · Coach report</p>',
                         unsafe_allow_html=True,
                     )
+                    if not _mt_last.get("ok"):
+                        st.error(_mt_last.get("message") or "Multitrack analysis failed.")
                     st.markdown(
-                        render_analysis_dashboard(st.session_state["last_analysis_result"]),
+                        render_analysis_dashboard(_mt_last),
                         unsafe_allow_html=True,
                     )
 

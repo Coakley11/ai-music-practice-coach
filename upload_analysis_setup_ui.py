@@ -205,6 +205,19 @@ def render_upload_analysis_setup(
     if not options:
         options = [default_instrument or "Piano"]
 
+    # Preserve legacy generic "Saxophone" (and any other saved labels) in the
+    # selector when restoring older Upload analyses — without reintroducing it
+    # as the default shared catalog choice.
+    existing_seed = session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)
+    if isinstance(existing_seed, list):
+        for raw in existing_seed:
+            label = str(raw or "").strip()
+            if label and label not in options:
+                options.append(label)
+    existing_one = str(session_state.get(ANALYSIS_EVAL_INSTRUMENT_KEY) or "").strip()
+    if existing_one and existing_one not in options:
+        options.append(existing_one)
+
     existing = session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY)
     if not isinstance(existing, list) or not existing:
         seed = default_instrument or options[0]
@@ -441,12 +454,33 @@ def render_upload_analysis_setup(
                 st.caption(" · ".join(str(b) for b in bits))
 
     if is_multitrack_workflow(session_state) and rtype == RECORDING_TYPE_MT_LAYER:
-        st.text_input(
-            "Target layer / part label",
-            key=ANALYSIS_TARGET_LAYER_KEY,
-            disabled=identity_locked,
-            placeholder="e.g. Tenor sax overdub, Bass stem",
-        )
+        _layer_instruments = [
+            str(x).strip()
+            for x in (session_state.get(ANALYSIS_EVAL_INSTRUMENTS_KEY) or [])
+            if str(x).strip()
+        ]
+        _current_target = str(session_state.get(ANALYSIS_TARGET_LAYER_KEY) or "").strip()
+        _layer_options = list(_layer_instruments)
+        if _current_target and _current_target not in _layer_options:
+            _layer_options = [_current_target] + _layer_options
+        if not _layer_options:
+            st.warning(
+                "Select at least one instrument above, then choose the target layer to analyze."
+            )
+        else:
+            # Ensure widget value is a valid option (empty legacy text_input must not no-op).
+            if session_state.get(ANALYSIS_TARGET_LAYER_KEY) not in _layer_options:
+                session_state[ANALYSIS_TARGET_LAYER_KEY] = _layer_options[0]
+            st.selectbox(
+                "Target layer instrument",
+                options=_layer_options,
+                key=ANALYSIS_TARGET_LAYER_KEY,
+                disabled=identity_locked,
+                help=(
+                    "Upload one recording for this instrument. "
+                    "Other selected parts are context only."
+                ),
+            )
 
     return {
         "workflow": str(session_state.get("analysis_mode") or ""),
