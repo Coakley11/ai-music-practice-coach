@@ -9,6 +9,8 @@ import pytest
 from upload_media import (
     UPLOAD_ACCEPT_TYPES,
     UPLOAD_AUDIO_FILE_TYPES,
+    UPLOAD_MAX_SIZE_BYTES,
+    UPLOAD_MAX_SIZE_MB,
     UnsupportedUploadTypeError,
     VIDEO_EXTRACTION_UNAVAILABLE_MSG,
     VideoExtractionError,
@@ -21,6 +23,7 @@ from upload_media import (
     prepare_multitrack_track_payload,
     prepare_upload_for_analysis,
     upload_format_labels,
+    upload_max_size_caption,
     validate_upload_filename,
 )
 
@@ -40,26 +43,47 @@ def test_canonical_upload_types_include_mp4_and_match_alias():
     assert upload_format_labels() == ("WAV", "MP3", "M4A", "MP4", "MOV", "OGG", "FLAC")
 
 
-def test_format_chips_html_matches_canonical_list():
+def test_canonical_upload_max_size_is_500_mb():
+    assert UPLOAD_MAX_SIZE_MB == 500
+    assert UPLOAD_MAX_SIZE_BYTES == 500 * 1024 * 1024
+    assert upload_max_size_caption() == "Maximum file size: 500 MB"
+
+
+def test_streamlit_config_max_upload_size_matches_canonical():
+    text = Path(".streamlit/config.toml").read_text(encoding="utf-8")
+    assert "maxUploadSize = 500" in text
+    assert str(UPLOAD_MAX_SIZE_MB) in text
+
+
+def test_format_chips_html_includes_size_limit_copy():
     from app_ui import upload_format_chips_html
 
     html = upload_format_chips_html()
     for label in upload_format_labels():
         assert label in html
+    assert "Maximum file size: 500 MB" in html
+    assert upload_max_size_caption() in html
 
 
-def test_streamlit_analysis_uploaders_use_canonical_types():
+def test_streamlit_analysis_uploaders_use_canonical_types_and_size_limit():
     text = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
     assert 'type=["wav", "mp3", "m4a", "ogg"]' not in text
     assert "type=UPLOAD_AUDIO_FILE_TYPES" in text
     # Single + Multitrack Upload Analysis + Multitrack Studio slots
     assert text.count("type=UPLOAD_AUDIO_FILE_TYPES") >= 3
+    assert text.count("max_upload_size=UPLOAD_MAX_SIZE_MB") >= 3
+    assert "analysis_audio_upload" in text
+    assert "analysis_multitrack_upload" in text
+    assert "mt_upload_{slot}" in text
+    assert "Maximum file size: 500 MB" in text or "upload_max_size_caption" in text
 
 
-def test_mission_upload_capture_uses_canonical_types():
+def test_mission_upload_capture_uses_canonical_types_and_size_limit():
     text = Path("mission_upload_recording_ui.py").read_text(encoding="utf-8")
     assert "type=UPLOAD_AUDIO_FILE_TYPES" in text
     assert 'type=["wav", "mp3", "m4a", "ogg", "flac"]' not in text
+    assert "max_upload_size=UPLOAD_MAX_SIZE_MB" in text
+    assert "upload_max_size_caption" in text
 
 
 def test_video_extension_detection():

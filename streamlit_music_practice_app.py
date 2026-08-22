@@ -14184,9 +14184,13 @@ elif _studio_page == "analysis":
                     unsafe_allow_html=True,
                 )
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
+                from upload_media import upload_max_size_caption as _upload_max_size_caption
+
                 st.caption(
                     "Drag and drop a take, or record live. WAV gives the most accurate timing analysis. "
-                    "MP4/MOV uploads extract audio automatically."
+                    "MP4/MOV uploads extract audio automatically. "
+                    + _upload_max_size_caption()
+                    + "."
                 )
 
                 try:
@@ -14204,6 +14208,7 @@ elif _studio_page == "analysis":
                 from upload_media import (
                     PreparedUpload,
                     UPLOAD_AUDIO_FILE_TYPES,
+                    UPLOAD_MAX_SIZE_MB,
                     UnsupportedUploadTypeError,
                     VideoExtractionError,
                     is_video_filename,
@@ -14246,6 +14251,7 @@ elif _studio_page == "analysis":
                         "Drop your recording here",
                         type=UPLOAD_AUDIO_FILE_TYPES,
                         key="analysis_audio_upload",
+                        max_upload_size=UPLOAD_MAX_SIZE_MB,
                     )
                     try:
                         mic_audio = st.audio_input("Or record live", key="analysis_audio_record")
@@ -14655,6 +14661,7 @@ elif _studio_page == "analysis":
                 st.markdown(upload_format_chips_html(), unsafe_allow_html=True)
                 from upload_media import (
                     UPLOAD_AUDIO_FILE_TYPES,
+                    UPLOAD_MAX_SIZE_MB,
                     UnsupportedUploadTypeError,
                     VideoExtractionError,
                     prepare_multitrack_track_payload,
@@ -14665,6 +14672,7 @@ elif _studio_page == "analysis":
                     type=UPLOAD_AUDIO_FILE_TYPES,
                     accept_multiple_files=True,
                     key="analysis_multitrack_upload",
+                    max_upload_size=UPLOAD_MAX_SIZE_MB,
                 )
                 if st.button(
                     "Analyze ensemble",
@@ -15496,6 +15504,18 @@ elif _studio_page == "multitrack":
                 unsafe_allow_html=True,
             )
             st.caption("Record or upload each instrument slot, then adjust volume, mute, and solo.")
+            try:
+                from upload_media import upload_format_labels, upload_max_size_caption
+
+                st.caption(
+                    "Accepted: "
+                    + ", ".join(upload_format_labels())
+                    + ". "
+                    + upload_max_size_caption()
+                    + "."
+                )
+            except Exception:
+                st.caption("Accepted: WAV, MP3, M4A, MP4, MOV, OGG, FLAC. Maximum file size: 500 MB.")
             st.caption(
                 "**How this works:** Align = shift a layer earlier/later · "
                 "Mute = silence a layer · Solo = hear one layer by itself · "
@@ -15518,12 +15538,13 @@ elif _studio_page == "multitrack":
                             value=st.session_state.get(f"mt_name_{slot}", slot),
                             key=f"mt_name_{slot}",
                         )
-                        from upload_media import UPLOAD_AUDIO_FILE_TYPES
+                        from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
                         uploaded = st.file_uploader(
                             f"Upload — {slot}",
                             type=UPLOAD_AUDIO_FILE_TYPES,
                             key=f"mt_upload_{slot}",
+                            max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
                         try:
                             recorded = st.audio_input(f"Record — {slot}", key=f"mt_record_{slot}")

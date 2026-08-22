@@ -1,0 +1,4 @@
+# Streamlit runtime limits for this Music Practice Coach app.
+# Keep server.maxUploadSize aligned with upload_media.UPLOAD_MAX_SIZE_MB.
+[server]
+maxUploadSize = 500

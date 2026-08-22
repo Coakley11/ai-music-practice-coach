@@ -24,6 +24,12 @@ UPLOAD_AUDIO_FILE_TYPES_SET = frozenset(UPLOAD_AUDIO_FILE_TYPES)
 # Alias used by existing Streamlit call sites.
 UPLOAD_ACCEPT_TYPES = list(UPLOAD_AUDIO_FILE_TYPES)
 
+# Canonical recording Upload size limit (MB). Keep aligned with
+# ``.streamlit/config.toml`` → ``server.maxUploadSize`` and any
+# ``st.file_uploader(..., max_upload_size=...)`` call sites.
+UPLOAD_MAX_SIZE_MB = 500
+UPLOAD_MAX_SIZE_BYTES = UPLOAD_MAX_SIZE_MB * 1024 * 1024
+
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
 
@@ -65,6 +71,11 @@ def file_extension(filename: str) -> str:
 def upload_format_labels() -> tuple[str, ...]:
     """Human-facing format chips (WAV, MP3, …) from the canonical accept list."""
     return tuple(ext.upper() for ext in UPLOAD_AUDIO_FILE_TYPES)
+
+
+def upload_max_size_caption() -> str:
+    """Visible Upload size-limit copy — must match ``UPLOAD_MAX_SIZE_MB``."""
+    return f"Maximum file size: {UPLOAD_MAX_SIZE_MB} MB"
 
 
 def is_accepted_upload_filename(filename: str, *, allow_missing_extension: bool = True) -> bool:

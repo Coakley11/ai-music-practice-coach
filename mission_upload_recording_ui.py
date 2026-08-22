@@ -373,13 +373,18 @@ def render_mission_file_upload_capture(
     key_prefix: str = "mission_upload_analysis",
 ) -> None:
     """Existing-file capture for Upload Analysis workflows (not Missions)."""
-    from upload_media import UPLOAD_AUDIO_FILE_TYPES
+    from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB, upload_max_size_caption
 
-    st.caption("Upload a take to analyze — live recording stays on the Missions tab.")
+    st.caption(
+        "Upload a take to analyze — live recording stays on the Missions tab. "
+        + upload_max_size_caption()
+        + "."
+    )
     uploaded = st.file_uploader(
         "Select audio file",
         type=UPLOAD_AUDIO_FILE_TYPES,
         key=f"{key_prefix}_file",
+        max_upload_size=UPLOAD_MAX_SIZE_MB,
     )
     if uploaded is not None:
         session["_mission_upload_pending_bytes"] = uploaded.getvalue()

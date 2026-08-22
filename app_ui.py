@@ -4303,6 +4303,11 @@ body[data-upload-studio-ui] .st-key-upload_studio_panel {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
+.ui-upload-size-caption {
+  margin: 0 0 0.55rem;
+  font-size: 0.76rem;
+  color: #64748b;
+}
 .ui-upload-step-kicker {
   font-size: 0.62rem;
   font-weight: 850;
@@ -7042,15 +7047,20 @@ def upload_session_context_html(
 
 def upload_format_chips_html() -> str:
     try:
-        from upload_media import upload_format_labels
+        from upload_media import upload_format_labels, upload_max_size_caption
 
         formats = upload_format_labels()
+        size_caption = upload_max_size_caption()
     except Exception:
         formats = ("WAV", "MP3", "M4A", "MP4", "MOV", "OGG", "FLAC")
+        size_caption = "Maximum file size: 500 MB"
     chips = "".join(
         f'<span class="ui-upload-format-chip">{html.escape(fmt)}</span>' for fmt in formats
     )
-    return f'<div class="ui-upload-format-row">{chips}</div>'
+    return (
+        f'<div class="ui-upload-format-row">{chips}</div>'
+        f'<p class="ui-upload-size-caption">{html.escape(size_caption)}</p>'
+    )
 
 
 def render_multitrack_studio_panel_header(st: Any, *, song_title: str) -> None:
