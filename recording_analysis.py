@@ -1037,8 +1037,45 @@ def _apply_context_emphasis_to_categories(
             0,
             f"Replay and mark bars that leave the '{mission}' rule; repair those first.",
         )
-    if _ctx_focuses and "confidence" in out:
-        if len(_ctx_focuses) >= 2:
+    if (_ctx_focuses or ctx.get("instrument_focuses")) and "confidence" in out:
+        mix_focus_tip = ""
+        if "mix" in rtype:
+            mapping = ctx.get("instrument_focuses")
+            if isinstance(mapping, dict) and mapping:
+                try:
+                    from recording_analysis_context import format_focus_list
+                except Exception:
+                    format_focus_list = None  # type: ignore
+                mapped_bits = []
+                for inst, focs in mapping.items():
+                    inst_name = str(inst or "").strip()
+                    if not inst_name:
+                        continue
+                    foc_list = [str(x).strip() for x in (focs or []) if str(x).strip()]
+                    if not foc_list:
+                        continue
+                    if format_focus_list is not None:
+                        foc_txt = format_focus_list(foc_list)
+                    else:
+                        foc_txt = (
+                            foc_list[0]
+                            if len(foc_list) == 1
+                            else (
+                                " and ".join(foc_list)
+                                if len(foc_list) == 2
+                                else ", ".join(foc_list[:-1]) + f", and {foc_list[-1]}"
+                            )
+                        )
+                    mapped_bits.append(f"{inst_name} → {foc_txt}")
+                if mapped_bits:
+                    mix_focus_tip = (
+                        "Keep each instrument's Practice Focus visible on the next take: "
+                        + "; ".join(mapped_bits)
+                        + "."
+                    )
+        if mix_focus_tip:
+            out["confidence"]["tips"].insert(0, mix_focus_tip)
+        elif len(_ctx_focuses) >= 2:
             try:
                 from recording_analysis_context import format_focus_list
 
@@ -1049,7 +1086,7 @@ def _apply_context_emphasis_to_categories(
                 0,
                 f"Keep your Practice Focuses — {focus_txt} — visible for the next intentional take.",
             )
-        else:
+        elif _ctx_focuses:
             out["confidence"]["tips"].insert(
                 0,
                 f"Keep Practice Focus ({_ctx_focuses[0]}) visible on the stand for the next intentional take.",
@@ -1262,13 +1299,31 @@ def build_coach_summary(
             growth_name, growth_score = alts[0]
             growth_l = label_map.get(growth_name, growth_name)
     if mix_poly and weakest_name in low_conf:
-        summary = (
-            f"Ensemble strengths include {strong_l} (mix-level estimate {strongest_score}/100). "
-            f"{weak_l.title()} evidence from this polyphonic mix was weak ({weakest_score}/100), "
-            "but that is not treated as a definitive instrument-specific weakness without isolated stems. "
-            f"A clearer ensemble growth edge: {growth_l} "
-            f"(mix-level estimate {growth_score}/100)."
-        )
+        # One-file Mix: never force Confidence as the replacement growth edge.
+        alts = [
+            p for p in ranked
+            if p[0] not in low_conf and p[0] != "confidence"
+        ]
+        prefer = [p for p in alts if p[0] in {"timing", "groove", "musicality"}]
+        pick = prefer or alts
+        if pick and int(pick[0][1]) < 70:
+            growth_name, growth_score = pick[0]
+            growth_l = label_map.get(growth_name, growth_name)
+            summary = (
+                f"Ensemble strengths include {strong_l} (mix-level estimate {strongest_score}/100). "
+                f"{weak_l.title()} evidence from this polyphonic mix was weak ({weakest_score}/100), "
+                "but that is not treated as a definitive instrument-specific weakness without isolated stems. "
+                f"A clearer ensemble growth edge: {growth_l} "
+                f"(mix-level estimate {growth_score}/100)."
+            )
+        else:
+            summary = (
+                f"Ensemble strengths include {strong_l} (mix-level estimate {strongest_score}/100). "
+                f"{weak_l.title()} evidence from this polyphonic mix was weak ({weakest_score}/100), "
+                "but that is not treated as a definitive instrument-specific weakness without isolated stems. "
+                "No single instrument-specific weakness is assigned from this blended file; "
+                "prioritize ensemble timing, groove, and interaction."
+            )
     elif mixed and weakest_name in low_conf:
         summary = (
             f"Your {strong_l} is the brightest spot in this take (score {strongest_score}/100). "

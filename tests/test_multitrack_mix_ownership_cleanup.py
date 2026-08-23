@@ -12,6 +12,10 @@ from multitrack_upload_analysis import (
     enrich_mix_analysis_result,
 )
 from recording_analysis_ui import render_analysis_dashboard
+from recording_analysis import (
+    _apply_context_emphasis_to_categories,
+    build_coach_summary,
+)
 
 
 def _mix_features(**overrides):
@@ -599,6 +603,131 @@ class MixUiPresentationTests(unittest.TestCase):
         self.assertIn("71", html)  # proxy value still available as supporting evidence
         self.assertIn("Guitar", html)
         self.assertIn("Rhythm Guitar", html)
+
+
+
+class MixConfidenceCopyCleanupTests(unittest.TestCase):
+    def test_one_file_summary_does_not_promote_confidence_growth_edge(self) -> None:
+        scores = {
+            "timing": 82,
+            "pitch": 39,
+            "technique": 80,
+            "groove": 81,
+            "musicality": 88,
+            "confidence": 77,
+            "tone": 85,
+        }
+        cats = {k: {"findings": ["x"], "tips": ["y"]} for k in scores}
+        summary, biggest, _, _ = build_coach_summary(
+            scores,
+            cats,
+            {
+                "recording_type": "Multitrack Mix",
+                "multitrack_mode": "mix_single",
+                "uploaded_track_count": 1,
+                "instruments": ["Flute", "Guitar"],
+                "instrument_focuses": {
+                    "Flute": ["Articulation", "Tone"],
+                    "Guitar": ["Rhythm Guitar"],
+                },
+                "practice_focuses": ["Articulation", "Tone"],
+            },
+        )
+        low = summary.lower()
+        self.assertNotIn("a clearer ensemble growth edge: confidence", low)
+        self.assertNotIn("growth edge: confidence", low)
+        self.assertIn("no single instrument-specific weakness", low)
+
+    def test_enrich_strips_stale_confidence_growth_edge_sentence(self) -> None:
+        out = enrich_mix_analysis_result(
+            {
+                "ok": True,
+                "coach_summary": (
+                    "Ensemble strengths include musicality (mix-level estimate 88/100). "
+                    "A clearer ensemble growth edge: confidence (mix-level estimate 77/100)."
+                ),
+                "scores": {
+                    "timing": 82,
+                    "pitch": 39,
+                    "technique": 80,
+                    "groove": 81,
+                    "musicality": 88,
+                    "confidence": 77,
+                    "tone": 85,
+                },
+                "categories": {},
+                "features": _mix_features(),
+                "practice_plan": [],
+            },
+            _mix_ctx(),
+            uploaded_track_count=1,
+        )
+        summary = str(out.get("coach_summary") or "").lower()
+        self.assertNotIn("a clearer ensemble growth edge: confidence", summary)
+        self.assertNotIn("confidence (mix-level estimate 77", summary)
+
+    def test_mix_confidence_tip_includes_all_instrument_focus_mappings(self) -> None:
+        cats = {
+            "confidence": {"title": "Confidence", "findings": [], "tips": []},
+        }
+        out = _apply_context_emphasis_to_categories(
+            cats,
+            {
+                "recording_type": "Multitrack Mix",
+                "instruments": ["Flute", "Guitar"],
+                "instrument_focuses": {
+                    "Flute": ["Articulation", "Tone"],
+                    "Guitar": ["Rhythm Guitar"],
+                },
+                "practice_focuses": ["Articulation", "Tone"],
+            },
+        )
+        tip = " ".join(out["confidence"]["tips"]).lower()
+        self.assertIn("flute", tip)
+        self.assertIn("articulation", tip)
+        self.assertIn("tone", tip)
+        self.assertIn("guitar", tip)
+        self.assertIn("rhythm", tip)
+
+    def test_layer_confidence_tip_remains_target_only(self) -> None:
+        cats = {
+            "confidence": {"title": "Confidence", "findings": [], "tips": []},
+        }
+        out = _apply_context_emphasis_to_categories(
+            cats,
+            {
+                "recording_type": "Multitrack Layer",
+                "target_layer": "Flute",
+                "instruments": ["Flute", "Guitar"],
+                "instrument_focuses": {
+                    "Flute": ["Articulation", "Tone"],
+                    "Guitar": ["Rhythm Guitar"],
+                },
+                "practice_focuses": ["Articulation", "Tone"],
+            },
+        )
+        tip = " ".join(out["confidence"]["tips"]).lower()
+        self.assertIn("articulation", tip)
+        self.assertIn("tone", tip)
+        self.assertNotIn("guitar", tip)
+        self.assertNotIn("rhythm guitar", tip)
+
+    def test_single_recording_confidence_tip_unchanged_shape(self) -> None:
+        cats = {
+            "confidence": {"title": "Confidence", "findings": [], "tips": []},
+        }
+        out = _apply_context_emphasis_to_categories(
+            cats,
+            {
+                "recording_type": "Practice Take",
+                "practice_focuses": ["Articulation", "Tone"],
+            },
+        )
+        tip = out["confidence"]["tips"][0]
+        self.assertTrue(tip.startswith("Keep your Practice Focuses —"))
+        self.assertIn("Articulation", tip)
+        self.assertIn("Tone", tip)
+        self.assertNotIn("Guitar", tip)
 
 
 if __name__ == "__main__":

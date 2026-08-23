@@ -1897,6 +1897,22 @@ def enrich_mix_analysis_result(
             " ",
             summary,
         ).strip()
+        # Drop stale Confidence-as-growth-edge copy from the Single/Mix coach summary.
+        summary = re.sub(
+            r"(?i)\s*A clearer ensemble growth edge:\s*confidence[^.]*\.\s*",
+            " ",
+            summary,
+        ).strip()
+        summary = re.sub(
+            r"(?i)\s*Biggest growth edge:\s*confidence[^.]*\.\s*",
+            " ",
+            summary,
+        ).strip()
+        summary = re.sub(
+            r"(?i)\s*A clearer ensemble growth edge:\s*ensemble confidence[^.]*\.\s*",
+            " ",
+            summary,
+        ).strip()
     if ownership.lower() not in summary.lower():
         out["coach_summary"] = f"{ownership} {summary}".strip()
     else:
