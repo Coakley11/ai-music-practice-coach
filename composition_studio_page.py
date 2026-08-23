@@ -110,6 +110,17 @@ from composition_preview import (
     preview_signature,
     set_composer_preview,
 )
+from composition_hum_transcription import (
+    delete_melody_event,
+    duration_choice_labels,
+    format_heard_line,
+    hum_analysis_available,
+    insert_melody_event,
+    nudge_event_pitch,
+    set_event_duration,
+    transcribe_hum_audio,
+)
+from composition_melody_notation import build_abc_from_melody_events, render_abc_html
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
     COMPOSER_FOCUS_LANE_KEY,
@@ -1422,6 +1433,302 @@ def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
         _render_library_sidebar(session_state)
 
 
+def _hum_proposal_key(section_id: str) -> str:
+    return f"composer_hum_proposal_{section_id}"
+
+
+def _hum_audio_key(section_id: str) -> str:
+    return f"composer_hum_audio_{section_id}"
+
+
+def _clear_hum_proposal(session_state: dict, section_id: str) -> None:
+    session_state.pop(_hum_proposal_key(section_id), None)
+    session_state.pop(_hum_audio_key(section_id), None)
+
+
+def _render_melody_staff(
+    events: list[dict[str, Any]],
+    *,
+    key: str,
+    meter: str,
+    bpm: int,
+    title: str,
+    height: int = 220,
+) -> None:
+    if not events:
+        return
+    abc = build_abc_from_melody_events(events, key=key, meter=meter, bpm=bpm, title=title)
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(render_abc_html(abc, height=height), height=height, scrolling=False)
+    except Exception:
+        st.code(abc, language="text")
+
+
+def _render_hum_event_editor(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    proposal: dict[str, Any],
+    *,
+    prefix: str,
+) -> dict[str, Any]:
+    """Edit proposed (or accepted-copy) events in place; returns updated proposal."""
+    pg = playback_globals(doc)
+    key = str(pg.get("key_center") or "C")
+    meter = str(pg.get("time_signature") or "4/4")
+    events = list(proposal.get("events") or [])
+    if not events:
+        return proposal
+
+    dur_opts = duration_choice_labels(meter)
+    dur_values = [d for d, _ in dur_opts]
+    dur_labels = {d: lab for d, lab in dur_opts}
+
+    st.caption("Edit any note before you use this melody.")
+    for i, ev in enumerate(events):
+        is_rest = bool(ev.get("is_rest")) or str(ev.get("pitch") or "").lower() == "rest"
+        cols = st.columns([2.2, 1.1, 1.1, 2.2, 1.0, 1.0])
+        with cols[0]:
+            label = "rest" if is_rest else str(ev.get("pitch") or "?")
+            flag = " · uncertain" if ev.get("uncertain") else ""
+            st.markdown(f"**{i + 1}. {label}{flag}**")
+        with cols[1]:
+            if not is_rest and st.button("↑", key=f"{prefix}_up_{section_id}_{i}", help="Raise a semitone"):
+                events = nudge_event_pitch(events, i, semitones=1, key=key)
+                proposal["events"] = events
+                session_state[_hum_proposal_key(section_id)] = proposal
+                st.rerun()
+        with cols[2]:
+            if not is_rest and st.button("↓", key=f"{prefix}_dn_{section_id}_{i}", help="Lower a semitone"):
+                events = nudge_event_pitch(events, i, semitones=-1, key=key)
+                proposal["events"] = events
+                session_state[_hum_proposal_key(section_id)] = proposal
+                st.rerun()
+        with cols[3]:
+            cur_dur = float(ev.get("duration_beats") or 1.0)
+            if cur_dur not in dur_values:
+                dur_values_local = sorted(set(dur_values + [cur_dur]))
+            else:
+                dur_values_local = dur_values
+            try:
+                idx = dur_values_local.index(cur_dur)
+            except ValueError:
+                idx = 0
+            picked = st.selectbox(
+                "Duration",
+                options=dur_values_local,
+                index=idx,
+                format_func=lambda d: dur_labels.get(d, f"{d:g} beat"),
+                key=f"{prefix}_dur_{section_id}_{i}",
+                label_visibility="collapsed",
+            )
+            if float(picked) != cur_dur:
+                events = set_event_duration(events, i, float(picked), meter=meter)
+                proposal["events"] = events
+                session_state[_hum_proposal_key(section_id)] = proposal
+                st.rerun()
+        with cols[4]:
+            if st.button("Del", key=f"{prefix}_del_{section_id}_{i}", help="Delete note"):
+                events = delete_melody_event(events, i, meter=meter)
+                proposal["events"] = events
+                session_state[_hum_proposal_key(section_id)] = proposal
+                st.rerun()
+        with cols[5]:
+            if st.button("+", key=f"{prefix}_ins_{section_id}_{i}", help="Insert note after"):
+                midi_ref = int(ev.get("midi") or 60) if not is_rest else 60
+                events = insert_melody_event(
+                    events,
+                    i + 1,
+                    pitch_midi=midi_ref,
+                    duration_beats=1.0,
+                    key=key,
+                    meter=meter,
+                )
+                proposal["events"] = events
+                session_state[_hum_proposal_key(section_id)] = proposal
+                st.rerun()
+    return proposal
+
+
+def _render_hum_sing_panel(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    active_id: str,
+) -> None:
+    """Hum / sing → propose → edit → accept. Section-owned; never auto-overwrites accepted melody."""
+    pg = playback_globals(doc)
+    key = str(pg.get("key_center") or "C")
+    meter = str(pg.get("time_signature") or "4/4")
+    bpm = int(pg.get("bpm") or 96)
+    accepted = section_melody_events(section)
+    proposal = session_state.get(_hum_proposal_key(active_id))
+    if not isinstance(proposal, dict):
+        proposal = None
+
+    st.markdown("**Hum / Sing Melody**")
+    st.caption(
+        "Monophonic melody only — hum or sing one line. "
+        "We’ll write down what we heard; you stay the composer."
+    )
+
+    if not hum_analysis_available():
+        st.info(
+            "Pitch transcription needs librosa on this server. "
+            "Recording still works as a capture marker; explore melody concepts below, "
+            "or write notes in the phrase editor."
+        )
+
+    try:
+        audio = st.audio_input(
+            "Record a short hum or sung melody",
+            key=f"composer_melody_record_{active_id}",
+        )
+    except Exception:
+        audio = None
+        st.caption("Audio recording will appear here when your browser supports it.")
+
+    if audio is not None:
+        try:
+            raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+        except Exception:
+            raw = b""
+        if raw:
+            # Keep audio on the selected section only — never bleed across sections.
+            session_state[_hum_audio_key(active_id)] = raw
+            intent = section.setdefault("melody", {}).setdefault("intent", {})
+            capture = intent.setdefault("hum_capture", {})
+            capture["captured"] = True
+            capture["bytes_len"] = len(raw)
+            capture["analysis_status"] = "ready_to_analyze"
+            capture["note_detection"] = False
+
+    has_audio = bool(session_state.get(_hum_audio_key(active_id)))
+    a1, a2, a3 = st.columns(3)
+    with a1:
+        analyze = st.button(
+            "Analyze hum",
+            type="primary",
+            key=f"composer_hum_analyze_{active_id}",
+            disabled=not has_audio,
+            use_container_width=True,
+        )
+    with a2:
+        if st.button("Record again", key=f"composer_hum_again_{active_id}", use_container_width=True):
+            _clear_hum_proposal(session_state, active_id)
+            intent = section.setdefault("melody", {}).setdefault("intent", {})
+            capture = intent.setdefault("hum_capture", {})
+            capture["analysis_status"] = "cleared"
+            capture["note_detection"] = False
+            st.rerun()
+    with a3:
+        if proposal and st.button("Dismiss proposal", key=f"composer_hum_dismiss_{active_id}", use_container_width=True):
+            _clear_hum_proposal(session_state, active_id)
+            st.rerun()
+
+    if analyze:
+        audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
+        # Explicit user action only — never re-analyze on every Streamlit rerun.
+        result = transcribe_hum_audio(audio_bytes, bpm=bpm, meter=meter, key=key)
+        session_state[_hum_proposal_key(active_id)] = result
+        intent = section.setdefault("melody", {}).setdefault("intent", {})
+        capture = intent.setdefault("hum_capture", {})
+        capture["analysis_status"] = str(result.get("status") or "unclear")
+        capture["note_detection"] = bool(result.get("events"))
+        # Do not persist raw F0 / large audio into the Composition document.
+        _save_doc(session_state, doc)
+        st.rerun()
+
+    proposal = session_state.get(_hum_proposal_key(active_id))
+    if isinstance(proposal, dict) and proposal.get("status"):
+        status = str(proposal.get("status") or "")
+        msg = str(proposal.get("message") or "")
+        events = list(proposal.get("events") or [])
+        if status in {"unavailable", "unclear"} or not events:
+            st.warning(msg or "Could not transcribe that recording.")
+        else:
+            if status == "uncertain":
+                st.info(msg)
+            else:
+                st.success(msg)
+            st.markdown("**We heard:**")
+            st.markdown(f"`{format_heard_line(events, meter=meter)}`")
+            st.caption("Check the notes below before using this melody.")
+
+            proposal = _render_hum_event_editor(
+                session_state, doc, active_id, proposal, prefix="composer_hum_edit"
+            )
+            events = list(proposal.get("events") or [])
+
+            st.markdown("**Staff (proposal)**")
+            _render_melody_staff(
+                events,
+                key=key,
+                meter=meter,
+                bpm=bpm,
+                title=f"{section.get('label_variant') or section.get('label') or 'Section'} — proposed",
+            )
+
+            p1, p2 = st.columns(2)
+            with p1:
+                if st.button(
+                    "▶ Preview with chords",
+                    key=f"composer_hum_preview_{active_id}",
+                    use_container_width=True,
+                ):
+                    sig = preview_signature(
+                        doc,
+                        section_id=active_id,
+                        include_melody=True,
+                        melody_override=events,
+                    )
+                    wav = generate_preview_wav(
+                        doc,
+                        section_id=active_id,
+                        include_melody=True,
+                        melody_override=events,
+                        loops=1,
+                    )
+                    if wav:
+                        set_composer_preview(session_state, wav, sig)
+                        st.rerun()
+                    else:
+                        st.warning("Add chords to this section first.")
+            with p2:
+                use_label = "Replace existing melody" if accepted else "Use this melody"
+                if st.button(
+                    use_label,
+                    type="primary",
+                    key=f"composer_hum_use_{active_id}",
+                    use_container_width=True,
+                ):
+                    apply_melody_events(
+                        doc,
+                        active_id,
+                        events,
+                        concept={
+                            "id": "hum_transcription",
+                            "name": "Hum / sung melody",
+                            "motif_hint": "Transcribed from your hum",
+                            "contour": format_heard_line(events, meter=meter),
+                        },
+                        replace=True,
+                    )
+                    _clear_hum_proposal(session_state, active_id)
+                    invalidate_composer_preview(session_state)
+                    _save_doc(session_state, doc)
+                    st.rerun()
+
+            if accepted:
+                st.caption(
+                    "This section already has an accepted melody. "
+                    "Preview leaves it untouched; Replace updates it explicitly."
+                )
+
+
 def _render_melody_concept_card(
     session_state: dict,
     doc: dict[str, Any],
@@ -1636,49 +1943,33 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             label_visibility="collapsed",
         )
 
-        st.markdown("**Hum or sing your idea**")
+        st.markdown("**Hum or describe your idea**")
         hum = st.text_area(
             "Hum notes",
             value=str(intent.get("hum_notes") or ""),
             key=f"composer_melody_hum_{active_id}",
             height=70,
-            placeholder="Describe what you're hearing — or record below when ready.",
+            placeholder="Optional: jot what you're hearing — or record below.",
         )
         if has_harmony:
-            st.markdown(
-                '<div class="composer-coming-soon">'
-                "<strong>Hum → notation:</strong> browser recording is available. "
-                "Automatic pitch/rhythm detection and staff notation are "
-                "<em>Coming soon</em> — recordings are kept as a capture marker, "
-                "not claimed as transcribed notes."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            try:
-                audio = st.audio_input(
-                    "Record a hum or melody idea",
-                    key=f"composer_melody_record_{active_id}",
-                )
-                if audio is not None:
-                    # Persist capture metadata only — do not invent note detection.
-                    capture = intent.setdefault("hum_capture", {})
-                    try:
-                        raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
-                    except Exception:
-                        raw = b""
-                    capture["captured"] = True
-                    capture["bytes_len"] = len(raw or b"")
-                    capture["analysis_status"] = "coming_soon"
-                    capture["note_detection"] = False
-                    st.info(
-                        "Recording captured for this section. "
-                        "Note and rhythm detection is Coming soon — "
-                        "describe what you sang above or pick a melody concept below."
-                    )
-            except Exception:
-                st.caption("Audio recording will appear here in your browser when supported.")
+            _render_hum_sing_panel(session_state, doc, section, active_id=active_id)
         else:
             st.caption("Add chords for this section to loop harmony while you hum.")
+
+        if accepted_events := section_melody_events(section):
+            pg = playback_globals(doc)
+            st.markdown("**Accepted melody**")
+            note_line = " ".join(
+                ("rest" if e.get("is_rest") else str(e.get("pitch") or "")) for e in accepted_events
+            )
+            st.markdown(f"`{note_line}`")
+            _render_melody_staff(
+                accepted_events,
+                key=str(pg.get("key_center") or "C"),
+                meter=str(pg.get("time_signature") or "4/4"),
+                bpm=int(pg.get("bpm") or 96),
+                title=f"{section.get('label_variant') or section.get('label') or 'Section'} — melody",
+            )
 
         if (
             remember != intent.get("remember")
@@ -1693,10 +1984,6 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             _save_doc(session_state, doc)
 
         phrases = list(melody.get("phrases") or [])
-        accepted_events = section_melody_events(section)
-        if accepted_events:
-            note_line = " ".join(str(e.get("pitch") or "") for e in accepted_events)
-            st.markdown(f"**Accepted melody notes:** `{note_line}`")
         if phrases:
             st.markdown("**Current melodic ideas**")
             for phrase in phrases[:4]:
@@ -1791,7 +2078,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
                 remember=str(intent.get("remember") or remember),
             ),
         )
-        st.caption("Full melody preview with AI/humming arrives in a later sprint — for now, hear your harmony while you shape the line.")
+        st.caption("Hum a line, check the notes, then play it with your section chords.")
         _render_library_sidebar(session_state)
 
 

@@ -147,6 +147,8 @@ def _mix_melody_onto_backing(
         if loop_offset > total_beats + 0.5:
             break
         for ev in events:
+            if ev.get("is_rest") or str(ev.get("pitch") or "").strip().lower() == "rest":
+                continue
             midi = ev.get("midi")
             try:
                 midi_i = int(midi) if midi is not None else _pitch_to_midi(str(ev.get("pitch") or ""))

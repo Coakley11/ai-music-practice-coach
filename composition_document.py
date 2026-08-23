@@ -946,8 +946,11 @@ def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     pitch = str(raw.get("pitch") or raw.get("note") or "").strip()
-    if not pitch:
+    is_rest = bool(raw.get("is_rest")) or pitch.lower() == "rest"
+    if not pitch and not is_rest:
         return None
+    if is_rest:
+        pitch = "rest"
     try:
         duration = float(raw.get("duration_beats") or raw.get("duration") or 1.0)
     except (TypeError, ValueError):
@@ -963,16 +966,26 @@ def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
         measure = 1
     midi = raw.get("midi")
     try:
-        midi_i = int(midi) if midi is not None else None
+        midi_i = int(midi) if midi is not None and not is_rest else None
     except (TypeError, ValueError):
         midi_i = None
-    return {
+    out: dict[str, Any] = {
         "pitch": pitch,
         "midi": midi_i,
         "duration_beats": duration,
         "beat": max(0.0, beat),
         "measure": max(1, measure),
     }
+    if is_rest:
+        out["is_rest"] = True
+    if "confidence" in raw:
+        try:
+            out["confidence"] = float(raw.get("confidence"))
+        except (TypeError, ValueError):
+            pass
+    if "uncertain" in raw:
+        out["uncertain"] = bool(raw.get("uncertain"))
+    return out
 
 
 def normalize_melody_events(events: Any) -> list[dict[str, Any]]:
