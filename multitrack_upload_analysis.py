@@ -319,14 +319,18 @@ def build_layer_arrangement_context(
         if has_song_form_context(ctx) or bool(song_ctx.get("has_song_form")):
             names = [str(k).strip() for k in sections.keys() if str(k).strip()]
             if names:
-                form_bit = f" around {', '.join(names[:3])} transitions"
+                form_bit = f" in sections such as {', '.join(names[:3])}"
     song_bit = ""
     if song_name:
         song_bit = f" in {song_name}" + (f" ({song_key})" if song_key else "")
     return (
-        f"Arrangement context: {roles}. Evaluate the {target or 'target'} layer{song_bit} for "
-        f"how clearly its entrances, phrasing, and rhythmic placement leave room for that role"
-        f"{form_bit}. No audio was scored for those other project instruments."
+        f"Arrangement context: {roles}. "
+        f"Consider how the {target or 'target'} part could leave room for that role"
+        f"{song_bit}"
+        f"{form_bit}. "
+        "Use the known song sections as prospective arrangement context only — "
+        "no section-specific performance claim is made without audio↔form timeline alignment. "
+        "No audio was scored for those other project instruments."
     )
 
 
@@ -846,6 +850,98 @@ def build_target_layer_focus_analysis(
                 if mapped is not None
                 else "Qualitative rhythm/timing read"
             )
+
+        elif "breath" in fl:
+            # Acoustic sustain proxies — never treat selection metadata or attack
+            # density as Breath Support evidence.
+            mapped = None
+            energy_note = _energy_trajectory_note(features)
+            sustain_bits: list[str] = []
+            if dyn_flat:
+                sustain_bits.append(
+                    f"Acoustic sustain flatness estimate ≈ {dyn_flat:.2f} "
+                    "(lower often means more energy contour through held tones)."
+                )
+            if dyn_range > 0:
+                sustain_bits.append(
+                    f"RMS energy span ≈ {dyn_range:.4f} "
+                    "(proxy for support contrast across the take)."
+                )
+            if pitch_std is not None:
+                try:
+                    sustain_bits.append(
+                        f"Within-note pitch movement ≈ {float(pitch_std):.0f} cents "
+                        "(acoustic cue for support/center through sustains)."
+                    )
+                except (TypeError, ValueError):
+                    pass
+            if energy_note:
+                sustain_bits.append(energy_note)
+            if sustain_bits:
+                findings.extend(sustain_bits)
+                findings.append(
+                    "These are acoustic sustain/energy/pitch cues related to Breath Support — "
+                    "not a direct measurement of breathing physiology."
+                )
+                assessment = (
+                    "Inferred from acoustic sustain cues "
+                    "(limited direct Breath Support meter)"
+                )
+                pitch_ok = True
+                try:
+                    if pitch_std is not None:
+                        pitch_ok = float(pitch_std) < 35
+                except (TypeError, ValueError):
+                    pitch_ok = True
+                if dyn_flat and dyn_flat < 0.55 and pitch_ok:
+                    went_well = (
+                        f"{_mixed_backing_subject(ctx, target)} shows usable acoustic sustain "
+                        "stability through held tones."
+                    )
+                    improve_to = (
+                        "Keep air/support steady through releases — avoid energy collapse on "
+                        "final notes of longer phrases."
+                    )
+                else:
+                    went_well = (
+                        f"{_mixed_backing_subject(ctx, target)} provides usable sustain/energy "
+                        "material to coach Breath Support from."
+                    )
+                    improve_to = (
+                        "Aim for steadier acoustic sustain through phrase endings — support "
+                        "the release instead of tapering into pitch or energy collapse."
+                    )
+            else:
+                findings = [
+                    "Limited direct Breath Support evidence from this recording.",
+                    "The take provides sustain/pitch/energy cues related to breath support, "
+                    "but breath support itself is inferred rather than directly measured.",
+                    "Onset/attack metrics alone are not treated as Breath Support evidence.",
+                ]
+                went_well = ""
+                improve_to = (
+                    "This take does not measure Breath Support strongly enough for a numeric score. "
+                    "Use a long-tone support loop next."
+                )
+                assessment = (
+                    "Limited direct evidence — qualitative Breath Support coaching "
+                    "(no numeric meter)"
+                )
+            target_l = str(target or "").lower()
+            if "flute" in target_l:
+                drill = (
+                    f"{target or 'Flute'} Breath Support drill: sustain one tone for 8 beats "
+                    "through the release without energy collapse; then crescendo → decrescendo "
+                    "on one pitch while keeping center; finish with a 4-bar phrase on one breath "
+                    "with steady tone through the final release."
+                )
+            else:
+                drill = (
+                    f"{target or 'Layer'} Breath Support drill: long tone 8 beats through the "
+                    "release without energy collapse; then crescendo → decrescendo on one pitch "
+                    "with stable center; finish with a short phrase on one breath through the last note."
+                )
+
         else:
             # Generic Focus: still explicit, without inventing unsupported scores.
             went_well = (
@@ -995,6 +1091,13 @@ def enrich_layer_analysis_result(
                 f"Analyzing your {target or 'uploaded'} layer in {song_name}. {ownership} {song_line}"
             )
         summary = str(out.get("coach_summary") or "").strip()
+        # Dedupe: Single-path coach summary may already include a Song context line.
+        import re as _re
+        summary = _re.sub(
+            r"(?i)\s*Song context:[^.]*\.\s*",
+            " ",
+            summary,
+        ).strip()
         if "analyzing your" not in summary.lower() and ownership.lower() not in summary.lower():
             out["coach_summary"] = f"{ownership} {summary}".strip()
         elif ownership.lower() not in summary.lower():

@@ -167,6 +167,23 @@ def criteria_overall_score_label(*, mission_evaluation_active: bool) -> str:
     return "Overall criteria score"
 
 
+def _is_multitrack_layer_ctx(ctx: dict[str, Any], *, multitrack: bool = False) -> bool:
+    """True when the current analysis owns a single Multitrack Layer target."""
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    if "layer" in rtype:
+        return True
+    mode = str(ctx.get("multitrack_mode") or "").strip().lower()
+    if mode == "layer":
+        return True
+    # Layer ownership when a target_layer is declared on a Multitrack run.
+    if multitrack and str(ctx.get("target_layer") or "").strip():
+        # Mix may also carry a primary instrument — require Layer wording or mode.
+        if "mix" in rtype:
+            return False
+        return True
+    return False
+
+
 def build_analysis_status_message(
     ctx: dict[str, Any] | None = None,
     *,
@@ -177,10 +194,18 @@ def build_analysis_status_message(
 ) -> str:
     """Compose a concise spinner/status line from selected criteria + Focuses + baselines.
 
-    ``mission_ids`` (Evaluating Criteria) may drive analysis content, but they do
-    **not** by themselves add \"improvisation missions\" to the status line.
+    Multitrack Layer ownership
+    --------------------------
+    Spinner phrases come only from the **target layer** instrument + its Practice
+    Focuses (+ criteria + single-part baselines). Non-target project-instrument
+    Focuses (e.g. Piano Comping) are arrangement context and must NOT appear.
+
+    Multitrack Mix may still advertise ensemble baselines such as balance when
+    comparative/ensemble evidence is in scope.
     """
     ctx = dict(ctx or {})
+    layer_mode = _is_multitrack_layer_ctx(ctx, multitrack=multitrack)
+    target = str(ctx.get("target_layer") or "").strip()
     criteria = _as_str_list(
         ctx.get("evaluating_criteria_labels")
         or ctx.get("mission_labels")
@@ -191,15 +216,36 @@ def build_analysis_status_message(
     if not focuses:
         focuses = _as_str_list(ctx.get("focus") or ctx.get("practice_focus") or "")
     instrument_focuses = ctx.get("instrument_focuses")
-    if isinstance(instrument_focuses, dict) and instrument_focuses:
-        # Multitrack: prefer per-instrument Focus phrases.
+    if isinstance(instrument_focuses, dict) and instrument_focuses and multitrack:
         mt_bits: list[str] = []
-        for inst, foc_list in instrument_focuses.items():
-            short = _instrument_short(str(inst))
-            for foc in _as_str_list(foc_list)[:2]:
+        if layer_mode:
+            # Target-layer ownership only — never promote non-target Focuses.
+            target_key = target
+            if not target_key:
+                # Fall back to first instrument if target missing.
+                for inst in instrument_focuses.keys():
+                    if str(inst).strip():
+                        target_key = str(inst).strip()
+                        break
+            foc_list = _as_str_list(instrument_focuses.get(target_key) or focuses)
+            short = _instrument_short(target_key)
+            for foc in foc_list[:4]:
                 mt_bits.append(f"{short} {foc.lower()}" if short else foc.lower())
-        if mt_bits and multitrack:
+        else:
+            # Mix / ensemble: per-instrument Focus phrases remain useful.
+            for inst, foc_list in instrument_focuses.items():
+                short = _instrument_short(str(inst))
+                for foc in _as_str_list(foc_list)[:2]:
+                    mt_bits.append(f"{short} {foc.lower()}" if short else foc.lower())
+        if mt_bits:
             focuses = mt_bits
+        elif layer_mode and target:
+            # practice_focuses may already be target-only — prefix instrument name.
+            short = _instrument_short(target)
+            focuses = [
+                f"{short} {foc.lower()}" if short and short not in foc.lower() else foc
+                for foc in focuses
+            ]
 
     # Keep mission_ids available for callers/tests, but ignore for Mission wording.
     _ = [str(x).strip() for x in (mission_ids or ctx.get("mission_ids") or []) if str(x).strip()]
@@ -219,10 +265,12 @@ def build_analysis_status_message(
         if _focus_token_key(foc) in criteria_keys:
             continue
         focus_candidates.append(foc)
-    parts.extend(_dedupe_labels(focus_candidates, limit=2))
+    # Layer: surface more target Focuses (Breath Support + Dynamics + Tone).
+    focus_limit = 4 if layer_mode else 2
+    parts.extend(_dedupe_labels(focus_candidates, limit=focus_limit))
 
-    if multitrack:
-        # Prefer ensemble concepts over generic tone/musicality for Multitrack.
+    if multitrack and not layer_mode:
+        # Mix / ensemble baselines — balance is meaningful with comparative evidence.
         ensemble_first = ["timing", "groove", "balance", "ensemble interaction"]
         baseline_pick = []
         present = {_focus_token_key(p) for p in parts}
@@ -235,9 +283,11 @@ def build_analysis_status_message(
             if len(baseline_pick) >= 3:
                 break
     else:
+        # Single Recording + Multitrack Layer (one target audio): no ensemble balance claim.
         present = {_focus_token_key(p) for p in parts}
         baseline_pick = []
-        for area in _BASELINE_POOL:
+        layer_pool = ("timing", "pitch", "groove", "tone") if layer_mode else _BASELINE_POOL
+        for area in layer_pool:
             key = _focus_token_key(area)
             if key in present or (
                 key in {"timing", "groove"} and "timing_groove" in present
