@@ -9,6 +9,8 @@ from composition_document import (
     bootstrap_from_vision,
     break_chord_link,
     chords_for_playback,
+    composition_key_choice_labels,
+    composition_key_label_from_token,
     duplicate_section,
     ensure_workflow,
     get_workflow_phase,
@@ -16,6 +18,7 @@ from composition_document import (
     ordered_sections,
     parse_chord_paste,
     phase_is_reachable,
+    section_has_melody,
     suggest_musical_defaults,
     touch_composition,
     STRUCTURE_TEMPLATES,
@@ -85,11 +88,121 @@ class TestCompositionDocument(unittest.TestCase):
         self.assertEqual(get_workflow_phase(doc), "structure")
         self.assertIn("vision", ensure_workflow(doc).get("completed_phases") or [])
 
+    def test_bootstrap_from_vision_user_owned_key_bpm_meter(self) -> None:
+        doc = bootstrap_from_vision(
+            genre="Pop",
+            song_idea="A warm romantic song.",
+            key="Db minor",
+            bpm=72,
+            meter="6/8",
+        )
+        g = doc["global"]
+        self.assertEqual(g["original_key_center"], "Dbm")
+        self.assertEqual(g["original_key_label"], "Db minor")
+        self.assertEqual(g["bpm"], 72)
+        self.assertEqual(g["time_signature"], "6/8")
+        # Must not silently rewrite Db minor → C# minor.
+        self.assertNotEqual(g["original_key_center"], "C#m")
+        self.assertEqual(composition_key_label_from_token(g["original_key_center"]), "Db minor")
+
+    def test_bootstrap_preserves_cs_sharp_minor_distinct_from_db(self) -> None:
+        doc = bootstrap_from_vision(
+            genre="Jazz",
+            song_idea="Dark jazz tune.",
+            key="C# minor",
+            bpm=88,
+            meter="5/4",
+        )
+        self.assertEqual(doc["global"]["original_key_center"], "C#m")
+        self.assertEqual(doc["global"]["original_key_label"], "C# minor")
+        self.assertEqual(doc["global"]["time_signature"], "5/4")
+
+    def test_bootstrap_custom_meter(self) -> None:
+        doc = bootstrap_from_vision(
+            genre="Other",
+            song_idea="Odd-meter sketch.",
+            key="G major",
+            bpm=110,
+            meter="11/8",
+        )
+        self.assertEqual(doc["global"]["time_signature"], "11/8")
+        self.assertEqual(doc["global"]["original_key_center"], "G")
+
+    def test_phase_reachable_after_structure_exists_nonlinear(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test song.", key="G major", bpm=100, meter="4/4")
+        advance_workflow(doc, from_phase="vision")
+        self.assertFalse(phase_is_reachable(doc, "chords"))
+        apply_structure_template(doc, "simple")
+        self.assertTrue(phase_is_reachable(doc, "chords"))
+        self.assertTrue(phase_is_reachable(doc, "melody"))
+        self.assertTrue(phase_is_reachable(doc, "lyrics"))
+        self.assertTrue(phase_is_reachable(doc, "review"))
+
+    def test_nonlinear_section_state_survives(self) -> None:
+        from composition_document import apply_section_chords, apply_melody_concept
+
+        doc = bootstrap_from_vision(
+            genre="Pop",
+            song_idea="Nonlinear workflow test.",
+            key="G major",
+            bpm=100,
+            meter="4/4",
+        )
+        apply_structure_template(doc, "simple")
+        sections = ordered_sections(doc)
+        verse = sections[0]
+        chorus = next(s for s in sections if str(s.get("label") or "") == "Chorus")
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("G D Em C"))
+        apply_section_chords(doc, str(chorus["id"]), parse_chord_paste("C G Am D"))
+        apply_melody_concept(
+            doc,
+            str(verse["id"]),
+            {
+                "id": "test_concept",
+                "name": "Rising open",
+                "motif_hint": "Rise then settle",
+                "contour": "up",
+                "notes": "G A B D",
+            },
+        )
+        # Switching "focus" must not erase the other section.
+        self.assertEqual(chords_for_playback(doc, scope="section", section_id=str(verse["id"]))[:2], ["G", "D"])
+        self.assertEqual(chords_for_playback(doc, scope="section", section_id=str(chorus["id"]))[:2], ["C", "G"])
+        verse_reload = next(s for s in ordered_sections(doc) if s["id"] == verse["id"])
+        self.assertTrue(section_has_melody(verse_reload))
+        self.assertEqual(doc["global"]["original_key_center"], "G")
+        self.assertEqual(doc["global"]["bpm"], 100)
+
+    def test_section_lane_status_instrumental_lyrics_na(self) -> None:
+        from composition_document import section_lane_status
+
+        doc = bootstrap_from_vision(
+            genre="Pop",
+            song_idea="Instrumental piece.",
+            instrumental=True,
+            key="A minor",
+            bpm=90,
+            meter="4/4",
+        )
+        apply_structure_template(doc, "simple")
+        sid = str(ordered_sections(doc)[0]["id"])
+        status = section_lane_status(doc, sid)
+        self.assertEqual(status["lyrics"], "not_applicable")
+        self.assertEqual(status["chords"], "incomplete")
+
+    def test_composition_key_labels_include_enharmonics(self) -> None:
+        labels = composition_key_choice_labels()
+        self.assertIn("Db minor", labels)
+        self.assertIn("C# minor", labels)
+        self.assertIn("Gb major", labels)
+        self.assertIn("F# major", labels)
+
     def test_phase_is_reachable_backward_only(self) -> None:
         doc = bootstrap_from_vision(genre="Pop", song_idea="Test song.")
         advance_workflow(doc, from_phase="vision")
         self.assertTrue(phase_is_reachable(doc, "vision"))
         self.assertTrue(phase_is_reachable(doc, "structure"))
+        # No sections yet — creative phases stay closed.
         self.assertFalse(phase_is_reachable(doc, "chords"))
 
     def test_suggest_musical_defaults_ballad(self) -> None:

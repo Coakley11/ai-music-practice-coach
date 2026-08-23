@@ -43,9 +43,10 @@ from composition_melody_suggestions import (
 from composition_document import (
     COMPOSITION_ENERGY_LEVELS,
     COMPOSITION_GENRES,
+    COMPOSITION_METER_CUSTOM,
+    COMPOSITION_METERS,
     COMPOSITION_PHASE_LABELS,
     COMPOSITION_PHASES,
-    COMPOSITION_PRACTICE_KEYS,
     COMPOSER_SECTION_LABELS,
     add_section,
     add_melody_phrase,
@@ -58,7 +59,13 @@ from composition_document import (
     break_chord_link,
     chord_link_display,
     chords_for_playback,
+    coerce_composition_bpm,
+    coerce_composition_key_choice,
+    coerce_composition_meter,
     complete_workflow_phase,
+    composition_key_choice_labels,
+    composition_key_label_from_token,
+    composition_key_token_from_choice,
     document_summary_line,
     duplicate_section,
     ensure_workflow,
@@ -80,6 +87,7 @@ from composition_document import (
     section_has_chords,
     section_has_lyrics,
     section_has_melody,
+    section_lane_status,
     set_workflow_phase,
     suggest_musical_defaults,
     sync_linked_chord_sections,
@@ -103,7 +111,6 @@ from composition_session_state import (
 from composition_snapshot import build_composition_snapshot, snapshot_invalidate_token
 from custom_progression_lab import (
     CPL_PROGRESSION_STYLES,
-    CPL_TIME_SIGNATURES,
     cpl_progression_bar_chart_html,
     expand_entries_to_chords,
     format_entries_bar_line,
@@ -233,6 +240,38 @@ body[data-studio-page="composer"] .block-container {
   font-size: 0.82rem;
   color: #3730a3;
   margin: 0.5rem 0 0.75rem 0;
+}
+.composer-section-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.65rem 0;
+}
+.composer-section-status-chip {
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+.composer-section-status-chip.is-done {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: rgba(4, 120, 87, 0.2);
+}
+.composer-section-status-chip.is-na {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+.composer-coming-soon {
+  background: #fff7ed;
+  border: 1px solid rgba(234, 88, 12, 0.2);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  color: #9a3412;
+  margin: 0.35rem 0 0.65rem 0;
 }
 .composer-structure-scroll {
   overflow-x: auto;
@@ -532,7 +571,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
 <div class="composer-review-cover">
   <h2>{html.escape(title)}</h2>
   <p class="composer-review-meta">
-    <strong>{html.escape(genre)}</strong> · {html.escape(mood)} · Key {html.escape(str(pg["key_center"]))} · {pg["bpm"]} BPM · {html.escape(str(pg["time_signature"]))} · {vocal_label}
+    <strong>{html.escape(genre)}</strong> · {html.escape(mood)} · {html.escape(str(pg.get("key_label") or pg["key_center"]))} · {pg["bpm"]} BPM · {html.escape(str(pg["time_signature"]))} · {vocal_label}
   </p>
   {idea_html}
 </div>
@@ -706,14 +745,22 @@ def _vision_coach_html(doc: dict[str, Any]) -> str:
     mood = str(meta.get("mood") or "the feeling you're chasing")
     idea = str(meta.get("description") or "").strip()
     refs = str(meta.get("references") or "").strip()
-    ref_bit = f" I hear shades of <em>{refs}</em> in this." if refs else ""
-    idea_bit = f' "{idea[:160]}"' if idea else ""
+    ref_bit = f" I hear shades of <em>{html.escape(refs)}</em> in this." if refs else ""
+    idea_bit = f' "{html.escape(idea[:160])}"' if idea else ""
+    pg = playback_globals(doc)
+    key_label = str(
+        pg.get("key_label")
+        or g.get("original_key_label")
+        or composition_key_label_from_token(g.get("original_key_center") or "C")
+    )
     return (
-        f"So we're writing a <strong>{genre}</strong> song with a <strong>{mood.lower()}</strong> feel"
+        f"So we're writing a <strong>{html.escape(genre)}</strong> song with a "
+        f"<strong>{html.escape(mood.lower())}</strong> feel"
         f"{ref_bit}.{idea_bit}<br><br>"
-        f"I've suggested <strong>{g.get('original_key_center', 'C')}</strong> at "
-        f"<strong>{g.get('bpm', 96)} BPM</strong> in <strong>{g.get('time_signature', '4/4')}</strong> — "
-        f"tweak anytime. Next we'll shape the song's structure before touching chords."
+        f"Song settings you own: <strong>{html.escape(key_label)}</strong> · "
+        f"<strong>{pg['bpm']} BPM</strong> · <strong>{html.escape(str(pg['time_signature']))}</strong>. "
+        f"Change them anytime — they stay with this composition. "
+        f"Next, shape the song's structure, then freely work any section's chords, melody, or lyrics."
     )
 
 
@@ -762,12 +809,15 @@ def _render_library_sidebar(session_state: dict) -> None:
 def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
     wf = ensure_workflow(doc)
     current = get_workflow_phase(doc)
-    st.markdown('<p class="composer-journey-title">Your songwriting journey</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="composer-journey-title">Guided path · jump freely after structure exists</p>',
+        unsafe_allow_html=True,
+    )
     cols = st.columns(len(COMPOSITION_PHASES))
     for col, phase in zip(cols, COMPOSITION_PHASES):
         label = COMPOSITION_PHASE_LABELS[phase]
         if phase == "lyrics" and wf.get("skip_lyrics"):
-            label = "Lyrics · skipped"
+            label = "Lyrics · N/A"
         with col:
             is_current = phase == current
             reachable = phase_is_reachable(doc, phase)
@@ -786,37 +836,86 @@ def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def _section_status_html(doc: dict[str, Any], section_id: str) -> str:
+    status = section_lane_status(doc, section_id)
+    chips: list[str] = []
+    for lane, label in (("chords", "Chords"), ("melody", "Melody"), ("lyrics", "Lyrics")):
+        state = status.get(lane) or "incomplete"
+        if state == "complete":
+            chips.append(f'<span class="composer-section-status-chip is-done">{label} ✓</span>')
+        elif state == "not_applicable":
+            chips.append(f'<span class="composer-section-status-chip is-na">{label} N/A</span>')
+        else:
+            chips.append(f'<span class="composer-section-status-chip">{label} ○</span>')
+    return f'<div class="composer-section-status">{"".join(chips)}</div>'
+
 def _render_welcome_entry(session_state: dict) -> None:
     st.markdown(
         """
 <div class="composer-hero">
-  <h2>What kind of song do you want to write?</h2>
-  <p>Start with the spark — genre and a sentence or two about your idea.
-  We'll suggest tempo, key, and feel; you can adjust everything as you go.</p>
+  <h2>What kind of song do you want to create?</h2>
+  <p>Choose the genre, key, tempo, and meter — then write a sentence about your idea.
+  You remain the composer; the coach helps you decide, never silently decides for you.</p>
 </div>
         """,
         unsafe_allow_html=True,
     )
 
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
+
+    # Prefill widget defaults once (before widgets) from light heuristics — user can change freely.
+    if "composer_welcome_key" not in session_state:
+        hints0 = suggest_musical_defaults(genre="Pop", song_idea="")
+        session_state["composer_welcome_key"] = coerce_composition_key_choice(hints0.get("key_label") or "C major")
+        session_state["composer_welcome_bpm"] = coerce_composition_bpm(hints0.get("bpm"))
+        session_state["composer_welcome_meter"] = coerce_composition_meter(hints0.get("meter"))
+        session_state["composer_welcome_meter_custom"] = ""
+
     center, side = st.columns([2.3, 1])
     with center:
-        genre = st.selectbox("Genre", COMPOSITION_GENRES, key="composer_welcome_genre")
+        genre = st.selectbox("Genre / style", COMPOSITION_GENRES, key="composer_welcome_genre")
         song_idea = st.text_area(
             "Describe your song idea",
             key="composer_welcome_idea",
-            height=110,
+            height=100,
             placeholder='e.g. "A hopeful pop song about finding your way home after a long trip."',
         )
-        preview = suggest_musical_defaults(genre=genre, song_idea=song_idea or "")
-        st.markdown(
-            f'<div class="composer-suggest-strip">Suggested starting point: '
-            f"{preview['key']} · {preview['bpm']} BPM · {preview['meter']} · "
-            f"{preview['mood']}</div>",
-            unsafe_allow_html=True,
-        )
+
+        st.markdown("**Song settings** — you choose these")
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            st.selectbox("Key", key_labels, key="composer_welcome_key")
+        with k2:
+            st.number_input("BPM", min_value=40, max_value=240, step=1, key="composer_welcome_bpm")
+        with k3:
+            st.selectbox("Meter", meter_options, key="composer_welcome_meter")
+        if str(session_state.get("composer_welcome_meter") or "") == COMPOSITION_METER_CUSTOM:
+            st.text_input(
+                "Custom meter (e.g. 11/8)",
+                key="composer_welcome_meter_custom",
+                placeholder="11/8",
+            )
+
+        if st.button("Suggest starting values from genre / idea", key="composer_welcome_suggest"):
+            hints = suggest_musical_defaults(genre=str(genre or "Pop"), song_idea=str(song_idea or ""))
+            session_state["composer_welcome_key"] = coerce_composition_key_choice(
+                hints.get("key_label") or hints.get("key") or "C major"
+            )
+            session_state["composer_welcome_bpm"] = coerce_composition_bpm(hints.get("bpm"))
+            suggested_meter = coerce_composition_meter(hints.get("meter"))
+            if suggested_meter in COMPOSITION_METERS:
+                session_state["composer_welcome_meter"] = suggested_meter
+            else:
+                session_state["composer_welcome_meter"] = COMPOSITION_METER_CUSTOM
+                session_state["composer_welcome_meter_custom"] = suggested_meter
+            if not str(session_state.get("composer_welcome_mood") or "").strip():
+                session_state["composer_welcome_mood"] = str(hints.get("mood") or "")
+            st.rerun()
+
         with st.expander("Optional details"):
             st.text_input("Working title", key="composer_welcome_title")
-            st.text_input("Mood / emotion", key="composer_welcome_mood", placeholder=preview["mood"])
+            st.text_input("Mood / emotion", key="composer_welcome_mood")
             st.selectbox("Energy", COMPOSITION_ENERGY_LEVELS, key="composer_welcome_energy")
             st.text_input("Artists or songs that inspire this", key="composer_welcome_refs")
             st.checkbox("This is an instrumental piece (skip lyrics later)", key="composer_welcome_instrumental")
@@ -833,6 +932,9 @@ def _render_welcome_entry(session_state: dict) -> None:
             if not idea:
                 st.error("Tell us your song idea in a sentence or two — that's all we need to begin.")
             else:
+                meter_choice = str(session_state.get("composer_welcome_meter") or "4/4")
+                if meter_choice == COMPOSITION_METER_CUSTOM:
+                    meter_choice = str(session_state.get("composer_welcome_meter_custom") or "").strip()
                 doc = bootstrap_from_vision(
                     genre=str(session_state.get("composer_welcome_genre") or "Pop"),
                     song_idea=idea,
@@ -841,6 +943,9 @@ def _render_welcome_entry(session_state: dict) -> None:
                     energy=str(session_state.get("composer_welcome_energy") or ""),
                     references=str(session_state.get("composer_welcome_refs") or ""),
                     instrumental=bool(session_state.get("composer_welcome_instrumental")),
+                    key=str(session_state.get("composer_welcome_key") or ""),
+                    bpm=session_state.get("composer_welcome_bpm"),
+                    meter=meter_choice,
                 )
                 set_active_document(session_state, doc)
                 save_document_to_library(session_state, doc)
@@ -854,8 +959,8 @@ def _render_welcome_entry(session_state: dict) -> None:
         _render_coach_panel(
             {},
             lead=(
-                "Think of this as the first five minutes with a songwriter in the room. "
-                "No chord grids yet — just the story and the feeling."
+                "Think of this as the first minutes with a songwriter in the room. "
+                "Pick the key, tempo, and meter yourself — then we'll build structure and sections together."
             ),
         )
 
@@ -865,6 +970,8 @@ def _sync_vision_fields_from_doc(doc: dict[str, Any]) -> None:
     g = doc.setdefault("global", {})
     wf = ensure_workflow(doc)
     origin_payload = (doc.get("origin") or {}).get("seed_payload") or {}
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
 
     if "composer_vision_genre" not in st.session_state:
         genre = str(meta.get("style") or "Pop")
@@ -883,13 +990,36 @@ def _sync_vision_fields_from_doc(doc: dict[str, Any]) -> None:
     if "composer_vision_instrumental" not in st.session_state:
         st.session_state["composer_vision_instrumental"] = bool(wf.get("skip_lyrics"))
     if "composer_vision_key" not in st.session_state:
-        key = str(g.get("original_key_center") or "C")
-        st.session_state["composer_vision_key"] = key if key in COMPOSITION_PRACTICE_KEYS else "C"
+        stored_label = str(g.get("original_key_label") or "").strip()
+        token = str(g.get("original_key_center") or "C")
+        st.session_state["composer_vision_key"] = coerce_composition_key_choice(
+            stored_label or composition_key_label_from_token(token)
+        )
     if "composer_vision_bpm" not in st.session_state:
-        st.session_state["composer_vision_bpm"] = int(g.get("bpm") or 96)
+        st.session_state["composer_vision_bpm"] = coerce_composition_bpm(g.get("bpm"))
     if "composer_vision_meter" not in st.session_state:
-        meter = str(g.get("time_signature") or "4/4")
-        st.session_state["composer_vision_meter"] = meter if meter in CPL_TIME_SIGNATURES else "4/4"
+        meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
+        if meter in COMPOSITION_METERS:
+            st.session_state["composer_vision_meter"] = meter
+            st.session_state["composer_vision_meter_custom"] = ""
+        else:
+            st.session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
+            st.session_state["composer_vision_meter_custom"] = meter
+    elif "composer_vision_meter_custom" not in st.session_state:
+        st.session_state["composer_vision_meter_custom"] = ""
+    # Ensure selectbox values remain valid after list changes.
+    if st.session_state.get("composer_vision_key") not in key_labels:
+        st.session_state["composer_vision_key"] = coerce_composition_key_choice(
+            st.session_state.get("composer_vision_key")
+        )
+    if st.session_state.get("composer_vision_meter") not in meter_options:
+        st.session_state["composer_vision_meter"] = coerce_composition_meter(
+            str(st.session_state.get("composer_vision_meter") or "4/4")
+        )
+        if st.session_state["composer_vision_meter"] not in COMPOSITION_METERS:
+            custom = st.session_state["composer_vision_meter"]
+            st.session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
+            st.session_state["composer_vision_meter_custom"] = custom
 
 
 def _apply_vision_widgets_to_doc(doc: dict[str, Any]) -> None:
@@ -906,61 +1036,74 @@ def _apply_vision_widgets_to_doc(doc: dict[str, Any]) -> None:
     meta["energy"] = str(st.session_state.get("composer_vision_energy") or "").strip()
     meta["references"] = str(st.session_state.get("composer_vision_refs") or "").strip()
     doc["title"] = str(st.session_state.get("composer_vision_title") or "").strip() or "Untitled Song"
-    g["original_key_center"] = str(st.session_state.get("composer_vision_key") or "C")
-    g["bpm"] = int(st.session_state.get("composer_vision_bpm") or 96)
-    g["time_signature"] = str(st.session_state.get("composer_vision_meter") or "4/4")
+
+    key_label = coerce_composition_key_choice(str(st.session_state.get("composer_vision_key") or ""))
+    g["original_key_label"] = key_label
+    g["original_key_center"] = composition_key_token_from_choice(key_label)
+    g["bpm"] = coerce_composition_bpm(st.session_state.get("composer_vision_bpm"))
+    meter_choice = str(st.session_state.get("composer_vision_meter") or "4/4")
+    if meter_choice == COMPOSITION_METER_CUSTOM:
+        meter_choice = str(st.session_state.get("composer_vision_meter_custom") or "").strip()
+    g["time_signature"] = coerce_composition_meter(meter_choice)
     g["progression_style"] = genre if genre in CPL_PROGRESSION_STYLES else g.get("progression_style") or "Pop"
     wf["skip_lyrics"] = bool(st.session_state.get("composer_vision_instrumental"))
     origin["seed_summary"] = idea[:500]
     origin.setdefault("seed_payload", {})["genre"] = genre
     origin["seed_payload"]["energy"] = meta["energy"]
     origin["seed_payload"]["references"] = meta["references"]
+    origin["seed_payload"]["key_label"] = key_label
+    origin["seed_payload"]["user_chose_key"] = True
+    origin["seed_payload"]["user_chose_bpm"] = True
+    origin["seed_payload"]["user_chose_meter"] = True
 
 
 def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
     _sync_vision_fields_from_doc(doc)
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
     center, side = st.columns([2.3, 1])
     with center:
         st.markdown(
             """
 <div class="composer-phase-card">
   <h3>Song Vision</h3>
-  <p>Capture the heart of your song before structure or chords. Only genre and your idea are required.</p>
+  <p>Establish genre, mood, and the song's key / BPM / meter. Structure and section writing come next — freely, not as a locked wizard.</p>
 </div>
             """,
             unsafe_allow_html=True,
         )
-        st.selectbox("Genre", COMPOSITION_GENRES, key="composer_vision_genre")
+        st.selectbox("Genre / style", COMPOSITION_GENRES, key="composer_vision_genre")
         st.text_area(
-            "What kind of song do you want to write?",
+            "What kind of song do you want to create?",
             key="composer_vision_idea",
             height=100,
             placeholder="One or two sentences about theme, story, or feeling.",
         )
+
+        st.markdown("**Key · BPM · Meter** — owned by this composition")
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            st.selectbox("Key", key_labels, key="composer_vision_key")
+        with k2:
+            st.number_input("BPM", min_value=40, max_value=240, step=1, key="composer_vision_bpm")
+        with k3:
+            st.selectbox("Meter", meter_options, key="composer_vision_meter")
+        if str(session_state.get("composer_vision_meter") or "") == COMPOSITION_METER_CUSTOM:
+            st.text_input("Custom meter (e.g. 11/8)", key="composer_vision_meter_custom", placeholder="11/8")
+
         st.text_input("Working title", key="composer_vision_title")
         with st.expander("Mood, energy & inspiration"):
             st.text_input("Mood / emotion", key="composer_vision_mood")
             st.selectbox("Energy level", COMPOSITION_ENERGY_LEVELS, key="composer_vision_energy")
             st.text_input("Artists or songs that inspire this", key="composer_vision_refs")
-            st.checkbox("Instrumental piece (skip lyrics phase)", key="composer_vision_instrumental")
-        with st.expander("Practice key, tempo & time signature"):
-            k1, k2, k3 = st.columns(3)
-            with k1:
-                st.selectbox("Practice key", COMPOSITION_PRACTICE_KEYS, key="composer_vision_key")
-            with k2:
-                st.number_input("Tempo (BPM)", min_value=40, max_value=220, step=1, key="composer_vision_bpm")
-            with k3:
-                st.selectbox("Time signature", CPL_TIME_SIGNATURES, key="composer_vision_meter")
+            st.checkbox("Instrumental piece (lyrics not applicable)", key="composer_vision_instrumental")
 
-        if st.button("Refresh suggestions from idea", key="composer_vision_resuggest"):
+        if st.button("Suggest mood / energy from idea (does not overwrite Key/BPM/Meter)", key="composer_vision_resuggest"):
             genre = str(st.session_state.get("composer_vision_genre") or "Pop")
             idea = str(st.session_state.get("composer_vision_idea") or "")
             hints = suggest_musical_defaults(genre=genre, song_idea=idea)
             st.session_state["composer_vision_mood"] = hints["mood"]
             st.session_state["composer_vision_energy"] = hints["energy"]
-            st.session_state["composer_vision_key"] = hints["key"]
-            st.session_state["composer_vision_bpm"] = hints["bpm"]
-            st.session_state["composer_vision_meter"] = hints["meter"]
             st.rerun()
 
         idea = str(st.session_state.get("composer_vision_idea") or "").strip()
@@ -1164,19 +1307,42 @@ def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
             new_label = st.selectbox("Section type", COMPOSER_SECTION_LABELS, key="composer_structure_add_label")
         with a2:
             insert_after = st.checkbox("Insert after selected", value=bool(selected_id and sections), key="composer_structure_insert_after")
+        custom_name = ""
+        if str(new_label) == "Custom":
+            custom_name = st.text_input(
+                "Custom section name",
+                key="composer_structure_custom_name",
+                placeholder="e.g. Final Chorus · Tag",
+            )
         if st.button("+ Add section", key="composer_structure_add_btn", use_container_width=True):
             after = selected_id if insert_after and selected_id else None
-            sec = add_section(doc, new_label, after_id=after)
+            label = "Custom" if str(new_label) == "Custom" else str(new_label)
+            sec = add_section(doc, label, after_id=after)
+            if str(new_label) == "Custom" and str(custom_name or "").strip():
+                sec["label_variant"] = str(custom_name).strip()[:80]
             session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec["id"]
             _save_doc(session_state, doc)
             st.rerun()
 
-        if sections and st.button("Continue to Chords →", type="primary", key="composer_structure_continue"):
-            advance_workflow(doc, from_phase="structure")
-            _save_doc(session_state, doc)
-            st.rerun()
+        if sections:
+            st.caption(
+                "After this blueprint exists, jump freely between sections and Chords / Melody / Lyrics — "
+                "you are not locked into finishing every Verse before touching the Chorus."
+            )
+            c_cont, c_mel = st.columns(2)
+            with c_cont:
+                if st.button("Continue to Chords →", type="primary", key="composer_structure_continue", use_container_width=True):
+                    advance_workflow(doc, from_phase="structure")
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            with c_mel:
+                if st.button("Jump to Melody", key="composer_structure_jump_melody", use_container_width=True):
+                    complete_workflow_phase(doc, "structure")
+                    set_workflow_phase(doc, "melody")
+                    _save_doc(session_state, doc)
+                    st.rerun()
         elif not sections:
-            st.caption("Add at least one section before continuing to chords.")
+            st.caption("Add at least one section before composing chords or melody.")
 
     with side:
         _render_coach_panel(doc, lead=_structure_coach_html(doc))
@@ -1382,22 +1548,43 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             value=str(intent.get("hum_notes") or ""),
             key=f"composer_melody_hum_{active_id}",
             height=70,
-            placeholder="Describe what you're hearing — or use Record below when harmony is ready.",
+            placeholder="Describe what you're hearing — or record below when ready.",
         )
         if has_harmony:
-            st.caption("Record over looping chords (beta — analysis builds an editable melody in a future update).")
+            st.markdown(
+                '<div class="composer-coming-soon">'
+                "<strong>Hum → notation:</strong> browser recording is available. "
+                "Automatic pitch/rhythm detection and staff notation are "
+                "<em>Coming soon</em> — recordings are kept as a capture marker, "
+                "not claimed as transcribed notes."
+                "</div>",
+                unsafe_allow_html=True,
+            )
             try:
                 audio = st.audio_input(
-                    "Record a hum or melody",
+                    "Record a hum or melody idea",
                     key=f"composer_melody_record_{active_id}",
                 )
                 if audio is not None:
+                    # Persist capture metadata only — do not invent note detection.
+                    capture = intent.setdefault("hum_capture", {})
+                    try:
+                        raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+                    except Exception:
+                        raw = b""
+                    capture["captured"] = True
+                    capture["bytes_len"] = len(raw or b"")
+                    capture["analysis_status"] = "coming_soon"
+                    capture["note_detection"] = False
                     st.info(
-                        "Recording captured. Automatic note and rhythm detection ships in the next Composition Studio sprint — "
-                        "for now, describe what you sang in the box above or pick a concept below."
+                        "Recording captured for this section. "
+                        "Note and rhythm detection is Coming soon — "
+                        "describe what you sang above or pick a melody concept below."
                     )
             except Exception:
                 st.caption("Audio recording will appear here in your browser when supported.")
+        else:
+            st.caption("Add chords for this section to loop harmony while you hum.")
 
         if (
             remember != intent.get("remember")
@@ -1728,17 +1915,35 @@ def _render_chords_lane(
 def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
     g = doc.setdefault("global", {})
     meta = doc.setdefault("metadata", {})
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
     c1, c2, c3 = st.columns(3)
     with c1:
-        g["bpm"] = st.number_input("BPM", min_value=40, max_value=220, value=int(g.get("bpm") or 96), step=1)
-    with c2:
-        g["time_signature"] = st.selectbox(
-            "Meter",
-            CPL_TIME_SIGNATURES,
-            index=CPL_TIME_SIGNATURES.index(g.get("time_signature") or "4/4")
-            if g.get("time_signature") in CPL_TIME_SIGNATURES
-            else 0,
+        g["bpm"] = coerce_composition_bpm(
+            st.number_input(
+                "BPM",
+                min_value=40,
+                max_value=240,
+                value=coerce_composition_bpm(g.get("bpm")),
+                step=1,
+                key="composer_rhythm_bpm",
+            )
         )
+    with c2:
+        stored_meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
+        if "composer_rhythm_meter" not in session_state:
+            if stored_meter in COMPOSITION_METERS:
+                session_state["composer_rhythm_meter"] = stored_meter
+                session_state["composer_rhythm_meter_custom"] = ""
+            else:
+                session_state["composer_rhythm_meter"] = COMPOSITION_METER_CUSTOM
+                session_state["composer_rhythm_meter_custom"] = stored_meter
+        meter_choice = st.selectbox("Meter", meter_options, key="composer_rhythm_meter")
+        if meter_choice == COMPOSITION_METER_CUSTOM:
+            custom = st.text_input("Custom meter", key="composer_rhythm_meter_custom", placeholder="11/8")
+            g["time_signature"] = coerce_composition_meter(custom)
+        else:
+            g["time_signature"] = coerce_composition_meter(meter_choice)
     with c3:
         g["progression_style"] = st.selectbox(
             "Style",
@@ -1746,20 +1951,25 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
             index=CPL_PROGRESSION_STYLES.index(g.get("progression_style") or "Pop")
             if g.get("progression_style") in CPL_PROGRESSION_STYLES
             else 0,
+            key="composer_rhythm_style",
         )
     g["groove_style"] = st.selectbox(
         "Groove",
         ["Auto", "Ballad", "Pop groove", "Rock groove", "Jazz swing", "Bossa nova"],
         index=0,
+        key="composer_rhythm_groove",
     )
-    g["original_key_center"] = st.selectbox(
-        "Written key",
-        list(COMPOSITION_PRACTICE_KEYS),
-        index=list(COMPOSITION_PRACTICE_KEYS).index(g.get("original_key_center") or "C")
-        if g.get("original_key_center") in COMPOSITION_PRACTICE_KEYS
-        else 0,
+    current_label = coerce_composition_key_choice(
+        str(g.get("original_key_label") or "")
+        or composition_key_label_from_token(str(g.get("original_key_center") or "C"))
     )
-    meta["mood"] = st.text_input("Mood / emotion (optional)", value=str(meta.get("mood") or ""))
+    if "composer_rhythm_key" not in session_state:
+        session_state["composer_rhythm_key"] = current_label
+    picked_label = st.selectbox("Song key", key_labels, key="composer_rhythm_key")
+    label = coerce_composition_key_choice(str(picked_label or current_label))
+    g["original_key_label"] = label
+    g["original_key_center"] = composition_key_token_from_choice(label)
+    meta["mood"] = st.text_input("Mood / emotion (optional)", value=str(meta.get("mood") or ""), key="composer_rhythm_mood")
     if st.button("Apply rhythm settings", key="composer_apply_rhythm", type="primary"):
         meta["style"] = g.get("progression_style") or meta.get("style")
         _save_doc(session_state, doc)
@@ -1816,6 +2026,7 @@ def _render_workflow_section_strip(
         st.info("Add sections in Song Structure first.")
         return
     active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    st.caption("Song sections — select any section anytime")
     cols = st.columns(min(len(sections), 6))
     for i, sec in enumerate(sections):
         sid = str(sec.get("id") or "")
@@ -1832,6 +2043,8 @@ def _render_workflow_section_strip(
                 session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
                 invalidate_composer_preview(session_state)
                 st.rerun()
+    if active_id:
+        st.markdown(_section_status_html(doc, active_id), unsafe_allow_html=True)
     if len(sections) > 6:
         labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
         ids = [str(s.get("id") or "") for s in sections]
@@ -2397,25 +2610,51 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
     with side:
         feeling = str((edit_section or section).get("harmony", {}).get("feeling") or default_feeling_for_section(section))
         _render_coach_panel(doc, lead=coach_line_for_section(doc, section, feeling=feeling))
-        with st.expander("Song tempo & key"):
+        with st.expander("Song key · BPM · meter"):
             g = doc.setdefault("global", {})
-            g["original_key_center"] = st.selectbox(
-                "Practice key",
-                list(COMPOSITION_PRACTICE_KEYS),
-                index=list(COMPOSITION_PRACTICE_KEYS).index(g.get("original_key_center") or "C")
-                if g.get("original_key_center") in COMPOSITION_PRACTICE_KEYS
-                else 0,
+            key_labels = composition_key_choice_labels()
+            current_label = coerce_composition_key_choice(
+                str(g.get("original_key_label") or "")
+                or composition_key_label_from_token(str(g.get("original_key_center") or "C"))
+            )
+            if f"composer_chords_key_{doc.get('id')}" not in session_state:
+                session_state[f"composer_chords_key_{doc.get('id')}"] = current_label
+            picked = st.selectbox(
+                "Key",
+                key_labels,
                 key=f"composer_chords_key_{doc.get('id')}",
             )
-            g["bpm"] = st.number_input(
+            bpm_val = st.number_input(
                 "Tempo (BPM)",
                 min_value=40,
-                max_value=220,
-                value=int(g.get("bpm") or 96),
+                max_value=240,
+                value=coerce_composition_bpm(g.get("bpm")),
                 step=1,
                 key=f"composer_chords_bpm_{doc.get('id')}",
             )
-            if st.button("Apply", key="composer_chords_apply_globals"):
+            meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
+            stored_meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
+            meter_key = f"composer_chords_meter_{doc.get('id')}"
+            custom_key = f"composer_chords_meter_custom_{doc.get('id')}"
+            if meter_key not in session_state:
+                if stored_meter in COMPOSITION_METERS:
+                    session_state[meter_key] = stored_meter
+                    session_state[custom_key] = ""
+                else:
+                    session_state[meter_key] = COMPOSITION_METER_CUSTOM
+                    session_state[custom_key] = stored_meter
+            st.selectbox("Meter", meter_options, key=meter_key)
+            if str(session_state.get(meter_key) or "") == COMPOSITION_METER_CUSTOM:
+                st.text_input("Custom meter", key=custom_key, placeholder="11/8")
+            if st.button("Apply song settings", key="composer_chords_apply_globals"):
+                label = coerce_composition_key_choice(str(picked or current_label))
+                g["original_key_label"] = label
+                g["original_key_center"] = composition_key_token_from_choice(label)
+                g["bpm"] = coerce_composition_bpm(bpm_val)
+                meter_choice = str(session_state.get(meter_key) or "4/4")
+                if meter_choice == COMPOSITION_METER_CUSTOM:
+                    meter_choice = str(session_state.get(custom_key) or "").strip()
+                g["time_signature"] = coerce_composition_meter(meter_choice)
                 _save_doc(session_state, doc)
                 st.rerun()
         _render_library_sidebar(session_state)

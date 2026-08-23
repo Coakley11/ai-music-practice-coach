@@ -25,7 +25,9 @@ COMPOSER_SECTION_LABELS: tuple[str, ...] = (
     "Bridge",
     "Solo",
     "Interlude",
+    "Breakdown",
     "Outro",
+    "Custom",
 )
 
 REPEAT_LINK_LABELS: frozenset[str] = frozenset({"Verse", "Chorus", "Pre-Chorus", "Bridge"})
@@ -67,7 +69,9 @@ SECTION_TYPE_CSS: dict[str, str] = {
     "Bridge": "bridge",
     "Solo": "solo",
     "Interlude": "interlude",
+    "Breakdown": "interlude",
     "Outro": "outro",
+    "Custom": "interlude",
 }
 
 DEFAULT_PROGRESSION_STYLE = "Pop"
@@ -75,6 +79,20 @@ DEFAULT_GROOVE = "Auto"
 DEFAULT_BPM = 96
 DEFAULT_KEY = "C"
 DEFAULT_METER = "4/4"
+DEFAULT_KEY_LABEL = "C major"
+
+# Common meters plus room for a free-form custom value (e.g. 11/8).
+COMPOSITION_METERS: tuple[str, ...] = (
+    "4/4",
+    "3/4",
+    "6/8",
+    "12/8",
+    "5/4",
+    "7/8",
+    "2/4",
+    "9/8",
+)
+COMPOSITION_METER_CUSTOM = "Custom…"
 
 COMPOSITION_PHASES: tuple[str, ...] = (
     "vision",
@@ -108,6 +126,8 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Other",
 )
 
+# Legacy short tokens kept for older documents / tests. Prefer
+# ``composition_key_choice_labels()`` for musician-facing UI.
 COMPOSITION_PRACTICE_KEYS: tuple[str, ...] = (
     "C",
     "G",
@@ -143,6 +163,119 @@ SEED_TYPES: frozenset[str] = frozenset(
         "mixed",
     }
 )
+
+
+def composition_key_choice_labels() -> list[str]:
+    """Musician-facing key dropdown — major + minor with distinct enharmonic spellings.
+
+    C# minor and Db minor remain separate choices. Built from music_theory SSOT.
+    """
+    from music_theory import ENHARMONIC_MAJOR_KEYS, ENHARMONIC_MINOR_KEYS, display_key_label
+
+    labels: list[str] = []
+    seen: set[str] = set()
+    for token in list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR_KEYS):
+        label = display_key_label(token)
+        if label and label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return labels
+
+
+def composition_key_token_from_choice(choice: str) -> str:
+    """Map UI label ('Db minor') → composition token ('Dbm'), preserving tonic spelling."""
+    text = str(choice or "").strip()
+    if not text:
+        return DEFAULT_KEY
+    try:
+        from music_theory import split_key_center
+
+        tonic, mode = split_key_center(text)
+        tonic = str(tonic or "").strip() or DEFAULT_KEY
+        if str(mode).lower() == "minor":
+            return tonic if tonic.endswith("m") else f"{tonic}m"
+        return tonic
+    except Exception:
+        return text
+
+
+def composition_key_label_from_token(token: str) -> str:
+    """Map composition token ('Dbm') → UI label ('Db minor'), preserving spelling."""
+    text = str(token or "").strip() or DEFAULT_KEY
+    try:
+        from music_theory import display_key_label
+
+        label = str(display_key_label(text) or "").strip()
+        labels = composition_key_choice_labels()
+        if label in labels:
+            return label
+        # Token may already be a label.
+        if text in labels:
+            return text
+        return label or DEFAULT_KEY_LABEL
+    except Exception:
+        return DEFAULT_KEY_LABEL
+
+
+def coerce_composition_key_choice(choice: str, *, fallback: str = DEFAULT_KEY_LABEL) -> str:
+    """Return a label present in ``composition_key_choice_labels()``."""
+    options = composition_key_choice_labels()
+    text = str(choice or "").strip()
+    if text in options:
+        return text
+    if text:
+        mapped = composition_key_label_from_token(text)
+        if mapped in options:
+            return mapped
+    if fallback in options:
+        return fallback
+    return options[0] if options else DEFAULT_KEY_LABEL
+
+
+_METER_RE = re.compile(r"^([1-9]\d{0,1})\s*/\s*([1-9]\d{0,1})$")
+
+
+def coerce_composition_meter(value: str, *, fallback: str = DEFAULT_METER) -> str:
+    """Normalize a meter string (common list or custom N/D)."""
+    text = str(value or "").strip().replace(" ", "")
+    if not text or text == COMPOSITION_METER_CUSTOM:
+        return fallback if fallback else DEFAULT_METER
+    if text in COMPOSITION_METERS:
+        return text
+    m = _METER_RE.match(text)
+    if m:
+        return f"{int(m.group(1))}/{int(m.group(2))}"
+    return fallback if fallback else DEFAULT_METER
+
+
+def coerce_composition_bpm(value: Any, *, fallback: int = DEFAULT_BPM) -> int:
+    try:
+        bpm = int(value)
+    except (TypeError, ValueError):
+        bpm = int(fallback or DEFAULT_BPM)
+    return max(40, min(240, bpm))
+
+
+def document_has_structure(doc: dict[str, Any]) -> bool:
+    return bool(ordered_sections(doc))
+
+
+def section_lane_status(doc: dict[str, Any], section_id: str) -> dict[str, str]:
+    """Per-section completion: complete / incomplete / not_applicable."""
+    sec = section_by_id(doc, section_id)
+    wf = ensure_workflow(doc)
+    skip_lyrics = bool(wf.get("skip_lyrics"))
+    if not sec:
+        return {"chords": "incomplete", "melody": "incomplete", "lyrics": "not_applicable" if skip_lyrics else "incomplete"}
+    return {
+        "chords": "complete" if section_has_resolved_chords(doc, section_id) else "incomplete",
+        "melody": "complete" if section_has_melody(sec) else "incomplete",
+        "lyrics": (
+            "not_applicable"
+            if skip_lyrics
+            else ("complete" if section_has_lyrics(sec) else "incomplete")
+        ),
+    }
 
 
 def _now_iso() -> str:
@@ -279,14 +412,30 @@ def advance_workflow(doc: dict[str, Any], *, from_phase: str | None = None) -> s
 
 
 def phase_is_reachable(doc: dict[str, Any], phase: str) -> bool:
-    """Backward navigation and revisiting completed phases — not forward jumps."""
+    """Guided-but-nonlinear navigation.
+
+    Vision and Structure are always available once a composition exists.
+    After structure sections exist (or Structure is completed), Chords / Melody /
+    Lyrics / Review are freely reachable so the composer can jump between
+    sections and lanes without a one-way lock.
+    """
     if phase not in COMPOSITION_PHASES:
         return False
     wf = ensure_workflow(doc)
+    if phase == "lyrics" and wf.get("skip_lyrics"):
+        return False
+
     current = get_workflow_phase(doc)
     completed = set(wf.get("completed_phases") or [])
     if phase == current or phase in completed:
         return True
+    if phase in {"vision", "structure"}:
+        return True
+
+    structure_ready = ("structure" in completed) or document_has_structure(doc)
+    if phase in {"chords", "melody", "lyrics", "review"} and structure_ready:
+        return True
+
     try:
         return COMPOSITION_PHASES.index(phase) < COMPOSITION_PHASES.index(current)
     except ValueError:
@@ -294,7 +443,7 @@ def phase_is_reachable(doc: dict[str, Any], phase: str) -> bool:
 
 
 def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
-    """Lightweight heuristics for mood, energy, tempo, key, and meter."""
+    """Optional heuristics for mood/energy/tempo/key/meter — never forced ownership."""
     text = f"{genre} {song_idea}".lower()
     mood = ""
     energy = COMPOSITION_ENERGY_LEVELS[1]
@@ -349,11 +498,13 @@ def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
     if not mood:
         mood = "Open — still taking shape"
 
+    key_label = composition_key_label_from_token(key)
     return {
         "mood": mood,
         "energy": energy,
         "bpm": bpm,
         "key": key,
+        "key_label": key_label,
         "meter": meter,
         "groove": groove,
         "style": style,
@@ -369,11 +520,33 @@ def bootstrap_from_vision(
     energy: str = "",
     references: str = "",
     instrumental: bool = False,
+    key: str = "",
+    bpm: Any = None,
+    meter: str = "",
 ) -> dict[str, Any]:
-    """Create a new document from Phase 1 Song Vision (minimal required fields)."""
+    """Create a new document from Song Vision with user-owned key / BPM / meter.
+
+    Optional ``key`` / ``bpm`` / ``meter`` are authoritative when provided.
+    Heuristic suggestions only fill gaps — they do not silently override the user.
+    """
     genre = str(genre or "").strip() or "Pop"
     song_idea = str(song_idea or "").strip()
     suggestions = suggest_musical_defaults(genre=genre, song_idea=song_idea)
+
+    key_raw = str(key or "").strip()
+    if key_raw:
+        key_label = coerce_composition_key_choice(key_raw)
+        key_token = composition_key_token_from_choice(key_label)
+    else:
+        key_token = str(suggestions["key"] or DEFAULT_KEY)
+        key_label = composition_key_label_from_token(key_token)
+
+    bpm_value = coerce_composition_bpm(
+        bpm if bpm is not None and str(bpm).strip() != "" else suggestions["bpm"]
+    )
+    meter_value = coerce_composition_meter(
+        meter if str(meter or "").strip() else suggestions["meter"]
+    )
 
     working_title = str(title or "").strip()
     if not working_title and song_idea:
@@ -388,6 +561,10 @@ def bootstrap_from_vision(
             "genre": genre,
             "references": str(references or "").strip(),
             "energy": str(energy or suggestions["energy"]).strip(),
+            "key_label": key_label,
+            "user_chose_key": bool(key_raw),
+            "user_chose_bpm": bpm is not None and str(bpm).strip() != "",
+            "user_chose_meter": bool(str(meter or "").strip()),
         },
     }
     doc = {
@@ -407,9 +584,10 @@ def bootstrap_from_vision(
             "description": song_idea[:2000],
         },
         "global": {
-            "original_key_center": suggestions["key"],
-            "time_signature": suggestions["meter"],
-            "bpm": suggestions["bpm"],
+            "original_key_center": key_token,
+            "original_key_label": key_label,
+            "time_signature": meter_value,
+            "bpm": bpm_value,
             "groove_style": suggestions["groove"],
             "progression_style": suggestions["style"],
         },
@@ -424,6 +602,7 @@ def bootstrap_from_vision(
 def default_global() -> dict[str, Any]:
     return {
         "original_key_center": DEFAULT_KEY,
+        "original_key_label": DEFAULT_KEY_LABEL,
         "time_signature": DEFAULT_METER,
         "bpm": DEFAULT_BPM,
         "groove_style": DEFAULT_GROOVE,
@@ -1038,12 +1217,17 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
     groove = str(g.get("groove_style") or DEFAULT_GROOVE)
     if groove == "Auto":
         groove = f"{style} groove" if "groove" not in style.lower() else style
+    key_token = str(g.get("original_key_center") or DEFAULT_KEY)
+    key_label = str(g.get("original_key_label") or "").strip() or composition_key_label_from_token(
+        key_token
+    )
     return {
-        "bpm": int(g.get("bpm") or DEFAULT_BPM),
-        "time_signature": str(g.get("time_signature") or DEFAULT_METER),
+        "bpm": coerce_composition_bpm(g.get("bpm")),
+        "time_signature": coerce_composition_meter(str(g.get("time_signature") or DEFAULT_METER)),
         "style": style,
         "groove": groove,
-        "key_center": str(g.get("original_key_center") or DEFAULT_KEY),
+        "key_center": key_token,
+        "key_label": key_label,
         "mood": str(meta.get("mood") or ""),
     }
 
@@ -1051,7 +1235,7 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
 def document_summary_line(doc: dict[str, Any]) -> str:
     pg = playback_globals(doc)
     parts = [
-        pg["key_center"],
+        pg.get("key_label") or pg["key_center"],
         pg["style"],
         f"{pg['bpm']} BPM",
         pg["time_signature"],
