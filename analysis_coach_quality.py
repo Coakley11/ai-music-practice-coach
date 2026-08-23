@@ -200,8 +200,11 @@ def build_analysis_status_message(
     Focuses (+ criteria + single-part baselines). Non-target project-instrument
     Focuses (e.g. Piano Comping) are arrangement context and must NOT appear.
 
-    Multitrack Mix may still advertise ensemble baselines such as balance when
-    comparative/ensemble evidence is in scope.
+    Multitrack Mix ownership
+    ------------------------
+    Spinner phrases include **every project instrument** + its Practice Focuses
+    (+ criteria + ensemble baselines such as timing cohesion, groove, balance,
+    and interaction). Do not collapse Mix to the first/primary instrument.
     """
     ctx = dict(ctx or {})
     layer_mode = _is_multitrack_layer_ctx(ctx, multitrack=multitrack)
@@ -232,11 +235,38 @@ def build_analysis_status_message(
             for foc in foc_list[:4]:
                 mt_bits.append(f"{short} {foc.lower()}" if short else foc.lower())
         else:
-            # Mix / ensemble: per-instrument Focus phrases remain useful.
+            # Mix / ensemble: one musician-facing phrase per project instrument.
             for inst, foc_list in instrument_focuses.items():
                 short = _instrument_short(str(inst))
-                for foc in _as_str_list(foc_list)[:2]:
-                    mt_bits.append(f"{short} {foc.lower()}" if short else foc.lower())
+                display = str(inst).strip() or short
+                focs = _as_str_list(foc_list)[:3]
+                if not focs:
+                    continue
+                # Avoid "guitar rhythm guitar" — drop redundant instrument words in Focus labels.
+                nice: list[str] = []
+                for foc in focs:
+                    fl = foc.lower().strip()
+                    for token in filter(None, {short, display.lower(), *(display.lower().split())}):
+                        if fl == token:
+                            fl = "role"
+                            break
+                        if fl.startswith(token + " "):
+                            fl = fl[len(token) + 1 :].strip()
+                        if fl.endswith(" " + token):
+                            fl = fl[: -(len(token) + 1)].strip()
+                    # Role Focuses read better as "rhythm role" than bare "rhythm guitar".
+                    if "rhythm" in fl and "role" not in fl and "guitar" in (display.lower() + " " + short):
+                        fl = "rhythm role"
+                    elif fl.endswith(" guitar") and "guitar" in (display.lower() + " " + short):
+                        fl = fl[: -len(" guitar")].strip() + " role"
+                    nice.append(fl or foc.lower())
+                if len(nice) == 1:
+                    phrase = f"{display} {nice[0]}"
+                elif len(nice) == 2:
+                    phrase = f"{display} {nice[0]} and {nice[1]}"
+                else:
+                    phrase = f"{display} {', '.join(nice[:-1])}, and {nice[-1]}"
+                mt_bits.append(phrase)
         if mt_bits:
             focuses = mt_bits
         elif layer_mode and target:
@@ -265,13 +295,18 @@ def build_analysis_status_message(
         if _focus_token_key(foc) in criteria_keys:
             continue
         focus_candidates.append(foc)
-    # Layer: surface more target Focuses (Breath Support + Dynamics + Tone).
-    focus_limit = 4 if layer_mode else 2
+    # Layer: surface more target Focuses. Mix: keep every project-instrument phrase.
+    focus_limit = 4 if layer_mode else (8 if multitrack else 2)
     parts.extend(_dedupe_labels(focus_candidates, limit=focus_limit))
 
     if multitrack and not layer_mode:
-        # Mix / ensemble baselines — balance is meaningful with comparative evidence.
-        ensemble_first = ["timing", "groove", "balance", "ensemble interaction"]
+        # Mix / ensemble baselines — balance + interaction are first-class for Mix.
+        ensemble_first = [
+            "timing cohesion",
+            "groove",
+            "balance",
+            "interaction",
+        ]
         baseline_pick = []
         present = {_focus_token_key(p) for p in parts}
         for area in ensemble_first:

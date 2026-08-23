@@ -262,13 +262,48 @@ def _is_mixed_backing(ctx: dict[str, Any] | None) -> bool:
     return "backing" in rtype or bool(ctx.get("backing_track_context"))
 
 
+def _is_multitrack_mix_ctx(ctx: dict[str, Any] | None) -> bool:
+    ctx = dict(ctx or {})
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    mode = str(ctx.get("multitrack_mode") or "").strip().lower()
+    return ("mix" in rtype) or mode.startswith("mix")
+
+
+def _mix_has_isolated_stems(
+    ctx: dict[str, Any] | None,
+    *,
+    uploaded_track_count: int | None = None,
+) -> bool:
+    ctx = dict(ctx or {})
+    if uploaded_track_count is None:
+        uploaded_track_count = int(
+            ctx.get("uploaded_track_count")
+            or ctx.get("comparison_stem_count")
+            or 1
+        )
+    if int(uploaded_track_count or 1) >= 2:
+        return True
+    return bool(ctx.get("has_isolated_stems") or ctx.get("source_separated"))
+
+
 def _mixed_backing_subject(ctx: dict[str, Any] | None, target: str = "") -> str:
+    if _is_multitrack_mix_ctx(ctx) and not _mix_has_isolated_stems(ctx):
+        return "The ensemble mix"
     if _is_mixed_backing(ctx):
         return "The mixed recording"
     return (str(target or "").strip() or "This take")
 
 
 def _mixed_attribution_confidence(ctx: dict[str, Any] | None, *, family: str = "") -> str:
+    if _is_multitrack_mix_ctx(ctx) and not _mix_has_isolated_stems(ctx):
+        return (
+            "Limited instrument attribution — one mixed ensemble file without isolated "
+            "stems or source separation; treat per-instrument claims cautiously."
+        )
+    if bool(ctx and ctx.get("mix_polyphony_limited_attribution")):
+        return (
+            "Limited instrument attribution — ensemble-mix cues only (no isolated stem)."
+        )
     if not _is_mixed_backing(ctx):
         return "High target attribution (no backing track in this take)."
     return (
@@ -1216,6 +1251,459 @@ def assign_instruments_to_tracks(
     return out
 
 
+
+def build_mix_focus_analysis(
+    *,
+    features: Any = None,
+    scores: dict[str, Any] | None = None,
+    categories: dict[str, Any] | None = None,
+    ctx: dict[str, Any] | None = None,
+    musical_metrics: dict[str, Any] | None = None,
+    uploaded_track_count: int = 1,
+) -> list[dict[str, Any]]:
+    """Practice Focus blocks for every Mix instrument mapping.
+
+    One mixed file => limited attribution. Multiple stems => stronger per-instrument evidence.
+    """
+    ctx = dict(ctx or {})
+    instruments = [str(x).strip() for x in (ctx.get("instruments") or []) if str(x).strip()]
+    mapping = prune_instrument_focuses_to_project(ctx.get("instrument_focuses"), instruments)
+    isolated = _mix_has_isolated_stems(ctx, uploaded_track_count=uploaded_track_count)
+    scores = dict(scores or {})
+    categories = dict(categories or {})
+    blocks: list[dict[str, Any]] = []
+
+    for inst in instruments:
+        focuses = coerce_focus_list(mapping.get(inst))
+        if not focuses:
+            continue
+        layer_ctx = dict(ctx)
+        layer_ctx["target_layer"] = inst
+        layer_ctx["instrument_focuses"] = {inst: list(focuses)}
+        layer_ctx["practice_focuses"] = list(focuses)
+        layer_ctx["uploaded_track_count"] = int(uploaded_track_count or 1)
+        # For a single mixed file, force limited-attribution wording even without backing track.
+        if not isolated:
+            layer_ctx["backing_track_context"] = True
+            layer_ctx["mix_polyphony_limited_attribution"] = True
+        layer_blocks = build_target_layer_focus_analysis(
+            features=features,
+            scores=scores,
+            categories=categories,
+            ctx=layer_ctx,
+            musical_metrics=musical_metrics,
+        )
+        for block in layer_blocks:
+            if not isinstance(block, dict):
+                continue
+            row = dict(block)
+            row["instrument"] = inst
+            row["target_layer"] = inst
+            if not isolated:
+                row["attribution_confidence"] = (
+                    "Limited instrument attribution — one mixed ensemble file without "
+                    "isolated stems; avoid treating this as a definitive solo-instrument score."
+                )
+                # Soften definitive instrument-subject claims.
+                findings = []
+                for line in list(row.get("findings") or []):
+                    text = str(line).strip()
+                    if not text:
+                        continue
+                    low = text.lower()
+                    if low.startswith(inst.lower() + " "):
+                        text = (
+                            f"Where {inst} is prominent in the ensemble mix, "
+                            + text[len(inst) :].strip()
+                        )
+                    elif "high target attribution" in low:
+                        continue
+                    findings.append(text)
+                findings.insert(
+                    0,
+                    f"{inst} Focus `{row.get('focus')}` is coached from ensemble-mix cues "
+                    "(no isolated stem for this part).",
+                )
+                row["findings"] = findings
+                went = str(row.get("went_well") or "").strip()
+                if went and went.lower().startswith(inst.lower()):
+                    row["went_well"] = (
+                        f"Attack/spectral evidence in the ensemble mix suggests: "
+                        + went[len(inst) :].lstrip(" :,-")
+                    )
+                assess = str(row.get("assessment") or "")
+                if assess and "/100" in assess and "mix-level" not in assess.lower():
+                    row["assessment"] = (
+                        f"Mix-level / limited attribution estimate — {assess}"
+                    )
+                row["attribution_scope"] = "mix_limited"
+                # Do not publish fake isolated numeric scores for polyphonic mix.
+                row["score"] = None
+            else:
+                row["attribution_scope"] = "stem"
+            blocks.append(row)
+    return blocks
+
+
+def build_ensemble_mix_analysis(
+    *,
+    features: Any = None,
+    scores: dict[str, Any] | None = None,
+    ctx: dict[str, Any] | None = None,
+    uploaded_track_count: int = 1,
+    stem_comparisons: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """First-class ensemble Mix analysis section."""
+    ctx = dict(ctx or {})
+    scores = dict(scores or {})
+    isolated = _mix_has_isolated_stems(ctx, uploaded_track_count=uploaded_track_count)
+    instruments = [str(x).strip() for x in (ctx.get("instruments") or []) if str(x).strip()]
+
+    onset_strength = float(_feature_attr(features, "onset_strength_mean", 0.0) or 0.0)
+    onset_density = float(_feature_attr(features, "onset_density", 0.0) or 0.0)
+    groove = float(_feature_attr(features, "groove_tightness", 0.0) or 0.0)
+    centroid = float(_feature_attr(features, "spectral_centroid_mean", 0.0) or 0.0)
+    dyn_flat = float(_feature_attr(features, "dyn_flatness", 0.0) or 0.0)
+    dyn_range = float(_feature_attr(features, "dyn_range", 0.0) or 0.0)
+    energy_note = _energy_trajectory_note(features)
+
+    timing_bits = [
+        f"Pulse/onset density in the ensemble mix ≈ {onset_density:.2f}/sec.",
+        f"Onset strength mean ≈ {onset_strength:.2f} (attack clustering proxy).",
+    ]
+    if scores.get("timing") is not None:
+        try:
+            timing_bits.append(
+                f"Timing cohesion mix-level estimate: {int(scores.get('timing'))}/100."
+            )
+        except (TypeError, ValueError):
+            pass
+
+    groove_bits: list[str] = []
+    if groove > 0:
+        groove_bits.append(
+            f"Groove cohesion proxy: ~{groove * 100:.0f}% of mix onsets near the beat grid."
+        )
+    if scores.get("groove") is not None:
+        try:
+            groove_bits.append(
+                f"Groove mix-level estimate: {int(scores.get('groove'))}/100."
+            )
+        except (TypeError, ValueError):
+            pass
+    meter = str(ctx.get("time_signature") or "").strip()
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        meter = str(song_ctx.get("meter") or meter).strip()
+    if meter:
+        groove_bits.append(f"Meter context for feel coaching: {meter}.")
+
+    if isolated and stem_comparisons:
+        balance_bits = [
+            "Relative stem levels / timing offsets are available from labeled uploads."
+        ]
+        for row in list(stem_comparisons or [])[:6]:
+            if isinstance(row, dict):
+                bit = str(row.get("summary") or row.get("finding") or "").strip()
+                if bit:
+                    balance_bits.append(bit)
+        balance_note = "Stem-aware balance: compare RMS/presence across labeled parts."
+    else:
+        balance_bits = [
+            f"Global mix spectral centroid ≈ {centroid:.0f} Hz (broad spectral balance proxy).",
+            f"Mix dynamic flatness ≈ {dyn_flat:.2f}; RMS span ≈ {dyn_range:.3f}.",
+            "Cannot claim per-instrument level differences without isolated stems or source separation.",
+        ]
+        balance_note = (
+            "One mixed file: broad mix balance proxies only — not per-instrument faders."
+        )
+
+    interaction_bits = [
+        f"Simultaneous onset density proxy ≈ {onset_density:.2f}/sec — denser mixes leave less space.",
+    ]
+    if isolated:
+        interaction_bits.append(
+            "Stem uploads allow comparing entrances/releases and overlap between parts."
+        )
+    else:
+        interaction_bits.append(
+            "Interaction/space coaching uses ensemble density and rests; it does not invent "
+            "isolated instrument behavior from a single blended file."
+        )
+
+    shape_bits: list[str] = []
+    if energy_note:
+        shape_bits.append(str(energy_note))
+    if scores.get("musicality") is not None:
+        try:
+            shape_bits.append(
+                f"Musical shape / arc mix-level estimate: {int(scores.get('musicality'))}/100."
+            )
+        except (TypeError, ValueError):
+            pass
+
+    return {
+        "title": "Ensemble Mix analysis",
+        "input_mode": "stems" if isolated else "single_mix_file",
+        "instruments": instruments,
+        "timing_cohesion": timing_bits,
+        "groove_cohesion": groove_bits,
+        "balance": balance_bits,
+        "balance_policy": balance_note,
+        "interaction_space": interaction_bits,
+        "musical_shape": shape_bits,
+    }
+
+
+def enrich_mix_analysis_result(
+    result: dict[str, Any],
+    ctx: dict[str, Any],
+    *,
+    uploaded_track_count: int = 1,
+    stem_comparisons: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Stamp Mix ownership: all instruments, ensemble-first summary, limited attribution."""
+    import re
+
+    out = dict(result or {})
+    ctx = dict(ctx or {})
+    instruments = [
+        str(x).strip()
+        for x in (ctx.get("instruments") or out.get("instruments") or [])
+        if str(x).strip()
+    ]
+    mapping = prune_instrument_focuses_to_project(ctx.get("instrument_focuses"), instruments)
+    ctx["instruments"] = instruments
+    ctx["instrument_focuses"] = mapping
+    ctx["recording_type"] = str(
+        ctx.get("recording_type") or out.get("recording_type") or RECORDING_TYPE_MT_MIX
+    )
+    ctx["uploaded_track_count"] = int(uploaded_track_count or 1)
+    isolated = _mix_has_isolated_stems(ctx, uploaded_track_count=uploaded_track_count)
+
+    out["multitrack"] = True
+    out["multitrack_mode"] = "mix_stems" if isolated else "mix_single"
+    out["recording_type"] = ctx["recording_type"]
+    out["instruments"] = instruments
+    out["instrument_focuses"] = dict(mapping)
+    flat_focuses: list[str] = []
+    for inst in instruments:
+        for foc in coerce_focus_list(mapping.get(inst)):
+            label = f"{inst} → {foc}"
+            if label not in flat_focuses:
+                flat_focuses.append(label)
+    out["practice_focuses"] = list(flat_focuses)
+    out["uploaded_track_count"] = int(uploaded_track_count or 1)
+    out["has_isolated_stems"] = isolated
+    out["mix_evidence_mode"] = "stems" if isolated else "single_mix_file"
+    out.pop("target_layer", None)
+    out["instrument"] = "Multitrack Mix"
+    out["instrument_display"] = (
+        "Multitrack Mix — " + " + ".join(instruments) if instruments else "Multitrack Mix"
+    )
+
+    if not out.get("ok"):
+        return out
+
+    blocks = build_mix_focus_analysis(
+        features=out.get("features"),
+        scores=out.get("scores") or {},
+        categories=out.get("categories") or {},
+        ctx=ctx,
+        musical_metrics=out.get("musical_metrics") or {},
+        uploaded_track_count=uploaded_track_count,
+    )
+    out["practice_focus_analysis"] = blocks
+    out["target_layer_focus_analysis"] = blocks
+    out["mix_focus_analysis"] = blocks
+
+    ensemble = build_ensemble_mix_analysis(
+        features=out.get("features"),
+        scores=out.get("scores") or {},
+        ctx=ctx,
+        uploaded_track_count=uploaded_track_count,
+        stem_comparisons=stem_comparisons or out.get("stem_comparisons"),
+    )
+    out["ensemble_mix_analysis"] = ensemble
+
+    cats = dict(out.get("categories") or {})
+    if not isolated:
+        for key, cat in list(cats.items()):
+            if not isinstance(cat, dict):
+                continue
+            cat = dict(cat)
+            title = str(cat.get("title") or key)
+            if key in {"pitch", "tone", "technique"}:
+                cat["title"] = f"{title} (mix-level estimate)"
+                findings = [str(x) for x in (cat.get("findings") or []) if str(x).strip()]
+                softened: list[str] = []
+                for line in findings:
+                    low = line.lower()
+                    if any(inst.lower() in low for inst in instruments):
+                        softened.append(
+                            "Mix evidence: "
+                            + line
+                            + " — limited instrument attribution without isolated stems."
+                        )
+                    elif "brightness" in low or "spectral" in low:
+                        if "mix spectral" in low or "mix spectrum" in low:
+                            softened.append(line)
+                        else:
+                            softened.append(
+                                "Mix spectral evidence: " + line
+                            )
+                    else:
+                        softened.append(line)
+                if key == "pitch":
+                    softened.insert(
+                        0,
+                        "Pitch/F0 evidence is lower-confidence in a polyphonic mix and is not "
+                        "treated as a definitive instrument-specific intonation score.",
+                    )
+                if key == "tone":
+                    softened.insert(
+                        0,
+                        "Spectral centroid/brightness here describes the MIX spectrum, "
+                        "not an isolated instrument tone.",
+                    )
+                if key == "technique":
+                    softened.insert(
+                        0,
+                        "Technique deep-dive uses ensemble/mix attack evidence — not a "
+                        "hidden single-instrument technique grade.",
+                    )
+                cat["findings"] = softened
+            cats[key] = cat
+        out["categories"] = cats
+        out["score_scope"] = "mix_level_estimates"
+        out["pitch_evidence_limited"] = True
+
+        scores = dict(out.get("scores") or {})
+        ranked = sorted(
+            ((k, int(v)) for k, v in scores.items() if isinstance(v, (int, float))),
+            key=lambda kv: kv[1],
+        )
+        unsafe = {"pitch", "tone", "technique"}
+        safe = [kv for kv in ranked if kv[0] not in unsafe]
+        prefer = [
+            kv for kv in safe if kv[0] in {"timing", "groove", "musicality", "confidence"}
+        ]
+        pick = prefer or safe or ranked
+        if pick:
+            growth_name, growth_score = pick[0]
+            label_map = {
+                "timing": "timing cohesion",
+                "groove": "groove cohesion",
+                "musicality": "musical shape",
+                "confidence": "ensemble confidence",
+                "pitch": "pitch evidence (limited in polyphonic mix)",
+                "tone": "mix spectral tone",
+                "technique": "mix attack/technique cues",
+            }
+            growth_l = label_map.get(growth_name, growth_name)
+            if growth_name in unsafe:
+                out["biggest_issue"] = (
+                    f"{growth_l} — lower-confidence in this mixed recording and not treated "
+                    f"as a definitive instrument-specific weakness (score {growth_score}/100)."
+                )
+            else:
+                out["biggest_issue"] = (
+                    f"{growth_l} (mix-level estimate {growth_score}/100)."
+                )
+            out["next_focus"] = (
+                f"Prioritize reliable ensemble evidence — {growth_l} — before chasing "
+                "ambiguous polyphonic pitch/tone readings."
+            )
+
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if not isinstance(song_ctx, dict):
+        song_ctx = {}
+    out["selected_song_analysis_context"] = (
+        dict(song_ctx) if song_ctx else out.get("selected_song_analysis_context")
+    )
+    song_name = str(
+        (song_ctx or {}).get("title")
+        or ctx.get("song")
+        or ctx.get("song_source_name")
+        or ""
+    ).strip()
+    song_artist = str((song_ctx or {}).get("artist") or "").strip()
+    song_key = str((song_ctx or {}).get("key") or ctx.get("display_key") or "").strip()
+    ref_bpm = (song_ctx or {}).get("bpm")
+    if ref_bpm in (None, ""):
+        ref_bpm = ctx.get("reference_bpm") or ctx.get("practice_bpm")
+    meter = str((song_ctx or {}).get("meter") or ctx.get("time_signature") or "").strip()
+
+    inst_line = " + ".join(instruments) if instruments else "ensemble"
+    focus_lines = []
+    for inst in instruments:
+        focs = coerce_focus_list(mapping.get(inst))
+        if focs:
+            focus_lines.append(f"{inst} → {format_focus_list(focs)}")
+        else:
+            focus_lines.append(f"{inst} → (no Practice Focus selected)")
+    focus_txt = "; ".join(focus_lines) if focus_lines else "selected Practice Focuses"
+
+    ownership = f"Multitrack Mix: {inst_line}. Practice Focuses: {focus_txt}."
+    if song_name:
+        song_line = f"Selected song: {song_name}"
+        if song_artist:
+            song_line += f" — {song_artist}"
+        if song_key:
+            song_line += f". Concert Key: {song_key}"
+        if meter:
+            song_line += f". Meter: {meter}"
+        if ref_bpm not in (None, ""):
+            try:
+                song_line += f". Reference tempo: {int(float(ref_bpm))} BPM"
+            except (TypeError, ValueError):
+                song_line += f". Reference tempo: {ref_bpm}"
+        song_line += "."
+        ownership = f"{ownership} {song_line}"
+    if not isolated:
+        ownership += (
+            " Input: one mixed ensemble file — ensemble-first analysis with limited "
+            "per-instrument attribution (no isolated stems)."
+        )
+    else:
+        ownership += (
+            " Input: multiple labeled stems — stronger per-instrument evidence is available "
+            "alongside ensemble comparison."
+        )
+
+    summary = str(out.get("coach_summary") or "").strip()
+    summary = re.sub(
+        r"(?i)\s*You asked me to evaluate Practice Focuses:[^.]*\.\s*",
+        " ",
+        summary,
+    )
+    summary = re.sub(r"(?i)\s*Song context:[^.]*\.\s*", " ", summary).strip()
+    if not isolated:
+        summary = re.sub(
+            r"(?i)Biggest growth edge:\s*pitch[^.]*\.\s*",
+            " ",
+            summary,
+        ).strip()
+    if ownership.lower() not in summary.lower():
+        out["coach_summary"] = f"{ownership} {summary}".strip()
+    else:
+        out["coach_summary"] = summary
+
+    ens_lead = (
+        "Ensemble findings prioritize timing cohesion, groove, balance, interaction/space, "
+        "and musical shape."
+    )
+    if "ensemble findings prioritize" not in out["coach_summary"].lower():
+        out["coach_summary"] = f"{out['coach_summary']} {ens_lead}".strip()
+    if out.get("biggest_issue") and "biggest growth edge" not in out["coach_summary"].lower():
+        out["coach_summary"] = (
+            f"{out['coach_summary']} Biggest growth edge: {out['biggest_issue']}"
+        ).strip()
+
+    return out
+
+
+
 def run_multitrack_upload_analysis(
     tracks: list[dict[str, Any]],
     ctx: dict[str, Any],
@@ -1315,50 +1803,35 @@ def run_multitrack_upload_analysis(
         if len(tracks) == 1:
             primary = tracks[0]
             mix_ctx = dict(ctx)
+            mix_ctx["recording_type"] = rtype or RECORDING_TYPE_MT_MIX
+            mix_ctx["multitrack_mode"] = "mix_single"
+            mix_ctx["uploaded_track_count"] = 1
             result = analyze_recording(
                 primary.get("bytes"),
                 str(primary.get("filename") or primary.get("name") or "mix.wav"),
                 mix_ctx,
             )
-            result = dict(result or {})
-            result["multitrack"] = True
-            result["recording_type"] = rtype or RECORDING_TYPE_MT_MIX
+            result = enrich_mix_analysis_result(
+                dict(result or {}),
+                mix_ctx,
+                uploaded_track_count=1,
+            )
             result["workflow"] = ctx.get("workflow")
-            result["instruments"] = instruments
-            result["instrument_focuses"] = dict(ctx.get("instrument_focuses") or {})
-            result["practice_focuses"] = list(ctx.get("practice_focuses") or [])
-            result["multitrack_mode"] = "mix_single"
-            result["uploaded_track_count"] = 1
-            if result.get("ok"):
-                result["coach_summary"] = (
-                    str(result.get("coach_summary") or "")
-                    + (
-                        " Multitrack Mix: treating this upload as the ensemble blend. "
-                        "Per-instrument Practice Focus mappings guide arrangement intent; "
-                        "this single mix file is coached at ensemble level (balance, timing "
-                        "cohesion, groove, interaction) rather than as separately scored stems."
-                    )
-                ).strip()
             return result
 
-        result = analyze_multitrack(tracks, ctx)
-        result = dict(result or {})
-        result["multitrack"] = True
-        result["multitrack_mode"] = "mix_stems"
-        result["uploaded_track_count"] = len(tracks)
-        result.setdefault("recording_type", rtype)
-        result.setdefault("instruments", instruments)
-        result.setdefault("instrument_focuses", dict(ctx.get("instrument_focuses") or {}))
-        result.setdefault("practice_focuses", list(ctx.get("practice_focuses") or []))
-        if isinstance(ctx.get("selected_song_analysis_context"), dict):
-            result["selected_song_analysis_context"] = dict(ctx["selected_song_analysis_context"])
-            song_name = str(ctx["selected_song_analysis_context"].get("title") or "").strip()
-            if song_name and result.get("ok"):
-                summary = str(result.get("coach_summary") or "")
-                if song_name.lower() not in summary.lower():
-                    result["coach_summary"] = (
-                        f"Song context: {song_name}. {summary}"
-                    ).strip()
+        mix_ctx = dict(ctx)
+        mix_ctx["recording_type"] = rtype or RECORDING_TYPE_MT_MIX
+        mix_ctx["multitrack_mode"] = "mix_stems"
+        mix_ctx["uploaded_track_count"] = len(tracks)
+        mix_ctx["has_isolated_stems"] = True
+        result = analyze_multitrack(tracks, mix_ctx)
+        result = enrich_mix_analysis_result(
+            dict(result or {}),
+            mix_ctx,
+            uploaded_track_count=len(tracks),
+            stem_comparisons=list((result or {}).get("stem_comparisons") or []),
+        )
+        result["workflow"] = ctx.get("workflow")
         result["reference_bpm"] = ctx.get("reference_bpm") or ctx.get("practice_bpm")
         result["display_key"] = ctx.get("display_key")
         result["song_source_name"] = ctx.get("song") or ctx.get("song_source_name")

@@ -202,6 +202,27 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         regions = getattr(features, "highlight_regions", []) if features else []
     scores = result.get("scores") or {}
 
+
+    ensemble_html = ""
+    ens = result.get("ensemble_mix_analysis")
+    if isinstance(ens, dict) and ens:
+        def _ens_list(key: str) -> str:
+            items = ens.get(key) or []
+            if not items:
+                return "<li class='ra-muted'>No strong evidence for this dimension.</li>"
+            return "".join(f"<li>{_esc(x)}</li>" for x in items if str(x).strip())
+
+        ensemble_html = f"""
+  <div class="ra-card" style="margin-bottom:14px">
+    <h3>Ensemble Mix analysis</h3>
+    <p class="ra-muted">{_esc(ens.get("balance_policy") or ens.get("input_mode") or "")}</p>
+    <h4>Timing cohesion</h4><ul>{_ens_list("timing_cohesion")}</ul>
+    <h4>Groove cohesion</h4><ul>{_ens_list("groove_cohesion")}</ul>
+    <h4>Balance</h4><ul>{_ens_list("balance")}</ul>
+    <h4>Interaction / space</h4><ul>{_ens_list("interaction_space")}</ul>
+    <h4>Musical shape</h4><ul>{_ens_list("musical_shape")}</ul>
+  </div>"""
+
     score_rows = "".join(
         _score_bar(k.title(), scores.get(k, 0))
         for k in ["timing", "pitch", "technique", "groove", "musicality", "confidence", "tone"]
@@ -233,18 +254,27 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
 
     focus_blocks_html = ""
     focus_blocks = (
-        result.get("practice_focus_analysis")
+        result.get("mix_focus_analysis")
+        or result.get("practice_focus_analysis")
         or result.get("target_layer_focus_analysis")
         or []
     )
     if isinstance(focus_blocks, list) and focus_blocks:
+        rtype_focus = str(result.get("recording_type") or "").strip().lower().replace("_", " ")
+        mode_focus = str(result.get("multitrack_mode") or "").strip().lower()
+        is_mix_focus = ("mix" in rtype_focus) or mode_focus.startswith("mix")
         target_name = _esc(
             result.get("target_layer") or result.get("instrument") or "Target layer"
         )
         block_parts: list[str] = []
+        current_inst = None
         for block in focus_blocks:
             if not isinstance(block, dict):
                 continue
+            inst = str(block.get("instrument") or block.get("target_layer") or "").strip()
+            if is_mix_focus and inst and inst != current_inst:
+                current_inst = inst
+                block_parts.append(f"<h4 style='margin:12px 0 6px'>{_esc(inst)}</h4>")
             foc = _esc(block.get("focus") or "Focus")
             assessment = _esc(block.get("assessment") or "")
             findings = "".join(
@@ -270,12 +300,12 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         arrangement_html = (
             f"<p class='ra-muted'>{_esc(arrangement)}</p>" if arrangement else ""
         )
-        _is_layer = bool(result.get("multitrack") or result.get("target_layer"))
-        _focus_heading = (
-            f"Practice Focus analysis — {target_name}"
-            if _is_layer
-            else "Practice Focus analysis"
-        )
+        if is_mix_focus:
+            _focus_heading = "Practice Focus analysis — Ensemble"
+        elif bool(result.get("multitrack") or result.get("target_layer")):
+            _focus_heading = f"Practice Focus analysis — {target_name}"
+        else:
+            _focus_heading = "Practice Focus analysis"
         focus_blocks_html = f"""
   <div class="ra-card" style="margin-bottom:14px">
     <h3>{_focus_heading}</h3>
@@ -302,11 +332,42 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             ref_line = f"<span class='ra-pill'>Song reference {_esc(str(ref_bpm))}</span>"
 
+    _rtype_cap = str(result.get("recording_type") or "").strip().lower().replace("_", " ")
+    _mode_cap = str(result.get("multitrack_mode") or "").strip().lower()
+    if ("mix" in _rtype_cap) or _mode_cap.startswith("mix"):
+        score_caption = (
+            "Mix-level estimates from the blended recording — not isolated instrument grades."
+        )
+    else:
+        score_caption = (
+            "Scores are coach estimates from rhythm, pitch, dynamics, and articulation — not exam grades."
+        )
+
     duration = float(result.get("duration", 0) or 0)
     duration_text = _esc(f"{duration:.1f}s")
-    instrument_text = _esc(result.get("instrument", ""))
+    rtype_meta = str(result.get("recording_type") or "").strip().lower().replace("_", " ")
+    mode_meta = str(result.get("multitrack_mode") or "").strip().lower()
+    is_mix_meta = ("mix" in rtype_meta) or mode_meta.startswith("mix")
+    instruments_meta = [
+        str(x).strip() for x in (result.get("instruments") or []) if str(x).strip()
+    ]
+    if is_mix_meta:
+        instrument_text = _esc(
+            result.get("instrument_display")
+            or (
+                ("Multitrack Mix — " + " + ".join(instruments_meta))
+                if instruments_meta
+                else "Multitrack Mix"
+            )
+        )
+    else:
+        instrument_text = _esc(result.get("instrument", ""))
     target_pill = ""
-    if result.get("target_layer"):
+    if is_mix_meta and instruments_meta:
+        target_pill = (
+            f"<span class='ra-pill focus'>Mix: {_esc(' + '.join(instruments_meta))}</span>"
+        )
+    elif result.get("target_layer"):
         target_pill = (
             f"<span class='ra-pill focus'>Layer: {_esc(result.get('target_layer'))}</span>"
         )
@@ -366,6 +427,8 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
 
   {focus_blocks_html}
 
+  {ensemble_html}
+
   <div class="ra-card" style="margin-bottom:14px">
     <h3>Playback timeline</h3>
     <div class="ra-wave-wrap">{_waveform_svg(peaks, times, regions)}</div>
@@ -376,7 +439,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <div class="ra-card">
       <h3>Performance scores</h3>
       {score_rows}
-      <p class="ra-muted">Scores are coach estimates from rhythm, pitch, dynamics, and articulation — not exam grades.</p>
+      <p class="ra-muted">{score_caption}</p>
     </div>
     <div class="ra-card">
       <h3>Skill radar</h3>

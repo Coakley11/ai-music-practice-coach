@@ -1209,6 +1209,24 @@ def _is_mixed_backing_ctx(ctx: dict[str, Any] | None) -> bool:
     return "backing" in rtype or bool(ctx.get("backing_track_context"))
 
 
+def _is_multitrack_mix_ctx(ctx: dict[str, Any] | None) -> bool:
+    ctx = dict(ctx or {})
+    rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
+    mode = str(ctx.get("multitrack_mode") or "").strip().lower()
+    return ("mix" in rtype) or mode.startswith("mix")
+
+
+def _mix_polyphony_limits_instrument_scores(ctx: dict[str, Any] | None) -> bool:
+    """True when Mix evidence should not promote instrument-specific pitch/tone claims."""
+    ctx = dict(ctx or {})
+    if not _is_multitrack_mix_ctx(ctx):
+        return False
+    uploaded = int(ctx.get("uploaded_track_count") or ctx.get("comparison_stem_count") or 1)
+    if uploaded >= 2 or ctx.get("has_isolated_stems") or ctx.get("source_separated"):
+        return False
+    return True
+
+
 def build_coach_summary(
     scores: dict[str, int],
     categories: dict[str, dict[str, Any]],
@@ -1232,7 +1250,10 @@ def build_coach_summary(
 
     ctx = ctx or {}
     mixed = _is_mixed_backing_ctx(ctx)
+    mix_poly = _mix_polyphony_limits_instrument_scores(ctx)
     low_conf = {"pitch", "tone"} if mixed else set()
+    if mix_poly:
+        low_conf = {"pitch", "tone", "technique"}
     growth_name, growth_score = weakest_name, weakest_score
     growth_l = weak_l
     if growth_name in low_conf:
@@ -1240,7 +1261,15 @@ def build_coach_summary(
         if alts:
             growth_name, growth_score = alts[0]
             growth_l = label_map.get(growth_name, growth_name)
-    if mixed and weakest_name in low_conf:
+    if mix_poly and weakest_name in low_conf:
+        summary = (
+            f"Ensemble strengths include {strong_l} (mix-level estimate {strongest_score}/100). "
+            f"{weak_l.title()} evidence from this polyphonic mix was weak ({weakest_score}/100), "
+            "but that is not treated as a definitive instrument-specific weakness without isolated stems. "
+            f"A clearer ensemble growth edge: {growth_l} "
+            f"(mix-level estimate {growth_score}/100)."
+        )
+    elif mixed and weakest_name in low_conf:
         summary = (
             f"Your {strong_l} is the brightest spot in this take (score {strongest_score}/100). "
             f"Mixed-recording {weak_l} evidence was weak ({weakest_score}/100), but "
@@ -1495,21 +1524,39 @@ def analyze_recording(
 
         # Explicit Practice Focus analysis (one evidence block per selected Focus).
         try:
-            from multitrack_upload_analysis import build_target_layer_focus_analysis
+            from multitrack_upload_analysis import (
+                build_mix_focus_analysis,
+                build_target_layer_focus_analysis,
+                _is_multitrack_mix_ctx,
+            )
 
             focus_ctx = dict(ctx)
             focus_ctx.setdefault("instruments", [instrument] if instrument else [])
-            if not focus_ctx.get("target_layer"):
-                focus_ctx["target_layer"] = instrument
-            focus_blocks = build_target_layer_focus_analysis(
-                features=features,
-                scores=scores,
-                categories=categories,
-                ctx=focus_ctx,
-                musical_metrics=musical_metrics,
-            )
+            if _is_multitrack_mix_ctx(focus_ctx):
+                focus_blocks = build_mix_focus_analysis(
+                    features=features,
+                    scores=scores,
+                    categories=categories,
+                    ctx=focus_ctx,
+                    musical_metrics=musical_metrics,
+                    uploaded_track_count=int(
+                        focus_ctx.get("uploaded_track_count")
+                        or focus_ctx.get("comparison_stem_count")
+                        or 1
+                    ),
+                )
+            else:
+                if not focus_ctx.get("target_layer"):
+                    focus_ctx["target_layer"] = instrument
+                focus_blocks = build_target_layer_focus_analysis(
+                    features=features,
+                    scores=scores,
+                    categories=categories,
+                    ctx=focus_ctx,
+                    musical_metrics=musical_metrics,
+                )
             result_payload["practice_focus_analysis"] = list(focus_blocks)
-            # Dashboard currently reads the Layer key — reuse for Single too.
+            # Dashboard currently reads the Layer key — reuse for Single/Mix too.
             result_payload["target_layer_focus_analysis"] = list(focus_blocks)
         except Exception:
             result_payload.setdefault("practice_focus_analysis", [])
@@ -1530,10 +1577,19 @@ def analyze_recording(
         # Summarize that selected Focuses + Criteria were evaluated explicitly.
         _pfs = list(result_payload.get("practice_focuses") or [])
         _crit = list(result_payload.get("evaluating_criteria_labels") or [])
+        _imap = result_payload.get("instrument_focuses") or ctx.get("instrument_focuses") or {}
+        if _is_multitrack_mix_ctx(ctx) and isinstance(_imap, dict) and _imap:
+            mapped_bits = []
+            for inst, focs in _imap.items():
+                foc_list = [str(x).strip() for x in (focs or []) if str(x).strip()]
+                if foc_list:
+                    mapped_bits.append(f"{inst} → " + ", ".join(foc_list))
+            if mapped_bits:
+                _pfs = mapped_bits
         if _pfs or _crit:
             bits = []
             if _pfs:
-                bits.append("Practice Focuses: " + ", ".join(_pfs))
+                bits.append("Practice Focuses: " + "; ".join(_pfs))
             if _crit:
                 bits.append("Evaluating Criteria: " + ", ".join(_crit))
             lead = "You asked me to evaluate " + " · ".join(bits) + "."
