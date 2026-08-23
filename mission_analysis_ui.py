@@ -395,6 +395,17 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
     rec = _esc(result.get("mission_next_recommendation", ""))
     strongest = _esc(result.get("mission_strongest", ""))
     weakest = _esc(result.get("mission_weakest", ""))
+    # Ranking pills only when 2+ criteria (single criterion Strongest=Weakest is meaningless).
+    show_ranking = len(missions) >= 2 and bool(strongest) and bool(weakest)
+    ranking_pills = (
+        f"""
+    <div style="margin-top:10px">
+      <span class="ma-pill good">Strongest: {strongest}</span>
+      <span class="ma-pill warn">Weakest: {weakest}</span>
+    </div>"""
+        if show_ranking
+        else ""
+    )
 
     mission_eval = bool(result.get("mission_evaluation_active"))
     heading = criteria_report_heading(mission_evaluation_active=mission_eval)
@@ -430,10 +441,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
     <h3>{heading}</h3>
     <p class="ma-overall">{overall_label}: {overall}%</p>
     <p>{_esc(result.get('mission_coach_summary', ''))}</p>
-    <div style="margin-top:10px">
-      <span class="ma-pill good">Strongest: {strongest}</span>
-      <span class="ma-pill warn">Weakest: {weakest}</span>
-    </div>
+    {ranking_pills}
   </div>
   <div class="ma-grid">
     <div class="ma-card">
@@ -603,10 +611,12 @@ def render_improv_metrics_results(st: Any, result: dict[str, Any]) -> None:
             ),
             f"{overall}%",
         )
-    if result.get("mission_strongest"):
-        st.success(f"Strongest: {result.get('mission_strongest')}")
-    if result.get("mission_weakest"):
-        st.warning(f"Grow next: {result.get('mission_weakest')}")
+    mission_rows = list(result.get("mission_results") or [])
+    if len(mission_rows) >= 2:
+        if result.get("mission_strongest"):
+            st.success(f"Strongest: {result.get('mission_strongest')}")
+        if result.get("mission_weakest"):
+            st.warning(f"Grow next: {result.get('mission_weakest')}")
     went = result.get("went_well") or ""
     improve = result.get("improve_to") or ""
     if not went and result.get("mission_strongest"):

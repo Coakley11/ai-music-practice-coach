@@ -223,9 +223,9 @@ class CriteriaWordingAndDedupeTests(unittest.TestCase):
             "practice_plan": ["Loop at 95 BPM."],
             "mission_evaluation_active": False,
             "overall_improv_score": 88,
-            "mission_coach_summary": "Overall selected-criteria assessment: **88%**.",
-            "mission_strongest": "Scale/mode usage — 88%",
-            "mission_weakest": "Scale/mode usage — 88%",
+            "mission_coach_summary": "Overall selected-criteria assessment: **88%**. **Scale/mode usage**: 88%.",
+            "mission_strongest": "",
+            "mission_weakest": "",
             "mission_next_recommendation": "Play the G major scale against Perfect's chords.",
             "mission_results": [
                 {

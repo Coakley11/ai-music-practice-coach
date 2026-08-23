@@ -404,5 +404,279 @@ class FocusEvidenceRuleTests(unittest.TestCase):
         self.assertNotIn("was analyzed with", str(ear.get("went_well") or "").lower())
 
 
+
+
+class PhrasingFocusEvidenceContractTests(unittest.TestCase):
+    """Phrasing Focus uses phrase metrics — never Musicality as a numeric proxy."""
+
+    def _blocks(self, *, musicality: int = 94, metrics: dict | None = None):
+        return build_target_layer_focus_analysis(
+            features=_focus_features(),
+            scores={"musicality": musicality, "technique": 70, "tone": 72},
+            categories={
+                "technique": {
+                    "findings": [
+                        "Flute attack profile reviewed from onset clarity and attack density."
+                    ],
+                    "tips": [
+                        "Keep tonguing clean and consistent — not every note equally accented."
+                    ],
+                },
+                "musicality": {
+                    "findings": [
+                        "Phrasing deep-dive: shape start/middle/end of each phrase; leave intentional space."
+                    ],
+                    "tips": [
+                        "Shape start/middle/end of each phrase; leave intentional space."
+                    ],
+                },
+            },
+            ctx={
+                "instruments": ["Flute"],
+                "target_layer": "Flute",
+                "practice_focuses": ["Phrasing", "Articulation"],
+                "recording_type": "Practice Take",
+                "display_key": "G major",
+                "selected_song_analysis_context": {
+                    "title": "Perfect",
+                    "artist": "Ed Sheeran",
+                    "key": "G major",
+                    "has_song_harmony": True,
+                },
+            },
+            musical_metrics=metrics
+            or {
+                "phrase_pacing": 87.0,
+                "phrase_contour_variety": 41.0,
+                "space_rests": 34.0,
+            },
+        )
+
+    def test_phrasing_does_not_borrow_musicality_score(self) -> None:
+        from multitrack_upload_analysis import _mapped_score_for_focus
+
+        self.assertIsNone(
+            _mapped_score_for_focus("Phrasing", {"musicality": 94, "tone": 70})
+        )
+        phr = next(b for b in self._blocks(musicality=94) if b["focus"] == "Phrasing")
+        self.assertNotEqual(phr.get("score"), 94)
+        self.assertIsNotNone(phr.get("score"))
+        self.assertLess(int(phr["score"]), 75)
+
+    def test_phrasing_uses_phrase_specific_evidence(self) -> None:
+        phr = next(b for b in self._blocks() if b["focus"] == "Phrasing")
+        findings = " ".join(phr.get("findings") or []).lower()
+        self.assertIn("phrase pacing", findings)
+        self.assertIn("87", findings)
+        self.assertIn("contour", findings)
+        self.assertIn("41", findings)
+        self.assertIn("34", findings)
+        self.assertIn("space", findings)
+
+    def test_strong_pace_weak_contour_is_developing_not_excellent(self) -> None:
+        phr = next(b for b in self._blocks() if b["focus"] == "Phrasing")
+        assessment = str(phr.get("assessment") or "").lower()
+        went = str(phr.get("went_well") or "").lower()
+        improve = str(phr.get("improve_to") or "").lower()
+        self.assertTrue(
+            "developing" in assessment or "moderate" in assessment,
+            assessment,
+        )
+        self.assertNotIn("excellent", assessment)
+        self.assertIn("pacing", went)
+        self.assertTrue("contour" in improve or "space" in improve, improve)
+
+    def test_detected_evidence_excludes_coaching_commands(self) -> None:
+        by = {b["focus"]: b for b in self._blocks()}
+        phr_findings = " ".join(by["Phrasing"].get("findings") or []).lower()
+        self.assertNotIn("shape start/middle/end", phr_findings)
+        self.assertNotIn("leave intentional space", phr_findings)
+        art_findings = " ".join(by["Articulation"].get("findings") or []).lower()
+        self.assertNotIn("keep tonguing", art_findings)
+        self.assertNotIn("not every note equally accented", art_findings)
+
+
+class PhraseStructureCriterionConsistencyTests(unittest.TestCase):
+    def test_went_well_uses_strong_pacing_evidence(self) -> None:
+        from mission_analysis import score_missions
+
+        rows = score_missions(
+            ["phrase_structure"],
+            {
+                "phrase_pacing": 87.0,
+                "phrase_contour_variety": 41.0,
+                "space_rests": 34.0,
+            },
+            {
+                "instrument": "Flute",
+                "display_key": "G major",
+                "song": "Perfect — Ed Sheeran",
+            },
+        )
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertIsNotNone(row.get("score"))
+        self.assertLess(int(row["score"]), 75)
+        went = str(row.get("went_well") or "").lower()
+        self.assertIn("pacing", went)
+        self.assertIn("87", went)
+        self.assertNotIn("clear starting point", went)
+        improve = str(row.get("improve_to") or "").lower()
+        self.assertTrue("contour" in improve or "space" in improve, improve)
+
+    def test_directionally_consistent_with_phrasing_focus(self) -> None:
+        from mission_analysis import score_missions
+        from multitrack_upload_analysis import (
+            _phrase_metric_bundle,
+            _score_phrasing_from_metrics,
+        )
+
+        metrics = {
+            "phrase_pacing": 87.0,
+            "phrase_contour_variety": 41.0,
+            "space_rests": 34.0,
+        }
+        focus_score = _score_phrasing_from_metrics(_phrase_metric_bundle(metrics))
+        crit = score_missions(
+            ["phrase_structure"],
+            metrics,
+            {"instrument": "Flute", "display_key": "G major", "song": "Perfect"},
+        )[0]
+        self.assertIsNotNone(focus_score)
+        self.assertIsNotNone(crit.get("score"))
+        self.assertLess(int(focus_score), 75)
+        self.assertLess(int(crit["score"]), 75)
+        self.assertGreater(int(focus_score), 40)
+        self.assertGreater(int(crit["score"]), 40)
+
+
+class SingleCriterionRankingTests(unittest.TestCase):
+    def test_one_criterion_omits_strongest_weakest_in_html(self) -> None:
+        result = {
+            "ok": True,
+            "overall_improv_score": 58,
+            "mission_evaluation_active": False,
+            "mission_results": [
+                {
+                    "id": "phrase_structure",
+                    "label": "Phrase structure",
+                    "score": 58,
+                    "went_well": "Phrase pacing was strong at approximately 87/100.",
+                    "improve_to": "More contour and space.",
+                    "observed_evidence": [
+                        "phrase pacing ≈ 87/100",
+                        "phrase contour variety ≈ 41/100",
+                        "space rests ≈ 34/100",
+                    ],
+                    "tips": [],
+                    "drill": "2-bar question → rest → answer",
+                }
+            ],
+            "mission_coach_summary": (
+                "Evaluated 1 criterion against **Perfect**. "
+                "Overall selected-criteria assessment: **58%**. **Phrase structure**: 58%."
+            ),
+            "mission_strongest": "Phrase structure — 58%",
+            "mission_weakest": "Phrase structure — 58%",
+            "musical_metrics": {
+                "phrase_pacing": 87,
+                "phrase_contour_variety": 41,
+                "space_rests": 34,
+            },
+        }
+        html = render_mission_analysis_html(result)
+        self.assertIn("Phrase structure", html)
+        self.assertNotIn("Strongest:", html)
+        self.assertNotIn("Weakest:", html)
+
+    def test_two_or_more_criteria_may_render_ranking(self) -> None:
+        two = {
+            "mission_results": [
+                {"label": "Phrase structure", "score": 58, "tips": [], "drill": "a"},
+                {"label": "Articulation", "score": 70, "tips": [], "drill": "b"},
+            ],
+            "mission_strongest": "Articulation — 70%",
+            "mission_weakest": "Phrase structure — 58%",
+            "overall_improv_score": 64,
+            "mission_evaluation_active": False,
+            "musical_metrics": {},
+        }
+        html = render_mission_analysis_html(two)
+        self.assertIn("Strongest:", html)
+        self.assertIn("Weakest:", html)
+
+    def test_analyze_one_criterion_clears_ranking_fields(self) -> None:
+        from unittest.mock import patch
+
+        from mission_analysis import analyze_improvisation_missions
+
+        fake_metrics = {
+            "phrase_pacing": 87.0,
+            "phrase_contour_variety": 41.0,
+            "space_rests": 34.0,
+            "timing_stability": 70.0,
+            "groove_consistency": 70.0,
+            "instrument_tone": 70.0,
+            "articulation": 70.0,
+        }
+        with patch(
+            "mission_analysis.extract_improv_metrics",
+            return_value=dict(fake_metrics),
+        ):
+            out = analyze_improvisation_missions(
+                np.zeros(1024),
+                22050,
+                _audio_features(),
+                {
+                    "instrument": "Flute",
+                    "song": "Perfect — Ed Sheeran",
+                    "display_key": "G major",
+                    "mission_evaluation_active": False,
+                },
+                ["phrase_structure"],
+            )
+        self.assertEqual(out.get("mission_strongest"), "")
+        self.assertEqual(out.get("mission_weakest"), "")
+        summary = str(out.get("mission_coach_summary") or "").lower()
+        self.assertNotIn("strongest:", summary)
+        self.assertNotIn("grow next:", summary)
+        self.assertIn("phrase structure", summary)
+
+    def test_analyze_two_criteria_keeps_ranking(self) -> None:
+        from unittest.mock import patch
+
+        from mission_analysis import analyze_improvisation_missions
+
+        fake_metrics = {
+            "phrase_pacing": 87.0,
+            "phrase_contour_variety": 41.0,
+            "space_rests": 34.0,
+            "articulation": 70.0,
+            "timing_stability": 70.0,
+            "groove_consistency": 70.0,
+            "instrument_tone": 70.0,
+        }
+        with patch(
+            "mission_analysis.extract_improv_metrics",
+            return_value=dict(fake_metrics),
+        ):
+            out = analyze_improvisation_missions(
+                np.zeros(1024),
+                22050,
+                _audio_features(),
+                {
+                    "instrument": "Flute",
+                    "song": "Perfect",
+                    "display_key": "G major",
+                    "mission_evaluation_active": False,
+                },
+                ["phrase_structure", "articulation"],
+            )
+        self.assertTrue(str(out.get("mission_strongest") or "").strip())
+        self.assertTrue(str(out.get("mission_weakest") or "").strip())
+        summary = str(out.get("mission_coach_summary") or "").lower()
+        self.assertIn("strongest:", summary)
+        self.assertTrue("grow next:" in summary or "grow next" in summary)
+
 if __name__ == "__main__":
     unittest.main()

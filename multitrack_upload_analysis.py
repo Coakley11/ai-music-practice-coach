@@ -50,6 +50,9 @@ def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | 
 
     Dynamics intentionally returns None — there is no dedicated Dynamics score in the
     baseline performance map, and Musicality must not be borrowed as a stand-in.
+
+    Phrasing also returns None here — Phrasing uses phrase-specific musical metrics
+    (pacing / contour / space), not the broader Musicality score.
     """
     scores = dict(scores or {})
     key = " ".join(str(focus or "").strip().lower().replace("/", " ").split())
@@ -57,11 +60,13 @@ def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | 
         return None
     if "dynamic" in key:
         return None
+    if "phras" in key:
+        return None
     if "articulation" in key or key in {"technique", "tonguing", "attack"}:
         val = scores.get("technique")
     elif key == "tone" or "tone color" in key or "timbre" in key:
         val = scores.get("tone")
-    elif "phras" in key or "musicality" in key or "expression" in key:
+    elif "musicality" in key or "expression" in key:
         val = scores.get("musicality")
     elif "timing" in key or key == "groove" or "rhythm" in key:
         # Prefer groove when present; fall back to timing.
@@ -76,6 +81,122 @@ def _mapped_score_for_focus(focus: str, scores: dict[str, Any] | None) -> int | 
         return int(val) if val is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _is_coaching_advice_line(text: str) -> bool:
+    """True when a line is imperative coaching rather than observed evidence."""
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    coaching_markers = (
+        "keep ",
+        "shape ",
+        "leave ",
+        "practice ",
+        "try ",
+        "aim ",
+        "focus on",
+        "make sure",
+        "should ",
+        "deep-dive:",
+        "next take",
+        "loop ",
+        "mark breath",
+        "not every note",
+    )
+    return any(m in t for m in coaching_markers)
+
+
+def _phrase_metric_bundle(musical_metrics: dict[str, Any] | None) -> dict[str, float]:
+    """Collect available phrase-specific metrics for Phrasing Focus scoring."""
+    metrics = dict(musical_metrics or {})
+    out: dict[str, float] = {}
+    for key in (
+        "phrase_pacing",
+        "phrase_contour_variety",
+        "space_rests",
+        "landing_note_quality",
+    ):
+        if key in metrics and metrics.get(key) is not None:
+            try:
+                out[key] = float(metrics[key])
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _score_phrasing_from_metrics(phrase_metrics: dict[str, float]) -> int | None:
+    """Score Phrasing from phrase evidence — never from overall Musicality.
+
+    Weights match the broader Phrasing criterion family when all signals exist:
+    pacing 0.35, contour 0.30, space/rests 0.20, landing quality 0.15.
+    Missing keys are dropped and remaining weights renormalized.
+    """
+    if not phrase_metrics:
+        return None
+    weights = {
+        "phrase_pacing": 0.35,
+        "phrase_contour_variety": 0.30,
+        "space_rests": 0.20,
+        "landing_note_quality": 0.15,
+    }
+    present = {k: weights[k] for k in weights if k in phrase_metrics}
+    if not present:
+        return None
+    total_w = sum(present.values()) or 1.0
+    score = sum(phrase_metrics[k] * (present[k] / total_w) for k in present)
+    return int(round(max(0.0, min(100.0, score))))
+
+
+def _phrasing_interpretation(phrase_metrics: dict[str, float], score: int | None) -> tuple[str, str, str]:
+    """Return (assessment, went_well, improve_to) for Phrasing Focus."""
+    pacing = phrase_metrics.get("phrase_pacing")
+    contour = phrase_metrics.get("phrase_contour_variety")
+    space = phrase_metrics.get("space_rests")
+    if score is None:
+        return (
+            "Qualitative phrasing read — limited phrase-specific metrics on this take",
+            "Phrase material is present to shape more deliberately.",
+            "Next take: plan clear phrase destinations and leave intentional rests between ideas.",
+        )
+    pacing_i = int(round(pacing)) if pacing is not None else None
+    contour_i = int(round(contour)) if contour is not None else None
+    space_i = int(round(space)) if space is not None else None
+    strong_pace = pacing is not None and pacing >= 70
+    weak_shape = (contour is not None and contour < 55) or (space is not None and space < 55)
+    if score >= 75 and not weak_shape:
+        assessment = f"{score}/100 (phrase pacing / contour / space)"
+        went = "Phrase shape is clear overall — pacing, contour, and space support musical arcs."
+        improve = "Keep refining destination notes and intentional rests so strong phrases become consistent."
+    elif strong_pace and weak_shape:
+        assessment = f"{score}/100 — developing phrase shape (strong pacing; weaker contour/space)"
+        bits = []
+        if pacing_i is not None:
+            bits.append(f"pacing ≈ {pacing_i}/100")
+        went = (
+            "Phrase pacing is relatively strong"
+            + (f" ({bits[0]})" if bits else "")
+            + "; contour variety and intentional space need more contrast."
+        )
+        improve_bits = []
+        if contour_i is not None:
+            improve_bits.append(f"more contour variety (≈ {contour_i}/100)")
+        if space_i is not None:
+            improve_bits.append(f"more intentional space/rests (≈ {space_i}/100)")
+        improve = (
+            "Create "
+            + (" and ".join(improve_bits) if improve_bits else "more contour contrast and breathing space")
+            + " between ideas."
+        )
+    elif score >= 55:
+        assessment = f"{score}/100 — moderate / developing phrasing"
+        went = "Some phrase pacing and shape are usable — keep the clearer moments."
+        improve = "Vary phrase arcs and leave intentional rests so ideas do not run together."
+    else:
+        assessment = f"{score}/100 — phrasing needs clearer shape and space"
+        went = "There is enough phrase material to build from."
+        improve = "Plan shorter ideas with clear endings and a beat of rest before the next phrase."
+    return assessment, went, improve
 
 
 def prune_instrument_focuses_to_project(
@@ -515,7 +636,7 @@ def build_target_layer_focus_analysis(
             )
             for line in (tech_cat.get("findings") or [])[:2]:
                 text = str(line).strip()
-                if text and text not in findings:
+                if text and text not in findings and not _is_coaching_advice_line(text):
                     findings.append(text)
             assessment = (
                 f"{mapped}/100 (technique proxy from attack clarity)"
@@ -615,39 +736,59 @@ def build_target_layer_focus_analysis(
         elif "phras" in fl:
             from analysis_coach_quality import has_audio_form_timeline_alignment
 
-            raw_findings = [str(x) for x in (musicality_cat.get("findings") or [])[:3]]
+            phrase_metrics = _phrase_metric_bundle(musical_metrics)
+            phrase_score = _score_phrasing_from_metrics(phrase_metrics)
+            mapped = phrase_score  # never Musicality
+            # Evidence-only lines from phrase metrics.
+            if "phrase_pacing" in phrase_metrics:
+                findings.append(
+                    f"Phrase pacing ≈ {phrase_metrics['phrase_pacing']:.0f}/100."
+                )
+            if "phrase_contour_variety" in phrase_metrics:
+                findings.append(
+                    f"Phrase contour variety ≈ {phrase_metrics['phrase_contour_variety']:.0f}/100."
+                )
+            if "space_rests" in phrase_metrics:
+                findings.append(
+                    f"Intentional-space / rest score ≈ {phrase_metrics['space_rests']:.0f}/100."
+                )
+            if "landing_note_quality" in phrase_metrics:
+                findings.append(
+                    f"Landing-note quality ≈ {phrase_metrics['landing_note_quality']:.0f}/100."
+                )
+            traj = _energy_trajectory_note(features)
+            if traj:
+                findings.append(traj)
+            # Optional observed musicality findings — never coaching advice.
             aligned = has_audio_form_timeline_alignment(ctx)
-            for text in raw_findings:
-                low = text.lower()
+            for text in (musicality_cat.get("findings") or [])[:3]:
+                line = str(text).strip()
+                if not line or _is_coaching_advice_line(line):
+                    continue
+                low = line.lower()
                 if not aligned and (
                     "after the intro" in low
-                    or "after the intro" in low
                     or "into chorus" in low
                     or "into the chorus" in low
                 ):
-                    text = (
-                        text.replace("after the intro", "after the opening portion of the take")
+                    line = (
+                        line.replace("after the intro", "after the opening portion of the take")
                         .replace("After the intro", "After the opening portion of the take")
                         .replace("into chorus", "later in the take")
                         .replace("into the chorus", "later in the take")
                     )
-                findings.append(text)
-            went_well = (
-                f"{_mixed_backing_subject(ctx, target)} shows phrase shape you can build on."
-                if (mapped or 0) >= 65
-                else f"{_mixed_backing_subject(ctx, target)} has phrase material — contour can be clearer."
-            )
-            improve_to = (
-                "Shape longer arcs: breathe/plan destinations, leave space, and vary density."
+                if line not in findings:
+                    findings.append(line)
+            if not findings:
+                findings.append(
+                    "Limited direct phrase-metric coverage on this take — phrasing coaching stays qualitative."
+                )
+            assessment, went_well, improve_to = _phrasing_interpretation(
+                phrase_metrics, phrase_score
             )
             drill = (
-                f"{target or 'Layer'} phrasing drill: 4-bar idea → leave 2 beats rest → answer "
-                "with a related shape."
-            )
-            assessment = (
-                f"{mapped}/100 (musicality proxy)"
-                if mapped is not None
-                else "Qualitative phrasing read"
+                f"{target or 'Layer'} phrasing drill: 2-bar question → 1 beat rest → "
+                "2-bar answer with a related contour."
             )
         elif "ear" in fl and "train" in fl:
             # Ear Training is qualitative unless a dedicated recognition task was captured.
@@ -722,11 +863,11 @@ def build_target_layer_focus_analysis(
                 if mapped is not None
                 else f"Qualitative {focus} coaching (no dedicated numeric meter)"
             )
-            # Pull a related category tip when available.
+            # Pull related observed findings only — never coaching tips into detected evidence.
             for cat in (tech_cat, tone_cat, timing_cat, musicality_cat):
-                for tip in (cat.get("tips") or [])[:1]:
+                for tip in (cat.get("findings") or [])[:1]:
                     text = str(tip).strip()
-                    if text:
+                    if text and not _is_coaching_advice_line(text):
                         findings.append(text)
                         break
                 if findings:

@@ -665,35 +665,39 @@ def _technique_analysis(f: AudioFeatures, instrument: str) -> dict[str, Any]:
         )
     elif fam == "flute":
         findings.append(
-            "Flute articulation: keep tonguing clean and consistent — not every note equally accented."
+            "Flute attack profile reviewed from onset clarity and attack density."
         )
         tips.extend(
             [
+                "Keep tonguing clean and consistent — not every note equally accented.",
                 "Long-tone pitch/tone drill: 8 beats per note with steady air and stable embouchure.",
                 "Tongued vs legato scale pattern — same notes, contrast the attacks.",
                 "Register transition loop: low–middle–high on one scale degree with matched tone.",
             ]
         )
     elif fam == "clarinet":
-        findings.append("Clarinet articulation: consistent tongue and air across the break.")
+        findings.append("Clarinet attack consistency reviewed across the break from onset evidence.")
         tips.extend(
             [
+                "Keep tongue and air consistent across the break.",
                 "Long tones across the break — same attack, same release, same pitch center.",
                 "Phrase shaping: crescendo into bar 3, release on bar 4.",
             ]
         )
     elif fam == "saxophone":
-        findings.append("Sax articulation: note attacks should be consistent — shape accents with intention.")
+        findings.append("Sax attack consistency reviewed from onset strength and density.")
         tips.extend(
             [
+                "Keep note attacks consistent — shape accents with intention.",
                 "Long tones 60s — same attack, same release, same pitch.",
                 "Phrase shaping: crescendo into bar 3, release on bar 4.",
             ]
         )
     elif fam in ("trumpet", "trombone"):
-        findings.append("Brass articulation: match tongue and air so attacks stay centered.")
+        findings.append("Brass attack centering reviewed from onset clarity.")
         tips.extend(
             [
+                "Match tongue and air so attacks stay centered.",
                 "Long tones with steady air — release without collapsing the embouchure.",
                 "Phrase shaping: crescendo into bar 3, release on bar 4.",
             ]
@@ -1078,8 +1082,8 @@ def _apply_context_emphasis_to_categories(
     }
     criterion_deep_dives = {
         "phras": (
-            "Phrasing deep-dive: shape start/middle/end of each phrase; leave intentional space.",
-            "Loop 4 bars and mark breath/space points before replaying for phrase arc.",
+            "Phrasing / Phrase-structure criterion active: listen for pacing, contour variety, and intentional rests in this take.",
+            "Shape start/middle/end of each phrase; leave intentional space.",
         ),
         "melodic": (
             "Melodic development deep-dive: track how motifs return, sequence, or contrast.",
@@ -1118,8 +1122,8 @@ def _apply_context_emphasis_to_categories(
             "Play the same line pp → mf → f without changing pitches.",
         ),
         "articul": (
-            "Articulation deep-dive: contrast legato vs detached attacks with intention.",
-            "Alternate tongued/legato 8ths on one scale pattern for 8 bars.",
+            "Articulation criterion active: attack clarity and density reviewed from onset evidence.",
+            "Contrast legato vs detached attacks with intention; alternate tongued/legato 8ths on one scale pattern.",
         ),
         "tone": (
             "Instrument tone deep-dive: keep color consistent through phrase peaks and soft endings.",
@@ -1427,8 +1431,13 @@ def analyze_recording(
                 "scale" in str(x).lower() or "chord" in str(x).lower() or "guide" in str(x).lower()
                 for x in (ctx.get("evaluating_criteria_labels") or [])
             )
-            if has_song_harmony_context(ctx) and want_scales and not musical_metrics:
-                musical_metrics = extract_improv_metrics(y, sr, features, ctx)
+            want_phrase = any("phras" in f for f in focuses) or any(
+                "phras" in str(x).lower() for x in (ctx.get("evaluating_criteria_labels") or [])
+            )
+            if (want_scales or want_phrase) and not musical_metrics:
+                # Phrase metrics are recording-derived; song harmony not required for pacing/contour/space.
+                if want_phrase or has_song_harmony_context(ctx):
+                    musical_metrics = extract_improv_metrics(y, sr, features, ctx)
         except Exception:
             pass
 

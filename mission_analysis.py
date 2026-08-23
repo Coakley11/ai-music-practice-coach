@@ -476,10 +476,21 @@ def _mission_feedback(
         )
 
     if mission.id == "phrase_structure":
+        pacing = float(metrics.get("phrase_pacing", 0) or 0)
+        contour = float(metrics.get("phrase_contour_variety", 0) or 0)
+        space = float(metrics.get("space_rests", 0) or 0)
         if score >= 72:
             return (
                 "Phrases have clear beginnings and endings with breathing room between ideas.",
-                f"Phrase pacing ({metrics.get('phrase_pacing', 0):.0f}/100) supports a question–answer shape.",
+                f"Phrase pacing ({pacing:.0f}/100) supports a question–answer shape.",
+            )
+        # Strong pacing with weaker contour/space: keep positive evidence separate from growth.
+        if pacing >= 70 and (contour < 55 or space < 55):
+            return (
+                f"Phrase pacing was strong at approximately {pacing:.0f}/100; "
+                "the main opportunity is creating more contour contrast and intentional space.",
+                f"Contour variety ≈ {contour:.0f}/100 and intentional space/rests ≈ {space:.0f}/100 — "
+                "plan 2-bar questions and 2-bar answers with a beat of rest between ideas.",
             )
         return (
             "Lines run together — plan 2-bar questions and 2-bar answers.",
@@ -756,8 +767,19 @@ def _coach_result_fields(score: int, summary: str, why: str) -> tuple[str, str]:
                 improve_to = f"{improve_to} {why}".strip()
         return went_well, improve_to
 
+    # Even at lower overall scores, keep real positive evidence in went_well when present
+    # (e.g. strong phrase pacing with weak contour/space).
+    if summary_praise:
+        went_well = summary
+        improve_to = (
+            why
+            if why and not why_praise
+            else "Loop one section at a slower tempo and record again."
+        )
+        return went_well, improve_to
+
     went_well = "Your take gives a clear starting point — keep ideas shorter and more focused."
-    if summary and not summary_praise:
+    if summary:
         improve_to = summary
         if why and not why_praise and why != summary:
             improve_to = f"{summary} {why}".strip()
@@ -1068,20 +1090,34 @@ def analyze_improvisation_missions(
         overall_line = f"Overall improvisation score: **{overall}%**."
     else:
         overall_line = f"Overall selected-criteria assessment: **{overall}%**."
-    summary = (
+    base = (
         f"Evaluated {len(results)} criteria against **{ctx.get('song') or 'your take'}** "
         f"({ctx.get('display_key') or ''}, {ctx.get('instrument') or ''}). "
-        f"{overall_line} "
-        f"Strongest: **{strongest['label']}** ({strongest['score']}%). "
-        f"Grow next: **{weakest['label']}** ({weakest['score']}%)."
+        f"{overall_line}"
     )
+    # Strongest/Weakest ranking only makes sense with 2+ criteria.
+    if len(results) >= 2:
+        summary = (
+            f"{base} "
+            f"Strongest: **{strongest['label']}** ({strongest['score']}%). "
+            f"Grow next: **{weakest['label']}** ({weakest['score']}%)."
+        )
+        strongest_line = f"{strongest['label']} — {strongest['score']}%"
+        weakest_line = f"{weakest['label']} — {weakest['score']}%"
+    else:
+        only = results[0]
+        only_score = only.get("score")
+        score_bit = f"{only_score}%" if only_score is not None else "qualitative"
+        summary = f"{base} **{only['label']}**: {score_bit}."
+        strongest_line = ""
+        weakest_line = ""
 
     return {
         "mission_results": results,
         "musical_metrics": metrics,
         "mission_coach_summary": summary,
-        "mission_strongest": f"{strongest['label']} — {strongest['score']}%",
-        "mission_weakest": f"{weakest['label']} — {weakest['score']}%",
+        "mission_strongest": strongest_line,
+        "mission_weakest": weakest_line,
         "mission_next_recommendation": build_mission_recommendation(results, ctx, metrics),
         "overall_improv_score": overall,
         "mission_ids": mission_ids,
