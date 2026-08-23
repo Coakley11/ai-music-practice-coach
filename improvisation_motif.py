@@ -836,13 +836,196 @@ def generate_motif_for_chord(
     return motif
 
 
+PATTERN_TYPES = (
+    "auto",
+    "diatonic",
+    "scalar",
+    "thirds",
+    "fourths",
+    "pentatonic",
+)
+PATTERN_DIRECTIONS = ("ascending", "descending")
+PATTERN_LENGTHS = (8, 12, 16)
+
+
+def _pitch_collection_pcs(key_center: str, pattern_type: str) -> list[int]:
+    """Pitch classes for motif-pattern sequencing."""
+    _mode, diatonic = _parse_key_scale(key_center)
+    ptype = str(pattern_type or "auto").strip().lower()
+    if ptype in ("pentatonic",):
+        root_pc = diatonic[0]
+        if _mode == "minor":
+            intervals = (0, 3, 5, 7, 10)
+        else:
+            intervals = (0, 2, 4, 7, 9)
+        return [(root_pc + i) % 12 for i in intervals]
+    return list(diatonic)
+
+
+def _pattern_step_size(pattern_type: str) -> int:
+    ptype = str(pattern_type or "auto").strip().lower()
+    if ptype in ("thirds",):
+        return 2
+    if ptype in ("fourths",):
+        return 3
+    # auto / diatonic / scalar / pentatonic → one collection degree per cell
+    return 1
+
+
+def _shift_notes_by_collection_steps(
+    notes: list[str],
+    *,
+    key_center: str,
+    collection_pcs: list[int],
+    steps: int,
+) -> list[str]:
+    if not notes or not collection_pcs:
+        return list(notes)
+    out: list[str] = []
+    for n in notes:
+        deg = _nearest_scale_degree(n, collection_pcs)
+        new_pc = collection_pcs[(deg + steps) % len(collection_pcs)]
+        out.append(_note_from_midi(new_pc + 60, key_center))
+    from music_theory import respell_notes_for_key
+
+    return respell_notes_for_key(out, key_center)
+
+
+def _format_pattern_display(cells: list[list[str]]) -> str:
+    return " | ".join(" – ".join(cell) for cell in cells if cell)
+
+
+def build_motif_pattern(
+    motif: dict[str, Any],
+    *,
+    key_center: str = "C",
+    pattern_type: str = "auto",
+    direction: str = "ascending",
+    length: int = 8,
+) -> dict[str, Any]:
+    """Expand the current motif into a longer practice pattern (first cell = motif)."""
+    base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
+    if not base_notes:
+        return dict(motif)
+    ptype = str(pattern_type or "auto").strip().lower()
+    if ptype not in PATTERN_TYPES:
+        ptype = "auto"
+    direction_norm = str(direction or "ascending").strip().lower()
+    if direction_norm not in PATTERN_DIRECTIONS:
+        direction_norm = "ascending"
+    try:
+        n_cells = int(length)
+    except (TypeError, ValueError):
+        n_cells = 8
+    if n_cells not in PATTERN_LENGTHS:
+        n_cells = 8 if n_cells < 10 else (12 if n_cells < 14 else 16)
+
+    collection = _pitch_collection_pcs(key_center, ptype)
+    step = _pattern_step_size(ptype)
+    sign = 1 if direction_norm == "ascending" else -1
+    cells: list[list[str]] = []
+    for i in range(n_cells):
+        cells.append(
+            _shift_notes_by_collection_steps(
+                base_notes,
+                key_center=key_center,
+                collection_pcs=collection,
+                steps=sign * i * step,
+            )
+        )
+    flat = [n for cell in cells for n in cell]
+    cell_len = max(1, len(base_notes))
+    base_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
+    base_syms = list(motif.get("rhythm_symbols") or _RHYTHM_PATTERNS.get(base_rk, ["♩"] * cell_len))
+    while len(base_syms) < cell_len:
+        base_syms = base_syms + base_syms
+    base_syms = base_syms[:cell_len]
+    rhythm_syms: list[str] = []
+    for _ in range(n_cells):
+        rhythm_syms.extend(base_syms)
+    rhythm_syms = rhythm_syms[: len(flat)]
+
+    out = dict(motif)
+    out.update(
+        {
+            "chord": motif.get("chord", ""),
+            "notes": flat,
+            "cells": cells,
+            "display": _format_pattern_display(cells),
+            "rhythm": " ".join(rhythm_syms),
+            "rhythm_key": base_rk,
+            "rhythm_symbols": rhythm_syms,
+            "is_pattern": True,
+            "pattern_type": ptype,
+            "pattern_direction": direction_norm,
+            "pattern_length": n_cells,
+            "base_motif_notes": list(base_notes),
+            "variation_prompt": (
+                f"Pattern ({ptype}, {direction_norm}, {n_cells} cells) on "
+                f"**{motif.get('chord', '')}**"
+            ),
+            "last_transform": "build_pattern",
+        }
+    )
+    return sync_motif_midi(out)
+
+
+def rebuild_motif_pattern(
+    motif: dict[str, Any],
+    *,
+    key_center: str = "C",
+    pattern_type: str | None = None,
+    direction: str | None = None,
+    length: int | None = None,
+) -> dict[str, Any]:
+    """Rebuild pattern pitches from stored base motif; preserve rhythm when possible."""
+    if not motif.get("is_pattern") and not motif.get("base_motif_notes"):
+        return build_motif_pattern(
+            motif,
+            key_center=key_center,
+            pattern_type=pattern_type or "auto",
+            direction=direction or "ascending",
+            length=length or 8,
+        )
+    preserved_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
+    rebuilt = build_motif_pattern(
+        {
+            "chord": motif.get("chord", ""),
+            "notes": list(motif.get("base_motif_notes") or motif.get("notes") or []),
+            "base_motif_notes": list(motif.get("base_motif_notes") or motif.get("notes") or []),
+            "rhythm_key": preserved_rk,
+            "rhythm_symbols": list(motif.get("rhythm_symbols") or [])[: len(motif.get("base_motif_notes") or [])],
+        },
+        key_center=key_center,
+        pattern_type=pattern_type or str(motif.get("pattern_type") or "auto"),
+        direction=direction or str(motif.get("pattern_direction") or "ascending"),
+        length=length if length is not None else int(motif.get("pattern_length") or 8),
+    )
+    # Re-apply current rhythm key across full flat notes (pitches already rebuilt).
+    return _apply_rhythm_key(rebuilt, preserved_rk)
+
+
+def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
+    notes = list(motif.get("notes") or [])
+    rk = str(rhythm_key or "quarter-quarter-quarter")
+    syms = list(_RHYTHM_PATTERNS.get(rk, _RHYTHM_PATTERNS["quarter-quarter-quarter"]))
+    while len(syms) < len(notes):
+        syms = syms + syms
+    syms = syms[: len(notes)]
+    updated = dict(motif)
+    updated["rhythm_key"] = rk
+    updated["rhythm"] = " ".join(syms)
+    updated["rhythm_symbols"] = syms
+    return sync_motif_midi(updated)
+
+
 def transform_motif(
     motif: dict[str, Any],
     operation: str,
     *,
     key_center: str = "C",
 ) -> dict[str, Any]:
-    """Apply sequence, inversion, or rhythmic variation."""
+    """Apply sequence, inversion, or rhythmic variation (whole pattern when expanded)."""
     notes = list(motif.get("notes") or [])
     if not notes:
         return motif
@@ -875,15 +1058,41 @@ def transform_motif(
     from music_theory import respell_notes_for_key
 
     out_notes = respell_notes_for_key(out_notes, key_center)
-    return sync_motif_midi({
+    updated = {
         "chord": motif.get("chord", ""),
         "notes": out_notes,
         "display": " – ".join(out_notes),
         "rhythm": motif.get("rhythm", "♩ ♩ ♩"),
         "rhythm_key": motif.get("rhythm_key", "quarter-quarter-quarter"),
+        "rhythm_symbols": list(motif.get("rhythm_symbols") or []),
         "variation_prompt": f"{label}: {' – '.join(out_notes)}",
         "last_transform": operation,
-    })
+        "is_pattern": bool(motif.get("is_pattern")),
+        "pattern_type": motif.get("pattern_type"),
+        "pattern_direction": motif.get("pattern_direction"),
+        "pattern_length": motif.get("pattern_length"),
+        "base_motif_notes": list(motif.get("base_motif_notes") or []),
+        "cells": list(motif.get("cells") or []),
+    }
+    # Keep pattern cell structure aligned after whole-pattern pitch shift.
+    if updated["is_pattern"] and updated["base_motif_notes"]:
+        cell_len = max(1, len(updated["base_motif_notes"]))
+        cells = [out_notes[i : i + cell_len] for i in range(0, len(out_notes), cell_len)]
+        updated["cells"] = cells
+        updated["display"] = _format_pattern_display(cells)
+        # Shift stored base motif with the same operation so rebuild stays coherent.
+        base = list(motif.get("base_motif_notes") or [])
+        if operation == "sequence_up":
+            updated["base_motif_notes"] = _shift_notes_by_collection_steps(
+                base, key_center=key_center, collection_pcs=scale_pcs, steps=1
+            )
+        elif operation == "sequence_down":
+            updated["base_motif_notes"] = _shift_notes_by_collection_steps(
+                base, key_center=key_center, collection_pcs=scale_pcs, steps=-1
+            )
+        elif operation == "invert":
+            updated["base_motif_notes"] = list(reversed(base))
+    return sync_motif_midi(updated)
 
 
 def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
@@ -902,13 +1111,17 @@ def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
     syms = syms[: len(notes)]
     updated = dict(motif)
     updated["notes"] = notes
-    updated["display"] = " – ".join(notes)
+    cells = updated.get("cells")
+    if updated.get("is_pattern") and isinstance(cells, list) and cells:
+        updated["display"] = _format_pattern_display(cells)
+    else:
+        updated["display"] = " – ".join(notes)
     updated["rhythm_key"] = new_rk
     updated["rhythm"] = " ".join(syms)
     updated["rhythm_symbols"] = syms[: len(notes)]
     updated["midi"] = [_midi_from_note(n, 4) for n in notes]
     updated["variation_prompt"] = (
-        f"Rhythm on **{motif.get('chord', '')}**: {' – '.join(notes)} · {updated['rhythm']}"
+        f"Rhythm on **{motif.get('chord', '')}**: {updated['display']} · {updated['rhythm']}"
     )
     updated["last_transform"] = "change_rhythm"
     return updated
@@ -918,7 +1131,11 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     """Ensure midi[], display, and rhythm_symbols match notes[] after any edit."""
     notes = list(motif.get("notes") or [])
     motif["notes"] = notes
-    motif["display"] = " – ".join(notes)
+    cells = motif.get("cells")
+    if motif.get("is_pattern") and isinstance(cells, list) and cells:
+        motif["display"] = _format_pattern_display(cells)
+    else:
+        motif["display"] = " – ".join(notes)
     motif["midi"] = [_midi_from_note(n, 4) for n in notes]
     stored = motif.get("rhythm_symbols")
     if isinstance(stored, list) and stored and any(str(s) in ("z", "Z") for s in stored):

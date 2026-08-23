@@ -8148,11 +8148,12 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         )
 
         # Stale disk radio = Catalog while Custom owns practice must HEAL, not
-        # reclaim Country Roads (E5 refresh). Only apply pending when reconcile
-        # or an explicit user flip already queued it — and never while Custom
-        # still owns practice without USER_CATALOG (stale PENDING after Set-as-Active).
-        if custom_progression_is_active(st.session_state) and not st.session_state.get(
-            PENDING_CATALOG_FROM_PICKER_KEY
+        # reclaim Country Roads (E5 refresh). Never heal away an explicit user
+        # Catalog choice (USER_CATALOG / recent catalog epoch).
+        if (
+            custom_progression_is_active(st.session_state)
+            and not st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY)
+            and not st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
         ):
             _choice = str(st.session_state.get("song_picker_active_source") or "").strip()
             if _choice == SONG_PICKER_SOURCE_CATALOG:
@@ -8214,9 +8215,20 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
     if _catalog_switch_needs_rerun:
         st.rerun()
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
-    from songs.music_source import music_picker_shows_custom_hub, note_song_picker_source_presented
+    from songs.music_source import (
+        USER_CATALOG_SOURCE_CHOICE_KEY,
+        explicit_catalog_selection_is_authoritative,
+        music_picker_shows_custom_hub,
+        note_song_picker_source_presented,
+    )
 
     note_song_picker_source_presented(st.session_state, choice)
+    # Explicit Catalog choice must not keep rendering Custom hub because the
+    # Streamlit radio widget lagged on "Use Custom…" for one paint.
+    if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+        st.session_state
+    ):
+        return False
     return music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom")
 
 
@@ -8258,6 +8270,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 song_picker_catalog=SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
                 invalidate_backing=invalidate_backing_cache,
+                force=True,
             )
             st.rerun()
         _render_custom_song_library_selector()
@@ -9112,7 +9125,7 @@ def _render_backing_return_source_action() -> None:
                     st.rerun()
             elif action.action_id == "return_custom_songs":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
-                    navigate_studio_page(st.session_state, "creative")
+                    navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
@@ -9130,7 +9143,19 @@ def _render_backing_return_source_action() -> None:
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
-            if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
+            src = str(getattr(ctx, "source", "") or "")
+            if src == "custom_progression":
+                # Custom Backing → actual Custom page (not Creative).
+                try:
+                    from songs.music_source import restore_last_custom_active_song
+
+                    restore_last_custom_active_song(st.session_state)
+                except ImportError:
+                    pass
+                navigate_studio_page(st.session_state, "custom")
+                st.rerun()
+                return
+            if src in {"entry_jam", "song_improv", "mission"}:
                 save_page_snapshot(st.session_state, "creative")
             target = prepare_return_to_backing_source(st.session_state)
             navigate_studio_page(st.session_state, target)
@@ -10230,6 +10255,10 @@ try:
         _generated_backing_sidebar = False
     if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
+    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":
+        from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+
+        _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
     elif is_creative_major_jam_active(st.session_state):
         _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
     elif _catalog_regular_backing:
@@ -10282,13 +10311,76 @@ if is_fixed_practice_key_mode(st.session_state):
         on_change=_on_sidebar_fixed_key_quick_toggle,
     )
 else:
-    st.sidebar.selectbox(
-        "Practice / Concert Key",
-        _display_key_options,
-        key="display_key",
-        help="Concert pitch for charts and backing audio.",
-        on_change=on_sidebar_practice_concert_key_change,
+    _custom_page_pk = (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
     )
+    if _custom_page_pk:
+        from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
+
+        def _on_custom_workspace_practice_key_change() -> None:
+            """Custom-page Practice Key owner — commit dedicated widget into display_key."""
+            tok = str(
+                st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
+            ).strip()
+            if tok:
+                st.session_state["display_key"] = tok
+                st.session_state["concert_key"] = tok
+                # User click wins over any deferred Original Key / New song pending.
+                try:
+                    from custom_progression_lab import (
+                        PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY,
+                    )
+
+                    st.session_state.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
+                except Exception:
+                    st.session_state.pop("_pending_custom_workspace_practice_key", None)
+            try:
+                from pathlib import Path
+                import json
+                import time
+
+                _dbg = (
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "evidence-creative-backing"
+                    / "custom-pk-onchange.jsonl"
+                )
+                _dbg.parent.mkdir(parents=True, exist_ok=True)
+                with _dbg.open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "widget": tok,
+                                "display_key": str(
+                                    st.session_state.get("display_key") or ""
+                                ),
+                                "studio_page": str(
+                                    st.session_state.get("studio_page") or ""
+                                ),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            on_sidebar_practice_concert_key_change()
+
+        st.sidebar.selectbox(
+            "Practice / Concert Key",
+            _display_key_options,
+            key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            help="Concert pitch for charts and backing audio.",
+            on_change=_on_custom_workspace_practice_key_change,
+        )
+    else:
+        st.sidebar.selectbox(
+            "Practice / Concert Key",
+            _display_key_options,
+            key="display_key",
+            help="Concert pitch for charts and backing audio.",
+            on_change=on_sidebar_practice_concert_key_change,
+        )
 try:
     from key_display_diagnostics import render_key_display_diagnostics
 
@@ -14982,9 +15074,21 @@ elif _studio_page == "creative":
                 entry = "Song-Based Improvisation"
         except ImportError:
             pass
-        if st.session_state.pop("improv_mission_backing_handoff", False):
+        if st.session_state.pop("improv_mission_backing_handoff", False) and entry not in (
+            "Song-Based Improvisation",
+            "Style Jam Mode",
+            "Jam Session Generator",
+        ):
             creative_source = "mission"
         elif entry == "Song-Based Improvisation":
+            # Explicit SBI open wins over a stale Mission handoff/ctx.
+            st.session_state.pop("improv_mission_backing_handoff", None)
+            try:
+                from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                stamp_explicit_backing_handoff(st.session_state, "song_improv")
+            except ImportError:
+                st.session_state["_backing_explicit_handoff_source"] = "song_improv"
             source = resolve_improv_song_source(st.session_state)
             sync_improv_song_source_for_handoff(
                 st.session_state,
@@ -14993,7 +15097,15 @@ elif _studio_page == "creative":
                 set_custom_source=set_custom_source,
             )
             if source == "Custom progression":
-                creative_source = "custom_progression"
+                # SBI → Custom is song_improv preview/handoff — do not activate
+                # Global Custom ownership (H5: Songs must still show catalog Shape).
+                creative_source = "song_improv"
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "song_improv")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "song_improv"
             else:
                 creative_source = "song_improv"
                 st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)

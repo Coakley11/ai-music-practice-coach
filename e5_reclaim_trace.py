@@ -140,7 +140,13 @@ def note_e5_reclaim_writer(
         )
     except Exception:
         was_custom = False
-    if not was_custom and not session.get(SAMPLE_ENABLED_KEY):
+    # Always record set_custom_source / commit_custom when hunting Catalog→Custom reclaim.
+    force = writer in {
+        "set_custom_source",
+        "commit_custom_active_song",
+        "queue_custom_active_song_activation",
+    }
+    if not was_custom and not session.get(SAMPLE_ENABLED_KEY) and not force:
         return
     snap = _owner_snap(session)
     seq = int(session.get(SEQ_KEY) or 0) + 1

@@ -1114,7 +1114,7 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
         try:
             from songs.music_source import ensure_custom_progression_for_backing
 
-            ensure_custom_progression_for_backing(session)
+            ensure_custom_progression_for_backing(session, promote_to_global_active=False)
             from custom_progression_lab import (
                 CPL_ACTIVE_KEY,
                 all_chords_from_lab_sections,
@@ -2138,34 +2138,8 @@ def apply_backing_context_to_session(
             set_custom_source(session)
         except ImportError:
             pass
-    elif ctx.source in {"entry_jam", "mission", "song_improv"}:
-        try:
-            from studio_page_state import resolve_improv_song_source
-
-            source = resolve_improv_song_source(session)
-        except ImportError:
-            source = str(session.get("improv_song_source") or "Active song")
-        if ctx.source == "song_improv" and source == "Active song":
-            try:
-                from songs.music_source import set_catalog_source
-
-                set_catalog_source(session)
-            except ImportError:
-                pass
-        elif ctx.source == "song_improv" and source == "Custom progression":
-            try:
-                from songs.music_source import set_custom_source
-
-                set_custom_source(session)
-            except ImportError:
-                pass
-        elif ctx.source == "song_improv":
-            try:
-                from songs.music_source import set_catalog_source
-
-                set_catalog_source(session)
-            except ImportError:
-                pass
+    # Creative specialized backing (entry_jam / mission / song_improv) must not flip
+    # Global Catalog/Custom ownership. SBI Active/Custom are preview/handoff only (H5).
 
     if ctx.display_key or ctx.concert_key:
         concert = str(ctx.concert_key or ctx.display_key or "").strip()
@@ -2183,6 +2157,23 @@ def apply_backing_context_to_session(
                     concert = ident.practice_key_token
         except ImportError:
             pass
+        # Regular catalog Backing must never demote the active-source sticky Practice Key
+        # back to a stale sealed ctx concert key (H2: Shape C#m must not fall to Bm).
+        if str(ctx.source or "") == "regular_song":
+            try:
+                from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+                pick = str(
+                    resolve_practice_source_pick(session)
+                    or getattr(ctx, "bound_pick_key", "")
+                    or session.get("active_catalog_pick_key")
+                    or ""
+                ).strip()
+                sticky = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+                if sticky:
+                    concert = sticky
+            except ImportError:
+                pass
         jam_ctx = str(ctx.source or "") == "entry_jam"
         # song_improv / mission backing seals must never overwrite the sidebar Practice Key.
         # Live identity (display_key / practice store) owns Practice Key; backing only consumes it.
@@ -2198,6 +2189,15 @@ def apply_backing_context_to_session(
                     request_display_key(st_like, concert)
                 else:
                     session["display_key"] = concert
+            # Keep sealed regular_song ctx aligned with sticky Practice Key.
+            if str(ctx.source or "") == "regular_song" and concert:
+                try:
+                    if str(ctx.concert_key or "") != concert or str(ctx.display_key or "") != concert:
+                        ctx.concert_key = concert
+                        ctx.display_key = concert
+                        set_backing_context(session, ctx)
+                except Exception:
+                    pass
         elif concert and not jam_ctx and backing_must_not_own_practice_key:
             # Keep concert_key aligned for transport only when live practice already matches.
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -2800,6 +2800,14 @@ def open_backing_from_creative(
     from backing_musical_state import clear_stale_chart_session_keys
     from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
+    try:
+        from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+        stamp_explicit_backing_handoff(session, str(source))
+    except ImportError:
+        session["_backing_explicit_handoff_source"] = str(source)
+        session["_backing_explicit_handoff_epoch"] = int(session.get("_backing_explicit_handoff_epoch") or 0) + 1
+
     # Instrument is user-owned — capture before any hydrate and restore after.
     _preserved_instrument = str(session.get("instrument") or "").strip()
     _preserved_level = str(session.get("level") or "").strip()
@@ -3245,6 +3253,21 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
     """True when live catalog/custom practice should replace a Creative backing_context."""
     if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
         return False
+    # Use raw practice owner — intentional Creative/Mission must not hide an
+    # explicit Songs Catalog/Custom switch (H9: Custom Active + sealed Mission).
+    try:
+        from music_source_ownership import _raw_practice_owner
+
+        raw = _raw_practice_owner(session)
+        if raw == "custom":
+            return ctx is None or str(getattr(ctx, "source", "") or "") != "custom_progression"
+        if raw == "catalog":
+            # Catalog Global Active still allows intentional Mission/SBI/Jam overlay
+            # unless specialized ownership was explicitly released.
+            if session.get("_backing_released_specialized_context"):
+                return ctx is None or str(getattr(ctx, "source", "") or "") != "regular_song"
+    except ImportError:
+        pass
     try:
         from music_source_ownership import intended_practice_owner
 
@@ -3518,25 +3541,45 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
 
         pick = str(session.get("active_catalog_pick_key") or "").strip()
         saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
-        if reason == "switch_to_catalog_backing" and pick:
-            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
-            prev_pick = ""
+        live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if not saved and live_dk:
             try:
-                from songs.music_source import _LAST_ACTIVE_PICK_KEY
+                from songs.practice_key_state import set_practice_concert_key
 
-                prev_pick = str(session.get(_LAST_ACTIVE_PICK_KEY) or "").strip()
-            except ImportError:
+                set_practice_concert_key(session, live_dk, pick_key=pick)
+                saved = live_dk
+            except Exception:
+                saved = live_dk
+        if reason == "switch_to_catalog_backing" and pick:
+            # Same Global Active catalog pick with sticky PK: keep it.
+            # Only force Original Key when this pick has no sticky override yet.
+            if saved:
+                song_tok = saved
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, song_tok, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["_pending_display_key"] = song_tok
+                    session["concert_key"] = song_tok
+            else:
+                sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
                 prev_pick = ""
-            song_tok = reconcile_practice_key_after_active_source_change(
-                session,
-                pick_key=pick,
-                original_key=str((sel or {}).get("key") or ""),
-                previous_pick_key=prev_pick,
-                source="restore_regular_song_backing",
-            )
+                try:
+                    from songs.music_source import _LAST_ACTIVE_PICK_KEY
+
+                    prev_pick = str(session.get(_LAST_ACTIVE_PICK_KEY) or "").strip()
+                except ImportError:
+                    prev_pick = ""
+                song_tok = reconcile_practice_key_after_active_source_change(
+                    session,
+                    pick_key=pick,
+                    original_key=str((sel or {}).get("key") or ""),
+                    previous_pick_key=prev_pick,
+                    source="restore_regular_song_backing",
+                )
         else:
-            song_tok = saved or str(resolve_song_practice_key_token(session) or "").strip()
-            live_dk = str(session.get("display_key") or "").strip()
+            song_tok = saved or live_dk or str(resolve_song_practice_key_token(session) or "").strip()
             try:
                 from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY, shape_chart_key_for_concert, shape_tonic_only
 
@@ -3566,9 +3609,13 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             except ImportError:
                 pass
             if song_tok:
-                session["display_key"] = song_tok
-                session["concert_key"] = song_tok
-                session["_pending_display_key"] = song_tok
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, song_tok, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["_pending_display_key"] = song_tok
+                    session["concert_key"] = song_tok
                 try:
                     from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
 
@@ -3824,6 +3871,20 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
+    # After explicit Use catalog, do not let ownership reconcile reclaim Custom.
+    if int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0:
+        try:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+            session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        except ImportError:
+            pass
+        try:
+            set_backing_source_preference(session, BACKING_PREF_CATALOG)
+            restore_regular_song_backing(session, st_like=st_like)
+        except Exception:
+            pass
+        return
     try:
         from creative_return_trace import emit_creative_return_trace
 
@@ -3869,9 +3930,23 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     if ctx is not None and ctx.source == "regular_song":
         try:
             from music_source_ownership import catalog_identity_aligns, rebuild_catalog_backing_from_canonical_pick
+            from songs.practice_key_state import get_practice_concert_key
 
-            if not catalog_identity_aligns(session):
-                rebuild_catalog_backing_from_canonical_pick(session, st_like=st_like)
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            sticky = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+            live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            want = sticky or live_dk
+            ctx_key = str(getattr(ctx, "concert_key", "") or getattr(ctx, "display_key", "") or "").strip()
+            need_pk_heal = bool(want and ctx_key and want != ctx_key)
+            if (not catalog_identity_aligns(session)) or need_pk_heal:
+                # Identity / sticky-PK heal — never reset BPM mid-session
+                # (BPM/style/meter are temporary play overrides; PK is song-owned sticky).
+                rebuild_catalog_backing_from_canonical_pick(
+                    session,
+                    st_like=st_like,
+                    reset_to_original=False,
+                    force_bpm_reset=False,
+                )
                 ctx = get_backing_context(session)
         except ImportError:
             pass

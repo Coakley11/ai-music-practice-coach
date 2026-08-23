@@ -181,6 +181,57 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
     return ""
 
 
+def _practice_pick_aliases(pick_key: str) -> list[str]:
+    """Legacy ``Genre::Label`` and canonical ``Genre\\x1fLabel`` forms for one pick."""
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: str) -> None:
+        v = str(value or "").strip()
+        if not v or v in seen:
+            return
+        seen.add(v)
+        out.append(v)
+
+    def _expand_label_forms(genre: str, label: str) -> None:
+        g = str(genre or "").strip()
+        lab = str(label or "").strip()
+        if not g or not lab:
+            return
+        _add(f"{g}\x1f{lab}")
+        _add(f"{g}::{lab}")
+        # Title-only vs "Title — Artist" both appear in the wild.
+        for sep in (" — ", " - ", " – "):
+            if sep in lab:
+                short = lab.split(sep, 1)[0].strip()
+                if short and short != lab:
+                    _add(f"{g}\x1f{short}")
+                    _add(f"{g}::{short}")
+                break
+
+    _add(pk)
+    if "\x1f" in pk:
+        genre, _, label = pk.partition("\x1f")
+        _expand_label_forms(genre, label)
+    elif "::" in pk and not pk.startswith("custom::") and not pk.startswith("creative::"):
+        genre, _, label = pk.partition("::")
+        _expand_label_forms(genre, label)
+    try:
+        from songs.music_source import normalize_catalog_pick_key
+
+        norm = str(normalize_catalog_pick_key(pk) or "").strip()
+        _add(norm)
+        if norm and "\x1f" in norm:
+            genre, _, label = norm.partition("\x1f")
+            _expand_label_forms(genre, label)
+    except ImportError:
+        pass
+    return out
+
+
 def get_practice_concert_key(
     session: dict[str, Any],
     pick_key: str = "",
@@ -190,8 +241,19 @@ def get_practice_concert_key(
     pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
     if not pk:
         return str(default or "").strip()
-    saved = _practice_key_store(session).get(pk, "").strip()
-    return saved or str(default or "").strip()
+    store = _practice_key_store(session)
+    for alias in _practice_pick_aliases(pk):
+        saved = store.get(alias, "").strip()
+        if saved:
+            return saved
+    # Last resort: any store key that shares an alias with this pick.
+    aliases = set(_practice_pick_aliases(pk))
+    for stored_pk, saved in store.items():
+        if not saved:
+            continue
+        if aliases.intersection(_practice_pick_aliases(stored_pk)):
+            return str(saved).strip()
+    return str(default or "").strip()
 
 
 def set_practice_concert_key(
@@ -205,7 +267,7 @@ def set_practice_concert_key(
     if not pk or not key:
         return
     # Generated Jam / Style Jam keys must never land in a catalog song slot.
-    if is_song_source_pick(pk):
+    if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
         try:
             from generated_jam_key_context import generated_jam_practice_key_tokens
 
@@ -216,8 +278,36 @@ def set_practice_concert_key(
         jam_widget = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
         if jam_widget and key == jam_widget and creative_jam_owns_practice_settings(session):
             return
+        # Streamlit sidebar reseeds to catalog Original on page change; that must
+        # not wipe a sticky Practice Key (C#m → Bm on leave Backing→Practice, H2).
+        existing = str(get_practice_concert_key(session, pk) or "").strip()
+        if existing and existing != key:
+            orig = ""
+            try:
+                from songs.music_source import _catalog_original_key_for_session
+
+                probe = dict(session)
+                probe["active_catalog_pick_key"] = pk
+                orig = str(_catalog_original_key_for_session(probe) or "").strip()
+            except Exception:
+                orig = ""
+            if orig and key == orig and existing != orig:
+                return
     store = _practice_key_store(session)
-    store[pk] = key
+    # Prefer canonical catalog form; drop legacy aliases for the same pick.
+    write_pk = pk
+    try:
+        from songs.music_source import normalize_catalog_pick_key
+
+        norm = str(normalize_catalog_pick_key(pk, session_state=session) or "").strip()
+        if norm:
+            write_pk = norm
+    except ImportError:
+        pass
+    for alias in _practice_pick_aliases(pk) + _practice_pick_aliases(write_pk):
+        if alias != write_pk:
+            store.pop(alias, None)
+    store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
 
 
@@ -226,9 +316,13 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
     if not pk:
         return
     store = _practice_key_store(session)
-    if pk not in store:
-        return
-    store.pop(pk, None)
+    removed = False
+    for alias in _practice_pick_aliases(pk):
+        if alias in store:
+            store.pop(alias, None)
+            removed = True
+    if not removed and pk in store:
+        store.pop(pk, None)
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
 
 

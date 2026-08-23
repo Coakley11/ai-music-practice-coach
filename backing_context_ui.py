@@ -601,12 +601,161 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     with cols[0]:
         if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
             try:
+                from pathlib import Path
+
+                Path("scripts/evidence-creative-backing/h9-use-catalog-click.txt").write_text(
+                    "clicked\n", encoding="utf-8"
+                )
+            except Exception:
+                pass
+            try:
                 from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
 
                 set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
             except ImportError:
                 pass
-            restore_regular_song_backing(session, st_like=st)
+            # Capture Global Active sticky PK *before* ownership switch — Custom visit
+            # must not demote it to Original Key on same-pick return.
+            _sticky_pick = ""
+            _sticky_pk = ""
+            try:
+                from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
+                from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+                for _sk in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
+                    _raw = session.get(_sk)
+                    if isinstance(_raw, dict):
+                        _cand = str(_raw.get("pick_key") or "").strip()
+                        if _cand and not _cand.startswith("custom::") and not _cand.startswith("custom\x1f"):
+                            _sticky_pick = _cand
+                            break
+                if not _sticky_pick:
+                    _sticky_pick = str(session.get("active_catalog_pick_key") or "").strip()
+                if _sticky_pick.startswith("custom::") or _sticky_pick.startswith("custom\x1f"):
+                    _sticky_pick = ""
+                if _sticky_pick:
+                    _sticky_pk = str(get_practice_concert_key(session, _sticky_pick) or "").strip()
+                    if _sticky_pk:
+                        set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)
+            except ImportError:
+                pass
+            try:
+                from songs.key_state import invalidate_backing_cache
+                from songs.music_source import (
+                    SONG_PICKER_ACTIVE_SOURCE_KEY,
+                    SONG_PICKER_SOURCE_CATALOG,
+                    ensure_song_library,
+                    ensure_song_picker_catalog,
+                    switch_to_catalog_from_custom,
+                    sync_song_picker_source_widget,
+                )
+                from songs.practice_key_state import set_practice_concert_key
+
+                # Clear Custom surface FIRST so no later reconcile can see CPL as
+                # practice owner and call activate_custom_ownership (H9 reclaim).
+                session.pop("cpl_active", None)
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY
+
+                    session.pop(CPL_ACTIVE_KEY, None)
+                except ImportError:
+                    pass
+                try:
+                    from backing_context import (
+                        BACKING_PREF_CATALOG,
+                        clear_backing_context,
+                        set_backing_source_preference,
+                    )
+
+                    clear_backing_context(session)
+                    set_backing_source_preference(session, BACKING_PREF_CATALOG)
+                except ImportError:
+                    session.pop("backing_context", None)
+
+                catalog = ensure_song_picker_catalog(session)
+                library = ensure_song_library(session) or catalog
+                # Full ownership transition (not just a label / sealed-ctx wipe).
+                # force=True: explicit button must restore Catalog even if Custom
+                # flags were already partially cleared on a prior failed click.
+                # Do NOT call release_specialized here — that reconciles while CPL
+                # may still look active and reclaims Custom ownership.
+                switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=catalog if isinstance(catalog, dict) else {},
+                    song_library=library if isinstance(library, dict) else None,
+                    invalidate_backing=invalidate_backing_cache,
+                    force=True,
+                )
+                session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                try:
+                    from songs.music_source import (
+                        LAST_RECONCILED_SONG_PICKER_SOURCE_KEY,
+                        SONG_PICKER_PRESENTED_SOURCE_KEY,
+                    )
+
+                    session[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                    session[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                except ImportError:
+                    pass
+                # Suppress stale Custom radio restores across dual hydrate + callbacks.
+                session["_block_stale_custom_radio_reclaim"] = 4
+                sync_song_picker_source_widget(session, force=True, widget_safe=False)
+                if _sticky_pick and _sticky_pk:
+                    set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)
+                    session["active_catalog_pick_key"] = _sticky_pick
+                    # Widget may already own display_key on this run — use pending /
+                    # safe assign (never direct session["display_key"] after widgets).
+                    try:
+                        from session_widget_safe import safe_assign_display_key
+
+                        safe_assign_display_key(
+                            session, _sticky_pk, widget_safe=True, st_like=st
+                        )
+                    except ImportError:
+                        session["_pending_display_key"] = _sticky_pk
+                        session["concert_key"] = _sticky_pk
+                restore_regular_song_backing(session, st_like=st)
+                session["_force_catalog_backing_after_use_catalog"] = 4
+                try:
+                    from pathlib import Path
+
+                    Path("scripts/evidence-creative-backing/h9-post-switch.txt").write_text(
+                        f"song={session.get('song')!r}\n"
+                        f"pick={session.get('active_catalog_pick_key')!r}\n"
+                        f"source={session.get('active_music_source')!r}\n"
+                        f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n"
+                        f"force={session.get('_force_catalog_backing_after_use_catalog')!r}\n"
+                        f"ctx_source={(session.get('backing_context') or {}).get('source') if isinstance(session.get('backing_context'), dict) else session.get('backing_context')!r}\n",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                try:
+                    from backing_source_navigation import (
+                        BACKING_INTENT_RESTORE_LAST,
+                        mark_generic_catalog_backing_entry,
+                        set_backing_open_intent,
+                    )
+
+                    mark_generic_catalog_backing_entry(session)
+                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                except ImportError:
+                    pass
+            except Exception as _use_catalog_err:
+                try:
+                    from pathlib import Path
+                    import traceback
+
+                    Path("scripts/evidence-creative-backing/h9-use-catalog-error.txt").write_text(
+                        f"{type(_use_catalog_err).__name__}: {_use_catalog_err}\n{traceback.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                try:
+                    restore_regular_song_backing(session, st_like=st)
+                except Exception:
+                    pass
             st.rerun()
     if show_custom:
         with cols[1]:

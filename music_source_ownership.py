@@ -662,10 +662,15 @@ def rebuild_catalog_backing_from_canonical_pick(
     st_like: Any | None = None,
     pick_key: str = "",
     practice_concert_key: str = "",
-    reset_to_original: bool = True,
-    force_bpm_reset: bool = True,
+    reset_to_original: bool = False,
+    force_bpm_reset: bool = False,
 ) -> Any:
-    """Full backing_context rebuild from canonical_active_pick_key and catalog record."""
+    """Full backing_context rebuild from canonical_active_pick_key and catalog record.
+
+    Defaults preserve sticky Practice Key and temporary BPM. Pass
+    ``reset_to_original=True`` / ``force_bpm_reset=True`` only on explicit
+    catalog activation or Use-catalog-song-backing transitions.
+    """
     from types import SimpleNamespace
 
     from songs.music_source import (
@@ -715,17 +720,62 @@ def rebuild_catalog_backing_from_canonical_pick(
         except ImportError:
             is_fixed_practice_key_mode = lambda _session: False  # type: ignore[misc,assignment]
         saved_key = get_practice_concert_key(session, pick)
+        live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        # Only adopt live_dk when Backing is already bound to this same pick
+        # (sticky PK mid-session). Never invent sticky from a foreign live key
+        # during identity heal or first bind (Say G / Day Tripper E).
+        same_pick_live = False
+        try:
+            from backing_context import get_backing_context
+
+            _ctx = get_backing_context(session)
+            bound = str(getattr(_ctx, "bound_pick_key", "") or getattr(_ctx, "active_song_id", "") or "").strip()
+            if _ctx is not None and bound and pick and bound == pick:
+                same_pick_live = True
+        except Exception:
+            same_pick_live = False
+        if (
+            same_pick_live
+            and not saved_key
+            and live_dk
+            and live_dk != catalog_original
+            and not is_fixed_practice_key_mode(session)
+        ):
+            try:
+                from songs.practice_key_state import set_practice_concert_key
+
+                set_practice_concert_key(session, live_dk, pick_key=pick)
+                saved_key = live_dk
+            except Exception:
+                saved_key = live_dk
         try:
             from backing_source_navigation import peek_key_transition_intent
 
             _transition = peek_key_transition_intent(session)
         except ImportError:
             _transition = ""
-        if reset_to_original or _transition in {
-            "switch_to_catalog_backing",
+        # Explicit catalog activation / song change → Original Key.
+        # "Use catalog song backing" returning to the *same* Global Active pick must
+        # keep sticky Practice Key and only reset temporary BPM/style/meter.
+        _force_original = bool(reset_to_original) or _transition in {
             "catalog_source_switch",
-            "creative_to_catalog",
-        }:
+        }
+        if _transition == "creative_to_catalog":
+            # Ordinary Creative→catalog / restore: keep sticky PK when present.
+            _force_original = bool(reset_to_original) or not bool(saved_key)
+        if _transition == "switch_to_catalog_backing" and not reset_to_original:
+            # Same-pick return: preserve sticky PK when this pick already has one.
+            if not saved_key:
+                _force_original = True
+            else:
+                _force_original = False
+        elif _transition == "switch_to_catalog_backing":
+            _force_original = True
+        if _force_original and saved_key and saved_key != catalog_original:
+            # Sticky PK for this pick outranks a same-pick catalog return.
+            if _transition in {"switch_to_catalog_backing", "creative_to_catalog"} and not reset_to_original:
+                _force_original = False
+        if _force_original:
             try:
                 from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
                 from songs.music_source import CATALOG_BEFORE_CREATIVE_KEY, LAST_CATALOG_STATE_KEY
@@ -927,6 +977,22 @@ def activate_custom_ownership(
     preserve_practice_key: bool = False,
 ) -> Any:
     """Custom progression owns everything — release prior owner, rebuild from CPL active song."""
+    try:
+        from songs.music_source import (
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            capture_catalog_before_custom,
+            explicit_catalog_selection_is_authoritative,
+        )
+
+        # Explicit Catalog transition outranks LAST_CUSTOM / CPL reclaim (H9).
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+            session
+        ):
+            return None
+        # Stamp live Catalog BEFORE before Custom replaces Global ownership.
+        capture_catalog_before_custom(session)
+    except ImportError:
+        pass
     _clear_cross_owner_transport(session)
     if not preserve_practice_key:
         _release_creative_transport_authority(session)
@@ -996,7 +1062,17 @@ def reconcile_source_ownership(
         _write_catalog_rebuild_trace(session, ran=False)
         return False
     if practice == "catalog":
-        activate_catalog_ownership(session, st_like=st_like)
+        # Ordinary top-level Backing entry is NOT a new catalog activation — keep
+        # the current active-source Practice Key (e.g. Shape C#m must not fall to Bm).
+        preserve_pk = reason in {
+            "generic_backing_entry",
+            "backing_hydrate",
+        }
+        activate_catalog_ownership(
+            session,
+            st_like=st_like,
+            preserve_practice_key=preserve_pk,
+        )
         _write_catalog_rebuild_trace(session, ran=True)
         return True
     activate_custom_ownership(session, st_like=st_like)

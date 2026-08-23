@@ -43,18 +43,32 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
 def sync_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
     """Capture live catalog identity into the catalog_session bucket."""
     try:
-        from songs.music_source import _catalog_snapshot_from_session
+        from songs.music_source import _catalog_snapshot_from_session, _catalog_title_matches_live
 
         snap = _catalog_snapshot_from_session(session)
     except ImportError:
         snap = None
+        _catalog_title_matches_live = None  # type: ignore[assignment]
+    live_title = str(session.get("song") or session.get("active_song_title") or "").strip()
     if not snap:
         for fallback_key in ("_catalog_before_custom_state", "_last_catalog_song_state"):
             raw = session.get(fallback_key)
-            if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
-                if not str(raw.get("pick_key") or "").strip().startswith("custom::"):
-                    snap = dict(raw)
-                    break
+            if not isinstance(raw, dict):
+                continue
+            pk = str(raw.get("pick_key") or "").strip()
+            if not pk or pk.startswith("custom::"):
+                continue
+            # Never rehydrate Say into catalog_session when Global Active title is Shape.
+            if live_title and not live_title.lower().startswith("my progression"):
+                fb_title = str((raw.get("selected_song") or {}).get("title") or "").strip()
+                if not fb_title:
+                    label = pk.split("\x1f", 1)[-1] if "\x1f" in pk else pk
+                    fb_title = label.split(" — ", 1)[0].strip()
+                if fb_title and _catalog_title_matches_live is not None:
+                    if not _catalog_title_matches_live(fb_title, live_title):
+                        continue
+            snap = dict(raw)
+            break
     if not snap:
         return None
     pick = str(snap.get("pick_key") or "").strip()
@@ -119,11 +133,9 @@ def sync_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
         display_key = get_practice_concert_key(session, pick, default=home) or home
     except ImportError:
         display_key = home
-    sections_raw = (
-        active.get("original_sections")
-        if isinstance(active.get("original_sections"), dict)
-        else {}
-    )
+    sections_raw = active.get("original_sections")
+    if not isinstance(sections_raw, dict) or not sections_raw:
+        sections_raw = active.get("sections") if isinstance(active.get("sections"), dict) else {}
     sections = {
         str(sec): [str(c) for c in chords if str(c).strip()]
         for sec, chords in sections_raw.items()

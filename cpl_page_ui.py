@@ -165,6 +165,7 @@ def render_custom_progression_lab_page() -> None:
         display_sections_for_key,
         ensure_all_cpl_sections,
         cpl_draft_preview_key,
+        cpl_workspace_practice_key,
         ensure_cpl_draft_home_tracking,
         ensure_cpl_widget_keys_initialized,
         reset_cpl_widget_initialization,
@@ -179,6 +180,7 @@ def render_custom_progression_lab_page() -> None:
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
+        practice_entries_to_original_key,
         preset_button_label,
         prepare_cpl_backing_handoff,
         presets_for_style,
@@ -190,6 +192,7 @@ def render_custom_progression_lab_page() -> None:
         song_structure_overview_html,
         start_new_progression,
         sync_cpl_draft_widgets_to_active,
+        sync_custom_workspace_practice_key,
         written_home_key,
     )
     from progression_helpers import (
@@ -244,11 +247,18 @@ def render_custom_progression_lab_page() -> None:
 
     display_key = session_display_key(st.session_state)
     original_key = cpl_draft_written_key(active)
-    preview_key = cpl_draft_preview_key(active)
+    # Builder + in-page progression projection always follow Practice Key.
+    practice_key = cpl_workspace_practice_key(st.session_state, active)
+    preview_key = practice_key
     preview_label = format_key_label(preview_key)
     display_label = format_key_label(display_key)
-    original_label = preview_label
-    home_ns = original_key.replace("#", "s").replace("b", "f")
+    original_label = format_key_label(original_key)
+    home_ns = (
+        practice_key.replace("#", "s")
+        .replace("b", "f")
+        .replace("♭", "b")
+        .replace("♯", "s")
+    )
     finished = bool(st.session_state.get("cpl_finished"))
     saved = st.session_state[CPL_SAVED_KEY]
     prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
@@ -372,7 +382,11 @@ def render_custom_progression_lab_page() -> None:
                 st.success(f"Saved **{active['name']}** to your library.")
         with n2:
             if st.button("New song", key="cpl_start_new", use_container_width=True):
-                apply_cpl_session_progression(st.session_state, start_new_progression())
+                apply_cpl_session_progression(
+                    st.session_state,
+                    start_new_progression(),
+                    reset_display_key=True,
+                )
                 st.rerun()
         with n3:
             if st.button(
@@ -391,7 +405,9 @@ def render_custom_progression_lab_page() -> None:
                 load_pick = st.selectbox("Saved songs", saved_names, key="cpl_load_pick")
                 if st.button("Load selected", key="cpl_load_btn", use_container_width=True):
                     loaded = load_saved_progression(saved, load_pick)
-                    apply_cpl_session_progression(st.session_state, loaded)
+                    apply_cpl_session_progression(
+                        st.session_state, loaded, reset_display_key=True
+                    )
                     st.rerun()
         with st.expander("Jazz chart demos", expanded=False):
             st.caption("Load a full jazz-standard chart with measure bars and repeat (%) notation.")
@@ -399,13 +415,17 @@ def render_custom_progression_lab_page() -> None:
             with d1:
                 if st.button("Load Blue Bossa", key="cpl_demo_blue_bossa", use_container_width=True):
                     apply_cpl_session_progression(
-                        st.session_state, build_demo_progression("blue_bossa")
+                        st.session_state,
+                        build_demo_progression("blue_bossa"),
+                        reset_display_key=True,
                     )
                     st.rerun()
             with d2:
                 if st.button("Load Take The A Train", key="cpl_demo_att", use_container_width=True):
                     apply_cpl_session_progression(
-                        st.session_state, build_demo_progression("take_the_a_train")
+                        st.session_state,
+                        build_demo_progression("take_the_a_train"),
+                        reset_display_key=True,
                     )
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -414,9 +434,19 @@ def render_custom_progression_lab_page() -> None:
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
         original_key = cpl_draft_written_key(active)
         original_label = format_key_label(original_key)
-        home_ns = original_key.replace("#", "s").replace("b", "f")
+        practice_key = cpl_workspace_practice_key(st.session_state, active)
+        preview_key = practice_key
+        preview_label = format_key_label(preview_key)
+        display_key = session_display_key(st.session_state)
+        display_label = format_key_label(display_key)
+        home_ns = (
+            practice_key.replace("#", "s")
+            .replace("b", "f")
+            .replace("♭", "b")
+            .replace("♯", "s")
+        )
 
-        display_sections = deep_copy_sections(display_sections_for_key(active, preview_key))
+        display_sections = deep_copy_sections(display_sections_for_key(active, practice_key))
         has_chords = bool(flatten_sections_to_events(display_sections))
         _filled = filled_section_names(_home_sections())
         _sections_line = (
@@ -492,8 +522,18 @@ def render_custom_progression_lab_page() -> None:
         home_entries = home_sections[edit_section]
         original_key = cpl_draft_written_key(active)
         original_label = format_key_label(original_key)
-        home_ns = original_key.replace("#", "s").replace("b", "f")
-        simple = simple_chords_for_key(original_key)
+        practice_key = cpl_workspace_practice_key(st.session_state, active)
+        preview_key = practice_key
+        preview_label = format_key_label(preview_key)
+        display_key = session_display_key(st.session_state)
+        display_label = format_key_label(display_key)
+        home_ns = (
+            practice_key.replace("#", "s")
+            .replace("b", "f")
+            .replace("♭", "b")
+            .replace("♯", "s")
+        )
+        simple = simple_chords_for_key(practice_key)
         style_presets = presets_for_style(style)
         time_sig = str(active.get("time_signature") or "4/4")
         use_lead_sheet = bool(active.get("section_labels")) or bool(active.get("demo_chart_id"))
@@ -514,24 +554,12 @@ def render_custom_progression_lab_page() -> None:
 
         st.markdown('<div class="cpl-builder-panel">', unsafe_allow_html=True)
         st.markdown(f'<p class="cpl-section-heading">{edit_section}</p>', unsafe_allow_html=True)
-        if is_custom_progression(st.session_state) and preview_key != display_key:
-            st.markdown(
-                f'<p class="cpl-key-line">Original key <strong>{preview_label}</strong> · '
-                f"Practice key <strong>{display_label}</strong> (sidebar)</p>",
-                unsafe_allow_html=True,
-            )
-        elif not is_custom_progression(st.session_state):
-            st.markdown(
-                f'<p class="cpl-key-line">Draft key: <strong>{preview_label}</strong> · '
-                f"global practice key stays <strong>{display_label}</strong> until you "
-                f"<strong>Set as Active Song</strong></p>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<p class="cpl-key-line">Key: <strong>{preview_label}</strong></p>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f'<p class="cpl-key-line">Original key <strong>{original_label}</strong> · '
+            f"Practice key <strong>{preview_label}</strong> "
+            f"(builder, presets, and progression project from Practice Key)</p>",
+            unsafe_allow_html=True,
+        )
 
         st.markdown("**1. Click a chord**")
         cols = st.columns(min(6, max(1, len(simple))))
@@ -635,7 +663,7 @@ def render_custom_progression_lab_page() -> None:
 
         def _render_section_progression(*, pending: str | None = None) -> dict:
             active_now = cpl_active_from_session(st.session_state)
-            preview_key_now = cpl_draft_preview_key(active_now)
+            preview_key_now = cpl_workspace_practice_key(st.session_state, active_now)
             view = cpl_section_progression_view(
                 active_now,
                 section_name=edit_section,
@@ -751,16 +779,19 @@ def render_custom_progression_lab_page() -> None:
 
         if style_presets:
             st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-            st.markdown(f"**{style} presets** ({original_label}) — fills {edit_section} only")
+            st.markdown(f"**{style} presets** ({preview_label}) — fills {edit_section} only")
             for preset_id, spec in style_presets.items():
-                label = preset_button_label(preset_id, original_key, spec)
+                label = preset_button_label(preset_id, practice_key, spec)
                 if st.button(
                     label,
                     key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
                     use_container_width=True,
                 ):
-                    home_sections[edit_section] = build_style_preset_entries(
-                        style, preset_id, original_key
+                    practice_entries = build_style_preset_entries(
+                        style, preset_id, practice_key
+                    )
+                    home_sections[edit_section] = practice_entries_to_original_key(
+                        practice_entries, practice_key, original_key
                     )
                     cpl_clear_pending_chord(st.session_state, edit_section)
                     if home_sections[edit_section]:
@@ -773,7 +804,7 @@ def render_custom_progression_lab_page() -> None:
 
         if section_has_chords:
             with st.expander("Edit chords in this section", expanded=False):
-                section_display = display_entries_for_section(active, preview_key, edit_section)
+                section_display = display_entries_for_section(active, practice_key, edit_section)
                 for idx, entry in enumerate(list(home_entries)):
                     e1, e2, e3 = st.columns([2, 2, 1])
                     with e1:
@@ -807,7 +838,8 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
         active = cpl_active_from_session(st.session_state)
-        preview_key = cpl_draft_preview_key(active)
+        practice_key = cpl_workspace_practice_key(st.session_state, active)
+        preview_key = practice_key
         has_chords = bool(filled_section_names(home_sections))
 
         st.markdown("---")
@@ -848,7 +880,7 @@ def render_custom_progression_lab_page() -> None:
 
         map_html = song_structure_overview_html(
             active,
-            preview_key if not is_custom_progression(st.session_state) else display_key,
+            practice_key,
             highlight_section=edit_section,
             only_filled=True,
         )

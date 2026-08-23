@@ -330,7 +330,11 @@ def sync_improv_song_source_for_handoff(
     set_catalog_source: Callable[[dict], None],
     set_custom_source: Callable[[dict], None],
 ) -> None:
-    """Align global music source when opening Practice/Backing from SBI."""
+    """Stamp SBI preview source for Practice/Backing handoff — does not flip Global Active.
+
+    SBI → Custom is a preview/handoff owner (LAST_CUSTOM / song_improv). Global Active
+    Source stays on the catalog song until an explicit Songs/Custom Set-as-Active.
+    """
     src = str(source or "Active song").strip() or "Active song"
     try:
         from source_session_state import set_sbi_preview_source
@@ -341,16 +345,7 @@ def sync_improv_song_source_for_handoff(
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
     session_state[PENDING_IMPROV_SONG_SOURCE] = src
     session_state["improv_song_source"] = src
-    if src == "Custom progression":
-        set_custom_source(session_state)
-    else:
-        set_catalog_source(session_state)
-        try:
-            from songs.music_source import restore_catalog_identity_from_snapshot
-
-            restore_catalog_identity_from_snapshot(session_state)
-        except ImportError:
-            pass
+    # Deliberately do not call set_custom_source / set_catalog_source here.
 
 
 def apply_improv_song_source(
@@ -361,7 +356,7 @@ def apply_improv_song_source(
     set_custom_source: Callable[[dict], None],
     widget_safe: bool = False,
 ) -> None:
-    """Align global music source with Creative Lab song source choice."""
+    """Update SBI preview song source only — never activate Global Active Source."""
     src = str(source or "Active song").strip() or "Active song"
     if widget_safe:
         try:
@@ -374,10 +369,13 @@ def apply_improv_song_source(
         return
     session_state["improv_song_source"] = src
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
-    if src == "Custom progression":
-        set_custom_source(session_state)
-    else:
-        set_catalog_source(session_state)
+    try:
+        from source_session_state import set_sbi_preview_source
+
+        set_sbi_preview_source(session_state, src)
+    except ImportError:
+        pass
+    # Preview tab only — do not call set_custom_source / set_catalog_source.
 
 
 def flush_pending_improv_song_source(session_state: dict) -> None:

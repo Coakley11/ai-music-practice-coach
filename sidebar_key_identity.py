@@ -129,7 +129,13 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
 
     Never overwrite a live or queued user Practice Key with a stale song-blob token
     (Mission Backing Dm→Em regression: prime wrote blob Dm after the sidebar chose Em).
+
+    Custom page owns priming via ``prepare_custom_workspace_sidebar_display_key`` —
+    skip force-apply here so React Aria Practice Key clicks can commit.
     """
+    if str(session.get("studio_page") or "").strip().lower() == "custom":
+        return resolve_sidebar_key_identity(session)
+
     ident = resolve_sidebar_key_identity(session)
     token = ident.selector_token
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()

@@ -1,7 +1,8 @@
 # Music Practice Coach — Acceptance Matrix (Draft)
 
-**Last updated:** 2026-06-08  
-**Status:** Phase A draft — pre-migration baseline  
+**Last updated:** 2026-06-09  
+**Status:** Phase C manual cross-device Tests **A–D passed** on `dev` (frozen)  
+**Baseline:** [MUSIC_PERSISTENCE_BASELINE.md](./MUSIC_PERSISTENCE_BASELINE.md)  
 **Reference:** Baseball `docs/BASEBALL_ACCEPTANCE_MATRIX.md`  
 **Full audit:** `docs/MUSIC_PHASE_A_AUDIT.md`
 
@@ -42,7 +43,7 @@ Cross-cutting goals A–E match Baseball acceptance tests.
 |------|--------|----------------|
 | 1. Page inventory | PASS | 9 sidebar + 2 sub-features documented |
 | 2. Canonical ownership | **FAIL** | No `{page}_state.py`; snapshots + `_PERSIST_KEYS` only |
-| 3. Phone ↔ Dell sync | **PARTIAL** | Tests A–C passed (page, practice, backing); Test D (song+key+instrument+page) next |
+| 3. Phone ↔ Dell sync | **PARTIAL** | Cloud via `restore_once`; manual sign-off on non-core song PASS (2026-06-08) |
 | 4. Cloud restore | **PARTIAL** | `pick_restore_session`; no per-page `apply_cloud_*_if_allowed` |
 | 5. Manual nav ownership | **PARTIAL** | Page snapshots preserve globals; no `claim_user_page_ownership` for `studio_page` |
 | 6. AMI source_state + return | **FAIL** | Not wired; no `music_applied_math_context.py` |
@@ -102,25 +103,28 @@ Cross-cutting goals A–E match Baseball acceptance tests.
 - [x] Protocol draft
 
 ### Phase B — Shared suite modules
-- [ ] Sync from Command Center
-- [ ] `prepare_music_workspace()` + `studio_page` ownership
-- [ ] Verify force-save / post-restore bypass list
-- [ ] AMI sidebar + hydrate wiring (minimal)
+- [x] `prepare_music_workspace()` + `studio_page` ownership (Tests A–D)
+- [x] Verify force-save / post-restore bypass list
+- [ ] Sync from Command Center (ongoing suite maintenance)
+- [ ] AMI sidebar + hydrate wiring (minimal) — **Test E**
 
 ### Phase C — Canonical modules
-- [ ] `active_song_state.py`
-- [ ] `practice_state.py`, `song_picker_state.py`, `backing_track_state.py`
-- [ ] `creative_state.py`, `upload_state.py`, `karaoke_state.py`
+- [x] `active_song_state.py` (Test D)
+- [x] `practice_state.py` (Test B)
+- [x] `backing_track_state.py` (Test C)
+- [x] `studio_nav_state.py` (Test A)
+- [ ] `song_picker_state.py`, `creative_state.py`, `upload_state.py`, `karaoke_state.py` (full matrix)
 - [ ] `music_applied_math_context.py`
-- [ ] Tests A–E per module
+- [x] Manual Tests A–D per persistence baseline
+- [ ] Test E (AMI return)
 
-### Phase D — Manual acceptance
+### Phase D — Manual acceptance (frozen)
 - [x] Test A — studio page sync (phone ↔ Dell)
 - [x] Test B — Practice field sync
 - [x] Test C — Backing content sync (v18)
-- [ ] Test D — active song + display key + instrument + page restore together
-- [ ] AMI return (if enabled)
-- [ ] Final matrix all PASS
+- [x] Test D — active song + display key + instrument + page + written-key + transposing subtype (v25 `f153204`, 2026-06-09)
+- [ ] Test E — AMI return (if enabled)
+- [ ] Final per-page matrix all PASS (analysis/multitrack blobs remain PARTIAL)
 
 ---
 

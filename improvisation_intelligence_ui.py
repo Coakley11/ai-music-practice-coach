@@ -79,8 +79,10 @@ from improvisation_missions import (
 from motif_engine import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
+    build_motif_pattern,
     generate_mission_phrase,
     generate_musical_phrase,
+    rebuild_motif_pattern,
     transform_motif,
 )
 from improvisation_motif import (
@@ -454,6 +456,20 @@ def render_improvisation_intelligence_lab(
                 )
             except ImportError:
                 pass
+            # Explicit Entry & Jam / non-Mission tab outranks sealed Mission page owner (H5).
+            tab_now = str(session_state.get("improv_intelligence_tab") or "").strip()
+            if tab_now and tab_now != "Missions":
+                try:
+                    from backing_source_navigation import release_mission_creative_page_ownership
+
+                    release_mission_creative_page_ownership(
+                        session_state,
+                        reason="creative_tab_leave_missions",
+                        force_entry_jam_tab=(tab_now == "Entry & Jam"),
+                    )
+                except ImportError:
+                    session_state.pop("improv_mission_backing_handoff", None)
+                    session_state["_backing_released_specialized_context"] = True
 
         try:
             from widget_callback_diagnostics import log_widget_callback_registration
@@ -621,6 +637,17 @@ def _tab_entry_modes(
         except ImportError:
             pass
         if str(session_state.get("improv_entry_mode") or "").strip() == "Song-Based Improvisation":
+            try:
+                from backing_source_navigation import release_mission_creative_page_ownership
+
+                release_mission_creative_page_ownership(
+                    session_state,
+                    reason="entry_mode_song_based",
+                    force_entry_jam_tab=True,
+                )
+            except ImportError:
+                session_state.pop("improv_mission_backing_handoff", None)
+                session_state["_backing_released_specialized_context"] = True
             try:
                 from song_improv_scope_authority import apply_song_improv_entry_defaults
 
@@ -1189,70 +1216,87 @@ def _tab_motif(
 
     cur, _idx = _selected_chord(session_state, chords, section_map)
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
-    shown_cur = _player_facing_chord(session_state, cur, concert_key=concert_key)
-    motif_key = _motif_notation_reference_key(improv_ctx, cur)
+    # Musician-facing selected chord is the motif generator authority (not a stale concert label).
+    gen_chord = _player_facing_chord(session_state, cur, concert_key=concert_key) or cur
+    motif_key = _motif_notation_reference_key(improv_ctx, gen_chord)
 
     g0, g1, g2, g3 = st.columns(4)
     with g0:
         if st.button(
-            f"Generate motif for {shown_cur or cur}",
+            f"Generate motif for {gen_chord}",
             type="primary",
             key="improv_gen_motif_chord",
             use_container_width=True,
         ):
-            session_state["improv_motif"] = generate_musical_phrase(
-                cur, key_center=motif_key, level=level, kind="creative"
+            motif = generate_musical_phrase(
+                gen_chord, key_center=motif_key, level=level, kind="creative"
             )
+            if isinstance(motif, dict):
+                motif["chord"] = gen_chord
+            session_state["improv_motif"] = motif
             _clear_motif_outputs(session_state)
             _persist_motif_artifact(session_state, interaction="motif_generate_chord")
             st.rerun()
     with g1:
         if st.button("New motif", key="improv_motif_new", use_container_width=True):
-            session_state["improv_motif"] = generate_musical_phrase(
-                cur,
+            motif = generate_musical_phrase(
+                gen_chord,
                 key_center=motif_key,
                 level=level,
                 kind="creative",
                 variant="new",
                 session_state=session_state,
             )
+            if isinstance(motif, dict):
+                motif["chord"] = gen_chord
+            session_state["improv_motif"] = motif
             _clear_motif_outputs(session_state)
             _persist_motif_artifact(session_state, interaction="motif_new")
             st.rerun()
     with g2:
         if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
-            session_state["improv_motif"] = generate_musical_phrase(
-                cur,
+            motif = generate_musical_phrase(
+                gen_chord,
                 key_center=motif_key,
                 level=level,
                 kind="creative",
                 variant="harder",
             )
+            if isinstance(motif, dict):
+                motif["chord"] = gen_chord
+            session_state["improv_motif"] = motif
             _clear_motif_outputs(session_state)
             _persist_motif_artifact(session_state, interaction="motif_harder")
             st.rerun()
     with g3:
         if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
-            session_state["improv_motif"] = generate_musical_phrase(
-                cur,
+            motif = generate_musical_phrase(
+                gen_chord,
                 key_center=motif_key,
                 level=level,
                 kind="creative",
                 variant="easier",
             )
+            if isinstance(motif, dict):
+                motif["chord"] = gen_chord
+            session_state["improv_motif"] = motif
             _clear_motif_outputs(session_state)
             _persist_motif_artifact(session_state, interaction="motif_easier")
             st.rerun()
 
     motif = session_state.get("improv_motif")
     if not motif:
-        st.info(f"Click **Generate motif for {cur}** or tap another chord tile.")
+        st.info(f"Click **Generate motif for {gen_chord}** or tap another chord tile.")
         return
 
+    motif_chord_label = _player_facing_chord(
+        session_state, str(motif.get("chord") or gen_chord), concert_key=concert_key
+    ) or str(motif.get("chord") or gen_chord)
+    title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
-        f'<p class="ui-card-title">Motif on {html.escape(str(motif.get("chord", cur)))}</p>'
-        f'<p style="font-size:1.35rem;font-weight:700;margin:0.25rem 0;">'
+        f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
+        f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
         f'{html.escape(motif.get("display", ""))}</p>'
         f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
         unsafe_allow_html=True,
@@ -1264,7 +1308,7 @@ def _tab_motif(
         (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
         (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
         (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
-        (t4, "rhythmic", "Rhythmic Variation", "improv_xform_rhythm"),
+        (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
     ]
     for col, op, label, key in transforms:
         with col:
@@ -1276,11 +1320,105 @@ def _tab_motif(
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
-                    key_center=_motif_notation_reference_key(improv_ctx, cur),
+                    key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                     bpm=bpm,
                 )
                 _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                 st.rerun()
+
+    st.markdown("**Build Motif Pattern**")
+    p_len = int(session_state.get("improv_motif_pattern_length") or 8)
+    if p_len not in (8, 12, 16):
+        p_len = 8
+    pattern_type_labels = {
+        "auto": "Auto / Musical",
+        "diatonic": "Diatonic",
+        "scalar": "Scalar / Seconds",
+        "thirds": "Thirds",
+        "fourths": "Fourths",
+        "pentatonic": "Pentatonic",
+    }
+    cur_ptype = str(motif.get("pattern_type") or session_state.get("improv_motif_pattern_type") or "auto")
+    cur_dir = str(motif.get("pattern_direction") or "ascending")
+    pc1, pc2, pc3 = st.columns(3)
+    with pc1:
+        length_choice = st.selectbox(
+            "Length",
+            options=[8, 12, 16],
+            index=[8, 12, 16].index(p_len),
+            key="improv_motif_pattern_length_widget",
+        )
+        session_state["improv_motif_pattern_length"] = int(length_choice)
+    with pc2:
+        type_choice = st.selectbox(
+            "Pattern Type",
+            options=list(pattern_type_labels.keys()),
+            format_func=lambda k: pattern_type_labels.get(k, k),
+            index=list(pattern_type_labels.keys()).index(cur_ptype)
+            if cur_ptype in pattern_type_labels
+            else 0,
+            key="improv_motif_pattern_type_widget",
+        )
+        session_state["improv_motif_pattern_type"] = str(type_choice)
+    with pc3:
+        dir_choice = st.radio(
+            "Direction",
+            options=["ascending", "descending"],
+            format_func=lambda d: "Ascending" if d == "ascending" else "Descending",
+            index=0 if cur_dir != "descending" else 1,
+            horizontal=True,
+            key="improv_motif_pattern_dir_widget",
+        )
+
+    pb1, pb2, pb3 = st.columns(3)
+    with pb1:
+        if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
+            session_state["improv_motif"] = build_motif_pattern(
+                motif,
+                key_center=motif_key,
+                pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
+                direction=str(dir_choice or "ascending"),
+                length=int(session_state.get("improv_motif_pattern_length") or 8),
+            )
+            _clear_motif_outputs(session_state)
+            _persist_motif_artifact(session_state, interaction="motif_build_pattern")
+            st.rerun()
+    with pb2:
+        if motif.get("is_pattern") and st.button(
+            "Apply Pattern Type / Direction",
+            key="improv_rebuild_motif_pattern",
+            use_container_width=True,
+        ):
+            session_state["improv_motif"] = rebuild_motif_pattern(
+                motif,
+                key_center=motif_key,
+                pattern_type=str(type_choice or "auto"),
+                direction=str(dir_choice or "ascending"),
+                length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
+            )
+            _refresh_motif_output_after_transform(
+                session_state,
+                key_center=motif_key,
+                bpm=bpm,
+            )
+            _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
+            st.rerun()
+    with pb3:
+        if motif.get("is_pattern") and st.button(
+            "Change Rhythm",
+            key="improv_pattern_change_rhythm",
+            use_container_width=True,
+        ):
+            session_state["improv_motif"] = transform_motif(
+                motif, "change_rhythm", key_center=motif_key
+            )
+            _refresh_motif_output_after_transform(
+                session_state,
+                key_center=motif_key,
+                bpm=bpm,
+            )
+            _persist_motif_artifact(session_state, interaction="motif_pattern_change_rhythm")
+            st.rerun()
 
     st.markdown("---")
     n1, n2 = st.columns(2)
@@ -1294,7 +1432,7 @@ def _tab_motif(
             session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
             session_state["improv_motif_abc"] = build_motif_notation_abc(
                 session_state["improv_motif"],
-                key_center=_motif_notation_reference_key(improv_ctx),
+                key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                 bpm=bpm,
             )
             session_state.pop("improv_motif_tab", None)
@@ -1327,9 +1465,9 @@ def _tab_motif(
             st.code(session_state["improv_motif_tab"], language=None)
 
     if level == "Beginner":
-        st.caption("Beginner: play the motif 4×, then try one transformation.")
+        st.caption("Beginner: play the motif 4×, then try Build Motif Pattern for a longer exercise.")
     elif level == "Advanced":
-        st.caption("Advanced: chain transforms, then regenerate notation to check the new shape.")
+        st.caption("Advanced: Build Motif Pattern → change type/direction/rhythm → regenerate sheet music.")
 
 
 def _safe_widget_key_part(text: str) -> str:
@@ -1735,7 +1873,14 @@ def _render_section_chord_map(
             except ImportError:
                 pass
         if generate_motif_on_select:
-            ss["improv_motif"] = generate_musical_phrase(ch, key_center=key_center, kind="creative")
+            try:
+                from effective_practice_context import musician_facing_chart_key, musician_facing_chord
+
+                chart_key = musician_facing_chart_key(ss, key_center)
+                gen_ch = musician_facing_chord(ch, concert_key=key_center, chart_key=chart_key) or ch
+            except ImportError:
+                gen_ch = ch
+            ss["improv_motif"] = generate_musical_phrase(gen_ch, key_center=key_center, kind="creative")
             _clear_motif_outputs(ss)
             _persist_motif_artifact(ss, interaction="motif_chord_tile_select")
 

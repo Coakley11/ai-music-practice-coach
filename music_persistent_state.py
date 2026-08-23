@@ -683,6 +683,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "custom_session",
     "_last_catalog_song_state",
     "_catalog_before_custom_state",
+    "_catalog_before_custom_lock_pick",
 )
 
 _LIST_KEYS = (
@@ -2483,6 +2484,75 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     for key in _PERSIST_KEYS:
         if key in ss:
             val = copy.deepcopy(ss[key])
+            if key == "_catalog_before_custom_state" and isinstance(val, dict):
+                # Persist-time heal: Custom Global Active must not save Say when the
+                # Catalog→Custom lock still points at Shape (same-run restamp race).
+                try:
+                    lock_pk = str(ss.get("_catalog_before_custom_lock_pick") or "").strip()
+                    before_pk = str(val.get("pick_key") or "").strip()
+                    if (
+                        lock_pk
+                        and before_pk
+                        and lock_pk != before_pk
+                        and not lock_pk.startswith("custom::")
+                    ):
+                        healed = None
+                        for snap_key in (
+                            "catalog_session",
+                            "_last_catalog_song_state",
+                        ):
+                            raw = ss.get(snap_key)
+                            if (
+                                isinstance(raw, dict)
+                                and str(raw.get("pick_key") or "").strip() == lock_pk
+                            ):
+                                healed = copy.deepcopy(raw)
+                                break
+                        if healed is None:
+                            # Rebuild from lock pick so we never persist Say under
+                            # a Shape lock when catalog_session/LAST are polluted.
+                            label = (
+                                lock_pk.split("\x1f", 1)[-1]
+                                if "\x1f" in lock_pk
+                                else lock_pk
+                            )
+                            title = label.split(" — ", 1)[0].strip() or label
+                            artist = (
+                                label.split(" — ", 1)[-1].strip()
+                                if " — " in label
+                                else ""
+                            )
+                            healed = {
+                                "pick_key": lock_pk,
+                                "original_key": "C",
+                                "display_key": "C",
+                                "selected_song": {
+                                    "pick_key": lock_pk,
+                                    "title": title,
+                                    "artist": artist,
+                                    "key": "C",
+                                },
+                            }
+                            try:
+                                from songs.music_source import (
+                                    _catalog_original_key_for_session,
+                                )
+
+                                probe = dict(ss)
+                                probe["active_catalog_pick_key"] = lock_pk
+                                orig = str(
+                                    _catalog_original_key_for_session(probe) or ""
+                                ).strip()
+                                if orig and orig != "C":
+                                    healed["original_key"] = orig
+                                    healed["display_key"] = orig
+                                    healed["selected_song"]["key"] = orig
+                            except Exception:
+                                pass
+                        val = healed
+                        ss[key] = copy.deepcopy(healed)
+                except Exception:
+                    pass
             if key == "last_analysis_result":
                 try:
                     from analysis_session_persistence import sanitize_analysis_result_for_persist
@@ -3721,6 +3791,7 @@ def prepare_canonical_music_page_state(
                 apply_pending_custom_active_song_activation_before_widgets,
                 apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
+                apply_pending_song_picker_source_widget,
                 reconcile_picker_music_source,
             )
             from songs.state import apply_pending_catalog_pick_before_widgets
@@ -3728,6 +3799,9 @@ def prepare_canonical_music_page_state(
             class _SessionProxy:
                 session_state = session
 
+            # Apply deferred Catalog/Custom radio before reconcile so a post-switch
+            # Custom widget lag cannot re-queue Custom ownership (H1/H7/H9).
+            apply_pending_song_picker_source_widget(session)
             reconcile_picker_music_source(session)
             # Custom Set-as-Active must apply before any pending catalog reclaim so
             # disk persist cannot stamp Country Roads over Trial Song (E5).

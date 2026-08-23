@@ -199,6 +199,7 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
     def test_08_partial_user_catalog_flag_still_queues_restore(self) -> None:
         """USER_CATALOG set while pick is still custom:: must queue catalog restore."""
         from songs.music_source import (
+            EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY,
             PENDING_CATALOG_FROM_PICKER_KEY,
             SONG_PICKER_SOURCE_CATALOG,
             USER_CATALOG_SOURCE_CHOICE_KEY,
@@ -206,6 +207,8 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
         )
 
         session = self._custom_session()
+        # Partial Catalog switch (identity still custom::) — not a Set-as-Active epoch.
+        session.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
         session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
         session["song_picker_active_source"] = SONG_PICKER_SOURCE_CATALOG
         with mock.patch(

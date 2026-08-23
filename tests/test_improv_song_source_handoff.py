@@ -38,7 +38,8 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["improv_song_source"], "Custom progression")
         self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Custom progression")
         self.assertEqual(session[PENDING_IMPROV_SONG_SOURCE], "Custom progression")
-        self.assertEqual(len(custom_calls), 1)
+        # SBI Custom is preview/handoff only — must not activate Global Custom.
+        self.assertEqual(len(custom_calls), 0)
         self.assertEqual(len(catalog_calls), 0)
 
     def test_widget_safe_apply_skips_widget_key_and_global_source(self) -> None:
@@ -200,8 +201,12 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
             set_catalog_source=_set_catalog,
             set_custom_source=_set_custom,
         )
-        self.assertEqual(session["active_catalog_pick_key"], shape_pick)
-        self.assertEqual(session["song"], "Shape of You")
+        # Handoff stamps SBI preview only — does not mutate Global Active identity.
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(session.get(CREATIVE_BACKING_SONG_SOURCE_KEY), "Active song")
+        self.assertEqual(session.get(PENDING_IMPROV_SONG_SOURCE), "Active song")
+        self.assertEqual(session["active_catalog_pick_key"], "custom::trial-1")
+        self.assertEqual(session["song"], "Trial Song")
 
 
 class TestImprovTabSnapshot(unittest.TestCase):

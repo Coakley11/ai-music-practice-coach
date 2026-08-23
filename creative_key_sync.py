@@ -1007,6 +1007,18 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 or getattr(ctx, "key", None)
                 or ""
             ).strip()
+        # Sticky Practice Key for the live Catalog pick outranks a resealed
+        # backing-context original (Bm) after leave→Practice→return (H2).
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            sticky = str(
+                get_practice_concert_key(session, resolve_practice_source_pick(session)) or ""
+            ).strip()
+            if sticky:
+                resolver_key = sticky
+        except ImportError:
+            pass
     elif ctx_source == "custom_progression":
         home_key = ""
         if ctx is not None:
@@ -1405,6 +1417,8 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "creative":
+        return True
+    if page == "custom":
         return True
     if page == "backing":
         return True

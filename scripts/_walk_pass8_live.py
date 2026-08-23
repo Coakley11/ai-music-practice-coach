@@ -52,7 +52,34 @@ def shot(page: Page, name: str) -> str:
     return body
 
 
+def _quick_bpm_input(page: Page):
+    """Streamlit 1.4x+ uses React-Aria range inputs (no role=slider)."""
+    for label in ("Quick BPM", "TEMPO (BPM)", "Tempo", "BPM"):
+        loc = page.locator(f'input[type="range"][aria-label="{label}"]')
+        if loc.count():
+            try:
+                el = loc.first
+                if el.count():
+                    return el
+            except Exception:
+                continue
+    # Fallback: any visible BPM-range input (20–180-ish).
+    for cand in page.locator('input[type="range"]').all():
+        try:
+            mn = float(cand.get_attribute("min") or 0)
+            mx = float(cand.get_attribute("max") or 0)
+            aria = str(cand.get_attribute("aria-label") or "")
+            if mn <= 40 and mx >= 140 and re.search(r"BPM|TEMPO|Tempo", aria, re.I):
+                return cand
+            if mn <= 40 and mx >= 140:
+                return cand
+        except Exception:
+            continue
+    return None
+
+
 def _slider(page: Page):
+    # Legacy role=slider (older Streamlit).
     for el in page.locator('[role="slider"]').all():
         try:
             if not el.is_visible():
@@ -63,55 +90,131 @@ def _slider(page: Page):
                 return el
         except Exception:
             continue
-    return None
+    return _quick_bpm_input(page)
 
 
 def slider_bpm(page: Page) -> int | None:
+    # Prefer card text (authoritative applied BPM) then widget value.
+    card = current_card_bpm(page.inner_text("body") or "")
+    if card is not None:
+        return card
     el = _slider(page)
+    if el is None:
+        for cand in page.locator('[role="slider"]').all():
+            try:
+                if not cand.is_visible():
+                    continue
+                mn = float(cand.get_attribute("aria-valuemin") or 0)
+                mx = float(cand.get_attribute("aria-valuemax") or 0)
+                if mn <= 60 and mx >= 140:
+                    el = cand
+                    break
+            except Exception:
+                continue
     if el is None:
         return None
     try:
-        return int(float(el.get_attribute("aria-valuenow") or 0)) or None
+        now = el.get_attribute("aria-valuenow") or el.input_value() or el.get_attribute("value")
+        return int(float(now or 0)) or None
     except Exception:
         return None
 
 
 def set_slider_bpm(page: Page, value: int) -> int | None:
+    """Set Backing BPM via Quick BPM range input (Home + ArrowRight)."""
+    open_advanced(page)
+    page.wait_for_timeout(400)
+    # Primary path: Quick BPM / TEMPO range input (current Streamlit).
+    inp = _quick_bpm_input(page)
+    if inp is not None:
+        try:
+            inp.scroll_into_view_if_needed()
+            inp.focus()
+            page.keyboard.press("Home")
+            page.wait_for_timeout(150)
+            mn = 20
+            try:
+                mn = int(float(inp.get_attribute("min") or 20))
+            except Exception:
+                mn = 20
+            steps = max(0, int(value) - mn)
+            for _ in range(steps):
+                page.keyboard.press("ArrowRight")
+            wait_idle(page, 2000)
+            now = current_card_bpm(page.inner_text("body") or "") or slider_bpm(page)
+            if now == value or (now is not None and abs(int(now) - int(value)) <= 1):
+                return now
+            # Click track at fractional position as backup.
+            block = page.locator("[data-testid=stSlider]").filter(has_text=re.compile(r"Quick BPM|TEMPO|BPM", re.I))
+            if block.count():
+                track = block.first.locator("[data-orientation=horizontal]").first
+                box = track.bounding_box()
+                if box:
+                    mx = 180
+                    try:
+                        mx = int(float(inp.get_attribute("max") or 180))
+                    except Exception:
+                        mx = 180
+                    frac = max(0.0, min(1.0, (float(value) - mn) / max(1.0, float(mx - mn))))
+                    page.mouse.click(box["x"] + box["width"] * frac, box["y"] + box["height"] / 2)
+                    wait_idle(page, 2000)
+                    now = current_card_bpm(page.inner_text("body") or "") or slider_bpm(page)
+                    if now is not None:
+                        return now
+            return now
+        except Exception:
+            pass
     el = _slider(page)
     if el is None:
-        return None
+        for cand in page.locator('[role="slider"]').all():
+            try:
+                if not cand.is_visible():
+                    continue
+                mn = float(cand.get_attribute("aria-valuemin") or 0)
+                mx = float(cand.get_attribute("aria-valuemax") or 0)
+                if mn <= 60 and mx >= 140:
+                    el = cand
+                    break
+            except Exception:
+                continue
+    if el is None:
+        # Number-input fallback labeled TEMPO
+        try:
+            root = page.locator('[data-testid="stNumberInput"]')
+            for i in range(min(root.count(), 8)):
+                block = root.nth(i)
+                label = (block.inner_text() or "") + (block.get_attribute("aria-label") or "")
+                parent_txt = ""
+                try:
+                    parent_txt = block.locator("xpath=ancestor::div[contains(@class,'element-container')]").inner_text()
+                except Exception:
+                    parent_txt = label
+                if not re.search(r"TEMPO|BPM", parent_txt, re.I):
+                    continue
+                num = block.locator("input").first
+                if not num.count():
+                    continue
+                num.click(timeout=2000)
+                num.fill("")
+                num.type(str(value), delay=30)
+                num.press("Enter")
+                wait_idle(page, 2000)
+                now = current_card_bpm(page.inner_text("body") or "") or slider_bpm(page)
+                return now or value
+        except Exception:
+            pass
+        return current_card_bpm(page.inner_text("body") or "")
     try:
         el.scroll_into_view_if_needed()
         el.focus()
         page.keyboard.press("Home")
         page.wait_for_timeout(200)
-        steps = max(0, int(value) - 20)
+        mn = int(float(el.get_attribute("aria-valuemin") or el.get_attribute("min") or 20))
+        steps = max(0, int(value) - mn)
         for _ in range(steps):
             page.keyboard.press("ArrowRight")
         wait_idle(page, 1800)
-        now = slider_bpm(page)
-        if now == value:
-            return now
-        # JS fallback: Streamlit slider thumb position
-        page.evaluate(
-            """(v) => {
-              const sliders = [...document.querySelectorAll('[role="slider"]')];
-              const el = sliders.find((s) => {
-                const mn = Number(s.getAttribute('aria-valuemin') || 0);
-                const mx = Number(s.getAttribute('aria-valuemax') || 0);
-                return mn <= 20 && mx >= 160;
-              });
-              if (!el) return false;
-              el.focus();
-              el.setAttribute('aria-valuenow', String(v));
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-              return true;
-            }""",
-            value,
-        )
-        wait_idle(page, 1800)
-        return slider_bpm(page)
+        return current_card_bpm(page.inner_text("body") or "") or slider_bpm(page)
     except Exception:
         return slider_bpm(page)
 
@@ -128,6 +231,9 @@ def body_bpms(text: str) -> list[int]:
 
 
 def current_card_bpm(text: str) -> int | None:
+    m = re.search(r"Current\s+(\d{2,3})\s*BPM", text, flags=re.I)
+    if m:
+        return int(m.group(1))
     m = re.search(r"Current BPM[:\s·]+(\d{2,3})", text, flags=re.I)
     if m:
         return int(m.group(1))

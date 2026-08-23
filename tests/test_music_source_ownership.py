@@ -136,6 +136,7 @@ class TestMusicSourceOwnership(unittest.TestCase):
             "improv_style_key": "D",
             "display_key": "D",
             "concert_key": "D",
+            "improv_generated_sections": {"A": ["D", "G", "A"]},
         }
         open_backing_from_creative(session, source="entry_jam")
         before = get_backing_context(session)

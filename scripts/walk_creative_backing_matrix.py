@@ -411,9 +411,10 @@ def click_open_backing_studio(page: Page, notes: list[str], label: str) -> bool:
         wait_idle(page, 4000)
         if wait_for_backing(page, notes, label):
             return True
-    # Nav fallback opens last/catalog Backing — avoid for generated jam handoffs
-    # when the Creative Open button never appeared.
-    if "jam" in str(label).lower() or "style" in str(label).lower():
+    # Nav fallback opens last/catalog Backing — avoid for specialized handoffs
+    # when the Creative Open button never appeared (would restore Mission/Jam).
+    low = str(label).lower()
+    if any(x in low for x in ("jam", "style", "sbi", "mission", "custom")):
         if not clicked:
             _log(notes, f"{label} skip nav fallback (no Open in Backing Studio)")
             return False

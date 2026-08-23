@@ -543,6 +543,245 @@ def display_sections_for_key(active, display_key):
     return transpose_lab_sections(original, home, display_key)
 
 
+def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) -> str:
+    """Current Practice / Concert Key for Custom workspace projection + builder."""
+    try:
+        from progression_helpers import session_display_key
+
+        live = str(session_display_key(session_state) or "").strip()
+    except ImportError:
+        live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
+    if live:
+        return live
+    if active is not None:
+        return cpl_draft_written_key(active)
+    return "C"
+
+
+def practice_chord_to_original_key(chord: str, practice_key: str, original_key: str) -> str:
+    """Project a Practice-Key chord symbol back into Original-Key storage spelling."""
+    symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
+    if not symbol:
+        return ""
+    pk = str(practice_key or "").strip() or "C"
+    ok = str(original_key or "").strip() or "C"
+    if pk == ok:
+        return symbol
+    entries = transpose_section_entries([{"chord": symbol, "bars": 1}], pk, ok)
+    if not entries:
+        return symbol
+    return normalize_chord_symbol(entries[0].get("chord", "")) or symbol
+
+
+def practice_entries_to_original_key(
+    entries: list[dict],
+    practice_key: str,
+    original_key: str,
+) -> list[dict]:
+    """Store Practice-Key builder/preset entries as Original-Key canonical chords."""
+    pk = str(practice_key or "").strip() or "C"
+    ok = str(original_key or "").strip() or "C"
+    if pk == ok:
+        return deep_copy_sections({"_": list(entries or [])}).get("_") or list(entries or [])
+    return transpose_section_entries(list(entries or []), pk, ok)
+
+
+# Dedicated Streamlit selectbox key for Custom-page Practice Key.
+# Must NOT share ``display_key``: global hydrate/prime writers remount React Aria
+# when they assign session_state["display_key"], swallowing Custom PK clicks.
+CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET = "custom_workspace_practice_key"
+PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
+
+
+def sync_custom_workspace_practice_key(
+    session_state: dict,
+    *,
+    practice_key: str,
+    active: dict | None = None,
+    source: str = "custom_workspace",
+) -> str:
+    """Set sidebar Practice Key for the current Custom identity (does not rewrite Original Key)."""
+    token = str(practice_key or "").strip() or "C"
+    active = ensure_original_structure(active or session_state.get(CPL_ACTIVE_KEY) or {})
+    session_state[CPL_LAST_DISPLAY_KEY] = token
+    session_state["_cpl_editing_display_key"] = token
+    # Dedicated widget: assign only before sidebar selectbox; otherwise queue pending
+    # for prepare_custom_workspace_sidebar_display_key on the next run.
+    try:
+        from session_widget_safe import (
+            PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY as _PENDING_CUSTOM_PK,
+            safe_assign_display_key,
+            safe_session_assign,
+            widgets_likely_instantiated,
+        )
+
+        locked = widgets_likely_instantiated(session_state)
+        if locked:
+            # Only defer when the live selectbox value still differs. If prepare
+            # already seeded the widget this run (Original Key change), do not
+            # leave a stale pending that would wipe a later Practice Key click.
+            current = str(
+                session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
+            ).strip()
+            if current != token:
+                session_state[_PENDING_CUSTOM_PK] = token
+            else:
+                session_state.pop(_PENDING_CUSTOM_PK, None)
+        else:
+            session_state.pop(_PENDING_CUSTOM_PK, None)
+            safe_session_assign(
+                session_state,
+                CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+                token,
+                widget_safe=True,
+            )
+        safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
+    except ImportError:
+        session_state[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = token
+        session_state["display_key"] = token
+        session_state["concert_key"] = token
+        session_state["_pending_display_key"] = token
+    try:
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import set_practice_concert_key
+
+        pick = custom_pick_key_for(active)
+        set_practice_concert_key(session_state, token, pick_key=pick)
+    except ImportError:
+        pass
+    try:
+        session_state["display_key_change_source"] = source
+    except Exception:
+        pass
+    return token
+
+
+def _normalize_cpl_key_token(token: str) -> str:
+    """Collapse 'D major' / 'F# minor' labels to raw CPL option tokens ('D', 'F#m')."""
+    raw = str(token or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    if low.endswith(" major"):
+        return raw[: -len(" major")].strip()
+    if low.endswith(" minor"):
+        root = raw[: -len(" minor")].strip()
+        if root and not root.lower().endswith("m"):
+            return f"{root}m"
+        return root
+    return raw
+
+
+def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
+    """Sidebar Practice Key family + value while the Custom page owns the workspace.
+
+    Uses the Custom song Original Key for option mode (major/minor family) so choosing
+    Original Key = D is not coerced back to a catalog minor sticky (e.g. Bm).
+    Does not rewrite ``original_key_center``.
+
+    Custom page renders Practice Key on ``CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET``, not
+    ``display_key``, so global hydrate/prime writers cannot remount the select.
+    """
+    from songs.key_state import (
+        PENDING_DISPLAY_KEY,
+        display_key_options,
+    )
+
+    active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
+    stored_home = cpl_draft_written_key(active)
+    widget_home_raw = str(session.get("cpl_original_key") or "").strip()
+    widget_home = _normalize_cpl_key_token(widget_home_raw) or widget_home_raw
+    stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
+    home = widget_home or stored_home_n
+    options = list(display_key_options(home) or [home])
+    pending_custom = session.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
+    pending_custom_s = (
+        str(pending_custom or "").strip() if pending_custom is not None else ""
+    )
+    identity_changed = False
+    sticky = ""
+    pick_key = ""
+    try:
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+
+        pick_key = custom_pick_key_for(active)
+        sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
+        owner_pick = str(session.get("_custom_pk_widget_owner_pick") or "").strip()
+        identity_changed = owner_pick != pick_key
+        if identity_changed:
+            session["_custom_pk_widget_owner_pick"] = pick_key
+    except ImportError:
+        sticky = ""
+        pick_key = ""
+        identity_changed = False
+    # Prefer dedicated Custom widget, then shared display_key canonical store.
+    live = str(
+        session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
+        or session.get("display_key")
+        or session.get("concert_key")
+        or ""
+    ).strip()
+    pending = session.pop(PENDING_DISPLAY_KEY, None)
+    pending_s = str(pending or "").strip() if pending is not None else ""
+    original_just_changed = bool(
+        widget_home and stored_home_n and widget_home != stored_home_n
+    )
+
+    force_seed_widget = False
+    force_home = str(session.pop("_cpl_force_pk_to_home", None) or "").strip()
+    if pending_custom_s:
+        # Mid-run Original Key / New song deferred commit (widget was already live).
+        # User Practice Key clicks clear this pending in on_change so they are not wiped.
+        selected = pending_custom_s
+        force_seed_widget = True
+    elif original_just_changed:
+        selected = widget_home
+        force_seed_widget = True
+    elif force_home:
+        selected = force_home
+        force_seed_widget = True
+    elif identity_changed:
+        # New Custom song/identity must not keep the prior song's live Practice Key
+        # (pending can be lost across rerun; sticky/home are authoritative).
+        selected = sticky or home
+        force_seed_widget = True
+    elif live and live in options:
+        selected = live
+    elif pending_s:
+        selected = pending_s or home
+        force_seed_widget = True
+    elif sticky and sticky in options:
+        selected = sticky
+        force_seed_widget = True
+    else:
+        selected = sticky or live or home
+        force_seed_widget = True
+
+    if selected not in options:
+        options = [selected] + [k for k in options if k != selected]
+
+    # Seed / realign dedicated widget only when needed (before selectbox renders).
+    widget_now = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
+    if force_seed_widget or not widget_now or widget_now not in options:
+        session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = selected
+
+    # Keep canonical display_key aligned — safe: Custom page has no display_key selectbox.
+    session["display_key"] = selected
+    session["concert_key"] = selected
+    session[CPL_LAST_DISPLAY_KEY] = selected
+    try:
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(
+            session, selected, pick_key=custom_pick_key_for(active)
+        )
+    except ImportError:
+        pass
+    return options
+
+
 def commit_home_sections(active, home_sections):
     """Persist chords in written/home key (respect user-chosen original key)."""
     active = ensure_original_structure(active)
@@ -930,8 +1169,13 @@ def load_saved_progression(store: dict, name: str) -> dict:
 
 
 def start_new_progression() -> dict:
-    """Blank progression — no chords, default settings."""
-    return default_active_progression()
+    """Blank progression — no chords, default settings, unique identity."""
+    import uuid
+
+    out = default_active_progression()
+    out["id"] = str(uuid.uuid4())
+    out["user_locked_home_key"] = True
+    return out
 
 
 def clear_cpl_widget_state(session_state: dict) -> None:
@@ -939,10 +1183,14 @@ def clear_cpl_widget_state(session_state: dict) -> None:
     keep = {
         CPL_SAVED_KEY,
         CPL_ACTIVE_KEY,
+        CPL_LAST_DISPLAY_KEY,
         "cpl_builder_version",
         "display_key",
+        "concert_key",
+        "_pending_display_key",
         "studio_page",
         "active_music_source",
+        "practice_key_by_source",
     }
     for key in list(session_state.keys()):
         if key.startswith("cpl_") and key not in keep:
@@ -1164,22 +1412,44 @@ def apply_cpl_session_progression(
             session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
         except ImportError:
             pass
-        resolved_key = home_key
+        widgets_locked = False
         try:
-            from practice_key_mode import resolve_practice_concert_key_for_song
+            from session_widget_safe import widgets_likely_instantiated
+
+            widgets_locked = widgets_likely_instantiated(session_state)
+        except ImportError:
+            widgets_locked = bool(
+                session_state.get("_streamlit_widgets_locked_this_run")
+            )
+        # Never mutate/pop the dedicated selectbox key after sidebar instantiate.
+        if not widgets_locked:
+            session_state.pop(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET, None)
+        session_state.pop("_custom_pk_widget_owner_pick", None)
+        # When sidebar PK widget is already live, defer via pending + force-home so the
+        # next prepare snaps to Original Key even if disk sticky is stale.
+        if widgets_locked:
+            session_state["_cpl_force_pk_to_home"] = home_key
+        else:
+            session_state.pop("_cpl_force_pk_to_home", None)
+        # Fresh Custom install starts at Original Key (not a prior song's sticky PK).
+        try:
             from songs.music_source import custom_pick_key_for
+            from songs.practice_key_state import clear_practice_concert_key, set_practice_concert_key
 
             pick_key = custom_pick_key_for(session_state[CPL_ACTIVE_KEY])
-            resolved_key = resolve_practice_concert_key_for_song(
-                session_state,
-                home_key,
-                pick_key=pick_key,
-                fallback=home_key,
-            )
+            try:
+                clear_practice_concert_key(session_state, pick_key)
+            except Exception:
+                pass
+            set_practice_concert_key(session_state, home_key, pick_key=pick_key)
         except ImportError:
             pass
-        session_state["display_key"] = resolved_key
-        session_state["concert_key"] = resolved_key
+        sync_custom_workspace_practice_key(
+            session_state,
+            practice_key=home_key,
+            active=session_state[CPL_ACTIVE_KEY],
+            source="cpl_install_original",
+        )
     session_state["_cpl_editing_display_key"] = session_state.get("display_key", home_key)
     clear_cpl_widget_state(session_state)
     reset_cpl_widget_initialization(session_state)
@@ -1325,6 +1595,14 @@ def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
         stored = cpl_draft_written_key(active)
         if picked != stored:
             active = set_original_key_center(active, picked)
+            # Choosing/changing Original Key on the Custom page initializes Practice Key
+            # to that Original Key for this Custom identity (sidebar + store).
+            sync_custom_workspace_practice_key(
+                session_state,
+                practice_key=picked,
+                active=active,
+                source="cpl_original_key_choice",
+            )
     return active
 
 
@@ -2240,7 +2518,12 @@ def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
         root = "C"
     else:
         root_pc = (key_pc + degree) % 12
-        root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
+        try:
+            from music_theory import spell_note_in_key
+
+            root = spell_note_in_key(root_pc, home_key)
+        except ImportError:
+            root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
     q = quality or ""
     if q in ("maj7", "m7", "m9", "7", "m7b5"):
         return f"{root}{q}"
@@ -2716,11 +2999,18 @@ def cpl_apply_pending_chord_to_section(
     section_name: str,
     pending_chord: str,
     bars: int,
+    practice_key: str | None = None,
 ) -> dict:
-    """Mirror CPL page bar-button flow: append pending chord, then persist sections."""
+    """Mirror CPL page bar-button flow: append pending chord, then persist sections.
+
+    ``pending_chord`` is interpreted in ``practice_key`` (sidebar Practice Key) and
+    stored in the song's Original Key so sidebar changes project without drift.
+    """
     active = ensure_original_structure(active)
     home_sections = ensure_all_cpl_sections(active.get("original_sections"))
-    chord = normalize_chord_symbol(pending_chord) or str(pending_chord or "").strip()
+    original_key = cpl_draft_written_key(active)
+    pk = str(practice_key or original_key).strip() or original_key
+    chord = practice_chord_to_original_key(pending_chord, pk, original_key)
     if not chord:
         return active
     home_sections[section_name].append({"chord": chord, "bars": max(1, int(bars or 1))})
@@ -2771,12 +3061,17 @@ def cpl_apply_chord_with_bars_to_session(
     st: Any | None = None,
     persist: bool = False,
 ) -> dict:
-    """Simulate CPL page flow: pick chord → choose bars → save draft."""
+    """Simulate CPL page flow: pick chord → choose bars → save draft.
+
+    Chord symbols are Practice-Key facing; storage is always Original Key.
+    """
     from chord_subdivisions import Subdivision, join_weighted_subdivisions
 
     active = cpl_active_from_session(session_state)
     home = ensure_all_cpl_sections(active.get("original_sections"))
-    symbol = normalize_chord_symbol(chord) or str(chord or "").strip()
+    original_key = cpl_draft_written_key(active)
+    practice_key = cpl_workspace_practice_key(session_state, active)
+    symbol = practice_chord_to_original_key(chord, practice_key, original_key)
     if not symbol:
         return active
     entries = list(home.get(section_name) or [])

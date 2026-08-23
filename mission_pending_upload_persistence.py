@@ -164,6 +164,7 @@ def apply_pending_upload_envelope_to_session(
     *,
     st: Any | None = None,
     source: str = "envelope",
+    force: bool = False,
 ) -> dict[str, Any]:
     """Hydrate Upload Analysis session from pending envelope (no AI run)."""
     env = envelope_from_session_or_canonical(session)
@@ -171,6 +172,16 @@ def apply_pending_upload_envelope_to_session(
     if not env or str(env.get("analysis_status") or "") != "prepared":
         session[PENDING_UPLOAD_DIAG_KEY] = diag
         return diag
+    take_id = str(env.get("take_id") or "").strip()
+    try:
+        from pending_upload_route_precedence import PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY
+
+        if take_id and not force and session.get(PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY) == take_id:
+            diag.update({"restored": True, "hydrate": "skipped_already_hydrated", "take_id": take_id})
+            session[PENDING_UPLOAD_DIAG_KEY] = diag
+            return diag
+    except ImportError:
+        pass
     dry = env.get("dry_audio") if isinstance(env.get("dry_audio"), dict) else {}
     dry_bytes, err = _load_asset_bytes(dry, st=st)
     if not dry_bytes:
@@ -223,6 +234,13 @@ def apply_pending_upload_envelope_to_session(
         }
     )
     session[PENDING_UPLOAD_DIAG_KEY] = diag
+    if take_id:
+        try:
+            from pending_upload_route_precedence import PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY
+
+            session[PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY] = take_id
+        except ImportError:
+            pass
     return diag
 
 
@@ -246,9 +264,17 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("_pending_upload_user_left_analysis", None)
     session.pop("_pending_upload_suppresses_mission_backing", None)
     try:
-        from pending_upload_route_precedence import PENDING_UPLOAD_ROUTE_LOCK_KEY
+        from pending_upload_route_precedence import (
+            PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY,
+            PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY,
+            PENDING_UPLOAD_ROUTE_LOCK_KEY,
+            PENDING_UPLOAD_ROUTE_LOCK_RELEASED_RUN_KEY,
+        )
 
         session.pop(PENDING_UPLOAD_ROUTE_LOCK_KEY, None)
+        session.pop(PENDING_UPLOAD_ROUTE_APPLIED_TAKE_ID_KEY, None)
+        session.pop(PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY, None)
+        session[PENDING_UPLOAD_ROUTE_LOCK_RELEASED_RUN_KEY] = int(session.get("_script_run_seq") or 0)
     except ImportError:
         session.pop("_pending_upload_route_lock", None)
     try:
