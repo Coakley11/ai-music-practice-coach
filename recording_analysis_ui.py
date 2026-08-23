@@ -276,18 +276,44 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
                 current_inst = inst
                 block_parts.append(f"<h4 style='margin:12px 0 6px'>{_esc(inst)}</h4>")
             foc = _esc(block.get("focus") or "Focus")
-            assessment = _esc(block.get("assessment") or "")
+            raw_assessment = str(block.get("assessment") or "")
+            mix_limited = (
+                str(block.get("attribution_scope") or "").lower() in {"mix_limited", "mix"}
+                or bool(block.get("mix_proxy_score") is not None and block.get("display_as_instrument_score") is False)
+                or "limited" in raw_assessment.lower()
+            )
+            # One-file Mix: badge stays qualitative — never show mix proxy as instrument grade.
+            if mix_limited and "/100" in raw_assessment:
+                badge = "Limited attribution"
+            else:
+                badge = raw_assessment or "Focus"
+            assessment = _esc(badge)
             findings = "".join(
                 f"<li>{_esc(x)}</li>" for x in (block.get("findings") or []) if str(x).strip()
             )
             went = _esc(block.get("went_well") or "")
             improve = _esc(block.get("improve_to") or "")
             drill = _esc(block.get("drill") or "")
+            proxy_score = block.get("mix_proxy_score")
+            proxy_label = str(block.get("mix_proxy_label") or "ensemble mix proxy").strip()
+            proxy_html = ""
+            if mix_limited and proxy_score is not None:
+                try:
+                    proxy_html = (
+                        "<p><strong>Relevant mix cue:</strong> "
+                        + _esc(proxy_label)
+                        + f" = {int(proxy_score)}/100 "
+                        + "(ensemble evidence, not an isolated instrument grade).</p>"
+                    )
+                except (TypeError, ValueError):
+                    proxy_html = ""
             block_parts.append(
                 f"""
 <details class="ra-section" open>
   <summary><span>{foc}</span><span class="ra-badge">{assessment}</span></summary>
   <div class="ra-section-body">
+    {"<p><strong>Assessment:</strong> " + _esc(raw_assessment) + "</p>" if (mix_limited and raw_assessment) else ""}
+    {proxy_html}
     {"<strong>What was detected</strong><ul>" + findings + "</ul>" if findings else ""}
     {("<p><strong>Evidence confidence:</strong> " + _esc(block.get("attribution_confidence") or "") + "</p>") if block.get("attribution_confidence") else ""}
     {"<p><strong>What went well:</strong> " + went + "</p>" if went else ""}

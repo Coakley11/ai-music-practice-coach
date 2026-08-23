@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from recording_analysis_context import (
@@ -1331,14 +1332,41 @@ def build_mix_focus_analysis(
                         f"Attack/spectral evidence in the ensemble mix suggests: "
                         + went[len(inst) :].lstrip(" :,-")
                     )
-                assess = str(row.get("assessment") or "")
-                if assess and "/100" in assess and "mix-level" not in assess.lower():
-                    row["assessment"] = (
-                        f"Mix-level / limited attribution estimate — {assess}"
-                    )
-                row["attribution_scope"] = "mix_limited"
-                # Do not publish fake isolated numeric scores for polyphonic mix.
+                # One-file Mix: keep numeric cue as supporting mix proxy, not an instrument grade.
+                raw_assess = str(row.get("assessment") or "")
+                proxy_score = row.get("score")
+                if proxy_score is None:
+                    m = re.search(r"(\d{1,3})\s*/\s*100", raw_assess)
+                    if m:
+                        try:
+                            proxy_score = int(m.group(1))
+                        except ValueError:
+                            proxy_score = None
+                focus_l = str(row.get("focus") or "").lower()
+                if "articul" in focus_l:
+                    proxy_label = "attack-clarity proxy"
+                    assessment = "Mix-level proxy / limited instrument attribution"
+                elif "tone" in focus_l:
+                    proxy_label = "mix-spectrum / tone-color proxy"
+                    assessment = "Mix-level spectral proxy / limited instrument attribution"
+                elif "rhythm" in focus_l or "groove" in focus_l or "comp" in focus_l:
+                    proxy_label = "ensemble groove / pulse proxy"
+                    assessment = "Mix-level groove proxy / limited attribution"
+                else:
+                    proxy_label = "ensemble mix proxy"
+                    assessment = "Mix-level proxy / limited instrument attribution"
+                row["assessment"] = assessment
                 row["score"] = None
+                row["display_as_instrument_score"] = False
+                row["mix_proxy_label"] = proxy_label
+                row["mix_proxy_score"] = proxy_score
+                if proxy_score is not None:
+                    cue = f"Relevant mix cue: {proxy_label} = {int(proxy_score)}/100 (ensemble evidence, not an isolated {inst} grade)."
+                    findings = list(row.get("findings") or [])
+                    if not any("relevant mix cue" in str(x).lower() for x in findings):
+                        findings.append(cue)
+                    row["findings"] = findings
+                row["attribution_scope"] = "mix_limited"
             else:
                 row["attribution_scope"] = "stem"
             blocks.append(row)
@@ -1354,6 +1382,8 @@ def build_ensemble_mix_analysis(
     stem_comparisons: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """First-class ensemble Mix analysis section."""
+    import re
+
     ctx = dict(ctx or {})
     scores = dict(scores or {})
     isolated = _mix_has_isolated_stems(ctx, uploaded_track_count=uploaded_track_count)
@@ -1453,6 +1483,115 @@ def build_ensemble_mix_analysis(
         "interaction_space": interaction_bits,
         "musical_shape": shape_bits,
     }
+
+
+
+def _build_mix_practice_plan(
+    *,
+    ctx: dict[str, Any],
+    mapping: dict[str, list[str]],
+    instruments: list[str],
+    isolated: bool,
+    existing_plan: list[str] | None = None,
+) -> list[str]:
+    """Ensemble-first Mix practice plan that preserves every instrument→Focus mapping."""
+    meter = str(ctx.get("time_signature") or "").strip()
+    song_ctx = ctx.get("selected_song_analysis_context")
+    if isinstance(song_ctx, dict):
+        meter = str(song_ctx.get("meter") or meter).strip()
+    ref_bpm = None
+    if isinstance(song_ctx, dict):
+        ref_bpm = song_ctx.get("bpm")
+    if ref_bpm in (None, ""):
+        ref_bpm = ctx.get("reference_bpm") or ctx.get("practice_bpm")
+    try:
+        bpm_txt = str(int(float(ref_bpm))) if ref_bpm not in (None, "") else "practice"
+    except (TypeError, ValueError):
+        bpm_txt = "practice"
+
+    plan: list[str] = []
+    # A) Ensemble
+    if "6/8" in meter.replace(" ", "") or meter.strip() == "6/8":
+        plan.append(
+            f"ENSEMBLE: loop 8 bars near {bpm_txt} BPM and lock the two big 6/8 pulses — "
+            "listen for blend, space, and shared pocket (not isolated-part timing claims)."
+        )
+    else:
+        plan.append(
+            f"ENSEMBLE: loop 8 bars near {bpm_txt} BPM focusing on shared pulse, balance, "
+            "and arrangement space across the Mix."
+        )
+
+    # B/C) Every instrument → Focus mapping
+    mapping_bits = []
+    for inst in instruments:
+        focs = coerce_focus_list(mapping.get(inst))
+        if focs:
+            mapping_bits.append(f"{inst} → {format_focus_list(focs)}")
+            for foc in focs:
+                fl = foc.lower()
+                if "articul" in fl:
+                    plan.append(
+                        f"{inst}: {foc} — lighter destination-aware attacks in the blend; "
+                        "confirm later with a short isolated take if needed."
+                    )
+                elif "tone" in fl:
+                    plan.append(
+                        f"{inst}: {foc} — keep color steady through the phrase while leaving "
+                        "spectral space in the Mix."
+                    )
+                elif "rhythm" in fl or "groove" in fl or "comp" in fl:
+                    if not isolated:
+                        plan.append(
+                            f"{inst}: {foc} role — simplify the pattern and lock the main pulses "
+                            "while leaving space for the other part (role-aware Mix coaching, "
+                            "not a claim of isolated strumming errors)."
+                        )
+                    else:
+                        plan.append(
+                            f"{inst}: {foc} — lock the rhythm pattern to the grid and check "
+                            "stem timing against the ensemble."
+                        )
+                else:
+                    plan.append(f"{inst}: keep Focus `{foc}` visible for one intentional Mix loop.")
+        else:
+            mapping_bits.append(f"{inst} → (no Practice Focus selected)")
+    if mapping_bits:
+        plan.insert(1, "Practice Focuses: " + "; ".join(mapping_bits) + ".")
+
+    # Keep useful non-conflicting tips from the existing plan (song/harmony), drop leaks.
+    leak_tokens = (
+        "breath support",
+        "breath-controlled",
+        "embouchure",
+        "mute other stems",
+        "practice focuses (",
+    )
+    for tip in existing_plan or []:
+        low = str(tip).lower().strip()
+        if not low:
+            continue
+        if any(t in low for t in leak_tokens):
+            continue
+        if low.startswith("ensemble:") or low.startswith("practice focuses:"):
+            continue
+        # Avoid duplicating instrument Focus lines we already generated.
+        if any(low.startswith(f"{inst.lower()}:") for inst in instruments):
+            continue
+        if tip not in plan:
+            plan.append(tip)
+
+    # Dedupe while preserving order
+    out: list[str] = []
+    seen: set[str] = set()
+    for tip in plan:
+        key = tip.lower().strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(tip)
+    return out[:10]
+
 
 
 def enrich_mix_analysis_result(
@@ -1578,42 +1717,116 @@ def enrich_mix_analysis_result(
         out["score_scope"] = "mix_level_estimates"
         out["pitch_evidence_limited"] = True
 
+        # Rewrite global deep-dive tips to stay Mix-owned (no Flute/Guitar leakage).
+        for key, cat in list(cats.items()):
+            if not isinstance(cat, dict):
+                continue
+            cat = dict(cat)
+            tips = [str(x).strip() for x in (cat.get("tips") or []) if str(x).strip()]
+            findings = [str(x).strip() for x in (cat.get("findings") or []) if str(x).strip()]
+            if key == "pitch":
+                findings = [
+                    x for x in findings
+                    if not any(
+                        t in x.lower()
+                        for t in ("embouchure", "flute intonation", "air stream", "aperture")
+                    )
+                ]
+                if not any("polyphonic" in x.lower() or "lower-confidence" in x.lower() for x in findings):
+                    findings.insert(
+                        0,
+                        "Polyphonic pitch/F0 evidence is ambiguous in this blended Mix and is "
+                        "not used for isolated-instrument intonation diagnosis.",
+                    )
+                tips = [
+                    "Use a solo re-recording or labeled stem for instrument-specific intonation work.",
+                    "In Mix mode, treat global F0 as ensemble pitch clutter/risk — not an isolated-instrument intonation diagnosis.",
+                    "For song-key center checks, isolate one part at a time against a drone.",
+                ]
+            elif key == "technique":
+                findings = [
+                    x for x in findings
+                    if not any(
+                        t in x.lower()
+                        for t in ("flute attack", "tonguing", "embouchure", "register transition")
+                    )
+                ]
+                if not any("ensemble" in x.lower() or "mix attack" in x.lower() for x in findings):
+                    findings.insert(
+                        0,
+                        "Global onset/attack evidence here describes ensemble/mix clarity and density, "
+                        "not a hidden Flute technique grade.",
+                    )
+                tips = [
+                    "Listen for whether attack clustering creates clutter or locks the pocket.",
+                    "Simplify overlapping entrances so onsets read cleanly in the blend.",
+                    "Keep instrument-specific articulation micro-drills under each instrument Focus card; keep this section Mix-level.",
+                ]
+            elif key == "tone":
+                tips = [
+                    "Listen for whether the overall blend stays balanced in brightness and density across the phrase.",
+                    "If one color dominates the Mix spectrum, rebalance arrangement space rather than chasing a solo-tone fix here.",
+                    "Instrument-specific tone color work belongs under each instrument Focus card.",
+                ]
+            cat["findings"] = findings
+            cat["tips"] = tips
+            cats[key] = cat
+        out["categories"] = cats
+
         scores = dict(out.get("scores") or {})
         ranked = sorted(
             ((k, int(v)) for k, v in scores.items() if isinstance(v, (int, float))),
             key=lambda kv: kv[1],
         )
-        unsafe = {"pitch", "tone", "technique"}
+        # Prefer reliable ensemble families; do not force Confidence as biggest weakness.
+        unsafe = {"pitch", "tone", "technique", "confidence"}
         safe = [kv for kv in ranked if kv[0] not in unsafe]
-        prefer = [
-            kv for kv in safe if kv[0] in {"timing", "groove", "musicality", "confidence"}
-        ]
-        pick = prefer or safe or ranked
+        prefer = [kv for kv in safe if kv[0] in {"timing", "groove", "musicality"}]
+        pick = prefer or safe
         if pick:
             growth_name, growth_score = pick[0]
             label_map = {
                 "timing": "timing cohesion",
                 "groove": "groove cohesion",
                 "musicality": "musical shape",
-                "confidence": "ensemble confidence",
-                "pitch": "pitch evidence (limited in polyphonic mix)",
-                "tone": "mix spectral tone",
-                "technique": "mix attack/technique cues",
             }
             growth_l = label_map.get(growth_name, growth_name)
-            if growth_name in unsafe:
-                out["biggest_issue"] = (
-                    f"{growth_l} — lower-confidence in this mixed recording and not treated "
-                    f"as a definitive instrument-specific weakness (score {growth_score}/100)."
-                )
-            else:
+            # Only promote a scored growth edge when the estimate is clearly soft (< 70).
+            if growth_score < 70:
                 out["biggest_issue"] = (
                     f"{growth_l} (mix-level estimate {growth_score}/100)."
                 )
-            out["next_focus"] = (
-                f"Prioritize reliable ensemble evidence — {growth_l} — before chasing "
-                "ambiguous polyphonic pitch/tone readings."
+                out["next_focus"] = (
+                    f"Most reliable ensemble opportunity: tighten {growth_l} while preserving "
+                    "musical shape and arrangement space."
+                )
+            else:
+                out["biggest_issue"] = (
+                    "No single instrument-specific weakness is assigned from this blended file; "
+                    "prioritize ensemble timing, groove, and interaction."
+                )
+                out["next_focus"] = (
+                    "Most reliable ensemble opportunity: tighten groove/interaction while "
+                    "preserving the strong musical shape."
+                )
+        else:
+            out["biggest_issue"] = (
+                "No single instrument-specific weakness is assigned from this blended file; "
+                "prioritize ensemble timing, groove, and interaction."
             )
+            out["next_focus"] = (
+                "Most reliable ensemble opportunity: tighten groove/interaction while "
+                "preserving arrangement space."
+            )
+
+        # Rebuild Recommended next practice: ensemble-first + all instrument→Focus mappings.
+        out["practice_plan"] = _build_mix_practice_plan(
+            ctx=ctx,
+            mapping=mapping,
+            instruments=instruments,
+            isolated=isolated,
+            existing_plan=list(out.get("practice_plan") or []),
+        )
 
     song_ctx = ctx.get("selected_song_analysis_context")
     if not isinstance(song_ctx, dict):
@@ -1696,9 +1909,13 @@ def enrich_mix_analysis_result(
     if "ensemble findings prioritize" not in out["coach_summary"].lower():
         out["coach_summary"] = f"{out['coach_summary']} {ens_lead}".strip()
     if out.get("biggest_issue") and "biggest growth edge" not in out["coach_summary"].lower():
-        out["coach_summary"] = (
-            f"{out['coach_summary']} Biggest growth edge: {out['biggest_issue']}"
-        ).strip()
+        issue = str(out["biggest_issue"])
+        if issue.lower().startswith("no single instrument-specific weakness"):
+            out["coach_summary"] = f"{out['coach_summary']} {issue}".strip()
+        else:
+            out["coach_summary"] = (
+                f"{out['coach_summary']} Biggest growth edge: {issue}"
+            ).strip()
 
     return out
 
