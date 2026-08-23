@@ -22,6 +22,11 @@ from composition_chord_suggestions import (
     default_feeling_for_section,
     suggest_progressions,
 )
+from composition_chord_refinements import (
+    CHORD_REFINEMENT_INTENTS,
+    propose_chord_refinement,
+    refinement_intent_label,
+)
 from composition_lyric_suggestions import (
     LYRIC_EMOTIONS,
     LYRIC_SECTION_ROLES,
@@ -87,13 +92,24 @@ from composition_document import (
     section_has_chords,
     section_has_lyrics,
     section_has_melody,
+    insert_section_chord,
+    move_section_chord,
+    remove_section_chord,
+    replace_section_chord,
+    section_melody_events,
+    apply_melody_events,
     section_lane_status,
     set_workflow_phase,
     suggest_musical_defaults,
     sync_linked_chord_sections,
     touch_composition,
 )
-from composition_preview import generate_preview_wav, invalidate_composer_preview, preview_signature
+from composition_preview import (
+    generate_preview_wav,
+    invalidate_composer_preview,
+    preview_signature,
+    set_composer_preview,
+)
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
     COMPOSER_FOCUS_LANE_KEY,
@@ -849,6 +865,63 @@ def _section_status_html(doc: dict[str, Any], section_id: str) -> str:
             chips.append(f'<span class="composer-section-status-chip">{label} ○</span>')
     return f'<div class="composer-section-status">{"".join(chips)}</div>'
 
+
+def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, active_lane: str) -> None:
+    """Work on Chords / Melody / Lyrics for the selected section — free movement."""
+    wf = ensure_workflow(doc)
+    skip_lyrics = bool(wf.get("skip_lyrics"))
+    st.caption("Work on this section")
+    lanes = [("chords", "Chords"), ("melody", "Melody")]
+    if not skip_lyrics:
+        lanes.append(("lyrics", "Lyrics"))
+    cols = st.columns(len(lanes))
+    for col, (lane, label) in zip(cols, lanes):
+        with col:
+            btn_type = "primary" if lane == active_lane else "secondary"
+            if st.button(label, key=f"composer_section_lane_{lane}", type=btn_type, use_container_width=True):
+                session_state[COMPOSER_FOCUS_LANE_KEY] = lane
+                set_workflow_phase(doc, lane)
+                _save_doc(session_state, doc)
+                st.rerun()
+
+
+def _render_active_preview(session_state: dict) -> None:
+    wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
+    if not wav:
+        return
+    c1, c2 = st.columns([4, 1])
+    with c1:
+        st.audio(wav, format="audio/wav")
+    with c2:
+        if st.button("Stop", key="composer_preview_stop", use_container_width=True):
+            invalidate_composer_preview(session_state)
+            st.rerun()
+
+
+def _play_chord_idea(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    chord_syms: list[str],
+    *,
+    loops: int = 2,
+) -> None:
+    sig = preview_signature(
+        doc,
+        section_id=section_id,
+        loops=loops,
+        chord_override=chord_syms,
+        include_melody=False,
+    )
+    wav = generate_preview_wav(
+        doc,
+        section_id=section_id,
+        loops=loops,
+        chord_override=chord_syms,
+        include_melody=False,
+    )
+    set_composer_preview(session_state, wav, sig)
+
 def _render_welcome_entry(session_state: dict) -> None:
     st.markdown(
         """
@@ -1362,32 +1435,49 @@ def _render_melody_concept_card(
     contour = str(concept.get("contour") or "")
     motif = str(concept.get("motif_hint") or "")
     why = str(concept.get("why") or "")
+    notes_line = str(concept.get("notes_line") or "")
+    events = list(concept.get("events") or concept.get("notes_events") or [])
 
     st.markdown(
         f"""
 <div class="composer-suggestion-card">
-  <h4>{name}</h4>
+  <h4>{html.escape(name)}</h4>
   <div class="composer-melody-notation">{html.escape(melody_notation_line(concept))}</div>
-  <div class="composer-suggestion-chords">{motif}</div>
-  <p class="composer-suggestion-why">{contour}<br>{why}</p>
+  <div class="composer-suggestion-chords">{html.escape(notes_line or motif)}</div>
+  <p class="composer-suggestion-why">{html.escape(contour)}<br>{html.escape(why)}</p>
 </div>
         """,
         unsafe_allow_html=True,
     )
     p1, p2 = st.columns(2)
     with p1:
-        if st.button("▶ Hear on harmony", key=f"{prefix}_preview_{cid}", use_container_width=True):
-            wav = generate_preview_wav(doc, section_id=section_id)
+        if st.button("▶ Preview with chords", key=f"{prefix}_preview_{cid}", use_container_width=True):
+            sig = preview_signature(
+                doc,
+                section_id=section_id,
+                include_melody=True,
+                melody_override=events or None,
+            )
+            wav = generate_preview_wav(
+                doc,
+                section_id=section_id,
+                include_melody=True,
+                melody_override=events or None,
+            )
             if wav:
-                session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+                set_composer_preview(session_state, wav, sig)
                 st.rerun()
             elif section_has_resolved_chords(doc, section_id):
                 st.warning("Could not generate preview.")
             else:
-                st.info("Add chords to this section first — then hear your melody ideas in context.")
+                st.info("Add chords to this section first — then hear melody ideas in context.")
     with p2:
-        if st.button("Use this concept", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
-            apply_melody_concept(doc, section_id, concept)
+        if st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
+            if events:
+                apply_melody_events(doc, section_id, events, concept=concept, replace=True)
+            else:
+                apply_melody_concept(doc, section_id, concept)
+            invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
             st.rerun()
 
@@ -1469,6 +1559,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         _render_melody_section_strip(session_state, doc)
+        _render_section_lane_switcher(session_state, doc, active_lane="melody")
         st.markdown(f"### {variant}")
 
         edit_id, edit_section = harmony_edit_target(doc, active_id)
@@ -1499,8 +1590,11 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
                 doc,
                 edit_id or active_id,
                 preview_key=f"composer_melody_hear_structure_{active_id}",
-                button_label="▶ Hear this section",
+                button_label="▶ Play section (chords + melody)"
+                if section_melody_events(section)
+                else "▶ Play chords",
                 loops_key=f"composer_melody_loops_{active_id}",
+                include_melody=bool(section_melody_events(section)),
             )
 
         st.markdown("**What should listeners remember most?**")
@@ -1599,6 +1693,10 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             _save_doc(session_state, doc)
 
         phrases = list(melody.get("phrases") or [])
+        accepted_events = section_melody_events(section)
+        if accepted_events:
+            note_line = " ".join(str(e.get("pitch") or "") for e in accepted_events)
+            st.markdown(f"**Accepted melody notes:** `{note_line}`")
         if phrases:
             st.markdown("**Current melodic ideas**")
             for phrase in phrases[:4]:
@@ -1985,8 +2083,16 @@ def _render_section_transport(
     preview_key: str = "composer_play_btn",
     button_label: str = "▶ Preview section",
     loops_key: str = "composer_play_loops",
+    include_melody: bool = False,
+    melody_override: list[dict[str, Any]] | None = None,
 ) -> None:
     loops = int(session_state.get(loops_key) or session_state.get("composer_play_loops") or 2)
+    has_mel = bool(melody_override) or bool(section_melody_events(section_by_id(doc, section_id)))
+    if include_melody and has_mel:
+        button_label = button_label if "melody" in button_label.lower() or "+" in button_label else "▶ Play section (chords + melody)"
+    elif not include_melody:
+        button_label = button_label if button_label else "▶ Play chords"
+
     t1, t2 = st.columns([2, 3])
     with t1:
         loops = st.slider("Loops", 1, 4, loops, key=loops_key)
@@ -1995,22 +2101,31 @@ def _render_section_transport(
         play = st.button(button_label, type="primary", key=preview_key, use_container_width=True)
 
     if play:
+        sig = preview_signature(
+            doc,
+            scope="section",
+            section_id=section_id,
+            loops=loops,
+            chord_override=chord_override,
+            include_melody=include_melody,
+            melody_override=melody_override,
+        )
         wav = generate_preview_wav(
             doc,
             scope="section",
             section_id=section_id,
             loops=loops,
             chord_override=chord_override,
+            include_melody=include_melody,
+            melody_override=melody_override,
         )
         if wav:
-            session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
+            set_composer_preview(session_state, wav, sig)
             st.rerun()
         else:
             st.warning("Add chords to this section first — melody sits on your harmony.")
 
-    wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
-    if wav:
-        st.audio(wav, format="audio/wav")
+    _render_active_preview(session_state)
 
 
 def _render_workflow_section_strip(
@@ -2193,6 +2308,7 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         _render_lyrics_section_strip(session_state, doc)
+        _render_section_lane_switcher(session_state, doc, active_lane="lyrics")
         st.markdown(f"### {variant}")
 
         if section_has_chords(section):
@@ -2388,9 +2504,9 @@ def _render_suggestion_card(
     st.markdown(
         f"""
 <div class="composer-suggestion-card">
-  <h4>{name}</h4>
-  <div class="composer-suggestion-chords">{line}</div>
-  <p class="composer-suggestion-why">{why}</p>
+  <h4>{html.escape(name)}</h4>
+  <div class="composer-suggestion-chords">{html.escape(line)}</div>
+  <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
         """,
         unsafe_allow_html=True,
@@ -2398,14 +2514,12 @@ def _render_suggestion_card(
     p1, p2, p3 = st.columns(3)
     with p1:
         if st.button("▶ Preview", key=f"{prefix}_preview_{sid}", use_container_width=True):
-            wav = generate_preview_wav(doc, section_id=section_id, chord_override=chord_syms)
-            if wav:
-                session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
-            else:
-                st.warning("Could not preview this progression.")
+            _play_chord_idea(session_state, doc, section_id, chord_syms)
+            st.rerun()
     with p2:
         if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
             apply_section_chords(doc, section_id, entries)
+            invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
             st.rerun()
     with p3:
@@ -2415,6 +2529,80 @@ def _render_suggestion_card(
             if sid not in queue:
                 queue.append(sid)
             session_state[queue_key] = queue[-3:]
+            st.rerun()
+
+
+def _render_chord_refinement_panel(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    section: dict[str, Any],
+) -> None:
+    entries = list(section.get("chords") or [])
+    if not entries:
+        return
+    st.markdown("**Refine this progression**")
+    st.caption("Describe the musical change — we propose an edit you can preview before accepting.")
+    intent_ids = [i[0] for i in CHORD_REFINEMENT_INTENTS]
+    picked = st.selectbox(
+        "I want this to…",
+        intent_ids,
+        format_func=refinement_intent_label,
+        key=f"composer_refine_intent_{section_id}",
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Propose change", key=f"composer_refine_propose_{section_id}", type="primary", use_container_width=True):
+            proposal = propose_chord_refinement(doc, section, picked, entries=entries)
+            session_state[f"composer_refine_proposal_{section_id}"] = proposal
+            st.rerun()
+    with c2:
+        if st.button("Clear proposal", key=f"composer_refine_clear_{section_id}", use_container_width=True):
+            session_state.pop(f"composer_refine_proposal_{section_id}", None)
+            st.rerun()
+
+    proposal = session_state.get(f"composer_refine_proposal_{section_id}")
+    if not isinstance(proposal, dict):
+        return
+    st.markdown(
+        f"""
+<div class="composer-suggestion-card">
+  <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}</h4>
+  <div class="composer-suggestion-chords">
+    <span style="opacity:0.65">{html.escape(str(proposal.get('source_line') or ''))}</span>
+    <br>→ <strong>{html.escape(str(proposal.get('line') or ''))}</strong>
+  </div>
+  <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    chord_syms = expand_entries_to_chords(list(proposal.get("chords") or []))
+    a1, a2, a3, a4 = st.columns(4)
+    with a1:
+        if st.button("▶ Preview", key=f"composer_refine_preview_{section_id}", use_container_width=True):
+            _play_chord_idea(session_state, doc, section_id, chord_syms)
+            st.rerun()
+    with a2:
+        if st.button("Use this", key=f"composer_refine_use_{section_id}", type="primary", use_container_width=True):
+            apply_section_chords(doc, section_id, list(proposal.get("chords") or []))
+            session_state.pop(f"composer_refine_proposal_{section_id}", None)
+            invalidate_composer_preview(session_state)
+            _save_doc(session_state, doc)
+            st.rerun()
+    with a3:
+        if st.button("Try another", key=f"composer_refine_another_{section_id}", use_container_width=True):
+            # Rotate to next intent for a fresh local proposal.
+            idx = intent_ids.index(picked) if picked in intent_ids else 0
+            nxt = intent_ids[(idx + 1) % len(intent_ids)]
+            session_state[f"composer_refine_intent_{section_id}"] = nxt
+            session_state[f"composer_refine_proposal_{section_id}"] = propose_chord_refinement(
+                doc, section, nxt, entries=entries
+            )
+            st.rerun()
+    with a4:
+        if st.button("Dismiss", key=f"composer_refine_dismiss_{section_id}", use_container_width=True):
+            session_state.pop(f"composer_refine_proposal_{section_id}", None)
             st.rerun()
 
 
@@ -2442,16 +2630,14 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
             scope=scope,
             section_id=section_id if scope == "section" else None,
             loops=loops,
+            include_melody=(scope == "section"),
         )
         if wav:
-            session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
-            session_state[COMPOSER_PREVIEW_SIG_KEY] = sig
+            set_composer_preview(session_state, wav, sig)
         else:
             st.warning("Add at least one chord before playing.")
 
-    wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
-    if wav:
-        st.audio(wav, format="audio/wav")
+    _render_active_preview(session_state)
 
 
 def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
@@ -2487,6 +2673,7 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         _render_chords_section_strip(session_state, doc)
+        _render_section_lane_switcher(session_state, doc, active_lane="chords")
 
         variant = str(section.get("label_variant") or section.get("label") or "Section")
         st.markdown(f"### {variant}")
@@ -2543,7 +2730,22 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
                 chart = cpl_progression_bar_chart_html(entries, time_signature=meter)
                 if chart:
                     st.markdown(chart, unsafe_allow_html=True)
-                _render_section_transport(session_state, doc, edit_id or active_id)
+                _render_section_transport(
+                    session_state,
+                    doc,
+                    edit_id or active_id,
+                    button_label="▶ Play chords",
+                    preview_key=f"composer_chords_play_{active_id}",
+                    loops_key=f"composer_chords_loops_{active_id}",
+                    include_melody=False,
+                )
+                _render_chord_refinement_panel(session_state, doc, edit_id or active_id, edit_section or section)
+                st.info("Next creative step: build a melody over these chords — or keep refining harmony.")
+                if st.button("Build a melody over these chords →", key=f"composer_chords_to_melody_{active_id}"):
+                    session_state[COMPOSER_FOCUS_LANE_KEY] = "melody"
+                    set_workflow_phase(doc, "melody")
+                    _save_doc(session_state, doc)
+                    st.rerun()
 
             st.markdown("**How would you like to work?**")
             path = st.radio(
@@ -2561,7 +2763,7 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
             suggestions = suggest_progressions(doc, section, picked, limit=3)
 
             if path == "explore":
-                st.caption("Suggestions are transposed to your practice key — preview before you commit.")
+                st.caption("Suggestions use your Composition key, section role, and song mood — preview before you commit.")
                 for i, sug in enumerate(suggestions):
                     _render_suggestion_card(session_state, doc, edit_id or active_id, sug, prefix=f"composer_explore_{active_id}_{i}")
 

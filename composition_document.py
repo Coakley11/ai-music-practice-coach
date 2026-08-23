@@ -303,6 +303,7 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
                 "hum_notes": "",
             },
             "phrases": [],
+            "events": [],
         },
         "lyrics": {
             "intent": {
@@ -808,6 +809,101 @@ def apply_section_chords(
     return True
 
 
+def replace_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    chord: str,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    row = dict(entries[index]) if isinstance(entries[index], dict) else {"chord": "", "bars": 1}
+    row["chord"] = normalize_chord_symbol(chord) or str(chord).strip()
+    entries[index] = row
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def insert_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    chord: str,
+    *,
+    bars: int = 1,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    idx = max(0, min(int(index), len(entries)))
+    entries.insert(
+        idx,
+        {"chord": normalize_chord_symbol(chord) or str(chord).strip(), "bars": max(1, int(bars or 1))},
+    )
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def remove_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    entries.pop(index)
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def move_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    delta: int,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    new_idx = index + int(delta)
+    if new_idx < 0 or new_idx >= len(entries):
+        return False
+    entries[index], entries[new_idx] = entries[new_idx], entries[index]
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
 def section_has_chords(sec: dict[str, Any]) -> bool:
     return bool(sec.get("chords"))
 
@@ -829,7 +925,7 @@ def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
 def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
     melody = sec.get("melody")
     if not isinstance(melody, dict):
-        melody = {"intent": {}, "phrases": []}
+        melody = {"intent": {}, "phrases": [], "events": []}
         sec["melody"] = melody
     intent = melody.get("intent")
     if not isinstance(intent, dict):
@@ -840,11 +936,117 @@ def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
     intent.setdefault("hum_notes", "")
     if not isinstance(melody.get("phrases"), list):
         melody["phrases"] = []
+    if not isinstance(melody.get("events"), list):
+        melody["events"] = []
     return melody
+
+
+def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
+    """Canonical melody event: pitch name, duration beats, optional beat/measure."""
+    if not isinstance(raw, dict):
+        return None
+    pitch = str(raw.get("pitch") or raw.get("note") or "").strip()
+    if not pitch:
+        return None
+    try:
+        duration = float(raw.get("duration_beats") or raw.get("duration") or 1.0)
+    except (TypeError, ValueError):
+        duration = 1.0
+    duration = max(0.25, min(8.0, duration))
+    try:
+        beat = float(raw.get("beat") if raw.get("beat") is not None else raw.get("start_beat") or 0.0)
+    except (TypeError, ValueError):
+        beat = 0.0
+    try:
+        measure = int(raw.get("measure") or 1)
+    except (TypeError, ValueError):
+        measure = 1
+    midi = raw.get("midi")
+    try:
+        midi_i = int(midi) if midi is not None else None
+    except (TypeError, ValueError):
+        midi_i = None
+    return {
+        "pitch": pitch,
+        "midi": midi_i,
+        "duration_beats": duration,
+        "beat": max(0.0, beat),
+        "measure": max(1, measure),
+    }
+
+
+def normalize_melody_events(events: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    cursor = 0.0
+    for raw in list(events or []):
+        ev = normalize_melody_event(raw)
+        if not ev:
+            continue
+        if ev["beat"] <= 0 and cursor > 0:
+            ev["beat"] = cursor
+        out.append(ev)
+        cursor = float(ev["beat"]) + float(ev["duration_beats"])
+    return out
+
+
+def section_melody_events(sec: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(sec, dict):
+        return []
+    melody = _ensure_melody_block(sec)
+    events = normalize_melody_events(melody.get("events"))
+    if events:
+        return events
+    # Fallback: parse simple space-separated note names from the first phrase.
+    for phrase in melody.get("phrases") or []:
+        if not isinstance(phrase, dict):
+            continue
+        notes = str(phrase.get("notes") or "").strip()
+        if not notes:
+            continue
+        tokens = [t for t in re.split(r"[\s,|]+", notes) if t]
+        built: list[dict[str, Any]] = []
+        beat = 0.0
+        for tok in tokens:
+            built.append({"pitch": tok, "duration_beats": 1.0, "beat": beat, "measure": 1})
+            beat += 1.0
+        return normalize_melody_events(built)
+    return []
+
+
+def apply_melody_events(
+    doc: dict[str, Any],
+    section_id: str,
+    events: list[dict[str, Any]],
+    *,
+    concept: dict[str, Any] | None = None,
+    replace: bool = True,
+) -> list[dict[str, Any]]:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return []
+    melody = _ensure_melody_block(sec)
+    normalized = normalize_melody_events(events)
+    if replace:
+        melody["events"] = normalized
+    else:
+        melody["events"] = normalize_melody_events(list(melody.get("events") or []) + normalized)
+    if concept:
+        phrase = {
+            "id": str(uuid.uuid4()),
+            "label": str(concept.get("name") or "Melodic idea"),
+            "concept_id": str(concept.get("id") or ""),
+            "motif": str(concept.get("motif_hint") or concept.get("contour") or ""),
+            "notes": " ".join(str(e.get("pitch") or "") for e in normalized),
+        }
+        melody.setdefault("phrases", []).append(phrase)
+    touch_composition(doc)
+    return normalized
 
 
 def section_has_melody(sec: dict[str, Any]) -> bool:
     melody = _ensure_melody_block(sec)
+    if normalize_melody_events(melody.get("events")):
+        return True
     for phrase in melody.get("phrases") or []:
         if not isinstance(phrase, dict):
             continue
@@ -870,14 +1072,18 @@ def apply_melody_concept(
     if not sec:
         return {}
     melody = _ensure_melody_block(sec)
+    events = normalize_melody_events(concept.get("events") or concept.get("notes_events") or [])
+    note_line = " ".join(str(e.get("pitch") or "") for e in events) if events else str(concept.get("notes_line") or "")
     phrase = {
         "id": str(uuid.uuid4()),
         "label": str(concept.get("name") or "Melodic idea"),
         "concept_id": str(concept.get("id") or ""),
         "motif": str(concept.get("motif_hint") or concept.get("contour") or ""),
-        "notes": "",
+        "notes": note_line,
     }
     melody.setdefault("phrases", []).append(phrase)
+    if events:
+        melody["events"] = events
     touch_composition(doc)
     return phrase
 

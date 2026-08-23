@@ -1,8 +1,20 @@
-"""Rule-based melodic concept suggestions for Composition Studio (CS-B3)."""
+"""Rule-based melodic concept suggestions for Composition Studio (CS-B3).
+
+Concepts include playable note/duration events derived from the Composition key
+and (when present) section harmony — not prose-only placeholders.
+"""
 
 from __future__ import annotations
 
 from typing import Any
+
+from music_theory import (
+    NOTE_TO_MIDI,
+    key_is_minor,
+    spell_note_in_key,
+    split_chord,
+    split_key_center,
+)
 
 MELODY_FEELINGS: tuple[tuple[str, str], ...] = (
     ("smooth", "Smooth — flowing and connected"),
@@ -27,39 +39,49 @@ DEFAULT_MELODY_FEEL_BY_SECTION: dict[str, str] = {
     "Solo": "energetic",
     "Interlude": "smooth",
     "Outro": "smooth",
+    "Breakdown": "rhythmic",
 }
 
+# Degree patterns relative to tonic (1=root … 8=octave). Minor uses natural minor degrees.
 _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
     "smooth": [
         {
             "id": "smooth_stepwise",
             "name": "Gentle stepwise line",
-            "contour": "Move mostly by step within the chord tones — calm and approachable.",
-            "motif_hint": "Root → 2nd → 3rd → 2nd → root (small steps, no big jumps)",
-            "why": "Stepwise motion feels natural to sing and keeps the focus on your lyrics.",
+            "contour": "Move mostly by step — calm and approachable.",
+            "motif_hint": "Root → 2nd → 3rd → 2nd → root",
+            "why": "Stepwise motion feels natural to sing and keeps focus on the lyric.",
+            "degrees": [1, 2, 3, 2, 1],
+            "durations": [1, 1, 1, 1, 2],
         },
         {
             "id": "smooth_arc",
             "name": "Soft arch",
             "contour": "Rise through the phrase, then settle back down by step.",
-            "motif_hint": "Climb to the 5th on beat 1–2, float down to the 3rd by bar end",
-            "why": "A gentle arch creates emotional shape without demanding vocal range.",
+            "motif_hint": "Climb to the 5th, float down to the 3rd",
+            "why": "A gentle arch creates emotional shape without demanding range.",
+            "degrees": [1, 3, 5, 3, 2, 1],
+            "durations": [1, 1, 2, 1, 1, 2],
         },
     ],
     "bold": [
         {
             "id": "bold_leap_hook",
             "name": "Leap to the hook",
-            "contour": "Open with a confident interval jump landing on a strong chord tone.",
-            "motif_hint": "Leap from 5th down to root, then jump up to the 3rd on the hook word",
+            "contour": "Open with a confident interval jump onto a strong chord tone.",
+            "motif_hint": "5th → root leap, then up to the 3rd",
             "why": "Strategic leaps make a chorus feel anthemic and memorable.",
+            "degrees": [5, 1, 3, 5, 8],
+            "durations": [1, 1, 1, 1, 2],
         },
         {
             "id": "bold_peak",
             "name": "High-point arrival",
-            "contour": "Build toward one peak note that lands with the harmony change.",
-            "motif_hint": "Hold the 3rd, then leap to the 5th (or 6th) when the chord shifts",
-            "why": "One clear peak gives listeners something to wait for and remember.",
+            "contour": "Build toward one peak note that lands with the harmony.",
+            "motif_hint": "Hold the 3rd, leap to the 5th on the change",
+            "why": "One clear peak gives listeners something to wait for.",
+            "degrees": [1, 2, 3, 3, 5, 3],
+            "durations": [1, 1, 2, 1, 2, 1],
         },
     ],
     "lyrical": [
@@ -67,15 +89,19 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
             "id": "lyrical_conversation",
             "name": "Conversational phrase",
             "contour": "Short groups of notes that mirror natural speech rhythm.",
-            "motif_hint": "Three-note cells: down-up-rest, repeat with small variation each line",
-            "why": "Speech-like phrasing helps verses feel like storytelling, not exercise.",
+            "motif_hint": "Three-note cells with a short rest of space between",
+            "why": "Speech-like phrasing helps verses feel like storytelling.",
+            "degrees": [1, 2, 3, 1, 2, 5],
+            "durations": [0.5, 0.5, 1, 0.5, 0.5, 2],
         },
         {
             "id": "lyrical_question",
             "name": "Question & answer",
-            "contour": "First phrase rises (question), second phrase resolves (answer).",
-            "motif_hint": "Bar 1 ends up on 2nd or 4th; bar 2 steps down to root or 3rd",
-            "why": "Call-and-response contour keeps verses engaging across multiple lines.",
+            "contour": "First phrase rises (question), second resolves (answer).",
+            "motif_hint": "End first idea on 2nd; answer steps down to root",
+            "why": "Call-and-response keeps verses engaging across lines.",
+            "degrees": [1, 3, 5, 2, 5, 3, 1],
+            "durations": [1, 1, 1, 2, 1, 1, 2],
         },
     ],
     "rhythmic": [
@@ -83,15 +109,19 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
             "id": "rhythmic_syncopated",
             "name": "Off-beat accent",
             "contour": "Emphasize notes that sit slightly ahead of the beat.",
-            "motif_hint": "Repeat a 3-note pattern with the accent on the 'and' of beat 2",
-            "why": "Syncopation adds groove without changing your chord progression.",
+            "motif_hint": "Repeated 3-note cell with lighter longer landings",
+            "why": "Syncopation adds groove without changing your chords.",
+            "degrees": [1, 1, 5, 1, 1, 5, 3],
+            "durations": [0.5, 0.5, 1, 0.5, 0.5, 1, 2],
         },
         {
             "id": "rhythmic_pocket",
             "name": "Groove pocket",
             "contour": "Fewer notes, stronger rhythm — let space do the work.",
-            "motif_hint": "Root on 1, rest, 5th on the 'and' of 2, rest, 3rd on 4",
-            "why": "A rhythmic pocket feels modern and leaves room for production.",
+            "motif_hint": "Root on 1, 5th later, 3rd to close",
+            "why": "A rhythmic pocket feels modern and leaves room to breathe.",
+            "degrees": [1, 5, 3, 1],
+            "durations": [2, 1, 1, 2],
         },
     ],
     "emotional": [
@@ -99,15 +129,19 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
             "id": "emotional_sigh",
             "name": "Sighing descent",
             "contour": "Start high, descend by step — like an exhale.",
-            "motif_hint": "Begin on 5th or 6th, step down through 4th → 3rd → 2nd → root",
-            "why": "Descending stepwise lines carry melancholy and intimacy.",
+            "motif_hint": "Begin on 5th or 6th, step down to root",
+            "why": "Descending stepwise lines carry intimacy.",
+            "degrees": [5, 4, 3, 2, 1],
+            "durations": [2, 1, 1, 1, 2],
         },
         {
             "id": "emotional_delayed",
             "name": "Delayed resolution",
-            "contour": "Hold tension on a non-root tone, then resolve late in the bar.",
-            "motif_hint": "Sit on the 2nd or 4th for beats 1–3, resolve to root or 3rd on 4",
-            "why": "Delaying resolution creates yearning before the lyric lands.",
+            "contour": "Hold tension on a non-root tone, then resolve late.",
+            "motif_hint": "Sit on the 2nd, resolve to root or 3rd",
+            "why": "Delaying resolution creates yearning before the line lands.",
+            "degrees": [2, 2, 2, 1, 3],
+            "durations": [1, 1, 2, 1, 2],
         },
     ],
     "energetic": [
@@ -115,15 +149,19 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
             "id": "energy_rise",
             "name": "Forward climb",
             "contour": "Steady upward motion through the phrase.",
-            "motif_hint": "Root → 2nd → 3rd → 4th → 5th across the section opening",
+            "motif_hint": "Root → 2 → 3 → 4 → 5 across the opening",
             "why": "Rising lines build momentum into a chorus or pre-chorus.",
+            "degrees": [1, 2, 3, 4, 5],
+            "durations": [1, 1, 1, 1, 2],
         },
         {
             "id": "energy_repetition",
             "name": "Motif repetition",
             "contour": "Repeat a short cell with one note changing each time.",
-            "motif_hint": "Do-Mi-Sol, Do-Mi-La, Do-Mi-Sol — same rhythm, shifting top note",
-            "why": "Repetition with tiny variation is how hooks get stuck in memory.",
+            "motif_hint": "Do–Mi–Sol, Do–Mi–La, Do–Mi–Sol",
+            "why": "Repetition with tiny variation is how hooks stick.",
+            "degrees": [1, 3, 5, 1, 3, 6, 1, 3, 5],
+            "durations": [0.5, 0.5, 1, 0.5, 0.5, 1, 0.5, 0.5, 2],
         },
     ],
 }
@@ -148,6 +186,66 @@ def style_label(style_id: str) -> str:
     return style_id
 
 
+_MAJOR_DEGREE_SEMIS = {1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11, 8: 12}
+_MINOR_DEGREE_SEMIS = {1: 0, 2: 2, 3: 3, 4: 5, 5: 7, 6: 8, 7: 10, 8: 12}
+
+
+def _tonic_midi(key: str) -> int:
+    tonic, _mode = split_key_center(key)
+    base = NOTE_TO_MIDI.get(tonic) or NOTE_TO_MIDI.get(tonic.replace("b", "")) or 60
+    # Prefer a mid-register melody tonic around C4–A4.
+    while base < 55:
+        base += 12
+    while base > 69:
+        base -= 12
+    return int(base)
+
+
+def _degree_to_pitch(degree: int, *, key: str) -> tuple[str, int]:
+    table = _MINOR_DEGREE_SEMIS if key_is_minor(key) else _MAJOR_DEGREE_SEMIS
+    deg = int(degree)
+    octaves = 0
+    while deg > 8:
+        deg -= 7
+        octaves += 1
+    while deg < 1:
+        deg += 7
+        octaves -= 1
+    midi = _tonic_midi(key) + int(table.get(deg, 0)) + (12 * octaves)
+    pc = midi % 12
+    name = spell_note_in_key(pc, key)
+    return name, midi
+
+
+def build_melody_events_from_degrees(
+    degrees: list[int],
+    durations: list[float],
+    *,
+    key: str,
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    beat = 0.0
+    for i, deg in enumerate(degrees):
+        dur = float(durations[i]) if i < len(durations) else 1.0
+        pitch, midi = _degree_to_pitch(int(deg), key=key)
+        events.append(
+            {
+                "pitch": pitch,
+                "midi": midi,
+                "duration_beats": dur,
+                "beat": beat,
+                "measure": int(beat // 4) + 1,
+            }
+        )
+        beat += dur
+    return events
+
+
+def _section_key(doc: dict[str, Any]) -> str:
+    g = doc.get("global") or {}
+    return str(g.get("original_key_center") or "C")
+
+
 def suggest_melody_concepts(
     doc: dict[str, Any],
     section: dict[str, Any],
@@ -158,6 +256,7 @@ def suggest_melody_concepts(
 ) -> list[dict[str, Any]]:
     feel = str(feel or default_melody_feel_for_section(section)).strip().lower()
     style = str(style or "simple").strip().lower()
+    key = _section_key(doc)
     recipes = list(_CONCEPT_LIBRARY.get(feel) or _CONCEPT_LIBRARY["lyrical"])
 
     section_label = str(section.get("label") or "")
@@ -167,7 +266,16 @@ def suggest_melody_concepts(
         recipes = list(_CONCEPT_LIBRARY.get("lyrical", [])) + recipes
 
     if style == "simple":
-        recipes = sorted(recipes, key=lambda r: "step" in str(r.get("contour", "")).lower(), reverse=True)
+        recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=False)
+
+    # Prefer concepts that sit near chord tones when harmony exists.
+    try:
+        from composition_document import chords_for_playback, section_by_id
+
+        sid = str(section.get("id") or "")
+        chords = chords_for_playback(doc, scope="section", section_id=sid) if sid else []
+    except Exception:
+        chords = []
 
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
@@ -176,15 +284,28 @@ def suggest_melody_concepts(
         if rid in seen:
             continue
         seen.add(rid)
+        degrees = [int(d) for d in list(recipe.get("degrees") or [1, 3, 5])]
+        durations = [float(d) for d in list(recipe.get("durations") or [1] * len(degrees))]
+        if style == "simple" and len(degrees) > 6:
+            degrees = degrees[:5]
+            durations = durations[:5]
+        events = build_melody_events_from_degrees(degrees, durations, key=key)
+        notes_line = " ".join(str(e["pitch"]) for e in events)
+        why = str(recipe.get("why") or "")
+        if chords:
+            why = f"{why} Shaped to sit over this section's harmony in {key}."
         out.append(
             {
                 "id": rid,
                 "name": str(recipe.get("name") or "Melodic idea"),
                 "contour": str(recipe.get("contour") or ""),
                 "motif_hint": str(recipe.get("motif_hint") or ""),
-                "why": str(recipe.get("why") or ""),
+                "why": why,
                 "feel": feel,
                 "style": style,
+                "events": events,
+                "notes_line": notes_line,
+                "notes_events": events,
             }
         )
         if len(out) >= limit:
@@ -221,8 +342,8 @@ def coach_line_for_melody(
     return (
         f"For <strong>{variant}</strong>, imagine a <strong>{feel_txt}</strong> melody that will {job}."
         f"{remember_bit}<br><br>"
-        f"Hum it first, explore a few concepts, compare approaches — then refine. "
-        f"Direct note entry is there when you need it, not before."
+        f"Hum an idea, explore concepts with real notes, preview over the chords — then refine. "
+        f"You remain the composer."
     )
 
 
@@ -238,7 +359,15 @@ MELODY_REFINEMENTS: tuple[tuple[str, str, str], ...] = (
 
 
 def melody_notation_line(concept: dict[str, Any]) -> str:
-    """Readable pseudo-notation for UI (full notation in a later sprint)."""
+    """Readable note line for UI (staff notation deferred)."""
+    notes = str(concept.get("notes_line") or "").strip()
+    if notes:
+        return f"♪ {notes[:72]}{'…' if len(notes) > 72 else ''}"
+    events = list(concept.get("events") or [])
+    if events:
+        line = " ".join(str(e.get("pitch") or "") for e in events if isinstance(e, dict))
+        if line:
+            return f"♪ {line[:72]}{'…' if len(line) > 72 else ''}"
     motif = str(concept.get("motif_hint") or concept.get("motif") or "").strip()
     if not motif:
         return "♩ ♪ ♪ ♩  (melodic contour — hear it on your harmony)"
@@ -250,7 +379,18 @@ def apply_melody_refinement_to_section(
     section_id: str,
     refinement_id: str,
 ) -> str:
-    from composition_document import section_by_id, touch_composition, _ensure_melody_block
+    """Apply a structured local edit to accepted melody events when present.
+
+    Falls back to prose motif hints when no events exist. Does not invent fake
+    transcription from hum capture.
+    """
+    from composition_document import (
+        section_by_id,
+        touch_composition,
+        _ensure_melody_block,
+        normalize_melody_events,
+        section_melody_events,
+    )
 
     sec = section_by_id(doc, section_id)
     if not sec:
@@ -258,6 +398,38 @@ def apply_melody_refinement_to_section(
     hint = next((h for rid, _, h in MELODY_REFINEMENTS if rid == refinement_id), "")
     if not hint:
         return ""
+
+    events = section_melody_events(sec)
+    key = _section_key(doc)
+    if events:
+        updated = [dict(e) for e in events]
+        if refinement_id == "range_up" and updated:
+            peak = max(range(len(updated)), key=lambda i: int(updated[i].get("midi") or 60))
+            midi = int(updated[peak].get("midi") or 60) + 2
+            updated[peak]["midi"] = midi
+            updated[peak]["pitch"] = spell_note_in_key(midi % 12, key)
+        elif refinement_id == "simplify" and len(updated) > 4:
+            updated = updated[::2]
+            # re-pack beats
+            beat = 0.0
+            for ev in updated:
+                ev["beat"] = beat
+                beat += float(ev.get("duration_beats") or 1.0)
+        elif refinement_id in {"energetic", "rhythm"}:
+            for ev in updated:
+                dur = float(ev.get("duration_beats") or 1.0)
+                ev["duration_beats"] = max(0.5, dur * 0.75)
+        elif refinement_id == "emotional" and updated:
+            updated[-1]["duration_beats"] = float(updated[-1].get("duration_beats") or 1.0) + 1.0
+        melody = _ensure_melody_block(sec)
+        melody["events"] = normalize_melody_events(updated)
+        phrases = list(melody.get("phrases") or [])
+        if phrases and isinstance(phrases[-1], dict):
+            phrases[-1]["notes"] = " ".join(str(e.get("pitch") or "") for e in melody["events"])
+            phrases[-1]["refinement"] = refinement_id
+        touch_composition(doc)
+        return hint
+
     melody = _ensure_melody_block(sec)
     phrases = list(melody.get("phrases") or [])
     if phrases and isinstance(phrases[-1], dict):

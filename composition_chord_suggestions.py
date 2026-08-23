@@ -204,6 +204,76 @@ def symbols_to_entries(symbols: list[str]) -> list[dict[str, Any]]:
     return [{"chord": str(sym), "bars": 1} for sym in symbols if str(sym).strip()]
 
 
+def _neighbor_harmony_symbols(doc: dict[str, Any], section: dict[str, Any]) -> list[str]:
+    """Prior section's resolved chords (if any) — used for continuity-aware suggestions."""
+    try:
+        from composition_document import ordered_sections, harmony_edit_target
+    except ImportError:
+        return []
+
+    sections = ordered_sections(doc)
+    target_id = str(section.get("id") or "")
+    prev_symbols: list[str] = []
+    for sec in sections:
+        sid = str(sec.get("id") or "")
+        if sid == target_id:
+            break
+        _, edit = harmony_edit_target(doc, sid)
+        chords = list((edit or {}).get("chords") or [])
+        if chords:
+            prev_symbols = [
+                str(c.get("chord") or "").strip()
+                for c in chords
+                if isinstance(c, dict) and str(c.get("chord") or "").strip()
+            ]
+    return prev_symbols
+
+
+def _continuity_recipe(
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    target_key: str,
+) -> dict[str, Any] | None:
+    """When a prior section has harmony, offer one lift/arrival idea that answers it."""
+    prior = _neighbor_harmony_symbols(doc, section)
+    if len(prior) < 2:
+        return None
+    label = str(section.get("label") or "")
+    # Build a short answer progression from the last prior chord toward tonic / lift.
+    last = prior[-1]
+    tonic_ref = "Am" if key_is_minor(target_key) else "C"
+    if label == "Chorus":
+        # Aim for a strong I-centered lift after the verse.
+        ref_chords = ["F", "G", "Am", "C"] if not key_is_minor(target_key) else ["F", "G", "Em", "Am"]
+        why = (
+            f"Answers the previous section ending on {last} with a lifting arrival — "
+            "a classic Verse→Chorus handoff."
+        )
+        name = "Lift from previous section"
+    elif label == "Bridge":
+        ref_chords = ["Dm", "G", "Em", "Am"] if not key_is_minor(target_key) else ["Dm", "E", "Am", "G"]
+        why = f"Contrasts the prior harmony (ending on {last}) with a fresher starting color."
+        name = "Contrast after previous section"
+    elif label in {"Verse", "Pre-Chorus"}:
+        ref_chords = ["Am", "F", "C", "G"] if not key_is_minor(target_key) else ["Am", "G", "F", "E"]
+        why = f"Keeps storytelling momentum after the prior section's {last} without stealing the hook."
+        name = "Continue the story"
+    else:
+        return None
+
+    symbols = _transpose_symbols(ref_chords, tonic_ref if not key_is_minor(target_key) else "Am", target_key)
+    entries = symbols_to_entries(symbols)
+    return {
+        "id": f"continuity_{label.lower()}_{last}",
+        "name": name,
+        "why": why,
+        "chords": entries,
+        "line": format_entries_bar_line(entries),
+        "feeling": "contextual",
+        "context": "neighbor",
+    }
+
+
 def suggest_progressions(
     doc: dict[str, Any],
     section: dict[str, Any],
@@ -211,9 +281,16 @@ def suggest_progressions(
     *,
     limit: int = 3,
 ) -> list[dict[str, Any]]:
-    """Return progression ideas for a section, transposed to the song key."""
+    """Return progression ideas for a section, transposed to the Composition key.
+
+    Uses song key, section role, optional feeling, and (when present) prior-section
+    harmony for one continuity-aware option. Genre/mood nudge the explanation tone.
+    """
     g = doc.get("global") or {}
+    meta = doc.get("metadata") or {}
     target_key = str(g.get("original_key_center") or "C")
+    genre = str(meta.get("style") or "").strip()
+    mood = str(meta.get("mood") or "").strip()
     feeling = str(feeling or default_feeling_for_section(section)).strip().lower()
     recipes = list(_PROGRESSION_LIBRARY.get(feeling) or _PROGRESSION_LIBRARY["stable"])
 
@@ -222,29 +299,77 @@ def suggest_progressions(
         recipes = list(_PROGRESSION_LIBRARY.get("uplifting", [])) + recipes
     elif section_label == "Bridge":
         recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + recipes
+    elif section_label == "Intro":
+        recipes = list(_PROGRESSION_LIBRARY.get("stable", [])) + recipes
+    elif section_label == "Outro":
+        recipes = list(_PROGRESSION_LIBRARY.get("reflective", [])) + recipes
+    elif section_label == "Pre-Chorus" and feeling not in {"tense", "energetic"}:
+        recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + recipes
 
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
+
+    continuity = _continuity_recipe(doc, section, target_key)
+    if continuity and limit > 1:
+        out.append(continuity)
+        seen.add(str(continuity.get("id") or ""))
+
     for recipe in recipes:
         rid = str(recipe.get("id") or "")
         if rid in seen:
             continue
+        # Prefer same-mode recipes for the Composition key (major↔major, minor↔minor).
+        recipe_ref = str(recipe.get("ref_key") or "C")
+        if key_is_minor(target_key) != key_is_minor(recipe_ref):
+            # Defer opposite-mode recipes unless we have nothing else.
+            continue
         seen.add(rid)
-        ref_key = str(recipe.get("ref_key") or "C")
+        ref_key = _pick_ref_key(target_key, recipe_ref)
         symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
         entries = symbols_to_entries(symbols)
+        why = str(recipe.get("why") or "")
+        if genre or mood:
+            context_bits = [b for b in (genre, mood) if b]
+            if context_bits and "—" not in why[-24:]:
+                why = f"{why} Fits a {' / '.join(context_bits).lower()} song."
         out.append(
             {
                 "id": rid,
                 "name": str(recipe.get("name") or "Suggestion"),
-                "why": str(recipe.get("why") or ""),
+                "why": why,
                 "chords": entries,
                 "line": format_entries_bar_line(entries),
                 "feeling": feeling,
+                "context": "library",
             }
         )
         if len(out) >= limit:
             break
+
+    # If same-mode filtering left us short, fill from remaining recipes.
+    if len(out) < limit:
+        for recipe in recipes:
+            rid = str(recipe.get("id") or "")
+            if rid in seen:
+                continue
+            seen.add(rid)
+            recipe_ref = str(recipe.get("ref_key") or "C")
+            ref_key = _pick_ref_key(target_key, recipe_ref)
+            symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
+            entries = symbols_to_entries(symbols)
+            out.append(
+                {
+                    "id": rid,
+                    "name": str(recipe.get("name") or "Suggestion"),
+                    "why": str(recipe.get("why") or ""),
+                    "chords": entries,
+                    "line": format_entries_bar_line(entries),
+                    "feeling": feeling,
+                    "context": "library",
+                }
+            )
+            if len(out) >= limit:
+                break
     return out
 
 
