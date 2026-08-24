@@ -225,11 +225,23 @@ class TestCompositionDocument(unittest.TestCase):
         apply_structure_template(doc, "simple")
         verse1 = ordered_sections(doc)[0]
         verse1["chords"] = parse_chord_paste("G Am C D")
-        clone = duplicate_section(doc, str(verse1["id"]))
+        clone = duplicate_section(doc, str(verse1["id"]), link_chords=True)
         self.assertIsNotNone(clone)
         assert clone is not None
         self.assertTrue((clone.get("chord_link") or {}).get("linked"))
         self.assertEqual(parse_chord_paste("G Am C D")[0]["chord"], clone["chords"][0]["chord"])
+
+    def test_duplicate_section_default_is_independent(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")
+        apply_structure_template(doc, "simple")
+        verse1 = ordered_sections(doc)[0]
+        verse1["chords"] = parse_chord_paste("G Am C D")
+        clone = duplicate_section(doc, str(verse1["id"]))
+        self.assertIsNotNone(clone)
+        assert clone is not None
+        self.assertFalse((clone.get("chord_link") or {}).get("linked"))
+        self.assertEqual(clone["chords"][0]["chord"], "G")
+        self.assertNotEqual(clone["id"], verse1["id"])
 
     def test_break_chord_link(self) -> None:
         doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")

@@ -1227,12 +1227,63 @@ def add_section(
     return sec
 
 
+def move_section(doc: dict[str, Any], section_id: str, direction: int) -> bool:
+    form = doc.setdefault("form", {})
+    order = list(form.get("section_order") or [])
+    if section_id not in order:
+        return False
+    idx = order.index(section_id)
+    new_idx = idx + int(direction)
+    if new_idx < 0 or new_idx >= len(order):
+        return False
+    order[idx], order[new_idx] = order[new_idx], order[idx]
+    form["section_order"] = order
+    touch_composition(doc)
+    return True
+
+
+def remove_section(doc: dict[str, Any], section_id: str) -> bool:
+    form = doc.setdefault("form", {})
+    order = list(form.get("section_order") or [])
+    if section_id not in order or len(order) <= 1:
+        return False
+    idx = order.index(section_id)
+    order = [s for s in order if s != section_id]
+    form["section_order"] = order
+    sections = form.setdefault("sections", {})
+    for sec in sections.values():
+        if not isinstance(sec, dict):
+            continue
+        link = _ensure_chord_link(sec)
+        if str(link.get("source_section_id") or "") == section_id:
+            link["linked"] = False
+            link["source_section_id"] = None
+    sections.pop(section_id, None)
+    touch_composition(doc)
+    return True
+
+
+def neighbor_section_after_remove(doc: dict[str, Any], removed_id: str, prior_order: list[str]) -> str:
+    """Pick a sensible section to select after removing ``removed_id``."""
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    if not order:
+        return ""
+    if removed_id in prior_order:
+        idx = prior_order.index(removed_id)
+        # Prefer the next section, else previous.
+        for candidate in prior_order[idx + 1 :] + list(reversed(prior_order[:idx])):
+            if candidate in order:
+                return candidate
+    return order[0]
+
+
 def duplicate_section(
     doc: dict[str, Any],
     section_id: str,
     *,
-    link_chords: bool = True,
+    link_chords: bool = False,
 ) -> dict[str, Any] | None:
+    """Duplicate a section as an independent instance by default (no auto-link)."""
     src = section_by_id(doc, section_id)
     if not src:
         return None
@@ -1248,6 +1299,7 @@ def duplicate_section(
     else:
         link["source_section_id"] = None
         link["linked"] = False
+        # Independent copy keeps its own chord snapshot from the deep copy.
 
     form = doc.setdefault("form", {})
     sections = form.setdefault("sections", {})
@@ -1259,40 +1311,8 @@ def duplicate_section(
     except ValueError:
         order.append(clone["id"])
     form["section_order"] = order
+    touch_composition(doc)
     return clone
-
-
-def move_section(doc: dict[str, Any], section_id: str, direction: int) -> bool:
-    form = doc.get("form") or {}
-    order = list(form.get("section_order") or [])
-    if section_id not in order:
-        return False
-    idx = order.index(section_id)
-    new_idx = idx + int(direction)
-    if new_idx < 0 or new_idx >= len(order):
-        return False
-    order[idx], order[new_idx] = order[new_idx], order[idx]
-    form["section_order"] = order
-    return True
-
-
-def remove_section(doc: dict[str, Any], section_id: str) -> bool:
-    form = doc.get("form") or {}
-    order = list(form.get("section_order") or [])
-    if section_id not in order or len(order) <= 1:
-        return False
-    order = [s for s in order if s != section_id]
-    form["section_order"] = order
-    sections = form.get("sections") or {}
-    for sec in sections.values():
-        if not isinstance(sec, dict):
-            continue
-        link = _ensure_chord_link(sec)
-        if str(link.get("source_section_id") or "") == section_id:
-            link["linked"] = False
-            link["source_section_id"] = None
-    sections.pop(section_id, None)
-    return True
 
 
 def parse_chord_paste(text: str) -> list[dict[str, Any]]:

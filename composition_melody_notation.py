@@ -1,7 +1,13 @@
-"""Composition melody events → ABC / staff (reuse music_theory + abcjs path)."""
+"""Composition melody events → ABC / staff (reuse music_theory + abcjs path).
+
+Also builds the musician-facing section score: staff above, chord symbols
+aligned by measure, optional lyrics beneath — derived from canonical events
++ section chords (no separate display state).
+"""
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 from music_theory import (
@@ -56,6 +62,57 @@ def composition_abc_key_field(key: str) -> str:
     return abc_key_signature_for_reference(tonic if scale == "major" else key, scale_type=scale)
 
 
+def beats_per_bar(meter: str) -> float:
+    from composition_hum_transcription import parse_meter
+
+    num, _den = parse_meter(meter)
+    return float(num)
+
+
+def chord_symbols_by_measure(
+    chords: list[Any],
+    *,
+    meter: str = "4/4",
+    measures: int | None = None,
+) -> list[str]:
+    """Deterministic measure-level chord labels for staff alignment.
+
+    One chord symbol per measure when possible. Extra chords beyond measure
+    count are appended; missing measures reuse the last chord or stay blank.
+    """
+    from custom_progression_lab import expand_entries_to_chords
+
+    if chords and isinstance(chords[0], dict):
+        symbols = expand_entries_to_chords(list(chords))
+    else:
+        symbols = [str(c).strip() for c in (chords or []) if str(c).strip()]
+    if not symbols:
+        return []
+    bar = max(1.0, beats_per_bar(meter))
+    n = int(measures) if measures and measures > 0 else max(1, len(symbols))
+    # Prefer 1:1 chord→measure when lengths match; otherwise stretch/cycle.
+    if len(symbols) == n:
+        return list(symbols)
+    if len(symbols) > n:
+        return list(symbols[:n])
+    out: list[str] = []
+    for i in range(n):
+        out.append(symbols[min(i, len(symbols) - 1)])
+    return out
+
+
+def melody_measure_count(events: list[dict[str, Any]], *, meter: str = "4/4") -> int:
+    bar = max(1.0, beats_per_bar(meter))
+    total = 0.0
+    for ev in events or []:
+        if not isinstance(ev, dict):
+            continue
+        total += float(ev.get("duration_beats") or 1.0)
+    if total <= 0:
+        return 1
+    return max(1, int((total + bar - 1e-9) // bar))
+
+
 def build_abc_from_melody_events(
     events: list[dict[str, Any]],
     *,
@@ -72,7 +129,6 @@ def build_abc_from_melody_events(
     meter_field = f"{num}/{den}"
     tokens: list[str] = []
     beats_in_bar = 0.0
-    # Match composition_preview / hum quantization: bar length = meter numerator pulses.
     bar_len = float(num)
 
     for ev in events or []:
@@ -103,6 +159,54 @@ K:{k_field}
 {music}"""
 
 
+def build_chord_strip_html(
+    chords: list[Any],
+    *,
+    meter: str = "4/4",
+    measures: int | None = None,
+) -> str:
+    """HTML row of chord symbols aligned one-per-measure under the staff."""
+    labels = chord_symbols_by_measure(chords, meter=meter, measures=measures)
+    if not labels:
+        return ""
+    cells = "".join(
+        f'<div class="composer-score-chord">{html.escape(lab)}</div>' for lab in labels
+    )
+    return f'<div class="composer-score-chords">{cells}</div>'
+
+
+def build_section_score_model(
+    *,
+    events: list[dict[str, Any]] | None,
+    chords: list[Any] | None,
+    key: str,
+    meter: str,
+    bpm: int,
+    title: str = "Melody",
+    lyrics_text: str = "",
+) -> dict[str, Any]:
+    """Canonical derived view for section score rendering (no duplicate ownership)."""
+    evs = list(events or [])
+    chord_list = list(chords or [])
+    measures = melody_measure_count(evs, meter=meter) if evs else max(1, len(chord_list) or 1)
+    chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
+    abc = build_abc_from_melody_events(evs, key=key, meter=meter, bpm=bpm, title=title) if evs else ""
+    return {
+        "has_melody": bool(evs),
+        "has_chords": bool(chord_labels),
+        "has_lyrics": bool(str(lyrics_text or "").strip()),
+        "abc": abc,
+        "chord_labels": chord_labels,
+        "chord_strip_html": build_chord_strip_html(chord_list, meter=meter, measures=measures),
+        "lyrics_text": str(lyrics_text or "").strip(),
+        "measures": measures,
+        "key": key,
+        "meter": meter,
+        "bpm": int(bpm),
+        "title": title,
+    }
+
+
 def render_abc_html(abc_text: str, *, height: int = 280) -> str:
     """HTML document for Streamlit components.html abcjs render."""
     escaped = (
@@ -116,14 +220,14 @@ def render_abc_html(abc_text: str, *, height: int = 280) -> str:
     <head>
     <style>
       body {{ margin: 0; padding: 8px 4px 12px 4px; overflow: visible; background: #fff; }}
-      #paper {{ min-height: 160px; }}
+      #paper {{ min-height: 140px; }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520, paddingbottom: 12 }});
+    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520, paddingbottom: 8 }});
     </script>
     </body>
     </html>

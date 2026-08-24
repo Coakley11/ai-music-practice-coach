@@ -44,14 +44,25 @@ def get_active_document(session_state: dict) -> dict[str, Any] | None:
     return doc if isinstance(doc, dict) else None
 
 
-def set_active_document(session_state: dict, doc: dict[str, Any]) -> None:
+def set_active_document(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    clear_preview: bool = False,
+) -> None:
+    """Install the active Composition document.
+
+    ``clear_preview`` defaults to False so routine saves do not wipe an in-progress
+    harmony/melody audition. Pass True when loading a different song or starting over.
+    """
     prepared = touch_composition(deep_copy_document(doc))
     ensure_workflow(prepared)
     session_state[COMPOSER_ACTIVE_KEY] = prepared
     session_state[COMPOSER_NEEDS_SEED_KEY] = False
-    from composition_preview import invalidate_composer_preview
+    if clear_preview:
+        from composition_preview import invalidate_composer_preview
 
-    invalidate_composer_preview(session_state)
+        invalidate_composer_preview(session_state)
     session_state.pop(COMPOSER_SNAPSHOT_STAMP_KEY, None)
 
 
@@ -67,7 +78,8 @@ def save_document_to_library(session_state: dict, doc: dict[str, Any] | None = N
     if not sid:
         return active
     lib[sid] = touch_composition(deep_copy_document(active))
-    set_active_document(session_state, lib[sid])
+    # Keep audition audio across saves — only replace the active document copy.
+    set_active_document(session_state, lib[sid], clear_preview=False)
     return lib[sid]
 
 
@@ -87,7 +99,7 @@ def load_library_document(session_state: dict, doc_id: str) -> dict[str, Any] | 
     doc = lib.get(doc_id)
     if not isinstance(doc, dict):
         return None
-    set_active_document(session_state, doc)
+    set_active_document(session_state, doc, clear_preview=True)
     sec_order = list((doc.get("form") or {}).get("section_order") or [])
     if sec_order:
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec_order[0]

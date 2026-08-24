@@ -392,7 +392,7 @@ def transcribe_hum_audio(
         )
     else:
         result["status"] = "usable"
-        result["message"] = "We heard this melody — check the notes below before using it."
+        result["message"] = "We heard this melody — check the sheet music before using it."
     return result
 
 
