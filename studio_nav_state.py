@@ -38,10 +38,16 @@ def is_studio_nav_locally_dirty(session: dict[str, Any]) -> bool:
 
 
 def mark_studio_nav_local_edit(session: dict[str, Any]) -> None:
-    try:
-        from music_workspace_restore_mode import should_record_user_local_dirty
+    """Mark intentional user navigation dirty unless a workspace restore is in progress.
 
-        if not should_record_user_local_dirty(session):
+    Sidebar / page_change is definitive user intent. Do not require
+    ``USER_EDIT_TRACKING_ENABLED`` — that gate blocked dirty marking in unit
+    tests and left page_change ownership too easy to drop before a durable save.
+    """
+    try:
+        from music_workspace_restore_mode import workspace_restore_in_progress
+
+        if workspace_restore_in_progress(session):
             return
     except ImportError:
         pass
@@ -359,13 +365,15 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                 )
         except ImportError:
             pass
-        if not user_nav:
-            return _finish(
-                "canonical_preserve_over_stale_live",
-                canonical,
-                reason="canonical_preserve_over_stale_live",
-                allow_detail={"live": live, "canonical": canonical},
-            )
+        # Mid-session: live studio_page is authoritative until durable save catches up
+        # (e.g. Songs→Backing before page_change flush; Practice→Composition).
+        return _finish(
+            "session_page_wins",
+            live,
+            reason="session_page_wins",
+            local_edit=True,
+            allow_detail={"canonical": canonical, "live": live, "restore_source": restore_source},
+        )
     if canonical:
         return _finish("canonical_preserve", canonical, reason="canonical_preserve")
 
@@ -429,25 +437,41 @@ def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "au
 
 
 def _studio_page_from_blob(state: dict[str, Any]) -> str:
+    """Resolve studio page from a disk/cloud envelope.
+
+    Prefer explicit ``studio_page`` only. Coach ``page`` on
+    ``music_workspace_state`` (e.g. ``practice`` for Composition Studio) must
+    not stand in for a missing/empty studio stamp — that restored Practice
+    after a failed composer page_change save.
+    """
     if not isinstance(state, dict):
         return ""
+
+    def _explicit_studio(src: Any) -> str:
+        if not isinstance(src, dict):
+            return ""
+        return _normalize_page(src.get("studio_page"))
+
     ws = state.get("music_workspace_state")
-    if isinstance(ws, dict):
-        page = _normalize_page(ws.get("studio_page") or ws.get("page"))
-        if page:
-            return page
     meta = state.get(STUDIO_NAV_STATE_KEY)
-    if isinstance(meta, dict):
-        page = _normalize_page(meta.get("studio_page"))
-        if page:
-            return page
     core = state.get("core") if isinstance(state.get("core"), dict) else {}
     session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
+
+    for src in (ws, meta, core, session_extra, state):
+        page = _explicit_studio(src)
+        if page:
+            return page
+
+    # Legacy: core/session may store the studio id only under ``page``.
+    # Never fall back to workspace/nav coach ``page``.
     for src in (core, session_extra, state):
-        if isinstance(src, dict):
-            page = _normalize_page(src.get("studio_page") or src.get("page"))
-            if page:
-                return page
+        if not isinstance(src, dict):
+            continue
+        if "studio_page" in src:
+            continue
+        page = _normalize_page(src.get("page"))
+        if page:
+            return page
     return ""
 
 
@@ -489,10 +513,41 @@ def resolve_studio_page_for_restore(
     if pre and not blob_page:
         return pre, "session_page_preserved"
     if blob_page:
+        _log_restore_page_choice(session, raw=blob_page, resolved=blob_page, source="workspace_blob")
         return blob_page, "workspace_blob"
     if pre:
+        _log_restore_page_choice(session, raw=pre, resolved=pre, source="session_page")
         return pre, "session_page"
+    _log_restore_page_choice(session, raw="", resolved="practice", source="default")
     return "practice", "default"
+
+
+def _log_restore_page_choice(
+    session: dict[str, Any],
+    *,
+    raw: str,
+    resolved: str,
+    source: str,
+) -> None:
+    try:
+        import logging
+
+        logging.getLogger("music.studio_nav").info(
+            "studio_nav_restore raw=%s resolved=%s source=%s",
+            raw,
+            resolved,
+            source,
+        )
+    except Exception:
+        pass
+    try:
+        session["_music_studio_nav_restore_diag"] = {
+            "raw_page": raw,
+            "resolved_page": resolved,
+            "source": source,
+        }
+    except Exception:
+        pass
 
 
 def bootstrap_studio_page_session(session: dict[str, Any], *, default: str = "practice") -> str:

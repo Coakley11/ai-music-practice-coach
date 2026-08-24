@@ -130,6 +130,28 @@ class TestStudioNavState(unittest.TestCase):
         }
         self.assertEqual(_studio_page_from_blob(blob), "backing")
 
+    def test_studio_page_from_blob_ignores_coach_page_when_studio_empty(self) -> None:
+        blob = {
+            "music_workspace_state": {"studio_page": "", "page": "practice"},
+        }
+        self.assertEqual(_studio_page_from_blob(blob), "")
+
+    def test_composer_canonical_round_trip(self) -> None:
+        session: dict = {}
+        write_canonical_studio_nav_state(session, "composer", reason="page_change", local_edit=True)
+        self.assertEqual(session["studio_page"], "composer")
+        self.assertTrue(is_studio_nav_locally_dirty(session))
+        page, source = resolve_studio_page_for_restore(
+            {},
+            {
+                "studio_nav_state": {"studio_page": "composer"},
+                "music_workspace_state": {"studio_page": "composer", "page": "practice"},
+                "core": {"studio_page": "composer"},
+            },
+        )
+        self.assertEqual(page, "composer")
+        self.assertEqual(source, "workspace_blob")
+
     def test_disk_restore_workspace_page_wins_over_stale_core(self) -> None:
         """Dell restore: cloud workspace backing must not flash picker from stale core."""
         st2 = MagicMock()

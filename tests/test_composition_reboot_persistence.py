@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock
 
 from composition_document import (
@@ -339,6 +340,354 @@ class TestCompositionPageSnapshotFallback(unittest.TestCase):
     __import__("importlib").util.find_spec("streamlit.testing.v1") is not None,
     "streamlit.testing.v1 unavailable",
 )
+class TestCompositionPageNavDurability(unittest.TestCase):
+    """Live reboot failure: Practice→Composition with no edit must restore composer."""
+
+    def test_composer_is_valid_canonical_nav_id(self) -> None:
+        from studio_nav_history import STUDIO_PAGE_IDS
+        from studio_nav_state import _normalize_page
+
+        self.assertIn("composer", STUDIO_PAGE_IDS)
+        self.assertEqual(_normalize_page("composer"), "composer")
+        self.assertEqual(resolve_studio_page_for_restore({}, {"core": {"studio_page": "composer"}})[0], "composer")
+
+    def test_page_change_nav_without_content_edit_survives_reboot(self) -> None:
+        """Practice → Composition → page_change only → destroy session → restore composer."""
+        from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
+        from studio_nav_state import prepare_studio_nav
+
+        ss: dict = {
+            "studio_page": "practice",
+            "studio_nav_state": {"studio_page": "practice", "page": "practice"},
+            "music_workspace_state": {"studio_page": "practice", "page": "practice"},
+            "_suite_last_persisted_page": "practice",
+        }
+        prepare_page_change_save_state(ss, "composer", origin="user_navigation")
+        self.assertEqual(ss.get("studio_page"), "composer")
+        self.assertTrue(ss.get("_suite_page_user_nav"))
+
+        st = _FakeSt(ss)
+        captured: dict = {}
+
+        def _fake_force(st_arg, *, reason=""):
+            captured["reason"] = reason
+            captured["state"] = build_music_disk_state(st_arg)
+            st_arg.session_state["_suite_persist_last_save_cloud"] = True
+            st_arg.session_state["_music_force_save_ok"] = True
+            return True
+
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            side_effect=_fake_force,
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ):
+            after_studio_page_change(st, ss, target_page="composer")
+
+        self.assertEqual(captured.get("reason"), "page_change")
+        blob = captured["state"]
+        self.assertEqual((blob.get("music_workspace_state") or {}).get("studio_page"), "composer")
+        self.assertEqual((blob.get("studio_nav_state") or {}).get("studio_page"), "composer")
+        self.assertEqual((blob.get("core") or {}).get("studio_page"), "composer")
+
+        # Fresh process: no content edit keys required
+        fresh = _FakeSt({"studio_page": "practice"})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        prepare_studio_nav(fresh.session_state)
+        self.assertEqual(fresh.session_state.get("studio_page"), "composer")
+
+    def test_failed_page_change_keeps_ownership_and_deferred(self) -> None:
+        from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
+
+        ss: dict = {
+            "studio_page": "practice",
+            "studio_nav_state": {"studio_page": "practice"},
+        }
+        prepare_page_change_save_state(ss, "composer", origin="user_navigation")
+        st = _FakeSt(ss)
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            return_value=False,
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ) as mock_release:
+            after_studio_page_change(st, ss, target_page="composer")
+        mock_release.assert_not_called()
+        self.assertEqual(ss.get("_suite_deferred_page_change_save"), "composer")
+        self.assertTrue(ss.get("_suite_page_user_nav"))
+        self.assertNotEqual(ss.get("_suite_last_persisted_page"), "composer")
+
+    def test_composer_edit_preserves_composer_nav_stamp(self) -> None:
+        doc, chorus_id = _jewish_draft()
+        ss: dict = {
+            "studio_page": "composer",
+            "studio_nav_state": {"studio_page": "composer"},
+            "music_workspace_state": {"studio_page": "composer", "page": "practice"},
+            "_suite_last_persisted_page": "composer",
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_ACTIVE_SECTION_KEY: chorus_id,
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            "_suite_pending_save_reason": "composer_edit",
+        }
+        sync_composition_workspace_before_persist(ss, reason="composer_edit")
+        blob = build_music_disk_state(_FakeSt(ss))
+        self.assertEqual((blob.get("music_workspace_state") or {}).get("studio_page"), "composer")
+        self.assertEqual((blob.get("core") or {}).get("studio_page"), "composer")
+        page, _ = resolve_studio_page_for_restore({}, blob)
+        self.assertEqual(page, "composer")
+
+    def test_coach_page_practice_does_not_erase_missing_studio_stamp_when_nav_has_composer(self) -> None:
+        from studio_nav_state import _studio_page_from_blob
+
+        blob = {
+            "music_workspace_state": {"studio_page": "", "page": "practice"},
+            "studio_nav_state": {"studio_page": "composer"},
+            "core": {"page": "practice"},
+        }
+        self.assertEqual(_studio_page_from_blob(blob), "composer")
+
+    def test_empty_studio_page_does_not_use_coach_practice_as_studio(self) -> None:
+        from studio_nav_state import _studio_page_from_blob
+
+        blob = {
+            "music_workspace_state": {"studio_page": "", "page": "practice"},
+            "core": {"studio_page": "", "page": "practice"},
+        }
+        self.assertEqual(_studio_page_from_blob(blob), "")
+
+    def test_stale_cloud_practice_loses_to_newer_local_composer(self) -> None:
+        from studio_nav_state import apply_cloud_studio_nav_state_if_allowed, mark_studio_nav_local_edit
+
+        session = {
+            "studio_page": "composer",
+            "studio_nav_state": {"studio_page": "composer"},
+        }
+        mark_studio_nav_local_edit(session)
+        cloud = {
+            "studio_nav_state": {"studio_page": "practice"},
+            "music_workspace_state": {"studio_page": "practice"},
+            "core": {"studio_page": "practice"},
+        }
+        self.assertFalse(apply_cloud_studio_nav_state_if_allowed(session, cloud))
+        self.assertEqual(session["studio_page"], "composer")
+
+    def test_intentional_leave_to_practice_restores_practice(self) -> None:
+        from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
+
+        ss: dict = {
+            "studio_page": "composer",
+            "studio_nav_state": {"studio_page": "composer"},
+            "_suite_last_persisted_page": "composer",
+        }
+        prepare_page_change_save_state(ss, "practice", origin="user_navigation")
+        st = _FakeSt(ss)
+        captured: dict = {}
+
+        def _fake_force(st_arg, *, reason=""):
+            captured["state"] = build_music_disk_state(st_arg)
+            st_arg.session_state["_music_force_save_ok"] = True
+            return True
+
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            side_effect=_fake_force,
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ):
+            after_studio_page_change(st, ss, target_page="practice")
+
+        page, _ = resolve_studio_page_for_restore({}, captured["state"])
+        self.assertEqual(page, "practice")
+
+    def test_failed_then_deferred_flush_persists_composer(self) -> None:
+        """Blocked page_change retains ownership; later deferred flush stamps composer."""
+        from music_persistent_state import (
+            after_studio_page_change,
+            maybe_flush_deferred_page_change_save,
+            prepare_page_change_save_state,
+        )
+
+        ss: dict = {
+            "studio_page": "practice",
+            "studio_nav_state": {"studio_page": "practice"},
+            "_suite_last_persisted_page": "practice",
+        }
+        prepare_page_change_save_state(ss, "composer", origin="user_navigation")
+        st = _FakeSt(ss)
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            return_value=False,
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ) as mock_release:
+            after_studio_page_change(st, ss, target_page="composer")
+        mock_release.assert_not_called()
+        self.assertEqual(ss.get("_suite_deferred_page_change_save"), "composer")
+        self.assertTrue(ss.get("_suite_page_user_nav"))
+        self.assertEqual(ss.get("_suite_last_persisted_page"), "practice")
+
+        captured: dict = {}
+
+        def _flush_ok(st_arg, *, reason=""):
+            captured["reason"] = reason
+            captured["state"] = build_music_disk_state(st_arg)
+            st_arg.session_state["_music_force_save_ok"] = True
+            return True
+
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            side_effect=_flush_ok,
+        ), mock.patch(
+            "music_startup_save_suppression.should_suppress_music_workspace_save",
+            return_value=(False, ""),
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ) as mock_release2:
+            ok = maybe_flush_deferred_page_change_save(st)
+        self.assertTrue(ok)
+        mock_release2.assert_called()
+        self.assertIsNone(ss.get("_suite_deferred_page_change_save"))
+        self.assertEqual(ss.get("_suite_last_persisted_page"), "composer")
+        self.assertFalse(ss.get("_suite_page_user_nav"))
+        self.assertEqual(captured.get("reason"), "page_change")
+        self.assertEqual(
+            (captured["state"].get("music_workspace_state") or {}).get("studio_page"),
+            "composer",
+        )
+        page, _ = resolve_studio_page_for_restore({}, captured["state"])
+        self.assertEqual(page, "composer")
+
+    def test_rapid_nav_latest_intent_wins_over_older_deferred(self) -> None:
+        """Practice→Composition (blocked)→Creative: deferred target must be Creative."""
+        from music_persistent_state import after_studio_page_change, prepare_page_change_save_state
+
+        ss: dict = {
+            "studio_page": "practice",
+            "studio_nav_state": {"studio_page": "practice"},
+            "_suite_last_persisted_page": "practice",
+        }
+        st = _FakeSt(ss)
+        with mock.patch(
+            "music_persistent_state.force_save_music_state",
+            return_value=False,
+        ), mock.patch(
+            "suite_user_persistence._release_user_page_ownership_after_save",
+        ):
+            prepare_page_change_save_state(ss, "composer", origin="user_navigation")
+            after_studio_page_change(st, ss, target_page="composer")
+            self.assertEqual(ss.get("_suite_deferred_page_change_save"), "composer")
+
+            prepare_page_change_save_state(ss, "custom", origin="user_navigation")
+            after_studio_page_change(st, ss, target_page="custom")
+
+        self.assertEqual(ss.get("studio_page"), "custom")
+        self.assertEqual(ss.get("_suite_deferred_page_change_save"), "custom")
+        self.assertTrue(ss.get("_suite_page_user_nav"))
+        self.assertNotEqual(ss.get("_suite_last_persisted_page"), "composer")
+        self.assertNotEqual(ss.get("_suite_last_persisted_page"), "custom")
+
+    def test_restore_in_progress_does_not_fake_user_nav_dirty(self) -> None:
+        from music_workspace_restore_mode import begin_workspace_restore
+        from studio_nav_state import is_studio_nav_locally_dirty, mark_studio_nav_local_edit
+
+        ss: dict = {"studio_page": "composer"}
+        begin_workspace_restore(ss)
+        mark_studio_nav_local_edit(ss)
+        self.assertFalse(is_studio_nav_locally_dirty(ss))
+        self.assertFalse(ss.get("_suite_page_user_nav"))
+
+    def test_restored_composer_does_not_mark_dirty_or_loop(self) -> None:
+        from studio_nav_state import is_studio_nav_locally_dirty, prepare_studio_nav
+
+        blob = {
+            "core": {"studio_page": "composer"},
+            "session": {"studio_page": "composer"},
+            "music_workspace_state": {"studio_page": "composer", "page": "practice"},
+            "studio_nav_state": {"studio_page": "composer", "page": "composer"},
+        }
+        fresh = _FakeSt({})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        prepare_studio_nav(fresh.session_state)
+        self.assertEqual(fresh.session_state.get("studio_page"), "composer")
+        self.assertFalse(is_studio_nav_locally_dirty(fresh.session_state))
+        self.assertFalse(fresh.session_state.get("_suite_page_user_nav"))
+        self.assertNotEqual(
+            fresh.session_state.get("_suite_deferred_page_change_save"),
+            "composer",
+        )
+
+    def test_practice_durable_page_restores_practice(self) -> None:
+        blob = {
+            "core": {"studio_page": "practice"},
+            "session": {"studio_page": "practice"},
+            "music_workspace_state": {"studio_page": "practice", "page": "practice"},
+            "studio_nav_state": {"studio_page": "practice"},
+        }
+        page, source = resolve_studio_page_for_restore({}, blob)
+        self.assertEqual(page, "practice")
+        fresh = _FakeSt({"studio_page": "composer"})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        self.assertEqual(fresh.session_state.get("studio_page"), "practice")
+        self.assertEqual(source, "workspace_blob")
+
+    def test_creative_durable_page_restores_custom(self) -> None:
+        """Shared nav must honor Creative (custom) stamp without product changes."""
+        blob = {
+            "core": {"studio_page": "custom"},
+            "session": {"studio_page": "custom"},
+            "music_workspace_state": {"studio_page": "custom", "page": "custom"},
+            "studio_nav_state": {"studio_page": "custom"},
+        }
+        page, source = resolve_studio_page_for_restore({}, blob)
+        self.assertEqual(page, "custom")
+        self.assertEqual(source, "workspace_blob")
+        fresh = _FakeSt({"studio_page": "practice"})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        self.assertEqual(fresh.session_state.get("studio_page"), "custom")
+
+
+@unittest.skipUnless(
+    __import__("importlib").util.find_spec("streamlit.testing.v1") is not None,
+    "streamlit.testing.v1 unavailable",
+)
+class TestCompositionNavRestoreShellAppTest(unittest.TestCase):
+    def test_shell_restore_reaches_composition(self) -> None:
+        from pathlib import Path
+
+        from streamlit.testing.v1 import AppTest
+
+        harness = str(Path(__file__).resolve().parents[1] / "composition_studio_nav_restore_harness.py")
+        at = AppTest.from_file(harness, default_timeout=90)
+        at.run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        self.assertIn("studio_page", at.session_state)
+        self.assertEqual(at.session_state["studio_page"], "composer")
+
+
 class TestCompositionWelcomeStillRenders(unittest.TestCase):
     def test_welcome_harness(self) -> None:
         from pathlib import Path
