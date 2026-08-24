@@ -563,6 +563,18 @@ def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
     touch_composition(doc)
     set_active_document(session_state, doc)
     save_document_to_library(session_state, doc)
+    try:
+        from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+        # Meaningful mutation boundary — durable draft for reboot (preserve nav page).
+        checkpoint_composition_workspace(
+            session_state,
+            reason="composer_edit",
+            force_disk=True,
+            st=st,
+        )
+    except Exception:
+        pass
 
 
 def _composer_navigate(
@@ -3423,6 +3435,12 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
 
 def render_composition_studio_page() -> None:
     session_state = st.session_state
+    try:
+        from composition_workspace_state_persistence import prepare_composition_workspace_for_render
+
+        prepare_composition_workspace_for_render(session_state)
+    except ImportError:
+        pass
     init_composer_page_state(session_state)
     inject_composition_studio_styles()
 
@@ -3438,9 +3456,12 @@ def render_composition_studio_page() -> None:
         return
 
     ensure_workflow(doc)
+    # Align focus lane with restored workflow when landing on section lanes.
+    phase = get_workflow_phase(doc)
+    if phase in {"chords", "melody", "lyrics", "review"}:
+        session_state[COMPOSER_FOCUS_LANE_KEY] = phase
     _render_journey_rail(session_state, doc)
 
-    phase = get_workflow_phase(doc)
     if phase == "vision":
         _render_phase_vision(session_state, doc)
     elif phase == "structure":

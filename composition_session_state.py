@@ -49,11 +49,14 @@ def set_active_document(
     doc: dict[str, Any],
     *,
     clear_preview: bool = False,
+    checkpoint: bool = True,
 ) -> None:
     """Install the active Composition document.
 
     ``clear_preview`` defaults to False so routine saves do not wipe an in-progress
     harmony/melody audition. Pass True when loading a different song or starting over.
+
+    ``checkpoint`` syncs the durable composition workspace blob (reboot draft).
     """
     prepared = touch_composition(deep_copy_document(doc))
     ensure_workflow(prepared)
@@ -64,6 +67,13 @@ def set_active_document(
 
         invalidate_composer_preview(session_state)
     session_state.pop(COMPOSER_SNAPSHOT_STAMP_KEY, None)
+    if checkpoint:
+        try:
+            from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+            checkpoint_composition_workspace(session_state, reason="composer_edit", force_disk=False)
+        except ImportError:
+            pass
 
 
 def save_document_to_library(session_state: dict, doc: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -79,7 +89,7 @@ def save_document_to_library(session_state: dict, doc: dict[str, Any] | None = N
         return active
     lib[sid] = touch_composition(deep_copy_document(active))
     # Keep audition audio across saves — only replace the active document copy.
-    set_active_document(session_state, lib[sid], clear_preview=False)
+    set_active_document(session_state, lib[sid], clear_preview=False, checkpoint=True)
     return lib[sid]
 
 
@@ -99,10 +109,16 @@ def load_library_document(session_state: dict, doc_id: str) -> dict[str, Any] | 
     doc = lib.get(doc_id)
     if not isinstance(doc, dict):
         return None
-    set_active_document(session_state, doc, clear_preview=True)
+    set_active_document(session_state, doc, clear_preview=True, checkpoint=True)
     sec_order = list((doc.get("form") or {}).get("section_order") or [])
     if sec_order:
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec_order[0]
+    try:
+        from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+        checkpoint_composition_workspace(session_state, reason="composer_edit", force_disk=True)
+    except ImportError:
+        pass
     return doc
 
 
@@ -114,11 +130,20 @@ def delete_library_document(session_state: dict, doc_id: str) -> None:
     if active and str(active.get("id") or "") == doc_id:
         session_state.pop(COMPOSER_ACTIVE_KEY, None)
         session_state[COMPOSER_NEEDS_SEED_KEY] = True
+    try:
+        from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+        checkpoint_composition_workspace(session_state, reason="composer_edit", force_disk=True)
+    except ImportError:
+        pass
 
 
 def export_composer_widget_state(session_state: dict) -> dict[str, Any]:
+    """Session export for page snapshots — excludes ephemeral preview audio."""
     out: dict[str, Any] = {}
     for key in COMPOSER_WIDGET_SCALAR_KEYS:
+        if key in (COMPOSER_PREVIEW_WAV_KEY, COMPOSER_PREVIEW_SIG_KEY):
+            continue
         if key in session_state:
             out[key] = copy.deepcopy(session_state[key])
     for key in list(session_state.keys()):

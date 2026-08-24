@@ -46,6 +46,7 @@ _STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
         "song_edit",
         "practice_edit",
         "backing_edit",
+        "composer_edit",
         "creative_tab_change",
         "creative_tool_change",
         "creative_mission_change",
