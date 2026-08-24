@@ -933,6 +933,205 @@ def _play_chord_idea(
     )
     set_composer_preview(session_state, wav, sig)
 
+# Pending suggestion bags — applied in prepare_* BEFORE widgets are created.
+COMPOSER_WELCOME_PENDING_SUGGEST_KEY = "composer_welcome_pending_suggest"
+COMPOSER_VISION_PENDING_SUGGEST_KEY = "composer_vision_pending_suggest"
+
+WELCOME_WIDGET_KEYS: tuple[str, ...] = (
+    "composer_welcome_key",
+    "composer_welcome_bpm",
+    "composer_welcome_meter",
+    "composer_welcome_meter_custom",
+    "composer_welcome_genre",
+    "composer_welcome_idea",
+    "composer_welcome_title",
+    "composer_welcome_mood",
+    "composer_welcome_energy",
+    "composer_welcome_refs",
+    "composer_welcome_instrumental",
+)
+
+
+def queue_welcome_starting_values(
+    session_state: dict,
+    *,
+    genre: str,
+    song_idea: str,
+) -> dict[str, Any]:
+    """Build a pending suggest payload — never write widget keys here."""
+    hints = suggest_musical_defaults(genre=str(genre or "Pop"), song_idea=str(song_idea or ""))
+    suggested_meter = coerce_composition_meter(hints.get("meter"))
+    payload: dict[str, Any] = {
+        "key": coerce_composition_key_choice(hints.get("key_label") or hints.get("key") or "C major"),
+        "bpm": coerce_composition_bpm(hints.get("bpm")),
+        "mood": str(hints.get("mood") or ""),
+        "energy": str(hints.get("energy") or ""),
+    }
+    if suggested_meter in COMPOSITION_METERS:
+        payload["meter"] = suggested_meter
+        payload["meter_custom"] = ""
+    else:
+        payload["meter"] = COMPOSITION_METER_CUSTOM
+        payload["meter_custom"] = suggested_meter
+    session_state[COMPOSER_WELCOME_PENDING_SUGGEST_KEY] = payload
+    return payload
+
+
+def prepare_welcome_widget_state(session_state: dict) -> None:
+    """Normalize Welcome widget keys BEFORE any Welcome widgets are instantiated.
+
+    Applies pending \"Suggest starting values\" payloads here (next-rerun safe path).
+    Must not be called after Welcome widgets exist in the same run.
+    """
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
+
+    pending = session_state.pop(COMPOSER_WELCOME_PENDING_SUGGEST_KEY, None)
+    if isinstance(pending, dict):
+        session_state["composer_welcome_key"] = coerce_composition_key_choice(
+            pending.get("key") or "C major"
+        )
+        session_state["composer_welcome_bpm"] = coerce_composition_bpm(pending.get("bpm"))
+        meter = str(pending.get("meter") or "4/4")
+        if meter == COMPOSITION_METER_CUSTOM or meter not in COMPOSITION_METERS:
+            session_state["composer_welcome_meter"] = COMPOSITION_METER_CUSTOM
+            session_state["composer_welcome_meter_custom"] = coerce_composition_meter(
+                pending.get("meter_custom") or meter
+            )
+        else:
+            session_state["composer_welcome_meter"] = meter
+            session_state["composer_welcome_meter_custom"] = ""
+        mood = str(pending.get("mood") or "").strip()
+        if mood and not str(session_state.get("composer_welcome_mood") or "").strip():
+            session_state["composer_welcome_mood"] = mood
+
+    if "composer_welcome_key" not in session_state:
+        hints0 = suggest_musical_defaults(genre="Pop", song_idea="")
+        session_state["composer_welcome_key"] = coerce_composition_key_choice(
+            hints0.get("key_label") or "C major"
+        )
+        session_state["composer_welcome_bpm"] = coerce_composition_bpm(hints0.get("bpm"))
+        session_state["composer_welcome_meter"] = coerce_composition_meter(hints0.get("meter"))
+        session_state["composer_welcome_meter_custom"] = ""
+
+    # Coerce legacy / invalid values before selectbox instantiation.
+    session_state["composer_welcome_key"] = coerce_composition_key_choice(
+        session_state.get("composer_welcome_key")
+    )
+    if session_state["composer_welcome_key"] not in key_labels:
+        session_state["composer_welcome_key"] = key_labels[0]
+
+    session_state["composer_welcome_bpm"] = coerce_composition_bpm(
+        session_state.get("composer_welcome_bpm")
+    )
+
+    meter_now = str(session_state.get("composer_welcome_meter") or "4/4")
+    if meter_now not in meter_options:
+        coerced = coerce_composition_meter(meter_now)
+        if coerced in COMPOSITION_METERS:
+            session_state["composer_welcome_meter"] = coerced
+            session_state["composer_welcome_meter_custom"] = ""
+        else:
+            session_state["composer_welcome_meter"] = COMPOSITION_METER_CUSTOM
+            session_state["composer_welcome_meter_custom"] = coerced
+    elif meter_now == COMPOSITION_METER_CUSTOM:
+        session_state.setdefault("composer_welcome_meter_custom", "")
+
+    if "composer_welcome_genre" in session_state:
+        genre = str(session_state.get("composer_welcome_genre") or "Pop")
+        if genre not in COMPOSITION_GENRES:
+            session_state["composer_welcome_genre"] = "Other"
+
+
+def queue_vision_mood_energy_suggest(session_state: dict, *, genre: str, song_idea: str) -> dict[str, Any]:
+    """Pending mood/energy only — never mutates Key/BPM/Meter widget keys."""
+    hints = suggest_musical_defaults(genre=str(genre or "Pop"), song_idea=str(song_idea or ""))
+    payload = {
+        "mood": str(hints.get("mood") or ""),
+        "energy": str(hints.get("energy") or COMPOSITION_ENERGY_LEVELS[1]),
+    }
+    session_state[COMPOSER_VISION_PENDING_SUGGEST_KEY] = payload
+    return payload
+
+
+def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> None:
+    """Sync + normalize Vision widget keys BEFORE Vision widgets are created."""
+    meta = doc.setdefault("metadata", {})
+    g = doc.setdefault("global", {})
+    wf = ensure_workflow(doc)
+    origin_payload = (doc.get("origin") or {}).get("seed_payload") or {}
+    key_labels = composition_key_choice_labels()
+    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
+
+    pending = session_state.pop(COMPOSER_VISION_PENDING_SUGGEST_KEY, None)
+    if isinstance(pending, dict):
+        # Only mood/energy — Key/BPM/Meter remain user-owned.
+        if str(pending.get("mood") or "").strip():
+            session_state["composer_vision_mood"] = str(pending.get("mood") or "")
+        energy = str(pending.get("energy") or "")
+        if energy in COMPOSITION_ENERGY_LEVELS:
+            session_state["composer_vision_energy"] = energy
+
+    if "composer_vision_genre" not in session_state:
+        genre = str(meta.get("style") or "Pop")
+        session_state["composer_vision_genre"] = genre if genre in COMPOSITION_GENRES else "Other"
+    if "composer_vision_idea" not in session_state:
+        session_state["composer_vision_idea"] = str(meta.get("description") or "")
+    if "composer_vision_title" not in session_state:
+        session_state["composer_vision_title"] = str(doc.get("title") or "")
+    if "composer_vision_mood" not in session_state:
+        session_state["composer_vision_mood"] = str(meta.get("mood") or "")
+    if "composer_vision_energy" not in session_state:
+        energy = str(meta.get("energy") or origin_payload.get("energy") or COMPOSITION_ENERGY_LEVELS[1])
+        session_state["composer_vision_energy"] = (
+            energy if energy in COMPOSITION_ENERGY_LEVELS else COMPOSITION_ENERGY_LEVELS[1]
+        )
+    if "composer_vision_refs" not in session_state:
+        session_state["composer_vision_refs"] = str(meta.get("references") or "")
+    if "composer_vision_instrumental" not in session_state:
+        session_state["composer_vision_instrumental"] = bool(wf.get("skip_lyrics"))
+    if "composer_vision_key" not in session_state:
+        stored_label = str(g.get("original_key_label") or "").strip()
+        token = str(g.get("original_key_center") or "C")
+        session_state["composer_vision_key"] = coerce_composition_key_choice(
+            stored_label or composition_key_label_from_token(token)
+        )
+    if "composer_vision_bpm" not in session_state:
+        session_state["composer_vision_bpm"] = coerce_composition_bpm(g.get("bpm"))
+    if "composer_vision_meter" not in session_state:
+        meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
+        if meter in COMPOSITION_METERS:
+            session_state["composer_vision_meter"] = meter
+            session_state["composer_vision_meter_custom"] = ""
+        else:
+            session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
+            session_state["composer_vision_meter_custom"] = meter
+    elif "composer_vision_meter_custom" not in session_state:
+        session_state["composer_vision_meter_custom"] = ""
+
+    if session_state.get("composer_vision_genre") not in COMPOSITION_GENRES:
+        session_state["composer_vision_genre"] = "Other"
+
+    session_state["composer_vision_key"] = coerce_composition_key_choice(
+        session_state.get("composer_vision_key")
+    )
+    if session_state["composer_vision_key"] not in key_labels:
+        session_state["composer_vision_key"] = key_labels[0]
+
+    session_state["composer_vision_bpm"] = coerce_composition_bpm(
+        session_state.get("composer_vision_bpm")
+    )
+
+    if session_state.get("composer_vision_meter") not in meter_options:
+        session_state["composer_vision_meter"] = coerce_composition_meter(
+            str(session_state.get("composer_vision_meter") or "4/4")
+        )
+        if session_state["composer_vision_meter"] not in COMPOSITION_METERS:
+            custom = session_state["composer_vision_meter"]
+            session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
+            session_state["composer_vision_meter_custom"] = custom
+
+
 def _render_welcome_entry(session_state: dict) -> None:
     st.markdown(
         """
@@ -945,16 +1144,11 @@ def _render_welcome_entry(session_state: dict) -> None:
         unsafe_allow_html=True,
     )
 
+    # PREPARE before any widgets — pending suggest + coerce invalid values.
+    prepare_welcome_widget_state(session_state)
+
     key_labels = composition_key_choice_labels()
     meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
-
-    # Prefill widget defaults once (before widgets) from light heuristics — user can change freely.
-    if "composer_welcome_key" not in session_state:
-        hints0 = suggest_musical_defaults(genre="Pop", song_idea="")
-        session_state["composer_welcome_key"] = coerce_composition_key_choice(hints0.get("key_label") or "C major")
-        session_state["composer_welcome_bpm"] = coerce_composition_bpm(hints0.get("bpm"))
-        session_state["composer_welcome_meter"] = coerce_composition_meter(hints0.get("meter"))
-        session_state["composer_welcome_meter_custom"] = ""
 
     center, side = st.columns([2.3, 1])
     with center:
@@ -982,19 +1176,12 @@ def _render_welcome_entry(session_state: dict) -> None:
             )
 
         if st.button("Suggest starting values from genre / idea", key="composer_welcome_suggest"):
-            hints = suggest_musical_defaults(genre=str(genre or "Pop"), song_idea=str(song_idea or ""))
-            session_state["composer_welcome_key"] = coerce_composition_key_choice(
-                hints.get("key_label") or hints.get("key") or "C major"
+            # Streamlit-safe: queue for next rerun prepare — do NOT write widget keys now.
+            queue_welcome_starting_values(
+                session_state,
+                genre=str(genre or "Pop"),
+                song_idea=str(song_idea or ""),
             )
-            session_state["composer_welcome_bpm"] = coerce_composition_bpm(hints.get("bpm"))
-            suggested_meter = coerce_composition_meter(hints.get("meter"))
-            if suggested_meter in COMPOSITION_METERS:
-                session_state["composer_welcome_meter"] = suggested_meter
-            else:
-                session_state["composer_welcome_meter"] = COMPOSITION_METER_CUSTOM
-                session_state["composer_welcome_meter_custom"] = suggested_meter
-            if not str(session_state.get("composer_welcome_mood") or "").strip():
-                session_state["composer_welcome_mood"] = str(hints.get("mood") or "")
             st.rerun()
 
         with st.expander("Optional details"):
@@ -1049,63 +1236,6 @@ def _render_welcome_entry(session_state: dict) -> None:
         )
 
 
-def _sync_vision_fields_from_doc(doc: dict[str, Any]) -> None:
-    meta = doc.setdefault("metadata", {})
-    g = doc.setdefault("global", {})
-    wf = ensure_workflow(doc)
-    origin_payload = (doc.get("origin") or {}).get("seed_payload") or {}
-    key_labels = composition_key_choice_labels()
-    meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
-
-    if "composer_vision_genre" not in st.session_state:
-        genre = str(meta.get("style") or "Pop")
-        st.session_state["composer_vision_genre"] = genre if genre in COMPOSITION_GENRES else "Other"
-    if "composer_vision_idea" not in st.session_state:
-        st.session_state["composer_vision_idea"] = str(meta.get("description") or "")
-    if "composer_vision_title" not in st.session_state:
-        st.session_state["composer_vision_title"] = str(doc.get("title") or "")
-    if "composer_vision_mood" not in st.session_state:
-        st.session_state["composer_vision_mood"] = str(meta.get("mood") or "")
-    if "composer_vision_energy" not in st.session_state:
-        energy = str(meta.get("energy") or origin_payload.get("energy") or COMPOSITION_ENERGY_LEVELS[1])
-        st.session_state["composer_vision_energy"] = energy if energy in COMPOSITION_ENERGY_LEVELS else COMPOSITION_ENERGY_LEVELS[1]
-    if "composer_vision_refs" not in st.session_state:
-        st.session_state["composer_vision_refs"] = str(meta.get("references") or "")
-    if "composer_vision_instrumental" not in st.session_state:
-        st.session_state["composer_vision_instrumental"] = bool(wf.get("skip_lyrics"))
-    if "composer_vision_key" not in st.session_state:
-        stored_label = str(g.get("original_key_label") or "").strip()
-        token = str(g.get("original_key_center") or "C")
-        st.session_state["composer_vision_key"] = coerce_composition_key_choice(
-            stored_label or composition_key_label_from_token(token)
-        )
-    if "composer_vision_bpm" not in st.session_state:
-        st.session_state["composer_vision_bpm"] = coerce_composition_bpm(g.get("bpm"))
-    if "composer_vision_meter" not in st.session_state:
-        meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
-        if meter in COMPOSITION_METERS:
-            st.session_state["composer_vision_meter"] = meter
-            st.session_state["composer_vision_meter_custom"] = ""
-        else:
-            st.session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
-            st.session_state["composer_vision_meter_custom"] = meter
-    elif "composer_vision_meter_custom" not in st.session_state:
-        st.session_state["composer_vision_meter_custom"] = ""
-    # Ensure selectbox values remain valid after list changes.
-    if st.session_state.get("composer_vision_key") not in key_labels:
-        st.session_state["composer_vision_key"] = coerce_composition_key_choice(
-            st.session_state.get("composer_vision_key")
-        )
-    if st.session_state.get("composer_vision_meter") not in meter_options:
-        st.session_state["composer_vision_meter"] = coerce_composition_meter(
-            str(st.session_state.get("composer_vision_meter") or "4/4")
-        )
-        if st.session_state["composer_vision_meter"] not in COMPOSITION_METERS:
-            custom = st.session_state["composer_vision_meter"]
-            st.session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
-            st.session_state["composer_vision_meter_custom"] = custom
-
-
 def _apply_vision_widgets_to_doc(doc: dict[str, Any]) -> None:
     meta = doc.setdefault("metadata", {})
     g = doc.setdefault("global", {})
@@ -1142,7 +1272,7 @@ def _apply_vision_widgets_to_doc(doc: dict[str, Any]) -> None:
 
 
 def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
-    _sync_vision_fields_from_doc(doc)
+    prepare_vision_widget_state(session_state, doc)
     key_labels = composition_key_choice_labels()
     meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
     center, side = st.columns([2.3, 1])
@@ -1183,14 +1313,15 @@ def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
             st.checkbox("Instrumental piece (lyrics not applicable)", key="composer_vision_instrumental")
 
         if st.button("Suggest mood / energy from idea (does not overwrite Key/BPM/Meter)", key="composer_vision_resuggest"):
-            genre = str(st.session_state.get("composer_vision_genre") or "Pop")
-            idea = str(st.session_state.get("composer_vision_idea") or "")
-            hints = suggest_musical_defaults(genre=genre, song_idea=idea)
-            st.session_state["composer_vision_mood"] = hints["mood"]
-            st.session_state["composer_vision_energy"] = hints["energy"]
+            # Streamlit-safe pending path — do not mutate widget keys after instantiation.
+            queue_vision_mood_energy_suggest(
+                session_state,
+                genre=str(session_state.get("composer_vision_genre") or "Pop"),
+                song_idea=str(session_state.get("composer_vision_idea") or ""),
+            )
             st.rerun()
 
-        idea = str(st.session_state.get("composer_vision_idea") or "").strip()
+        idea = str(session_state.get("composer_vision_idea") or "").strip()
         if not idea:
             st.warning("Add a sentence or two about your song idea before continuing.")
         elif st.button("Continue to Song Structure →", type="primary", key="composer_vision_continue"):

@@ -123,6 +123,7 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Hip-Hop",
     "Electronic",
     "Classical",
+    "Jewish",
     "Other",
 )
 
