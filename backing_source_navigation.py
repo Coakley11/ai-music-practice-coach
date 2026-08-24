@@ -1037,7 +1037,16 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
     live_pick = str(session.get("active_catalog_pick_key") or "").strip()
     bound = str(getattr(ctx, "bound_pick_key", "") or "").strip()
     visible_title = _visible_song_title(session)
-    if (
+    # Custom-bound specialized Backing (Custom SBI) may disagree with Global Active
+    # Catalog pick — that is intentional temporary overlay, not split-brain.
+    custom_bound_specialized = src in SPECIALIZED_BACKING_SOURCES and (
+        bound.lower().startswith("custom")
+        or bool(getattr(ctx, "custom_revision_id", None))
+    )
+    if custom_bound_specialized:
+        if _catalog_picks_conflict(session, sel_pick, live_pick):
+            return False
+    elif (
         _catalog_picks_conflict(session, sel_pick, live_pick)
         or _catalog_picks_conflict(session, sel_pick, bound)
         or _title_conflicts_with_pick(visible_title, bound)
@@ -1056,22 +1065,26 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
         # Legacy bags without an anchor: stamp from *live* active source only when
         # ctx is not bound to a conflicting catalog/custom pick (stale Say jam
         # must not become eligible just because we stamped the live custom id).
-        anchor = backing_restore_anchor(session)
-        if not anchor:
-            if _backing_ctx_bound_conflicts_with_live_source(session, ctx):
-                return False
-            try:
-                current = resolve_active_source_identity_for_restore(session)
-                if current:
-                    stamp_backing_restore_anchor(session, anchor=current)
-                else:
-                    stamp_backing_restore_anchor(session)
-            except Exception:
-                stamp_backing_restore_anchor(session)
-            if not backing_restore_eligible(session):
-                return False
+        # Custom-bound specialized overlays are allowed while catalog Global Active differs.
+        if custom_bound_specialized:
+            pass
         else:
-            return False
+            anchor = backing_restore_anchor(session)
+            if not anchor:
+                if _backing_ctx_bound_conflicts_with_live_source(session, ctx):
+                    return False
+                try:
+                    current = resolve_active_source_identity_for_restore(session)
+                    if current:
+                        stamp_backing_restore_anchor(session, anchor=current)
+                    else:
+                        stamp_backing_restore_anchor(session)
+                except Exception:
+                    stamp_backing_restore_anchor(session)
+                if not backing_restore_eligible(session):
+                    return False
+            else:
+                return False
     try:
         from songs.music_source import (
             cpl_session_is_active,
@@ -1097,7 +1110,9 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
 
         raw = _raw_practice_owner(session)
         if raw == "custom" and src in {"mission", "song_improv", "entry_jam"}:
-            return False
+            # Custom SBI is the intentional overlay when bound to custom::
+            if not custom_bound_specialized:
+                return False
         if session.get("_backing_released_specialized_context") and src in {
             "mission",
             "song_improv",
@@ -1514,6 +1529,33 @@ def commit_active_catalog_source_before_backing_hydrate(
                 or _title_conflicts_with_pick(title, bound)
             )
         )
+        # Custom SBI / Mission / Jam Backing legitimately bind a specialized
+        # identity while Global Active stays a catalog pick (P6). That mismatch
+        # is NOT an active-source change — invalidating here expires the Current
+        # play session and remints BPM/style from source defaults on reboot.
+        if stale_ctx:
+            ctx_src = str(getattr(ctx, "source", "") or "").strip()
+            specialized = {"song_improv", "mission", "entry_jam", "custom_progression"}
+            keep_specialized = False
+            if ctx_src in specialized:
+                try:
+                    from backing_context import (
+                        ctx_is_stale_creative_for_practice,
+                        is_backing_context_valid,
+                    )
+                    from music_source_ownership import intentional_creative_backing_active
+
+                    keep_specialized = bool(
+                        intentional_creative_backing_active(session)
+                        or (
+                            is_backing_context_valid(session, ctx)
+                            and not ctx_is_stale_creative_for_practice(session, ctx)
+                        )
+                    )
+                except ImportError:
+                    keep_specialized = ctx_src in specialized
+            if keep_specialized:
+                stale_ctx = False
         if stale_ctx:
             prev_id = backing_restore_anchor(session) or (f"pk::{bound}" if bound else "")
             new_id = resolve_active_source_identity_for_restore(session)
@@ -1651,6 +1693,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         )
         _align_live_catalog_pick_to_selected_song(session)
         if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
+            set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
             return
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
         # Reconcile during release can restore a lagged catalog pick. Re-apply the
@@ -1705,7 +1748,28 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
         )
         _align_live_catalog_pick_to_selected_song(session)
+        # Reboot/refresh of nested Creative SBI/Mission Backing: do not treat a
+        # stale catalog ctx as restore_last — reopen Creative specialized ownership.
+        try:
+            from backing_context import (
+                creative_nested_backing_should_override_catalog,
+                get_backing_context,
+            )
+
+            ctx = get_backing_context(session)
+            ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+            if creative_nested_backing_should_override_catalog(session) and ctx_src in {
+                "",
+                "regular_song",
+            }:
+                open_backing_for_creative_source(session, st_like=st_like)
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                return
+        except ImportError:
+            pass
         if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
+            # Keep specialized (and catalog) identity armed across browser refresh.
+            set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
             return
         # Explicit Creative handoff must not fall through to regular song Backing.
         try:
@@ -1720,13 +1784,31 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 and is_backing_context_valid(session, ctx)
                 and not _ctx_is_stale_creative_for_practice(session, ctx)
             ):
+                # Refresh is not leave — keep specialized identity armed for next load.
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
             if handoff in specialized:
                 open_backing_for_creative_source(session, st_like=st_like)
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
+            # Browser refresh is not a true leave — keep Entry/Jam/Mission/SBI identity.
+            last_src = str(
+                session.get("_last_valid_backing_source")
+                or session.get("backing_last_source")
+                or session.get("_backing_explicit_handoff_source")
+                or ""
+            ).strip()
+            ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+            if last_src in specialized or ctx_src in specialized:
+                if ctx is not None and ctx_src in specialized:
+                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                    return
+                open_backing_for_creative_source(session, st_like=st_like)
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                return
         except ImportError:
             pass
+
         # Restore intent but session ineligible (song change): initialize for live active source.
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
         if selected_pick_snapshot:
@@ -2558,14 +2640,40 @@ def rehydrate_creative_from_backing_context(
 
 
 def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
-    """Resolve studio page id for Edit-in-Creative / return-to-source."""
+    """Resolve studio page id for Edit-in-Creative / return-to-source.
+
+    Persistence contract: Creative → SBI → Custom is a *nested* Creative workflow.
+    Selecting the Custom source tab inside SBI must never become top-level ``custom``.
+    Only true Custom Progression Lab backing (``custom_progression``) returns to
+    the Custom page. Custom SBI Backing returns to Creative with SBI + Custom source.
+    """
     if ctx is None:
         return "practice"
     if ctx.source == "custom_progression":
         return "custom"
     if ctx.source == "regular_song":
         return "picker"
+    # song_improv (Active or Custom), mission, entry_jam → Creative nested workflow
     return "creative"
+
+
+def return_to_source_button_label(ctx: BackingContext | None) -> str:
+    """User-facing label for the return-to-source button."""
+    if ctx is None:
+        return "Return to source"
+    if ctx.source == "custom_progression":
+        return "✏️ Return to Custom Page"
+    if ctx.source == "song_improv":
+        custom_sbi = bool(
+            getattr(ctx, "custom_revision_id", None)
+            or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
+        )
+        if custom_sbi:
+            return "🎨 Return to Creative · SBI Custom"
+        return "🎨 Return to Creative · SBI"
+    if ctx.source == "regular_song":
+        return "🎵 Return to Catalog Song"
+    return "🎨 Return to Creative Page"
 
 
 def restore_session_widgets_from_backing_context(
@@ -3030,11 +3138,22 @@ def return_to_catalog_song_backing_label(*, custom: bool = False) -> str:
 
 
 def return_to_source_button_label(ctx: BackingContext | None) -> str:
-    """User-facing label for the return-to-source button."""
+    """User-facing label for the return-to-source button.
+
+    Custom SBI stays under Creative (nested SBI Custom source) — never top-level Custom.
+    """
     if ctx is None:
         return "Return to source"
     if ctx.source == "custom_progression":
         return "✏️ Return to Custom Page"
+    if ctx.source == "song_improv":
+        custom_sbi = bool(
+            getattr(ctx, "custom_revision_id", None)
+            or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
+        )
+        if custom_sbi:
+            return "🎨 Return to Creative · SBI Custom"
+        return "🎨 Return to Creative · SBI"
     if ctx.source == "regular_song":
         return "🎵 Return to Catalog Song"
     return "🎨 Return to Creative Page"

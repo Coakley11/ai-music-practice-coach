@@ -799,15 +799,18 @@ def current_run_user_navigated_page(session: dict[str, Any]) -> str:
 
 
 def begin_script_run_navigation_markers(session: dict[str, Any]) -> None:
-    """Clear one-shot user navigation markers at the top of each Streamlit script run."""
+    """Clear one-shot user navigation markers at the top of each Streamlit script run.
+
+    Do **not** clear ``STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY`` here.
+
+    origin/dev reboot persistence keeps that flag for the browser session so
+    ``prepare_studio_nav`` continues to honor the hydrated page after reruns.
+    Clearing it every run let a stale canonical ``practice`` overwrite the
+    restored page (Songs/Custom/Creative/Backing → Practice on reboot/refresh).
+    True new-session reset remains in ``begin_music_script_run`` only.
+    """
     session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
     session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
-    try:
-        from music_restore_phase import STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY
-
-        session.pop(STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY, None)
-    except ImportError:
-        session.pop("_music_studio_page_restore_projection_complete", None)
 
 
 def clear_user_navigated_page_this_run(session: dict[str, Any], *, page: str = "") -> None:

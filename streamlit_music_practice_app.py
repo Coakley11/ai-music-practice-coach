@@ -9125,6 +9125,19 @@ def _render_backing_return_source_action() -> None:
                     st.rerun()
             elif action.action_id == "return_custom_songs":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    try:
+                        from songs.music_source import LAST_CUSTOM_STATE_KEY
+                        from custom_progression_lab import apply_cpl_session_progression
+
+                        snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+                        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                            apply_cpl_session_progression(
+                                st.session_state,
+                                dict(snap["active"]),
+                                reset_display_key=False,
+                            )
+                    except Exception:
+                        pass
                     navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
@@ -10318,21 +10331,39 @@ else:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
 
         def _on_custom_workspace_practice_key_change() -> None:
-            """Custom-page Practice Key owner — commit dedicated widget into display_key."""
+            """Custom-page Practice Key owner — Custom sticky only.
+
+            Temporary Custom PK must not overwrite Global Catalog display_key when
+            Global Active is still a catalog song.
+            """
             tok = str(
                 st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
             ).strip()
             if tok:
-                st.session_state["display_key"] = tok
-                st.session_state["concert_key"] = tok
-                # User click wins over any deferred Original Key / New song pending.
                 try:
                     from custom_progression_lab import (
                         PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY,
+                        cpl_active_from_session,
                     )
+                    from songs.music_source import (
+                        custom_pick_key_for,
+                        custom_progression_is_active,
+                        is_custom_progression,
+                    )
+                    from songs.practice_key_state import set_practice_concert_key
 
+                    active = cpl_active_from_session(st.session_state)
+                    pick = custom_pick_key_for(active)
+                    set_practice_concert_key(st.session_state, tok, pick_key=pick)
+                    if custom_progression_is_active(st.session_state) or is_custom_progression(
+                        st.session_state
+                    ):
+                        st.session_state["display_key"] = tok
+                        st.session_state["concert_key"] = tok
                     st.session_state.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
                 except Exception:
+                    st.session_state["display_key"] = tok
+                    st.session_state["concert_key"] = tok
                     st.session_state.pop("_pending_custom_workspace_practice_key", None)
             try:
                 from pathlib import Path
@@ -10364,7 +10395,20 @@ else:
                     )
             except Exception:
                 pass
-            on_sidebar_practice_concert_key_change()
+            # Only drive global sidebar sync when Custom is Global Active.
+            # Non-active Custom PK stays on the custom:: sticky (no Catalog bleed).
+            try:
+                from songs.music_source import (
+                    custom_progression_is_active,
+                    is_custom_progression,
+                )
+
+                if custom_progression_is_active(st.session_state) or is_custom_progression(
+                    st.session_state
+                ):
+                    on_sidebar_practice_concert_key_change()
+            except Exception:
+                on_sidebar_practice_concert_key_change()
 
         st.sidebar.selectbox(
             "Practice / Concert Key",
@@ -13144,6 +13188,35 @@ elif _studio_page == "backing":
 
     if _early_backing_ctx is not None and _early_backing_ctx.source == "regular_song":
         _backing_card_record = dict(song_data or _catalog_song_data or {})
+    elif (
+        _early_backing_ctx is not None
+        and str(getattr(_early_backing_ctx, "source", "") or "")
+        in {"song_improv", "entry_jam", "mission", "custom_progression"}
+    ):
+        # Specialized Backing owns the card identity — never Global Active catalog.
+        _backing_card_record = {
+            "title": str(getattr(_early_backing_ctx, "song_title", "") or song or "Backing"),
+            "artist": str(getattr(_early_backing_ctx, "source_label", "") or ""),
+            "genre": str(getattr(_early_backing_ctx, "style", "") or genre or ""),
+            "key": str(
+                getattr(_early_backing_ctx, "key", None)
+                or getattr(_early_backing_ctx, "concert_key", None)
+                or "C"
+            ),
+        }
+        if _early_backing_ctx.source == "custom_progression" and _cpl_active:
+            _backing_card_record.update(
+                {
+                    "title": str(_cpl_active.get("name") or _backing_card_record["title"]),
+                    "artist": "Custom progression",
+                    "genre": genre or "Custom",
+                    "key": str(
+                        _backing_card_record.get("key")
+                        or _cpl_active.get("original_key_center")
+                        or "C"
+                    ),
+                }
+            )
     elif cpl_session_is_active(st.session_state) and _cpl_active:
         _backing_card_record = dict(_custom_selected_song_record(_cpl_active))
         _backing_card_record.update(
@@ -13211,11 +13284,19 @@ elif _studio_page == "backing":
             _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
         )
     _backing_written_key = str(_backing_written_key or "").strip()
-    _backing_source_label = (
-        "Custom Progression"
-        if _early_backing_ctx is not None and _early_backing_ctx.source == "custom_progression"
-        else "Catalog song"
-    )
+    _src = str(getattr(_early_backing_ctx, "source", "") or "") if _early_backing_ctx is not None else ""
+    if _src == "custom_progression":
+        _backing_source_label = "Custom Progression"
+    elif _src == "song_improv":
+        _backing_source_label = "Song-Based Improvisation"
+    elif _src == "mission":
+        _backing_source_label = "Mission Practice"
+    elif _src == "entry_jam":
+        _backing_source_label = "Entry Style Jam"
+    elif _src in {"jam_generator", "jam_session"}:
+        _backing_source_label = "Jam Session Generator"
+    else:
+        _backing_source_label = "Catalog song"
     try:
         from backing_context import (
             active_creative_backing_context,

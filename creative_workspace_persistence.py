@@ -29,6 +29,9 @@ CREATIVE_WORKSPACE_EXTRA_KEYS: tuple[str, ...] = (
     "creative_lab_analysis_mode",
     "creative_lab_last_mode",
     "improv_entry_mode",
+    # Nested SBI source tab (Active vs Custom) — must not be confused with top-level Custom page.
+    "improv_song_source",
+    "sbi_preview_source",
     "improv_motif",
     "improv_motif_output_mode",
     "improv_motif_abc",

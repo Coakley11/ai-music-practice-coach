@@ -379,7 +379,13 @@ def apply_improv_song_source(
 
 
 def flush_pending_improv_song_source(session_state: dict) -> None:
-    """Seed widget key from pending/persisted SBI source before Creative widgets render."""
+    """Seed widget key from pending/persisted SBI source before Creative widgets render.
+
+    Persistence contract: nested SBI Custom must survive reboot. Never let a
+    default/stale ``Active song`` widget value clobber a persisted Custom
+    ``sbi_preview_source`` on hydrate. Trust the live widget only when it was
+    explicitly changed this run (pending handoff) or when preview is unset.
+    """
     pending = str(session_state.pop(PENDING_IMPROV_SONG_SOURCE, None) or "").strip()
     if pending:
         try:
@@ -407,21 +413,24 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         preview = get_sbi_preview_source(session_state)
         live = str(session_state.get("improv_song_source") or "").strip()
         if preview == "Custom progression" and live != preview:
-            prev = str(session_state.get("_last_improv_song_source") or "").strip()
-            if prev == "Custom progression" and live == "Active song":
-                set_sbi_preview_source(session_state, live)
-            else:
-                try:
-                    from session_widget_safe import safe_session_assign
+            # Prefer persisted nested Custom over a default Active widget.
+            # Do NOT treat live Active as a user leave signal on hydrate —
+            # that path previously wiped Custom on reboot.
+            try:
+                from session_widget_safe import safe_session_assign
 
-                    safe_session_assign(
-                        session_state,
-                        "improv_song_source",
-                        preview,
-                        widget_safe=True,
-                    )
-                except ImportError:
+                safe_session_assign(
+                    session_state,
+                    "improv_song_source",
+                    preview,
+                    widget_safe=True,
+                )
+            except ImportError:
+                if "improv_song_source" not in session_state or live == "Active song":
                     session_state["improv_song_source"] = preview
+        elif live in IMPROV_SONG_SOURCES and preview != live:
+            # Widget is authoritative when preview was Active/empty and live changed.
+            set_sbi_preview_source(session_state, live)
         session_state["_last_improv_song_source"] = str(
             session_state.get("improv_song_source") or preview or ""
         )

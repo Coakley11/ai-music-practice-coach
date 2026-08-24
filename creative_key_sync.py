@@ -1764,6 +1764,34 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             session["concert_key"] = new
         return
     if not _creative_sidebar_key_sync_active(session):
+        # Harmony Map / Missions / Motif / Live Coach still own Global Active PK.
+        try:
+            if _catalog_song_workflow_owns_practice_key(session):
+                from songs.practice_key_state import (
+                    resolve_practice_source_pick,
+                    set_practice_concert_key,
+                )
+
+                pick = resolve_practice_source_pick(session)
+                if pick and not str(pick).startswith("custom::"):
+                    set_practice_concert_key(session, new, pick_key=pick)
+                    session["concert_key"] = new
+                    try:
+                        from music_workflow_song_practice import (
+                            ensure_song_practice_blob_for_active_song,
+                        )
+
+                        orig = ""
+                        selected = session.get("selected_song")
+                        if isinstance(selected, dict):
+                            orig = str(selected.get("key") or "")
+                        ensure_song_practice_blob_for_active_song(
+                            session, practice_key=new, original_key=orig
+                        )
+                    except ImportError:
+                        pass
+        except Exception:
+            pass
         return
     if entry in {"Style Jam Mode", "Jam Session Generator"}:
         # Generated Concert Key is the jam widget, not the global sidebar.

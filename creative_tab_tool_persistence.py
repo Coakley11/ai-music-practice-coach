@@ -59,6 +59,15 @@ _SELECTOR_SPECS: tuple[dict[str, Any], ...] = (
         "save_reason": SAVE_REASON_TOOL,
         "user_touch_flag": "_creative_mode_user_touched",
     },
+    # Nested SBI source tab (Active vs Custom) — distinct from top-level Custom page.
+    {
+        "canonical": "improv_song_source",
+        "widget": "improv_song_source",
+        "mirrors": ("sbi_preview_source",),
+        "normalize": "_normalize_song_source",
+        "save_reason": SAVE_REASON_TOOL,
+        "user_touch_flag": "_improv_song_source_user_touched",
+    },
 )
 
 _ANALYSIS_MODE_OPTIONS: tuple[str, ...] = (
@@ -454,10 +463,18 @@ def _normalize_analysis_mode(value: str) -> str:
     return _ANALYSIS_MODE_OPTIONS[0]
 
 
+def _normalize_song_source(value: str) -> str:
+    from studio_page_state import IMPROV_SONG_SOURCES
+
+    text = str(value or "").strip()
+    return text if text in IMPROV_SONG_SOURCES else IMPROV_SONG_SOURCES[0]
+
+
 _NORMALIZERS: dict[str, Callable[[str], str]] = {
     "_normalize_improv_tab": _normalize_improv_tab,
     "_normalize_entry_mode": _normalize_entry_mode,
     "_normalize_analysis_mode": _normalize_analysis_mode,
+    "_normalize_song_source": _normalize_song_source,
 }
 
 

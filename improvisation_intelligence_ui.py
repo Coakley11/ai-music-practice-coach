@@ -781,7 +781,13 @@ def _tab_entry_modes(
                 _nav1, _ = st.columns([1.2, 3.8])
                 with _nav1:
                     st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
-                    if st.button("✏️ Custom", key="improv_go_custom", type="secondary"):
+                    # Label must not be bare "Custom" — harness/nav collisions used to
+                    # leave Creative → SBI for the top-level Custom page.
+                    if st.button(
+                        "Open Custom Lab",
+                        key="improv_go_custom",
+                        type="secondary",
+                    ):
                         on_go_custom_progression()
                     st.markdown("</div>", unsafe_allow_html=True)
 

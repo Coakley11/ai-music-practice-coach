@@ -124,6 +124,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_intelligence_tab",
             "creative_improv_intelligence_tab",
             "improv_entry_mode",
+            # Nested SBI source tab (Active vs Custom) — distinct from top-level Custom page.
+            "improv_song_source",
             "sbi_preview_source",
             "creative_session",
             "improv_generated_sections",
@@ -576,6 +578,41 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             continue
         if key == "backing_context":
             prev_bc = session_state.get("backing_context")
+            snap_bc = val if isinstance(val, dict) else None
+            live_bc = prev_bc if isinstance(prev_bc, dict) else None
+            if live_bc is not None and snap_bc is not None:
+                live_src = str(live_bc.get("source") or "").strip()
+                snap_src = str(snap_bc.get("source") or "").strip()
+                specialized = {
+                    "song_improv",
+                    "mission",
+                    "entry_jam",
+                    "custom_progression",
+                }
+                # Specialized visit on disk/session must not be clobbered by a
+                # stale Catalog Backing page snapshot on reboot/refresh.
+                if live_src in specialized and snap_src == "regular_song":
+                    continue
+                try:
+                    from backing_play_session import (
+                        get_backing_play_session,
+                        play_session_blocks_canonical_seed,
+                    )
+
+                    if play_session_blocks_canonical_seed(session_state):
+                        continue
+                    ps = get_backing_play_session(session_state)
+                    if (
+                        ps
+                        and not ps.get("expired")
+                        and live_src in specialized
+                        and snap_src in specialized | {"regular_song", ""}
+                    ):
+                        # Same Backing visit — keep live sealed ctx; play session
+                        # owns temporary BPM/style/loop over snapshot defaults.
+                        continue
+                except ImportError:
+                    pass
             try:
                 from creative_return_trace import trace_direct_backing_context_write
 

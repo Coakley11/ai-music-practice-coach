@@ -134,6 +134,13 @@ def resolve_settings_pick_for_write(
     explicit = str(pick_key or "").strip()
     if explicit.startswith("custom::"):
         return explicit
+
+    # SBI Custom preview/backing: sticky Practice Key belongs to LAST_CUSTOM / CPL,
+    # never Global Active catalog (P5 / Global Active vs LAST_CUSTOM separation).
+    custom_sbi_pick = _custom_sbi_settings_pick(session)
+    if custom_sbi_pick:
+        return custom_sbi_pick
+
     if creative_jam_owns_practice_settings(session):
         if explicit.startswith("creative::"):
             return explicit
@@ -147,6 +154,56 @@ def resolve_settings_pick_for_write(
     if explicit:
         return explicit
     return resolve_practice_source_pick(session)
+
+
+def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
+    """When SBI is on Custom progression, return the custom pick_key for PK writes."""
+    if not sbi_uses_custom_progression_preview(session):
+        return ""
+
+    page = str(session.get("studio_page") or "").strip().lower()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    ctx_src = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_src = str(getattr(ctx, "source", "") or "").strip()
+    except ImportError:
+        pass
+    sbi_surface = (
+        page in {"creative", "backing"}
+        or entry == "Song-Based Improvisation"
+        or ctx_src == "song_improv"
+    )
+    if not sbi_surface:
+        return ""
+
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            active = snap.get("active")
+            if isinstance(active, dict):
+                pk = str(custom_pick_key_for(active) or "").strip()
+                if pk.startswith("custom::"):
+                    return pk
+    except ImportError:
+        pass
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        active = session.get(CPL_ACTIVE_KEY)
+        if isinstance(active, dict):
+            pk = str(custom_pick_key_for(active) or "").strip()
+            if pk.startswith("custom::"):
+                return pk
+    except ImportError:
+        pass
+    return ""
 
 
 def resolve_practice_source_pick(session: dict[str, Any]) -> str:

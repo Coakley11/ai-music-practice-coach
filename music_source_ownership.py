@@ -153,7 +153,15 @@ def _creative_session_blob_is_active(session: dict[str, Any]) -> bool:
 
 
 def intentional_creative_backing_active(session: dict[str, Any]) -> bool:
-    """True when user explicitly opened Backing from Creative (not stale catalog ctx)."""
+    """True when user explicitly opened Backing from Creative (not stale catalog ctx).
+
+    A valid specialized ``backing_context`` (song_improv / mission / entry_jam /
+    custom_progression) that is not stale under catalog Global Active is itself
+    enough — including after reboot/refresh when ephemeral open-intent flags or
+    the creative_session blob have not rehydrated yet. Without this, reconcile
+    treats practice catalog ownership as authoritative and remints Current
+    Backing play-session knobs from source defaults.
+    """
     if session.get("_backing_released_specialized_context"):
         return False
     try:
@@ -174,6 +182,18 @@ def intentional_creative_backing_active(session: dict[str, Any]) -> bool:
     src = str(ctx.source or "").strip()
     if src not in {"entry_jam", "song_improv", "mission", "custom_progression"}:
         return False
+    try:
+        from backing_context import (
+            ctx_is_stale_creative_for_practice,
+            is_backing_context_valid,
+        )
+
+        if is_backing_context_valid(session, ctx) and not ctx_is_stale_creative_for_practice(
+            session, ctx
+        ):
+            return True
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, BACKING_OPEN_INTENT_KEY
 

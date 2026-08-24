@@ -1,11 +1,13 @@
 # Pass 8 — Creative / Backing stabilization (uncommitted)
 
-**Last updated:** 2026-08-18  
+**Last updated:** 2026-08-23  
 **Branch:** `feature/creative-backing-stabilization`  
 **Do not commit / push / merge to `dev` until the full matrix is green.**  
 **Parked:** Practice Focus @ `542cf415643c0e98558c4cc6033ac2910a10bb63` (untouched)
 
 Working tree sits on committed tip `533d60fb52e6525babac6e1cb75769566ef7008f`.
+
+**Persistence contract (refresh / reboot):** [2026-08-23-persistence-contract-refresh-reboot.md](./2026-08-23-persistence-contract-refresh-reboot.md) — refresh is **not** leave; Creative selections, instrument/Written/Shape, Backing type+settings, and Practice Key editability must survive refresh/reboot. Live gates **P1–P9**.
 
 ---
 

@@ -899,6 +899,27 @@ def capture_backing_play_session_overrides(
         ps["play_session_id"] = uuid.uuid4().hex
     session[BACKING_PLAY_SESSION_KEY] = ps
     session[BACKING_PLAY_SESSION_EXPIRED_KEY] = False
+    # Keep sealed backing_context transport aligned with CURRENT play session so
+    # reboot disk blobs don't remint from CPL/catalog source defaults.
+    try:
+        from backing_context import get_backing_context, set_backing_context
+
+        live_ctx = get_backing_context(session)
+        if live_ctx is not None and str(getattr(live_ctx, "source", "") or "") not in {
+            "",
+            "regular_song",
+        }:
+            stamped = apply_current_play_session_to_backing_context(
+                session, live_ctx, previous=live_ctx
+            )
+            if stamped is not None:
+                set_backing_context(
+                    session,
+                    stamped,
+                    trace_caller="capture_backing_play_session_overrides:stamp_ctx",
+                )
+    except ImportError:
+        pass
     return ps
 
 
@@ -1153,7 +1174,27 @@ def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[s
             ps = dict(ps)
             ps["source_identity"] = identity
             session[BACKING_PLAY_SESSION_KEY] = ps
+        ps = recover_play_session_overrides_from_backing_context(session, ps) or ps
         apply_backing_play_session_to_widgets(session)
+        try:
+            from backing_context import get_backing_context, set_backing_context
+
+            live_ctx = get_backing_context(session)
+            if live_ctx is not None and str(getattr(live_ctx, "source", "") or "") not in {
+                "",
+                "regular_song",
+            }:
+                stamped = apply_current_play_session_to_backing_context(
+                    session, live_ctx, previous=live_ctx
+                )
+                if stamped is not None:
+                    set_backing_context(
+                        session,
+                        stamped,
+                        trace_caller="sync_backing_play_session_on_backing_page:stamp_ctx",
+                    )
+        except ImportError:
+            pass
         return ps
     # Missing bag on an unexpired Backing stay: restore user Current from lock.
     if not expired and lock > 0 and lock not in source_defaults:
@@ -1189,8 +1230,36 @@ def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[s
     if identity:
         ps["source_identity"] = identity
         session[BACKING_PLAY_SESSION_KEY] = ps
+    # Reboot / restore may remint an empty bag while sealed specialized ctx still
+    # holds the visit's BPM/style — recover before projecting source defaults.
+    ps = recover_play_session_overrides_from_backing_context(session, ps) or ps
     defaults = dict(ps.get("defaults") or {})
     default_bpm = int(defaults.get("bpm") or 0)
+    if any(
+        (ps.get("overrides") or {}).get(k) not in (None, "", [], 0)
+        for k in _OVERRIDE_FIELDS
+    ):
+        apply_backing_play_session_to_widgets(session)
+        try:
+            from backing_context import get_backing_context, set_backing_context
+
+            live_ctx = get_backing_context(session)
+            if live_ctx is not None and str(getattr(live_ctx, "source", "") or "") not in {
+                "",
+                "regular_song",
+            }:
+                stamped = apply_current_play_session_to_backing_context(
+                    session, live_ctx, previous=live_ctx
+                )
+                if stamped is not None:
+                    set_backing_context(
+                        session,
+                        stamped,
+                        trace_caller="sync_backing_play_session_on_backing_page:recover_stamp",
+                    )
+        except ImportError:
+            pass
+        return get_backing_play_session(session) or ps
     _apply_defaults_to_widgets(session, defaults)
     ctx_source = ""
     try:
@@ -1230,6 +1299,330 @@ def backing_play_session_has_override(session: dict[str, Any], field: str) -> bo
     return True
 
 
+def _normalize_groove_token(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        from songs.playback_defaults import normalize_groove_label
+
+        return str(normalize_groove_label(raw) or raw).strip()
+    except ImportError:
+        return raw
+
+
+def _groove_tokens_equivalent(a: Any, b: Any) -> bool:
+    left = _normalize_groove_token(a).lower()
+    right = _normalize_groove_token(b).lower()
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    return left.replace(" groove", "") == right.replace(" groove", "")
+
+
+def _meaningful_play_session_overrides(
+    overrides: dict[str, Any] | None,
+    defaults: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Drop empty / source-default echo overrides so recover/apply can refill."""
+    ov = dict(overrides or {})
+    defaults = dict(defaults or {})
+    out: dict[str, Any] = {}
+    try:
+        def_bpm = int(defaults.get("bpm") or 0)
+    except (TypeError, ValueError):
+        def_bpm = 0
+    try:
+        bpm = int(ov.get("bpm") or 0)
+    except (TypeError, ValueError):
+        bpm = 0
+    if bpm > 0 and (def_bpm <= 0 or bpm != def_bpm):
+        out["bpm"] = bpm
+    groove = str(ov.get("groove") or "").strip()
+    def_groove = str(defaults.get("groove") or "").strip()
+    if groove and not _groove_tokens_equivalent(groove, def_groove):
+        out["groove"] = groove
+    meter = str(ov.get("meter") or "").strip()
+    def_meter = str(defaults.get("meter") or "4/4").strip() or "4/4"
+    if meter and meter != def_meter:
+        out["meter"] = meter
+    if ov.get("meter_override") not in (None, "", False, 0):
+        out["meter_override"] = ov.get("meter_override")
+    scope = str(ov.get("scope") or "").strip()
+    def_scope = str(defaults.get("scope") or "Full song").strip() or "Full song"
+    multi = ov.get("multi_sections")
+    multi_list = [str(s).strip() for s in multi if str(s).strip()] if isinstance(multi, list) else []
+    if scope and not (scope == def_scope and scope == "Full song" and not multi_list):
+        out["scope"] = scope
+        if multi_list:
+            out["multi_sections"] = multi_list
+    single = str(ov.get("single_section") or "").strip()
+    if single and str(out.get("scope") or scope or "") != "Full song":
+        out["single_section"] = single
+    try:
+        loops = int(ov.get("loops") or 0)
+    except (TypeError, ValueError):
+        loops = 0
+    try:
+        def_loops = int(defaults.get("loops") or 2)
+    except (TypeError, ValueError):
+        def_loops = 2
+    if loops > 0 and loops != def_loops:
+        out["loops"] = loops
+    return out
+
+
+def _stamp_previous_play_transport(ctx: Any, previous: Any) -> None:
+    if ctx is None or previous is None:
+        return
+    try:
+        prev_src = str(getattr(previous, "source", "") or "").strip()
+        live_src = str(getattr(ctx, "source", "") or "").strip()
+    except Exception:
+        return
+    if not prev_src or not live_src or prev_src != live_src:
+        return
+    if prev_src in {"", "regular_song"}:
+        return
+    try:
+        prev_bpm = int(getattr(previous, "bpm", 0) or 0)
+    except (TypeError, ValueError):
+        prev_bpm = 0
+    if prev_bpm > 0:
+        ctx.bpm = prev_bpm
+    prev_style = str(
+        getattr(previous, "style", "") or getattr(previous, "groove", "") or ""
+    ).strip()
+    if prev_style:
+        ctx.style = prev_style
+        if hasattr(ctx, "groove"):
+            ctx.groove = str(getattr(previous, "groove", "") or prev_style).strip() or prev_style
+    prev_meter = str(getattr(previous, "meter", "") or "").strip()
+    if prev_meter and hasattr(ctx, "meter"):
+        ctx.meter = prev_meter
+    prev_scope = str(getattr(previous, "scope", "") or "").strip()
+    if prev_scope:
+        ctx.scope = prev_scope
+    try:
+        prev_loops = int(getattr(previous, "loops", 0) or 0)
+    except (TypeError, ValueError):
+        prev_loops = 0
+    if prev_loops > 0:
+        ctx.loops = prev_loops
+    sections = getattr(previous, "sections", None)
+    if isinstance(sections, list) and sections and hasattr(ctx, "sections"):
+        ctx.sections = [str(s).strip() for s in sections if str(s).strip()]
+    single = str(getattr(previous, "section", "") or "").strip()
+    if single and hasattr(ctx, "section"):
+        ctx.section = single
+
+
+def recover_play_session_overrides_from_backing_context(
+    session: dict[str, Any],
+    ps: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """If the play-session bag lost overrides but sealed specialized ctx still
+    carries the visit's transport, rebuild overrides from that ctx.
+
+    Covers reboot races where shutdown autosave wiped the bag after disk seed,
+    or restore reminted an empty bag before sync ran. Never invents overrides
+    after a true leave (expired bag).
+
+    Source-default echoes (e.g. groove=Pop when CPL default is Pop) do not count
+    as a real Current play session — recover still refills from sealed ctx.
+    """
+    bag = ps if isinstance(ps, dict) else get_backing_play_session(session)
+    if bag is None or bag.get("expired"):
+        return bag
+    defaults = dict(bag.get("defaults") or _source_defaults_from_session(session))
+    overrides = dict(bag.get("overrides") or {})
+    meaningful = _meaningful_play_session_overrides(overrides, defaults)
+    # Complete Current visit already sealed — keep it.
+    if meaningful.get("bpm") and meaningful.get("groove"):
+        if meaningful != overrides:
+            bag = dict(bag)
+            bag["overrides"] = meaningful
+            session[BACKING_PLAY_SESSION_KEY] = bag
+        return bag
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except ImportError:
+        return bag
+    if ctx is None or str(getattr(ctx, "source", "") or "") in {"", "regular_song"}:
+        return bag
+    recovered: dict[str, Any] = {}
+    try:
+        ctx_bpm = int(getattr(ctx, "bpm", 0) or 0)
+    except (TypeError, ValueError):
+        ctx_bpm = 0
+    try:
+        def_bpm = int(defaults.get("bpm") or 0)
+    except (TypeError, ValueError):
+        def_bpm = 0
+    if ctx_bpm > 0 and (def_bpm <= 0 or ctx_bpm != def_bpm):
+        recovered["bpm"] = ctx_bpm
+    ctx_style = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "").strip()
+    def_groove = str(defaults.get("groove") or "").strip()
+    # Keep the sealed ctx label as-is (e.g. "Blues") — do not force catalog
+    # "Blues groove" normalization that would diverge from the visit's style chip.
+    if ctx_style and not _groove_tokens_equivalent(ctx_style, def_groove):
+        recovered["groove"] = ctx_style
+    ctx_meter = str(getattr(ctx, "meter", "") or "").strip()
+    def_meter = str(defaults.get("meter") or "4/4").strip() or "4/4"
+    if ctx_meter and ctx_meter != def_meter:
+        recovered["meter"] = ctx_meter
+    ctx_scope = str(getattr(ctx, "scope", "") or "").strip()
+    def_scope = str(defaults.get("scope") or "Full song").strip() or "Full song"
+    if ctx_scope and ctx_scope != def_scope:
+        recovered["scope"] = ctx_scope
+    try:
+        ctx_loops = int(getattr(ctx, "loops", 0) or 0)
+    except (TypeError, ValueError):
+        ctx_loops = 0
+    try:
+        def_loops = int(defaults.get("loops") or 2)
+    except (TypeError, ValueError):
+        def_loops = 2
+    if ctx_loops > 0 and ctx_loops != def_loops:
+        recovered["loops"] = ctx_loops
+    sections = getattr(ctx, "sections", None)
+    if isinstance(sections, list) and sections and ctx_scope and ctx_scope != "Full song":
+        recovered["multi_sections"] = [str(s).strip() for s in sections if str(s).strip()]
+    single = str(getattr(ctx, "section", "") or "").strip()
+    if single and ctx_scope and ctx_scope != "Full song":
+        recovered["single_section"] = single
+    # Meaningful partial overrides win over recovered sealed fields.
+    merged = dict(recovered)
+    merged.update(meaningful)
+    if not merged:
+        return bag
+    bag = dict(bag)
+    bag["overrides"] = merged
+    if merged.get("bpm"):
+        bag["current_bpm_lock"] = int(merged["bpm"])
+        session["_backing_current_bpm_lock"] = int(merged["bpm"])
+    bag["expired"] = False
+    session[BACKING_PLAY_SESSION_KEY] = bag
+    session[BACKING_PLAY_SESSION_EXPIRED_KEY] = False
+    return bag
+
+
+def apply_current_play_session_to_backing_context(
+    session: dict[str, Any],
+    ctx: Any,
+    *,
+    previous: Any | None = None,
+) -> Any:
+    """Stamp CURRENT (unexpired) play-session transport onto a rebuilt BackingContext.
+
+    Source rebuilds (CPL / catalog / generator defaults) must not wipe temporary
+    BPM / style / meter / loop / scope for the same Backing visit. Refresh and
+    server reboot are the same play session — only a true leave expires the bag,
+    after which source defaults correctly win.
+    """
+    if ctx is None:
+        return ctx
+    ps = get_backing_play_session(session)
+    if ps is not None and ps.get("expired"):
+        return ctx
+
+    defaults = dict((ps or {}).get("defaults") or _source_defaults_from_session(session))
+    overrides: dict[str, Any] = {}
+    if ps is not None and isinstance(ps.get("overrides"), dict):
+        overrides = dict(ps.get("overrides") or {})
+    meaningful = _meaningful_play_session_overrides(overrides, defaults)
+
+    # Prefer previous sealed specialized transport when the bag is missing,
+    # empty, or only echoes source defaults (common reboot remint race).
+    if previous is not None and not meaningful:
+        _stamp_previous_play_transport(ctx, previous)
+        return ctx
+
+    # Partial bag: fill gaps from previous sealed visit, then stamp overrides.
+    if previous is not None and meaningful:
+        try:
+            prev_src = str(getattr(previous, "source", "") or "").strip()
+            live_src = str(getattr(ctx, "source", "") or "").strip()
+        except Exception:
+            prev_src = live_src = ""
+        if prev_src and live_src and prev_src == live_src and prev_src not in {"", "regular_song"}:
+            if "bpm" not in meaningful:
+                try:
+                    prev_bpm = int(getattr(previous, "bpm", 0) or 0)
+                except (TypeError, ValueError):
+                    prev_bpm = 0
+                if prev_bpm > 0:
+                    ctx.bpm = prev_bpm
+            if "groove" not in meaningful:
+                prev_style = str(
+                    getattr(previous, "style", "") or getattr(previous, "groove", "") or ""
+                ).strip()
+                if prev_style:
+                    ctx.style = prev_style
+                    if hasattr(ctx, "groove"):
+                        ctx.groove = (
+                            str(getattr(previous, "groove", "") or prev_style).strip() or prev_style
+                        )
+            if "meter" not in meaningful:
+                prev_meter = str(getattr(previous, "meter", "") or "").strip()
+                if prev_meter and hasattr(ctx, "meter"):
+                    ctx.meter = prev_meter
+            if "scope" not in meaningful:
+                prev_scope = str(getattr(previous, "scope", "") or "").strip()
+                if prev_scope:
+                    ctx.scope = prev_scope
+            if "loops" not in meaningful:
+                try:
+                    prev_loops = int(getattr(previous, "loops", 0) or 0)
+                except (TypeError, ValueError):
+                    prev_loops = 0
+                if prev_loops > 0:
+                    ctx.loops = prev_loops
+
+    if not meaningful:
+        return ctx
+
+    if meaningful.get("bpm") not in (None, "", 0):
+        try:
+            ctx.bpm = int(meaningful["bpm"])
+        except (TypeError, ValueError):
+            pass
+    groove = str(meaningful.get("groove") or "").strip()
+    if groove:
+        ctx.style = groove
+        if hasattr(ctx, "groove"):
+            existing_groove = str(getattr(ctx, "groove", "") or "").strip()
+            if not existing_groove or existing_groove.lower() in {
+                "pop groove",
+                "pop",
+                groove.lower(),
+            }:
+                ctx.groove = groove
+    meter = str(meaningful.get("meter") or "").strip()
+    if meter and hasattr(ctx, "meter"):
+        ctx.meter = meter
+    scope = str(meaningful.get("scope") or "").strip()
+    if scope:
+        ctx.scope = scope
+    if meaningful.get("loops") not in (None, "", 0):
+        try:
+            ctx.loops = int(meaningful["loops"])
+        except (TypeError, ValueError):
+            pass
+    multi = meaningful.get("multi_sections")
+    if isinstance(multi, list) and multi:
+        sections = [str(s).strip() for s in multi if str(s).strip()]
+        if sections and hasattr(ctx, "sections"):
+            ctx.sections = sections
+    single = str(meaningful.get("single_section") or "").strip()
+    if single and hasattr(ctx, "section"):
+        ctx.section = single
+    return ctx
+
+
 def play_session_blocks_canonical_seed(session: dict[str, Any]) -> bool:
     """True when ephemeral play-session knobs must win over canonical backing_track_state."""
     ps = get_backing_play_session(session)
@@ -1249,6 +1642,8 @@ __all__ = [
     "BACKING_PLAY_SESSION_EXPIRED_KEY",
     "BACKING_PLAY_SESSION_KEY",
     "apply_backing_play_session_to_widgets",
+    "apply_current_play_session_to_backing_context",
+    "recover_play_session_overrides_from_backing_context",
     "backing_play_session_has_override",
     "capture_backing_play_session_overrides",
     "current_backing_play_bpm",

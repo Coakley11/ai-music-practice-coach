@@ -94,11 +94,18 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["active_catalog_pick_key"], shape_pick)
         self.assertEqual(session["song"], "Shape of You")
 
-    def test_flush_pending_seeds_widget_before_render(self) -> None:
-        session = {PENDING_IMPROV_SONG_SOURCE: "Custom progression"}
+    def test_flush_does_not_clobber_custom_preview_with_default_active_widget(self) -> None:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_PREVIEW_SOURCE_KEY: "Custom progression",
+            "improv_song_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+        }
         flush_pending_improv_song_source(session)
-        self.assertEqual(session["improv_song_source"], "Custom progression")
-        self.assertNotIn(PENDING_IMPROV_SONG_SOURCE, session)
+        self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Custom progression")
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
 
     def test_resolve_prefers_preview_bucket_over_stale_handoff(self) -> None:
         from source_session_state import SBI_PREVIEW_SOURCE_KEY

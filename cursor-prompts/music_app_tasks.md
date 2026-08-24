@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-18 (Pass 8 Creative/Backing uncommitted on `feature/creative-backing-stabilization`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-23 (Pass 8 Creative/Backing + refresh/reboot persistence contract) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -9,7 +9,8 @@
 
 ### P0 — Pass 8 Creative / Backing stabilization (uncommitted, active)
 
-**Plan:** [plans/2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md)
+**Plan:** [plans/2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md)  
+**Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) (rule: `.cursor/rules/creative-backing-persistence-contract.mdc`)
 
 Do not commit/push/`dev` until the full matrix is green. Practice Focus remains parked @ `542cf41`.
 
@@ -19,6 +20,7 @@ Do not commit/push/`dev` until the full matrix is green. Practice Focus remains 
 - [ ] Generated Jam / Style Jam source BPM + Current/slider refresh
 - [ ] Active-source-change restore epoch (Cases E1–E5): last Backing restores only while the same catalog/custom source remains active
 - [ ] Full source-transition matrix + restart confirmation
+- [ ] Refresh/reboot persistence contract P1–P9 (Creative selections, instrument/Written/Shape, Practice Key editability, Backing type+settings; Custom SBI Backing hotspot)
 
 ### P0 — Mission Take → Upload Analysis durable handoff (queued)
 

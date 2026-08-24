@@ -327,6 +327,12 @@ def set_backing_context(
         ):
             payload["mission_return_destination"] = copy.deepcopy(prev_mission_dest)
     session[BACKING_CONTEXT_KEY] = payload
+    try:
+        src = str(getattr(ctx, "source", "") or payload.get("source") or "").strip()
+        if src:
+            session["_last_valid_backing_source"] = src
+    except Exception:
+        pass
     new_route = payload.get("creative_return_route")
     caller = str(trace_caller or "").strip() or _infer_set_backing_context_caller()
     try:
@@ -1132,7 +1138,19 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             except ImportError:
                 pick_key = revision or f"custom::{name.lower().replace(' ', '-')}"
             home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
-            _, display_key, concert_key = _live_backing_concert_keys(session)
+            # Custom SBI Backing must use Custom sticky PK — never Catalog display_key.
+            display_key = home_key
+            concert_key = home_key
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky = str(
+                    get_practice_concert_key(session, pick_key, default=home_key) or ""
+                ).strip()
+                if sticky:
+                    display_key = concert_key = sticky
+            except Exception:
+                pass
             if not concert_key:
                 concert_key = display_key = home_key
             sections_raw = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
@@ -1903,17 +1921,32 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
             current_mission = str(session.get("improv_active_mission") or "").strip()
             if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
                 return False
+        bound = str(ctx.bound_pick_key or "").strip()
+        # Custom SBI (and custom-bound specialized overlays) may temporarily bind to
+        # custom:: while Global Active Catalog remains a different song. That is not
+        # invalid — validate against CPL revision, not catalog pick identity.
+        custom_overlay = bool(ctx.custom_revision_id) or bound.lower().startswith("custom")
+        if custom_overlay:
+            if ctx.custom_revision_id:
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+                    active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                    revision = str(active.get("id") or active.get("revision") or "").strip()
+                    if revision and revision != ctx.custom_revision_id:
+                        return False
+                except ImportError:
+                    pass
+            return True
         current_pick = _current_pick_key(session)
-        if ctx.bound_pick_key and current_pick:
+        if bound and current_pick:
             try:
                 from songs.music_source import _pick_keys_match
 
-                if not _pick_keys_match(
-                    str(ctx.bound_pick_key), current_pick, session_state=session
-                ):
+                if not _pick_keys_match(bound, current_pick, session_state=session):
                     return False
             except ImportError:
-                if ctx.bound_pick_key != current_pick:
+                if bound != current_pick:
                     return False
         return True
     return False
@@ -2612,7 +2645,13 @@ def sync_regular_song_backing_context_keys(session: dict[str, Any]) -> None:
 
 
 def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingContext | None:
-    """Rebuild backing context snapshot from live session state."""
+    """Rebuild backing context snapshot from live session state.
+
+    Source rebuilds (CPL / catalog / generator) refresh progression identity, but
+    CURRENT Backing play-session transport (BPM / style / meter / loop / scope)
+    must survive refresh and reboot. Only an expired play session yields to
+    source defaults (true leave → later return).
+    """
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
         return None
@@ -2627,6 +2666,19 @@ def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingCont
     else:
         return ctx
     new_ctx.created_at = ctx.created_at
+    try:
+        from backing_play_session import (
+            apply_current_play_session_to_backing_context,
+            recover_play_session_overrides_from_backing_context,
+        )
+
+        # Ensure empty reminted bags recover visit transport from sealed ctx first.
+        recover_play_session_overrides_from_backing_context(session)
+        new_ctx = apply_current_play_session_to_backing_context(
+            session, new_ctx, previous=ctx
+        )
+    except ImportError:
+        pass
     return new_ctx
 
 
@@ -3232,8 +3284,71 @@ def clear_backing_source_preference(session: dict[str, Any]) -> None:
     session.pop(BACKING_SOURCE_PREFERENCE_KEY, None)
 
 
+def creative_nested_backing_should_override_catalog(
+    session: dict[str, Any],
+) -> bool:
+    """True when reboot/hydrate must rebuild Creative SBI/Mission/Jam over a stale catalog ctx.
+
+    Contract: refresh/reboot keeps the same nested Backing visit. A persisted
+    ``regular_song`` blob must not win when Creative still owns Song-Based /
+    Mission / Entry Jam and the user is on the Backing page.
+    """
+    if session.get("_backing_released_specialized_context"):
+        return False
+    if int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0:
+        return False
+    page = str(session.get("studio_page") or "").strip()
+    if page != "backing":
+        return False
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    if handoff in {"song_improv", "mission", "entry_jam"}:
+        return True
+    try:
+        from creative_workspace_state_persistence import CREATIVE_WORKSPACE_STATE_KEY
+
+        cw = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+        cw = cw if isinstance(cw, dict) else {}
+    except ImportError:
+        cw = {}
+    entry = str(
+        session.get("improv_entry_mode") or cw.get("improv_entry_mode") or ""
+    ).strip()
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or cw.get("improv_intelligence_tab")
+        or ""
+    ).strip()
+    if "Song-Based" in entry or tab in {"Entry & Jam", "Entry and Jam"}:
+        return True
+    if tab == "Missions" or "mission" in entry.lower():
+        return True
+    if tab in {"Entry & Jam", "Entry and Jam"} and (
+        "Jam" in entry or "Style" in entry
+    ):
+        return True
+    try:
+        from creative_session_state import creative_session_is_active, get_creative_session
+
+        if creative_session_is_active(session):
+            sess = get_creative_session(session)
+            tool = str(getattr(sess, "tool_type", "") or "") if sess is not None else ""
+            if tool in {
+                "song_based_improvisation",
+                "mission",
+                "entry_jam",
+                "jam_generator",
+                "style_jam",
+            }:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
 def catalog_or_custom_backing_is_authoritative(session: dict[str, Any]) -> bool:
     """True when catalog or custom practice owns key/progression (Creative must not reclaim)."""
+    if creative_nested_backing_should_override_catalog(session):
+        return False
     try:
         from music_source_ownership import intended_practice_owner
 
@@ -3253,6 +3368,8 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
     """True when live catalog/custom practice should replace a Creative backing_context."""
     if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
         return False
+    src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+    specialized = {"mission", "song_improv", "entry_jam"}
     # Use raw practice owner — intentional Creative/Mission must not hide an
     # explicit Songs Catalog/Custom switch (H9: Custom Active + sealed Mission).
     try:
@@ -3260,12 +3377,26 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
 
         raw = _raw_practice_owner(session)
         if raw == "custom":
-            return ctx is None or str(getattr(ctx, "source", "") or "") != "custom_progression"
+            # Custom SBI uses CPL under song_improv — not a stale Mission overlay.
+            if (
+                src == "song_improv"
+                and not session.get("_backing_released_specialized_context")
+                and (
+                    bool(getattr(ctx, "custom_revision_id", None))
+                    or str(getattr(ctx, "bound_pick_key", "") or "").lower().startswith("custom")
+                )
+            ):
+                return False
+            return ctx is None or src != "custom_progression"
         if raw == "catalog":
             # Catalog Global Active still allows intentional Mission/SBI/Jam overlay
             # unless specialized ownership was explicitly released.
             if session.get("_backing_released_specialized_context"):
-                return ctx is None or str(getattr(ctx, "source", "") or "") != "regular_song"
+                return ctx is None or src != "regular_song"
+            if src in specialized:
+                return False
+            # No specialized overlay — catalog practice should own Backing.
+            return ctx is None
     except ImportError:
         pass
     try:
@@ -3275,9 +3406,20 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
         if practice is None:
             return False
         if practice == "catalog":
-            return ctx is None or ctx.source != "regular_song"
+            if src in specialized and not session.get("_backing_released_specialized_context"):
+                return False
+            return ctx is None or src != "regular_song"
         if practice == "custom":
-            return ctx is None or ctx.source != "custom_progression"
+            if (
+                src == "song_improv"
+                and not session.get("_backing_released_specialized_context")
+                and (
+                    bool(getattr(ctx, "custom_revision_id", None))
+                    or str(getattr(ctx, "bound_pick_key", "") or "").lower().startswith("custom")
+                )
+            ):
+                return False
+            return ctx is None or src != "custom_progression"
     except ImportError:
         pass
     try:
@@ -3287,6 +3429,12 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
             is_custom_progression,
         )
 
+        # CPL active during Custom SBI is expected — do not treat as stale reclaim.
+        if src == "song_improv" and (
+            bool(getattr(ctx, "custom_revision_id", None))
+            or str(getattr(ctx, "bound_pick_key", "") or "").lower().startswith("custom")
+        ):
+            return False
         if (
             cpl_session_is_active(session)
             or is_custom_progression(session)
@@ -3296,6 +3444,8 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
     except ImportError:
         pass
     if get_backing_source_preference(session) in {BACKING_PREF_CATALOG, BACKING_PREF_CUSTOM}:
+        if src in specialized and not session.get("_backing_released_specialized_context"):
+            return False
         return True
     return False
 
@@ -3781,7 +3931,11 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
         return get_backing_context(session)
     existing = get_backing_context(session)
     if existing is not None and existing.source in {"regular_song", "custom_progression"}:
-        return existing
+        # Stale catalog/custom blob after reboot must yield to nested Creative SBI/Mission.
+        if not creative_nested_backing_should_override_catalog(session):
+            return existing
+        clear_backing_context(session)
+        existing = None
     if existing is not None and existing.source != "regular_song" and is_backing_context_valid(session, existing):
         # Last valid Mission/Jam session owns key/progression. Do not rebuild from
         # leftover live display_key (e.g. catalog C) on refresh or Upload return.
@@ -3818,11 +3972,27 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
         pass
     ensure_backing_context_from_creative_session(session)
     ctx = get_backing_context(session)
-    if ctx is None or ctx.source == "regular_song":
+    if ctx is not None and ctx.source == "regular_song":
+        if creative_nested_backing_should_override_catalog(session):
+            clear_backing_context(session)
+            ensure_backing_context_from_creative_session(session)
+            ctx = get_backing_context(session)
+        else:
+            return
+    if ctx is None:
         return
     if not is_backing_context_valid(session, ctx):
-        clear_backing_context(session)
-        return
+        # Do not leave nested Creative Backing empty after a false-invalid clear —
+        # rebuild specialized ownership when Creative still owns the visit.
+        if creative_nested_backing_should_override_catalog(session):
+            clear_backing_context(session)
+            ensure_backing_context_from_creative_session(session)
+            ctx = get_backing_context(session)
+            if ctx is None or not is_backing_context_valid(session, ctx):
+                return
+        else:
+            clear_backing_context(session)
+            return
     try:
         from backing_source_navigation import restore_session_widgets_from_backing_context
 

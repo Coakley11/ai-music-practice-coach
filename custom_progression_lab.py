@@ -544,18 +544,49 @@ def display_sections_for_key(active, display_key):
 
 
 def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) -> str:
-    """Current Practice / Concert Key for Custom workspace projection + builder."""
+    """Current Practice / Concert Key for Custom workspace projection + builder.
+
+    Prefer the dedicated Custom Practice Key widget / sticky for this Custom identity.
+    Never prefer a stale global ``display_key`` from a prior Custom/Catalog song — that
+    is what produced C/G clicks storing Bb/F after a previous D→C offset.
+    """
+    active = active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
+    home = cpl_draft_written_key(active) if isinstance(active, dict) else "C"
+    # 0) Force-home after New song / identity install outranks a stale dedicated widget
+    # from the previous Custom song (widgets may still be locked from the prior run).
+    force_home = str(session_state.get("_cpl_force_pk_to_home") or "").strip()
+    if force_home:
+        return force_home
+    # 1) Dedicated Custom-page Practice Key widget (authoritative while on Custom).
+    dedicated = str(session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
+    if dedicated:
+        return dedicated
+    pending = str(session_state.get(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY) or "").strip()
+    if pending:
+        return pending
+    # 2) Per-source sticky for this Custom pick.
+    try:
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+
+        if isinstance(active, dict):
+            pick = custom_pick_key_for(active)
+            sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
+            if sticky:
+                return sticky
+    except ImportError:
+        pass
+    # 3) Original Key of the current Custom song (identity = no transpose).
+    if home:
+        return home
+    # 4) Last resort: shared display_key (Catalog/Custom may share this off Custom page).
     try:
         from progression_helpers import session_display_key
 
         live = str(session_display_key(session_state) or "").strip()
     except ImportError:
         live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
-    if live:
-        return live
-    if active is not None:
-        return cpl_draft_written_key(active)
-    return "C"
+    return live or "C"
 
 
 def practice_chord_to_original_key(chord: str, practice_key: str, original_key: str) -> str:
@@ -635,6 +666,9 @@ def sync_custom_workspace_practice_key(
                 token,
                 widget_safe=True,
             )
+        # Custom page UX still mirrors display_key; Catalog sticky contamination is
+        # prevented by always writing set_practice_concert_key with custom pick below
+        # and by skipping on_sidebar sync when Custom is not Global Active.
         safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
     except ImportError:
         session_state[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = token
@@ -1558,6 +1592,10 @@ def seed_cpl_draft_widgets_from_active(
         "cpl_progression_style": str(active.get("progression_style") or "Pop"),
         "cpl_original_key": cpl_draft_written_key(active),
     }
+    if force:
+        # Streamlit keeps prior widget values unless keys are cleared before reseeding.
+        for key in values:
+            session_state.pop(key, None)
     for key, val in values.items():
         if force or key not in session_state:
             session_state[key] = val

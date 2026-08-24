@@ -323,6 +323,15 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             if not back or _normalize_stack_entry(back[-1]).get("page") != current:
                 back.append(entry)
         session_state[NAV_FORWARD_STACK] = []
+    # Leaving Custom page: stamp LAST_CUSTOM from the live draft even when Catalog
+    # still owns Global Active (return-to-Custom must not fall back to My Progression).
+    if current == "custom" and page_id != "custom":
+        try:
+            from songs.music_source import snapshot_last_custom_state
+
+            snapshot_last_custom_state(session_state)
+        except ImportError:
+            pass
     session_state["studio_page"] = page_id
     try:
         from pending_upload_route_precedence import release_pending_upload_resume_route

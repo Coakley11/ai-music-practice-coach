@@ -366,6 +366,15 @@ def commit_staged_workflow(
         if not canonical_keep and mutation_type in {
             "mission_example_artifact",
             "style_jam_control_settings",
+            # Explicit chord click already sealed session + staged blob before
+            # legacy projection. Rolling back causes one-click-behind UI and can
+            # leak RequiresPreWidgetActivation into st.warning.
+            "mission_chord_selection",
+        }:
+            canonical_keep = True
+        if not canonical_keep and str(source or "") in {
+            "apply_atomic_mission_chord",
+            "apply_atomic_mission_chord_selection",
         }:
             canonical_keep = True
         if canonical_keep:
@@ -399,7 +408,8 @@ def commit_staged_workflow(
             return MutationResult(
                 ok=True,
                 error_code="PROJECTION_DEFERRED",
-                error_message=str(exc),
+                # Never leak internal activation tokens to UI callers.
+                error_message="",
                 rollback_performed=False,
                 trace=trace,
             )
@@ -664,29 +674,9 @@ def mutate_mission_chord_selection(
     except ImportError:
         song_token_before = ""
     ptr = get_active_workflow_pointer(session)
-    if ptr is None or ptr.workflow_owner != "mission_jam":
-        try:
-            from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
-
-            sid = str(session.get("active_catalog_pick_key") or "song").strip()
-            try:
-                from music_workflow_mission_session import mission_blob_session_id
-
-                sid = mission_blob_session_id(session)
-            except ImportError:
-                sid = f"mission|catalog|{sid}"
-            activate_workflow(
-                session,
-                ActivateWorkflowRequest(
-                    target_owner="mission_jam",
-                    target_session_id=sid,
-                    activation_source="mission_chord_pre_activate",
-                    navigation_intent="creative_missions",
-                ),
-            )
-        except ImportError:
-            return MutationResult(ok=False, error_code="NOT_MISSION", error_message="Mission workflow not active.")
-        ptr = get_active_workflow_pointer(session)
+    # Do not activate_workflow mid-click: widgets are often locked and a failed
+    # activate stamps internal OWNER_MISMATCH into activation_user_notice.
+    # Session chord is sealed below; blob commit is deferred when owner differs.
 
     prev_chord = ""
     blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) if ptr else None
@@ -750,13 +740,57 @@ def mutate_mission_chord_selection(
             b.mission_type = str(session.get("improv_active_mission") or "").strip()
             b.mission_id = b.mission_type
 
-    result = mutate_active_workflow(
-        session,
-        _mut,
-        mutation_type="mission_chord_selection",
-        source="apply_atomic_mission_chord",
-        expected_owner="mission_jam",
-    )
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or ptr.workflow_owner != "mission_jam":
+        # Session chord already sealed above. Avoid OWNER_MISMATCH UI when Live
+        # Coach / Harmony still have a non-mission active pointer.
+        try:
+            from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+            # Chord click already sealed session; drop stale activate errors so
+            # activation_user_notice never shows "Active owner mismatch."
+            err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
+            if isinstance(err, dict):
+                session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+        except ImportError:
+            pass
+        result = MutationResult(
+            ok=True,
+            error_code="CHORD_OWNER_ACTIVATE_DEFERRED",
+            error_message="",
+            rollback_performed=False,
+            trace={
+                "mutation_type": "mission_chord_selection",
+                "session_chord_sealed": new_sym,
+                "active_owner": getattr(ptr, "workflow_owner", None),
+            },
+        )
+    else:
+        result = mutate_active_workflow(
+            session,
+            _mut,
+            mutation_type="mission_chord_selection",
+            source="apply_atomic_mission_chord",
+            expected_owner="mission_jam",
+        )
+        if (not result.ok) and str(result.error_code or "") == "OWNER_MISMATCH" and new_sym:
+            try:
+                from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+                # Chord click already sealed session; drop stale activate errors so
+                # activation_user_notice never shows "Active owner mismatch."
+                err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
+                if isinstance(err, dict):
+                        session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            except ImportError:
+                pass
+            result = MutationResult(
+                ok=True,
+                error_code="CHORD_OWNER_ACTIVATE_DEFERRED",
+                error_message="",
+                rollback_performed=False,
+                trace={**(getattr(result, "trace", None) or {}), "session_chord_sealed": new_sym},
+            )
     if result.ok and new_sym and new_sec:
         try:
             from creative_chord_selection_authority import (

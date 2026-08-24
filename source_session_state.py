@@ -16,20 +16,19 @@ IMPROV_SONG_SOURCES = ("Active song", "Custom progression")
 
 
 def get_sbi_preview_source(session: dict[str, Any]) -> str:
-    """Read SBI preview source (never reads handoff-only keys)."""
+    """Read SBI preview source (never reads handoff-only keys).
+
+    Do **not** infer Custom from ``cpl_session_is_active``: a live CPL draft /
+    LAST_CUSTOM memory can exist while Global Active stays Catalog and the user
+    is on Creative → SBI → Active. That inference collapsed nested SBI Custom
+    into “we’re on Custom” semantics and helped reboot land on top-level Custom.
+    """
     val = str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
     if val in IMPROV_SONG_SOURCES:
         return val
     val = str(session.get("improv_song_source") or "").strip()
     if val in IMPROV_SONG_SOURCES:
         return val
-    try:
-        from songs.music_source import cpl_session_is_active
-
-        if cpl_session_is_active(session):
-            return "Custom progression"
-    except ImportError:
-        pass
     return "Active song"
 
 
@@ -38,6 +37,13 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
     if src not in IMPROV_SONG_SOURCES:
         src = "Active song"
     session[SBI_PREVIEW_SOURCE_KEY] = src
+    # Nested SBI source tab must survive refresh/reboot with Creative page.
+    try:
+        from creative_workspace_persistence import mark_creative_workspace_dirty
+
+        mark_creative_workspace_dirty(session)
+    except ImportError:
+        pass
 
 
 def sync_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:

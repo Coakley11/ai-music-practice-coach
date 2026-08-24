@@ -670,6 +670,25 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         preserve_written_key_on_display_key_change(st.session_state)
     except Exception:
         pass
+    # Mission Backing: transpose sealed example chords/notes with Practice Key.
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(st.session_state)
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+            from improvisation_missions import transpose_stored_mission_example
+
+            transpose_stored_mission_example(
+                st.session_state, from_key=previous, to_key=str(display_key or "")
+            )
+            try:
+                from backing_context import refresh_backing_context_from_session
+
+                refresh_backing_context_from_session(st.session_state)
+            except Exception:
+                pass
+    except Exception:
+        pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
     from custom_progression_lab import on_global_display_key_change

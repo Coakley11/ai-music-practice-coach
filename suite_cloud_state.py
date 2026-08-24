@@ -917,10 +917,12 @@ def pick_restore_session(
     """
     Choose restore payload for direct open / cloud re-sync.
 
-    When ``local_dirty`` is False and ``cloud_first`` is True (default), cloud
-    ``full_session`` is the cross-device source of truth whenever it exists.
-    Local disk is a per-device cache used only when cloud is empty/unavailable
-    or this device has unsaved local edits.
+    Prefer disk when it is strictly newer than cloud (same-device reboot /
+    refresh with a fresher local cache), or when ``local_dirty`` is set.
+
+    When timestamps are equal/unknown and ``cloud_first`` is True (default),
+    cloud ``full_session`` is the cross-device source of truth. Local disk is
+    otherwise a per-device cache used when cloud is empty/unavailable.
     """
     cloud_epoch = _parse_ts(cloud_ts)
     disk_epoch = _parse_ts(disk_ts)
@@ -937,6 +939,18 @@ def pick_restore_session(
             disk_state,
             "disk",
             "local unsaved edits",
+            cloud_ts,
+            disk_ts,
+        )
+
+    # Same-device reboot / refresh: a newer local disk cache must win even when
+    # cloud_first is on. Otherwise a stale cloud full_session remints Current
+    # Backing play-session knobs (BPM/style/loop) over the just-saved visit.
+    if disk_state and disk_epoch > cloud_epoch:
+        return RestorePickResult(
+            disk_state,
+            "disk",
+            "disk newer than cloud",
             cloud_ts,
             disk_ts,
         )

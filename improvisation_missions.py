@@ -1028,11 +1028,19 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
     motif = dict(out.get("motif") or {})
     notes = list(motif.get("notes") or [])
     if notes:
-        out_notes = []
-        for n in notes:
-            midi = _midi_from_note(str(n), 4)
-            out_notes.append(_note_from_midi(midi + steps, dest))
+        existing_midi = list(motif.get("midi") or [])
+        out_notes: list[str] = []
+        out_midi: list[int] = []
+        for i, n in enumerate(notes):
+            if i < len(existing_midi) and isinstance(existing_midi[i], (int, float)):
+                midi = int(existing_midi[i])
+            else:
+                midi = _midi_from_note(str(n), 4)
+            midi2 = midi + steps
+            out_notes.append(_note_from_midi(midi2, dest))
+            out_midi.append(midi2)
         motif["notes"] = out_notes
+        motif["midi"] = out_midi
         motif["display"] = " – ".join(out_notes)
         if motif.get("chord"):
             motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=dest)
@@ -1054,6 +1062,8 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
         except Exception:
             pass
         out["motif"] = motif
+    out["concert_key"] = dest
+    out["display_key"] = dest
     out["abc"] = ""
     out["tab"] = ""
     out["piano_html"] = ""

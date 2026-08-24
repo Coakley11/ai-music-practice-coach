@@ -781,26 +781,52 @@ def ensure_catalog_memory_before_leaving_for_custom(session_state: dict[str, Any
 
 
 def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, Any] | None:
-    """Snapshot the active custom progression for catalog ↔ custom switching."""
+    """Snapshot the live Custom draft for LAST_CUSTOM memory.
+
+    Prefer a raw deepcopy of the CPL blob so incomplete drafts still snapshot;
+    do not depend on Global Active being Custom.
+    """
     import copy
 
     try:
-        from custom_progression_lab import cpl_active_from_session, ensure_original_structure
+        from custom_progression_lab import CPL_ACTIVE_KEY
     except ImportError:
+        CPL_ACTIVE_KEY = "cpl_active_progression"
+    raw = session_state.get(CPL_ACTIVE_KEY)
+    if not isinstance(raw, dict):
         return None
-    active = ensure_original_structure(cpl_active_from_session(session_state))
+    active = copy.deepcopy(raw)
     name = str(active.get("name") or "").strip()
     if not name:
         return None
-    return {"name": name, "active": copy.deepcopy(active)}
+    return {"name": name, "active": active}
 
 
 def snapshot_last_custom_state(session_state: dict[str, Any]) -> None:
-    """Remember the active custom song before leaving Custom Progression."""
-    if not is_custom_progression(session_state) and not custom_progression_is_active(session_state):
-        return
+    """Remember the Custom draft last worked on (Custom page / SBI Custom).
+
+    LAST_CUSTOM is identity memory for the Custom workspace — not Global Active.
+    Snapshot whenever the live CPL draft is substantive, even if Catalog still owns
+    Global Active (user edited Custom then left via Songs without Set-as-Active).
+    """
     snap = _custom_snapshot_from_session(session_state)
-    if snap:
+    if not isinstance(snap, dict) or not isinstance(snap.get("active"), dict):
+        return
+    active = snap["active"]
+    title = str(snap.get("name") or active.get("name") or "").strip()
+    substantive = bool(title) and title not in {"My Progression", "My progression"}
+    if not substantive:
+        for key in ("original_sections", "sections"):
+            secs = active.get(key)
+            if not isinstance(secs, dict):
+                continue
+            for chs in secs.values():
+                if isinstance(chs, list) and any(str(c).strip() for c in chs):
+                    substantive = True
+                    break
+            if substantive:
+                break
+    if substantive:
         session_state[LAST_CUSTOM_STATE_KEY] = snap
 
 

@@ -524,8 +524,60 @@ def mission_bpm(text: str) -> str:
 
 
 def set_practice_key(page: Page, option: str) -> bool:
+    """Set sidebar Practice / Concert Key. Retries; prefers sidebar-scoped BaseWeb select."""
     expand_sidebar(page)
-    return bool(set_baseweb_select(page, "Practice / Concert Key", option))
+    wait(page, 400)
+    candidates = [option]
+    for suffix in ("", " major", " minor", "m"):
+        alt = f"{option}{suffix}".strip()
+        if alt not in candidates:
+            candidates.append(alt)
+
+    for _attempt in range(3):
+        expand_sidebar(page)
+        for cand in candidates:
+            if set_baseweb_select(page, "Practice / Concert Key", cand):
+                wait(page, 800)
+                return True
+        # Sidebar-scoped fallback: click the Practice / Concert Key combobox directly.
+        try:
+            clicked = page.evaluate(
+                """() => {
+                  const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
+                  const side = document.querySelector('[data-testid="stSidebar"]') || document.body;
+                  const boxes = [...side.querySelectorAll('[data-testid="stSelectbox"]')];
+                  const target = boxes.find((b) => /Practice\\s*\\/\\s*Concert\\s*Key/i.test(b.innerText || ''));
+                  if (!target || !vis(target)) return false;
+                  const clickable =
+                    target.querySelector('[data-baseweb="select"], [role="combobox"], input') || target;
+                  clickable.scrollIntoView({block: 'center'});
+                  clickable.click();
+                  return true;
+                }"""
+            )
+            if clicked:
+                wait(page, 700)
+                for cand in candidates:
+                    opt = page.locator('[role="option"]').filter(
+                        has_text=re.compile(rf"^{re.escape(cand)}$", re.I)
+                    )
+                    if opt.count() == 0:
+                        opt = page.get_by_role("option", name=re.compile(re.escape(cand), re.I))
+                    if opt.count():
+                        try:
+                            opt.first.click(timeout=2500)
+                            wait(page, 1200)
+                            return True
+                        except Exception:
+                            continue
+                page.keyboard.press("Escape")
+        except Exception:
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+        wait(page, 600)
+    return False
 
 
 def click_chord(page: Page, label: str) -> bool:

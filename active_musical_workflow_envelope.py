@@ -502,7 +502,25 @@ def apply_atomic_mission_chord_selection(
             try:
                 import streamlit as st
 
-                st.warning(result.error_message or "Mission chord could not be saved. Reload the page.")
+                raw = str(result.error_message or "").strip()
+                low = raw.lower()
+                # Internal control tokens / deferred-activation markers — never product UI.
+                if (
+                    "requires_pre_widget_activation" in low
+                    or "active owner mismatch" in low
+                    or str(result.error_code or "")
+                    in {
+                        "OWNER_MISMATCH",
+                        "REQUIRES_PRE_WIDGET_ACTIVATION",
+                        "PROJECTION_DEFERRED",
+                        "CHORD_OWNER_ACTIVATE_DEFERRED",
+                    }
+                ):
+                    return
+                if raw:
+                    st.warning(raw)
+                else:
+                    st.warning("Mission chord could not be saved. Reload the page.")
             except ImportError:
                 pass
         return

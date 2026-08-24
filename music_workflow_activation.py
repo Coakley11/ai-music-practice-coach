@@ -726,7 +726,17 @@ def activate_workflow_simple(
 def activation_user_notice(session: dict[str, Any]) -> str:
     err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
     if isinstance(err, dict) and err.get("message"):
-        return str(err["message"])
+        msg = str(err["message"])
+        low = msg.lower()
+        # Internal control / defer tokens — never product UI.
+        if (
+            "requires_pre_widget_activation" in low
+            or "active owner mismatch" in low
+            or str(err.get("code") or "")
+            in {"OWNER_MISMATCH", "REQUIRES_PRE_WIDGET_ACTIVATION", "CHORD_OWNER_ACTIVATE_DEFERRED"}
+        ):
+            return ""
+        return msg
     bootstrap = str(session.get("WORKFLOW_MISSION_BOOTSTRAP_USER_NOTICE") or "").strip()
     if bootstrap:
         return bootstrap

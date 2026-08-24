@@ -5,6 +5,22 @@ from __future__ import annotations
 from app_ui import nav_icon_button_label
 
 
+def _cpl_active_is_substantive(active: object) -> bool:
+    """True when live CPL is a real Custom song, not the empty My Progression shell."""
+    if not isinstance(active, dict):
+        return False
+    title = str(active.get("name") or "").strip()
+    if title and title not in {"My Progression", "My progression"}:
+        return True
+    for key in ("original_sections", "sections"):
+        secs = active.get(key)
+        if isinstance(secs, dict):
+            for chs in secs.values():
+                if isinstance(chs, list) and any(str(c).strip() for c in chs):
+                    return True
+    return False
+
+
 def _pending_chord_key(section: str) -> str:
     return f"cpl_pending_chord_{section}"
 
@@ -228,8 +244,31 @@ def render_custom_progression_lab_page() -> None:
     if st.session_state.get("cpl_builder_version") != CPL_BUILDER_VERSION:
         migrate_cpl_builder_version(st.session_state)
 
-    if CPL_ACTIVE_KEY not in st.session_state:
-        st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
+    if CPL_ACTIVE_KEY not in st.session_state or not _cpl_active_is_substantive(
+        st.session_state.get(CPL_ACTIVE_KEY)
+    ):
+        # Restore LAST_CUSTOM identity before minting blank "My Progression / C".
+        restored = False
+        try:
+            from songs.music_source import LAST_CUSTOM_STATE_KEY, snapshot_last_custom_state
+
+            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                apply_cpl_session_progression(
+                    st.session_state,
+                    dict(snap["active"]),
+                    reset_display_key=False,
+                )
+                # Force title/Original Key widgets to match restored draft this run.
+                st.session_state["_cpl_reseed_widgets_from_active"] = True
+                restored = True
+            elif CPL_ACTIVE_KEY in st.session_state:
+                # Opportunistic stamp if live draft is somehow skipped as non-substantive.
+                snapshot_last_custom_state(st.session_state)
+        except Exception:
+            restored = False
+        if not restored and CPL_ACTIVE_KEY not in st.session_state:
+            st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
     if CPL_SAVED_KEY not in st.session_state:
         st.session_state[CPL_SAVED_KEY] = {}
 
@@ -239,6 +278,18 @@ def render_custom_progression_lab_page() -> None:
     if st.session_state.pop("_cpl_reseed_widgets_from_active", False):
         reset_cpl_widget_initialization(st.session_state)
         force_widget_seed = True
+    # Substantive draft must own title/Original Key widgets. Stale Streamlit
+    # widget values (My Progression / C) must not overwrite LAST_CUSTOM restore.
+    if _cpl_active_is_substantive(active):
+        widget_title = str(st.session_state.get("cpl_title_input") or "").strip()
+        active_title = str(active.get("name") or "").strip()
+        widget_orig = str(st.session_state.get("cpl_original_key") or "").strip()
+        active_orig = str(cpl_draft_written_key(active) or "").strip()
+        if (active_title and widget_title and widget_title != active_title) or (
+            active_orig and widget_orig and widget_orig != active_orig
+        ):
+            reset_cpl_widget_initialization(st.session_state)
+            force_widget_seed = True
     active = ensure_cpl_widget_keys_initialized(
         st.session_state,
         active,
@@ -373,6 +424,13 @@ def render_custom_progression_lab_page() -> None:
             cpl_active_from_session(st.session_state),
         )
         st.session_state[CPL_ACTIVE_KEY] = active
+        # Keep LAST_CUSTOM fresh while the user works here (Global Active may stay Catalog).
+        try:
+            from songs.music_source import snapshot_last_custom_state
+
+            snapshot_last_custom_state(st.session_state)
+        except Exception:
+            pass
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
         _save(_home_sections(), persist=False)
         n1, n2, n3 = st.columns(3)

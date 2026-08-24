@@ -55,24 +55,109 @@ def resolve_global_active_snapshot(session: dict[str, Any]) -> CreativeSourceSna
 
 
 def resolve_last_custom_snapshot(session: dict[str, Any]) -> CreativeSourceSnapshot | None:
-    """Last Custom Source — Custom page and SBI → Custom Progression."""
-    snap = _snapshot_from_custom(session, owner="last_custom_live")
-    if snap is not None and snap.source_id:
-        return snap
+    """Last Custom Source — Custom page and SBI → Custom Progression.
+
+    LAST_CUSTOM identity memory outranks a blank/default live CPL ("My Progression").
+    Live CPL wins only when it is a genuinely named Custom with material.
+    """
     raw = session.get(LAST_CUSTOM_STATE_KEY)
+    remembered = _snapshot_from_last_custom_raw(raw, owner="last_custom_snapshot")
+    live = _snapshot_from_custom(session, owner="last_custom_live")
+    if live is not None and _custom_snapshot_is_substantive(live):
+        if remembered is None or live.source_id == remembered.source_id or live.title == remembered.title:
+            return live
+        if live.chords:
+            return live
+    if remembered is not None:
+        return remembered
+    if live is not None and live.source_id:
+        return live
+    return None
+
+
+def _custom_snapshot_is_substantive(snap: CreativeSourceSnapshot) -> bool:
+    title = str(snap.title or "").strip()
+    if not title or title in {"My Progression", "My progression"}:
+        return bool(snap.chords)
+    return True
+
+
+def _snapshot_from_last_custom_raw(
+    raw: Any, *, owner: str
+) -> CreativeSourceSnapshot | None:
     if not isinstance(raw, dict):
         return None
+    active = raw.get("active") if isinstance(raw.get("active"), dict) else None
+    if active is not None:
+        try:
+            from custom_progression_lab import written_home_key
+            from songs.music_source import custom_pick_key_for
+        except ImportError:
+            written_home_key = None  # type: ignore[assignment]
+            custom_pick_key_for = None  # type: ignore[assignment]
+        try:
+            pick = custom_pick_key_for(active) if custom_pick_key_for else ""
+        except Exception:
+            pick = str(raw.get("pick_key") or "").strip()
+        pick = str(pick or "").strip() or "custom::unknown"
+        try:
+            home = (
+                str(
+                    (written_home_key(active) if written_home_key else None)
+                    or active.get("original_key_center")
+                    or "C"
+                ).strip()
+                or "C"
+            )
+        except Exception:
+            home = str(active.get("original_key_center") or raw.get("custom_home_key") or "C").strip() or "C"
+        title = str(active.get("name") or raw.get("name") or "My Progression").strip() or "My Progression"
+        sections: dict[str, list[str]] = {}
+        raw_secs = active.get("original_sections") or active.get("sections")
+        if isinstance(raw_secs, dict):
+            for name, chs in raw_secs.items():
+                if not isinstance(chs, list):
+                    continue
+                cleaned: list[str] = []
+                for c in chs:
+                    if isinstance(c, dict):
+                        sym = str(c.get("chord") or c.get("symbol") or "").strip()
+                    else:
+                        sym = str(c or "").strip()
+                    if sym:
+                        cleaned.append(sym)
+                if cleaned:
+                    sections[str(name)] = cleaned
+        practice = str(raw.get("display_key") or home).strip() or home
+        return CreativeSourceSnapshot(
+            source_kind="custom",
+            source_id=pick,
+            title=title,
+            practice_key=practice,
+            original_key=home,
+            sections=sections,
+            chords=_flatten_chords(sections),
+            owner=owner,
+        )
     pick = str(raw.get("pick_key") or "").strip()
-    title = str((raw.get("selected_song") or {}).get("title") or raw.get("custom_progression_name") or "").strip()
+    title = str(
+        (raw.get("selected_song") or {}).get("title")
+        or raw.get("custom_progression_name")
+        or raw.get("name")
+        or ""
+    ).strip()
     key = str(raw.get("display_key") or raw.get("custom_home_key") or "C").strip() or "C"
+    if not pick and not title:
+        return None
     return CreativeSourceSnapshot(
         source_kind="custom",
         source_id=pick or "custom::unknown",
         title=title or "My Progression",
         practice_key=key,
         original_key=str(raw.get("custom_home_key") or key).strip() or key,
-        owner="last_custom_snapshot",
+        owner=owner,
     )
+
 
 
 def resolve_sbi_snapshot(session: dict[str, Any]) -> CreativeSourceSnapshot | None:
