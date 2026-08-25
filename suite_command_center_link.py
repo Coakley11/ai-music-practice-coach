@@ -33,8 +33,9 @@ def render_command_center_sidebar_link(
     *,
     label: str = "← Command Center",
     show_divider: bool = True,
+    use_sidebar: bool = True,
 ) -> None:
-    """Top-of-sidebar link back to the suite homepage."""
+    """Command Center homepage link (sidebar top-level or nested in Account & Workspace)."""
     try:
         from suite_workspace import get_active_workspace_id
 
@@ -43,6 +44,7 @@ def render_command_center_sidebar_link(
         url = command_center_url()
     if not url:
         return
-    st.sidebar.link_button(label, url, use_container_width=True)
-    if show_divider:
+    target = st.sidebar if use_sidebar else st
+    target.link_button(label, url, use_container_width=True)
+    if show_divider and use_sidebar:
         st.sidebar.divider()

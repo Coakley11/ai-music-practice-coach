@@ -1773,9 +1773,12 @@ def render_reset_controls(
         _APPLIED_CLOUD_TS_PREFIX,
         _RESTORED_FP_PREFIX,
     ),
+    nested: bool = False,
 ) -> None:
+    """Saved Sessions reset UI — top-level expander, or nested body inside Account & Workspace."""
     pending = bool(st.session_state.get(reset_confirm_session_key(app_id)))
-    with st.sidebar.expander("Saved session", expanded=pending):
+
+    def _body() -> None:
         st.caption("Your last page, filters, and inputs reload automatically.")
         if pending:
             st.warning("This clears saved preferences for this app. Continue?")
@@ -1808,6 +1811,14 @@ def render_reset_controls(
                 on_click=request_reset_confirm_state,
                 kwargs={"session_state": st.session_state, "app_id": app_id},
             )
+
+    if nested:
+        st.markdown("**Saved Sessions**")
+        _body()
+        return
+
+    with st.sidebar.expander("Saved Sessions", expanded=pending):
+        _body()
 
 
 def finalize_suite_reset(

@@ -221,8 +221,9 @@ def _account_ui(st: Any, *, sidebar: bool = False) -> Any:
 
 
 def account_workspace_expander_label(ctx: dict[str, Any]) -> str:
-    label = str(ctx.get("active_workspace_label") or "Workspace").strip()
-    return f"Account & Workspace · {label}"
+    """Compact top-level sidebar label (workspace detail lives inside the expander)."""
+    _ = ctx
+    return "Account & Workspace"
 
 
 def render_global_workspace_badge(st: Any, *, sidebar: bool = True) -> None:
@@ -282,15 +283,75 @@ def _signed_in_email(ctx: dict[str, Any], session_state: dict[str, Any]) -> str:
     return ""
 
 
+def _render_nested_account_utilities(
+    st: Any,
+    *,
+    include_command_center: bool,
+    saved_session_on_reset: Any | None,
+    saved_session_app_id: str,
+    saved_session_label: str,
+    saved_session_help: str,
+) -> None:
+    """Command Center + Saved Sessions inside Account & Workspace (reuse canonical handlers)."""
+    if include_command_center:
+        try:
+            from suite_command_center_link import render_command_center_sidebar_link
+
+            st.markdown("**Command Center**")
+            render_command_center_sidebar_link(
+                st,
+                label="Command Center",
+                show_divider=False,
+                use_sidebar=False,
+            )
+        except ImportError:
+            pass
+
+    if saved_session_on_reset is not None:
+        try:
+            from suite_user_persistence import render_reset_controls
+
+            render_reset_controls(
+                st,
+                saved_session_app_id,
+                on_reset=saved_session_on_reset,
+                label=saved_session_label,
+                help_text=saved_session_help,
+                nested=True,
+            )
+        except ImportError:
+            pass
+
+
 def _render_minimal_account_workspace_body(
     st: Any,
     session_state: dict[str, Any],
     ctx: dict[str, Any],
+    *,
+    include_command_center: bool = False,
+    saved_session_on_reset: Any | None = None,
+    saved_session_app_id: str = "music",
+    saved_session_label: str = "Reset to default",
+    saved_session_help: str = "Clears your saved session for this app only.",
 ) -> None:
-    """Normal mode — email + logout only (must run inside expander context using st, not st.sidebar)."""
+    """Normal mode body inside Account & Workspace expander (uses st, not st.sidebar)."""
+    ws_label = str(ctx.get("active_workspace_label") or "Workspace").strip()
+    st.caption(f"Active workspace: **{ws_label}**")
     email = _signed_in_email(ctx, session_state)
     if email:
         st.markdown(f"Signed in as **{email}**")
+    elif not email:
+        st.caption("Shared suite profile (no individual sign-in on this deploy).")
+
+    _render_nested_account_utilities(
+        st,
+        include_command_center=include_command_center,
+        saved_session_on_reset=saved_session_on_reset,
+        saved_session_app_id=saved_session_app_id,
+        saved_session_label=saved_session_label,
+        saved_session_help=saved_session_help,
+    )
+
     try:
         from suite_auth import is_auth_enabled, is_authenticated, logout
 
@@ -298,11 +359,8 @@ def _render_minimal_account_workspace_body(
             if st.button("Log out", key="suite_account_workspace_logout_btn", use_container_width=True):
                 logout(session_state, st=st)
                 st.rerun()
-            return
     except ImportError:
         pass
-    if not email:
-        st.caption("Shared suite profile (no individual sign-in on this deploy).")
 
 
 def render_user_account_access(st: Any, *, for_homepage: bool = False, sidebar: bool = False) -> None:
@@ -316,6 +374,11 @@ def render_account_workspace_access(
     for_homepage: bool = False,
     sidebar: bool = False,
     account_panel_expanded: bool = False,
+    include_command_center: bool = False,
+    saved_session_on_reset: Any | None = None,
+    saved_session_app_id: str = "music",
+    saved_session_label: str = "Reset to default",
+    saved_session_help: str = "Clears your saved session for this app only.",
 ) -> None:
     """Collapsed Account & Workspace tab in normal mode; full diagnostics in dev mode."""
     init_suite_workspace(st)
@@ -343,18 +406,42 @@ def render_account_workspace_access(
         render_auth_panel(st, expanded=True)
         return
 
+    expand = bool(account_panel_expanded)
+    if saved_session_on_reset is not None:
+        try:
+            from suite_user_persistence import reset_confirm_session_key
+
+            if st.session_state.get(reset_confirm_session_key(saved_session_app_id)):
+                expand = True
+        except ImportError:
+            pass
+
+    utility_kwargs = dict(
+        include_command_center=include_command_center,
+        saved_session_on_reset=saved_session_on_reset,
+        saved_session_app_id=saved_session_app_id,
+        saved_session_label=saved_session_label,
+        saved_session_help=saved_session_help,
+    )
+
     if dev_mode:
         render_account_settings_panel(
             st,
-            expanded=account_panel_expanded or dev_mode,
+            expanded=expand or dev_mode,
             show_title=True,
             sidebar=sidebar,
+            **utility_kwargs,
         )
         return
 
     header = account_workspace_expander_label(ctx)
-    with ui.expander(header, expanded=False, key="suite_account_workspace_expander"):
-        _render_minimal_account_workspace_body(st, st.session_state, ctx)
+    with ui.expander(header, expanded=expand, key="suite_account_workspace_expander"):
+        _render_minimal_account_workspace_body(
+            st,
+            st.session_state,
+            ctx,
+            **utility_kwargs,
+        )
 
 
 def render_account_settings_panel(
@@ -363,6 +450,11 @@ def render_account_settings_panel(
     expanded: bool = False,
     show_title: bool = True,
     sidebar: bool = False,
+    include_command_center: bool = False,
+    saved_session_on_reset: Any | None = None,
+    saved_session_app_id: str = "music",
+    saved_session_label: str = "Reset to default",
+    saved_session_help: str = "Clears your saved session for this app only.",
 ) -> None:
     """User-facing Account Settings — identity, workspace, namespace diagnostics."""
     init_suite_workspace(st)
@@ -370,13 +462,42 @@ def render_account_settings_panel(
     issues = detect_workspace_namespace_issues(st=st)
     ui = _account_ui(st, sidebar=sidebar)
 
-    title = "Account & workspace"
+    title = "Account & Workspace"
     if show_title:
-        with ui.expander(title, expanded=expanded):
+        with ui.expander(title, expanded=expanded, key="suite_account_workspace_dev_expander"):
             _render_account_settings_body(st, ctx, issues)
+            _render_nested_account_utilities(
+                st,
+                include_command_center=include_command_center,
+                saved_session_on_reset=saved_session_on_reset,
+                saved_session_app_id=saved_session_app_id,
+                saved_session_label=saved_session_label,
+                saved_session_help=saved_session_help,
+            )
+            try:
+                from suite_auth import is_auth_enabled, is_authenticated, logout
+
+                if is_auth_enabled() and is_authenticated(st.session_state):
+                    if st.button(
+                        "Log out",
+                        key="suite_account_workspace_logout_btn",
+                        use_container_width=True,
+                    ):
+                        logout(st.session_state, st=st)
+                        st.rerun()
+            except ImportError:
+                pass
     else:
         ui.markdown(f"### {title}")
         _render_account_settings_body(st, ctx, issues)
+        _render_nested_account_utilities(
+            st,
+            include_command_center=include_command_center,
+            saved_session_on_reset=saved_session_on_reset,
+            saved_session_app_id=saved_session_app_id,
+            saved_session_label=saved_session_label,
+            saved_session_help=saved_session_help,
+        )
 
 
 def _render_account_settings_body(st: Any, ctx: dict[str, Any], issues: list[dict[str, str]]) -> None:

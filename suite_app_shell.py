@@ -7,7 +7,7 @@ Call near the top of each app's sidebar (after ``set_page_config`` / workspace i
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 __all__ = (
     "apply_suite_auth_gate",
@@ -53,8 +53,13 @@ def render_suite_sidebar_account_shell(
     account_panel_expanded: bool = False,
     command_center_divider: bool = True,
     top_divider: bool = False,
+    nest_account_utilities: bool = True,
+    saved_session_on_reset: Callable[[Any], None] | None = None,
+    saved_session_app_id: str = "music",
+    saved_session_label: str = "Reset to default",
+    saved_session_help: str = "Clears your saved session for this app only.",
 ) -> None:
-    """Render workspace badge, optional account panel, and Command Center link."""
+    """Render compact Account & Workspace (optionally nesting Command Center + Saved Sessions)."""
     try:
         from suite_workspace import bootstrap_suite_workspace
 
@@ -73,20 +78,26 @@ def render_suite_sidebar_account_shell(
     except ImportError:
         pass
 
+    nest = bool(nest_account_utilities)
     try:
         from suite_account_settings import render_account_workspace_access
-        from suite_workspace import can_show_developer_tools
 
         if show_account_panel:
             render_account_workspace_access(
                 st,
                 sidebar=True,
                 account_panel_expanded=account_panel_expanded,
+                include_command_center=bool(show_command_center_link and nest),
+                saved_session_on_reset=saved_session_on_reset if nest else None,
+                saved_session_app_id=saved_session_app_id,
+                saved_session_label=saved_session_label,
+                saved_session_help=saved_session_help,
             )
     except ImportError:
         st.sidebar.caption("Account settings module unavailable on this deploy.")
 
-    if show_command_center_link:
+    # Legacy top-level Command Center only when nesting is disabled.
+    if show_command_center_link and not nest:
         try:
             from suite_command_center_link import render_command_center_sidebar_link
 
@@ -96,7 +107,7 @@ def render_suite_sidebar_account_shell(
             )
         except ImportError:
             pass
-    elif command_center_divider:
+    elif command_center_divider and not nest:
         st.sidebar.divider()
 
     try:

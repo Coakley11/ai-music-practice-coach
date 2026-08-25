@@ -193,7 +193,25 @@ except Exception:
 try:
     from suite_app_shell import render_suite_sidebar_account_shell
 
-    render_suite_sidebar_account_shell(st, command_center_divider=False)
+    try:
+        from music_persistent_state import default_reset_music_session
+
+        _saved_session_on_reset = default_reset_music_session
+    except ImportError:
+        _saved_session_on_reset = None
+
+    render_suite_sidebar_account_shell(
+        st,
+        command_center_divider=False,
+        nest_account_utilities=True,
+        saved_session_on_reset=_saved_session_on_reset,
+        saved_session_app_id="music",
+        saved_session_label="Reset to default",
+        saved_session_help=(
+            "Clears session, local saved state, and cloud session for this app. "
+            "Catalog data and user chart overrides are not deleted."
+        ),
+    )
 except Exception:
     pass
 
@@ -9883,23 +9901,6 @@ if not st.session_state.get("_music_sidebar_suite_top_css"):
         unsafe_allow_html=True,
     )
 
-try:
-    from music_persistent_state import default_reset_music_session
-    from suite_user_persistence import render_reset_controls
-
-    render_reset_controls(
-        st,
-        "music",
-        on_reset=default_reset_music_session,
-        label="Reset to default",
-        help_text=(
-            "Clears session, local saved state, and cloud session for this app. "
-            "Catalog data and user chart overrides are not deleted."
-        ),
-    )
-except Exception:
-    pass
-
 if pp.show_tutorial_entry(st) and tutorial_entry_visible(st.session_state):
     _brand_t1, _brand_t2 = st.columns([5, 1])
     with _brand_t2:
@@ -9922,7 +9923,7 @@ def _active_song_artist_label() -> str:
     return str((song_data or {}).get("artist") or "").strip()
 
 
-# SIDEBAR — suite order: Command Center → Saved Session → Active Song → Practice Setup → Pages → Session
+# SIDEBAR — suite order: Account & Workspace → Active Song → Practice Setup → Pages → Session
 
 sidebar_section("Active Song", icon=FEATURE_ICONS["songs"], tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
