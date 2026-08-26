@@ -154,6 +154,49 @@ def invalidate_backing_restore_for_active_source_change(
     # No proven change → do not expire play session or clear restore pointers.
     if not prev or not nxt or prev == nxt:
         return False
+    # Explicit Mission/SBI/Jam Backing visit must survive Practice Key / identity
+    # churn on the same visit. Clearing handoff here is what lets Custom GA
+    # reclaim Mission after a sidebar key write.
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    if handoff in {"mission", "song_improv", "entry_jam"} and not session.get(
+        "_backing_released_specialized_context"
+    ):
+        try:
+            from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+            note_mission_pk_reclaim(
+                session,
+                writer="invalidate_restore:skipped_specialized_handoff",
+                extra={
+                    "reason": str(reason or ""),
+                    "previous_identity": prev,
+                    "new_identity": nxt,
+                    "handoff": handoff,
+                },
+            )
+        except ImportError:
+            pass
+        # Refresh ordinary restore anchor only — keep specialized ctx/handoff.
+        if nxt:
+            session[BACKING_RESTORE_ANCHOR_KEY] = nxt
+        session["_backing_restore_invalidated_reason"] = f"skipped_specialized:{reason}"
+        session["_backing_restore_invalidated_from"] = prev
+        session["_backing_restore_invalidated_to"] = nxt
+        return False
+    try:
+        from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+        note_mission_pk_reclaim(
+            session,
+            writer="invalidate_backing_restore_for_active_source_change",
+            extra={
+                "reason": str(reason or ""),
+                "previous_identity": prev,
+                "new_identity": nxt,
+            },
+        )
+    except ImportError:
+        pass
     try:
         from backing_play_session import expire_backing_play_session
 
@@ -514,6 +557,32 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     snapshot_practice_source_display_key(session)
     transition = peek_key_transition_intent(session)
     preserve_key = _backing_intent_preserves_practice_key(transition) if transition else True
+    # Explicit Mission/SBI/Jam Backing visit outranks Global Active Custom/Catalog.
+    # Practice Key / BPM / style mutations must not rebuild ordinary Custom Backing.
+    try:
+        from backing_context import get_backing_context
+
+        handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        ctx_live = get_backing_context(session)
+        live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
+        if (
+            not session.get("_backing_released_specialized_context")
+            and handoff in {"mission", "song_improv", "entry_jam"}
+            and (live_src == handoff or live_src in {"", handoff})
+        ):
+            try:
+                from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+                note_mission_pk_reclaim(
+                    session,
+                    writer="open_backing_for_practice_source:blocked_by_explicit_handoff",
+                    extra={"handoff": handoff, "live_src": live_src},
+                )
+            except ImportError:
+                pass
+            return ctx_live
+    except ImportError:
+        pass
     try:
         from music_source_ownership import (
             activate_catalog_ownership,
@@ -548,6 +617,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             BACKING_PREF_CUSTOM,
             apply_backing_context_to_session,
             build_custom_progression_context,
+            get_backing_context,
             restore_regular_song_backing,
             set_backing_context,
             set_backing_source_preference,
@@ -558,11 +628,18 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             is_custom_progression,
         )
 
+        # Never clobber an explicit specialized session via CPL fallthrough when
+        # intended_practice_owner is None (intentional Creative still active).
+        existing = get_backing_context(session)
+        existing_src = str(getattr(existing, "source", "") or "").strip() if existing else ""
+        if existing_src in {"mission", "song_improv", "entry_jam"}:
+            return existing
+
         if cpl_session_is_active(session) or is_custom_progression(session):
             ensure_custom_active_song_identity(session)
             set_backing_source_preference(session, BACKING_PREF_CUSTOM)
             ctx = build_custom_progression_context(session)
-            set_backing_context(session, ctx)
+            set_backing_context(session, ctx, trace_caller="open_backing_for_practice_source:custom_fallthrough")
             apply_backing_context_to_session(session, ctx, st_like=st_like)
             return ctx
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
@@ -1110,8 +1187,15 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
 
         raw = _raw_practice_owner(session)
         if raw == "custom" and src in {"mission", "song_improv", "entry_jam"}:
+            # Explicit Creative handoff outranks Custom Global Active.
+            handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+            if (
+                handoff == src
+                and not session.get("_backing_released_specialized_context")
+            ):
+                pass  # survive — intentional Mission/SBI/Jam under Custom GA
             # Custom SBI is the intentional overlay when bound to custom::
-            if not custom_bound_specialized:
+            elif not custom_bound_specialized:
                 return False
         if session.get("_backing_released_specialized_context") and src in {
             "mission",
@@ -1810,6 +1894,15 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             pass
 
         # Restore intent but session ineligible (song change): initialize for live active source.
+        try:
+            from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+            note_mission_pk_reclaim(
+                session,
+                writer="hydrate:restore_last_miss→release_specialized",
+            )
+        except ImportError:
+            pass
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
         if selected_pick_snapshot:
             live = str(session.get("active_catalog_pick_key") or "").strip()
@@ -1905,6 +1998,13 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 "song_improv",
                 "mission",
             }:
+                # Explicit specialized handoff outranks Custom GA reclaim.
+                handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+                if (
+                    handoff in {"mission", "song_improv", "entry_jam"}
+                    and not session.get("_backing_released_specialized_context")
+                ):
+                    return
                 open_backing_for_practice_source(session, st_like=st_like)
                 return
     except ImportError:

@@ -7,18 +7,23 @@ from app_ui import nav_icon_button_label
 
 def _cpl_active_is_substantive(active: object) -> bool:
     """True when live CPL is a real Custom song, not the empty My Progression shell."""
-    if not isinstance(active, dict):
+    try:
+        from songs.music_source import cpl_active_is_substantive
+
+        return cpl_active_is_substantive(active)
+    except ImportError:
+        if not isinstance(active, dict):
+            return False
+        title = str(active.get("name") or "").strip()
+        if title and title not in {"My Progression", "My progression"}:
+            return True
+        for key in ("original_sections", "sections"):
+            secs = active.get(key)
+            if isinstance(secs, dict):
+                for chs in secs.values():
+                    if isinstance(chs, list) and any(str(c).strip() for c in chs):
+                        return True
         return False
-    title = str(active.get("name") or "").strip()
-    if title and title not in {"My Progression", "My progression"}:
-        return True
-    for key in ("original_sections", "sections"):
-        secs = active.get(key)
-        if isinstance(secs, dict):
-            for chs in secs.values():
-                if isinstance(chs, list) and any(str(c).strip() for c in chs):
-                    return True
-    return False
 
 
 def _pending_chord_key(section: str) -> str:
@@ -170,7 +175,11 @@ def render_custom_progression_lab_page() -> None:
         cpl_draft_written_key,
         cpl_get_pending_chord,
         cpl_on_apply_bars_callback,
+        cpl_on_clear_section_callback,
+        cpl_on_new_song_callback,
         cpl_on_pick_chord_callback,
+        cpl_on_save_library_callback,
+        cpl_on_undo_last_chord_callback,
         cpl_set_pending_chord,
         cpl_save_draft,
         cpl_section_progression_view,
@@ -250,25 +259,26 @@ def render_custom_progression_lab_page() -> None:
         # Restore LAST_CUSTOM identity before minting blank "My Progression / C".
         restored = False
         try:
-            from songs.music_source import LAST_CUSTOM_STATE_KEY, snapshot_last_custom_state
+            from songs.music_source import install_last_custom_into_live_cpl, snapshot_last_custom_state
 
-            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
-            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-                apply_cpl_session_progression(
-                    st.session_state,
-                    dict(snap["active"]),
-                    reset_display_key=False,
-                )
-                # Force title/Original Key widgets to match restored draft this run.
+            restored = install_last_custom_into_live_cpl(
+                st.session_state, reset_practice_key_to_original=False
+            )
+            if restored and _cpl_active_is_substantive(st.session_state.get(CPL_ACTIVE_KEY)):
                 st.session_state["_cpl_reseed_widgets_from_active"] = True
-                restored = True
             elif CPL_ACTIVE_KEY in st.session_state:
-                # Opportunistic stamp if live draft is somehow skipped as non-substantive.
                 snapshot_last_custom_state(st.session_state)
+                restored = False
         except Exception:
             restored = False
         if not restored and CPL_ACTIVE_KEY not in st.session_state:
             st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
+        elif not restored and not _cpl_active_is_substantive(st.session_state.get(CPL_ACTIVE_KEY)):
+            if CPL_ACTIVE_KEY not in st.session_state:
+                st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
+            # Keep non-substantive only when LAST_CUSTOM absent; mint default if missing.
+            if not isinstance(st.session_state.get(CPL_ACTIVE_KEY), dict):
+                st.session_state[CPL_ACTIVE_KEY] = default_active_progression()
     if CPL_SAVED_KEY not in st.session_state:
         st.session_state[CPL_SAVED_KEY] = {}
 
@@ -280,14 +290,33 @@ def render_custom_progression_lab_page() -> None:
         force_widget_seed = True
     # Substantive draft must own title/Original Key widgets. Stale Streamlit
     # widget values (My Progression / C) must not overwrite LAST_CUSTOM restore.
+    # Do NOT wipe a user Original Key advance (active still C, widget now D) —
+    # that was blocking first-interaction Original Key changes.
     if _cpl_active_is_substantive(active):
         widget_title = str(st.session_state.get("cpl_title_input") or "").strip()
         active_title = str(active.get("name") or "").strip()
         widget_orig = str(st.session_state.get("cpl_original_key") or "").strip()
         active_orig = str(cpl_draft_written_key(active) or "").strip()
-        if (active_title and widget_title and widget_title != active_title) or (
-            active_orig and widget_orig and widget_orig != active_orig
-        ):
+        shell_titles = {"", "My Progression", "My progression"}
+        stale_shell_title = (
+            bool(active_title)
+            and active_title not in shell_titles
+            and widget_title in shell_titles
+        )
+        # LAST_CUSTOM / loaded song at D while widget still default C.
+        stale_shell_orig = (
+            bool(active_orig)
+            and active_orig != "C"
+            and widget_orig == "C"
+            and (stale_shell_title or widget_title in shell_titles or widget_title == active_title)
+        )
+        title_shell_overwrite = (
+            bool(active_title)
+            and active_title not in shell_titles
+            and widget_title in {"My Progression", "My progression"}
+            and widget_title != active_title
+        )
+        if stale_shell_title or stale_shell_orig or title_shell_overwrite:
             reset_cpl_widget_initialization(st.session_state)
             force_widget_seed = True
     active = ensure_cpl_widget_keys_initialized(
@@ -435,17 +464,19 @@ def render_custom_progression_lab_page() -> None:
         _save(_home_sections(), persist=False)
         n1, n2, n3 = st.columns(3)
         with n1:
-            if st.button("Save to library", key="cpl_save_prog", use_container_width=True):
-                save_progression(saved, active["name"], active)
-                st.success(f"Saved **{active['name']}** to your library.")
+            st.button(
+                "Save to library",
+                key="cpl_save_prog",
+                use_container_width=True,
+                on_click=cpl_on_save_library_callback,
+            )
         with n2:
-            if st.button("New song", key="cpl_start_new", use_container_width=True):
-                apply_cpl_session_progression(
-                    st.session_state,
-                    start_new_progression(),
-                    reset_display_key=True,
-                )
-                st.rerun()
+            st.button(
+                "New song",
+                key="cpl_start_new",
+                use_container_width=True,
+                on_click=cpl_on_new_song_callback,
+            )
         with n3:
             if st.button(
                 "Set as Active Song",
@@ -454,7 +485,18 @@ def render_custom_progression_lab_page() -> None:
                 use_container_width=True,
             ):
                 _activate_custom_song()
-
+        _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
+        if _save_flash:
+            if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
+                st.error(str(_save_flash))
+            else:
+                st.success("saved to custom library")
+        _new_flash = st.session_state.pop("_cpl_new_song_flash", False)
+        if _new_flash:
+            if isinstance(_new_flash, str) and str(_new_flash).startswith("error:"):
+                st.error(str(_new_flash))
+            else:
+                st.info("New blank song started — add chords below.")
         with st.expander("Load saved or demo charts", expanded=False):
             saved_names = list_saved_progression_names(saved)
             if not saved_names:
@@ -462,6 +504,12 @@ def render_custom_progression_lab_page() -> None:
             else:
                 load_pick = st.selectbox("Saved songs", saved_names, key="cpl_load_pick")
                 if st.button("Load selected", key="cpl_load_btn", use_container_width=True):
+                    try:
+                        from songs.music_source import clear_cpl_intentional_new_song
+
+                        clear_cpl_intentional_new_song(st.session_state)
+                    except ImportError:
+                        st.session_state.pop("_cpl_skip_last_custom_restore", None)
                     loaded = load_saved_progression(saved, load_pick)
                     apply_cpl_session_progression(
                         st.session_state, loaded, reset_display_key=True
@@ -903,27 +951,21 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("---")
         u1, u2, u3 = st.columns(3)
         with u1:
-            if st.button(
+            st.button(
                 "Undo last chord",
                 key=f"cpl_undo_{edit_section}",
                 use_container_width=True,
                 disabled=not home_entries,
-            ):
-                home_entries.pop()
-                cpl_clear_pending_chord(st.session_state, edit_section)
-                _save(home_sections)
-                st.rerun()
+                on_click=cpl_on_undo_last_chord_callback,
+            )
         with u2:
-            if st.button(
+            st.button(
                 "Clear section",
                 key=f"cpl_clear_{edit_section}",
                 use_container_width=True,
                 disabled=not section_has_chords and not pending_chord,
-            ):
-                home_sections[edit_section] = []
-                cpl_clear_pending_chord(st.session_state, edit_section)
-                _save(home_sections)
-                st.rerun()
+                on_click=cpl_on_clear_section_callback,
+            )
         with u3:
             if st.button(
                 "Finish Song",

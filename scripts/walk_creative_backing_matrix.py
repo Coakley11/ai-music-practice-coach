@@ -343,7 +343,11 @@ def click_button_has(page: Page, pattern: str) -> bool:
                 continue
             el.scroll_into_view_if_needed()
             page.wait_for_timeout(200)
-            el.click(timeout=5000, force=True)
+            # Prefer a real click — force=True often does not register with Streamlit.
+            try:
+                el.click(timeout=5000, force=False)
+            except Exception:
+                el.click(timeout=5000, force=True)
             wait_idle(page, 4000)
             return True
         except Exception:
@@ -358,9 +362,7 @@ def click_button_has(page: Page, pattern: str) -> bool:
           const b = buttons[buttons.length - 1];
           if (!b) return false;
           b.scrollIntoView({block: 'center'});
-          ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((type) => {
-            b.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
-          });
+          b.click();
           return true;
         }""",
         pattern,
@@ -588,9 +590,15 @@ def dump_controls(page: Page, name: str) -> dict:
 
 def set_baseweb_select(page: Page, current_or_label: str, option: str) -> bool:
     try:
-        box = page.locator('[data-testid="stSelectbox"]').filter(
+        # Prefer sidebar-scoped Practice Key — avoid matching page chrome.
+        side = page.locator('section[data-testid="stSidebar"]')
+        box = side.locator('[data-testid="stSelectbox"]').filter(
             has_text=re.compile(current_or_label, re.I)
         )
+        if box.count() == 0:
+            box = page.locator('[data-testid="stSelectbox"]').filter(
+                has_text=re.compile(current_or_label, re.I)
+            )
         if box.count() == 0:
             box = page.locator('[data-baseweb="select"]').filter(
                 has_text=re.compile(current_or_label, re.I)
@@ -611,17 +619,47 @@ def set_baseweb_select(page: Page, current_or_label: str, option: str) -> bool:
         if clickable.count() == 0:
             clickable = target
         clickable.click(timeout=4000)
-        page.wait_for_timeout(700)
-        opt = page.locator('[role="option"]').filter(has_text=re.compile(rf"^{re.escape(option)}$", re.I))
-        if opt.count() == 0:
-            opt = page.get_by_role("option", name=re.compile(option, re.I))
-        if opt.count() == 0:
-            opt = page.get_by_text(option, exact=True)
-        if not click_visible(opt):
-            return False
-        wait_idle(page, 3500)
-        return True
+        page.wait_for_timeout(350)
+        page.keyboard.press("ArrowDown")
+        page.wait_for_timeout(250)
+        # Virtualized menus: page through until the exact option is mounted.
+        opt_re = re.compile(rf"^{re.escape(option)}$", re.I)
+        for _ in range(40):
+            opt = page.locator(
+                '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"]'
+            ).filter(has_text=opt_re)
+            if opt.count() == 0:
+                opt = page.locator('[role="option"]').filter(has_text=opt_re)
+            if opt.count():
+                el = opt.first
+                el.scroll_into_view_if_needed()
+                el.click(timeout=4000, force=False)
+                wait_idle(page, 3500)
+                return True
+            page.keyboard.press("PageDown")
+            page.wait_for_timeout(120)
+        # Typeahead filter fallback (some Streamlit builds filter the mounted set).
+        try:
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.keyboard.type(str(option), delay=35)
+            page.wait_for_timeout(600)
+            opt = page.locator(
+                '[role="listbox"] [role="option"], [role="option"]'
+            ).filter(has_text=opt_re)
+            if opt.count():
+                opt.first.click(timeout=4000, force=False)
+                wait_idle(page, 3500)
+                return True
+        except Exception:
+            pass
+        page.keyboard.press("Escape")
+        return False
     except Exception:
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
         return False
 
 

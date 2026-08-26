@@ -124,29 +124,71 @@ def sync_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
             ensure_original_structure,
             written_home_key,
         )
-        from songs.music_source import custom_pick_key_for
+        from songs.music_source import (
+            cpl_active_is_substantive,
+            custom_pick_key_for,
+            install_last_custom_into_live_cpl,
+        )
     except ImportError:
         return None
 
-    active = ensure_original_structure(
-        session.get(CPL_ACTIVE_KEY) or default_active_progression()
-    )
+    # Prefer LAST_CUSTOM over empty My Progression shell before syncing the bucket.
+    try:
+        install_last_custom_into_live_cpl(session, reset_practice_key_to_original=False)
+    except Exception:
+        pass
+
+    live = session.get(CPL_ACTIVE_KEY)
+    if not cpl_active_is_substantive(live):
+        active = ensure_original_structure(live or default_active_progression())
+    else:
+        active = ensure_original_structure(live)
     pick = custom_pick_key_for(active)
     home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
     try:
         from songs.practice_key_state import get_practice_concert_key
 
-        display_key = get_practice_concert_key(session, pick, default=home) or home
+        display_key = get_practice_concert_key(session, pick, default="") or ""
+        if not display_key:
+            display_key = home
+        else:
+            # Drop Shape Dm bleed onto Trial D-major sticky.
+            try:
+                from music_theory import split_key_center
+
+                _ht, hm = split_key_center(home)
+                _dt, dm = split_key_center(display_key)
+                if _ht and _ht == _dt and hm != dm:
+                    display_key = home
+            except Exception:
+                pass
     except ImportError:
         display_key = home
     sections_raw = active.get("original_sections")
     if not isinstance(sections_raw, dict) or not sections_raw:
         sections_raw = active.get("sections") if isinstance(active.get("sections"), dict) else {}
-    sections = {
-        str(sec): [str(c) for c in chords if str(c).strip()]
-        for sec, chords in sections_raw.items()
-        if isinstance(chords, list)
-    }
+    # CPL stores [{chord, bars}, ...] — expand to plain symbols for SBI/Creative display.
+    try:
+        from custom_progression_lab import sections_to_chord_lists
+
+        sections = sections_to_chord_lists(sections_raw)
+    except Exception:
+        sections = {}
+        for sec, chords in (sections_raw or {}).items():
+            if not isinstance(chords, list):
+                continue
+            out: list[str] = []
+            for c in chords:
+                if isinstance(c, dict):
+                    sym = str(c.get("chord") or "").strip()
+                    bars = max(1, int(c.get("bars") or 1) or 1)
+                    if sym:
+                        out.extend([sym] * bars)
+                else:
+                    sym = str(c or "").strip()
+                    if sym and not sym.startswith("{"):
+                        out.append(sym)
+            sections[str(sec)] = out
     blob = {
         "pick_key": pick,
         "title": str(active.get("name") or "Custom progression").strip(),
@@ -347,14 +389,284 @@ def resolve_improv_song_source_for_handoff(session: dict[str, Any]) -> str:
     return get_sbi_preview_source(session)
 
 
+def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
+    """True when Creative/Backing sidebar Practice Key must use Custom sticky/home.
+
+    Covers SBI → Custom progression preview and Custom-bound song_improv /
+    custom_progression Backing — never Global Active catalog (Shape Dm).
+    On Backing, only the active backing context may claim Custom — leftover
+  SBI preview flags must not steal Mission Backing PK after reboot.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        ctx = None
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    bound = str(
+        getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+    ).strip() if ctx is not None else ""
+    if page == "backing":
+        if src == "custom_progression":
+            return True
+        if src == "song_improv" and bound.startswith("custom::"):
+            return True
+        return False
+    # Creative: SBI tab on Custom progression preview.
+    if get_sbi_preview_source(session) == "Custom progression":
+        return True
+    if src == "custom_progression":
+        return True
+    if src == "song_improv" and bound.startswith("custom::"):
+        return True
+    return False
+
+
+def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
+    """Creative SBI → Custom progression: sidebar PK uses Trial/Custom sticky + home mode.
+
+    Seals the current catalog live Practice Key into the catalog sticky first so
+    Shape Dm survives, then projects Custom sticky/home into ``display_key`` for
+    the sidebar widget without writing the Custom token onto the catalog pick.
+    """
+    from songs.key_state import PENDING_DISPLAY_KEY, display_key_options
+
+    # Seal catalog sticky once on enter. Never overwrite an existing catalog sticky
+    # with Custom live (Eb → Shape D#m bleed when the overlay flag flickers).
+    # Remember the sealed catalog token so leave can restore it even if live Custom
+    # PK (E) briefly poisoned the catalog sticky via Streamlit widget remount.
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_practice_source_pick,
+            resolve_settings_pick_for_write,
+            set_practice_concert_key,
+        )
+
+        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if not session.get("_sbi_custom_sidebar_overlay"):
+            if catalog_pick and not catalog_pick.startswith("custom::"):
+                existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
+                if not existing and live:
+                    set_practice_concert_key(
+                        session,
+                        live,
+                        pick_key=catalog_pick,
+                        allow_catalog_during_sbi_custom=True,
+                    )
+                    existing = live
+                if existing:
+                    session["_sbi_custom_sealed_catalog_pk"] = existing
+                    session["_sbi_custom_sealed_catalog_pick"] = catalog_pick
+            session["_sbi_custom_sidebar_overlay"] = True
+    except ImportError:
+        catalog_pick = ""
+
+    custom = sync_custom_session(session) or get_custom_session(session) or {}
+    # Always prefer Original Key as the Custom home (never contaminated display_key).
+    home = str(custom.get("original_key") or "C").strip() or "C"
+    pick = str(custom.get("pick_key") or "").strip()
+    sticky = ""
+    catalog_sticky = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        if catalog_pick and not catalog_pick.startswith("custom::"):
+            catalog_sticky = str(get_practice_concert_key(session, catalog_pick) or "").strip()
+        if pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+        if not sticky:
+            from songs.practice_key_state import resolve_settings_pick_for_write
+
+            write_pick = str(resolve_settings_pick_for_write(session) or "").strip()
+            if write_pick.startswith("custom::"):
+                pick = write_pick
+                sticky = str(get_practice_concert_key(session, write_pick, default="") or "").strip()
+    except ImportError:
+        sticky = ""
+    selected = sticky or home
+    # Reject Shape/catalog sticky bleed onto Custom (Dm on Trial D major).
+    # Same tonic with different mode, or exact equality with catalog sticky while
+    # home differs, means contamination — fall back to Custom Original Key.
+    try:
+        from music_theory import split_key_center
+
+        _h_tonic, home_mode = split_key_center(home)
+        _s_tonic, sticky_mode = split_key_center(sticky) if sticky else ("", "")
+        contaminated = False
+        if sticky and catalog_sticky and sticky == catalog_sticky and sticky != home:
+            contaminated = True
+        elif sticky and home and sticky != home and _h_tonic and _h_tonic == _s_tonic and home_mode != sticky_mode:
+            contaminated = True
+        if contaminated:
+            selected = home
+            if pick.startswith("custom::"):
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(session, home, pick_key=pick)
+                except Exception:
+                    pass
+    except Exception:
+        if sticky and catalog_sticky and sticky == catalog_sticky and sticky != home:
+            selected = home
+    options = list(display_key_options(home) or [home])
+    if selected not in options:
+        options = [selected] + [k for k in options if k != selected]
+    session.pop(PENDING_DISPLAY_KEY, None)
+    session["display_key"] = selected
+    session["concert_key"] = selected
+    session[PENDING_DISPLAY_KEY] = selected
+    try:
+        from songs.key_state import _apply_display_key_before_widget
+
+        _apply_display_key_before_widget(st, selected, source="sbi_custom_sidebar_overlay")
+    except Exception:
+        pass
+    return options
+
+
+def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> str:
+    """After Custom SBI leave, keep sealed catalog PK in the sidebar widget.
+
+    Streamlit may remount the Practice Key widget with leftover Custom live (E);
+    refuse that as the catalog display while the isolation seal is active.
+    """
+    sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    # Only heal on non-Custom surfaces (Songs / Practice / picker). Do not use
+    # custom_sbi_owns_sidebar_practice_key here — SBI preview can remain
+    # "Custom progression" after leave, which would skip the heal forever.
+    if not sealed or not sealed_pick or page in {"creative", "backing", "custom"}:
+        return ""
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    custom_tokens: set[str] = set()
+    store = session.get("practice_key_by_source")
+    if isinstance(store, dict):
+        for pk, val in store.items():
+            if str(pk).startswith("custom::"):
+                v = str(val or "").strip()
+                if v:
+                    custom_tokens.add(v)
+    leftover = str(session.get("cpl_last_display_key") or "").strip()
+    if leftover:
+        custom_tokens.add(leftover)
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        custom_pick = ""
+        if isinstance(snap, dict):
+            custom_pick = str(snap.get("pick_key") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict):
+                custom_pick = str(custom_pick_for(active) or custom_pick or "").strip()
+        if custom_pick.startswith("custom::"):
+            tok = str(get_practice_concert_key(session, custom_pick) or "").strip()
+            if tok:
+                custom_tokens.add(tok)
+    except Exception:
+        pass
+    # Force sealed whenever live still equals a Custom sticky token (bleed).
+    if live == sealed or (live and live in custom_tokens):
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(
+                session,
+                sealed,
+                pick_key=sealed_pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+        except Exception:
+            pass
+        session["display_key"] = sealed
+        session["concert_key"] = sealed
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+            session[PENDING_DISPLAY_KEY] = sealed
+            _apply_display_key_before_widget(st, sealed, source="heal_sealed_catalog_sidebar")
+        except Exception:
+            pass
+        session["display_key"] = sealed
+        session["concert_key"] = sealed
+        return sealed
+    return ""
+
+
+def clear_sbi_custom_sidebar_overlay_if_needed(session: dict[str, Any]) -> None:
+    """Restore catalog sticky into live PK when leaving SBI Custom preview."""
+    if not session.get("_sbi_custom_sidebar_overlay") and not session.get(
+        "_custom_page_sidebar_overlay"
+    ):
+        return
+    page = str(session.get("studio_page") or "").strip().lower()
+    if session.get("_sbi_custom_sidebar_overlay"):
+        # Keep overlay on Creative *and* Custom SBI Backing — clearing on open
+        # restored Shape Dm into the sidebar while progression stayed at Trial D.
+        if page in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(session):
+            return
+        session.pop("_sbi_custom_sidebar_overlay", None)
+    if session.get("_custom_page_sidebar_overlay"):
+        if page == "custom":
+            return
+        if page == "backing" and custom_sbi_owns_sidebar_practice_key(session):
+            return
+        session.pop("_custom_page_sidebar_overlay", None)
+    sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_practice_source_pick,
+            set_practice_concert_key,
+        )
+
+        pick = sealed_pick or str(resolve_practice_source_pick(session) or "").strip()
+        sticky = sealed
+        if not sticky and pick and not pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        if pick and not pick.startswith("custom::") and sticky:
+            # Heal catalog sticky if Custom live (E) poisoned it during leave.
+            # Keep the seal so a later Streamlit remount write of Custom E is refused.
+            set_practice_concert_key(
+                session,
+                sticky,
+                pick_key=pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+            session["display_key"] = sticky
+            session["concert_key"] = sticky
+            try:
+                from songs.key_state import PENDING_DISPLAY_KEY
+
+                session[PENDING_DISPLAY_KEY] = sticky
+            except ImportError:
+                session["_pending_display_key"] = sticky
+    except ImportError:
+        pass
+
+
 __all__ = [
     "CATALOG_SESSION_KEY",
     "CUSTOM_SESSION_KEY",
     "IMPROV_SONG_SOURCES",
     "SBI_PREVIEW_SOURCE_KEY",
+    "clear_sbi_custom_sidebar_overlay_if_needed",
+    "custom_sbi_owns_sidebar_practice_key",
     "get_catalog_session",
     "get_custom_session",
     "get_sbi_preview_source",
+    "heal_sealed_catalog_sidebar_if_needed",
+    "prepare_sbi_custom_sidebar_display_key",
     "resolve_improv_song_source_for_handoff",
     "resolve_sbi_preview",
     "set_sbi_preview_source",

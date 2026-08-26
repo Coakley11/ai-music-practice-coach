@@ -86,6 +86,116 @@ class TestH5H9OwnershipTransitions(unittest.TestCase):
         )
         self.assertTrue(ctx_is_stale_creative_for_practice(session, ctx))
 
+    def test_explicit_mission_handoff_not_stale_under_custom_ga(self) -> None:
+        """Explicit Mission Open Backing must outrank Custom Global Active."""
+        from backing_context import BackingContext, ctx_is_stale_creative_for_practice
+        from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CUSTOM
+
+        session = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+            "_backing_explicit_handoff_source": "mission",
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="custom::trial-1",
+            song_title="Trial Song",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            chart_display_key="D",
+            bpm=100,
+            style="",
+            groove="",
+            section="Verse",
+            sections=["Verse"],
+            scope="Full song",
+            loops=2,
+            progression=["Em", "Em", "D", "D"],
+            progression_label="Mission",
+            section_labels=["Verse"],
+            loop=True,
+            entry_mode="Song-Based Improvisation",
+            mode_label="Mission",
+            bound_pick_key="custom::trial-1",
+            mission_id="chord-tones",
+        )
+        self.assertFalse(ctx_is_stale_creative_for_practice(session, ctx))
+
+    def test_mission_handoff_blocks_practice_source_reclaim_on_pk(self) -> None:
+        """PK / practice-source open must not rebuild Custom over explicit Mission."""
+        from backing_context import BackingContext, get_backing_context, set_backing_context
+        from backing_source_navigation import (
+            invalidate_backing_restore_for_active_source_change,
+            open_backing_for_practice_source,
+        )
+        from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CUSTOM
+
+        session = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            "studio_page": "backing",
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+            "_backing_explicit_handoff_source": "mission",
+            "cpl_active": {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "sections": {"Intro": ["Em", "Em", "D", "D"]},
+            },
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission Backing Jam",
+            active_song_id="custom::trial-1",
+            song_title="Trial Song",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            chart_display_key="D",
+            bpm=100,
+            style="",
+            groove="",
+            section="Intro",
+            sections=["Intro"],
+            scope="Mission chord",
+            loops=2,
+            progression=["Em"],
+            progression_label="Intro · Em",
+            section_labels=["Intro"],
+            loop=True,
+            bound_pick_key="custom::trial-1",
+            custom_revision_id="trial-1",
+            mission_id="chord-tones",
+        )
+        set_backing_context(session, ctx)
+        out = open_backing_for_practice_source(session)
+        self.assertIsNotNone(out)
+        self.assertEqual(getattr(out, "source", None), "mission")
+        self.assertEqual(getattr(get_backing_context(session), "source", None), "mission")
+
+        cleared = invalidate_backing_restore_for_active_source_change(
+            session,
+            previous_identity="cpl::custom::trial-1",
+            new_identity="cpl::trial-1",
+            reason="pk_identity_churn",
+        )
+        self.assertFalse(cleared)
+        self.assertEqual(session.get("_backing_explicit_handoff_source"), "mission")
+        self.assertFalse(bool(session.get("_backing_released_specialized_context")))
+        self.assertEqual(getattr(get_backing_context(session), "source", None), "mission")
+
+        # Identity force_reset under Custom GA must not reclaim Mission.
+        from backing_context import reset_backing_on_active_song_change
+
+        out2 = reset_backing_on_active_song_change(
+            session, new_pick_key="custom::trial-1", practice_concert_key="Cm"
+        )
+        self.assertEqual(getattr(out2, "source", None), "mission")
+        self.assertEqual(getattr(get_backing_context(session), "source", None), "mission")
+
     def test_shape_original_key_ignores_polluted_selected_c(self) -> None:
         from songs.music_source import _catalog_original_key_for_session
 

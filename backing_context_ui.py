@@ -313,6 +313,30 @@ def render_backing_creative_context_card(
     default_style = str(ctx.style or ctx.groove or "").strip()
     default_meter = str(ctx.meter or "4/4").strip() or "4/4"
     concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")
+    if str(getattr(ctx, "source", "") or "") == "mission":
+        # Mission visit: live sidebar / mission widget outranks stale resolver D.
+        live_sidebar = str(session.get("display_key") or "").strip()
+        mission_widget = ""
+        for _k, _v in list(session.items()):
+            if str(_k).startswith("display_key_mission_backing_") and str(_v or "").strip():
+                mission_widget = str(_v).strip()
+                break
+        preferred = mission_widget or live_sidebar
+        if preferred:
+            concert_raw = preferred
+        try:
+            from pathlib import Path
+
+            Path(__file__).resolve().parent.joinpath(
+                "scripts/evidence-creative-backing/_mission_pk_card_diag.txt"
+            ).write_text(
+                f"practice_key={practice_key!r} state_pk={getattr(state,'practice_concert_key',None)!r} "
+                f"ctx_ck={getattr(ctx,'concert_key',None)!r} display={session.get('display_key')!r} "
+                f"mission_widget={mission_widget!r} concert_raw={concert_raw!r}\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
     try:
         from music_theory import format_key_label_from_parts, split_key_center
 

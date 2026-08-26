@@ -269,6 +269,22 @@ def set_backing_context(
         if isinstance(prev_blob, dict)
         else ""
     )
+    try:
+        prev_src = str(prev_blob.get("source") or "").strip() if isinstance(prev_blob, dict) else ""
+        new_src = str(getattr(ctx, "source", "") or "").strip()
+        if prev_src == "mission" and new_src and new_src != "mission":
+            from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+            note_mission_pk_reclaim(
+                session,
+                writer="set_backing_context:mission→other",
+                extra={
+                    "new_source": new_src,
+                    "trace_caller": str(trace_caller or ""),
+                },
+            )
+    except Exception:
+        pass
     explicit_route_arg_present = creative_return_route is not _CREATIVE_RETURN_ROUTE_ARG_UNSET
     payload = refresh_backing_context_timestamps(ctx).to_dict()
     preservation_reason = "no_previous_route"
@@ -1973,6 +1989,57 @@ def reset_backing_on_active_song_change(
     practice_concert_key: str = "",
 ) -> BackingContext:
     """Active song changed: catalog/custom regular backing owns studio; preserve creative_session."""
+    # Explicit Mission/SBI/Jam Backing visit must survive sticky/identity restore and
+    # Practice Key mutation. Workspace restore under Custom GA must not reclaim.
+    # Do not require studio_page==backing — post-nav restore often runs before page
+    # widgets hydrate, and that is exactly when Custom reclaim was winning.
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    if handoff in {"mission", "song_improv", "entry_jam"} and not session.get(
+        "_backing_released_specialized_context"
+    ):
+        existing = get_backing_context(session)
+        if existing is not None and str(getattr(existing, "source", "") or "") == handoff:
+            try:
+                from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+                note_mission_pk_reclaim(
+                    session,
+                    writer="reset_backing_on_active_song_change:skipped_specialized",
+                    extra={"handoff": handoff, "new_pick_key": str(new_pick_key or "")},
+                )
+            except ImportError:
+                pass
+            return existing
+        # Ctx briefly cleared during restore — reopen specialized, never Custom.
+        try:
+            from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+            note_mission_pk_reclaim(
+                session,
+                writer="reset_backing_on_active_song_change:reopen_specialized",
+                extra={"handoff": handoff, "had_ctx": existing is not None},
+            )
+        except ImportError:
+            pass
+        try:
+            from music_source_ownership import (
+                activate_entry_jam_ownership,
+                activate_mission_ownership,
+                activate_sbi_ownership,
+            )
+
+            if handoff == "mission":
+                reopened = activate_mission_ownership(session)
+            elif handoff == "song_improv":
+                reopened = activate_sbi_ownership(session)
+            else:
+                reopened = activate_entry_jam_ownership(session)
+            if reopened is not None:
+                return reopened
+        except ImportError:
+            pass
+        if existing is not None:
+            return existing
     _release_creative_backing_ownership(session)
     try:
         from songs.key_state import PENDING_DISPLAY_KEY
@@ -2578,18 +2645,44 @@ def sections_dict_from_backing_context(
             ).strip() or "C"
     practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
-        # sync_song_improv_sections_to_practice_key already returns Practice-Key pitch.
-        # Never retranspose again using sealed ctx.key (catalog original) — that yields
-        # Dm→Fm when Practice is Dm and original was Bm.
+        # Custom SBI must use CPL / LAST_CUSTOM sections — never catalog Shape charts
+        # via sync_song_improv_sections_to_practice_key (screenshot My Progression / Shape bleed).
+        use_custom_sbi = False
         try:
-            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+            from songs.practice_key_state import sbi_uses_custom_progression_preview
 
-            sections = sync_song_improv_sections_to_practice_key(session) or _song_improv_sections_dict(session)
+            use_custom_sbi = bool(
+                sbi_uses_custom_progression_preview(session)
+                or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
+                or getattr(ctx, "custom_revision_id", None)
+            )
         except ImportError:
-            sections = _song_improv_sections_dict(session)
-        if not sections and ctx.progression:
-            label = str(ctx.song_title or ctx.progression_label or "Song").strip() or "Song"
-            sections = {label: list(ctx.progression)}
+            use_custom_sbi = bool(
+                str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
+                or getattr(ctx, "custom_revision_id", None)
+            )
+        if use_custom_sbi:
+            sections, _ = _custom_progression_sections_at_concert_key(
+                session, concert_key=practice_key
+            )
+            if not sections and ctx.progression:
+                label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
+                sections = {label: list(ctx.progression)}
+        else:
+            # sync_song_improv_sections_to_practice_key already returns Practice-Key pitch.
+            # Never retranspose again using sealed ctx.key (catalog original) — that yields
+            # Dm→Fm when Practice is Dm and original was Bm.
+            try:
+                from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+                sections = sync_song_improv_sections_to_practice_key(session) or _song_improv_sections_dict(
+                    session
+                )
+            except ImportError:
+                sections = _song_improv_sections_dict(session)
+            if not sections and ctx.progression:
+                label = str(ctx.song_title or ctx.progression_label or "Song").strip() or "Song"
+                sections = {label: list(ctx.progression)}
     elif ctx.source == "custom_progression":
         sections, _ = _custom_progression_sections_at_concert_key(session, concert_key=practice_key)
         if not sections and ctx.progression:
@@ -3370,6 +3463,15 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
         return False
     src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
     specialized = {"mission", "song_improv", "entry_jam"}
+    # Explicit Creative → Backing handoff outranks Global Active source type.
+    # Custom GA must not reclaim Mission/SBI/Jam that was just opened from Creative.
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    if (
+        handoff in specialized
+        and src == handoff
+        and not session.get("_backing_released_specialized_context")
+    ):
+        return False
     # Use raw practice owner — intentional Creative/Mission must not hide an
     # explicit Songs Catalog/Custom switch (H9: Custom Active + sealed Mission).
     try:
@@ -3387,6 +3489,8 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
                 )
             ):
                 return False
+            # Explicit Mission/Jam under Custom GA already returned False above.
+            # Leftover sealed Mission without handoff remains stale (H9).
             return ctx is None or src != "custom_progression"
         if raw == "catalog":
             # Catalog Global Active still allows intentional Mission/SBI/Jam overlay
@@ -3397,29 +3501,8 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
                 return False
             # No specialized overlay — catalog practice should own Backing.
             return ctx is None
-    except ImportError:
-        pass
-    try:
-        from music_source_ownership import intended_practice_owner
-
-        practice = intended_practice_owner(session)
-        if practice is None:
-            return False
-        if practice == "catalog":
-            if src in specialized and not session.get("_backing_released_specialized_context"):
-                return False
-            return ctx is None or src != "regular_song"
-        if practice == "custom":
-            if (
-                src == "song_improv"
-                and not session.get("_backing_released_specialized_context")
-                and (
-                    bool(getattr(ctx, "custom_revision_id", None))
-                    or str(getattr(ctx, "bound_pick_key", "") or "").lower().startswith("custom")
-                )
-            ):
-                return False
-            return ctx is None or src != "custom_progression"
+        # raw is None / unknown — do not call intended_practice_owner here.
+        # That helper calls intentional_creative_backing_active → this function (re-entry).
     except ImportError:
         pass
     try:
@@ -3452,6 +3535,12 @@ def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingCont
 
 def open_live_practice_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Rebuild backing_context from the live catalog/custom practice source."""
+    try:
+        from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+        note_mission_pk_reclaim(session, writer="open_live_practice_backing")
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import open_backing_for_practice_source
 
@@ -3840,6 +3929,12 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
 
 def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/catalog override and restore active custom progression backing."""
+    try:
+        from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+        note_mission_pk_reclaim(session, writer="restore_custom_song_backing")
+    except ImportError:
+        pass
     clear_backing_context(session)
     _release_creative_backing_ownership(session)
     try:
@@ -4065,6 +4160,15 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
         if not intentional_creative_backing_active(session):
+            try:
+                from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+                note_mission_pk_reclaim(
+                    session,
+                    writer="reconcile_backing_page:not_intentional",
+                )
+            except ImportError:
+                pass
             reconcile_source_ownership(session, st_like=st_like)
     except ImportError:
         pass
@@ -4091,6 +4195,16 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         from backing_context import ctx_is_stale_creative_for_practice, open_live_practice_backing
 
         if ctx_is_stale_creative_for_practice(session, ctx):
+            try:
+                from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+                note_mission_pk_reclaim(
+                    session,
+                    writer="reconcile_backing_page:stale_creative",
+                    extra={"stale_src": str(getattr(ctx, "source", "") or "")},
+                )
+            except ImportError:
+                pass
             open_live_practice_backing(session, st_like=st_like)
             ctx = get_backing_context(session)
             pref = get_backing_source_preference(session)

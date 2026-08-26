@@ -36,6 +36,183 @@ class TestSbiCustomPracticeKeyOwner(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(session, shape), "Dbm")
         self.assertEqual(get_practice_concert_key(session, write_pick), "Eb")
 
+    def test_songs_page_sidebar_pk_persists_catalog_sticky(self) -> None:
+        """Songs (non-Creative) Practice Key change must stick on the catalog pick."""
+        from creative_key_sync import sync_sidebar_creative_concert_key
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        session = {
+            "studio_page": "songs",
+            "display_key": "Dm",
+            "concert_key": "Bm",
+            "active_catalog_pick_key": shape,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape},
+            "practice_key_by_source": {shape: "Bm"},
+            "improv_intelligence_tab": "",
+            "improv_entry_mode": "",
+        }
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+        self.assertEqual(session.get("concert_key"), "Dm")
+
+    def test_reconcile_rejects_custom_live_bleed_onto_catalog(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "songs",
+            "display_key": "E",  # leftover Custom / Backing live
+            "concert_key": "E",
+            "active_catalog_pick_key": shape,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape},
+            "practice_key_by_source": {shape: "Dm", custom: "E"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "custom_home_key": "D",
+                "active": {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
+            },
+        }
+        chosen = reconcile_catalog_practice_key_owner(session, source="test_bleed")
+        self.assertEqual(chosen, "Dm")
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+
+    def test_on_global_display_key_change_does_not_write_catalog_during_sbi_custom(self) -> None:
+        from custom_progression_lab import on_global_display_key_change
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "active_catalog_pick_key": shape,
+            "practice_key_by_source": {shape: "Dm", custom: "D"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
+            },
+        }
+        on_global_display_key_change(session, "Eb")
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+        self.assertEqual(get_practice_concert_key(session, custom), "Eb")
+
+    def test_catalog_does_not_own_sidebar_when_sbi_custom(self) -> None:
+        from musical_context_authority import catalog_song_should_own_sidebar_practice_key
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        session = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Song-Based Improvisation",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_catalog_pick_key": shape,
+            "display_key": "Dm",
+            "practice_key_by_source": {shape: "Dm"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "active": {
+                    "id": "trial-sbi-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        self.assertFalse(catalog_song_should_own_sidebar_practice_key(session))
+
+    def test_custom_sbi_song_improv_backing_write_not_catalog(self) -> None:
+        """song_improv + custom:: bound pick must not write Shape sticky."""
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+
+        class _Ctx:
+            source = "song_improv"
+            bound_pick_key = custom
+            active_song_id = custom
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_catalog_pick_key": shape,
+            "practice_key_by_source": {shape: "Dm", custom: "D"},
+            "backing_context": _Ctx(),
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        # Patch get_backing_context via session key if helpers use it — prefer monkey via module
+        import backing_context as bc
+
+        prev = getattr(bc, "get_backing_context", None)
+
+        def _fake_ctx(s):
+            return _Ctx()
+
+        bc.get_backing_context = _fake_ctx  # type: ignore[assignment]
+        try:
+            write_pick = resolve_settings_pick_for_write(session)
+            self.assertEqual(write_pick, custom)
+            set_practice_concert_key(session, "E")
+            self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+            self.assertEqual(get_practice_concert_key(session, custom), "E")
+        finally:
+            if prev is not None:
+                bc.get_backing_context = prev
+
+    def test_prepare_sbi_custom_sidebar_uses_custom_home_not_shape_dm(self) -> None:
+        from source_session_state import prepare_sbi_custom_sidebar_display_key
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+
+        class _St:
+            session_state: dict = {}
+
+        st = _St()
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_catalog_pick_key": shape,
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "practice_key_by_source": {shape: "Dm", custom: "D"},
+            "cpl_active_progression": {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {"A": ["Em", "Em", "D", "D"]},
+            },
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                    "original_sections": {"A": ["Em", "Em", "D", "D"]},
+                },
+            },
+        }
+        st.session_state = session
+        options = prepare_sbi_custom_sidebar_display_key(st, session)
+        self.assertIn("D", options)
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+
 
 if __name__ == "__main__":
     unittest.main()

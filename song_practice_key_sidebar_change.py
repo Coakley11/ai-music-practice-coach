@@ -104,6 +104,74 @@ def finalize_sidebar_song_practice_key_after_mutation(
         sync_creative_session_from_session(session)
     except ImportError:
         pass
+    # Mission Backing PK mutation must update the sealed Return destination so
+    # Return-to-Mission restores Dbm (not the pre-Backing Cm snapshot).
+    try:
+        from backing_context import get_backing_context
+        from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "mission":
+            sync_mission_return_destination_after_practice_key_change(
+                session,
+                new_key=new_key,
+                from_key="",
+            )
+            try:
+                from pathlib import Path
+
+                from improvisation_missions import (
+                    MISSION_EXAMPLE_KEY,
+                    MISSION_PRACTICE_LICK_KEY,
+                    parse_abc_k_field,
+                )
+
+                ex = session.get(MISSION_EXAMPLE_KEY)
+                lick = session.get(MISSION_PRACTICE_LICK_KEY)
+                motif = {}
+                abc = ""
+                if isinstance(ex, dict):
+                    motif = dict(ex.get("motif") or {})
+                    abc = str(ex.get("abc") or "")
+                if isinstance(lick, dict) and not motif.get("midi"):
+                    motif = dict(lick)
+                    abc = str(lick.get("abc") or abc)
+                out = Path(__file__).resolve().parent / "scripts" / "evidence-creative-backing"
+                out.mkdir(parents=True, exist_ok=True)
+                (out / "_mission_midi_abc_diag.json").write_text(
+                    __import__("json").dumps(
+                        {
+                            "new_key": new_key,
+                            "display_key": session.get("display_key"),
+                            "sealed_dest": (
+                                session.get("_music_mission_canonical_return_destination") or {}
+                            ).get("display_key"),
+                            "chord": session.get("ii_selected_chord"),
+                            "notes": motif.get("notes"),
+                            "midi": motif.get("midi"),
+                            "abc_k": parse_abc_k_field(abc) if abc else "",
+                            "abc_len": len(abc),
+                            "lick_key_center": (
+                                lick.get("key_center") if isinstance(lick, dict) else ""
+                            ),
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception as _diag_exc:
+                try:
+                    from pathlib import Path
+
+                    out = Path(__file__).resolve().parent / "scripts" / "evidence-creative-backing"
+                    out.mkdir(parents=True, exist_ok=True)
+                    (out / "_mission_midi_abc_diag_err.txt").write_text(
+                        repr(_diag_exc), encoding="utf-8"
+                    )
+                except Exception:
+                    pass
+    except ImportError:
+        pass
 
 
 def capture_sidebar_song_practice_key_edit_intent(session: dict[str, Any]) -> bool:

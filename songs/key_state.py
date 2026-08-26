@@ -146,12 +146,35 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
 
 
 def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
-    """Normalize widget spelling to the active song mode (Cm vs C minor, etc.)."""
+    """Normalize widget spelling; preserve explicit mode on Mission/SBI Backing.
+
+    Catalog/ordinary paths still coerce to the song's original mode (Cm → C when
+    the song is major). Mission / Song-Based Backing offer both-mode Practice Key
+    lists — coercing Cm back to C major would silently reject minor selections.
+    """
     text = str(raw or "C").strip() or "C"
     try:
         from songs.practice_key_state import creative_jam_owns_practice_settings
 
         if creative_jam_owns_practice_settings(session):
+            return text
+    except ImportError:
+        pass
+    # Explicit specialized Backing visit: keep the mode the user picked (Cm, C#m).
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in {"mission", "song_improv"}:
+            try:
+                from music_theory import key_center_token, split_key_center
+
+                tonic, mode = split_key_center(text)
+                if mode in {"major", "minor"}:
+                    return key_center_token(tonic, mode)
+            except Exception:
+                pass
             return text
     except ImportError:
         pass

@@ -276,6 +276,41 @@ class TestPracticeKeyTransposesMissionExample(unittest.TestCase):
         self.assertEqual(raw["motif"]["notes"][0][0], "E")
         self.assertEqual(raw.get("abc"), "")
 
+    def test_transpose_also_updates_mission_practice_lick(self) -> None:
+        from improvisation_missions import MISSION_PRACTICE_LICK_KEY
+
+        session = {
+            MISSION_EXAMPLE_KEY: {
+                "chord": "Dm",
+                "motif": {
+                    "notes": ["D", "F", "A"],
+                    "midi": [62, 65, 69],
+                    "chord": "Dm",
+                    "display": "D – F – A",
+                },
+                "abc": "legacy",
+            },
+            MISSION_PRACTICE_LICK_KEY: {
+                "chord": "Dm",
+                "key_center": "Am",
+                "motif": {
+                    "notes": ["D", "F", "A"],
+                    "midi": [62, 65, 69],
+                    "chord": "Dm",
+                    "display": "D – F – A",
+                },
+                "abc": "legacy-lick",
+            },
+        }
+        ok = transpose_stored_mission_example(session, from_key="Am", to_key="Bm")
+        self.assertTrue(ok)
+        lick = session[MISSION_PRACTICE_LICK_KEY]
+        self.assertEqual(lick["chord"], "Em")
+        self.assertEqual(lick["key_center"], "Bm")
+        self.assertEqual(lick["motif"]["notes"][0][0], "E")
+        self.assertEqual(lick.get("abc"), "")
+        self.assertEqual(lick["motif"]["midi"][0], 64)
+
 
 class TestWrittenKeyDoesNotChangeConcert(unittest.TestCase):
     def test_tenor_written_chart_keeps_concert_am(self) -> None:

@@ -802,6 +802,108 @@ def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, An
     return {"name": name, "active": active}
 
 
+def cpl_active_is_substantive(active: object) -> bool:
+    """True when live CPL is a real Custom song, not the empty My Progression shell.
+
+    ``original_sections`` alone is not enough — the default shell always has a
+    truthy empty-sections dict, which previously blocked LAST_CUSTOM install.
+    """
+    if not isinstance(active, dict):
+        return False
+    title = str(active.get("name") or "").strip()
+    if title and title not in {"My Progression", "My progression"}:
+        return True
+    for key in ("original_sections", "sections"):
+        secs = active.get(key)
+        if isinstance(secs, dict):
+            for chs in secs.values():
+                if isinstance(chs, list) and any(str(c).strip() for c in chs):
+                    return True
+    return False
+
+
+def _cpl_chord_count(active: object) -> int:
+    if not isinstance(active, dict):
+        return 0
+    n = 0
+    for key in ("original_sections", "sections"):
+        secs = active.get(key)
+        if not isinstance(secs, dict):
+            continue
+        for chs in secs.values():
+            if isinstance(chs, list):
+                n += sum(1 for c in chs if str(c).strip())
+    return n
+
+
+# After explicit New song, do not reinstall LAST_CUSTOM over the blank draft.
+CPL_SKIP_LAST_CUSTOM_RESTORE_KEY = "_cpl_skip_last_custom_restore"
+
+
+def mark_cpl_intentional_new_song(session_state: dict[str, Any]) -> None:
+    """User clicked New song — keep the blank draft until they load/activate another."""
+    session_state[CPL_SKIP_LAST_CUSTOM_RESTORE_KEY] = True
+
+
+def clear_cpl_intentional_new_song(session_state: dict[str, Any]) -> None:
+    session_state.pop(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY, None)
+
+
+def install_last_custom_into_live_cpl(
+    session_state: dict[str, Any],
+    *,
+    reset_practice_key_to_original: bool = False,
+) -> bool:
+    """If live CPL is non-substantive, install LAST_CUSTOM into CPL.
+
+    Also upgrades a chordless draft whose **title matches** LAST_CUSTOM when that
+    snapshot has chords (SBI Custom previously showed ``Trial Song · 0 chords``
+    while the library had Em Em D D).
+
+    Does **not** clobber an intentional New song blank (``My Progression`` / 0 chords).
+
+    Returns True when LAST_CUSTOM was installed (or live CPL was already substantive).
+    Does not promote Global Active.
+    """
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY, apply_cpl_session_progression
+    except ImportError:
+        return False
+    live = session_state.get(CPL_ACTIVE_KEY)
+    snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+    if not isinstance(snap, dict):
+        return bool(cpl_active_is_substantive(live))
+    active = snap.get("active")
+    if not isinstance(active, dict) or not cpl_active_is_substantive(active):
+        return bool(cpl_active_is_substantive(live))
+    live_chords = _cpl_chord_count(live)
+    snap_chords = _cpl_chord_count(active)
+    if cpl_active_is_substantive(live) and live_chords > 0:
+        clear_cpl_intentional_new_song(session_state)
+        return True
+    live_name = str((live or {}).get("name") or "").strip() if isinstance(live, dict) else ""
+    snap_name = str(active.get("name") or "").strip()
+    # Heal titled chordless draft that still bears LAST_CUSTOM's name only.
+    if live_chords == 0 and snap_chords > 0 and live_name and live_name == snap_name:
+        clear_cpl_intentional_new_song(session_state)
+        apply_cpl_session_progression(
+            session_state,
+            dict(active),
+            reset_display_key=bool(reset_practice_key_to_original),
+        )
+        return True
+    if session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY):
+        return False
+    if cpl_active_is_substantive(live):
+        return True
+    apply_cpl_session_progression(
+        session_state,
+        dict(active),
+        reset_display_key=bool(reset_practice_key_to_original),
+    )
+    return True
+
+
 def snapshot_last_custom_state(session_state: dict[str, Any]) -> None:
     """Remember the Custom draft last worked on (Custom page / SBI Custom).
 
@@ -812,21 +914,7 @@ def snapshot_last_custom_state(session_state: dict[str, Any]) -> None:
     snap = _custom_snapshot_from_session(session_state)
     if not isinstance(snap, dict) or not isinstance(snap.get("active"), dict):
         return
-    active = snap["active"]
-    title = str(snap.get("name") or active.get("name") or "").strip()
-    substantive = bool(title) and title not in {"My Progression", "My progression"}
-    if not substantive:
-        for key in ("original_sections", "sections"):
-            secs = active.get(key)
-            if not isinstance(secs, dict):
-                continue
-            for chs in secs.values():
-                if isinstance(chs, list) and any(str(c).strip() for c in chs):
-                    substantive = True
-                    break
-            if substantive:
-                break
-    if substantive:
+    if cpl_active_is_substantive(snap["active"]):
         session_state[LAST_CUSTOM_STATE_KEY] = snap
 
 
@@ -2492,6 +2580,29 @@ def on_active_song_identity_changed(
     )
 
     if identity_changed:
+        # Explicit Mission/SBI/Jam Backing visit: sticky Custom restore / force_reset
+        # must not wipe the live Practice Key or reclaim specialized ownership.
+        handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        if handoff in {"mission", "song_improv", "entry_jam"} and not session.get(
+            "_backing_released_specialized_context"
+        ):
+            session[ACTIVE_SONG_IDENTITY_KEY] = new_identity
+            try:
+                from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+                note_mission_pk_reclaim(
+                    session,
+                    writer="on_active_song_identity_changed:skipped_specialized",
+                    extra={
+                        "force_reset": bool(force_reset),
+                        "prev_identity": str(prev_identity or ""),
+                        "new_identity": new_identity,
+                        "handoff": handoff,
+                    },
+                )
+            except ImportError:
+                pass
+            return False
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
@@ -2717,11 +2828,18 @@ def on_active_song_identity_changed(
         try:
             from backing_context import reset_backing_on_active_song_change
 
-            reset_backing_on_active_song_change(
-                session,
-                new_pick_key=pick_key,
-                practice_concert_key=target_display,
+            # Explicit specialized Backing handoff outranks Custom/Catalog identity
+            # force_reset (workspace sticky restore must not reclaim Mission PK visit).
+            handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+            skip_reset = handoff in {"mission", "song_improv", "entry_jam"} and not session.get(
+                "_backing_released_specialized_context"
             )
+            if not skip_reset:
+                reset_backing_on_active_song_change(
+                    session,
+                    new_pick_key=pick_key,
+                    practice_concert_key=target_display,
+                )
         except ImportError:
             pass
         try:
@@ -3260,6 +3378,7 @@ def apply_pending_custom_library_action_before_widgets(
     if action == "edit_active":
         active = cpl_active_from_session(session)
     elif action == "new_song":
+        mark_cpl_intentional_new_song(session)
         active = start_new_progression()
     else:
         name = str(pending.get("name") or "").strip()
@@ -3267,10 +3386,12 @@ def apply_pending_custom_library_action_before_widgets(
             return False
         saved = session.get(CPL_SAVED_KEY) or {}
         active = load_saved_progression(saved, name)
+        clear_cpl_intentional_new_song(session)
 
     apply_cpl_session_progression(session, active, reset_display_key=True)
 
     if action == "activate":
+        clear_cpl_intentional_new_song(session)
         song_name = str(pending.get("name") or active.get("name") or "").strip()
         commit_custom_active_song(st, active, invalidate_backing=invalidate_backing)
         if song_name:
@@ -4577,13 +4698,23 @@ def ensure_custom_progression_for_backing(
     except ImportError:
         return "C"
     active = session_state.get(CPL_ACTIVE_KEY)
-    if not isinstance(active, dict) or not active.get("original_sections"):
-        # Prefer LAST_CUSTOM memory before minting a blank default.
-        snap = session_state.get(LAST_CUSTOM_STATE_KEY)
-        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-            active = dict(snap["active"])
+    # Default My Progression shell has truthy empty original_sections — must use
+    # substantive check or LAST_CUSTOM (Trial Song) never installs for SBI Custom.
+    if not cpl_active_is_substantive(active):
+        if session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY):
+            # Intentional New song blank — do not reinstall LAST_CUSTOM for Backing.
+            pass
         else:
-            active = default_active_progression()
+            snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+            if isinstance(snap, dict) and isinstance(snap.get("active"), dict) and cpl_active_is_substantive(
+                snap["active"]
+            ):
+                active = dict(snap["active"])
+            elif not isinstance(active, dict):
+                active = default_active_progression()
+            # else keep non-substantive live shell only when LAST_CUSTOM is absent
+    if not isinstance(active, dict):
+        active = default_active_progression()
     active = ensure_original_structure(active)
     session_state[CPL_ACTIVE_KEY] = active
     home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"

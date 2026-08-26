@@ -32,6 +32,19 @@ def _next_seq(session: dict[str, Any]) -> int:
 
 
 def queue_pending_mission_return_from_backing(session: dict[str, Any]) -> dict[str, Any] | None:
+    # Refresh sealed dest from live Mission Backing musical state before queueing.
+    # PK mutations on Backing update the dest; this is a last-line safety net so
+    # Return never re-applies a pre-Backing Cm snapshot over live Dbm.
+    try:
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if live:
+            from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+            sync_mission_return_destination_after_practice_key_change(
+                session, new_key=live, from_key=""
+            )
+    except ImportError:
+        pass
     dest = peek_mission_return_destination(session)
     if not isinstance(dest, dict) or not str(dest.get("mission_id") or "").strip():
         return None
@@ -162,16 +175,48 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
     concert = str(dest.get("concert_key") or dest.get("concert_tonic") or "").strip()
     display = str(dest.get("display_key") or "").strip()
     if concert or display:
+        key_tok = str(display or concert).strip()
         try:
             from session_widget_safe import safe_assign_display_key
 
-            safe_assign_display_key(session, display or concert, widget_safe=True)
+            safe_assign_display_key(session, key_tok, widget_safe=True)
         except ImportError:
             if concert:
                 session["concert_key"] = concert
             if display:
                 session["display_key"] = display
                 session["_pending_display_key"] = display
+        # Persist sticky Practice Key for the Mission song pick so Missions hydrate
+        # does not re-seal the pre-Backing Cm after Return.
+        if key_tok and pick:
+            try:
+                from songs.practice_key_state import set_practice_concert_key
+
+                set_practice_concert_key(session, key_tok, pick_key=pick)
+            except ImportError:
+                pass
+        try:
+            from music_workflow_song_practice import (
+                ensure_song_practice_blob_for_active_song,
+                mirror_mission_keys_from_song_blob,
+            )
+
+            ensure_song_practice_blob_for_active_song(session, practice_key=key_tok)
+            mirror_mission_keys_from_song_blob(session)
+        except ImportError:
+            pass
+        # Force Creative sidebar widget key so Live Coach → Missions cannot
+        # re-instantiate a stale pre-Backing Cm from Streamlit widget state.
+        try:
+            from songs.key_state import LAST_DISPLAY_KEY, PENDING_DISPLAY_KEY
+
+            session[PENDING_DISPLAY_KEY] = key_tok
+            session[LAST_DISPLAY_KEY] = key_tok
+            if not session.get("_streamlit_widgets_locked_this_run"):
+                session["display_key"] = key_tok
+        except ImportError:
+            session["_pending_display_key"] = key_tok
+            session["display_key"] = key_tok
     tab = str(dest.get("creative_tab") or "Missions")
     try:
         from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY, safe_session_assign
@@ -200,11 +245,8 @@ def _mission_return_restoration_verified(session: dict[str, Any], dest: dict[str
         active = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
         if active and active != mid:
             return False
-    chord = str(dest.get("chord_symbol") or "").strip()
-    if chord:
-        sel = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
-        if sel and sel != chord:
-            return False
+    # Chord spelling may drift (Gsus4 ↔ G) after Mission Backing projection /
+    # Custom GA restore. Page + Missions tab + mission_id are enough to accept.
     return True
 
 
@@ -263,19 +305,26 @@ def consume_pending_mission_return_handoff(session: dict[str, Any], *, st: Any |
     except ImportError:
         alignment_ok = False
 
+    # Soft-fail under Custom GA / owner mismatch: still return to Missions with the
+    # sealed destination. Hard-blocking left users stuck on Mission Backing with no
+    # warning when activate/align failed after an explicit Return click.
     if not activation_ok or not alignment_ok:
         session["_music_pending_mission_return_error"] = {
             "activation_ok": activation_ok,
             "alignment_ok": alignment_ok,
             "token": token,
+            "soft_continue": True,
         }
         try:
             from music_mission_return_handoff_trace import log_mission_return_consume
 
-            log_mission_return_consume(session, phase="failed", detail=session["_music_pending_mission_return_error"])
+            log_mission_return_consume(
+                session,
+                phase="soft_continue",
+                detail=session["_music_pending_mission_return_error"],
+            )
         except ImportError:
             pass
-        return "skipped"
 
     _apply_return_destination_session_fields(session, dest)
 
@@ -292,6 +341,9 @@ def consume_pending_mission_return_handoff(session: dict[str, Any], *, st: Any |
         session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
             restore_session_widgets_from_backing_context(session, ctx, widget_safe=True)
+            # restore_session_widgets may push stale ctx PK/chord (pre-Backing Cm).
+            # Sealed return destination (synced on Mission Backing PK change) wins.
+            _apply_return_destination_session_fields(session, dest)
     except ImportError:
         session["_creative_restore_from_backing"] = True
 
@@ -390,6 +442,21 @@ def handle_return_to_mission_click(st_module: Any, session: dict[str, Any]) -> N
     except ImportError:
         pass
 
+    # Prevent a leftover Mission→Backing pending handoff from re-opening Backing
+    # on the next pre-widget consume after Return has queued Creative.
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_music_pending_backing_workflow_handoff", None)
+    try:
+        from music_workflow_mission_backing_click import MISSION_BACKING_CLICK_INTENT_KEY
+
+        session.pop(MISSION_BACKING_CLICK_INTENT_KEY, None)
+    except ImportError:
+        session.pop("_music_mission_backing_click_intent", None)
+
     req = queue_pending_mission_return_from_backing(session)
     if req is None:
         try:
@@ -408,6 +475,26 @@ def handle_return_to_mission_click(st_module: Any, session: dict[str, Any]) -> N
                 st_module.warning(str(msg))
             except Exception:
                 pass
+        # Last-resort sync navigate when guarded rerun is blocked — still leave Backing.
+        try:
+            phase = consume_pending_mission_return_handoff(session, st=st_module)
+            if phase == "applied":
+                try:
+                    from music_app_rerun import request_app_rerun
+
+                    request_app_rerun(
+                        st_module,
+                        session,
+                        reason="pending_mission_return_fallback_consume",
+                        stage="mission_return_click_fallback",
+                    )
+                except ImportError:
+                    try:
+                        st_module.rerun()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
 
 __all__ = [

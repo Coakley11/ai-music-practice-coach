@@ -322,6 +322,117 @@ def _midi_from_note(name: str, octave: int = 4) -> int:
     return NOTE_TO_MIDI.get(root, 60) + 12 * (octave - 4)
 
 
+def _pc_of_note(name: str) -> int:
+    return _midi_from_note(str(name), 4) % 12
+
+
+def _nearest_midi_for_pc(pc: int, near: int) -> int:
+    """Nearest MIDI with pitch class ``pc`` to ``near`` (smooth voice-leading)."""
+    pc = int(pc) % 12
+    near = int(near)
+    base = (near // 12) * 12 + pc
+    options = [base - 24, base - 12, base, base + 12, base + 24]
+    return min(options, key=lambda m: abs(m - near))
+
+
+def _compact_midis_from_notes(
+    notes: list[str],
+    *,
+    anchor_midi: int | None = None,
+) -> list[int]:
+    """Assign midis with nearest-register voice-leading — no gratuitous octave jumps.
+
+    Independent octave-4 assignment (e.g. B4 then C4) produced octave zigzags; motifs
+    must occupy a compact register with small melodic intervals.
+
+    First note prefers scientific octave 4 when it is within a minor third of
+    mid-staff (~E4); later notes nearest-link so B4–A4–G4–A4 stays nearby.
+    """
+    if not notes:
+        return []
+    midis: list[int] = []
+    prev = int(anchor_midi) if anchor_midi is not None else 64
+    for i, n in enumerate(notes):
+        pc = _pc_of_note(str(n))
+        if i == 0 and anchor_midi is None:
+            oct4 = _midi_from_note(str(n), 4)
+            near = _nearest_midi_for_pc(pc, 64)
+            # Prefer octave 4 when leaps-to-mid-staff are comparable (B4 over B3).
+            mid = oct4 if abs(oct4 - 64) <= abs(near - 64) + 2 else near
+        else:
+            mid = _nearest_midi_for_pc(pc, prev)
+        midis.append(mid)
+        prev = mid
+    return midis
+
+
+def _max_leap(midis: list[int]) -> int:
+    if len(midis) < 2:
+        return 0
+    return max(abs(int(midis[i]) - int(midis[i - 1])) for i in range(1, len(midis)))
+
+
+# Comfortable staff-ish bounds for long patterns. Ascending may start below LO;
+# descending may start above HI — never mid-pattern octave-reset.
+_PATTERN_MIDI_LO = 53  # F3
+_PATTERN_MIDI_HI = 88  # E6
+
+
+def _plan_pattern_source_midis(
+    notes: list[str],
+    source_midis: list[int],
+    *,
+    key_center: str,
+    collection_pcs: list[int],
+    n_cells: int,
+    step: int,
+    sign: int,
+) -> list[int]:
+    """Choose starting register for the WHOLE pattern before generation.
+
+    Ascending: start low enough so the final cell stays continuous upward.
+    Descending: start high enough so the final cell stays continuous downward.
+    Never repair individual notes mid-pattern.
+    """
+    compact = _compact_midis_from_notes(notes)
+    if len(source_midis) >= len(notes):
+        raw = [int(m) for m in source_midis[: len(notes)]]
+        # Keep an already-compact contour. Only replace when the provided midis zigzag.
+        if _max_leap(raw) > 7 and _max_leap(compact) <= _max_leap(raw):
+            source = compact
+        else:
+            source = raw
+    else:
+        source = compact
+
+    last_steps = int(sign) * int(max(0, n_cells - 1)) * int(step)
+    _, last_midis = _shift_notes_by_collection_steps(
+        notes,
+        key_center=key_center,
+        collection_pcs=collection_pcs,
+        steps=last_steps,
+        source_midis=source,
+    )
+    if not last_midis:
+        return source
+    overall_lo = min(min(source), min(last_midis))
+    overall_hi = max(max(source), max(last_midis))
+    # Octave-only shifts — never add a non-multiple of 12 (that changes pitch class
+    # and sync_motif_midi then discards the planned register for cell 0).
+    delta = 0
+    if sign >= 0:
+        # Climbing: pull the whole sequence down by octaves if the top exceeds HI.
+        while overall_hi + delta > _PATTERN_MIDI_HI:
+            delta -= 12
+    else:
+        # Falling: push the whole sequence up by octaves if the bottom goes below LO.
+        while overall_lo + delta < _PATTERN_MIDI_LO:
+            delta += 12
+    if delta == 0:
+        return source
+    return [int(m) + int(delta) for m in source]
+
+
 def _note_from_midi(midi: int, reference_key: str = "C") -> str:
     from music_theory import spell_note_in_key
 
@@ -377,11 +488,35 @@ def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
 
 
 def _abc_key_header(key_center: str) -> str:
-    key_root = normalize_root(split_chord(key_center)[0])
-    k = key_root if len(key_root) == 1 or key_root in ("Ab", "Bb", "Eb", "Gb") else key_root[:1]
-    if "m" in str(key_center).lower() and "maj" not in str(key_center).lower():
-        k = k.lower() if k.isupper() else k
-    return k
+    """ABC ``K:`` token from a practice/concert key center.
+
+    Preserve accidentals and **mode**. Accidental minors must not emit bare
+    ``K:Db`` / ``K:C#`` (those are major in ABC). Prefer explicit minor forms:
+
+    - natural minors: ``c``, ``e``, … (legacy ABC lowercase)
+    - accidental minors: ``C#m``, ``Dbm``, ``Ebm``, ``F#m``, …
+    """
+    raw = str(key_center or "C").strip() or "C"
+    root, suffix = split_chord(raw)
+    # Prefer the spelled root from the user/token (Db from Dbm) before enharmonic normalize.
+    k = str(root or "").strip() or "C"
+    if k not in CHROMATIC and normalize_root(k) in CHROMATIC:
+        if "b" in k.lower() or "#" in k:
+            pass
+        else:
+            k = normalize_root(k)
+    minor = "m" in str(suffix).lower() and "maj" not in str(suffix).lower()
+    if not minor and "minor" in raw.lower():
+        minor = True
+    if not minor:
+        return k
+    # Natural single-letter minors use lowercase ABC (Cm → c, Em → e).
+    if len(k) == 1 and k.isupper():
+        return k.lower()
+    # Accidental minors must keep an explicit minor marker (Db → Dbm, not Db major).
+    if k.lower().endswith("m") and len(k) > 1:
+        return k
+    return f"{k}m"
 
 
 def _parse_key_scale(key_center: str) -> tuple[str, list[int]]:
@@ -818,7 +953,7 @@ def generate_motif_for_chord(
         "rhythm": rhythm,
         "rhythm_key": rhythm_key,
         "rhythm_symbols": list(rhythm_syms),
-        "midi": [_midi_from_note(n, 4) for n in notes],
+        "midi": _compact_midis_from_notes(list(notes)),
         "variation_prompt": f"{tier_label} example on **{chord}** — practice in time with the backing.",
         "difficulty_tier": tier,
         "student_level": level_norm,
@@ -833,6 +968,9 @@ def generate_motif_for_chord(
 
         motif["notes"] = respell_notes_for_key(list(notes), key_center)
         motif["display"] = " – ".join(motif["notes"])
+    # Spelling may change note names — re-bind compact register to final names.
+    motif["midi"] = _compact_midis_from_notes(list(motif.get("notes") or []))
+    motif["display"] = " – ".join(list(motif.get("notes") or []))
     return motif
 
 
@@ -880,30 +1018,30 @@ def _shift_notes_by_collection_steps(
     steps: int,
     source_midis: list[int] | None = None,
 ) -> tuple[list[str], list[int]]:
-    """Shift motif notes by collection degrees with true register (no octave wrap).
+    """Shift each motif note by collection degrees with continuous register.
 
     ``steps == 0`` returns the exact source notes/midis — never snap non-diatonic
-    tones (e.g. B in Fm) to a nearest scale degree (that rewrote F–B–Ab–C → F–B–G–C).
+    tones (e.g. B in Fm) to a nearest scale degree.
+
+    For ``steps != 0``, every note walks the same number of collection steps in
+    actual sounding register (no isolated octave wrap). Callers must pass a
+    globally planned compact ``source_midis`` so the whole motif moves as a unit.
     """
     if not notes:
         return [], []
+    if source_midis is None or len(source_midis) < len(notes):
+        source_midis = _compact_midis_from_notes(notes)
+    else:
+        source_midis = [int(m) for m in source_midis[: len(notes)]]
+
     if not collection_pcs or int(steps or 0) == 0:
-        midis: list[int] = []
-        for i, n in enumerate(notes):
-            if source_midis and i < len(source_midis) and isinstance(source_midis[i], (int, float)):
-                midis.append(int(source_midis[i]))
-            else:
-                midis.append(_midi_from_note(str(n), 4))
-        return list(notes), midis
+        return list(notes), list(source_midis)
 
     out: list[str] = []
     out_midi: list[int] = []
     direction = 1 if steps > 0 else -1
     for i, n in enumerate(notes):
-        if source_midis and i < len(source_midis) and isinstance(source_midis[i], (int, float)):
-            midi = int(source_midis[i])
-        else:
-            midi = _midi_from_note(str(n), 4)
+        midi = int(source_midis[i])
         deg = _nearest_scale_degree(str(n), collection_pcs)
         idx = deg
         for _ in range(abs(int(steps))):
@@ -938,7 +1076,12 @@ def build_motif_pattern(
     direction: str = "ascending",
     length: int = 8,
 ) -> dict[str, Any]:
-    """Expand the current motif into a longer practice pattern (first cell = motif)."""
+    """Expand the current motif into a longer practice pattern (first cell = motif).
+
+    Register is planned globally before generation: ascending starts low enough,
+    descending starts high enough, and cells climb/fall continuously with no
+    mid-pattern octave reset. Cell 1 preserves exact source pitch classes.
+    """
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
     if not base_notes:
         return dict(motif)
@@ -958,11 +1101,16 @@ def build_motif_pattern(
     collection = _pitch_collection_pcs(key_center, ptype)
     step = _pattern_step_size(ptype)
     sign = 1 if direction_norm == "ascending" else -1
-    source_midis = list(motif.get("midi") or [])
-    if len(source_midis) < len(base_notes):
-        source_midis = [_midi_from_note(n, 4) for n in base_notes]
-    else:
-        source_midis = [int(m) for m in source_midis[: len(base_notes)]]
+    raw_midis = list(motif.get("midi") or [])
+    source_midis = _plan_pattern_source_midis(
+        base_notes,
+        [int(m) for m in raw_midis[: len(base_notes)]] if len(raw_midis) >= len(base_notes) else [],
+        key_center=key_center,
+        collection_pcs=collection,
+        n_cells=n_cells,
+        step=step,
+        sign=sign,
+    )
     cells: list[list[str]] = []
     cell_midis: list[list[int]] = []
     for i in range(n_cells):
@@ -1003,6 +1151,7 @@ def build_motif_pattern(
             "pattern_direction": direction_norm,
             "pattern_length": n_cells,
             "base_motif_notes": list(base_notes),
+            "base_motif_midi": list(source_midis),
             "midi": flat_midi,
             "variation_prompt": (
                 f"Pattern ({ptype}, {direction_norm}, {n_cells} cells) on "
@@ -1033,8 +1182,8 @@ def rebuild_motif_pattern(
         )
     preserved_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
-    # First-cell midis from the flat pattern (or the short motif) keep register on rebuild.
-    flat_midi = list(motif.get("midi") or [])
+    # Prefer planned first-cell midis; fall back to flat pattern head.
+    flat_midi = list(motif.get("base_motif_midi") or motif.get("midi") or [])
     base_midi = (
         [int(m) for m in flat_midi[: len(base_notes)]]
         if len(flat_midi) >= len(base_notes)
@@ -1235,11 +1384,9 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
         ):
             mid = int(existing[i])
         elif prev is not None:
-            cand = (prev // 12) * 12 + target_pc
-            options = [cand, cand + 12, cand - 12]
-            mid = min(options, key=lambda m: abs(m - prev))
+            mid = _nearest_midi_for_pc(target_pc, prev)
         else:
-            mid = _midi_from_note(str(n), 4)
+            mid = _nearest_midi_for_pc(target_pc, 64)
         midis.append(mid)
         prev = mid
     motif["midi"] = midis

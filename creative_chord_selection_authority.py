@@ -84,17 +84,16 @@ def resolve_authoritative_chord_selection(
         except (TypeError, ValueError):
             c_idx = -1
         if c_sym and c_sec and c_idx >= 0:
+            # Explicit click symbol always wins. Remap index to the clicked pair —
+            # never replace Bb with whatever tile currently sits at a stale index (G).
+            mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
+            if mapped is not None:
+                return c_sym, c_sec, mapped
             if authoritative_pair_matches_index(
                 section_map, section_label=c_sec, chord_symbol=c_sym, chord_index=c_idx
             ):
                 return c_sym, c_sec, c_idx
-            mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
-            if mapped is not None:
-                return c_sym, c_sec, mapped
-            # Index from the click is still authoritative when the map row exists.
-            at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
-            if at_ch:
-                return at_ch, at_sec or c_sec, c_idx
+            # Keep the clicked symbol even when the map row moved; index is best-effort.
             return c_sym, c_sec, c_idx
 
     sym = str(session.get(II_SELECTED_CHORD) or "").strip()

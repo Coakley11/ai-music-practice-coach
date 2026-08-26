@@ -119,6 +119,103 @@ def seal_mission_return_destination(session: dict[str, Any], destination: dict[s
     stamp_mission_return_destination_on_backing_context(session, dest)
 
 
+def sync_mission_return_destination_after_practice_key_change(
+    session: dict[str, Any],
+    *,
+    new_key: str,
+    from_key: str = "",
+) -> dict[str, Any] | None:
+    """Keep Return-to-Mission sealed dest aligned with Mission Backing PK mutation.
+
+    Sealing at handoff captures the pre-Backing key (e.g. Cm). A later Practice Key
+    change on Mission Backing must update that dest so Return does not snap back.
+    """
+    new = str(new_key or "").strip()
+    if not new:
+        return None
+    dest = peek_mission_return_destination(session)
+    if dest is None:
+        return None
+    old = str(from_key or dest.get("display_key") or dest.get("concert_key") or "").strip()
+    dest = copy.deepcopy(dest)
+    dest["display_key"] = new
+    dest["concert_key"] = new
+    try:
+        from workflow_key_identity import normalize_user_practice_key_selection
+
+        tonic, mode, token = normalize_user_practice_key_selection(new, default_mode="minor")
+        dest["concert_tonic"] = tonic
+        dest["concert_mode"] = mode
+        dest["display_key"] = token
+        dest["concert_key"] = token
+        new = token
+    except ImportError:
+        pass
+    # Prefer live Mission selection (already transposed by PK mutation reconcile).
+    live_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
+    live_sec = str(session.get("ii_selected_section") or session.get("II_SELECTED_SECTION") or "").strip()
+    if live_chord:
+        dest["chord_symbol"] = live_chord
+    elif old and old != new:
+        try:
+            from music_theory import semitone_distance, transpose_chord
+
+            steps = semitone_distance(old, new)
+            sealed_ch = str(dest.get("chord_symbol") or "").strip()
+            if steps and sealed_ch:
+                dest["chord_symbol"] = transpose_chord(sealed_ch, steps, reference_key=new)
+        except Exception:
+            pass
+    if live_sec:
+        dest["section_label"] = live_sec
+    section = str(dest.get("section_label") or "").strip()
+    chord = str(dest.get("chord_symbol") or "").strip()
+    if section or chord:
+        dest["chord_display_label"] = f"{section} · {chord}".strip(" ·")
+    try:
+        idx = session.get("ii_selected_chord_index")
+        if idx is not None and str(idx).strip() != "":
+            dest["chord_index"] = int(idx)
+    except (TypeError, ValueError):
+        pass
+    seal_mission_return_destination(session, dest)
+    # Keep backing_context musical keys aligned for restore_session_widgets_from_backing_context.
+    blob = _backing_context_blob(session)
+    if blob is not None and str(blob.get("source") or "").strip() == "mission":
+        blob["display_key"] = new
+        blob["concert_key"] = new
+        blob["key"] = new
+        route = blob.get("creative_return_route")
+        if isinstance(route, dict):
+            route = dict(route)
+            route["mission_chord"] = chord or route.get("mission_chord")
+            if live_sec:
+                route["mission_section"] = live_sec
+            blob["creative_return_route"] = route
+    # Sticky Practice Key for the Mission song pick must track Mission Backing PK.
+    pick = str(dest.get("song_pick_key") or session.get("active_catalog_pick_key") or "").strip()
+    if pick and new:
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(session, new, pick_key=pick)
+        except ImportError:
+            pass
+    # Parent song/mission Practice Key blob must track Mission Backing PK so
+    # Live Coach → Missions hydrate cannot re-project a stale Cm snapshot.
+    try:
+        from music_workflow_song_practice import (
+            ensure_song_practice_blob_for_active_song,
+            mirror_mission_keys_from_song_blob,
+        )
+
+        ensure_song_practice_blob_for_active_song(session, practice_key=new)
+        mirror_mission_keys_from_song_blob(session)
+    except ImportError:
+        pass
+    return copy.deepcopy(dest)
+
+
 def peek_mission_return_destination(session: dict[str, Any]) -> dict[str, Any] | None:
     existing = _valid_dest(session.get(MISSION_CANONICAL_RETURN_DESTINATION_KEY))
     if existing is not None:
@@ -179,4 +276,5 @@ __all__ = [
     "seal_mission_return_destination",
     "seal_mission_return_destination_from_handoff",
     "stamp_mission_return_destination_on_backing_context",
+    "sync_mission_return_destination_after_practice_key_change",
 ]

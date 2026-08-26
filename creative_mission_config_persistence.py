@@ -313,25 +313,62 @@ def reconcile_mission_target_identity(
     function: str,
     prefer_canonical_target: bool = False,
 ) -> dict[str, Any]:
-    """Return an internally consistent target tuple + chord_options for commit."""
-    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    """Return an internally consistent target tuple + chord_options for commit.
+
+    Explicit chord-tile clicks (``SAVE_REASON_MISSION_TARGET``) must not be
+    rewritten to a stale canonical chord when Practice Key has transposed the
+    live map (e.g. click Gbm while disk options still list Abm).
+    """
     section_map = _mission_section_map_from_session(session)
-    if section_map and not chord_options:
+    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    # Live section map is authoritative for options after a Practice Key change.
+    if section_map:
         try:
             from improvisation_motif import flatten_section_map
 
-            chord_options = flatten_section_map(section_map)
+            live_options = flatten_section_map(section_map)
         except ImportError:
-            pass
+            live_options = []
+        if live_options:
+            click_ch = str(values.get("ii_selected_chord") or "").strip()
+            if (
+                save_reason == SAVE_REASON_MISSION_TARGET
+                and click_ch
+                and click_ch in live_options
+            ) or (not chord_options) or (
+                click_ch
+                and click_ch in live_options
+                and click_ch not in chord_options
+            ):
+                chord_options = list(live_options)
     if chord_options:
         values["improv_mission_chord_options"] = list(chord_options)
+
+    # Explicit click: if the payload already matches the live map, keep it —
+    # never fall through to a stale canonical Abm while the user clicked Gbm.
+    if save_reason == SAVE_REASON_MISSION_TARGET:
+        click_tuple = {
+            k: values.get(k) for k in MISSION_TARGET_IDENTITY_KEYS if k in values
+        }
+        if mission_target_identity_valid(
+            chord_options,
+            section_map,
+            index=click_tuple.get("ii_selected_chord_index"),
+            chord=click_tuple.get("ii_selected_chord"),
+            section=click_tuple.get("ii_selected_section"),
+            label=click_tuple.get("ii_selected_chord_label"),
+        ):
+            values.update({k: copy.deepcopy(click_tuple[k]) for k in MISSION_TARGET_IDENTITY_KEYS})
+            return values
 
     candidates: list[dict[str, Any]] = []
     if prefer_canonical_target:
         candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
     else:
         candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=False))
-        candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
+        # Only consult canonical after click when this is not an explicit tile save.
+        if save_reason != SAVE_REASON_MISSION_TARGET:
+            candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
 
     seen: set[tuple[Any, ...]] = set()
     for cand in candidates:
@@ -1090,6 +1127,19 @@ def handle_user_mission_target_selection(
             "ii_selected_chord_label": chord_label,
         }
     )
+    # Refresh options from the live stamped section map so a Practice Key
+    # transpose cannot invalidate the click against stale Eb-keyed options.
+    section_map = _mission_section_map_from_session(session)
+    if section_map:
+        try:
+            from improvisation_motif import flatten_section_map
+
+            live_options = flatten_section_map(section_map)
+        except ImportError:
+            live_options = []
+        if live_options:
+            values["improv_mission_chord_options"] = list(live_options)
+            session["improv_mission_chord_options"] = list(live_options)
     _handle_user_mission_config_change(
         session,
         save_reason=SAVE_REASON_MISSION_TARGET,

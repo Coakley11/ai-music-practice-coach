@@ -10272,24 +10272,72 @@ try:
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
-    elif is_creative_major_jam_active(st.session_state):
-        _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
-    elif _catalog_regular_backing:
-        _display_key_options = sync_display_key_before_widget(
-            st,
-            original_key,
-            _song_identity,
-        )
-    elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
-        st.session_state
-    ):
-        _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
     else:
-        _display_key_options = sync_display_key_before_widget(
-            st,
-            original_key,
-            _song_identity,
-        )
+        _sbi_custom_sidebar = False
+        try:
+            from source_session_state import (
+                clear_sbi_custom_sidebar_overlay_if_needed,
+                custom_sbi_owns_sidebar_practice_key,
+                heal_sealed_catalog_sidebar_if_needed,
+                prepare_sbi_custom_sidebar_display_key,
+            )
+
+            page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
+            # Do not clear overlay on Open Backing — that restored Shape Dm.
+            if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
+                st.session_state
+            ):
+                _display_key_options = prepare_sbi_custom_sidebar_display_key(
+                    st, st.session_state
+                )
+                _sbi_custom_sidebar = True
+            else:
+                _had_sbi_overlay = bool(
+                    st.session_state.get("_sbi_custom_sidebar_overlay")
+                    or st.session_state.get("_custom_page_sidebar_overlay")
+                )
+                clear_sbi_custom_sidebar_overlay_if_needed(st.session_state)
+                if _had_sbi_overlay and not st.session_state.get("_sbi_custom_sidebar_overlay"):
+                    _restored = str(
+                        st.session_state.get("display_key")
+                        or st.session_state.get("concert_key")
+                        or ""
+                    ).strip()
+                    if _restored:
+                        try:
+                            from songs.key_state import _apply_display_key_before_widget
+
+                            _apply_display_key_before_widget(
+                                st,
+                                _restored,
+                                source="leave_sbi_custom_overlay",
+                            )
+                        except Exception:
+                            pass
+                heal_sealed_catalog_sidebar_if_needed(st, st.session_state)
+        except ImportError:
+            pass
+        if _sbi_custom_sidebar:
+            pass
+        elif is_creative_major_jam_active(st.session_state):
+            _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
+        elif _catalog_regular_backing:
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
+        elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
+            st.session_state
+        ):
+            _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
+        else:
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
 except Exception:
     _display_key_options = sync_display_key_before_widget(
         st,
@@ -10418,12 +10466,87 @@ else:
             on_change=_on_custom_workspace_practice_key_change,
         )
     else:
+        _pk_widget_key = "display_key"
+        try:
+            from backing_context import get_backing_context
+            from music_theory import key_mode, practice_keys_for_mode
+
+            _pk_ctx = get_backing_context(st.session_state)
+            if (
+                _pk_ctx is not None
+                and str(getattr(_pk_ctx, "source", "") or "").strip() == "mission"
+            ):
+                # Hard guarantee: Mission Backing always gets major+minor options,
+                # even if an earlier branch (major-jam) prepared an 11-key list.
+                _live_pk = str(
+                    st.session_state.get("display_key")
+                    or st.session_state.get("concert_key")
+                    or getattr(_pk_ctx, "key", "")
+                    or "C"
+                ).strip() or "C"
+                # Minors first so C minor / C# minor are in the initial virtualized
+                # window (BaseWeb only mounts ~11 rows). Majors remain available below.
+                _min = list(practice_keys_for_mode("minor"))
+                _maj = list(practice_keys_for_mode("major"))
+                _display_key_options = _min + [k for k in _maj if k not in _min]
+                if _live_pk not in _display_key_options:
+                    _display_key_options = [_live_pk] + [
+                        k for k in _display_key_options if k != _live_pk
+                    ]
+                _n_opts = len(_display_key_options)
+                _pk_widget_key = f"display_key_mission_backing_{_n_opts}"
+                if _pk_widget_key not in st.session_state:
+                    st.session_state[_pk_widget_key] = _live_pk
+                try:
+                    from pathlib import Path
+
+                    Path("scripts/evidence-creative-backing/_mission_pk_opts_diag.txt").write_text(
+                        f"selectbox_force_mission n={_n_opts} cm={('Cm' in _display_key_options)} "
+                        f"live={_live_pk!r}\n",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+
+        def _on_mission_or_global_pk_change() -> None:
+            try:
+                if _pk_widget_key != "display_key":
+                    tok = str(st.session_state.get(_pk_widget_key) or "").strip()
+                    if tok:
+                        # Capture prior Practice Key before overwrite so Mission transpose
+                        # uses the real from_key (not enharmonic lick key_center / already-new token).
+                        prior = str(
+                            st.session_state.get("display_key")
+                            or st.session_state.get("concert_key")
+                            or ""
+                        ).strip()
+                        if prior and prior != tok:
+                            st.session_state["_mission_pk_transpose_from"] = prior
+                        st.session_state["display_key"] = tok
+                        st.session_state["concert_key"] = tok
+                on_sidebar_practice_concert_key_change()
+            except Exception as _pk_cb_exc:
+                try:
+                    from pathlib import Path
+                    import traceback
+
+                    Path(__file__).resolve().parent.joinpath(
+                        "scripts/evidence-creative-backing/_mission_pk_cb_exc.txt"
+                    ).write_text(
+                        f"{type(_pk_cb_exc).__name__}: {_pk_cb_exc}\n{traceback.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+
         st.sidebar.selectbox(
             "Practice / Concert Key",
             _display_key_options,
-            key="display_key",
+            key=_pk_widget_key,
             help="Concert pitch for charts and backing audio.",
-            on_change=on_sidebar_practice_concert_key_change,
+            on_change=_on_mission_or_global_pk_change,
         )
 try:
     from key_display_diagnostics import render_key_display_diagnostics

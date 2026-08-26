@@ -89,18 +89,32 @@ def resolve_mission_projection_state(
     concert_chord = str(session.get(II_SELECTED_CHORD) or "").strip()
     if section_map:
         try:
-            from creative_chord_selection_authority import resolve_authoritative_chord_selection
+            from creative_chord_selection_authority import (
+                global_chord_index_for_section_chord,
+                resolve_authoritative_chord_selection,
+                write_authoritative_chord_selection,
+            )
 
-            concert_chord, section_label, idx = resolve_authoritative_chord_selection(session, section_map)
+            concert_chord, section_label, idx = resolve_authoritative_chord_selection(
+                session, section_map
+            )
         except ImportError:
-            pass
+            global_chord_index_for_section_chord = None  # type: ignore[assignment]
+            write_authoritative_chord_selection = None  # type: ignore[assignment]
+        # Align sticky index to the authoritative SYMBOL. Never replace a committed
+        # click symbol (Bb) with a different chord sitting at a stale index (G).
+        if concert_chord and global_chord_index_for_section_chord is not None:
+            mapped = global_chord_index_for_section_chord(
+                section_map, section_label, concert_chord
+            )
+            if mapped is not None:
+                idx = int(mapped)
         at_sec, at_ch = concert_chord_at_index(section_map, idx)
-        if at_ch:
+        if not concert_chord and at_ch:
             concert_chord = at_ch
             section_label = at_sec or section_label
+        if concert_chord and write_authoritative_chord_selection is not None:
             try:
-                from creative_chord_selection_authority import write_authoritative_chord_selection
-
                 write_authoritative_chord_selection(
                     session,
                     section_map,
@@ -108,10 +122,14 @@ def resolve_mission_projection_state(
                     section_label=section_label,
                     chord_index=idx,
                 )
-            except ImportError:
+            except Exception:
                 session[II_SELECTED_CHORD] = concert_chord
                 session[II_SELECTED_SECTION] = section_label
                 session[II_SELECTED_CHORD_INDEX] = int(idx)
+        elif concert_chord:
+            session[II_SELECTED_CHORD] = concert_chord
+            session[II_SELECTED_SECTION] = section_label
+            session[II_SELECTED_CHORD_INDEX] = int(idx)
     display_chord = display_chord_from_concert(
         concert_chord,
         concert_key=concert_key,

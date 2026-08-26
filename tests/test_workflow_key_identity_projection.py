@@ -198,15 +198,27 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
             self.assertEqual(resolved, staff, concert)
 
         empty_motif = {"notes": ["C"], "rhythm": ["q"]}
-        for token in ("C", "D", "Dm", "Bm", "Fm", "Ebm"):
+        for token in ("C", "D", "Dm", "Bm", "Fm", "Ebm", "Dbm", "C#m"):
             k_hdr = _abc_key_header(token)
             abc = build_mission_notation_abc(empty_motif, mission="t", key_center=token, bpm=100)
             k_field = parse_abc_k_field(abc)
             self.assertTrue(
                 abc_staff_key_matches_concert(abc, token),
-                f"abc K mismatch for {token}: {k_field}",
+                f"abc K mismatch for {token}: {k_field} vs hdr {k_hdr}",
             )
             self.assertEqual(k_hdr.lower(), str(k_field or "").lower()[: len(k_hdr)], token)
+        # Dbm / C#m must not collapse to stale K:c (C minor) OR bare major K:Db / K:C#.
+        self.assertNotEqual(_abc_key_header("Dbm").lower(), "c")
+        self.assertNotEqual(_abc_key_header("C#m").lower(), "c")
+        self.assertNotEqual(_abc_key_header("Dbm"), "Db")
+        self.assertNotEqual(_abc_key_header("C#m"), "C#")
+        self.assertIn(_abc_key_header("Dbm").lower(), {"dbm", "dbmin"})
+        self.assertIn(_abc_key_header("C#m").lower(), {"c#m", "c#min"})
+        # Ebm previously emitted bare Eb (ambiguous major); require explicit minor.
+        self.assertTrue(
+            _abc_key_header("Ebm").lower().endswith("m"),
+            f"Ebm header must mark minor, got {_abc_key_header('Ebm')!r}",
+        )
 
 
 if __name__ == "__main__":

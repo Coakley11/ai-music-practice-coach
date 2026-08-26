@@ -254,13 +254,133 @@ def open_advanced(page: Page) -> bool:
 
 
 def set_practice_key(page: Page, token: str) -> bool:
+    """Set sidebar Practice / Concert Key to ``token`` only (no silent fallbacks)."""
     expand_sidebar(page)
-    return bool(
-        set_baseweb_select(page, "Practice / Concert Key", token)
-        or set_baseweb_select(page, "Practice / Concert Key", "D minor")
-        or set_baseweb_select(page, "Practice / Concert Key", "E minor")
-        or set_baseweb_select(page, "Practice / Concert Key", "F#")
-    )
+    want = str(token or "").strip()
+    if not want:
+        return False
+    aliases = [want]
+    low = want.lower().replace(" ", "")
+    # Sidebar options use short tokens (Cm, C#m, D) — not "C minor".
+    if low in {"c#minor", "c#m", "dbminor", "dbm"}:
+        aliases = ["C#m", "Dbm", "C# minor", "Db minor"]
+    elif low in {"cminor", "cm"}:
+        aliases = ["Cm", "C minor"]
+    elif low in {"dmajor", "d"}:
+        aliases = ["D", "D major"]
+    elif low in {"dminor", "dm"}:
+        aliases = ["Dm", "D minor"]
+    elif low in {"f#major", "f#", "gb"}:
+        aliases = ["F#", "Gb", "F# major"]
+    elif low in {"gmajor", "g"}:
+        aliases = ["G", "G major"]
+    elif low in {"emajor", "e"}:
+        aliases = ["E", "E major"]
+    elif low in {"ebmajor", "eb", "d#"}:
+        aliases = ["Eb", "D#", "Eb major"]
+
+    def _concert_label() -> str:
+        try:
+            body = page.inner_text("body") or ""
+            m = re.search(r"Practice concert key:\s*([^\n·]+)", body, re.I)
+            if m:
+                return m.group(1).strip()
+        except Exception:
+            pass
+        try:
+            from _walk_custom_practice_key import pk_val
+
+            return str(pk_val(page) or "").strip()
+        except Exception:
+            return ""
+
+    def _norm_key(s: str) -> str:
+        t = (s or "").lower().replace(" ", "").replace("♯", "#").replace("♭", "b")
+        if t.endswith("minor"):
+            return t[: -len("minor")] + "m"
+        if t.endswith("major"):
+            return t[: -len("major")]
+        return t
+
+    def _landed_ok(landed: str, opt: str) -> bool:
+        # Exact normalized match only — "Cm" must not accept "C# minor".
+        L = _norm_key(landed)
+        O = _norm_key(opt)
+        return bool(L) and bool(O) and L == O
+
+    for opt in aliases:
+        if set_baseweb_select(page, "Practice / Concert Key", opt):
+            wait_idle(page, 2000)
+            landed = _concert_label()
+            if _landed_ok(landed, opt):
+                return True
+            continue
+    # Typeahead into the combobox (Streamlit filters long / virtualized option lists).
+    try:
+        side = page.locator('section[data-testid="stSidebar"]')
+        box = side.locator('[data-testid="stSelectbox"]').filter(
+            has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
+        )
+        if box.count() == 0:
+            box = page.locator('[data-testid="stSelectbox"]').filter(
+                has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
+            )
+        for opt in aliases:
+            try:
+                target = box.first
+                target.scroll_into_view_if_needed()
+                inp = target.locator("input").first
+                if inp.count() == 0:
+                    target.locator('[data-baseweb="select"], [role="combobox"]').first.click(timeout=4000)
+                    page.wait_for_timeout(200)
+                    inp = target.locator("input").first
+                else:
+                    inp.click(timeout=4000)
+                page.wait_for_timeout(150)
+                page.keyboard.press("Control+A")
+                page.keyboard.press("Backspace")
+                page.keyboard.type(opt, delay=40)
+                page.wait_for_timeout(700)
+                hit = page.locator(
+                    '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"]'
+                ).filter(has_text=re.compile(rf"^{re.escape(opt)}$", re.I))
+                if not hit.count():
+                    # Virtualized: arrow through filtered results.
+                    page.keyboard.press("ArrowDown")
+                    page.wait_for_timeout(200)
+                    hit = page.locator(
+                        '[role="listbox"] [role="option"], [role="option"]'
+                    ).filter(has_text=re.compile(rf"^{re.escape(opt)}$", re.I))
+                if not hit.count():
+                    page.keyboard.press("Escape")
+                    continue
+                hit.first.click(timeout=4000, force=False)
+                wait_idle(page, 3500)
+                # Prefer on-page concert key label over widget scrape.
+                body = page.inner_text("body") or ""
+                m = re.search(r"Practice concert key:\s*([^\n·]+)", body, re.I)
+                landed = (m.group(1).strip() if m else "")
+                if not landed:
+                    try:
+                        from _walk_custom_practice_key import pk_val
+
+                        landed = str(pk_val(page) or "").strip()
+                    except Exception:
+                        landed = ""
+                if _landed_ok(landed, opt):
+                    return True
+                if opt.lower() == "cm" and landed.lower() in {"c", "c major"}:
+                    continue
+                continue
+            except Exception:
+                try:
+                    page.keyboard.press("Escape")
+                except Exception:
+                    pass
+                continue
+    except Exception:
+        pass
+    return False
 
 
 def click_chord_tile(page: Page, label: str) -> bool:

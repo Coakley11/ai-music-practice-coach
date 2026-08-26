@@ -222,6 +222,22 @@ def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> boo
             return False
     except ImportError:
         pass
+    # SBI → Custom progression preview: sidebar PK belongs to LAST_CUSTOM, not Shape/catalog.
+    try:
+        from songs.practice_key_state import sbi_uses_custom_progression_preview
+
+        if sbi_uses_custom_progression_preview(session):
+            return False
+    except ImportError:
+        pass
+    try:
+        from backing_context import get_backing_context
+
+        ctx_early = get_backing_context(session)
+        if ctx_early is not None and str(getattr(ctx_early, "source", "") or "") == "custom_progression":
+            return False
+    except ImportError:
+        pass
     pick = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""

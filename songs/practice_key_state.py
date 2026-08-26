@@ -137,8 +137,10 @@ def resolve_settings_pick_for_write(
 
     # SBI Custom preview/backing: sticky Practice Key belongs to LAST_CUSTOM / CPL,
     # never Global Active catalog (P5 / Global Active vs LAST_CUSTOM separation).
+    # Only auto-redirect when the caller did not name a destination — sealing the
+    # catalog sticky under a Custom overlay must still write the explicit catalog pick.
     custom_sbi_pick = _custom_sbi_settings_pick(session)
-    if custom_sbi_pick:
+    if custom_sbi_pick and not explicit:
         return custom_sbi_pick
 
     if creative_jam_owns_practice_settings(session):
@@ -158,27 +160,44 @@ def resolve_settings_pick_for_write(
 
 def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
     """When SBI is on Custom progression, return the custom pick_key for PK writes."""
-    if not sbi_uses_custom_progression_preview(session):
-        return ""
-
     page = str(session.get("studio_page") or "").strip().lower()
     entry = str(session.get("improv_entry_mode") or "").strip()
     ctx_src = ""
+    bound = ""
     try:
         from backing_context import get_backing_context
 
         ctx = get_backing_context(session)
         if ctx is not None:
             ctx_src = str(getattr(ctx, "source", "") or "").strip()
+            bound = str(
+                getattr(ctx, "bound_pick_key", "")
+                or getattr(ctx, "active_song_id", "")
+                or ""
+            ).strip()
     except ImportError:
         pass
-    sbi_surface = (
-        page in {"creative", "backing"}
-        or entry == "Song-Based Improvisation"
-        or ctx_src == "song_improv"
+    custom_preview = sbi_uses_custom_progression_preview(session)
+    # Custom SBI Backing may keep source=song_improv with custom:: bound pick.
+    if (
+        not custom_preview
+        and ctx_src != "custom_progression"
+        and not (ctx_src == "song_improv" and bound.startswith("custom::"))
+    ):
+        return ""
+    # Songs / Practice / picker must write the Global Active catalog pick — leftover
+    # SBI Custom entry/source flags must not redirect catalog Practice Key writes.
+    sbi_surface = page in {"creative", "backing"} or (
+        page == ""
+        and (
+            entry == "Song-Based Improvisation"
+            or ctx_src in {"song_improv", "custom_progression"}
+        )
     )
     if not sbi_surface:
         return ""
+    if bound.startswith("custom::"):
+        return bound
 
     try:
         from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
@@ -318,11 +337,87 @@ def set_practice_concert_key(
     concert_key: str,
     *,
     pick_key: str = "",
+    allow_catalog_during_sbi_custom: bool = False,
 ) -> None:
     pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
+    # Hard isolation: while Creative/Backing SBI is on Custom progression, never
+    # write the Global Active catalog sticky (Shape Dm must not become Eb/D#m).
+    # Exception: explicit seal of catalog sticky when entering the Custom overlay.
+    if (
+        not allow_catalog_during_sbi_custom
+        and is_song_source_pick(pk)
+        and not str(pk).startswith("custom::")
+    ):
+        try:
+            page = str(session.get("studio_page") or "").strip().lower()
+            # Any active Custom overlay means catalog sticky is sealed — do not
+            # overwrite Shape with Custom live (E / Eb / C#).
+            if page in {"creative", "backing", "custom"} and (
+                session.get("_sbi_custom_sidebar_overlay")
+                or session.get("_custom_page_sidebar_overlay")
+            ):
+                return
+            if page in {"creative", "backing"} and sbi_uses_custom_progression_preview(session):
+                return
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            bound = str(
+                getattr(ctx, "bound_pick_key", "")
+                or getattr(ctx, "active_song_id", "")
+                or ""
+            ).strip() if ctx is not None else ""
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if page in {"creative", "backing"} and (
+                src == "custom_progression"
+                or (src == "song_improv" and bound.startswith("custom::"))
+            ):
+                return
+            # After leaving Custom SBI, refuse remount writes of the Custom sticky
+            # token onto the sealed catalog pick (Shape Dm must not become E).
+            sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+            sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+            if sealed and sealed_pick and key != sealed:
+                same_pick = str(pk) == sealed_pick
+                if not same_pick:
+                    try:
+                        from songs.music_source import normalize_catalog_pick_key
+
+                        same_pick = str(
+                            normalize_catalog_pick_key(pk, session_state=session) or ""
+                        ).strip() == str(
+                            normalize_catalog_pick_key(sealed_pick, session_state=session)
+                            or ""
+                        ).strip()
+                    except Exception:
+                        same_pick = False
+                if same_pick:
+                    custom_tok = ""
+                    try:
+                        custom_write = str(_custom_sbi_settings_pick(session) or "").strip()
+                        if not custom_write.startswith("custom::"):
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+                            snap = session.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict):
+                                active = snap.get("active")
+                                if isinstance(active, dict):
+                                    custom_write = str(
+                                        custom_pick_key_for(active) or snap.get("pick_key") or ""
+                                    ).strip()
+                        if custom_write.startswith("custom::"):
+                            custom_tok = str(
+                                get_practice_concert_key(session, custom_write) or ""
+                            ).strip()
+                    except Exception:
+                        custom_tok = ""
+                    if custom_tok and key == custom_tok:
+                        return
+        except Exception:
+            pass
     # Generated Jam / Style Jam keys must never land in a catalog song slot.
     if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
         try:
@@ -366,6 +461,12 @@ def set_practice_concert_key(
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    # Intentional catalog write refreshes isolation seal (Shape Dm → user F, etc.).
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    if sealed_pick and not str(write_pk).startswith("custom::"):
+        sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
+        if write_pk in sealed_aliases or pk in sealed_aliases:
+            session["_sbi_custom_sealed_catalog_pk"] = key
 
 
 def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:

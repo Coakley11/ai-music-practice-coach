@@ -120,6 +120,99 @@ def _resolve_creative_practice_concert_key(
         CREATIVE_CONCERT_KEY_SOURCE,
         creative_entry_concert_key,
     )
+    # Custom SBI / Custom progression: Practice Key owner is the custom sticky pick —
+    # never Global Active catalog display_key (Shape Dm / F#m leaking onto Trial Song D).
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_settings_pick_for_write,
+            sbi_uses_custom_progression_preview,
+        )
+
+        custom_pick = ""
+        src_preview = str(
+            session.get("improv_song_source") or session.get("sbi_preview_source") or ""
+        ).lower()
+        is_custom_sbi = bool(
+            sbi_uses_custom_progression_preview(session)
+            or str(getattr(creative, "active_song_id", "") or "").startswith("custom::")
+            or ("custom" in src_preview)
+        )
+        # Mission Backing: live sidebar Practice Key is authoritative for this visit.
+        # Custom SBI keeps the sticky-home path below (Shape Dm must not leak onto Trial).
+        creative_src = str(getattr(creative, "source", "") or "").strip()
+        if creative_src == "mission":
+            live_mission = str(session.get("display_key") or "").strip()
+            mission_widget = ""
+            for _k, _v in list(session.items()):
+                if str(_k).startswith("display_key_mission_backing_") and str(_v or "").strip():
+                    mission_widget = str(_v).strip()
+                    break
+            chosen = mission_widget or live_mission
+            if chosen:
+                try:
+                    from pathlib import Path
+
+                    Path(__file__).resolve().parent.joinpath(
+                        "scripts/evidence-creative-backing/_mission_pk_resolve_diag.txt"
+                    ).write_text(
+                        f"mission_live_return={chosen!r} live={live_mission!r} "
+                        f"widget={mission_widget!r} concert={session.get('concert_key')!r}\n",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                # Keep session identity aligned with the Mission widget selection.
+                session["display_key"] = chosen
+                session["concert_key"] = chosen
+                return chosen
+        if is_custom_sbi:
+            custom_pick = str(resolve_settings_pick_for_write(session) or "").strip()
+            if not custom_pick.startswith("custom::"):
+                custom_pick = str(getattr(creative, "active_song_id", "") or "").strip()
+            home = str(getattr(creative, "key", "") or "C").strip() or "C"
+            sticky = ""
+            if custom_pick.startswith("custom::"):
+                sticky = str(
+                    get_practice_concert_key(session, custom_pick, default=home) or ""
+                ).strip()
+            # Reject catalog-family stickies / Shape fallthrough (Dm, F#m, Bm) when
+            # the custom home is a different major/minor center.
+            ctx_ck = str(getattr(creative, "concert_key", "") or "").strip()
+            live = str(session.get("display_key") or "").strip()
+
+            def _same_family(a: str, b: str) -> bool:
+                try:
+                    from music_theory import split_key_center
+
+                    ta, _ = split_key_center(a)
+                    tb, _ = split_key_center(b)
+                    return bool(ta) and ta == tb
+                except Exception:
+                    return str(a).rstrip("mM")[:1] == str(b).rstrip("mM")[:1]
+
+            for candidate in (sticky, ctx_ck, home):
+                if not candidate:
+                    continue
+                # Prefer candidates that match creative home / ctx over live catalog PK.
+                if live and candidate == live and home and not _same_family(candidate, home):
+                    continue
+                # Reject catalog-mode bleed: Shape Dm onto Trial D major (same tonic,
+                # different mode) when the candidate equals live catalog display.
+                if live and candidate == live and home and candidate != home:
+                    try:
+                        from music_theory import split_key_center
+
+                        _ht, hm = split_key_center(home)
+                        _ct, cm = split_key_center(candidate)
+                        if _ht and _ht == _ct and hm != cm:
+                            continue
+                    except Exception:
+                        pass
+                return candidate
+            return home
+    except ImportError:
+        pass
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 

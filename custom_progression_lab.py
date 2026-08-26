@@ -749,13 +749,41 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         sticky = ""
         pick_key = ""
         identity_changed = False
-    # Prefer dedicated Custom widget, then shared display_key canonical store.
-    live = str(
-        session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
-        or session.get("display_key")
-        or session.get("concert_key")
-        or ""
+    # Prefer dedicated Custom widget. Only fall back to global display_key when
+    # Custom is Global Active — otherwise Shape/catalog live PK must not seed the
+    # Custom workspace (reverse isolation: Shape F must not appear as Trial PK).
+    custom_is_ga = False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        custom_is_ga = bool(
+            custom_progression_is_active(session) or is_custom_progression(session)
+        )
+    except ImportError:
+        custom_is_ga = False
+    live_widget = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
+    live_global = str(
+        session.get("display_key") or session.get("concert_key") or ""
     ).strip()
+    # Reject catalog live bleed into the dedicated Custom widget when Custom is not GA.
+    if not custom_is_ga and live_widget:
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+            catalog_sticky = (
+                str(get_practice_concert_key(session, catalog_pick) or "").strip()
+                if catalog_pick and not catalog_pick.startswith("custom::")
+                else ""
+            )
+            if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
+                live_widget = ""
+                session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
+        except ImportError:
+            pass
+    live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
+    if custom_is_ga and not live_widget:
+        live = live_global
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
     original_just_changed = bool(
@@ -781,7 +809,27 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         selected = sticky or home
         force_seed_widget = True
     elif live and live in options:
-        selected = live
+        # Prefer Custom sticky when global/live still holds the sealed catalog PK
+        # (Shape Dm / F) or another workflow's key leaked into display_key.
+        catalog_sticky = ""
+        try:
+            from songs.practice_key_state import (
+                get_practice_concert_key as _get_pk,
+                resolve_practice_source_pick as _res_pick,
+            )
+
+            _cp = str(_res_pick(session) or "").strip()
+            if _cp and not _cp.startswith("custom::"):
+                catalog_sticky = str(_get_pk(session, _cp) or "").strip()
+        except ImportError:
+            catalog_sticky = ""
+        if sticky and live != sticky and (
+            (catalog_sticky and live == catalog_sticky) or (not custom_is_ga and live != home and sticky == home)
+        ):
+            selected = sticky
+            force_seed_widget = True
+        else:
+            selected = live
     elif pending_s:
         selected = pending_s or home
         force_seed_widget = True
@@ -800,7 +848,39 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     if force_seed_widget or not widget_now or widget_now not in options:
         session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = selected
 
-    # Keep canonical display_key aligned — safe: Custom page has no display_key selectbox.
+    # Project Custom PK into the left-panel sidebar for this Custom visit.
+    # Seal catalog sticky first so Shape Dm/F survives when the user leaves Custom.
+    if not custom_is_ga:
+        try:
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+            )
+
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+            live_catalog = str(
+                session.get("display_key") or session.get("concert_key") or ""
+            ).strip()
+            # Seal catalog sticky once on enter — never overwrite an existing Shape
+            # sticky with Custom live (E / C# / Eb → Shape contamination).
+            if (
+                catalog_pick
+                and not catalog_pick.startswith("custom::")
+                and live_catalog
+                and not session.get("_custom_page_sidebar_overlay")
+            ):
+                existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
+                if not existing:
+                    set_practice_concert_key(
+                        session,
+                        live_catalog,
+                        pick_key=catalog_pick,
+                        allow_catalog_during_sbi_custom=True,
+                    )
+            session["_custom_page_sidebar_overlay"] = True
+        except ImportError:
+            pass
     session["display_key"] = selected
     session["concert_key"] = selected
     session[CPL_LAST_DISPLAY_KEY] = selected
@@ -812,6 +892,13 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
             session, selected, pick_key=custom_pick_key_for(active)
         )
     except ImportError:
+        pass
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+        session[PENDING_DISPLAY_KEY] = selected
+        _apply_display_key_before_widget(st, selected, source="custom_workspace_sidebar")
+    except Exception:
         pass
     return options
 
@@ -902,13 +989,18 @@ def on_global_display_key_change(session_state, display_key):
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode
-            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+            from songs.practice_key_state import (
+                resolve_settings_pick_for_write,
+                set_practice_concert_key,
+            )
 
             if not is_fixed_practice_key_mode(session_state):
+                # SBI Custom / Custom page must write LAST_CUSTOM sticky — never
+                # Global Active catalog via resolve_practice_source_pick (Shape bleed).
                 set_practice_concert_key(
                     session_state,
                     str(display_key or "").strip(),
-                    pick_key=resolve_practice_source_pick(session_state),
+                    pick_key=resolve_settings_pick_for_write(session_state),
                 )
         except ImportError:
             pass
@@ -930,13 +1022,16 @@ def on_global_display_key_change(session_state, display_key):
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode
-            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+            from songs.practice_key_state import (
+                resolve_settings_pick_for_write,
+                set_practice_concert_key,
+            )
 
             if not is_fixed_practice_key_mode(session_state):
                 set_practice_concert_key(
                     session_state,
                     str(display_key or "").strip(),
-                    pick_key=resolve_practice_source_pick(session_state),
+                    pick_key=resolve_settings_pick_for_write(session_state),
                 )
         except ImportError:
             pass
@@ -3154,6 +3249,69 @@ def cpl_apply_chord_with_bars_to_session(
     home[section_name] = entries
     cpl_clear_pending_chord(session_state, section_name)
     return cpl_save_draft(session_state, active, home, persist=persist, st=st)
+
+
+def cpl_on_new_song_callback() -> None:
+    """Streamlit on_click — blank draft without LAST_CUSTOM clobber on next run."""
+    import streamlit as st
+
+    try:
+        try:
+            from songs.music_source import mark_cpl_intentional_new_song
+
+            mark_cpl_intentional_new_song(st.session_state)
+        except ImportError:
+            st.session_state["_cpl_skip_last_custom_restore"] = True
+        apply_cpl_session_progression(
+            st.session_state,
+            start_new_progression(),
+            reset_display_key=True,
+        )
+        st.session_state["_cpl_new_song_flash"] = True
+    except Exception as exc:
+        st.session_state["_cpl_new_song_flash"] = f"error:{exc!r}"
+
+
+def cpl_on_save_library_callback() -> None:
+    """Streamlit on_click — persist live CPL draft to the custom library."""
+    import streamlit as st
+
+    try:
+        active = cpl_active_from_session(st.session_state)
+        saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
+        name = str(active.get("name") or "My Progression").strip() or "My Progression"
+        save_progression(saved, name, active)
+        st.session_state["_cpl_save_library_flash"] = True
+    except Exception as exc:
+        st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
+
+
+def cpl_on_clear_section_callback() -> None:
+    """Streamlit on_click — empty the active edit section."""
+    import streamlit as st
+
+    section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    active = cpl_active_from_session(st.session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    home[section] = []
+    cpl_clear_pending_chord(st.session_state, section)
+    cpl_save_draft(st.session_state, active, home, persist=True, st=st)
+
+
+def cpl_on_undo_last_chord_callback() -> None:
+    """Streamlit on_click — pop the last chord in the active edit section."""
+    import streamlit as st
+
+    section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    active = cpl_active_from_session(st.session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section) or [])
+    if not entries:
+        return
+    entries.pop()
+    home[section] = entries
+    cpl_clear_pending_chord(st.session_state, section)
+    cpl_save_draft(st.session_state, active, home, persist=True, st=st)
 
 
 def cpl_on_pick_chord_callback(chord: str) -> None:

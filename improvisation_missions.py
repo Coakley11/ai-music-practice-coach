@@ -1064,22 +1064,109 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
         out["motif"] = motif
     out["concert_key"] = dest
     out["display_key"] = dest
-    out["abc"] = ""
+    # Rebuild ABC immediately so K: / pitches track the new Practice Key
+    # (cleared-empty ABC previously left a stale Cm staff until a later refresh).
+    try:
+        bpm = int(out.get("bpm") or 100)
+    except (TypeError, ValueError):
+        bpm = 100
+    try:
+        out["abc"] = build_mission_notation_abc(
+            motif if isinstance(out.get("motif"), dict) else {"notes": [], "chord": out.get("chord")},
+            mission=str(out.get("mission") or ""),
+            key_center=dest,
+            bpm=bpm,
+        )
+    except Exception:
+        out["abc"] = ""
     out["tab"] = ""
     out["piano_html"] = ""
     return out
+
+
+def transpose_stored_mission_practice_lick(
+    session_state: dict, *, from_key: str, to_key: str
+) -> bool:
+    """Transpose sealed Mission Practice lick on Backing with Practice Key.
+
+    The lick panel reads ``MISSION_PRACTICE_LICK_KEY``, not only ``MISSION_EXAMPLE_KEY``.
+    Key changes must update both or Notes/MIDI/ABC stay at the old pitch while the
+    chord label / sidebar key move.
+    """
+    raw = session_state.get(MISSION_PRACTICE_LICK_KEY)
+    if not isinstance(raw, dict) or not raw.get("motif"):
+        return False
+    blob = {
+        "chord": raw.get("chord") or raw.get("_concert_chord") or "",
+        "motif": dict(raw.get("motif") or {}),
+        "concert_key": str(raw.get("key_center") or from_key or ""),
+        "display_key": str(raw.get("key_center") or from_key or ""),
+    }
+    transposed = _transpose_mission_example_payload(blob, from_key=from_key, to_key=to_key)
+    if transposed is None:
+        return False
+    out = dict(raw)
+    out["chord"] = transposed.get("chord") or out.get("chord")
+    out["_concert_chord"] = str(
+        (transposed.get("motif") or {}).get("_concert_chord")
+        or transposed.get("chord")
+        or out.get("_concert_chord")
+        or ""
+    )
+    out["motif"] = transposed.get("motif") or out.get("motif")
+    out["key_center"] = str(to_key or "").strip() or out.get("key_center")
+    out["abc"] = str(transposed.get("abc") or "")
+    out["tab"] = ""
+    session_state[MISSION_PRACTICE_LICK_KEY] = out
+    try:
+        from creative_mission_artifact_persistence import handle_user_mission_practice_lick_saved
+
+        handle_user_mission_practice_lick_saved(
+            session_state,
+            interaction="transpose_mission_practice_lick",
+        )
+    except ImportError:
+        pass
+    return True
 
 
 def transpose_stored_mission_example(session_state: dict, *, from_key: str, to_key: str) -> bool:
     """Transpose cached Mission example with Practice Key. Concert audio identity follows ``to_key``."""
     raw = session_state.get(MISSION_EXAMPLE_KEY)
     if not isinstance(raw, dict):
-        return False
+        lick_only = transpose_stored_mission_practice_lick(
+            session_state, from_key=from_key, to_key=to_key
+        )
+        return lick_only
     transposed = _transpose_mission_example_payload(raw, from_key=from_key, to_key=to_key)
     if transposed is None:
         return False
     session_state[MISSION_EXAMPLE_KEY] = transposed
     session_state.pop("_mission_example_output_fp", None)
+    transpose_stored_mission_practice_lick(session_state, from_key=from_key, to_key=to_key)
+    try:
+        from pathlib import Path
+
+        motif = dict(transposed.get("motif") or {})
+        out = Path(__file__).resolve().parent / "scripts" / "evidence-creative-backing"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "_mission_midi_abc_diag.json").write_text(
+            __import__("json").dumps(
+                {
+                    "from_key": from_key,
+                    "to_key": to_key,
+                    "chord": transposed.get("chord"),
+                    "notes": motif.get("notes"),
+                    "midi": motif.get("midi"),
+                    "abc_k": parse_abc_k_field(str(transposed.get("abc") or "")),
+                    "abc_len": len(str(transposed.get("abc") or "")),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
     return True
 
 

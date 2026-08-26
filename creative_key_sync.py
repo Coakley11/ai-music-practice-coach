@@ -571,6 +571,23 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
     from music_theory import key_mode, practice_keys_for_mode
 
     live = str(key or session.get("display_key") or "").strip() or "C"
+    # Mission / SBI Backing: offer both modes so Practice Key can transpose across
+    # major/minor (C minor → C# minor), not only the current mode family.
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in {"mission", "song_improv"}:
+            major_opts = list(practice_keys_for_mode("major"))
+            minor_opts = list(practice_keys_for_mode("minor"))
+            # Minors first so Cm/C#m mount in the initial virtualized window.
+            options = minor_opts + [k for k in major_opts if k not in minor_opts]
+            if live not in options:
+                options = [live] + options
+            return options
+    except ImportError:
+        pass
     options = list(practice_keys_for_mode(key_mode(live)))
     if live not in options:
         options = [live] + options
@@ -579,6 +596,16 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        # Mission / SBI Backing must keep the full major+minor Practice Key space.
+        if src in {"mission", "song_improv"}:
+            return False
+    except ImportError:
+        pass
     try:
         from creative_key_sync import entry_jam_practice_key_authority_active
 
@@ -767,6 +794,76 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+
+    # Custom SBI / Custom progression Backing: LAST_CUSTOM sticky + home mode
+    # (never Shape Dm via preserve_user after overlay clear).
+    try:
+        from source_session_state import (
+            custom_sbi_owns_sidebar_practice_key,
+            prepare_sbi_custom_sidebar_display_key,
+        )
+
+        page_now = str(session.get("studio_page") or "").strip().lower()
+        # Only on Creative/Backing — leftover SBI Custom preview on Songs must not
+        # re-project Custom E over sealed Shape Dm.
+        if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(session):
+            return prepare_sbi_custom_sidebar_display_key(st, session)
+    except ImportError:
+        pass
+
+    # Mission Backing: always offer major+minor Practice Keys (Cm → C#m transpose).
+    # Do this before preserve_user short-circuit, which previously returned mode-only lists.
+    try:
+        from backing_context import get_backing_context
+
+        ctx_mission = get_backing_context(session)
+        if ctx_mission is not None and str(getattr(ctx_mission, "source", "") or "").strip() == "mission":
+            session.pop("_sbi_custom_sealed_catalog_pk", None)
+            session.pop("_sbi_custom_sealed_catalog_pick", None)
+            live = str(
+                session.get("display_key") or session.get("concert_key") or getattr(ctx_mission, "key", "") or "C"
+            ).strip() or "C"
+            major_opts = list(practice_keys_for_mode("major"))
+            minor_opts = list(practice_keys_for_mode("minor"))
+            # Minors first so Cm/C#m mount in the initial virtualized window.
+            options = minor_opts + [k for k in major_opts if k not in minor_opts]
+            if live not in options:
+                options = [live] + [k for k in options if k != live]
+            _apply_display_key_before_widget(
+                st, live if live in options else options[0], source="mission_backing_both_mode_keys"
+            )
+            session["concert_key"] = str(session.get("display_key") or live)
+            session.pop(PENDING_DISPLAY_KEY, None)
+            try:
+                from pathlib import Path
+
+                Path("scripts/evidence-creative-backing/_mission_pk_opts_diag.txt").write_text(
+                    f"hit_mission_both_mode n={len(options)} cm={('Cm' in options)} "
+                    f"live={live!r} sample={options[:6]!r}\n",
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+            try:
+                from workflow_key_identity import resolve_song_practice_key_identity
+
+                song_ident = resolve_song_practice_key_identity(session)
+                if song_ident is not None:
+                    session["_sidebar_key_identity_label"] = song_ident.practice_label
+            except ImportError:
+                pass
+            return options
+    except Exception as _mission_pk_exc:
+        try:
+            from pathlib import Path
+
+            Path("scripts/evidence-creative-backing/_mission_pk_opts_diag.txt").write_text(
+                f"mission_both_mode_exc={_mission_pk_exc!r}\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
     # Sidebar Practice Key wins for subordinate Backing sources (mission / SBI).
     # Never restore a sealed song-identity key over an explicit user change.
     preserved_early = _sidebar_preserve_user_display_key_options(
@@ -850,7 +947,17 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                         selected = live_before
                 if live_before:
                     selected = live_before
-                options = practice_keys_for_mode(song_ident.practice_mode)
+                # Offer both modes so Mission Backing Practice Key can transpose
+                # across major/minor (e.g. C minor → C# minor), not only song mode.
+                try:
+                    from music_theory import practice_keys_for_mode
+
+                    major_opts = list(practice_keys_for_mode("major"))
+                    minor_opts = list(practice_keys_for_mode("minor"))
+                    # Minors first so Cm/C#m mount in the initial virtualized window.
+                    options = minor_opts + [k for k in major_opts if k not in minor_opts]
+                except Exception:
+                    options = practice_keys_for_mode(song_ident.practice_mode)
                 if selected not in options:
                     options = [selected] + options
                 _apply_display_key_before_widget(
@@ -991,7 +1098,16 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         sbi_custom_preview = sbi_uses_custom_progression_preview(session)
     except ImportError:
         pass
-    if ctx_source == "custom_progression" or sbi_custom_preview:
+    # song_improv with custom:: bound pick is Custom SBI Backing — same PK owner as
+    # custom_progression (LAST_CUSTOM), not Global Active catalog.
+    bound_custom = False
+    if ctx is not None:
+        bound = str(
+            getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+        ).strip()
+        if ctx_source == "song_improv" and bound.startswith("custom::"):
+            bound_custom = True
+    if ctx_source == "custom_progression" or sbi_custom_preview or bound_custom:
         ctx_source = "custom_progression"
     if ctx_source == "regular_song":
         try:
@@ -1032,10 +1148,10 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             pass
         try:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
-            from songs.practice_key_state import resolve_practice_source_pick
+            from songs.practice_key_state import resolve_settings_pick_for_write
 
             if is_fixed_practice_key_mode(session):
-                pick = resolve_practice_source_pick(session)
+                pick = resolve_settings_pick_for_write(session)
                 selected = resolve_practice_concert_key_for_song(
                     session,
                     home_key or "C",
@@ -1057,13 +1173,24 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                     or ""
                 ).strip()
             try:
-                from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+                from songs.practice_key_state import (
+                    get_practice_concert_key,
+                    resolve_settings_pick_for_write,
+                )
 
-                saved = get_practice_concert_key(session, resolve_practice_source_pick(session))
+                # Custom SBI / Custom progression backing: sticky on custom pick,
+                # never Global Active catalog (Shape Dm must not win here).
+                write_pick = str(resolve_settings_pick_for_write(session) or "").strip()
+                saved = (
+                    get_practice_concert_key(session, write_pick) if write_pick else ""
+                )
             except ImportError:
                 saved = ""
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-            selected = str(pending or saved or live or resolver_key or home_key or "C").strip() or "C"
+            # Prefer custom sticky/home over leftover catalog live (Shape Dm).
+            selected = str(
+                pending or saved or home_key or resolver_key or live or "C"
+            ).strip() or "C"
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -1167,6 +1294,22 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
 def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
     """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
+
+    # Creative SBI → Custom: overlay LAST_CUSTOM sticky + home mode (not Shape).
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key, prepare_sbi_custom_sidebar_display_key
+
+        if custom_sbi_owns_sidebar_practice_key(session):
+            return prepare_sbi_custom_sidebar_display_key(st, session)
+    except ImportError:
+        pass
+
+    try:
+        from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed
+
+        clear_sbi_custom_sidebar_overlay_if_needed(session)
+    except ImportError:
+        pass
 
     preserved = _sidebar_preserve_user_display_key_options(
         st,
@@ -1516,25 +1659,78 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     new,
                     default_mode=default_mode,
                 )
-                if sidebar_song_practice_key_mutation_deferred(session):
-                    # Keep live Practice Key on this run; blob mutation consumes pre-widget next run.
-                    session["display_key"] = new
-                    session["concert_key"] = new
-                    session["_pending_display_key"] = new
+                from_key = str(session.pop("_mission_pk_transpose_from", "") or "").strip()
+                if not from_key:
                     try:
-                        from songs.key_state import mark_display_key_changed
+                        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY
 
-                        mark_display_key_changed(st_like or session)
+                        lick = session.get(MISSION_PRACTICE_LICK_KEY)
+                        if isinstance(lick, dict):
+                            from_key = str(lick.get("key_center") or "").strip()
+                        if not from_key:
+                            ex = session.get(MISSION_EXAMPLE_KEY)
+                            if isinstance(ex, dict):
+                                from_key = str(
+                                    ex.get("concert_key") or ex.get("display_key") or ""
+                                ).strip()
+                    except ImportError:
+                        pass
+                session["display_key"] = new
+                session["concert_key"] = new
+                session["_pending_display_key"] = new
+                mutated = False
+                try:
+                    # Prefer immediate mutation so example/lick transpose on this click.
+                    # Never let blob errors roll back the sidebar widget selection.
+                    result = update_active_practice_key(
+                        session, new, source="sidebar_song_improv", transpose_progression=True
+                    )
+                    mutated = bool(result.ok)
+                    if mutated:
+                        finalize_sidebar_song_practice_key_after_mutation(
+                            session, new, st_like=st_like
+                        )
+                except Exception:
+                    mutated = False
+                if not mutated and from_key and from_key != new:
+                    try:
+                        from improvisation_missions import transpose_stored_mission_example
+                        from music_theory import semitone_distance, transpose_chord
+
+                        transpose_stored_mission_example(
+                            session, from_key=from_key, to_key=new
+                        )
+                        steps = semitone_distance(from_key, new)
+                        if steps:
+                            for key in (
+                                "ii_selected_chord",
+                                "II_SELECTED_CHORD",
+                                "_mission_backing_canonical_chord",
+                            ):
+                                raw = str(session.get(key) or "").strip()
+                                if raw:
+                                    session[key] = transpose_chord(
+                                        raw, steps, reference_key=new
+                                    )
+                            click = session.get("_mission_chord_click_authority")
+                            if isinstance(click, dict) and str(click.get("chord") or "").strip():
+                                click = dict(click)
+                                click["chord"] = transpose_chord(
+                                    str(click.get("chord")), steps, reference_key=new
+                                )
+                                session["_mission_chord_click_authority"] = click
                     except Exception:
-                        session["display_key_change_source"] = "sidebar_mission_backing_deferred"
-                    return
-                result = update_active_practice_key(
-                    session, new, source="sidebar_song_improv", transpose_progression=True
-                )
-                if not result.ok:
-                    return
-                finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
-            except ImportError:
+                        pass
+                    try:
+                        finalize_sidebar_song_practice_key_after_mutation(
+                            session, new, st_like=st_like
+                        )
+                    except Exception:
+                        pass
+                elif not mutated and sidebar_song_practice_key_mutation_deferred(session):
+                    # Intent already queued by capture_*; hydrate will consume.
+                    pass
+            except Exception:
                 pass
             return
     except ImportError:
@@ -1615,29 +1811,110 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             except ImportError:
                 pass
             return
-        if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
-            try:
-                from song_practice_key_sidebar_change import (
-                    finalize_sidebar_song_practice_key_after_mutation,
-                    sidebar_song_practice_key_mutation_deferred,
-                )
-
-                if sidebar_song_practice_key_mutation_deferred(session):
-                    return
-            except ImportError:
-                pass
-            result = update_active_practice_key(
-                session, new, source="sidebar_song_improv", transpose_progression=True
+        # Custom SBI preview / Custom-bound song_improv backing: Practice Key sticky
+        # belongs to LAST_CUSTOM — never the Global Active catalog (Shape) pick.
+        # Only on Creative/Backing — leftover SBI Custom flags must not steal Songs writes.
+        try:
+            from songs.practice_key_state import (
+                resolve_settings_pick_for_write,
+                set_practice_concert_key,
+                sbi_uses_custom_progression_preview,
             )
-            if not result.ok:
-                return
-            try:
-                from song_practice_key_sidebar_change import finalize_sidebar_song_practice_key_after_mutation
+            from backing_context import get_backing_context as _get_bk_ctx
 
-                finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
-            except ImportError:
-                session["concert_key"] = new
-            return
+            _page_cus = str(session.get("studio_page") or "").strip().lower()
+            if _page_cus in {"creative", "backing"}:
+                try:
+                    _ctx_cus = _get_bk_ctx(session)
+                except Exception:
+                    _ctx_cus = None
+                _bound = str(
+                    getattr(_ctx_cus, "bound_pick_key", "")
+                    or getattr(_ctx_cus, "active_song_id", "")
+                    or ""
+                ).strip()
+                _src = (
+                    str(getattr(_ctx_cus, "source", "") or "").strip()
+                    if _ctx_cus is not None
+                    else ""
+                )
+                _write = str(resolve_settings_pick_for_write(session) or "").strip()
+                _preview = bool(sbi_uses_custom_progression_preview(session))
+                _custom_sbi = bool(
+                    _preview
+                    or _src == "custom_progression"
+                    or (_src == "song_improv" and _bound.startswith("custom::"))
+                    or _write.startswith("custom::")
+                )
+                if _custom_sbi or _preview:
+                    pick = _write if _write.startswith("custom::") else _bound
+                    if not pick.startswith("custom::"):
+                        try:
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+                            from custom_progression_lab import CPL_ACTIVE_KEY
+
+                            snap = session.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                                pick = str(custom_pick_key_for(snap["active"]) or "").strip()
+                            if not pick.startswith("custom::"):
+                                live_cpl = session.get(CPL_ACTIVE_KEY)
+                                if isinstance(live_cpl, dict):
+                                    pick = str(custom_pick_key_for(live_cpl) or "").strip()
+                        except ImportError:
+                            pick = ""
+                    if pick.startswith("custom::"):
+                        session["concert_key"] = new
+                        set_practice_concert_key(session, new, pick_key=pick)
+                        # Do not call on_global_display_key_change here — historically it
+                        # re-wrote resolve_practice_source_pick (catalog Shape) and bled PK.
+                        session["cpl_last_display_key"] = new
+                        invalidate_creative_backing_context(session)
+                        _apply_pending_backing_context_on_page(session, st_like=st_like)
+                        return
+                    # Preview is Custom but pick unresolved — never write catalog Shape.
+                    if _preview:
+                        session["concert_key"] = new
+                        return
+        except Exception:
+            # Never let a backing-context failure fall through to catalog Shape writes
+            # while SBI Custom preview is active.
+            try:
+                from songs.practice_key_state import sbi_uses_custom_progression_preview
+
+                if sbi_uses_custom_progression_preview(session) and str(
+                    session.get("studio_page") or ""
+                ).strip().lower() in {"creative", "backing"}:
+                    session["concert_key"] = new
+                    return
+            except Exception:
+                pass
+        if ptr and ptr.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+            _ptr_page = str(session.get("studio_page") or "").strip().lower()
+            if _ptr_page not in {"creative", "backing"}:
+                pass  # Songs/Practice: fall through to catalog sticky write
+            else:
+                try:
+                    from song_practice_key_sidebar_change import (
+                        finalize_sidebar_song_practice_key_after_mutation,
+                        sidebar_song_practice_key_mutation_deferred,
+                    )
+
+                    if sidebar_song_practice_key_mutation_deferred(session):
+                        return
+                except ImportError:
+                    pass
+                result = update_active_practice_key(
+                    session, new, source="sidebar_song_improv", transpose_progression=True
+                )
+                if not result.ok:
+                    return
+                try:
+                    from song_practice_key_sidebar_change import finalize_sidebar_song_practice_key_after_mutation
+
+                    finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
+                except ImportError:
+                    session["concert_key"] = new
+                return
     except ImportError:
         pass
     try:
@@ -1647,21 +1924,17 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         if ctx is not None and ctx.source == "custom_progression":
             session["concert_key"] = new
             try:
-                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+                from songs.practice_key_state import resolve_settings_pick_for_write, set_practice_concert_key
 
+                # Must use settings write pick (LAST_CUSTOM), never Global Active catalog.
                 set_practice_concert_key(
                     session,
                     new,
-                    pick_key=resolve_practice_source_pick(session),
+                    pick_key=resolve_settings_pick_for_write(session),
                 )
             except ImportError:
                 pass
-            try:
-                from custom_progression_lab import on_global_display_key_change
-
-                on_global_display_key_change(session, new)
-            except ImportError:
-                pass
+            session["cpl_last_display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
             return
@@ -1673,30 +1946,33 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     try:
         from studio_page_state import resolve_improv_song_source
 
-        if entry == "Song-Based Improvisation" and resolve_improv_song_source(session) == "Custom progression":
+        if (
+            entry == "Song-Based Improvisation"
+            and resolve_improv_song_source(session) == "Custom progression"
+            and str(session.get("studio_page") or "").strip().lower() in {"creative", "backing"}
+        ):
             session["concert_key"] = new
             try:
-                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+                from songs.practice_key_state import resolve_settings_pick_for_write, set_practice_concert_key
 
+                # Custom SBI preview: write LAST_CUSTOM sticky — never Shape/catalog GA.
                 set_practice_concert_key(
                     session,
                     new,
-                    pick_key=resolve_practice_source_pick(session),
+                    pick_key=resolve_settings_pick_for_write(session),
                 )
             except ImportError:
                 pass
-            try:
-                from custom_progression_lab import on_global_display_key_change
-
-                on_global_display_key_change(session, new)
-            except ImportError:
-                pass
+            session["cpl_last_display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
             return
     except ImportError:
         pass
-    if entry == "Song-Based Improvisation":
+    if entry == "Song-Based Improvisation" and str(session.get("studio_page") or "").strip().lower() in {
+        "creative",
+        "backing",
+    }:
         try:
             from song_practice_key_sidebar_change import (
                 finalize_sidebar_song_practice_key_after_mutation,
@@ -1764,18 +2040,25 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             session["concert_key"] = new
         return
     if not _creative_sidebar_key_sync_active(session):
-        # Harmony Map / Missions / Motif / Live Coach still own Global Active PK.
+        # Songs / Practice / non-Creative surfaces: still persist sticky Practice Key
+        # for the Global Active catalog (or Custom GA) pick. Without this, Shape Dm
+        # only lives in the widget and snaps back to Bm after visiting Custom.
         try:
-            if _catalog_song_workflow_owns_practice_key(session):
-                from songs.practice_key_state import (
-                    resolve_practice_source_pick,
-                    set_practice_concert_key,
-                )
+            from songs.practice_key_state import (
+                resolve_practice_source_pick,
+                resolve_settings_pick_for_write,
+                set_practice_concert_key,
+            )
 
-                pick = resolve_practice_source_pick(session)
-                if pick and not str(pick).startswith("custom::"):
-                    set_practice_concert_key(session, new, pick_key=pick)
-                    session["concert_key"] = new
+            pick = str(
+                resolve_settings_pick_for_write(session)
+                or resolve_practice_source_pick(session)
+                or ""
+            ).strip()
+            if pick:
+                set_practice_concert_key(session, new, pick_key=pick)
+                session["concert_key"] = new
+                if not str(pick).startswith("custom::") and not str(pick).startswith("creative::"):
                     try:
                         from music_workflow_song_practice import (
                             ensure_song_practice_blob_for_active_song,

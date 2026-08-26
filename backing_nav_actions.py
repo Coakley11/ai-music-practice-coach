@@ -92,16 +92,28 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
             )
 
     if jam_label and src in {"entry_jam", "song_improv", "mission"}:
-        candidates.append(
-            BackingNavAction(
-                action_id="return_catalog_backing",
-                label=str(jam_label),
-                destination=_catalog_backing_destination(session),
-                purpose="catalog_backing",
-                icon="headphones",
-                priority=30,
+        # Mission Backing under Custom/Catalog GA: do not offer ordinary song
+        # Backing fallthrough while the Mission handoff is active. That button
+        # competes with "Return to Mission" and reclaims Custom/Catalog owner.
+        suppress_ordinary = (
+            src == "mission"
+            and not session.get("_backing_released_specialized_context")
+            and (
+                str(session.get("_backing_explicit_handoff_source") or "").strip() == "mission"
+                or bool(session.get("_music_mission_canonical_return_destination"))
             )
         )
+        if not suppress_ordinary:
+            candidates.append(
+                BackingNavAction(
+                    action_id="return_catalog_backing",
+                    label=str(jam_label),
+                    destination=_catalog_backing_destination(session),
+                    purpose="catalog_backing",
+                    icon="headphones",
+                    priority=30,
+                )
+            )
 
     if src in {"entry_jam", "mission", "song_improv"}:
         deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)

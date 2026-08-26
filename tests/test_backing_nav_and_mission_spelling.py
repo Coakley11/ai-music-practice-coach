@@ -56,6 +56,43 @@ class TestBackingNavDedupe(unittest.TestCase):
         self.assertTrue(catalog_return_action_visible(session))
         self.assertFalse(any("Use catalog song backing" in a.label for a in actions))
 
+    def test_mission_handoff_suppresses_ordinary_custom_catalog_return(self) -> None:
+        """Explicit Mission Backing must not offer Custom/Catalog fallthrough under Custom GA."""
+        session: dict[str, Any] = {
+            "improv_intelligence_tab": "Missions",
+            "_backing_explicit_handoff_source": "mission",
+            "_music_mission_canonical_return_destination": {
+                "mission_id": "m1",
+                "return_token": "t",
+            },
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            song_title="Trial Song",
+            entry_mode="Missions",
+            mode_label="Mission Jam",
+            active_song_id="custom::trial",
+            bound_pick_key="custom::trial",
+            mission_id="m1",
+            style="Pop groove",
+            groove="Pop groove",
+            bpm=100,
+            key="D",
+            display_key="D",
+            concert_key="D",
+            progression=["Em", "Em", "D", "D"],
+            sections={"Intro": ["Em", "Em", "D", "D"]},
+            section_labels=["Intro"],
+            scope="Mission chord",
+        )
+        set_backing_context(session, ctx)
+        sync_backing_workflow_envelope(session, ctx)
+        actions, _ = build_backing_nav_actions(session)
+        self.assertTrue(any(a.action_id == "return_mission" for a in actions))
+        self.assertFalse(any(a.purpose == "catalog_backing" for a in actions))
+        self.assertFalse(catalog_return_action_visible(session))
+
     def test_generator_catalog_return_without_use_button(self) -> None:
         session: dict[str, Any] = {
             "improv_entry_mode": "Jam Session Generator",

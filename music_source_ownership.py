@@ -998,6 +998,12 @@ def activate_custom_ownership(
 ) -> Any:
     """Custom progression owns everything — release prior owner, rebuild from CPL active song."""
     try:
+        from mission_pk_reclaim_trace import note_mission_pk_reclaim
+
+        note_mission_pk_reclaim(session, writer="activate_custom_ownership")
+    except ImportError:
+        pass
+    try:
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
             capture_catalog_before_custom,

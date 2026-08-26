@@ -452,6 +452,31 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
                 live = ""
         except ImportError:
             pass
+    # Global Active catalog + LAST_CUSTOM coexistence: live display_key often still
+    # holds the Custom Practice Key (D/E/…) while active_catalog_pick_key is Shape.
+    # Never adopt that Custom live token as Shape's Practice Key.
+    if pick and not str(pick).startswith("custom::") and live:
+        try:
+            from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+            from songs.practice_key_state import get_practice_concert_key
+
+            snap = session.get(LAST_CUSTOM_STATE_KEY)
+            if isinstance(snap, dict):
+                custom_pick = str(snap.get("pick_key") or "").strip()
+                active = snap.get("active")
+                if isinstance(active, dict):
+                    custom_pick = str(custom_pick_key_for(active) or custom_pick or "").strip()
+                if custom_pick.startswith("custom::"):
+                    custom_saved = str(get_practice_concert_key(session, custom_pick) or "").strip()
+                    custom_home = str(
+                        snap.get("custom_home_key")
+                        or (active or {}).get("original_key_center")
+                        or ""
+                    ).strip()
+                    if live == custom_saved or (custom_home and live == custom_home):
+                        live = ""
+        except ImportError:
+            pass
     store = ""
     if pick:
         try:

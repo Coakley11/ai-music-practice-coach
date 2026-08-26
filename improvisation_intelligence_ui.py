@@ -1095,6 +1095,12 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
         pass
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
+    try:
+        from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
+
+        session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map
+    except ImportError:
+        session_state["_improv_mission_section_map"] = section_map
     chords = flatten_section_map(section_map)
     if not chords:
         st.warning(
@@ -1102,6 +1108,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
             "open **Custom progression**, or generate a style jam in **Entry & Jam**."
         )
         return
+    session_state["improv_mission_chord_options"] = list(chords)
 
     _ensure_chord_selection(session_state, chords, section_map)
     cur, idx = _selected_chord(session_state, chords, section_map)
@@ -1204,10 +1211,17 @@ def _tab_motif(
         pass
 
     section_map = resolve_improv_sections(session_state, improv_ctx)
+    try:
+        from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
+
+        session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map
+    except ImportError:
+        session_state["_improv_mission_section_map"] = section_map
     chords = flatten_section_map(section_map)
     if not chords:
         st.warning("No chords available — select a song or custom progression first.")
         return
+    session_state["improv_mission_chord_options"] = list(chords)
 
     _ensure_chord_selection(session_state, chords, section_map)
     _render_section_chord_map(
@@ -1218,6 +1232,7 @@ def _tab_motif(
         source_id=_improv_source_id(session_state, improv_ctx),
         key_center=improv_ctx.key_center,
         generate_motif_on_select=True,
+        motif_level=level,
     )
 
     cur, _idx = _selected_chord(session_state, chords, section_map)
@@ -1295,9 +1310,29 @@ def _tab_motif(
         st.info(f"Click **Generate motif for {gen_chord}** or tap another chord tile.")
         return
 
-    motif_chord_label = _player_facing_chord(
-        session_state, str(motif.get("chord") or gen_chord), concert_key=concert_key
-    ) or str(motif.get("chord") or gen_chord)
+    # Selected chord owns the heading. Stale motif.chord (e.g. G while Bb is selected)
+    # must retarget immediately — never show "Motif on G" for a Bb selection.
+    stored_chord = str(motif.get("chord") or "").strip()
+    stored_facing = (
+        _player_facing_chord(session_state, stored_chord, concert_key=concert_key) if stored_chord else ""
+    ) or stored_chord
+    if gen_chord and stored_facing and stored_facing != gen_chord and stored_chord != gen_chord:
+        motif = generate_musical_phrase(
+            gen_chord,
+            key_center=motif_key,
+            level=level,
+            kind="creative",
+        )
+        if isinstance(motif, dict):
+            motif["chord"] = gen_chord
+        session_state["improv_motif"] = motif
+        _clear_motif_outputs(session_state)
+        _persist_motif_artifact(session_state, interaction="motif_retarget_selected_chord")
+    elif isinstance(motif, dict) and gen_chord:
+        motif["chord"] = gen_chord
+        session_state["improv_motif"] = motif
+
+    motif_chord_label = gen_chord
     title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
@@ -1837,6 +1872,7 @@ def _render_section_chord_map(
     source_id: str,
     key_center: str = "C",
     generate_motif_on_select: bool = False,
+    motif_level: str = "Intermediate",
 ) -> None:
     st.markdown("**Chord map by section**")
     _migrate_ii_chord_selection(session_state)
@@ -1877,7 +1913,10 @@ def _render_section_chord_map(
                     button_key=btn_key,
                 )
             except ImportError:
-                pass
+                ss[II_SELECTED_CHORD] = ch
+                ss[II_SELECTED_SECTION] = label
+                ss[II_SELECTED_CHORD_INDEX] = int(gidx)
+                ss[II_SELECTED_CHORD_LABEL] = f"{label} · {ch}"
         if generate_motif_on_select:
             try:
                 from effective_practice_context import musician_facing_chart_key, musician_facing_chord
@@ -1886,10 +1925,21 @@ def _render_section_chord_map(
                 gen_ch = musician_facing_chord(ch, concert_key=key_center, chart_key=chart_key) or ch
             except ImportError:
                 gen_ch = ch
-            ss["improv_motif"] = generate_musical_phrase(gen_ch, key_center=key_center, kind="creative")
+            motif = generate_musical_phrase(
+                gen_ch,
+                key_center=key_center,
+                level=motif_level,
+                kind="creative",
+            )
+            if isinstance(motif, dict):
+                motif["chord"] = gen_ch
+            ss["improv_motif"] = motif
             _clear_motif_outputs(ss)
             _persist_motif_artifact(ss, interaction="motif_chord_tile_select")
+        # First click must remount tiles/heading from the new owner — never wait for a second click.
+        st.rerun()
 
+    clicked = False
     for sec_i, (label, chords) in enumerate(section_map):
         st.markdown(f"**{html.escape(label)}**")
         section_slug = _safe_widget_key_part(label)
@@ -1925,7 +1975,10 @@ def _render_section_chord_map(
                     # Prefer button return value over on_click — Playwright clicks
                     # reliably set the return True path; on_click alone often misses.
                     if pressed:
+                        clicked = True
                         _chord_tile_on_click(ch, label, gidx, button_key)
+    if clicked:
+        return
     cap = (
         "One progression per section — repeated verses/choruses and multi-bar holds "
         "are collapsed. Tap a chord to select."

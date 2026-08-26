@@ -879,6 +879,90 @@ def _reconcile_key_dependent_state(
         transpose_stored_mission_example(session, from_key=old_key, to_key=new_key)
     except ImportError:
         pass
+    # Keep Mission selected-chord labels in the new Practice Key (header F → F#).
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(old_key, new_key)
+        if steps:
+            for key in (
+                "ii_selected_chord",
+                "II_SELECTED_CHORD",
+                "_mission_backing_canonical_chord",
+            ):
+                raw = str(session.get(key) or "").strip()
+                if raw:
+                    session[key] = transpose_chord(raw, steps, reference_key=new_key)
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict):
+                c_sym = str(click.get("chord") or "").strip()
+                if c_sym:
+                    click = dict(click)
+                    click["chord"] = transpose_chord(c_sym, steps, reference_key=new_key)
+                    session["_mission_chord_click_authority"] = click
+            label = str(session.get("ii_selected_chord_label") or "").strip()
+            if " · " in label:
+                sec, _, ch = label.partition(" · ")
+                ch = str(ch or "").strip()
+                if ch:
+                    session["ii_selected_chord_label"] = (
+                        f"{sec} · {transpose_chord(ch, steps, reference_key=new_key)}"
+                    )
+            opts = session.get("improv_mission_chord_options")
+            if isinstance(opts, list) and opts:
+                session["improv_mission_chord_options"] = [
+                    transpose_chord(str(c), steps, reference_key=new_key) if str(c).strip() else c
+                    for c in opts
+                ]
+            prog = session.get("improv_mission_progression")
+            if isinstance(prog, list) and prog:
+                session["improv_mission_progression"] = [
+                    transpose_chord(str(c), steps, reference_key=new_key) if str(c).strip() else c
+                    for c in prog
+                ]
+            # Keep Mission section maps / authority in the new key so header chord
+            # cannot be re-resolved back to the pre-transpose symbol (F stuck).
+            sm = session.get("_improv_mission_section_map")
+            if isinstance(sm, list) and sm:
+                new_sm: list[Any] = []
+                for item in sm:
+                    if isinstance(item, (tuple, list)) and len(item) >= 2:
+                        sec = item[0]
+                        chs = item[1]
+                        if isinstance(chs, list):
+                            new_sm.append(
+                                (
+                                    sec,
+                                    [
+                                        transpose_chord(str(c), steps, reference_key=new_key)
+                                        if str(c).strip()
+                                        else c
+                                        for c in chs
+                                    ],
+                                )
+                            )
+                        else:
+                            new_sm.append(item)
+                    else:
+                        new_sm.append(item)
+                session["_improv_mission_section_map"] = new_sm
+            try:
+                from creative_chord_selection_authority import write_authoritative_chord_selection
+
+                chord_now = str(session.get("ii_selected_chord") or "").strip()
+                sec_now = str(session.get("ii_selected_section") or "").strip()
+                if chord_now and isinstance(session.get("_improv_mission_section_map"), list):
+                    write_authoritative_chord_selection(
+                        session,
+                        session["_improv_mission_section_map"],
+                        chord_symbol=chord_now,
+                        section_label=sec_now,
+                        chord_index=int(session.get("ii_selected_chord_index") or 0),
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
     blob.example_fingerprint = ""
     blob.artifact_fingerprint = ""
     blob.backing_handoff_chord = ""
