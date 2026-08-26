@@ -3368,9 +3368,25 @@ def _tab_missions(
         section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         render_mission_context_dev_panel(st, session_state)
         if not ctx_report.ok:
-            st.caption(
-                "Mission context was reconciled to your active catalog song (stale jam data removed)."
+            custom_owner = str(getattr(ctx_report, "progression_owner", "") or "") == (
+                "custom_song_sections"
             )
+            if not custom_owner:
+                try:
+                    from workflow_musical_authority import custom_owns_active_song_material
+
+                    custom_owner = custom_owns_active_song_material(session_state)
+                except ImportError:
+                    custom_owner = False
+            if custom_owner:
+                st.caption(
+                    "Mission context was reconciled to your active custom progression "
+                    "(stale jam data removed)."
+                )
+            else:
+                st.caption(
+                    "Mission context was reconciled to your active catalog song (stale jam data removed)."
+                )
     except ImportError:
         pass
 

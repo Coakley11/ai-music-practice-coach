@@ -81,7 +81,15 @@ def resolve_missions_section_map(
     session[MISSION_IGNORE_GENERATED_SECTIONS_KEY] = True
     mapped = _catalog_sections_from_session(session, improv_ctx)
     if mapped:
-        return mapped, "catalog_song_sections"
+        owner = "catalog_song_sections"
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if custom_owns_active_song_material(session):
+                owner = "custom_song_sections"
+        except ImportError:
+            pass
+        return mapped, owner
     gen = session.get("improv_generated_sections")
     if gen:
         return [], "entry_jam_leak_blocked"

@@ -167,6 +167,67 @@ def rendered_em_em_d_d(body: str) -> bool:
     return False
 
 
+def rendered_dm_dm_c_c(body: str) -> bool:
+    """True when SBI/Backing shows Trial D→C projection as Dm · Dm · C · C."""
+    text = body or ""
+    if re.search(r"\{['\"]chord['\"]", text):
+        return False
+    m = re.search(
+        r"Concert Practice Key Progression:\s*([^\n]{0,200})",
+        text,
+        re.I,
+    )
+    if m:
+        line = m.group(1)
+        if re.search(r"Dm\s*[·•]\s*Dm\s*[·•]\s*C\s*[·•]\s*C", line):
+            return True
+        if line.count("Dm") >= 2 and bool(
+            re.search(r"(?<![A-G#b])\bC\b(?![#bmA-Za-z])", line)
+        ):
+            return True
+    m2 = re.search(r"Progression:\s*([^\n]{0,240})", text, re.I)
+    if m2:
+        line = m2.group(1)
+        if re.search(r"Dm\s*[–\-]\s*Dm\s*[–\-]\s*C\s*[–\-]\s*C", line):
+            return True
+        if line.count("Dm") >= 2 and bool(
+            re.search(r"(?<![A-G#b])\bC\b(?![#bmA-Za-z])", line)
+        ):
+            return True
+    return False
+
+
+def missions_derived_from_custom_trial(body: str, *, projected: str) -> bool:
+    """Missions collapses multi-bar holds; accept unique chords derived from Trial.
+
+    D major source Em Em D D → map shows Em / D.
+    C major projection Dm Dm C C → map shows Dm / C.
+    """
+    text = body or ""
+    if not re.search(r"(Embargo Trial|Trial Song)", text, re.I):
+        return False
+    if re.search(r"Say\s*[—-]\s*John Mayer", text, re.I):
+        return False
+    chunk_m = re.search(
+        r"Chord map by section(.*?)(?:Mission instructions|Optional example|Generate example)",
+        text,
+        re.I | re.S,
+    )
+    chunk = chunk_m.group(1) if chunk_m else text
+    key = str(projected or "").strip().upper()
+    if key == "D":
+        return bool(
+            re.search(r"\bEm\b", chunk)
+            and re.search(r"(?<![A-G#b])\bD\b(?![#bmA-Za-z])", chunk)
+        )
+    if key == "C":
+        return bool(
+            re.search(r"\bDm\b", chunk)
+            and re.search(r"(?<![A-G#b])\bC\b(?![#bmA-Za-z])", chunk)
+        )
+    return False
+
+
 def fill_title(page: Page, title: str = "Trial Song") -> bool:
     for loc in (
         page.get_by_label(re.compile(r"^Song title$", re.I)),

@@ -314,6 +314,22 @@ def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[
     return {}
 
 
+def _custom_preview_concert_sections(
+    session: dict[str, Any],
+    custom: dict[str, Any],
+) -> dict[str, list[str]]:
+    """SBI Custom card uses concert-pitch sections at the Custom Practice Key."""
+    try:
+        from workflow_musical_authority import resolve_custom_concert_sections_at_practice_key
+
+        projected = resolve_custom_concert_sections_at_practice_key(session)
+        if projected:
+            return projected
+    except ImportError:
+        pass
+    return dict(custom.get("sections") or {})
+
+
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
@@ -330,7 +346,7 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
                     "artist": str(custom.get("artist") or "Custom progression"),
                     "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
                     "original_key": str(custom.get("original_key") or "C"),
-                    "sections": dict(custom.get("sections") or {}),
+                    "sections": _custom_preview_concert_sections(session, custom),
                     "pick_key": str(custom.get("pick_key") or ""),
                 }
     except ImportError:
@@ -344,7 +360,7 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
                 "artist": str(custom.get("artist") or "Custom progression"),
                 "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
                 "original_key": str(custom.get("original_key") or "C"),
-                "sections": dict(custom.get("sections") or {}),
+                "sections": _custom_preview_concert_sections(session, custom),
                 "pick_key": str(custom.get("pick_key") or ""),
             }
         return {

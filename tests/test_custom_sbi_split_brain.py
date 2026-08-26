@@ -10,8 +10,10 @@ from custom_progression_lab import default_active_progression
 from songs.music_source import (
     LAST_CUSTOM_STATE_KEY,
     SOURCE_CATALOG,
+    SOURCE_CUSTOM,
     ensure_custom_progression_for_backing,
     install_last_custom_into_live_cpl,
+    set_custom_source,
 )
 from source_session_state import resolve_sbi_preview, sync_custom_session
 
@@ -343,6 +345,51 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertIn("D", mission_flat)
         self.assertLess(len(mission_flat), 12)
         self.assertNotEqual(mission_flat[0], "G")
+
+    def test_custom_ga_d_to_c_projects_em_em_d_d_to_dm_dm_c_c(self) -> None:
+        """Trial GA Custom D major Em Em D D must project to Dm Dm C C at C."""
+        from backing_context import build_custom_progression_context
+        from improvisation_motif import resolve_improv_sections
+        from mission_workflow_context import resolve_missions_section_map
+
+        trial = _trial_active()
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+            "display_key": "C",
+            "concert_key": "C",
+            "cpl_active_progression": trial,
+            "selected_song": {
+                "title": "Trial Song",
+                "key": "D",
+                "pick_key": "custom::trial-1",
+            },
+            "practice_key_by_source": {"custom::trial-1": "C"},
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "sbi_preview_source": "Active song",
+            "improv_song_source": "Active song",
+        }
+        set_custom_source(session)
+        ctx = build_custom_progression_context(session)
+        self.assertEqual(list(ctx.progression or [])[:4], ["Dm", "Dm", "C", "C"])
+        preview = resolve_sbi_preview(session)
+        prev_flat = [c for chs in (preview.get("sections") or {}).values() for c in chs]
+        self.assertEqual(prev_flat[:4], ["Dm", "Dm", "C", "C"])
+
+        class _Ctx:
+            sections = {}
+            progression_flat = []
+            section_order = []
+            song_title = "Trial Song"
+
+        mapped = resolve_improv_sections(session, _Ctx())
+        mission_flat = [c for _s, chs in mapped for c in chs]
+        self.assertIn("Dm", mission_flat)
+        self.assertIn("C", mission_flat)
+        _section_map, owner = resolve_missions_section_map(session, _Ctx())
+        self.assertEqual(owner, "custom_song_sections")
 
 
 if __name__ == "__main__":

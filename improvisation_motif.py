@@ -177,6 +177,18 @@ def dedupe_sections_for_display(
 def concert_song_sections_from_session(session_state: dict) -> dict[str, list[str]] | None:
     """Transposed catalog progression in concert pitch (Song-Based practice key)."""
     try:
+        from workflow_musical_authority import (
+            custom_owns_active_song_material,
+            resolve_custom_concert_sections_at_practice_key,
+        )
+
+        if custom_owns_active_song_material(session_state):
+            custom_secs = resolve_custom_concert_sections_at_practice_key(session_state)
+            if custom_secs:
+                return custom_secs
+    except ImportError:
+        pass
+    try:
         from backing_context import _song_improv_sections_dict
 
         resolved = _song_improv_sections_dict(session_state)

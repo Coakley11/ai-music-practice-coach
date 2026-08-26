@@ -1147,37 +1147,95 @@ def main() -> int:
         # ========== 15. Custom GA → SBI + Missions material coherence ==========
         c15_ok = False
         try:
+            from _walk_ownership_audit_full import (
+                missions_derived_from_custom_trial,
+                rendered_dm_dm_c_c,
+                rendered_em_em_d_d,
+            )
+
             if goto_improv(page2, NOTES):
-                ensure_missions_workspace(page2, NOTES)
-                settle(page2, 2)
+                sbi_opened = open_sbi_active(page2)
+                settle(page2, 3)
                 body_sbi = shot(page2, "15-sbi-custom-ga")
-                sbi_prog_ok = rendered_em_em_d_d(body_sbi) or bool(
-                    re.search(r"Em.{0,12}Em.{0,12}D.{0,12}D", body_sbi, re.I | re.S)
-                )
+                sbi_prog_ok = rendered_em_em_d_d(body_sbi)
                 sbi_title_ok = has_any(body_sbi, "Embargo Trial", "Trial Song")
                 sbi_not_say = not has_any(body_sbi, "Say — John Mayer", "Say - John Mayer")
                 pk_sbi = practice_badge(body_sbi) or sidebar_pk_input(page2)
-                pk_sbi_ok = "d major" in low(pk_sbi) or low(pk_sbi).startswith("d")
+                pk_sbi_ok = "d major" in low(pk_sbi) or (
+                    low(pk_sbi).startswith("d") and "minor" not in low(pk_sbi)
+                )
                 click_nav(page2, "Creative")
                 settle(page2, 2)
                 if not goto_improv(page2, NOTES):
                     mark("15_custom_ga_sbi_missions", "RED", "creative nav failed")
                 else:
-                    click_button_has(page2, r"Missions") or True
-                    settle(page2, 2)
                     ensure_missions_workspace(page2, NOTES)
+                    settle(page2, 2)
                     body_m = shot(page2, "15-missions-custom-ga")
-                    m_prog = rendered_em_em_d_d(body_m) or bool(
-                        re.search(r"Em.{0,12}Em.{0,12}D.{0,12}D", body_m, re.I | re.S)
-                    )
+                    m_prog = missions_derived_from_custom_trial(body_m, projected="D")
                     m_title = has_any(body_m, "Embargo Trial", "Trial Song")
                     m_not_say = not has_any(body_m, "Say — John Mayer")
-                    c15_ok = sbi_prog_ok and sbi_title_ok and sbi_not_say and pk_sbi_ok and m_prog and m_title and m_not_say
+                    pk_m_ok = "practice key: d" in low(body_m) and "minor" not in low(
+                        re.search(r"Practice Key:\s*([^\n·]+)", body_m, re.I).group(1)
+                        if re.search(r"Practice Key:\s*([^\n·]+)", body_m, re.I)
+                        else ""
+                    )
+
+                    click_nav(page2, "Songs")
+                    settle(page2, 2)
+                    set_songs_practice_key(page2, "C")
+                    settle(page2, 3)
+                    body_songs_c = shot(page2, "15-custom-ga-c")
+                    songs_c_ok = "c major" in low(
+                        practice_badge(body_songs_c) or card_practice_label(body_songs_c)
+                    )
+
+                    goto_improv(page2, NOTES)
+                    open_sbi_active(page2)
+                    settle(page2, 3)
+                    body_sbi_c = shot(page2, "15-sbi-custom-ga-c")
+                    sbi_c_prog = rendered_dm_dm_c_c(body_sbi_c)
+                    sbi_c_title = has_any(body_sbi_c, "Embargo Trial", "Trial Song")
+                    pk_sbi_c = practice_badge(body_sbi_c) or sidebar_pk_input(page2)
+                    pk_sbi_c_ok = "c major" in low(pk_sbi_c) or (
+                        "practice key: c" in low(body_sbi_c) and "minor" not in low(pk_sbi_c)
+                    )
+
+                    click_nav(page2, "Creative")
+                    settle(page2, 2)
+                    goto_improv(page2, NOTES)
+                    ensure_missions_workspace(page2, NOTES)
+                    settle(page2, 2)
+                    body_m_c = shot(page2, "15-missions-custom-ga-c")
+                    m_c_prog = missions_derived_from_custom_trial(body_m_c, projected="C")
+                    m_c_title = has_any(body_m_c, "Embargo Trial", "Trial Song")
+                    m_c_not_say = not has_any(body_m_c, "Say — John Mayer")
+
+                    c15_ok = (
+                        sbi_opened
+                        and sbi_prog_ok
+                        and sbi_title_ok
+                        and sbi_not_say
+                        and pk_sbi_ok
+                        and m_prog
+                        and m_title
+                        and m_not_say
+                        and pk_m_ok
+                        and songs_c_ok
+                        and sbi_c_prog
+                        and sbi_c_title
+                        and pk_sbi_c_ok
+                        and m_c_prog
+                        and m_c_title
+                        and m_c_not_say
+                    )
                     mark(
                         "15_custom_ga_sbi_missions",
                         "PASS" if c15_ok else "RED",
-                        f"sbi_prog={sbi_prog_ok} sbi_title={sbi_title_ok} pk={pk_sbi_ok} "
-                        f"m_prog={m_prog} m_title={m_title} say_leak={not sbi_not_say}",
+                        f"sbi_open={sbi_opened} sbi_prog={sbi_prog_ok} sbi_title={sbi_title_ok} "
+                        f"pk={pk_sbi_ok} m_prog={m_prog} m_title={m_title} say_leak={not sbi_not_say} "
+                        f"songs_c={songs_c_ok} sbi_c_prog={sbi_c_prog} pk_c={pk_sbi_c_ok} "
+                        f"m_c_prog={m_c_prog} m_c_title={m_c_title}",
                     )
             else:
                 mark("15_custom_ga_sbi_missions", "RED", "goto_improv failed")
