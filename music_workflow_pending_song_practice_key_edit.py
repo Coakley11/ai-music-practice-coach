@@ -104,6 +104,22 @@ def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
                             owner_ok = True
                     except ImportError:
                         pass
+                    if not owner_ok:
+                        page = str(session.get("studio_page") or "").strip().lower()
+                        tab = str(
+                            session.get("improv_intelligence_tab")
+                            or session.get("creative_improv_intelligence_tab")
+                            or ""
+                        ).strip()
+                        if page == "creative" and pending_owner == "mission_jam" and tab == "Missions":
+                            owner_ok = True
+                        elif page == "creative" and pending_owner == "song_based_improvisation" and tab in {
+                            "Song-Based Improvisation",
+                            "Phrase / Motif",
+                            "Harmony Map",
+                            "Live Coach",
+                        }:
+                            owner_ok = True
                 if not owner_ok:
                     return ""
             except ImportError:
@@ -286,8 +302,34 @@ def overlay_concert_token_with_pending_practice_key(
     canonical_token: str,
 ) -> str:
     """Same-rerun concert Practice Key: pending/saved edit wins over the still-uncommitted blob."""
-    dest = overlay_destination_practice_key(session)
-    return dest or str(canonical_token or "").strip()
+    canonical = str(canonical_token or "").strip()
+    dest = str(overlay_destination_practice_key(session) or "").strip()
+    if not dest:
+        return canonical
+    if not canonical or dest == canonical:
+        return dest
+    try:
+        from creative_key_sync import user_sidebar_display_key_authoritative
+
+        pending = str(pending_selected_practice_key_token(session) or "").strip()
+        user_auth = user_sidebar_display_key_authoritative(session)
+        if pending or user_auth:
+            from workflow_key_identity import normalize_user_practice_key_selection, resolve_song_practice_key_identity
+
+            token = pending or dest
+            ident = resolve_song_practice_key_identity(session)
+            default_mode = str(ident.practice_mode if ident else "minor").strip().lower()
+            if default_mode not in {"major", "minor"}:
+                default_mode = "minor"
+            _t, _m, token = normalize_user_practice_key_selection(token, default_mode=default_mode)
+            return token
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if dest == live:
+            # Stale live display_key must not downgrade a committed blob/store token.
+            return canonical
+    except ImportError:
+        pass
+    return dest
 
 
 def overlay_sections_with_pending_practice_key(

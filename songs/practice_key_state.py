@@ -338,11 +338,57 @@ def set_practice_concert_key(
     *,
     pick_key: str = "",
     allow_catalog_during_sbi_custom: bool = False,
+    allow_restore_original: bool = False,
 ) -> None:
     pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
+    # Protect a recent explicit user Practice Key commit from stale remount /
+    # pending / identity writes that land 1–2s later (Bm → Dm rollback).
+    try:
+        import time as _time
+
+        commit = str(session.get("_pk_user_commit_token") or "").strip()
+        committed_at = float(session.get("_pk_user_commit_at") or 0.0)
+        if (
+            commit
+            and committed_at
+            and (_time.time() - committed_at) < 5.0
+            and key != commit
+            and not allow_restore_original
+        ):
+            return
+    except Exception:
+        pass
+    # Stale SBI/mission identity prime must not write blob Dm over a live Bm
+    # (or any live Practice Key that already differs).
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+        src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip()
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if (
+            src.startswith("sidebar_key_identity:")
+            and "catalog_sticky" not in src
+            and live
+            and live != key
+        ):
+            return
+        # During an explicit sidebar commit, never write a different token than the
+        # live widget value unless this call is the allow_restore_original commit.
+        if (
+            src in {"sidebar_on_change", "sidebar", "display_key_widget", "display_key_change"}
+            and live
+            and live != key
+            and not allow_restore_original
+        ):
+            return
+        # Stale pending remount (Dm) must not overwrite a live Bm commit.
+        if src == "pending_display_key" and live and live != key:
+            return
+    except ImportError:
+        pass
     # Hard isolation: while Creative/Backing SBI is on Custom progression, never
     # write the Global Active catalog sticky (Shape Dm must not become Eb/D#m).
     # Exception: explicit seal of catalog sticky when entering the Custom overlay.
@@ -432,19 +478,70 @@ def set_practice_concert_key(
             return
         # Streamlit sidebar reseeds to catalog Original on page change; that must
         # not wipe a sticky Practice Key (C#m → Bm on leave Backing→Practice, H2).
-        existing = str(get_practice_concert_key(session, pk) or "").strip()
-        if existing and existing != key:
-            orig = ""
+        # Explicit user Practice Key commits (Dm → Bm return to Original) MUST write.
+        user_restore = bool(allow_restore_original)
+        if not user_restore:
             try:
-                from songs.music_source import _catalog_original_key_for_session
+                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
 
-                probe = dict(session)
-                probe["active_catalog_pick_key"] = pk
-                orig = str(_catalog_original_key_for_session(probe) or "").strip()
-            except Exception:
+                src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip().lower()
+                if src in {
+                    "sidebar_on_change",
+                    "sidebar",
+                    "display_key_widget",
+                    "display_key_change",
+                    "user",
+                    "user_navigation",
+                }:
+                    user_restore = True
+            except ImportError:
+                pass
+        if not user_restore:
+            existing = str(get_practice_concert_key(session, pk) or "").strip()
+            if existing and existing != key:
                 orig = ""
-            if orig and key == orig and existing != orig:
-                return
+                try:
+                    from songs.music_source import _catalog_original_key_for_session
+
+                    probe = dict(session)
+                    probe["active_catalog_pick_key"] = pk
+                    orig = str(_catalog_original_key_for_session(probe) or "").strip()
+                except Exception:
+                    orig = ""
+                if orig and key == orig and existing != orig:
+                    try:
+                        from pathlib import Path
+                        import json
+                        import time
+
+                        _dbg = (
+                            Path(__file__).resolve().parents[1]
+                            / "scripts"
+                            / "evidence-creative-backing"
+                            / "pk-restore-refuse.jsonl"
+                        )
+                        _dbg.parent.mkdir(parents=True, exist_ok=True)
+                        with _dbg.open("a", encoding="utf-8") as fh:
+                            fh.write(
+                                json.dumps(
+                                    {
+                                        "t": time.time(),
+                                        "pk": pk,
+                                        "key": key,
+                                        "existing": existing,
+                                        "orig": orig,
+                                        "allow_restore_original": allow_restore_original,
+                                        "change_source": str(
+                                            session.get("display_key_change_source") or ""
+                                        ),
+                                        "studio_page": str(session.get("studio_page") or ""),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
+                    return
     store = _practice_key_store(session)
     # Prefer canonical catalog form; drop legacy aliases for the same pick.
     write_pk = pk
@@ -461,6 +558,36 @@ def set_practice_concert_key(
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    try:
+        if key in {"Bm", "Dm", "Cm"} or str(key).endswith("m"):
+            from pathlib import Path
+            import json
+            import time
+
+            _dbg = (
+                Path(__file__).resolve().parents[1]
+                / "scripts"
+                / "evidence-creative-backing"
+                / "pk-write.jsonl"
+            )
+            _dbg.parent.mkdir(parents=True, exist_ok=True)
+            with _dbg.open("a", encoding="utf-8") as fh:
+                fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "write_pk": write_pk,
+                            "key": key,
+                            "allow_restore_original": allow_restore_original,
+                            "change_source": str(session.get("display_key_change_source") or ""),
+                            "display_key": str(session.get("display_key") or ""),
+                            "studio_page": str(session.get("studio_page") or ""),
+                        }
+                    )
+                    + "\n"
+                )
+    except Exception:
+        pass
     # Intentional catalog write refreshes isolation seal (Shape Dm → user F, etc.).
     sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
     if sealed_pick and not str(write_pk).startswith("custom::"):

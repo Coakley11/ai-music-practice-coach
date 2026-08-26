@@ -17,6 +17,7 @@ from backing_context import (
 )
 from creative_session_state import CreativeSession, set_creative_session
 from backing_source_navigation import (
+    BACKING_GENERIC_CATALOG_ENTRY_KEY,
     BACKING_INTENT_FROM_CREATIVE,
     BACKING_INTENT_RESTORE_LAST,
     BACKING_OPEN_INTENT_KEY,
@@ -24,6 +25,7 @@ from backing_source_navigation import (
     mark_generic_catalog_backing_entry,
     mark_specialized_backing_handoff_entry,
     set_backing_open_intent,
+    stale_custom_sbi_overlay_blocks_catalog_backing,
 )
 from music_source_ownership import intentional_creative_backing_active
 from studio_nav_history import navigate_studio_page
@@ -333,6 +335,100 @@ class BackingEntryClassificationTests(unittest.TestCase):
             hydrate_backing_source_for_page(session, st_like=st_like)
         ctx = session.get(BACKING_CONTEXT_KEY) or {}
         self.assertEqual(ctx.get("mission_id"), "Mission A")
+
+
+def _shape_custom_sbi_overlay_session() -> dict:
+    """core-wf-05: Custom SBI backing sealed while Global Active is catalog Shape."""
+    from backing_source_navigation import stamp_backing_restore_anchor
+    from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+
+    shape = "Pop\x1fShape of You — Ed Sheeran"
+    custom_pick = "custom::trial-rev-1"
+    session: dict = {
+        "studio_page": "picker",
+        USER_CATALOG_SOURCE_CHOICE_KEY: True,
+        "active_music_source": SOURCE_CATALOG,
+        "active_catalog_pick_key": shape,
+        "selected_song": {
+            "pick_key": shape,
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+        },
+        "song": "Shape of You",
+        "display_key": "Dm",
+        "concert_key": "Dm",
+        "_backing_explicit_handoff_source": "song_improv",
+        "cpl_active_progression": {"id": "trial-rev-1", "name": "Trial Song"},
+    }
+    set_backing_context(
+        session,
+        BackingContext(
+            source="song_improv",
+            source_label="Song-Based Improvisation",
+            active_song_id=custom_pick,
+            bound_pick_key=custom_pick,
+            song_title="Trial Song",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            bpm=100,
+            style="Pop",
+            groove="Pop groove",
+            custom_revision_id="trial-rev-1",
+            progression_label="Trial Song",
+        ),
+    )
+    set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+    stamp_backing_restore_anchor(session, anchor=f"pk::{shape}")
+    return session
+
+
+class PickerCatalogOverCustomSbiTests(unittest.TestCase):
+    def test_stale_custom_sbi_overlay_detected_with_catalog_ga(self) -> None:
+        session = _shape_custom_sbi_overlay_session()
+        self.assertTrue(stale_custom_sbi_overlay_blocks_catalog_backing(session))
+
+    def test_picker_to_backing_prefers_catalog_over_custom_sbi(self) -> None:
+        session = _shape_custom_sbi_overlay_session()
+        navigate_studio_page(session, "backing")
+        self.assertTrue(session.get(BACKING_GENERIC_CATALOG_ENTRY_KEY))
+        ctx = session.get(BACKING_CONTEXT_KEY) or {}
+        self.assertEqual(ctx.get("source"), "song_improv")
+        with patch(
+            "backing_source_navigation.initialize_active_source_backing_after_restore_miss",
+            side_effect=lambda s, **k: set_backing_context(
+                s,
+                BackingContext(
+                    source="regular_song",
+                    source_label="Catalog song",
+                    active_song_id=session["active_catalog_pick_key"],
+                    bound_pick_key=session["active_catalog_pick_key"],
+                    song_title="Shape of You",
+                    key="Bm",
+                    display_key="Dm",
+                    concert_key="Dm",
+                    bpm=96,
+                    style="Pop",
+                    groove="Pop groove",
+                ),
+            ),
+        ):
+            hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
+        ctx = session.get(BACKING_CONTEXT_KEY) or {}
+        self.assertEqual(ctx.get("source"), "regular_song")
+        self.assertEqual(ctx.get("song_title"), "Shape of You")
+        self.assertNotEqual(ctx.get("song_title"), "Trial Song")
+
+    def test_log_to_backing_still_restores_custom_sbi_overlay(self) -> None:
+        session = _shape_custom_sbi_overlay_session()
+        session["studio_page"] = "log"
+        navigate_studio_page(session, "backing")
+        self.assertFalse(session.get(BACKING_GENERIC_CATALOG_ENTRY_KEY))
+        self.assertEqual(
+            str(session.get(BACKING_OPEN_INTENT_KEY) or ""),
+            BACKING_INTENT_RESTORE_LAST,
+        )
 
 
 if __name__ == "__main__":

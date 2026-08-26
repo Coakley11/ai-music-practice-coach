@@ -284,7 +284,21 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
                     else:
                         set_backing_open_intent(session_state, BACKING_INTENT_FROM_PRACTICE)
             elif current not in ("creative", "backing"):
-                if explicit_specialized_backing_handoff_pending(session_state) or restore_last:
+                prefer_catalog_over_custom_sbi = False
+                if current == "picker":
+                    try:
+                        from backing_source_navigation import (
+                            stale_custom_sbi_overlay_blocks_catalog_backing,
+                        )
+
+                        prefer_catalog_over_custom_sbi = (
+                            stale_custom_sbi_overlay_blocks_catalog_backing(session_state)
+                        )
+                    except ImportError:
+                        pass
+                if prefer_catalog_over_custom_sbi:
+                    mark_generic_catalog_backing_entry(session_state)
+                elif explicit_specialized_backing_handoff_pending(session_state) or restore_last:
                     set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
                 else:
                     mark_generic_catalog_backing_entry(session_state)

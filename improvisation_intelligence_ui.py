@@ -111,6 +111,66 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
+        from creative_key_sync import user_sidebar_display_key_authoritative
+        from music_workflow_pending_song_practice_key_edit import (
+            overlay_destination_practice_key,
+            peek_pending_song_practice_key_edit,
+            pending_selected_practice_key_token,
+        )
+        from workflow_key_identity import normalize_user_practice_key_selection, resolve_song_practice_key_identity
+
+        pending = ""
+        raw_pending = peek_pending_song_practice_key_edit(session_state)
+        if isinstance(raw_pending, dict):
+            pending = str(raw_pending.get("selected_key_token") or "").strip()
+        user_auth = user_sidebar_display_key_authoritative(session_state)
+        if pending or user_auth:
+            token = ""
+            if user_auth:
+                try:
+                    import time as _time
+
+                    commit = str(session_state.get("_pk_user_commit_token") or "").strip()
+                    committed_at = float(session_state.get("_pk_user_commit_at") or 0.0)
+                    if commit and committed_at and (_time.time() - committed_at) < 5.0:
+                        token = commit
+                except (TypeError, ValueError):
+                    pass
+            if not token:
+                token = pending or str(pending_selected_practice_key_token(session_state) or "").strip()
+            if not token:
+                token = str(overlay_destination_practice_key(session_state) or "").strip()
+            if not token and user_auth:
+                token = str(
+                    session_state.get("display_key")
+                    or session_state.get("concert_key")
+                    or session_state.get("_pending_display_key")
+                    or ""
+                ).strip()
+            if token:
+                ident = resolve_song_practice_key_identity(session_state)
+                default_mode = str(ident.practice_mode if ident else "minor").strip().lower()
+                if default_mode not in {"major", "minor"}:
+                    default_mode = "minor"
+                _t, _m, token = normalize_user_practice_key_selection(token, default_mode=default_mode)
+                return token
+    except ImportError:
+        pass
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+
+        if song_practice_blob(session_state) is not None:
+            pre_blob = str(resolve_song_practice_key_token(session_state) or "").strip()
+            if pre_blob:
+                live = str(
+                    session_state.get("display_key") or session_state.get("concert_key") or ""
+                ).strip()
+                overlaid = _overlay_pending_practice_key(session_state, pre_blob)
+                if overlaid != live or (live and pre_blob != live):
+                    return overlaid
+    except ImportError:
+        pass
+    try:
         from workflow_key_identity import resolve_practice_key_identity_for_ui
 
         ident = resolve_practice_key_identity_for_ui(session_state)
@@ -220,6 +280,67 @@ def _motif_notation_reference_key(improv_ctx: ImprovSessionContext, chord: str =
         key_center=improv_ctx.key_center,
         display_key=improv_ctx.display_key,
     )
+
+
+_MOTIF_PITCH_PRESERVING_TRANSFORMS = frozenset(
+    {"sequence_up", "sequence_down", "invert", "change_rhythm", "build_pattern"}
+)
+
+
+def _motif_display_text(motif: dict[str, Any]) -> str:
+    """Prefer live notes[] — display string can lag after transforms."""
+    notes = list(motif.get("notes") or [])
+    if notes:
+        return " – ".join(str(n) for n in notes)
+    return str(motif.get("display") or "")
+
+
+def _motif_theory_chord(chord: str) -> str:
+    src = str(chord or "").strip()
+    if not src:
+        return ""
+    try:
+        from music_theory import normalize_chord_for_theory
+
+        return str(normalize_chord_for_theory(src) or src).strip()
+    except ImportError:
+        return src
+
+
+def _motif_needs_chord_retarget(
+    session_state: dict,
+    motif: dict[str, Any],
+    *,
+    gen_chord: str,
+    concert_key: str,
+    selected_concert_chord: str,
+) -> bool:
+    """True only when the stored motif targets a different harmonic chord than the selection."""
+    if not gen_chord or not isinstance(motif, dict):
+        return False
+    if str(motif.get("last_transform") or "") in _MOTIF_PITCH_PRESERVING_TRANSFORMS:
+        return False
+    stored_chord = str(motif.get("chord") or "").strip()
+    if not stored_chord:
+        return True
+    if stored_chord == gen_chord:
+        return False
+    stored_facing = (
+        _player_facing_chord(session_state, stored_chord, concert_key=concert_key) if stored_chord else ""
+    ) or stored_chord
+    if stored_facing == gen_chord:
+        return False
+    sel = str(selected_concert_chord or "").strip()
+    if sel:
+        sel_facing = _player_facing_chord(session_state, sel, concert_key=concert_key) or sel
+        stored_theory = _motif_theory_chord(stored_chord)
+        if stored_theory and stored_theory == _motif_theory_chord(sel):
+            return False
+        if stored_theory and stored_theory == _motif_theory_chord(sel_facing):
+            return False
+        if stored_theory and stored_theory == _motif_theory_chord(gen_chord):
+            return False
+    return stored_facing != gen_chord and stored_chord != gen_chord
 
 
 def _touch_creative_workspace(session_state: dict) -> None:
@@ -1200,8 +1321,19 @@ def _tab_motif(
         from creative_tab_tool_persistence import selector_hydration_complete
         from music_route_gates import guard_creative_tab_heavy
 
-        if selector_hydration_complete(session_state) and guard_creative_tab_heavy(
-            session_state, "Phrase / Motif", "artifact_projection"
+        skip_motif_artifact_project = False
+        try:
+            from creative_mission_artifact_persistence import CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY
+
+            user_ev = session_state.get(CREATIVE_MISSION_ARTIFACT_USER_EVENT_KEY)
+            if isinstance(user_ev, dict) and user_ev.get("field") == "improv_motif":
+                skip_motif_artifact_project = True
+        except ImportError:
+            pass
+        if (
+            selector_hydration_complete(session_state)
+            and guard_creative_tab_heavy(session_state, "Phrase / Motif", "artifact_projection")
+            and not skip_motif_artifact_project
         ):
             from creative_mission_artifact_persistence import should_skip_mission_artifact_projection
 
@@ -1312,11 +1444,14 @@ def _tab_motif(
 
     # Selected chord owns the heading. Stale motif.chord (e.g. G while Bb is selected)
     # must retarget immediately — never show "Motif on G" for a Bb selection.
-    stored_chord = str(motif.get("chord") or "").strip()
-    stored_facing = (
-        _player_facing_chord(session_state, stored_chord, concert_key=concert_key) if stored_chord else ""
-    ) or stored_chord
-    if gen_chord and stored_facing and stored_facing != gen_chord and stored_chord != gen_chord:
+    # Never regenerate after pitch transforms (Sequence / Invert / Rhythm) — that wiped edits.
+    if _motif_needs_chord_retarget(
+        session_state,
+        motif,
+        gen_chord=gen_chord,
+        concert_key=concert_key,
+        selected_concert_chord=cur,
+    ):
         motif = generate_musical_phrase(
             gen_chord,
             key_center=motif_key,
@@ -1332,17 +1467,6 @@ def _tab_motif(
         motif["chord"] = gen_chord
         session_state["improv_motif"] = motif
 
-    motif_chord_label = gen_chord
-    title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
-    st.markdown(
-        f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
-        f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
-        f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
-        f'{html.escape(motif.get("display", ""))}</p>'
-        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
-        unsafe_allow_html=True,
-    )
-
     st.markdown("**Transform**")
     t1, t2, t3, t4 = st.columns(4)
     transforms = [
@@ -1354,8 +1478,10 @@ def _tab_motif(
     for col, op, label, key in transforms:
         with col:
             if st.button(label, key=key, use_container_width=True):
+                active_motif = session_state.get("improv_motif")
+                source_motif = active_motif if isinstance(active_motif, dict) else motif
                 session_state["improv_motif"] = transform_motif(
-                    motif,
+                    source_motif,
                     op,
                     key_center=motif_key,
                 )
@@ -1366,6 +1492,18 @@ def _tab_motif(
                 )
                 _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                 st.rerun()
+
+    motif = session_state.get("improv_motif") or motif
+    motif_chord_label = gen_chord
+    title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
+    st.markdown(
+        f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
+        f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
+        f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
+        f'{html.escape(_motif_display_text(motif))}</p>'
+        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown("**Build Motif Pattern**")
     p_len = int(session_state.get("improv_motif_pattern_length") or 8)
@@ -3282,6 +3420,56 @@ def _tab_missions(
         except ImportError:
             shown_chord = cur_chord
             chart_key = practice_key
+    hydrated_practice_key = _authoritative_practice_chart_key(
+        session_state, blob_key or improv_ctx.display_key
+    )
+    if hydrated_practice_key:
+        practice_key = hydrated_practice_key
+        try:
+            from effective_practice_context import musician_facing_chart_key
+
+            chart_key = musician_facing_chart_key(session_state, practice_key)
+        except ImportError:
+            chart_key = practice_key
+    # Missions caption must track the left-panel Practice Key the user just set.
+    # Blob hydrate can lag a rerun behind the sidebar widget (Dm caption + Em/E sidebar).
+    try:
+        page = str(session_state.get("studio_page") or "").strip().lower()
+        tab = str(
+            session_state.get("improv_intelligence_tab")
+            or session_state.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        live = str(
+            session_state.get("display_key")
+            or session_state.get("concert_key")
+            or session_state.get("_pending_display_key")
+            or ""
+        ).strip()
+        if page == "creative" and tab == "Missions" and live:
+            from workflow_key_identity import normalize_user_practice_key_selection
+
+            try:
+                from music_theory import key_mode
+
+                default_mode = key_mode(practice_key) or key_mode(blob_key) or "minor"
+            except ImportError:
+                default_mode = "minor"
+            if default_mode not in {"major", "minor"}:
+                default_mode = "minor"
+            _t, _m, live_tok = normalize_user_practice_key_selection(
+                live, default_mode=default_mode
+            )
+            if live_tok and live_tok != practice_key:
+                practice_key = live_tok
+                try:
+                    from effective_practice_context import musician_facing_chart_key
+
+                    chart_key = musician_facing_chart_key(session_state, practice_key)
+                except ImportError:
+                    chart_key = practice_key
+    except ImportError:
+        pass
     chart_note = ""
     if chart_key != practice_key:
         try:

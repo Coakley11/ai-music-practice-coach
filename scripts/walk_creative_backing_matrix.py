@@ -620,10 +620,28 @@ def set_baseweb_select(page: Page, current_or_label: str, option: str) -> bool:
             clickable = target
         clickable.click(timeout=4000)
         page.wait_for_timeout(350)
-        page.keyboard.press("ArrowDown")
-        page.wait_for_timeout(250)
-        # Virtualized menus: page through until the exact option is mounted.
+        # Prefer typeahead first — virtualized menus opened near the current value
+        # may never PageDown upward to earlier options (e.g. Dm → Bm).
         opt_re = re.compile(rf"^{re.escape(option)}$", re.I)
+        try:
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.keyboard.type(str(option), delay=35)
+            page.wait_for_timeout(600)
+            opt = page.locator(
+                '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"], [role="option"]'
+            ).filter(has_text=opt_re)
+            if opt.count():
+                el = opt.first
+                el.scroll_into_view_if_needed()
+                el.click(timeout=4000, force=False)
+                wait_idle(page, 3500)
+                return True
+        except Exception:
+            pass
+        # Virtualized menus: page up and down until the exact option is mounted.
+        page.keyboard.press("Home")
+        page.wait_for_timeout(150)
         for _ in range(40):
             opt = page.locator(
                 '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"]'
@@ -638,21 +656,20 @@ def set_baseweb_select(page: Page, current_or_label: str, option: str) -> bool:
                 return True
             page.keyboard.press("PageDown")
             page.wait_for_timeout(120)
-        # Typeahead filter fallback (some Streamlit builds filter the mounted set).
-        try:
-            page.keyboard.press("Control+A")
-            page.keyboard.press("Backspace")
-            page.keyboard.type(str(option), delay=35)
-            page.wait_for_timeout(600)
+        for _ in range(40):
             opt = page.locator(
-                '[role="listbox"] [role="option"], [role="option"]'
+                '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"]'
             ).filter(has_text=opt_re)
+            if opt.count() == 0:
+                opt = page.locator('[role="option"]').filter(has_text=opt_re)
             if opt.count():
-                opt.first.click(timeout=4000, force=False)
+                el = opt.first
+                el.scroll_into_view_if_needed()
+                el.click(timeout=4000, force=False)
                 wait_idle(page, 3500)
                 return True
-        except Exception:
-            pass
+            page.keyboard.press("PageUp")
+            page.wait_for_timeout(120)
         page.keyboard.press("Escape")
         return False
     except Exception:

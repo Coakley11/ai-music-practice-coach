@@ -1591,9 +1591,32 @@ def _resolve_creative_entry_mode(session: dict[str, Any]) -> str:
     return ""
 
 
+def _creative_song_owning_tab(session: dict[str, Any]) -> str:
+    """Creative analysis tab that owns catalog/custom song Practice Key (not Style Jam)."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return ""
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+    }:
+        return tab
+    return ""
+
+
 def _creative_sidebar_key_sync_active(session: dict[str, Any]) -> bool:
     """True when sidebar key changes should retranspose Creative / backing handoff."""
     if is_creative_major_jam_active(session):
+        return True
+    if _creative_song_owning_tab(session):
         return True
     try:
         from backing_context import get_backing_context
@@ -2039,6 +2062,102 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         except ImportError:
             session["concert_key"] = new
         return
+    # Creative Missions / Motif / Live Coach / Harmony (no backing ctx yet): same
+    # song-blob mutation Mission Backing uses, so caption + example follow sidebar.
+    creative_tab = _creative_song_owning_tab(session)
+    if creative_tab:
+        try:
+            from workflow_key_identity import (
+                normalize_user_practice_key_selection,
+                resolve_song_practice_key_identity,
+            )
+
+            ident = resolve_song_practice_key_identity(session)
+            default_mode = str(ident.practice_mode if ident else "minor").strip().lower()
+            if default_mode not in {"major", "minor"}:
+                default_mode = "minor"
+            _tonic, _mode, new = normalize_user_practice_key_selection(
+                new, default_mode=default_mode
+            )
+            session["display_key"] = new
+            session["concert_key"] = new
+        except ImportError:
+            pass
+        try:
+            from song_practice_key_sidebar_change import (
+                finalize_sidebar_song_practice_key_after_mutation,
+                sidebar_song_practice_key_mutation_deferred,
+            )
+
+            if sidebar_song_practice_key_mutation_deferred(session):
+                return
+        except ImportError:
+            pass
+        try:
+            from music_workflow_song_practice import (
+                ensure_song_practice_blob_for_active_song,
+                mission_blob_session_id,
+                song_based_blob_session_id,
+            )
+            from music_workflow_state_store import (
+                ActiveWorkflowPointer,
+                get_active_workflow_pointer,
+                set_active_workflow_pointer,
+            )
+
+            owner = (
+                "mission_jam"
+                if creative_tab == "Missions"
+                else "song_based_improvisation"
+            )
+            sid = (
+                mission_blob_session_id(session)
+                if owner == "mission_jam"
+                else song_based_blob_session_id(session)
+            )
+            ptr = get_active_workflow_pointer(session)
+            if ptr is None or str(ptr.workflow_owner or "") not in {
+                "song_based_improvisation",
+                "mission_jam",
+            }:
+                set_active_workflow_pointer(
+                    session,
+                    ActiveWorkflowPointer(workflow_owner=owner, workflow_session_id=sid),
+                    source="sidebar_creative_song_tab",
+                )
+            old = str(session.get("concert_key") or "").strip() or new
+            orig = ""
+            selected = session.get("selected_song")
+            if isinstance(selected, dict):
+                orig = str(selected.get("key") or "")
+            ensure_song_practice_blob_for_active_song(
+                session, practice_key=old, original_key=orig
+            )
+        except ImportError:
+            pass
+        mutation_ok = False
+        try:
+            from music_workflow_mutation import update_active_practice_key
+
+            result = update_active_practice_key(
+                session,
+                new,
+                source="sidebar_song_improv",
+                transpose_progression=True,
+            )
+            mutation_ok = bool(result.ok)
+        except ImportError:
+            mutation_ok = False
+        if not mutation_ok:
+            session["concert_key"] = new
+            session["display_key"] = new
+        try:
+            from song_practice_key_sidebar_change import finalize_sidebar_song_practice_key_after_mutation
+
+            finalize_sidebar_song_practice_key_after_mutation(session, new, st_like=st_like)
+        except ImportError:
+            session["concert_key"] = new
+        return
     if not _creative_sidebar_key_sync_active(session):
         # Songs / Practice / non-Creative surfaces: still persist sticky Practice Key
         # for the Global Active catalog (or Custom GA) pick. Without this, Shape Dm
@@ -2056,7 +2175,13 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 or ""
             ).strip()
             if pick:
-                set_practice_concert_key(session, new, pick_key=pick)
+                # Songs sidebar path: user may restore catalog Original (Dm→Bm).
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
                 session["concert_key"] = new
                 if not str(pick).startswith("custom::") and not str(pick).startswith("creative::"):
                     try:

@@ -61,6 +61,61 @@ class TestAuthoritativeDisplayKey(unittest.TestCase):
             "Eb",
         )
 
+    def test_sticky_practice_key_beats_stale_shape_tonic_on_card(self) -> None:
+        """Sidebar Dm must not lose to bare shape tonic D on the song card."""
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        pick = "Pop::Shape of You"
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: pick,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": pick,
+                "title": "Shape of You",
+                "key": "Bm",
+            },
+            "display_key": "Dm",
+            PRACTICE_KEY_BY_SOURCE_KEY: {pick: "Dm"},
+            "active_song_state": {
+                "pick_key": pick,
+                # Contaminated capo / shape tonic must not label Practice as D major.
+                "display_key": "D",
+            },
+            "guitar_capo_shape_key": "D",
+        }
+        self.assertEqual(
+            get_authoritative_display_key(session, original_key="Bm", surface="song_card"),
+            "Dm",
+        )
+        _original, display, _written = resolve_active_song_keys(session)
+        self.assertEqual(display, "Dm")
+
+    def test_sticky_beats_stale_live_after_original_restore(self) -> None:
+        """After Dm→Bm sticky write, card must not keep stale live Dm."""
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        pick = "Pop::Shape of You"
+        owner = f"pk::{pick}"
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: pick,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": pick,
+                "title": "Shape of You",
+                "key": "Bm",
+            },
+            "display_key": "Dm",
+            PRACTICE_KEY_BY_SOURCE_KEY: {pick: "Bm"},
+            DISPLAY_KEY_OWNER_IDENTITY_KEY: owner,
+            ACTIVE_SONG_IDENTITY_KEY: owner,
+            DISPLAY_KEY_CHANGE_SOURCE_KEY: "sidebar_on_change",
+        }
+        self.assertEqual(
+            get_authoritative_display_key(session, original_key="Bm", surface="song_card"),
+            "Bm",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

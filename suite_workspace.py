@@ -7,12 +7,22 @@ Command Center owns the active workspace. Apps inherit via query param or persis
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+
+def _resolve_data_dir() -> Path:
+    """Allow proof/human runtimes to isolate via MUSIC_APP_DATA_DIR."""
+    override = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path(__file__).resolve().parent / "data"
+
+
+DATA_DIR = _resolve_data_dir()
 
 DEFAULT_WORKSPACE_ID = "daniel"
 SESSION_KEY = "_suite_active_workspace_id"

@@ -214,6 +214,37 @@ def capture_sidebar_song_practice_key_edit_intent(session: dict[str, Any]) -> bo
                         session_id = ""
         except ImportError:
             pass
+    # Creative Missions / SBI workspace (no sealed backing yet) must still queue.
+    if owner not in {"song_based_improvisation", "mission_jam"}:
+        page = str(session.get("studio_page") or "").strip().lower()
+        tab = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if page == "creative" and tab == "Missions":
+            owner = "mission_jam"
+            if not session_id:
+                try:
+                    from music_workflow_song_practice import mission_blob_session_id
+
+                    session_id = mission_blob_session_id(session)
+                except ImportError:
+                    session_id = ""
+        elif page == "creative" and tab in {
+            "Song-Based Improvisation",
+            "Phrase / Motif",
+            "Harmony Map",
+            "Live Coach",
+        }:
+            owner = "song_based_improvisation"
+            if not session_id:
+                try:
+                    from music_workflow_song_practice import song_based_blob_session_id
+
+                    session_id = song_based_blob_session_id(session)
+                except ImportError:
+                    session_id = ""
     if owner not in {"song_based_improvisation", "mission_jam"}:
         return False
     try:

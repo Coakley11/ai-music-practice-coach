@@ -7519,7 +7519,28 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     )
     _original_key = _song_key_ctx.original_key
     _practice_concert_key = _song_key_ctx.practice_concert_key
+    # Catalog song card: per-source sticky is SSOT for Practice Key badges.
+    try:
+        from songs.music_source import custom_progression_is_active, cpl_session_is_active
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        if not custom_progression_is_active(st.session_state) and not cpl_session_is_active(
+            st.session_state
+        ):
+            _pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
+            _sticky = str(get_practice_concert_key(st.session_state, _pk) or "").strip() if _pk else ""
+            if _sticky:
+                _practice_concert_key = _sticky
+    except ImportError:
+        pass
     _chart_key = _song_key_ctx.chart_key
+    if _practice_concert_key and _chart_key == _song_key_ctx.practice_concert_key:
+        # Keep chart aligned when we only corrected the Practice label from sticky.
+        try:
+            if not _song_key_ctx.written_key and not _song_key_ctx.shape_key:
+                _chart_key = _practice_concert_key
+        except Exception:
+            pass
     _details_error: Exception | None = None
     try:
         details = active_song_card_details(
@@ -10512,6 +10533,33 @@ else:
 
         def _on_mission_or_global_pk_change() -> None:
             try:
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
+
+                    _tok_dbg = str(st.session_state.get(_pk_widget_key) or "").strip()
+                    _dbg = (
+                        Path(__file__).resolve().parent
+                        / "scripts"
+                        / "evidence-creative-backing"
+                        / "pk-widget-onchange.jsonl"
+                    )
+                    _dbg.parent.mkdir(parents=True, exist_ok=True)
+                    with _dbg.open("a", encoding="utf-8") as fh:
+                        fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "widget_key": _pk_widget_key,
+                                    "tok": _tok_dbg,
+                                    "display_key": str(st.session_state.get("display_key") or ""),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
                 if _pk_widget_key != "display_key":
                     tok = str(st.session_state.get(_pk_widget_key) or "").strip()
                     if tok:

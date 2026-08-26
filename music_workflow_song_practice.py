@@ -455,6 +455,19 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     # Global Active catalog + LAST_CUSTOM coexistence: live display_key often still
     # holds the Custom Practice Key (D/E/…) while active_catalog_pick_key is Shape.
     # Never adopt that Custom live token as Shape's Practice Key.
+    # Narrow exception: a *pending* Creative sidebar edit that is intentionally
+    # not the Custom home/sticky (e.g. Em on Missions) must keep live.
+    pending_sidebar = ""
+    try:
+        from music_workflow_pending_song_practice_key_edit import (
+            peek_pending_song_practice_key_edit,
+        )
+
+        _pend = peek_pending_song_practice_key_edit(session)
+        if isinstance(_pend, dict):
+            pending_sidebar = str(_pend.get("selected_key_token") or "").strip()
+    except ImportError:
+        pending_sidebar = ""
     if pick and not str(pick).startswith("custom::") and live:
         try:
             from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
@@ -473,7 +486,16 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
                         or (active or {}).get("original_key_center")
                         or ""
                     ).strip()
-                    if live == custom_saved or (custom_home and live == custom_home):
+                    matches_custom = live == custom_saved or (
+                        custom_home and live == custom_home
+                    )
+                    intentional_pending = bool(
+                        pending_sidebar
+                        and live == pending_sidebar
+                        and pending_sidebar
+                        not in {custom_saved, custom_home}
+                    )
+                    if matches_custom and not intentional_pending:
                         live = ""
         except ImportError:
             pass

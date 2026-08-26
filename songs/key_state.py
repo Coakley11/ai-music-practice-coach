@@ -391,7 +391,15 @@ def mark_display_key_changed(st: Any) -> None:
                     st.session_state,
                     dk,
                     pick_key=pick,
+                    allow_restore_original=True,
                 )
+                try:
+                    import time as _time
+
+                    st.session_state["_pk_user_commit_token"] = dk
+                    st.session_state["_pk_user_commit_at"] = _time.time()
+                except Exception:
+                    pass
                 if should_write_song_source_settings(st.session_state, pick):
                     try:
                         from source_session_state import sync_catalog_session
@@ -584,10 +592,18 @@ def apply_display_key_for_active_song(
     identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
     pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
     if pending is not None:
-        _apply_display_key_before_widget(st, pending, source="pending_display_key")
+        saved = canonical_display_key_for_pick(st.session_state, identity_pk)
+        pending_tok = str(pending or "").strip()
+        # Stale remount pending (Dm) must not beat sticky SSOT (Bm) after a user commit.
+        if saved and pending_tok and saved != pending_tok:
+            pending_tok = saved
+        _apply_display_key_before_widget(st, pending_tok, source="pending_display_key")
     else:
         saved = canonical_display_key_for_pick(st.session_state, identity_pk)
-        if saved and saved != str(st.session_state.get("display_key") or "").strip():
+        live_now = str(st.session_state.get("display_key") or "").strip()
+        # Sticky SSOT: if practice_key_by_source and the widget disagree, heal the
+        # widget to sticky (Bm restore must not leave a stale Dm live value).
+        if saved and saved != live_now:
             target_saved = saved
             try:
                 from practice_key_mode import apply_fixed_mode_target
@@ -837,6 +853,14 @@ def get_authoritative_display_key(
         source = "authoritative_custom"
     else:
         live = str(session.get("display_key") or "").strip()
+        sticky = ""
+        if pick_key:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
+            except ImportError:
+                sticky = ""
         meta = session.get("active_song_state")
         canonical = ""
         if isinstance(meta, dict):
@@ -846,9 +870,18 @@ def get_authoritative_display_key(
         try:
             from active_song_state import _display_key_override_valid_for_identity
 
-            if _display_key_override_valid_for_identity(session) and live:
+            # Per-source sticky is the catalog Practice Key SSOT. When sticky and
+            # live disagree (e.g. Bm sticky after restore, stale live Dm), sticky
+            # wins so the song card cannot show the wrong mode/key.
+            if sticky:
+                resolved = sticky
+                source = "authoritative_sticky"
+            elif _display_key_override_valid_for_identity(session) and live:
                 resolved = live
                 source = "authoritative_live_override"
+            elif live:
+                resolved = live
+                source = "authoritative_live"
             elif canonical:
                 resolved = canonical
                 source = "authoritative_canonical"
@@ -856,7 +889,7 @@ def get_authoritative_display_key(
                 resolved = home or "C"
                 source = "authoritative_home"
         except ImportError:
-            resolved = live or canonical or home or "C"
+            resolved = sticky or live or canonical or home or "C"
             source = "authoritative_fallback"
 
     trace_display_key_surface(

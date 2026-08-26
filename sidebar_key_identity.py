@@ -132,13 +132,50 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
 
     Custom page owns priming via ``prepare_custom_workspace_sidebar_display_key`` —
     skip force-apply here so React Aria Practice Key clicks can commit.
+
+    Songs / Practice / picker: never force-apply a leftover Song-Based Improvisation
+    blob key (Dm) over the catalog sticky / live Practice Key (Bm restore).
     """
-    if str(session.get("studio_page") or "").strip().lower() == "custom":
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "custom":
         return resolve_sidebar_key_identity(session)
 
     ident = resolve_sidebar_key_identity(session)
     token = ident.selector_token
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    # Catalog song surfaces: prefer per-source sticky over a stale SBI/mission blob.
+    if page in {"", "picker", "practice", "songs"} or page not in {"creative", "backing", "custom"}:
+        if str(ident.owner or "") in {"song_based_improvisation", "mission_jam"}:
+            sticky = ""
+            try:
+                from songs.practice_key_state import (
+                    get_practice_concert_key,
+                    resolve_practice_source_pick,
+                )
+
+                pick = str(resolve_practice_source_pick(session) or "").strip()
+                if pick:
+                    sticky = str(get_practice_concert_key(session, pick) or "").strip()
+            except ImportError:
+                sticky = ""
+            protect_catalog = sticky or live
+            if protect_catalog:
+                session["concert_key"] = protect_catalog
+                if live != protect_catalog:
+                    try:
+                        from songs.key_state import _apply_display_key_before_widget
+
+                        if st is not None:
+                            _apply_display_key_before_widget(
+                                st,
+                                protect_catalog,
+                                source="sidebar_key_identity:catalog_sticky",
+                            )
+                    except ImportError:
+                        session["display_key"] = protect_catalog
+                session["_sidebar_key_identity_label"] = ident.label
+                return ident
+
     pending_tok = ""
     try:
         from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token

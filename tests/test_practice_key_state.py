@@ -102,6 +102,53 @@ class TestPracticeKeyBySource(unittest.TestCase):
         self.assertNotIn(legacy, session[PRACTICE_KEY_BY_SOURCE_KEY])
         self.assertEqual(session[PRACTICE_KEY_BY_SOURCE_KEY].get(canonical), "C#m")
 
+    def test_remount_original_does_not_wipe_sticky(self) -> None:
+        """H2: silent Original reseed must not overwrite sticky Dm/C#m."""
+        pick = "Pop::Shape of You"
+        session = {
+            "active_catalog_pick_key": pick,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+            PRACTICE_KEY_BY_SOURCE_KEY: {pick: "Dm"},
+        }
+        with patch(
+            "songs.music_source._catalog_original_key_for_session",
+            return_value="Bm",
+        ):
+            set_practice_concert_key(session, "Bm", pick_key=pick)
+        self.assertEqual(get_practice_concert_key(session, pick), "Dm")
+
+    def test_user_sidebar_can_restore_catalog_original(self) -> None:
+        """Explicit Practice Key return to Original (Dm → Bm) must stick."""
+        pick = "Pop::Shape of You"
+        session = {
+            "active_catalog_pick_key": pick,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+            PRACTICE_KEY_BY_SOURCE_KEY: {pick: "Dm"},
+            "display_key_change_source": "sidebar_on_change",
+        }
+        with patch(
+            "songs.music_source._catalog_original_key_for_session",
+            return_value="Bm",
+        ):
+            set_practice_concert_key(session, "Bm", pick_key=pick)
+        self.assertEqual(get_practice_concert_key(session, pick), "Bm")
+
+    def test_allow_restore_original_flag_writes_home(self) -> None:
+        pick = "Pop::Shape of You"
+        session = {
+            "active_catalog_pick_key": pick,
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+            PRACTICE_KEY_BY_SOURCE_KEY: {pick: "Dm"},
+        }
+        with patch(
+            "songs.music_source._catalog_original_key_for_session",
+            return_value="Bm",
+        ):
+            set_practice_concert_key(
+                session, "Bm", pick_key=pick, allow_restore_original=True
+            )
+        self.assertEqual(get_practice_concert_key(session, pick), "Bm")
+
 
 if __name__ == "__main__":
     unittest.main()

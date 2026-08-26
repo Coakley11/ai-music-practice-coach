@@ -9,12 +9,23 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 STATE_VERSION = 1
-DATA_DIR = Path(__file__).resolve().parent / "data"
+
+
+def _resolve_data_dir() -> Path:
+    """Allow proof/human runtimes to isolate via MUSIC_APP_DATA_DIR."""
+    override = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path(__file__).resolve().parent / "data"
+
+
+DATA_DIR = _resolve_data_dir()
 
 APP_IDS = frozenset(
     {"music", "investment", "baseball", "basketball", "nba", "future_lens"}

@@ -903,6 +903,56 @@ def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> boo
     return False
 
 
+def _is_custom_bound_sbi_backing_ctx(ctx: Any) -> bool:
+    if ctx is None:
+        return False
+    src = str(getattr(ctx, "source", "") or "").strip()
+    if src != "song_improv":
+        return False
+    bound = str(getattr(ctx, "bound_pick_key", "") or "").strip()
+    return bound.lower().startswith("custom") or bool(getattr(ctx, "custom_revision_id", None))
+
+
+def catalog_global_active_for_regular_backing(session: dict[str, Any]) -> bool:
+    """True when Global Active is a catalog song, not Custom GA."""
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if (
+            is_custom_progression(session)
+            or custom_progression_is_active(session)
+            or cpl_session_is_active(session)
+        ):
+            return False
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::"):
+            return True
+        return str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return bool(pick) and not pick.startswith("custom::")
+
+
+def stale_custom_sbi_overlay_blocks_catalog_backing(session: dict[str, Any]) -> bool:
+    """Sealed Custom SBI play-session while Global Active is catalog (core-wf-05)."""
+    if not catalog_global_active_for_regular_backing(session):
+        return False
+    try:
+        from backing_context import get_backing_context, is_backing_context_valid
+
+        ctx = get_backing_context(session)
+        if not _is_custom_bound_sbi_backing_ctx(ctx):
+            return False
+        return is_backing_context_valid(session, ctx)
+    except ImportError:
+        return False
+
+
 def _selected_catalog_pick_key(session: dict[str, Any]) -> str:
     sel = session.get("selected_song")
     if not isinstance(sel, dict):
@@ -1776,7 +1826,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
         )
         _align_live_catalog_pick_to_selected_song(session)
-        if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
+        restore_ok = False
+        if not stale_custom_sbi_overlay_blocks_catalog_backing(session):
+            restore_ok = restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like)
+        if restore_ok:
             set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
             return
         release_specialized_backing_for_generic_navigation(session, st_like=st_like)
