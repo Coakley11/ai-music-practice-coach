@@ -251,6 +251,21 @@ class TestCustomToCatalogOwnerSwitch(unittest.TestCase):
         self.assertFalse(custom_owns_active_song_material(session))
         self.assertTrue(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
 
+    def test_catalog_seal_heal_does_not_overwrite_custom_ga_practice_key(self) -> None:
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+
+        session = _shape_catalog_session(practice_key="G")
+        st = self._activate_trial(session)
+        session["studio_page"] = "picker"
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["_sbi_custom_sealed_catalog_pk"] = "G"
+        session["_sbi_custom_sealed_catalog_pick"] = PK_PERFECT
+        healed = heal_sealed_catalog_sidebar_if_needed(st, session)
+        self.assertEqual(healed, "")
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+
     def test_set_custom_source_clears_shape_sticky_only_when_leaving_catalog(self) -> None:
         session = _shape_catalog_session(practice_key="Dm")
         self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")

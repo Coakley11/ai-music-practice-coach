@@ -98,6 +98,13 @@ def practice_badge(body: str) -> str:
     )
     if m3:
         return f"{m3.group(1)} {m3.group(2).lower()}"
+    m4 = re.search(
+        r"Practice\s*/\s*Concert\s*Key\s+([A-G](?:#|b)?)\s+(major|minor)",
+        text,
+        flags=re.I,
+    )
+    if m4:
+        return f"{m4.group(1)} {m4.group(2).lower()}"
     return ""
 
 
@@ -370,21 +377,33 @@ def hard_reboot_streamlit(port: int = 8530) -> None:
     import os
 
     data_dir = os.environ.get("MUSIC_APP_DATA_DIR", "")
-    # Kill listeners
+    # Kill listeners (Linux first; Windows PowerShell fallback).
     try:
         out = subprocess.check_output(
             [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
-                f"ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}",
+                "bash",
+                "-lc",
+                f"pids=$(lsof -t -iTCP:{port} -sTCP:LISTEN 2>/dev/null); "
+                f"if [ -n \"$pids\" ]; then kill -9 $pids; echo killed:$pids; fi",
             ],
             text=True,
         )
         log(f"reboot kill: {out.strip()[:200]}")
     except Exception as exc:
-        log(f"reboot kill warn: {exc!r}")
+        try:
+            out = subprocess.check_output(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
+                    f"ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}",
+                ],
+                text=True,
+            )
+            log(f"reboot kill: {out.strip()[:200]}")
+        except Exception as exc2:
+            log(f"reboot kill warn: {exc!r} / {exc2!r}")
     time.sleep(2)
     env = os.environ.copy()
     if data_dir:

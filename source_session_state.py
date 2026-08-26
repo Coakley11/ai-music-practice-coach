@@ -558,8 +558,17 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
     sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
     page = str(session.get("studio_page") or "").strip().lower()
-    # Only heal on non-Custom surfaces (Songs / Practice / picker). Do not use
-    # custom_sbi_owns_sidebar_practice_key here — SBI preview can remain
+    # Only heal on non-Custom surfaces (Songs / Practice / picker) while Catalog
+    # still owns Global Active. When Custom is GA, a leftover SBI catalog seal
+    # (Perfect G) must not overwrite Embargo Trial D.
+    try:
+        from workflow_musical_authority import custom_owns_active_song_material
+
+        if custom_owns_active_song_material(session):
+            return ""
+    except ImportError:
+        pass
+    # Do not use custom_sbi_owns_sidebar_practice_key here — SBI preview can remain
     # "Custom progression" after leave, which would skip the heal forever.
     if not sealed or not sealed_pick or page in {"creative", "backing", "custom"}:
         return ""
