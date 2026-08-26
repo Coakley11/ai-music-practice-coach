@@ -10295,51 +10295,66 @@ try:
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
     else:
         _sbi_custom_sidebar = False
+        _custom_ga_sidebar = False
         try:
-            from source_session_state import (
-                clear_sbi_custom_sidebar_overlay_if_needed,
-                custom_sbi_owns_sidebar_practice_key,
-                heal_sealed_catalog_sidebar_if_needed,
-                prepare_sbi_custom_sidebar_display_key,
-            )
+            from songs.music_source import custom_progression_is_active
 
             page_now = str(st.session_state.get("studio_page") or "").strip().lower()
-            # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
-            # Do not clear overlay on Open Backing — that restored Shape Dm.
-            if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
-                st.session_state
-            ):
-                _display_key_options = prepare_sbi_custom_sidebar_display_key(
+            if page_now == "creative" and custom_progression_is_active(st.session_state):
+                from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+
+                _display_key_options = prepare_custom_workspace_sidebar_display_key(
                     st, st.session_state
                 )
-                _sbi_custom_sidebar = True
-            else:
-                _had_sbi_overlay = bool(
-                    st.session_state.get("_sbi_custom_sidebar_overlay")
-                    or st.session_state.get("_custom_page_sidebar_overlay")
-                )
-                clear_sbi_custom_sidebar_overlay_if_needed(st.session_state)
-                if _had_sbi_overlay and not st.session_state.get("_sbi_custom_sidebar_overlay"):
-                    _restored = str(
-                        st.session_state.get("display_key")
-                        or st.session_state.get("concert_key")
-                        or ""
-                    ).strip()
-                    if _restored:
-                        try:
-                            from songs.key_state import _apply_display_key_before_widget
-
-                            _apply_display_key_before_widget(
-                                st,
-                                _restored,
-                                source="leave_sbi_custom_overlay",
-                            )
-                        except Exception:
-                            pass
-                heal_sealed_catalog_sidebar_if_needed(st, st.session_state)
+                _custom_ga_sidebar = True
         except ImportError:
-            pass
-        if _sbi_custom_sidebar:
+            _custom_ga_sidebar = False
+        if not _custom_ga_sidebar:
+            try:
+                from source_session_state import (
+                    clear_sbi_custom_sidebar_overlay_if_needed,
+                    custom_sbi_owns_sidebar_practice_key,
+                    heal_sealed_catalog_sidebar_if_needed,
+                    prepare_sbi_custom_sidebar_display_key,
+                )
+
+                page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+                # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
+                # Do not clear overlay on Open Backing — that restored Shape Dm.
+                if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
+                    st.session_state
+                ):
+                    _display_key_options = prepare_sbi_custom_sidebar_display_key(
+                        st, st.session_state
+                    )
+                    _sbi_custom_sidebar = True
+                else:
+                    _had_sbi_overlay = bool(
+                        st.session_state.get("_sbi_custom_sidebar_overlay")
+                        or st.session_state.get("_custom_page_sidebar_overlay")
+                    )
+                    clear_sbi_custom_sidebar_overlay_if_needed(st.session_state)
+                    if _had_sbi_overlay and not st.session_state.get("_sbi_custom_sidebar_overlay"):
+                        _restored = str(
+                            st.session_state.get("display_key")
+                            or st.session_state.get("concert_key")
+                            or ""
+                        ).strip()
+                        if _restored:
+                            try:
+                                from songs.key_state import _apply_display_key_before_widget
+
+                                _apply_display_key_before_widget(
+                                    st,
+                                    _restored,
+                                    source="leave_sbi_custom_overlay",
+                                )
+                            except Exception:
+                                pass
+                    heal_sealed_catalog_sidebar_if_needed(st, st.session_state)
+            except ImportError:
+                pass
+        if _sbi_custom_sidebar or _custom_ga_sidebar:
             pass
         elif is_creative_major_jam_active(st.session_state):
             _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)

@@ -401,6 +401,13 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
+    def _go_songs() -> None:
+        _save(None)
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(st.session_state, "picker")
+        st.rerun()
+
     with st.container(key="custom_song_builder_panel", border=False):
         render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
@@ -989,7 +996,7 @@ def render_custom_progression_lab_page() -> None:
             st.markdown(map_html, unsafe_allow_html=True)
 
         st.markdown("#### Launch in the studio")
-        setup = st.columns(3)
+        setup = st.columns(4)
         with setup[0]:
             if st.button(
                 "Set as Active Song",
@@ -1000,13 +1007,20 @@ def render_custom_progression_lab_page() -> None:
                 _activate_custom_song()
         with setup[1]:
             if st.button(
+                nav_icon_button_label("picker"),
+                key="cpl_go_songs_bottom",
+                use_container_width=True,
+            ):
+                _go_songs()
+        with setup[2]:
+            if st.button(
                 nav_icon_button_label("backing"),
                 key="cpl_open_backing_bottom",
                 use_container_width=True,
                 disabled=not has_chords,
             ):
                 _open_backing()
-        with setup[2]:
+        with setup[3]:
             if st.button(
                 nav_icon_button_label("practice"),
                 key="cpl_open_practice_bottom",

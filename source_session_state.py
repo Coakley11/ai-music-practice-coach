@@ -317,6 +317,24 @@ def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
+    # Global Active Custom: both Active song and Custom tabs must use Trial/CPL material.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            custom = sync_custom_session(session)
+            if custom:
+                return {
+                    "source": source,
+                    "title": str(custom.get("title") or "Custom progression"),
+                    "artist": str(custom.get("artist") or "Custom progression"),
+                    "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
+                    "original_key": str(custom.get("original_key") or "C"),
+                    "sections": dict(custom.get("sections") or {}),
+                    "pick_key": str(custom.get("pick_key") or ""),
+                }
+    except ImportError:
+        pass
     if source == "Custom progression":
         custom = get_custom_session(session)
         if custom:
@@ -620,6 +638,16 @@ def clear_sbi_custom_sidebar_overlay_if_needed(session: dict[str, Any]) -> None:
             return
         if page == "backing" and custom_sbi_owns_sidebar_practice_key(session):
             return
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if page in {"picker", "creative", "practice", "songs"} and custom_owns_active_song_material(
+                session
+            ):
+                session.pop("_custom_page_sidebar_overlay", None)
+                return
+        except ImportError:
+            pass
         session.pop("_custom_page_sidebar_overlay", None)
     sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
     sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()

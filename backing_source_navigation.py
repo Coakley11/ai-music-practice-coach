@@ -530,6 +530,16 @@ def hydrate_picker_source_for_page(
     song_picker_catalog: dict | None = None,
 ) -> None:
     """Rebuild stale catalog backing_context when Song Selection shows identity drift."""
+    try:
+        from workflow_musical_authority import (
+            custom_owns_active_song_material,
+            refresh_custom_improv_concert_sections,
+        )
+
+        if custom_owns_active_song_material(session):
+            refresh_custom_improv_concert_sections(session)
+    except ImportError:
+        pass
     injected_catalog = False
     if isinstance(song_picker_catalog, dict) and song_picker_catalog:
         if not isinstance(session.get("_reconcile_song_picker_catalog"), dict):

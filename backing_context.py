@@ -1040,6 +1040,18 @@ def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
 def _song_improv_sections_dict(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog/custom song sections — never Entry Jam generated maps or one-chord mission slices."""
     try:
+        from workflow_musical_authority import (
+            custom_owns_active_song_material,
+            resolve_custom_concert_sections_at_practice_key,
+        )
+
+        if custom_owns_active_song_material(session):
+            custom_secs = resolve_custom_concert_sections_at_practice_key(session)
+            if custom_secs:
+                return custom_secs
+    except ImportError:
+        pass
+    try:
         from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
         synced = sync_song_improv_sections_to_practice_key(session)

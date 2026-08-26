@@ -346,6 +346,13 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             snapshot_last_custom_state(session_state)
         except ImportError:
             pass
+    if current == "custom" and page_id == "picker":
+        try:
+            from songs.music_source import promote_last_custom_for_picker_entry
+
+            promote_last_custom_for_picker_entry(session_state)
+        except ImportError:
+            pass
     session_state["studio_page"] = page_id
     try:
         from pending_upload_route_precedence import release_pending_upload_resume_route

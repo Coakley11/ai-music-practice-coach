@@ -1846,7 +1846,14 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             from backing_context import get_backing_context as _get_bk_ctx
 
             _page_cus = str(session.get("studio_page") or "").strip().lower()
-            if _page_cus in {"creative", "backing"}:
+            _custom_owner = False
+            try:
+                from workflow_musical_authority import custom_owns_active_song_material
+
+                _custom_owner = custom_owns_active_song_material(session)
+            except ImportError:
+                _custom_owner = False
+            if _page_cus in {"creative", "backing"} or _custom_owner:
                 try:
                     _ctx_cus = _get_bk_ctx(session)
                 except Exception:

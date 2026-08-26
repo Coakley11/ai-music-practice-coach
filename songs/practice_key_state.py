@@ -194,7 +194,15 @@ def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
             or ctx_src in {"song_improv", "custom_progression"}
         )
     )
-    if not sbi_surface:
+    picker_custom = False
+    if page in {"picker", "creative", "practice", "songs", ""}:
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            picker_custom = custom_owns_active_song_material(session)
+        except ImportError:
+            picker_custom = False
+    if not sbi_surface and not picker_custom:
         return ""
     if bound.startswith("custom::"):
         return bound

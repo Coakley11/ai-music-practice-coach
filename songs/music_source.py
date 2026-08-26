@@ -1251,6 +1251,62 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
             session_state.setdefault(CPL_LAST_DISPLAY_KEY, live)
     except ImportError:
         pass
+    try:
+        from workflow_musical_authority import refresh_custom_improv_concert_sections
+
+        refresh_custom_improv_concert_sections(session_state)
+    except ImportError:
+        pass
+
+
+def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
+    """Custom→Songs nav: hydrate LAST_CUSTOM identity + Custom picker without radio click."""
+    try:
+        from songs.music_source import (
+            SONG_PICKER_SOURCE_CUSTOM,
+            _queue_last_custom_restore_from_session,
+            install_last_custom_into_live_cpl,
+            set_custom_source,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+    except ImportError:
+        return False
+    installed = install_last_custom_into_live_cpl(
+        session_state, reset_practice_key_to_original=False
+    )
+    if not installed:
+        snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+        active = (snap or {}).get("active") if isinstance(snap, dict) else None
+        if not isinstance(active, dict):
+            return False
+    session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    session_state.pop("_catalog_owns_until_custom_click", None)
+    set_custom_source(session_state)
+    _assign_song_picker_source_widget(
+        session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
+    )
+    session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+    _queue_last_custom_restore_from_session(session_state)
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if not pick.startswith("custom::"):
+        try:
+            from custom_progression_lab import cpl_active_from_session
+            from songs.music_source import custom_pick_key_for, ensure_custom_active_song_identity
+
+            ensure_custom_active_song_identity(session_state)
+            active = cpl_active_from_session(session_state)
+            pick = str(custom_pick_key_for(active) or "").strip()
+            if pick.startswith("custom::"):
+                session_state[ACTIVE_CATALOG_PICK_KEY] = pick
+        except ImportError:
+            pass
+    try:
+        from workflow_musical_authority import refresh_custom_improv_concert_sections
+
+        refresh_custom_improv_concert_sections(session_state)
+    except ImportError:
+        pass
+    return True
 
 
 def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
@@ -3521,6 +3577,13 @@ def commit_custom_active_song(
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)
+
+    try:
+        from workflow_musical_authority import refresh_custom_improv_concert_sections
+
+        refresh_custom_improv_concert_sections(session)
+    except ImportError:
+        pass
 
     default_bpm = int(active.get("bpm") or canonical_active_song_bpm(active) or 100)
     default_groove = normalize_groove_label(cpl_default_groove_for_active(active), song_data=active)

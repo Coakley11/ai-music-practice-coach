@@ -1067,6 +1067,104 @@ def main() -> int:
             f"perfect={perfect_ok} active={final_active} custom={final_custom} backing={final_backing}",
         )
 
+        # ========== 14. Custom create → Songs (real UI path) ==========
+        c14_ok = False
+        try:
+            from _walk_custom_practice_key import (
+                goto_custom,
+                set_original_key,
+                set_practice_key as set_custom_pk,
+            )
+            from _walk_ownership_audit_full import fill_title, add_chord_bar, progression_em_d
+
+            if goto_custom(page2):
+                click_button_has(page2, r"New song") or click_button_has(page2, r"New Song")
+                settle(page2, 2)
+                fill_title(page2, "Embargo Trial")
+                set_original_key(page2, "D") or set_original_key(page2, "D major")
+                set_custom_pk(page2, "D") or set_baseweb_select(page2, "Practice / Concert Key", "D")
+                settle(page2, 2)
+                for ch in ("Em", "Em", "D", "D"):
+                    add_chord_bar(page2, ch)
+                settle(page2, 2)
+                click_button_has(page2, r"Save to library")
+                settle(page2, 2)
+                click_button_has(page2, r"Set as Active Song") or click_button_has(
+                    page2, r"Set as Active"
+                )
+                settle(page2, 3)
+                # Prefer new Songs button; fall back to sidebar nav.
+                if not (
+                    click_button_has(page2, r"Song Selection")
+                    or click_button_has(page2, r"🎼 Songs")
+                    or click_nav(page2, "Songs")
+                ):
+                    click_nav(page2, "Songs")
+                settle(page2, 4)
+                body14 = shot(page2, "14-custom-to-songs")
+                badge14 = practice_badge(body14) or card_practice_label(body14)
+                d_ok = "d major" in low(badge14) and "minor" not in low(badge14)
+                set_songs_practice_key(page2, "E")
+                settle(page2, 3)
+                body14e = shot(page2, "14-custom-to-songs-e")
+                badge_e = practice_badge(body14e) or card_practice_label(body14e)
+                e_ok = "e major" in low(badge_e) and "minor" not in low(badge_e)
+                set_songs_practice_key(page2, "D")
+                settle(page2, 3)
+                body14d = shot(page2, "14-custom-to-songs-d")
+                badge_d = practice_badge(body14d) or card_practice_label(body14d)
+                d_back = "d major" in low(badge_d) and "minor" not in low(badge_d)
+                c14_ok = d_ok and e_ok and d_back
+                mark(
+                    "14_custom_create_to_songs",
+                    "PASS" if c14_ok else "RED",
+                    f"d={d_ok} e={e_ok} d_back={d_back} badges={badge14!r}/{badge_e!r}/{badge_d!r}",
+                )
+            else:
+                mark("14_custom_create_to_songs", "RED", "goto_custom failed")
+        except Exception as exc:
+            mark("14_custom_create_to_songs", "RED", repr(exc))
+
+        # ========== 15. Custom GA → SBI + Missions material coherence ==========
+        c15_ok = False
+        try:
+            if goto_improv(page2, NOTES):
+                ensure_missions_workspace(page2, NOTES)
+                settle(page2, 2)
+                body_sbi = shot(page2, "15-sbi-custom-ga")
+                sbi_prog_ok = rendered_em_em_d_d(body_sbi) or bool(
+                    re.search(r"Em.{0,12}Em.{0,12}D.{0,12}D", body_sbi, re.I | re.S)
+                )
+                sbi_title_ok = has_any(body_sbi, "Embargo Trial", "Trial Song")
+                sbi_not_say = not has_any(body_sbi, "Say — John Mayer", "Say - John Mayer")
+                pk_sbi = practice_badge(body_sbi) or sidebar_pk_input(page2)
+                pk_sbi_ok = "d major" in low(pk_sbi) or low(pk_sbi).startswith("d")
+                click_nav(page2, "Creative")
+                settle(page2, 2)
+                if not goto_improv(page2, NOTES):
+                    mark("15_custom_ga_sbi_missions", "RED", "creative nav failed")
+                else:
+                    click_button_has(page2, r"Missions") or True
+                    settle(page2, 2)
+                    ensure_missions_workspace(page2, NOTES)
+                    body_m = shot(page2, "15-missions-custom-ga")
+                    m_prog = rendered_em_em_d_d(body_m) or bool(
+                        re.search(r"Em.{0,12}Em.{0,12}D.{0,12}D", body_m, re.I | re.S)
+                    )
+                    m_title = has_any(body_m, "Embargo Trial", "Trial Song")
+                    m_not_say = not has_any(body_m, "Say — John Mayer")
+                    c15_ok = sbi_prog_ok and sbi_title_ok and sbi_not_say and pk_sbi_ok and m_prog and m_title and m_not_say
+                    mark(
+                        "15_custom_ga_sbi_missions",
+                        "PASS" if c15_ok else "RED",
+                        f"sbi_prog={sbi_prog_ok} sbi_title={sbi_title_ok} pk={pk_sbi_ok} "
+                        f"m_prog={m_prog} m_title={m_title} say_leak={not sbi_not_say}",
+                    )
+            else:
+                mark("15_custom_ga_sbi_missions", "RED", "goto_improv failed")
+        except Exception as exc:
+            mark("15_custom_ga_sbi_missions", "RED", repr(exc))
+
         browser2.close()
 
     # Summary

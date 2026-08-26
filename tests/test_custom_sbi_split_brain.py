@@ -291,6 +291,59 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         verse = (live.get("original_sections") or {}).get("Verse") or []
         self.assertGreaterEqual(len(verse), 2)
 
+    def test_custom_ga_stale_say_cache_does_not_bleed_into_sbi(self) -> None:
+        """Trial Song GA must not show Say progression from improv_song_concert_sections."""
+        from improvisation_motif import concert_song_sections_from_session, resolve_improv_sections
+        from songs.music_source import SOURCE_CUSTOM, set_custom_source
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        trial = _trial_active()
+        say_sections = {
+            "Verse": ["G", "Em", "C", "D", "G", "Em", "C", "D"] * 4,
+            "Chorus": ["G", "D", "Em", "C"] * 3,
+        }
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+            "display_key": "D",
+            "concert_key": "D",
+            "cpl_active_progression": trial,
+            "selected_song": {
+                "title": "Trial Song",
+                "key": "D",
+                "pick_key": "custom::trial-1",
+            },
+            "practice_key_by_source": {"custom::trial-1": "D"},
+            "improv_song_concert_sections": say_sections,
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+        }
+        set_custom_source(session)
+        synced = sync_song_improv_sections_to_practice_key(session)
+        flat_sync = [c for chs in synced.values() for c in chs]
+        self.assertEqual(flat_sync[:4], ["Em", "Em", "D", "D"])
+        concert = concert_song_sections_from_session(session)
+        flat = [c for chs in (concert or {}).values() for c in chs]
+        self.assertEqual(flat[:4], ["Em", "Em", "D", "D"])
+        self.assertLess(len(flat), 20)
+        preview = resolve_sbi_preview(session)
+        prev_flat = [c for chs in (preview.get("sections") or {}).values() for c in chs]
+        self.assertEqual(prev_flat[:4], ["Em", "Em", "D", "D"])
+        class _Ctx:
+            sections = {}
+            progression_flat = []
+            section_order = []
+
+        mapped = resolve_improv_sections(session, _Ctx())
+        mission_flat = [c for _s, chs in mapped for c in chs]
+        self.assertIn("Em", mission_flat)
+        self.assertIn("D", mission_flat)
+        self.assertLess(len(mission_flat), 12)
+        self.assertNotEqual(mission_flat[0], "G")
+
 
 if __name__ == "__main__":
     unittest.main()

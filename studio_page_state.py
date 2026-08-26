@@ -197,6 +197,20 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
         live = str(session_state.get("improv_song_source") or "").strip()
         if preview == "Custom progression" and live != preview:
             session_state["improv_song_source"] = preview
+        try:
+            from songs.music_source import custom_progression_is_active
+
+            if custom_progression_is_active(session_state):
+                set_sbi_preview_source(session_state, "Custom progression")
+                session_state["improv_song_source"] = "Custom progression"
+                try:
+                    from workflow_musical_authority import refresh_custom_improv_concert_sections
+
+                    refresh_custom_improv_concert_sections(session_state)
+                except ImportError:
+                    pass
+        except ImportError:
+            pass
     except ImportError:
         if "improv_song_source" not in session_state:
             session_state["improv_song_source"] = (
