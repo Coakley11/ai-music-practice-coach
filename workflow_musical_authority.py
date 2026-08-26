@@ -485,10 +485,23 @@ def _section_maps_same_song(expected: dict[str, list[str]], actual: dict[str, li
 
 
 def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
-    """True when Global Active (or live pick) is a Custom progression — not catalog."""
-    try:
-        from songs.music_source import custom_progression_is_active, is_custom_progression
+    """True when Global Active (or live pick) is a Custom progression — not catalog.
 
+    Custom currently owning material is not a permanent lock. An explicit Songs
+    Catalog selection (USER_CATALOG / catalog epoch) is the release boundary.
+    """
+    try:
+        from songs.music_source import (
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+            is_custom_progression,
+        )
+
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+            session
+        ):
+            return False
         if custom_progression_is_active(session) or is_custom_progression(session):
             return True
     except ImportError:

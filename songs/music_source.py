@@ -75,6 +75,57 @@ def explicit_catalog_selection_is_authoritative(session_state: dict[str, Any]) -
         return True
 
 
+def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
+    """Stamp an explicit Catalog choice so Custom ownership cannot lock the switch.
+
+    Product order: EXPLICIT USER SONG PICK > CURRENT GLOBAL ACTIVE OWNER >
+    LAST_CUSTOM / preview / sticky. Call this before ``set_catalog_source`` /
+    ``apply_pick_key`` on Songs dropdown, Catalog radio, or Use-catalog-instead.
+    """
+    try:
+        import time as _time
+
+        session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = float(_time.time())
+    except Exception:
+        session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
+    session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
+    session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    session_state.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
+    session_state.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
+
+
+def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
+    """Prior Catalog Practice Key does not survive Custom becoming Global Active.
+
+    Shape Bm→Dm then Trial Set-as-Active must not keep Shape sticky Dm for a later
+    explicit Shape reactivation (fresh activation = Original B minor).
+    """
+    picks: list[str] = []
+    live = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if live and not live.startswith("custom::") and not live.startswith("custom\x1f"):
+        picks.append(live)
+    for snap_key in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY, "catalog_session"):
+        raw = session_state.get(snap_key)
+        if not isinstance(raw, dict):
+            continue
+        pk = str(raw.get("pick_key") or "").strip()
+        if pk and not pk.startswith("custom::") and not pk.startswith("custom\x1f"):
+            picks.append(pk)
+    if not picks:
+        return
+    try:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        seen: set[str] = set()
+        for pk in picks:
+            if pk in seen:
+                continue
+            seen.add(pk)
+            clear_practice_concert_key(session_state, pk)
+    except ImportError:
+        pass
+
+
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
     session_state.setdefault(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
     # Explicit Catalog must not leave ACTIVE_MUSIC_SOURCE stuck on custom after a
@@ -1157,6 +1208,7 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     # Heal Catalog pick from Global Active title *before* sync — otherwise a stale
     # Say pick makes sync_catalog_session wipe a good Shape catalog_session, and
     # capture then stamps Say into _catalog_before_custom_state (H1/H9).
+    leaving_catalog = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() != SOURCE_CUSTOM
     try:
         from e5_reclaim_trace import note_e5_reclaim_writer
 
@@ -1257,6 +1309,9 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
         refresh_custom_improv_concert_sections(session_state)
     except ImportError:
         pass
+    if leaving_catalog:
+        # After catalog_session sync — otherwise it restamps the leftover Shape Dm.
+        forget_catalog_visit_practice_key(session_state)
 
 
 def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
@@ -1760,14 +1815,7 @@ def switch_to_catalog_from_custom(
         )
     )
     # Stamp explicit catalog epoch BEFORE set_catalog_source so Custom epoch yields.
-    try:
-        import time as _time
-
-        session[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = float(_time.time())
-    except Exception:
-        session[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
-    # Explicit Catalog switch ends Custom authority for Global Active Source.
-    session.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
+    begin_explicit_catalog_selection(session)
     # Drop queued Custom activation so the next prepare cannot re-apply Trial (E5 reverse).
     session.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
     session.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
@@ -1876,23 +1924,32 @@ def switch_to_catalog_from_custom(
         selected.setdefault("artist", str(data.get("artist") or ""))
         selected["key"] = original_key
         selected["pick_key"] = pick_key
-        # Sticky Practice Key for this pick outranks snap display / Original.
+        # Fresh Catalog activation after Custom Global Active uses Original Key.
+        # Same-pick return while Catalog never lost GA keeps visit sticky.
         display_key = original_key
-        try:
-            from songs.practice_key_state import get_practice_concert_key
+        if not identity_still_custom:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
 
-            sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
-            if sticky:
-                display_key = sticky
-            else:
-                snap_dk = str(snap.get("display_key") or "").strip()
-                # Ignore snap display when it is only the bogus hardcoded "C" default
-                # and the catalog original is something else.
-                if snap_dk and not (snap_dk == "C" and original_key != "C" and not sticky):
-                    display_key = snap_dk
-        except ImportError:
-            snap_dk = str(snap.get("display_key") or original_key).strip() or original_key
-            display_key = snap_dk
+                sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
+                if sticky:
+                    display_key = sticky
+                else:
+                    snap_dk = str(snap.get("display_key") or "").strip()
+                    # Ignore snap display when it is only the bogus hardcoded "C" default
+                    # and the catalog original is something else.
+                    if snap_dk and not (snap_dk == "C" and original_key != "C" and not sticky):
+                        display_key = snap_dk
+            except ImportError:
+                snap_dk = str(snap.get("display_key") or original_key).strip() or original_key
+                display_key = snap_dk
+        else:
+            try:
+                from songs.practice_key_state import clear_practice_concert_key
+
+                clear_practice_concert_key(session, pick_key)
+            except ImportError:
+                pass
         commit_catalog_active_song(
             st,
             pick_key=pick_key,
@@ -1953,14 +2010,22 @@ def switch_to_catalog_from_custom(
         if data and _data_matches_pick(data, pick_key):
             original_key = str(data.get("key") or "C").strip() or "C"
             display_key = original_key
-            try:
-                from songs.practice_key_state import get_practice_concert_key
+            if not identity_still_custom:
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
 
-                sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
-                if sticky:
-                    display_key = sticky
-            except ImportError:
-                pass
+                    sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
+                    if sticky:
+                        display_key = sticky
+                except ImportError:
+                    pass
+            else:
+                try:
+                    from songs.practice_key_state import clear_practice_concert_key
+
+                    clear_practice_concert_key(session, pick_key)
+                except ImportError:
+                    pass
             commit_catalog_active_song(
                 st,
                 pick_key=pick_key,
@@ -2216,15 +2281,7 @@ def on_song_picker_source_change(
         or custom_progression_is_active(st.session_state)
         or pick_now.startswith("custom::")
     )
-    st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-    try:
-        import time as _time
-
-        st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = float(_time.time())
-    except Exception:
-        st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
-    # Catalog selection outranks prior Custom activation epoch.
-    st.session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
+    begin_explicit_catalog_selection(st.session_state)
     st.session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
     mark_catalog_switch_applied_this_run(st.session_state)
     if leaving_custom:

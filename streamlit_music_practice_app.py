@@ -7110,6 +7110,9 @@ def _on_global_source_change() -> None:
             note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
             st.rerun()
     elif is_custom_progression(st.session_state):
+        from songs.music_source import begin_explicit_catalog_selection
+
+        begin_explicit_catalog_selection(st.session_state)
         set_catalog_source(st.session_state)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         st.rerun()
@@ -7122,7 +7125,10 @@ def _on_global_genre_change() -> None:
         return
     current = st.session_state.get("global_quick_song")
     if current not in opts:
+        from songs.music_source import begin_explicit_catalog_selection
+
         st.session_state["global_quick_song"] = opts[0]
+        begin_explicit_catalog_selection(st.session_state)
         set_catalog_source(st.session_state)
         apply_pick_key(st, opts[0], SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
@@ -7130,6 +7136,9 @@ def _on_global_genre_change() -> None:
 
 
 def _on_global_song_change() -> None:
+    from songs.music_source import begin_explicit_catalog_selection
+
+    begin_explicit_catalog_selection(st.session_state)
     set_catalog_source(st.session_state)
     apply_pick_key(
         st,
@@ -8537,6 +8546,9 @@ def _render_catalog_song_picker_block(
     _library_shell = st.container(key="song_library_panel") if _library_polished else None
 
     def _on_song_dropdown_change():
+        from songs.music_source import begin_explicit_catalog_selection
+
+        begin_explicit_catalog_selection(st.session_state)
         set_catalog_source(st.session_state)
         raw_pick = st.session_state.get("matching_song_dropdown", "")
         resolved_pick = resolve_pick_key(

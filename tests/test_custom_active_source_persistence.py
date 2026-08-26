@@ -501,10 +501,8 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
             apply_pick_key(st, clocks_pk, catalog, origin="user", persist=False)
         self.assertEqual(session["active_music_source"], SOURCE_CATALOG)
         self.assertIn("Clocks", str(session.get("selected_song", {}).get("title") or ""))
-        self.assertGreater(
-            float(session[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY]),
-            float(session[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY]),
-        )
+        self.assertTrue(explicit_catalog_selection_is_authoritative(session))
+        self.assertFalse(explicit_custom_activation_is_authoritative(session))
 
 
 if __name__ == "__main__":

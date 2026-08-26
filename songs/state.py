@@ -1012,9 +1012,13 @@ def apply_pick_key(
         else:
             return {}
     pick_key = resolved
+    catalog_pick = not str(pick_key).startswith("custom::")
+    raw_custom_owns = False
+    explicit_catalog_switch = False
     # Explicit Custom ownership outranks accidental catalog apply (Say / first_valid
     # / widget lag) so reload cannot restamp _catalog_before_custom_state.
-    # Explicit Use Catalog sets USER_CATALOG + catalog epoch before apply_pick_key.
+    # Explicit Use Catalog / Songs dropdown stamps USER_CATALOG + catalog epoch
+    # before apply_pick_key (begin_explicit_catalog_selection).
     try:
         from songs.music_source import (
             ACTIVE_MUSIC_SOURCE_KEY,
@@ -1028,7 +1032,6 @@ def apply_pick_key(
             explicit_custom_activation_is_authoritative,
         )
 
-        catalog_pick = not str(pick_key).startswith("custom::")
         raw_custom_owns = bool(
             str(st.session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
             == SOURCE_CUSTOM
@@ -1179,7 +1182,9 @@ def apply_pick_key(
     st.session_state["active_song_title"] = data["title"]
     is_restore = origin in ("recovery", "restore")
     pick_changed = prev is not None and prev != pick_key
-    if prev != pick_key:
+    catalog_owner_switch = bool(catalog_pick and raw_custom_owns)
+    apply_catalog_identity = bool(prev != pick_key or catalog_owner_switch)
+    if apply_catalog_identity:
         try:
             from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
 
@@ -1198,11 +1203,7 @@ def apply_pick_key(
             st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
             set_custom_source(st.session_state)
         else:
-            from songs.music_source import (
-                EXPLICIT_CATALOG_SELECTION_EPOCH_KEY,
-                USER_CATALOG_SOURCE_CHOICE_KEY,
-                set_catalog_source,
-            )
+            from songs.music_source import begin_explicit_catalog_selection, set_catalog_source
 
             try:
                 from e5_reclaim_trace import note_e5_reclaim_writer
@@ -1216,14 +1217,7 @@ def apply_pick_key(
             except ImportError:
                 pass
             if not is_restore:
-                st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-                # Intentional catalog pick outranks prior Custom Set-as-Active epoch.
-                try:
-                    import time as _time
-
-                    st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = float(_time.time())
-                except Exception:
-                    st.session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
+                begin_explicit_catalog_selection(st.session_state)
             set_catalog_source(st.session_state)
         lib_record = data
         if song_library is not None:
@@ -1269,11 +1263,21 @@ def apply_pick_key(
         effective_display_key = (
             restore_display_key if (is_restore and restore_display_key) else original_key
         )
-        user_song_change = pick_changed and not is_restore
+        user_song_change = bool((pick_changed or catalog_owner_switch) and not is_restore)
+        if user_song_change:
+            try:
+                from songs.practice_key_state import clear_practice_concert_key
+
+                clear_practice_concert_key(st.session_state, pick_key)
+                if prev and str(prev) != str(pick_key):
+                    clear_practice_concert_key(st.session_state, str(prev))
+            except ImportError:
+                pass
+            effective_display_key = original_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
-            if is_fixed_practice_key_mode(st.session_state) or user_song_change:
+            if is_fixed_practice_key_mode(st.session_state):
                 effective_display_key = resolve_practice_concert_key_for_song(
                     st.session_state,
                     original_key,

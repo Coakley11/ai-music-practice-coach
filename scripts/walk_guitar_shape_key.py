@@ -221,6 +221,34 @@ def pick_active_song_from_dropdown(page: Page, title: str) -> bool:
     return False
 
 
+def ensure_songs_catalog_source(page: Page, notes: list[str] | None = None) -> bool:
+    """Leave Custom hub so the catalog Active-song dropdown is available.
+
+    Custom currently owning Global Active is not a lock: explicit Songs Catalog
+    selection (radio or Use catalog song instead) is the release boundary.
+    """
+    body = page.inner_text("body") or ""
+    custom_hub = (
+        "Use catalog song instead" in body
+        or "your song" in body.lower()
+        or (
+            "CUSTOM PROGRESSION" in body.upper()
+            and "Switch active song" not in body
+        )
+    )
+    if not custom_hub and "Switch active song" in body:
+        return True
+    if click_button_has(page, r"Use catalog song instead"):
+        wait_idle(page, 4500)
+        _log(notes or [], "ensure_catalog_source via Use catalog song instead")
+        return True
+    if click_radio(page, "Song Selection (catalog song)") or click_radio(page, "Song Selection"):
+        wait_idle(page, 4500)
+        _log(notes or [], "ensure_catalog_source via Catalog radio")
+        return True
+    return not custom_hub
+
+
 def pick_song(page: Page, notes: list[str], title: str, genre_hint: str) -> bool:
     expand_sidebar(page)
     expand_pages_nav(page)
@@ -231,6 +259,8 @@ def pick_song(page: Page, notes: list[str], title: str, genre_hint: str) -> bool
         body_name(page, f"zz-songs-fail-{title.split()[0].lower()}.txt")
         return False
     wait_idle(page, 4000)
+    ensure_songs_catalog_source(page, notes)
+    wait_idle(page, 2000)
     click_button_has(page, r"Clear filters")
     wait_idle(page, 2000)
     _clear_library_search(page)
