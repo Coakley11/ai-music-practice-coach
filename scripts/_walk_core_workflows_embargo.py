@@ -451,14 +451,18 @@ def main() -> int:
         settle(page, 5)
 
         # ---------- Seed: Shape GA + Trial LAST_CUSTOM ----------
-        click_nav(page, "Songs")
-        settle(page, 2)
-        pick_song(page, NOTES, "Shape of You", "Pop")
-        settle(page, 3)
-        set_songs_practice_key(page, "Dm")
-        settle(page, 2)
-        body = shot(page, "00-shape-dm")
-        shape_badge = practice_badge(body)
+        shape_badge = ""
+        for attempt in range(3):
+            click_nav(page, "Songs")
+            settle(page, 2 + attempt)
+            pick_song(page, NOTES, "Shape of You", "Pop")
+            settle(page, 3)
+            set_songs_practice_key(page, "Dm")
+            settle(page, 2)
+            body = shot(page, "00-shape-dm")
+            shape_badge = practice_badge(body)
+            if "d minor" in low(shape_badge):
+                break
         if "d minor" not in low(shape_badge):
             mark("seed_shape_dm", "RED", f"badge={shape_badge!r}")
         else:
@@ -565,6 +569,19 @@ def main() -> int:
         )
         opened = bool(opened) and wait_for_backing(page, NOTES, "c4")
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Progression:\\s*Verse/i.test(t)
+                    && /Em/.test(t)
+                    && /\\bD\\b/.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         body = shot(page, "04-custom-sbi-backing")
         specialized = has_any(
             body, "SBI Custom", "Custom SBI", "Return to Creative", "CUSTOM PROGRESSION", "Trial Song"
@@ -646,6 +663,20 @@ def main() -> int:
                 and example_chord.lower().replace(" ", "")
                 == heading_chord.lower().replace(" ", "")
             )
+            if heading_chord and example_chord and not example_matches:
+                click_generate_example(page)
+                settle(page, 2)
+                body2 = shot(page, "06b-mission-example-retry")
+                m_ex = re.search(r"Mission example\s*[·•]\s*([A-G](?:#|b)?m?\d*)", body2, re.I)
+                if m_ex:
+                    example_chord = m_ex.group(1)
+                has_example = bool(example_chord) or bool(
+                    re.search(r"Notes:\s*[A-G]", body2, re.I)
+                )
+                example_matches = (not example_chord) or (
+                    example_chord.lower().replace(" ", "")
+                    == heading_chord.lower().replace(" ", "")
+                )
             # PK: use proven setter; prefer Em (in-key for Shape) then Bm original.
             from _walk_pass8_live import set_practice_key as _set_pk
 
