@@ -822,6 +822,73 @@ class TestCompositionSongBriefAndMelodySourceRestore(unittest.TestCase):
         self.assertEqual(ordered_sections(doc)[0].get("chords") or [], before_chords)
 
 
+class TestCompositionColdProcessReboot(unittest.TestCase):
+    def test_disk_envelope_restores_in_new_process(self) -> None:
+        """True cold start: write durable envelope, restore in a new process."""
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        doc, chorus_id = _jewish_draft()
+        ss: dict = {
+            "studio_page": "composer",
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_LIBRARY_KEY: {str(doc["id"]): copy.deepcopy(doc)},
+            COMPOSER_ACTIVE_SECTION_KEY: chorus_id,
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            COMPOSER_NEEDS_SEED_KEY: False,
+        }
+        sync_composition_workspace_before_persist(ss, reason="composer_edit")
+        blob = build_music_disk_state(_FakeSt(ss))
+        self.assertIn(COMPOSITION_WORKSPACE_STATE_KEY, blob)
+        with tempfile.TemporaryDirectory() as tmp:
+            envelope = Path(tmp) / "music_disk_state.json"
+            envelope.write_text(json.dumps(blob, default=str), encoding="utf-8")
+            child = Path(tmp) / "cold_restore.py"
+            child.write_text(
+                "\n".join(
+                    [
+                        "import json, sys",
+                        "from composition_session_state import COMPOSER_ACTIVE_KEY, COMPOSER_FOCUS_LANE_KEY, COMPOSER_NEEDS_SEED_KEY, COMPOSER_ACTIVE_SECTION_KEY",
+                        "from composition_workspace_state_persistence import prepare_composition_workspace_for_render",
+                        "from composition_document import ordered_sections, section_melody_events, playback_globals",
+                        "from music_persistent_state import apply_music_disk_state",
+                        "blob = json.loads(open(sys.argv[1], encoding='utf-8').read())",
+                        "ss = {}",
+                        "class _St:",
+                        "    session_state = ss",
+                        "apply_music_disk_state(_St(), blob, song_picker_catalog={}, song_library={}, authoritative_restore=True)",
+                        "prepare_composition_workspace_for_render(ss)",
+                        "doc = ss.get(COMPOSER_ACTIVE_KEY)",
+                        "assert isinstance(doc, dict), 'missing document'",
+                        "assert doc.get('title') == 'Test Song'",
+                        "g = playback_globals(doc)",
+                        "assert int(g.get('bpm') or 0) == 118",
+                        "assert str(g.get('time_signature') or '') == '6/8'",
+                        "assert ss.get(COMPOSER_NEEDS_SEED_KEY) is False",
+                        "assert ss.get(COMPOSER_FOCUS_LANE_KEY) == 'melody'",
+                        "assert ss.get(COMPOSER_ACTIVE_SECTION_KEY) == sys.argv[2]",
+                        "verse = ordered_sections(doc)[0]",
+                        "assert (verse.get('chords') or [])[0].get('chord') == 'Dm'",
+                        "assert section_melody_events(verse)",
+                        "print('COLD_OK')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(child), str(envelope), chorus_id],
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=str(Path(__file__).resolve().parents[1]),
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+            self.assertIn("COLD_OK", proc.stdout)
+
+
 class TestCompositionWelcomeStillRenders(unittest.TestCase):
     def test_welcome_harness(self) -> None:
         from pathlib import Path
