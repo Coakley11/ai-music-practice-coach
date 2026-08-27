@@ -113,8 +113,9 @@ from composition_preview import (
     render_composer_playback,
 )
 from composition_hum_transcription import (
-    build_section_record_timeline,
+    apply_record_origin,
     delete_melody_event,
+    prepare_armed_record_transport,
     duration_choice_labels,
     hum_analysis_available,
     insert_melody_event,
@@ -2126,42 +2127,23 @@ def _render_hum_sing_panel(
         proposal = None
 
     st.markdown("**Play / Hum My Melody**")
-    st.caption("Hum, sing, or play one melodic line while the section chords play. We’ll write it as sheet music.")
+    st.caption("Hum, sing, or play one melodic line over the selected chords. We’ll write it as sheet music.")
     timeline = session_state.get(f"composer_record_timeline_{active_id}")
     if not isinstance(timeline, dict):
         capture = ((section.get("melody") or {}).get("intent") or {}).get("hum_capture") or {}
         timeline = capture.get("timeline") if isinstance(capture, dict) else None
-    if st.button(
-        "Play backing and record",
-        key=f"composer_hum_play_backing_{active_id}",
-        type="primary",
-        use_container_width=True,
-        disabled=not bool(chords),
-    ):
-        timeline = build_section_record_timeline(doc, active_id)
-        session_state[f"composer_record_timeline_{active_id}"] = timeline
-        intent = section.setdefault("melody", {}).setdefault("intent", {})
-        capture = intent.setdefault("hum_capture", {})
-        capture["timeline"] = timeline
-        capture["analysis_status"] = "ready_to_record"
-        result = play_composer_preview(
-            session_state,
-            doc,
-            section_id=active_id,
-            include_melody=False,
-            loops=1,
-        )
-        _save_doc(session_state, doc)
-        if not result.get("ok"):
-            st.warning(str(result.get("reason") or "Add chords first so backing can play while you record."))
-        st.rerun()
-    if isinstance(timeline, dict) and timeline.get("chord_changes"):
-        st.caption(
-            f"Recording uses this section's {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
-            f"{int(timeline.get('section_bars') or 0)} bars. Chord changes share that timeline."
-        )
-    elif not chords:
-        st.caption("Add chords first — then you can play the backing while you record.")
+    delay_key = f"composer_record_delay_{active_id}"
+    if delay_key not in session_state:
+        try:
+            session_state[delay_key] = float((timeline or {}).get("recorder_start_delay_beats") or 0.0)
+        except (TypeError, ValueError):
+            session_state[delay_key] = 0.0
+
+    st.info(
+        "The Streamlit microphone cannot start with the backing from one click, so this is not a locked sync. "
+        "**1. Start recording first.** **2. Start the count-in + backing.** Notes after the count-in land on beat 1. "
+        "If you started the recorder after the backing, set how many beats late."
+    )
 
     if not hum_analysis_available():
         st.info(
@@ -2169,14 +2151,68 @@ def _render_hum_sing_panel(
             "Recording still works as a capture marker; explore melody ideas below."
         )
 
+    st.markdown("**1. Arm the microphone**")
     try:
         audio = st.audio_input(
-            "Record a short melody (voice or instrument)",
+            "Start recording now (voice or instrument)",
             key=f"composer_melody_record_{active_id}",
         )
     except Exception:
         audio = None
         st.caption("Audio recording will appear here when your browser supports it.")
+
+    late = st.number_input(
+        "Recorder started late by (beats)",
+        min_value=0.0,
+        max_value=32.0,
+        step=0.5,
+        key=delay_key,
+        help="0 if you armed the mic before the count-in. Use this when recording began after backing beat 0.",
+    )
+
+    st.markdown("**2. Start count-in + backing**")
+    if st.button(
+        "Start count-in + backing",
+        key=f"composer_hum_play_backing_{active_id}",
+        type="primary",
+        use_container_width=True,
+        disabled=not bool(chords),
+    ):
+        timeline = prepare_armed_record_transport(
+            doc,
+            active_id,
+            recorder_start_delay_beats=float(late or 0.0),
+            count_in_bars=1,
+        )
+        session_state[f"composer_record_timeline_{active_id}"] = timeline
+        intent = section.setdefault("melody", {}).setdefault("intent", {})
+        capture = intent.setdefault("hum_capture", {})
+        capture["timeline"] = timeline
+        capture["analysis_status"] = "ready_to_record"
+        capture["origin"] = timeline.get("origin")
+        capture["sync_locked"] = False
+        result = play_composer_preview(
+            session_state,
+            doc,
+            section_id=active_id,
+            include_melody=False,
+            loops=1,
+            count_in_bars=1,
+        )
+        _save_doc(session_state, doc)
+        if not result.get("ok"):
+            st.warning(str(result.get("reason") or "Add chords first so backing can play while you record."))
+        st.rerun()
+    if isinstance(timeline, dict) and timeline.get("chord_changes"):
+        delay_beats = float(timeline.get("recorder_start_delay_beats") or 0.0)
+        cin = float(timeline.get("count_in_beats") or 0.0)
+        st.caption(
+            f"Armed count-in transport · {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
+            f"{int(timeline.get('section_bars') or 0)} bars · count-in {cin:g} beats · "
+            f"recorder delay {delay_beats:g} beats. Not a locked mic/speaker sync."
+        )
+    elif not chords:
+        st.caption("Add chords first — then arm the microphone and start the count-in.")
 
     if audio is not None:
         try:
@@ -2217,12 +2253,27 @@ def _render_hum_sing_panel(
 
     if analyze:
         audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
+        if not isinstance(timeline, dict):
+            timeline = prepare_armed_record_transport(
+                doc,
+                active_id,
+                recorder_start_delay_beats=float(late or 0.0),
+                count_in_bars=1,
+            )
+        else:
+            timeline = apply_record_origin(
+                timeline,
+                recorder_start_delay_beats=float(late or 0.0),
+                count_in_beats=timeline.get("count_in_beats"),
+                origin=str(timeline.get("origin") or "armed_count_in"),
+            )
+        session_state[f"composer_record_timeline_{active_id}"] = timeline
         result = transcribe_hum_audio(
             audio_bytes,
             bpm=bpm,
             meter=meter,
             key=key,
-            timeline=timeline if isinstance(timeline, dict) else None,
+            timeline=timeline,
         )
         session_state[_hum_proposal_key(active_id)] = result
         intent = section.setdefault("melody", {}).setdefault("intent", {})

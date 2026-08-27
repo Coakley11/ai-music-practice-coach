@@ -19,11 +19,14 @@ from composition_document import (
 )
 from composition_hum_transcription import (
     align_events_to_record_timeline,
+    apply_record_origin,
     build_section_record_timeline,
     delete_melody_event,
     nudge_event_pitch,
+    prepare_armed_record_transport,
     set_event_duration,
     shift_event_onset,
+    transcribe_hum_audio,
 )
 from composition_melody_notation import build_abc_from_melody_events
 from composition_melody_suggestions import (
@@ -156,22 +159,29 @@ class TestRecordOverBacking(unittest.TestCase):
         apply_section_chords(doc, str(verse["id"]), parse_chord_paste("G D Em C"))
         verse["bars"] = 8
         sid = str(verse["id"])
-        timeline = build_section_record_timeline(doc, sid)
+        timeline = prepare_armed_record_transport(doc, sid, recorder_start_delay_beats=0.0, count_in_bars=1)
         ss: dict = {}
-        result = play_composer_preview(ss, doc, section_id=sid, include_melody=False, loops=1)
+        result = play_composer_preview(
+            ss, doc, section_id=sid, include_melody=False, loops=1, count_in_bars=1
+        )
         self.assertTrue(result["ok"], result.get("reason"))
         self.assertFalse(result["include_melody"])
         self.assertEqual(result["bpm"], timeline["bpm"])
         self.assertEqual(result["meter"], timeline["meter"])
+        self.assertEqual(timeline["origin"], "armed_count_in")
+        self.assertFalse(timeline["sync_locked"])
         self.assertGreaterEqual(float(timeline["expected_duration_beats"]), 16.0)
         self.assertTrue(timeline["chord_changes"])
 
         hummed = [
-            {"pitch": "B4", "midi": 71, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
-            {"pitch": "A4", "midi": 69, "duration_beats": 2.0, "beat": 4.0, "measure": 2},
+            {"pitch": "D4", "midi": 62, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+            {"pitch": "B4", "midi": 71, "duration_beats": 2.0, "beat": 4.0, "measure": 2},
+            {"pitch": "A4", "midi": 69, "duration_beats": 2.0, "beat": 8.0, "measure": 3},
         ]
         aligned = align_events_to_record_timeline(hummed, timeline)
+        self.assertEqual([e.get("pitch") for e in aligned], ["B4", "A4"])
         self.assertEqual(aligned[0]["chord"], "G")
+        self.assertAlmostEqual(float(aligned[0]["beat"]), 0.0)
         apply_melody_events(doc, sid, aligned, replace=True, source="recorded")
         accepted = section_melody_events(verse)
         edited = nudge_event_pitch(accepted, 0, semitones=1, key="G")
@@ -183,6 +193,70 @@ class TestRecordOverBacking(unittest.TestCase):
         self.assertTrue(audition["ok"])
         self.assertTrue(audition["include_melody"])
 
+    def test_nonzero_recorder_delay_maps_first_event_to_backing_beat_and_chord(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Delay", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
+        verse["bars"] = 8
+        sid = str(verse["id"])
+        # Started the recorder 2 beats after backing/count-in origin, no extra count-in.
+        timeline = apply_record_origin(
+            build_section_record_timeline(doc, sid),
+            recorder_start_delay_beats=2.0,
+            count_in_beats=0.0,
+            origin="armed_count_in",
+        )
+        self.assertAlmostEqual(float(timeline["recording_onset_beat"]), 2.0)
+        capture = [
+            {"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
+            {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+        ]
+        aligned = align_events_to_record_timeline(capture, timeline)
+        self.assertEqual(len(aligned), 2)
+        self.assertAlmostEqual(float(aligned[0]["beat"]), 2.0)
+        self.assertEqual(aligned[0]["chord"], "C")
+        self.assertAlmostEqual(float(aligned[1]["beat"]), 4.0)
+        self.assertEqual(aligned[1]["chord"], "Am")
+
+        # Count-in + late start: capture 0 is still in the count-in and must not land on beat 0.
+        armed = prepare_armed_record_transport(
+            doc, sid, recorder_start_delay_beats=2.0, count_in_bars=1
+        )
+        self.assertAlmostEqual(float(armed["count_in_beats"]), 4.0)
+        self.assertAlmostEqual(float(armed["recording_onset_beat"]), -2.0)
+        mixed = align_events_to_record_timeline(
+            [
+                {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+                {"pitch": "E4", "midi": 64, "duration_beats": 1.0, "beat": 2.0, "measure": 1},
+                {"pitch": "G4", "midi": 67, "duration_beats": 1.0, "beat": 6.0, "measure": 2},
+            ],
+            armed,
+        )
+        self.assertEqual([e.get("pitch") for e in mixed], ["E4", "G4"])
+        self.assertAlmostEqual(float(mixed[0]["beat"]), 0.0)
+        self.assertEqual(mixed[0]["chord"], "C")
+        self.assertAlmostEqual(float(mixed[1]["beat"]), 4.0)
+        self.assertEqual(mixed[1]["chord"], "Am")
+
+        transcribed = transcribe_hum_audio(b"", bpm=100, meter="4/4", key="C", timeline=armed)
+        self.assertIn(transcribed["status"], {"unclear", "unavailable"})
+
+    def test_hum_panel_render_exposes_origin_not_false_sync(self) -> None:
+        import inspect
+
+        from composition_studio_page import _render_hum_sing_panel
+
+        src = inspect.getsource(_render_hum_sing_panel)
+        self.assertIn("prepare_armed_record_transport", src)
+        self.assertIn("apply_record_origin", src)
+        self.assertIn("Recorder started late by (beats)", src)
+        self.assertIn("cannot start with the backing from one click", src)
+        self.assertIn("count_in_bars=1", src)
+        self.assertIn("Not a locked", src)
+        self.assertNotIn("Play backing and record", src)
+
 
 if __name__ == "__main__":
     unittest.main()
+
