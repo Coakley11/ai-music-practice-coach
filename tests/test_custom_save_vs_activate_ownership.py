@@ -85,6 +85,7 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         self.assertFalse(custom_progression_is_active(session))
         self.assertEqual(session.get("song"), "Shape of You")
         self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertIsNone(session.get("_pending_custom_active_song_activation"))
         last = session.get(LAST_CUSTOM_STATE_KEY) or {}
         self.assertEqual(str((last.get("active") or {}).get("name") or ""), "Trial Song")
 
@@ -133,6 +134,10 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
             get_practice_concert_key(session, custom_pick_key_for(_trial_active())),
             "D",
         )
+        session["studio_page"] = "custom"
+        navigate_studio_page(session, "picker")
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
 
     def test_trial_active_songs_tabs_stay_navigable(self) -> None:
         session = _shape_catalog_session(practice_key="Bm")

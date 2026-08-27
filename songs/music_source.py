@@ -1332,8 +1332,17 @@ def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
         active = (snap or {}).get("active") if isinstance(snap, dict) else None
         if not isinstance(active, dict):
             return False
-    # Do not call set_custom_source, force the Songs radio, or queue
-    # PENDING_CUSTOM_ACTIVE_SONG — those paths claim Global Active.
+    # Do not call set_custom_source or queue PENDING_CUSTOM_ACTIVE_SONG —
+    # those paths claim Global Active. If the user already Set as Active,
+    # land on the Custom Songs tab so the hub/PK widget remounts for that owner.
+    if custom_progression_is_active(session_state) or explicit_custom_activation_is_authoritative(
+        session_state
+    ):
+        _assign_song_picker_source_widget(
+            session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
+        )
+        session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
     return True
 
 
@@ -3632,7 +3641,7 @@ def commit_custom_active_song(
                 pass
 
     set_custom_source(session)
-    sync_song_picker_source_widget(session, force=True)
+    sync_song_picker_source_widget(session, force=True, widget_safe=False)
 
     try:
         from workflow_musical_authority import refresh_custom_improv_concert_sections
