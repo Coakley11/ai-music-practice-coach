@@ -162,6 +162,24 @@ class TestNotationFirstMelody(unittest.TestCase):
         labels = chord_symbols_by_measure(parse_chord_paste("G D Em C"), meter="4/4", measures=4)
         self.assertEqual(labels, ["G", "D", "Em", "C"])
 
+    def test_short_melody_does_not_clip_section_progression(self) -> None:
+        chords = parse_chord_paste("C Am F G")
+        score = build_section_score_model(
+            events=[{"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 0.0, "measure": 1}],
+            chords=chords,
+            key="C major",
+            meter="4/4",
+            bpm=100,
+            title="Verse",
+            section_bars=8,
+        )
+        self.assertEqual(score["chord_labels"][:4], ["C", "Am", "F", "G"])
+        self.assertEqual(len(score["chord_labels"]), 8)
+        self.assertEqual(score["chord_labels"][4:], ["C", "Am", "F", "G"])
+        self.assertIn("C (1 bar)", score["progression_line"])
+        self.assertIn("G (1 bar)", score["progression_line"])
+        self.assertIn("composer-score-chord", score["chord_strip_html"])
+
     def test_suggestion_has_events_for_staff(self) -> None:
         doc = bootstrap_from_vision(genre="Jewish", song_idea="Nigun", key="D minor", bpm=88, meter="4/4")
         apply_structure_template(doc, "simple")

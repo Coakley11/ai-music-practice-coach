@@ -69,6 +69,43 @@ def beats_per_bar(meter: str) -> float:
     return float(num)
 
 
+def chord_span_bars(chords: list[Any] | None) -> int:
+    """Declared harmonic length in bars (sum of entry bars, else one per symbol)."""
+    total = 0
+    for entry in list(chords or []):
+        if isinstance(entry, dict):
+            if not str(entry.get("chord") or "").strip():
+                continue
+            try:
+                total += max(1, int(entry.get("bars") or 1))
+            except (TypeError, ValueError):
+                total += 1
+        elif str(entry).strip():
+            total += 1
+    return total
+
+
+def progression_timing_labels(chords: list[Any] | None) -> list[str]:
+    """Ordered chord + duration labels for the full section progression."""
+    labels: list[str] = []
+    for entry in list(chords or []):
+        if isinstance(entry, dict):
+            chord = str(entry.get("chord") or "").strip()
+            if not chord:
+                continue
+            try:
+                bars = max(1, int(entry.get("bars") or 1))
+            except (TypeError, ValueError):
+                bars = 1
+            unit = "bar" if bars == 1 else "bars"
+            labels.append(f"{chord} ({bars} {unit})")
+        else:
+            chord = str(entry).strip()
+            if chord:
+                labels.append(f"{chord} (1 bar)")
+    return labels
+
+
 def chord_symbols_by_measure(
     chords: list[Any],
     *,
@@ -77,8 +114,9 @@ def chord_symbols_by_measure(
 ) -> list[str]:
     """Deterministic measure-level chord labels for staff alignment.
 
-    One chord symbol per measure when possible. Extra chords beyond measure
-    count are appended; missing measures reuse the last chord or stay blank.
+    Never drops chords from the selected section. Measure count is at least
+    the expanded progression length; shorter melody fragments do not clip it.
+    Missing measures reuse the last chord.
     """
     from custom_progression_lab import expand_entries_to_chords
 
@@ -88,17 +126,11 @@ def chord_symbols_by_measure(
         symbols = [str(c).strip() for c in (chords or []) if str(c).strip()]
     if not symbols:
         return []
-    bar = max(1.0, beats_per_bar(meter))
-    n = int(measures) if measures and measures > 0 else max(1, len(symbols))
-    # Prefer 1:1 chord→measure when lengths match; otherwise stretch/cycle.
-    if len(symbols) == n:
+    declared = int(measures) if measures and measures > 0 else 0
+    n = max(declared, len(symbols), chord_span_bars(chords))
+    if len(symbols) >= n:
         return list(symbols)
-    if len(symbols) > n:
-        return list(symbols[:n])
-    out: list[str] = []
-    for i in range(n):
-        out.append(symbols[min(i, len(symbols) - 1)])
-    return out
+    return [symbols[i % len(symbols)] for i in range(n)]
 
 
 def melody_measure_count(events: list[dict[str, Any]], *, meter: str = "4/4") -> int:
@@ -208,12 +240,19 @@ def build_section_score_model(
     title: str = "Melody",
     lyrics_text: str = "",
     lyric_syllables: list[str] | None = None,
+    section_bars: int | None = None,
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
     chord_list = list(chords or [])
-    measures = melody_measure_count(evs, meter=meter) if evs else max(1, len(chord_list) or 1)
+    melody_m = melody_measure_count(evs, meter=meter) if evs else 0
+    try:
+        declared = int(section_bars or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    measures = max(melody_m, chord_span_bars(chord_list), declared, 1 if (evs or chord_list) else 1)
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
+    timing = progression_timing_labels(chord_list)
     abc = (
         build_abc_from_melody_events(
             evs,
@@ -233,6 +272,8 @@ def build_section_score_model(
         "abc": abc,
         "chord_labels": chord_labels,
         "chord_strip_html": build_chord_strip_html(chord_list, meter=meter, measures=measures),
+        "progression_line": " → ".join(timing),
+        "progression_timing": timing,
         "lyrics_text": str(lyrics_text or "").strip(),
         "measures": measures,
         "key": key,
