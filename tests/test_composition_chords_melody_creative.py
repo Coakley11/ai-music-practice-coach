@@ -241,6 +241,31 @@ class TestCompositionMelodyCreativeLoop(unittest.TestCase):
         self.assertTrue(wav)
         self.assertEqual(section_melody_events(verse), before)
 
+    def test_whole_song_melody_follows_section_order(self) -> None:
+        from composition_document import song_melody_events
+
+        doc, verse, chorus = self._prepared()
+        apply_section_chords(doc, str(chorus["id"]), parse_chord_paste("F G Am C"))
+        verse_events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
+            {"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+        ]
+        chorus_events = [
+            {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
+        ]
+        apply_melody_events(doc, str(verse["id"]), verse_events, source="ai", replace=True)
+        apply_melody_events(doc, str(chorus["id"]), chorus_events, source="ai", replace=True)
+        combined = song_melody_events(doc)
+        self.assertGreaterEqual(len(combined), 3)
+        self.assertEqual(combined[0].get("pitch"), "C4")
+        self.assertEqual(combined[-1].get("pitch"), "G4")
+        self.assertGreater(float(combined[-1].get("beat") or 0), float(combined[0].get("beat") or 0))
+        before = section_melody_events(verse)
+        wav = generate_preview_wav(doc, scope="song", include_melody=True, loops=1)
+        self.assertTrue(wav)
+        self.assertEqual(section_melody_events(verse), before)
+        self.assertEqual((doc.get("form") or {}).get("section_order")[0], verse["id"])
+
     def test_play_section_chords_plus_melody(self) -> None:
         doc, verse, _ = self._prepared()
         concepts = suggest_melody_concepts(doc, verse, "bold", limit=1)

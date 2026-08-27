@@ -8,7 +8,13 @@ import struct
 import wave
 from typing import Any
 
-from composition_document import chords_for_playback, playback_globals, section_by_id, section_melody_events
+from composition_document import (
+    chords_for_playback,
+    playback_globals,
+    section_by_id,
+    section_melody_events,
+    song_melody_events,
+)
 
 
 def resolve_preview_groove(doc: dict[str, Any], arrangement_style: str | None = None) -> str:
@@ -40,7 +46,11 @@ def preview_signature(
         chords = chords_for_playback(doc, scope=scope, section_id=section_id)
     mel_sig: tuple = ()
     if include_melody:
-        events = melody_override if melody_override is not None else _resolve_melody_events(doc, section_id)
+        events = (
+            melody_override
+            if melody_override is not None
+            else _resolve_melody_events(doc, section_id, scope=scope)
+        )
         mel_sig = tuple(
             (str(e.get("pitch") or ""), float(e.get("duration_beats") or 1.0), float(e.get("beat") or 0.0))
             for e in events
@@ -60,7 +70,14 @@ def preview_signature(
     )
 
 
-def _resolve_melody_events(doc: dict[str, Any], section_id: str | None) -> list[dict[str, Any]]:
+def _resolve_melody_events(
+    doc: dict[str, Any],
+    section_id: str | None,
+    *,
+    scope: str = "section",
+) -> list[dict[str, Any]]:
+    if str(scope or "section").strip().lower() == "song":
+        return song_melody_events(doc)
     if not section_id:
         return []
     sec = section_by_id(doc, section_id)
@@ -233,7 +250,7 @@ def generate_preview_wav(
         events = (
             list(melody_override)
             if melody_override is not None
-            else _resolve_melody_events(doc, section_id)
+            else _resolve_melody_events(doc, section_id, scope=scope)
         )
         if events:
             wav = _mix_melody_onto_backing(

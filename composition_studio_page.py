@@ -3285,7 +3285,7 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
             scope=scope,
             section_id=section_id if scope == "section" else None,
             loops=loops,
-            include_melody=(scope == "section"),
+            include_melody=True,
         )
         if wav:
             set_composer_preview(session_state, wav, sig)

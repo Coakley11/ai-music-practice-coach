@@ -1610,6 +1610,59 @@ def chords_for_playback(
     return chords
 
 
+def _beats_per_bar(meter: str) -> float:
+    text = str(meter or DEFAULT_METER).strip()
+    if "/" in text:
+        try:
+            num, _den = text.split("/", 1)
+            return float(int(num))
+        except ValueError:
+            return 4.0
+    return 4.0
+
+
+def section_playback_bars(doc: dict[str, Any], section: dict[str, Any] | None) -> int:
+    """Declared section length, at least the chord-timeline span."""
+    if not isinstance(section, dict):
+        return 0
+    _, edit = harmony_edit_target(doc, str(section.get("id") or ""))
+    src = edit or section
+    chord_bars = 0
+    for entry in src.get("chords") or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            chord_bars += max(1, int(entry.get("bars") or 1))
+        except (TypeError, ValueError):
+            chord_bars += 1
+    try:
+        declared = int(section.get("bars") or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    return max(chord_bars, declared, 0)
+
+
+def song_melody_events(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Canonical timed melody for whole-song playback, in current section order."""
+    pg = playback_globals(doc)
+    bpb = _beats_per_bar(str(pg.get("time_signature") or DEFAULT_METER))
+    offset = 0.0
+    out: list[dict[str, Any]] = []
+    for sec in ordered_sections(doc):
+        sid = str(sec.get("id") or "")
+        if not section_has_resolved_chords(doc, sid):
+            continue
+        bars = section_playback_bars(doc, sec)
+        for ev in section_melody_events(sec):
+            copied = dict(ev)
+            start = float(ev.get("beat") or 0.0) + offset
+            copied["beat"] = start
+            copied["measure"] = int(start // bpb) + 1
+            out.append(copied)
+        offset += max(1, bars) * bpb
+    return out
+
+
 def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
     g = doc.get("global") or {}
     meta = doc.get("metadata") or {}
