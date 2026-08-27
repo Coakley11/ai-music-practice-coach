@@ -3618,40 +3618,33 @@ def commit_custom_active_song(
         # New Custom activation from Catalog is fresh at Original Key.
         # Leftover Perfect G / Shape Dm must not become Trial Practice Key.
         try:
-            from practice_key_mode import apply_fixed_mode_target, is_fixed_practice_key_mode
-
-            if is_fixed_practice_key_mode(session):
-                practice_key = apply_fixed_mode_target(session, home_key, home_key)
-        except ImportError:
-            pass
-        session["display_key"] = practice_key
-        session["concert_key"] = practice_key
-        try:
-            from custom_progression_lab import (
-                CPL_LAST_DISPLAY_KEY,
-                CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            from practice_key_mode import (
+                is_fixed_practice_key_mode,
+                resolve_family_option_id,
+                resolve_fixed_practice_concert_key_for_family,
             )
 
-            session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = practice_key
-            session[CPL_LAST_DISPLAY_KEY] = practice_key
-            session["_cpl_force_pk_to_home"] = practice_key
+            if is_fixed_practice_key_mode(session):
+                # Use Custom original mode — leftover Catalog selected_song
+                # (Shape Bm) must not resolve a D-major song to Am.
+                fam = resolve_family_option_id(session)
+                if fam:
+                    practice_key = resolve_fixed_practice_concert_key_for_family(fam, home_key)
         except ImportError:
             pass
         try:
-            from songs.practice_key_state import set_practice_concert_key
+            from songs.practice_key_state import apply_authoritative_practice_key
 
-            if pick_key.startswith("custom::"):
-                # Catalog's last sidebar commit (Perfect G) must not block Original D.
-                session.pop("_pk_user_commit_token", None)
-                session.pop("_pk_user_commit_at", None)
-                set_practice_concert_key(
-                    session,
-                    practice_key,
-                    pick_key=pick_key,
-                    allow_restore_original=True,
-                )
+            apply_authoritative_practice_key(
+                session,
+                practice_key,
+                pick_key=pick_key,
+                sync_display=True,
+                sync_custom_widgets=True,
+            )
         except ImportError:
-            pass
+            session["display_key"] = practice_key
+            session["concert_key"] = practice_key
     else:
         try:
             from practice_key_mode import resolve_practice_concert_key_for_song
@@ -3761,20 +3754,19 @@ def commit_custom_active_song(
         pass
 
     if leaving_catalog:
-        session["display_key"] = practice_key
-        session["concert_key"] = practice_key
         try:
-            from songs.practice_key_state import set_practice_concert_key
+            from songs.practice_key_state import apply_authoritative_practice_key
 
-            if pick_key.startswith("custom::"):
-                set_practice_concert_key(
-                    session,
-                    practice_key,
-                    pick_key=pick_key,
-                    allow_restore_original=True,
-                )
+            apply_authoritative_practice_key(
+                session,
+                practice_key,
+                pick_key=pick_key,
+                sync_display=True,
+                sync_custom_widgets=True,
+            )
         except ImportError:
-            pass
+            session["display_key"] = practice_key
+            session["concert_key"] = practice_key
 
     return active
 
