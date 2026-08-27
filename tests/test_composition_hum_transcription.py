@@ -564,6 +564,39 @@ class TestRecordOverBackingTimeline(unittest.TestCase):
         self.assertTrue(all(float(e["beat"]) < float(timeline["expected_duration_beats"]) for e in aligned))
         self.assertEqual(len(aligned), 2)
 
+    def test_signed_origin_section_beat_is_capture_minus_backing_origin(self) -> None:
+        from composition_hum_transcription import (
+            align_events_to_record_timeline,
+            apply_record_origin,
+            build_section_record_timeline,
+        )
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        from composition_chord_suggestions import symbols_to_entries
+
+        apply_section_chords(
+            doc,
+            str(verse["id"]),
+            symbols_to_entries(["C", "Am", "F", "G"], section_bars=8),
+        )
+        verse["bars"] = 8
+        timeline = apply_record_origin(
+            build_section_record_timeline(doc, str(verse["id"])),
+            mic_lead_beats=2.0,
+            count_in_beats=4.0,
+            origin="armed_count_in",
+        )
+        self.assertAlmostEqual(float(timeline["backing_origin_in_capture_beats"]), 6.0)
+        aligned = align_events_to_record_timeline(
+            [{"pitch": "E4", "duration_beats": 2.0, "beat": 6.0, "measure": 2}],
+            timeline,
+        )
+        self.assertEqual(len(aligned), 1)
+        self.assertAlmostEqual(float(aligned[0]["beat"]), 0.0)
+        self.assertEqual(aligned[0]["chord"], "C")
+
 
 if __name__ == "__main__":
     unittest.main()

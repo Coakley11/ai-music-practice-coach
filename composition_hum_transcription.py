@@ -365,6 +365,9 @@ def build_section_record_timeline(doc: dict[str, Any], section_id: str) -> dict[
         "expected_duration_beats": expected,
         "recording_onset_beat": 0.0,
         "recorder_start_delay_beats": 0.0,
+        "mic_lead_beats": 0.0,
+        "recorder_late_beats": 0.0,
+        "backing_origin_in_capture_beats": 0.0,
         "count_in_beats": 0.0,
         "count_in_bars": 0,
         "origin": "section_timeline",
@@ -373,19 +376,36 @@ def build_section_record_timeline(doc: dict[str, Any], section_id: str) -> dict[
     }
 
 
+def _as_beat(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def apply_record_origin(
     timeline: dict[str, Any] | None,
     *,
-    recorder_start_delay_beats: float = 0.0,
+    mic_lead_beats: float | None = None,
+    recorder_late_beats: float | None = None,
+    recorder_start_delay_beats: float | None = None,
     count_in_beats: float | None = None,
     count_in_bars: int | None = None,
+    backing_origin_in_capture_beats: float | None = None,
     origin: str = "armed_count_in",
 ) -> dict[str, Any]:
-    """Persist the mic-start offset relative to backing/count-in.
+    """Persist a signed capture origin for the section downbeat.
 
-    ``section_beat = capture_beat + recorder_start_delay_beats - count_in_beats``.
-    Streamlit's recorder cannot share a gesture with playback, so the default
-    origin is an honest armed count-in — not a claimed lock.
+    Convention (unambiguous):
+    - ``mic_lead_beats``: mic started first; backing/count-in began this many
+      capture beats later (primary armed workflow).
+    - ``recorder_late_beats``: mic started after backing by this many beats.
+    - ``backing_origin_in_capture_beats`` = mic_lead - late + count_in
+      (capture-time position of section beat 0; may be negative if the mic
+      started after the section began).
+    - ``section_beat = capture_beat - backing_origin_in_capture_beats``.
+
+    ``recorder_start_delay_beats`` is a late-only alias kept for older callers.
     """
     out = dict(timeline or {})
     bpb = float(out.get("beats_per_bar") or _beats_per_bar(str(out.get("meter") or "4/4")))
@@ -393,20 +413,34 @@ def apply_record_origin(
         if count_in_bars is not None:
             cin = float(max(0, int(count_in_bars))) * bpb
         else:
-            try:
-                cin = float(out.get("count_in_beats") or 0.0)
-            except (TypeError, ValueError):
-                cin = 0.0
+            cin = _as_beat(out.get("count_in_beats"), 0.0)
     else:
         cin = float(count_in_beats)
-    try:
-        delay = float(recorder_start_delay_beats)
-    except (TypeError, ValueError):
-        delay = 0.0
-    out["recorder_start_delay_beats"] = delay
+
+    if mic_lead_beats is None:
+        lead = _as_beat(out.get("mic_lead_beats"), 0.0)
+    else:
+        lead = max(0.0, float(mic_lead_beats))
+
+    if recorder_late_beats is None and recorder_start_delay_beats is not None:
+        late = max(0.0, float(recorder_start_delay_beats))
+    elif recorder_late_beats is None:
+        late = _as_beat(out.get("recorder_late_beats") or out.get("recorder_start_delay_beats"), 0.0)
+    else:
+        late = max(0.0, float(recorder_late_beats))
+
+    if backing_origin_in_capture_beats is None:
+        origin_in_capture = lead - late + cin
+    else:
+        origin_in_capture = float(backing_origin_in_capture_beats)
+
+    out["mic_lead_beats"] = lead
+    out["recorder_late_beats"] = late
+    out["recorder_start_delay_beats"] = late
     out["count_in_beats"] = cin
     out["count_in_bars"] = int(round(cin / bpb)) if bpb else 0
-    out["recording_onset_beat"] = delay - cin
+    out["backing_origin_in_capture_beats"] = origin_in_capture
+    out["recording_onset_beat"] = -origin_in_capture
     out["origin"] = str(origin or "armed_count_in")
     out["sync_locked"] = str(origin) == "coordinated_transport"
     return out
@@ -416,37 +450,38 @@ def prepare_armed_record_transport(
     doc: dict[str, Any],
     section_id: str,
     *,
-    recorder_start_delay_beats: float = 0.0,
+    mic_lead_beats: float = 0.0,
+    recorder_late_beats: float = 0.0,
+    recorder_start_delay_beats: float | None = None,
     count_in_bars: int = 1,
 ) -> dict[str, Any]:
-    """Build the shared transport: count-in, then section, plus any late-start delay."""
+    """Build the shared transport: optional mic lead/late, count-in, then section."""
     timeline = build_section_record_timeline(doc, section_id)
+    late = recorder_late_beats if recorder_start_delay_beats is None else recorder_start_delay_beats
     return apply_record_origin(
         timeline,
-        recorder_start_delay_beats=recorder_start_delay_beats,
+        mic_lead_beats=mic_lead_beats,
+        recorder_late_beats=late,
         count_in_bars=count_in_bars,
         origin="armed_count_in",
     )
 
 
-def record_origin_onset_beats(timeline: dict[str, Any] | None) -> float:
-    """Capture-beat 0 maps to this section beat (may be negative during count-in)."""
+def backing_origin_in_capture_beats(timeline: dict[str, Any] | None) -> float:
+    """Capture-time position of section beat 0 (signed)."""
     if not isinstance(timeline, dict) or not timeline:
         return 0.0
-    if "recorder_start_delay_beats" in timeline or "count_in_beats" in timeline:
-        try:
-            delay = float(timeline.get("recorder_start_delay_beats") or 0.0)
-        except (TypeError, ValueError):
-            delay = 0.0
-        try:
-            cin = float(timeline.get("count_in_beats") or 0.0)
-        except (TypeError, ValueError):
-            cin = 0.0
-        return delay - cin
-    try:
-        return float(timeline.get("recording_onset_beat") or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
+    if "backing_origin_in_capture_beats" in timeline:
+        return _as_beat(timeline.get("backing_origin_in_capture_beats"), 0.0)
+    lead = _as_beat(timeline.get("mic_lead_beats"), 0.0)
+    late = _as_beat(timeline.get("recorder_late_beats") or timeline.get("recorder_start_delay_beats"), 0.0)
+    cin = _as_beat(timeline.get("count_in_beats"), 0.0)
+    return lead - late + cin
+
+
+def record_origin_onset_beats(timeline: dict[str, Any] | None) -> float:
+    """Legacy: capture-beat 0 maps to this section beat (``-backing_origin``)."""
+    return -backing_origin_in_capture_beats(timeline)
 
 
 def align_events_to_record_timeline(
@@ -458,7 +493,7 @@ def align_events_to_record_timeline(
         return []
     if not isinstance(timeline, dict) or not timeline:
         return list(events)
-    onset = record_origin_onset_beats(timeline)
+    origin_in_capture = backing_origin_in_capture_beats(timeline)
     max_beat = float(timeline.get("expected_duration_beats") or 0.0)
     bpb = float(timeline.get("beats_per_bar") or _beats_per_bar(str(timeline.get("meter") or "4/4")))
     changes = list(timeline.get("chord_changes") or [])
@@ -467,7 +502,7 @@ def align_events_to_record_timeline(
         if not isinstance(ev, dict):
             continue
         copied = dict(ev)
-        start = float(ev.get("beat") or 0.0) + onset
+        start = float(ev.get("beat") or 0.0) - origin_in_capture
         try:
             dur = float(ev.get("duration_beats") or 1.0)
         except (TypeError, ValueError):
@@ -604,7 +639,10 @@ def transcribe_hum_audio(
             "meter": timeline.get("meter"),
             "expected_duration_beats": timeline.get("expected_duration_beats"),
             "recording_onset_beat": record_origin_onset_beats(timeline),
+            "mic_lead_beats": timeline.get("mic_lead_beats"),
+            "recorder_late_beats": timeline.get("recorder_late_beats"),
             "recorder_start_delay_beats": timeline.get("recorder_start_delay_beats"),
+            "backing_origin_in_capture_beats": backing_origin_in_capture_beats(timeline),
             "count_in_beats": timeline.get("count_in_beats"),
             "origin": timeline.get("origin"),
             "sync_locked": bool(timeline.get("sync_locked")),
