@@ -702,6 +702,9 @@ class TestCompositionSongBriefAndMelodySourceRestore(unittest.TestCase):
             energy="Ballad — slow and intimate",
             theme="Nigun draft under the lamps",
         )
+        from composition_document import apply_lyrics_text
+
+        apply_lyrics_text(doc, str(ordered_sections(doc)[0]["id"]), "Home again")
         verse = ordered_sections(doc)[0]
         apply_melody_events(
             doc,
@@ -744,6 +747,8 @@ class TestCompositionSongBriefAndMelodySourceRestore(unittest.TestCase):
         self.assertEqual(brief["meter"], "6/8")
         rverse = ordered_sections(restored)[0]
         self.assertEqual(section_melody_source(rverse), "recorded")
+        self.assertTrue((rverse.get("lyrics") or {}).get("alignment"))
+        self.assertIn("Home", str((rverse.get("lyrics") or {}).get("raw_text") or ""))
         self.assertEqual(fresh.session_state.get(COMPOSER_ARRANGEMENT_PREVIEW_KEY), "Jazz")
         # Arrangement preference must not rewrite canonical style/chords/melody.
         self.assertEqual((restored.get("metadata") or {}).get("style"), "Jewish")

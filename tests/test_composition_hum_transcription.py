@@ -527,5 +527,43 @@ class TestHumErrorsAndEdit(unittest.TestCase):
         self.assertIn("C4", format_heard_line(grown, meter="4/4"))
 
 
+class TestRecordOverBackingTimeline(unittest.TestCase):
+    def test_known_events_map_to_section_chords(self) -> None:
+        from composition_hum_transcription import (
+            align_events_to_record_timeline,
+            build_section_record_timeline,
+        )
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        from composition_chord_suggestions import symbols_to_entries
+
+        apply_section_chords(
+            doc,
+            str(verse["id"]),
+            symbols_to_entries(["C", "Am", "F", "G"], section_bars=8),
+        )
+        verse["bars"] = 8
+        timeline = build_section_record_timeline(doc, str(verse["id"]))
+        self.assertEqual(timeline["bpm"], 100)
+        self.assertEqual(timeline["meter"], "4/4")
+        self.assertGreaterEqual(float(timeline["expected_duration_beats"]), 16.0)
+        self.assertEqual([c["chord"] for c in timeline["chord_changes"][:4]], ["C", "Am", "F", "G"])
+        self.assertEqual(timeline["chord_changes"][0]["beat"], 0.0)
+        self.assertEqual(timeline["chord_changes"][1]["beat"], 8.0)
+
+        events = [
+            {"pitch": "C4", "duration_beats": 2.0, "beat": 0.0, "measure": 1},
+            {"pitch": "E4", "duration_beats": 2.0, "beat": 8.0, "measure": 3},
+            {"pitch": "G4", "duration_beats": 2.0, "beat": 40.0, "measure": 11},
+        ]
+        aligned = align_events_to_record_timeline(events, timeline)
+        self.assertEqual(aligned[0]["chord"], "C")
+        self.assertEqual(aligned[1]["chord"], "Am")
+        self.assertTrue(all(float(e["beat"]) < float(timeline["expected_duration_beats"]) for e in aligned))
+        self.assertEqual(len(aligned), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

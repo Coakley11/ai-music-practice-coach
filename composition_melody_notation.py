@@ -113,6 +113,26 @@ def melody_measure_count(events: list[dict[str, Any]], *, meter: str = "4/4") ->
     return max(1, int((total + bar - 1e-9) // bar))
 
 
+def _abc_lyric_line(events: list[dict[str, Any]], syllables: list[str] | None) -> str:
+    """One ABC ``w:`` token per event. Extra notes in a syllable use ``-`` / ``*``."""
+    if not syllables:
+        return ""
+    tokens: list[str] = []
+    syl_i = 0
+    for ev in events or []:
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest":
+            tokens.append("*")
+            continue
+        if syl_i < len(syllables):
+            tokens.append(str(syllables[syl_i] or "_"))
+            syl_i += 1
+        else:
+            tokens.append("-")
+    return "w: " + " ".join(tokens) if tokens else ""
+
+
 def build_abc_from_melody_events(
     events: list[dict[str, Any]],
     *,
@@ -120,6 +140,7 @@ def build_abc_from_melody_events(
     meter: str = "4/4",
     bpm: int = 96,
     title: str = "Melody",
+    lyric_syllables: list[str] | None = None,
 ) -> str:
     """Build ABC from Composition melody events (notes + rests)."""
     from composition_hum_transcription import is_compound_meter, parse_meter
@@ -150,13 +171,15 @@ def build_abc_from_melody_events(
         tokens.append("|")
     music = " ".join(tokens) if tokens else "z4 |"
     q_unit = "3/8" if is_compound_meter(meter) else "1/4"
+    lyric_line = _abc_lyric_line(list(events or []), lyric_syllables)
+    body = f"{music}\n{lyric_line}" if lyric_line else music
     return f"""X:1
 T:{title}
 M:{meter_field}
 L:1/8
 Q:{q_unit}={int(bpm)}
 K:{k_field}
-{music}"""
+{body}"""
 
 
 def build_chord_strip_html(
@@ -184,13 +207,25 @@ def build_section_score_model(
     bpm: int,
     title: str = "Melody",
     lyrics_text: str = "",
+    lyric_syllables: list[str] | None = None,
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
     chord_list = list(chords or [])
     measures = melody_measure_count(evs, meter=meter) if evs else max(1, len(chord_list) or 1)
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
-    abc = build_abc_from_melody_events(evs, key=key, meter=meter, bpm=bpm, title=title) if evs else ""
+    abc = (
+        build_abc_from_melody_events(
+            evs,
+            key=key,
+            meter=meter,
+            bpm=bpm,
+            title=title,
+            lyric_syllables=lyric_syllables,
+        )
+        if evs
+        else ""
+    )
     return {
         "has_melody": bool(evs),
         "has_chords": bool(chord_labels),

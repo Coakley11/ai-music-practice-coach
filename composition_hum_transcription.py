@@ -313,6 +313,103 @@ def _beats_per_bar(meter: str) -> float:
     return float(num)
 
 
+def build_section_record_timeline(doc: dict[str, Any], section_id: str) -> dict[str, Any]:
+    """Shared tempo/meter/chord timeline for record-over-backing.
+
+    Does not start audio. Playback and recording both consume this reference.
+    """
+    from composition_document import (
+        harmony_edit_target,
+        playback_globals,
+        section_playback_bars,
+        section_by_id,
+    )
+
+    pg = playback_globals(doc)
+    meter = str(pg.get("time_signature") or "4/4")
+    bpb = _beats_per_bar(meter)
+    _, edit = harmony_edit_target(doc, section_id)
+    sec = edit or section_by_id(doc, section_id) or {}
+    bars = section_playback_bars(doc, sec if isinstance(sec, dict) else None)
+    changes: list[dict[str, Any]] = []
+    beat = 0.0
+    for entry in list((sec or {}).get("chords") or []):
+        if not isinstance(entry, dict):
+            continue
+        chord = str(entry.get("chord") or "").strip()
+        if not chord:
+            continue
+        try:
+            chord_bars = max(1, int(entry.get("bars") or 1))
+        except (TypeError, ValueError):
+            chord_bars = 1
+        duration_beats = float(chord_bars) * bpb
+        changes.append(
+            {
+                "beat": beat,
+                "measure": int(beat // bpb) + 1,
+                "chord": chord,
+                "bars": chord_bars,
+                "duration_beats": duration_beats,
+            }
+        )
+        beat += duration_beats
+    expected = max(beat, float(bars) * bpb)
+    return {
+        "section_id": str(section_id or ""),
+        "bpm": int(pg.get("bpm") or 96),
+        "meter": meter,
+        "key": str(pg.get("key_center") or "C"),
+        "section_bars": int(bars),
+        "beats_per_bar": bpb,
+        "expected_duration_beats": expected,
+        "recording_onset_beat": 0.0,
+        "chord_changes": changes,
+    }
+
+
+def align_events_to_record_timeline(
+    events: list[dict[str, Any]] | None,
+    timeline: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Map transcribed events onto the section/chord timeline. Clips past the section."""
+    if not events:
+        return []
+    if not isinstance(timeline, dict) or not timeline:
+        return list(events)
+    onset = float(timeline.get("recording_onset_beat") or 0.0)
+    max_beat = float(timeline.get("expected_duration_beats") or 0.0)
+    bpb = float(timeline.get("beats_per_bar") or _beats_per_bar(str(timeline.get("meter") or "4/4")))
+    changes = list(timeline.get("chord_changes") or [])
+    out: list[dict[str, Any]] = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        copied = dict(ev)
+        start = float(ev.get("beat") or 0.0) + onset
+        try:
+            dur = float(ev.get("duration_beats") or 1.0)
+        except (TypeError, ValueError):
+            dur = 1.0
+        if max_beat and start >= max_beat - 1e-6:
+            continue
+        if max_beat:
+            dur = min(dur, max(0.25, max_beat - start))
+        copied["beat"] = start
+        copied["duration_beats"] = dur
+        copied["measure"] = int(start // max(1.0, bpb)) + 1
+        sounding = ""
+        for ch in changes:
+            if start + 1e-6 >= float(ch.get("beat") or 0.0):
+                sounding = str(ch.get("chord") or "")
+            else:
+                break
+        if sounding:
+            copied["chord"] = sounding
+        out.append(copied)
+    return out
+
+
 def transcribe_hum_audio(
     audio_bytes: bytes,
     *,
@@ -320,6 +417,7 @@ def transcribe_hum_audio(
     meter: str,
     key: str,
     sr: int = 22050,
+    timeline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Full hum → proposal events. Never mutates a Composition document."""
     result: dict[str, Any] = {
@@ -376,6 +474,15 @@ def transcribe_hum_audio(
         return result
 
     events = segments_to_melody_events(segments, bpm=int(bpm), meter=str(meter), key=str(key))
+    if isinstance(timeline, dict) and timeline:
+        events = align_events_to_record_timeline(events, timeline)
+        result["timeline"] = {
+            "section_id": timeline.get("section_id"),
+            "bpm": timeline.get("bpm"),
+            "meter": timeline.get("meter"),
+            "expected_duration_beats": timeline.get("expected_duration_beats"),
+            "recording_onset_beat": timeline.get("recording_onset_beat"),
+        }
     pitched = [e for e in events if not e.get("is_rest")]
     if not pitched:
         result["message"] = "No pitched notes after quantization — try again with longer tones."

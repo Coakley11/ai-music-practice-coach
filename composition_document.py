@@ -334,6 +334,7 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
             },
             "lines": [],
             "raw_text": "",
+            "alignment": [],
         },
         "rhythm_override": None,
     }
@@ -1312,6 +1313,8 @@ def _ensure_lyrics_block(sec: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(lyrics.get("lines"), list):
         lyrics["lines"] = []
     lyrics.setdefault("raw_text", "")
+    if not isinstance(lyrics.get("alignment"), list):
+        lyrics["alignment"] = []
     return lyrics
 
 
@@ -1330,6 +1333,132 @@ def lyrics_section_count(doc: dict[str, Any]) -> tuple[int, int]:
     return done, len(sections)
 
 
+_LYRIC_SYLLABLE_RE = re.compile(
+    r"[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?",
+    re.IGNORECASE,
+)
+
+
+def split_lyric_syllables(word: str) -> list[str]:
+    """Deterministic English-ish syllable split for alignment — not a linguist."""
+    text = str(word or "").strip()
+    if not text:
+        return []
+    if "-" in text:
+        parts = [p for p in text.split("-") if p]
+        if parts:
+            return parts
+    matches = _LYRIC_SYLLABLE_RE.findall(text)
+    if matches:
+        return [m for m in matches if m]
+    return [text]
+
+
+def lyric_syllable_tokens(text: str) -> list[dict[str, Any]]:
+    tokens: list[dict[str, Any]] = []
+    for line in str(text or "").splitlines():
+        for word in re.findall(r"[A-Za-z']+(?:-[A-Za-z']+)*", line):
+            syllables = split_lyric_syllables(word)
+            for i, syl in enumerate(syllables):
+                tokens.append(
+                    {
+                        "word": word,
+                        "syllable": syl,
+                        "word_start": i == 0,
+                        "word_end": i == len(syllables) - 1,
+                    }
+                )
+    return tokens
+
+
+def section_lyric_alignment(sec: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(sec, dict):
+        return []
+    lyrics = _ensure_lyrics_block(sec)
+    rows = lyrics.get("alignment")
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def align_lyrics_to_melody(doc: dict[str, Any], section_id: str) -> list[dict[str, Any]]:
+    """Map lyric syllables onto pitched melody events. Extra notes become melisma."""
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return []
+    lyrics = _ensure_lyrics_block(sec)
+    tokens = lyric_syllable_tokens(str(lyrics.get("raw_text") or ""))
+    pitched = [
+        (i, ev)
+        for i, ev in enumerate(section_melody_events(sec))
+        if isinstance(ev, dict) and not ev.get("is_rest") and str(ev.get("pitch") or "").lower() != "rest"
+    ]
+    alignment: list[dict[str, Any]] = []
+    if not tokens or not pitched:
+        lyrics["alignment"] = alignment
+        touch_composition(doc)
+        return alignment
+
+    if len(tokens) <= len(pitched):
+        leftover = len(pitched) - len(tokens)
+        for idx, token in enumerate(tokens):
+            ev_i, ev = pitched[idx]
+            extra = leftover if idx == len(tokens) - 1 else 0
+            span = [pitched[idx + j][0] for j in range(1 + extra) if idx + j < len(pitched)]
+            dur = float(ev.get("duration_beats") or 1.0)
+            if extra:
+                dur = sum(float(pitched[idx + j][1].get("duration_beats") or 1.0) for j in range(1 + extra) if idx + j < len(pitched))
+            alignment.append(
+                {
+                    "word": token["word"],
+                    "syllable": token["syllable"],
+                    "event_index": ev_i,
+                    "event_indexes": span,
+                    "beat": float(ev.get("beat") or 0.0),
+                    "duration_beats": dur,
+                    "melisma": extra > 0,
+                }
+            )
+    else:
+        for idx, token in enumerate(tokens):
+            if idx < len(pitched):
+                ev_i, ev = pitched[idx]
+                alignment.append(
+                    {
+                        "word": token["word"],
+                        "syllable": token["syllable"],
+                        "event_index": ev_i,
+                        "event_indexes": [ev_i],
+                        "beat": float(ev.get("beat") or 0.0),
+                        "duration_beats": float(ev.get("duration_beats") or 1.0),
+                        "melisma": False,
+                    }
+                )
+            else:
+                alignment.append(
+                    {
+                        "word": token["word"],
+                        "syllable": token["syllable"],
+                        "event_index": None,
+                        "event_indexes": [],
+                        "beat": None,
+                        "duration_beats": None,
+                        "melisma": False,
+                    }
+                )
+    lyrics["alignment"] = alignment
+    touch_composition(doc)
+    return alignment
+
+
+def apply_lyrics_text(doc: dict[str, Any], section_id: str, text: str) -> list[dict[str, Any]]:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return []
+    lyrics = _ensure_lyrics_block(sec)
+    lyrics["raw_text"] = str(text or "")
+    lyrics["lines"] = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+    return align_lyrics_to_melody(doc, section_id)
+
+
 def apply_lyric_prompt_to_section(
     doc: dict[str, Any],
     section_id: str,
@@ -1343,6 +1472,8 @@ def apply_lyric_prompt_to_section(
     if starter:
         existing = str(lyrics.get("raw_text") or "").strip()
         lyrics["raw_text"] = f"{existing}\n\n{starter}".strip() if existing else starter
+        lyrics["lines"] = [ln.strip() for ln in lyrics["raw_text"].splitlines() if ln.strip()]
+    align_lyrics_to_melody(doc, section_id)
     touch_composition(doc)
 
 

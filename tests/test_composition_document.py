@@ -320,6 +320,49 @@ class TestCompositionDocument(unittest.TestCase):
         add_melody_phrase(doc, chorus_id, label="Hummed contour", motif="rise then fall")
         self.assertEqual(section_melody_source(ordered_sections(doc)[1]), "manual")
 
+    def test_lyric_alignment_maps_syllables_and_melisma(self) -> None:
+        from composition_document import (
+            align_lyrics_to_melody,
+            apply_lyrics_text,
+            section_lyric_alignment,
+        )
+        from composition_melody_notation import build_abc_from_melody_events
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Home.", key="C major", bpm=96, meter="4/4")
+        apply_structure_template(doc, "simple")
+        sid = str(ordered_sections(doc)[0]["id"])
+        from composition_document import apply_melody_events
+
+        apply_melody_events(
+            doc,
+            sid,
+            [
+                {"pitch": "C4", "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+                {"pitch": "E4", "duration_beats": 1.0, "beat": 1.0, "measure": 1},
+                {"pitch": "G4", "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+            ],
+            source="ai",
+        )
+        apply_lyrics_text(doc, sid, "Go")
+        rows = section_lyric_alignment(ordered_sections(doc)[0])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["word"].lower(), "go")
+        self.assertEqual(rows[0]["event_index"], 0)
+        self.assertTrue(rows[0].get("melisma"))
+        self.assertGreaterEqual(len(rows[0].get("event_indexes") or []), 3)
+        abc = build_abc_from_melody_events(
+            [
+                {"pitch": "C4", "duration_beats": 1.0, "beat": 0.0},
+                {"pitch": "E4", "duration_beats": 1.0, "beat": 1.0},
+                {"pitch": "G4", "duration_beats": 2.0, "beat": 2.0},
+            ],
+            lyric_syllables=[r["syllable"] for r in rows if r.get("event_index") is not None],
+        )
+        self.assertIn("w:", abc)
+        # Extra notes after the last syllable become melisma markers.
+        align_lyrics_to_melody(doc, sid)
+        self.assertEqual(section_lyric_alignment(ordered_sections(doc)[0])[0]["beat"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

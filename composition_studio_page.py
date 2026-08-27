@@ -55,6 +55,8 @@ from composition_document import (
     advance_workflow,
     apply_melody_concept,
     apply_lyric_prompt_to_section,
+    apply_lyrics_text,
+    section_lyric_alignment,
     apply_section_chords,
     apply_structure_template,
     bootstrap_from_vision,
@@ -109,6 +111,7 @@ from composition_preview import (
     set_composer_preview,
 )
 from composition_hum_transcription import (
+    build_section_record_timeline,
     delete_melody_event,
     duration_choice_labels,
     hum_analysis_available,
@@ -1804,6 +1807,7 @@ def _render_melody_staff(
     height: int = 200,
     chords: list[Any] | None = None,
     lyrics_text: str = "",
+    lyric_syllables: list[str] | None = None,
 ) -> None:
     """Primary musician-facing score: staff, then chord symbols, then lyrics."""
     score = build_section_score_model(
@@ -1814,6 +1818,7 @@ def _render_melody_staff(
         bpm=bpm,
         title=title,
         lyrics_text=lyrics_text,
+        lyric_syllables=lyric_syllables,
     )
     st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
     if score["has_melody"]:
@@ -1880,6 +1885,11 @@ def _render_section_score_view(
             title=title,
             chords=chords,
             lyrics_text=lyrics,
+            lyric_syllables=[
+                str(row.get("syllable") or "")
+                for row in section_lyric_alignment(section)
+                if row.get("event_index") is not None
+            ],
         )
     elif has_chords:
         meter = str(pg.get("time_signature") or "4/4")
@@ -2005,12 +2015,38 @@ def _render_hum_sing_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    st.markdown("**Record a melody**")
-    st.caption("Hum, sing, or play one melodic line. We’ll write it as sheet music — you stay the composer.")
-    st.caption(
-        "One clear melody line works best (voice or single-note instrument). "
-        "Chords, ensembles, or melody over a backing track are not reliable in V1."
-    )
+    st.markdown("**Play / Hum My Melody**")
+    st.caption("Hum, sing, or play one melodic line while the section chords play. We’ll write it as sheet music.")
+    timeline = session_state.get(f"composer_record_timeline_{active_id}")
+    if not isinstance(timeline, dict):
+        capture = ((section.get("melody") or {}).get("intent") or {}).get("hum_capture") or {}
+        timeline = capture.get("timeline") if isinstance(capture, dict) else None
+    if st.button(
+        "Play backing and record",
+        key=f"composer_hum_play_backing_{active_id}",
+        type="primary",
+        use_container_width=True,
+        disabled=not bool(chords),
+    ):
+        timeline = build_section_record_timeline(doc, active_id)
+        session_state[f"composer_record_timeline_{active_id}"] = timeline
+        intent = section.setdefault("melody", {}).setdefault("intent", {})
+        capture = intent.setdefault("hum_capture", {})
+        capture["timeline"] = timeline
+        capture["analysis_status"] = "ready_to_record"
+        sig = preview_signature(doc, section_id=active_id, include_melody=False, loops=1)
+        wav = generate_preview_wav(doc, section_id=active_id, include_melody=False, loops=1)
+        if wav:
+            set_composer_preview(session_state, wav, sig)
+        _save_doc(session_state, doc)
+        st.rerun()
+    if isinstance(timeline, dict) and timeline.get("chord_changes"):
+        st.caption(
+            f"Recording uses this section's {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
+            f"{int(timeline.get('section_bars') or 0)} bars. Chord changes share that timeline."
+        )
+    elif not chords:
+        st.caption("Add chords first — then you can play the backing while you record.")
 
     if not hum_analysis_available():
         st.info(
@@ -2066,7 +2102,13 @@ def _render_hum_sing_panel(
 
     if analyze:
         audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
-        result = transcribe_hum_audio(audio_bytes, bpm=bpm, meter=meter, key=key)
+        result = transcribe_hum_audio(
+            audio_bytes,
+            bpm=bpm,
+            meter=meter,
+            key=key,
+            timeline=timeline if isinstance(timeline, dict) else None,
+        )
         session_state[_hum_proposal_key(active_id)] = result
         intent = section.setdefault("melody", {}).setdefault("intent", {})
         capture = intent.setdefault("hum_capture", {})
@@ -2899,8 +2941,7 @@ def _render_lyrics_editor(session_state: dict, doc: dict[str, Any], section_id: 
         placeholder="Write lines here when you're ready — one section at a time.",
     )
     if raw != lyrics.get("raw_text"):
-        lyrics["raw_text"] = raw
-        lyrics["lines"] = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        apply_lyrics_text(doc, section_id, raw)
         _save_doc(session_state, doc)
 
 
