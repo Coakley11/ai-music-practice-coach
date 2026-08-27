@@ -25,6 +25,7 @@ from songs.music_source import (
     SONG_PICKER_PRESENTED_SOURCE_KEY,
     SONG_PICKER_SOURCE_CATALOG,
     SONG_PICKER_SOURCE_CUSTOM,
+    SONG_PICKER_USER_TAB_AT_KEY,
     SONG_PICKER_USER_TAB_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
@@ -39,6 +40,7 @@ from songs.music_source import (
     reconcile_music_picker_source_widget,
     reconcile_picker_music_source,
     snapshot_last_custom_state,
+    switch_to_catalog_from_custom,
 )
 from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY, get_practice_concert_key
 from studio_nav_history import navigate_studio_page
@@ -58,6 +60,58 @@ def _refresh(session: dict) -> None:
     """Rerun/refresh hydrate used by Songs + Custom page."""
     reconcile_picker_music_source(session)
     reconcile_music_picker_source_widget(session)
+
+
+def _assert_shape_catalog_owner(test: unittest.TestCase, session: dict, *, practice_key: str) -> None:
+    test.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
+    test.assertFalse(custom_progression_is_active(session))
+    test.assertEqual(session.get("song"), "Shape of You")
+    test.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+    test.assertEqual(str(session.get("display_key") or ""), practice_key)
+    selected = session.get("selected_song") or {}
+    test.assertEqual(str(selected.get("title") or session.get("song") or ""), "Shape of You")
+
+
+def _assert_trial_custom_owner(test: unittest.TestCase, session: dict) -> None:
+    test.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+    test.assertTrue(custom_progression_is_active(session))
+    test.assertIn("Trial Song", str(session.get("song") or ""))
+    test.assertEqual(str(session.get("display_key") or ""), "D")
+    test.assertEqual(
+        get_practice_concert_key(session, custom_pick_key_for(_trial_active())),
+        "D",
+    )
+
+
+def _persist_reboot_hydrate(session: dict) -> dict:
+    """Hard-reboot-shaped restore: persist envelope + Songs hydrate only."""
+    restored = {
+        ACTIVE_MUSIC_SOURCE_KEY: session.get(ACTIVE_MUSIC_SOURCE_KEY),
+        "song": session.get("song"),
+        "active_song_title": session.get("active_song_title"),
+        "active_catalog_pick_key": session.get("active_catalog_pick_key"),
+        "selected_song": dict(session.get("selected_song") or {}),
+        "display_key": session.get("display_key"),
+        "concert_key": session.get("concert_key"),
+        SONG_PICKER_ACTIVE_SOURCE_KEY: session.get(SONG_PICKER_ACTIVE_SOURCE_KEY),
+        SONG_PICKER_PRESENTED_SOURCE_KEY: session.get(SONG_PICKER_PRESENTED_SOURCE_KEY),
+        SONG_PICKER_USER_TAB_KEY: session.get(SONG_PICKER_USER_TAB_KEY),
+        LAST_CUSTOM_STATE_KEY: dict(session.get(LAST_CUSTOM_STATE_KEY) or {}),
+        CPL_ACTIVE_KEY: dict(session.get(CPL_ACTIVE_KEY) or {}),
+        CPL_SAVED_KEY: dict(session.get(CPL_SAVED_KEY) or {}),
+        PRACTICE_KEY_BY_SOURCE_KEY: dict(session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {}),
+        "studio_page": "picker",
+        "_reconcile_song_picker_catalog": CATALOG,
+        "active_song_state": dict(session.get("active_song_state") or {}),
+    }
+    epoch = session.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY)
+    if epoch is not None:
+        restored[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY] = epoch
+    tab_at = session.get(SONG_PICKER_USER_TAB_AT_KEY)
+    if tab_at is not None:
+        restored[SONG_PICKER_USER_TAB_AT_KEY] = tab_at
+    _refresh(restored)
+    return restored
 
 
 def _save_trial_without_activating(session: dict) -> dict:
@@ -316,6 +370,124 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         self.assertEqual(restored.get("song"), "Shape of You")
         self.assertEqual(restored.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
         self.assertIn("Trial Song", restored.get(CPL_SAVED_KEY) or {})
+
+    def test_save_only_lifecycle_keeps_shape_after_rerun_refresh_reboot(self) -> None:
+        session = _shape_catalog_session(practice_key="Bm")
+        session["studio_page"] = "custom"
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        _save_trial_without_activating(session)
+        navigate_studio_page(session, "picker")
+        for _ in range(3):
+            _refresh(session)
+        _assert_shape_catalog_owner(self, session, practice_key="Bm")
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertFalse(music_picker_shows_custom_hub(session))
+
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        on_song_picker_source_change(
+            _st(session),
+            song_picker_catalog=CATALOG,
+            invalidate_backing=lambda *_a, **_k: None,
+        )
+        _refresh(session)
+        _assert_shape_catalog_owner(self, session, practice_key="Bm")
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertTrue(music_picker_shows_custom_hub(session))
+
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        on_song_picker_source_change(
+            _st(session),
+            song_picker_catalog=CATALOG,
+            invalidate_backing=lambda *_a, **_k: None,
+        )
+        _refresh(session)
+        _assert_shape_catalog_owner(self, session, practice_key="Bm")
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+
+        restored = _persist_reboot_hydrate(session)
+        _assert_shape_catalog_owner(self, restored, practice_key="Bm")
+        self.assertEqual(restored.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertIn("Trial Song", restored.get(CPL_SAVED_KEY) or {})
+        self.assertIsNone(restored.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY))
+
+    def test_set_as_active_lifecycle_keeps_trial_d_after_rerun_refresh_reboot(self) -> None:
+        session = _shape_catalog_session(practice_key="G")
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        _save_trial_without_activating(session)
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                _st(session),
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        session["studio_page"] = "custom"
+        navigate_studio_page(session, "picker")
+        for _ in range(3):
+            _refresh(session)
+        _assert_trial_custom_owner(self, session)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertTrue(music_picker_shows_custom_hub(session))
+
+        restored = _persist_reboot_hydrate(session)
+        _assert_trial_custom_owner(self, restored)
+        self.assertEqual(restored.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertTrue(music_picker_shows_custom_hub(restored))
+
+    def test_explicit_shape_after_trial_restores_own_state_without_trial_leak(self) -> None:
+        session = _shape_catalog_session(practice_key="G")
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                _st(session),
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        _assert_trial_custom_owner(self, session)
+        with patch("songs.state.persist_music_local_state"):
+            ok = switch_to_catalog_from_custom(
+                _st(session),
+                song_picker_catalog=CATALOG,
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        self.assertTrue(ok)
+        _refresh(session)
+        _assert_shape_catalog_owner(self, session, practice_key="Bm")
+        self.assertNotEqual(str(session.get("display_key") or ""), "D")
+        self.assertNotIn("Trial Song", str(session.get("song") or ""))
+        last = session.get(LAST_CUSTOM_STATE_KEY) or {}
+        self.assertEqual(str((last.get("active") or {}).get("name") or ""), "Trial Song")
+
+    def test_widget_safe_false_landing_does_not_oscillate_catalog_custom(self) -> None:
+        session = _shape_catalog_session(practice_key="Bm")
+        session["_streamlit_widgets_locked_this_run"] = True
+        session["_script_run_seq"] = 8
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                _st(session),
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        seen = []
+        for seq in (9, 10, 11):
+            session["_script_run_seq"] = seq
+            session["_streamlit_widgets_locked_this_run"] = True
+            _refresh(session)
+            seen.append(
+                (
+                    session.get(ACTIVE_MUSIC_SOURCE_KEY),
+                    session.get(SONG_PICKER_ACTIVE_SOURCE_KEY),
+                )
+            )
+        self.assertEqual(
+            seen,
+            [
+                (SOURCE_CUSTOM, SONG_PICKER_SOURCE_CUSTOM),
+                (SOURCE_CUSTOM, SONG_PICKER_SOURCE_CUSTOM),
+                (SOURCE_CUSTOM, SONG_PICKER_SOURCE_CUSTOM),
+            ],
+        )
+        self.assertNotIn("_pending_song_picker_active_source", session)
 
 
 if __name__ == "__main__":
