@@ -1215,6 +1215,23 @@ def apply_melody_events(
     return normalized
 
 
+def apply_accepted_melody_edits(
+    doc: dict[str, Any],
+    section_id: str,
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Write edited canonical events, then realign lyrics. One melody authority."""
+    normalized = apply_melody_events(
+        doc,
+        section_id,
+        events,
+        replace=True,
+        edited=True,
+    )
+    align_lyrics_to_melody(doc, section_id)
+    return normalized
+
+
 def section_has_melody(sec: dict[str, Any]) -> bool:
     melody = _ensure_melody_block(sec)
     if normalize_melody_events(melody.get("events")):

@@ -577,6 +577,29 @@ def set_event_duration(
     return out
 
 
+def shift_event_onset(
+    events: list[dict[str, Any]],
+    index: int,
+    delta_beats: float,
+    *,
+    meter: str = "4/4",
+    max_beats: float | None = None,
+) -> list[dict[str, Any]]:
+    """Move one event's onset without creating a second melody store."""
+    out = [dict(e) for e in events]
+    if index < 0 or index >= len(out):
+        return out
+    ev = out[index]
+    new_beat = max(0.0, float(ev.get("beat") or 0.0) + float(delta_beats))
+    if max_beats is not None:
+        new_beat = min(new_beat, max(0.0, float(max_beats) - 0.25))
+    ev["beat"] = new_beat
+    ev["measure"] = int(new_beat // _beats_per_bar(meter)) + 1
+    out[index] = ev
+    out.sort(key=lambda row: float(row.get("beat") or 0.0))
+    return out
+
+
 def delete_melody_event(events: list[dict[str, Any]], index: int, *, meter: str = "4/4") -> list[dict[str, Any]]:
     out = [dict(e) for i, e in enumerate(events) if i != index]
     cursor = 0.0

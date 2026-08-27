@@ -222,9 +222,11 @@ def build_melody_events_from_degrees(
     durations: list[float],
     *,
     key: str,
+    beats_per_bar: float = 4.0,
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     beat = 0.0
+    bar = max(1.0, float(beats_per_bar or 4.0))
     for i, deg in enumerate(degrees):
         dur = float(durations[i]) if i < len(durations) else 1.0
         pitch, midi = _degree_to_pitch(int(deg), key=key)
@@ -234,11 +236,249 @@ def build_melody_events_from_degrees(
                 "midi": midi,
                 "duration_beats": dur,
                 "beat": beat,
-                "measure": int(beat // 4) + 1,
+                "measure": int(beat // bar) + 1,
             }
         )
         beat += dur
     return events
+
+
+def _quality_intervals(quality: str) -> list[int]:
+    q = str(quality or "").lower()
+    if "dim" in q:
+        return [0, 3, 6]
+    if "aug" in q:
+        return [0, 4, 8]
+    minorish = q.startswith("m") and not q.startswith("maj") and not q.startswith("ma7")
+    if minorish or q.startswith("min"):
+        return [0, 3, 7, 10] if "7" in q else [0, 3, 7]
+    if "maj7" in q or "ma7" in q:
+        return [0, 4, 7, 11]
+    if "7" in q:
+        return [0, 4, 7, 10]
+    return [0, 4, 7]
+
+
+def _chord_tone_midis(symbol: str, register: int = 60) -> list[int]:
+    from music_theory import NOTE_TO_MIDI, split_chord
+
+    root, quality = split_chord(str(symbol or "C"))
+    base = NOTE_TO_MIDI.get(root) or NOTE_TO_MIDI.get(str(root).replace("b", "")) or 60
+    while base < register - 6:
+        base += 12
+    while base > register + 6:
+        base -= 12
+    return [base + iv for iv in _quality_intervals(quality)]
+
+
+def _snap_midi_to_chord_tone(midi: int, chord: str) -> int:
+    tones = _chord_tone_midis(chord, register=int(midi))
+    if not tones:
+        return int(midi)
+    candidates: list[int] = []
+    for tone in tones:
+        for octv in (-12, 0, 12):
+            candidates.append(tone + octv)
+    return min(candidates, key=lambda m: (abs(m - int(midi)), abs(m - 60)))
+
+
+def _section_beats(doc: dict[str, Any], section: dict[str, Any]) -> tuple[float, float, str]:
+    from composition_document import playback_globals, section_playback_bars
+
+    pg = playback_globals(doc)
+    meter = str(pg.get("time_signature") or "4/4")
+    if "/" in meter:
+        try:
+            bpb = float(int(meter.split("/", 1)[0]))
+        except ValueError:
+            bpb = 4.0
+    else:
+        bpb = 4.0
+    bars = max(1, int(section_playback_bars(doc, section) or 1))
+    return float(bars) * bpb, bpb, meter
+
+
+def _chord_spans_for_section(doc: dict[str, Any], section: dict[str, Any]) -> list[dict[str, Any]]:
+    from composition_hum_transcription import build_section_record_timeline
+
+    sid = str(section.get("id") or "")
+    timeline = build_section_record_timeline(doc, sid) if sid else {}
+    changes = list(timeline.get("chord_changes") or [])
+    if changes:
+        return changes
+    total_beats, bpb, _meter = _section_beats(doc, section)
+    from composition_document import chords_for_playback
+
+    chords = chords_for_playback(doc, scope="section", section_id=sid) if sid else []
+    if not chords:
+        return [{"beat": 0.0, "duration_beats": total_beats, "chord": ""}]
+    span = total_beats / float(len(chords))
+    return [
+        {"beat": i * span, "duration_beats": span, "chord": str(ch)}
+        for i, ch in enumerate(chords)
+    ]
+
+
+def _chord_at_beat(spans: list[dict[str, Any]], beat: float) -> str:
+    sounding = ""
+    for row in spans:
+        if beat + 1e-6 >= float(row.get("beat") or 0.0):
+            sounding = str(row.get("chord") or "")
+        else:
+            break
+    return sounding
+
+
+def expand_melody_events_to_section(
+    events: list[dict[str, Any]],
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    key: str = "",
+) -> list[dict[str, Any]]:
+    """Tile a motif across the declared section length and chord timeline."""
+    from composition_document import normalize_melody_events, playback_globals
+    from composition_hum_transcription import spell_midi_in_key
+
+    motif = normalize_melody_events(events)
+    total_beats, bpb, _meter = _section_beats(doc, section)
+    pg = playback_globals(doc)
+    key_token = str(key or pg.get("key_center") or "C")
+    spans = _chord_spans_for_section(doc, section)
+    if not motif:
+        motif = [
+            {
+                "pitch": "C",
+                "midi": 60,
+                "duration_beats": min(1.0, total_beats),
+                "beat": 0.0,
+                "measure": 1,
+            }
+        ]
+
+    motif_len = sum(float(e.get("duration_beats") or 1.0) for e in motif)
+    if motif_len <= 0:
+        motif_len = 1.0
+
+    tiled: list[dict[str, Any]] = []
+    cursor = 0.0
+    guard = 0
+    while cursor < total_beats - 1e-6 and guard < 256:
+        guard += 1
+        for src in motif:
+            dur = float(src.get("duration_beats") or 1.0)
+            remaining = total_beats - cursor
+            if remaining <= 1e-6:
+                break
+            use = min(dur, remaining)
+            copied = dict(src)
+            copied["beat"] = cursor
+            copied["duration_beats"] = use
+            copied["measure"] = int(cursor // bpb) + 1
+            chord = _chord_at_beat(spans, cursor)
+            on_chord_change = any(
+                abs(cursor - float(span.get("beat") or 0.0)) < 0.26 for span in spans
+            )
+            if (
+                chord
+                and on_chord_change
+                and not copied.get("is_rest")
+                and str(copied.get("pitch") or "").lower() != "rest"
+            ):
+                try:
+                    midi_i = int(copied.get("midi") or 60)
+                except (TypeError, ValueError):
+                    midi_i = 60
+                snapped = _snap_midi_to_chord_tone(midi_i, chord)
+                copied["midi"] = snapped
+                copied["pitch"] = spell_midi_in_key(snapped, key_token)
+                copied["chord"] = chord
+            tiled.append(copied)
+            cursor += use
+
+    # Guarantee an onset on every chord change.
+    existing_onsets = [float(e.get("beat") or 0.0) for e in tiled]
+    for span in spans:
+        start = float(span.get("beat") or 0.0)
+        end = start + float(span.get("duration_beats") or bpb)
+        chord = str(span.get("chord") or "")
+        if start >= total_beats - 1e-6:
+            continue
+        if any(start - 1e-6 <= o < end - 1e-6 for o in existing_onsets):
+            continue
+        midi_i = _snap_midi_to_chord_tone(60, chord or "C")
+        tiled.append(
+            {
+                "pitch": spell_midi_in_key(midi_i, key_token),
+                "midi": midi_i,
+                "duration_beats": min(1.0, max(0.5, end - start)),
+                "beat": start,
+                "measure": int(start // bpb) + 1,
+                "chord": chord,
+            }
+        )
+        existing_onsets.append(start)
+
+    tiled.sort(key=lambda e: float(e.get("beat") or 0.0))
+    # Pad a trailing rest if the line still ends early.
+    if tiled:
+        end = max(float(e.get("beat") or 0.0) + float(e.get("duration_beats") or 0.0) for e in tiled)
+        if end < total_beats - 0.26:
+            tiled.append(
+                {
+                    "pitch": "rest",
+                    "midi": None,
+                    "duration_beats": total_beats - end,
+                    "beat": end,
+                    "measure": int(end // bpb) + 1,
+                    "is_rest": True,
+                }
+            )
+        elif end > total_beats + 1e-6:
+            last = tiled[-1]
+            last["duration_beats"] = max(0.25, float(last.get("duration_beats") or 1.0) - (end - total_beats))
+    return normalize_melody_events(tiled)
+
+
+def melody_section_coverage(
+    events: list[dict[str, Any]],
+    doc: dict[str, Any],
+    section: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate onsets/durations through the section boundary and each chord change."""
+    total_beats, _bpb, _meter = _section_beats(doc, section)
+    spans = _chord_spans_for_section(doc, section)
+    if not events:
+        return {
+            "covers": False,
+            "aligned": False,
+            "start": 0.0,
+            "end": 0.0,
+            "target_beats": total_beats,
+            "missing_chords": [str(s.get("chord") or "") for s in spans],
+        }
+    start = min(float(e.get("beat") or 0.0) for e in events)
+    end = max(float(e.get("beat") or 0.0) + float(e.get("duration_beats") or 0.0) for e in events)
+    covers = start <= 0.26 and end >= total_beats - 0.51
+    missing: list[str] = []
+    for span in spans:
+        ch_start = float(span.get("beat") or 0.0)
+        ch_end = ch_start + float(span.get("duration_beats") or 0.0)
+        hit = any(
+            ch_start - 1e-6 <= float(e.get("beat") or 0.0) < ch_end - 1e-6
+            for e in events
+            if isinstance(e, dict)
+        )
+        if not hit:
+            missing.append(str(span.get("chord") or ""))
+    return {
+        "covers": covers,
+        "aligned": not missing,
+        "start": start,
+        "end": end,
+        "target_beats": total_beats,
+        "missing_chords": missing,
+    }
 
 
 def _section_key(doc: dict[str, Any]) -> str:
@@ -290,10 +530,11 @@ def suggest_melody_concepts(
             degrees = degrees[:5]
             durations = durations[:5]
         events = build_melody_events_from_degrees(degrees, durations, key=key)
-        notes_line = " ".join(str(e["pitch"]) for e in events)
+        events = expand_melody_events_to_section(events, doc, section, key=key)
+        notes_line = " ".join(str(e["pitch"]) for e in events if not e.get("is_rest"))
         why = str(recipe.get("why") or "")
         if chords:
-            why = f"{why} Shaped to sit over this section's harmony in {key}."
+            why = f"{why} Shaped to sit over this section's full harmony in {key}."
         out.append(
             {
                 "id": rid,
