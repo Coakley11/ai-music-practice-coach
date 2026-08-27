@@ -14,6 +14,8 @@ COMPOSER_ACTIVE_SECTION_KEY = "composer_active_section_id"
 COMPOSER_FOCUS_LANE_KEY = "composer_focus_lane"
 COMPOSER_PREVIEW_WAV_KEY = "composer_preview_wav"
 COMPOSER_PREVIEW_SIG_KEY = "composer_preview_signature"
+COMPOSER_PREVIEW_NONCE_KEY = "composer_preview_nonce"
+COMPOSER_PREVIEW_AUTOPLAY_KEY = "composer_preview_autoplay"
 COMPOSER_SNAPSHOT_STAMP_KEY = "composer_snapshot_stamp"
 COMPOSER_ARRANGEMENT_PREVIEW_KEY = "composer_arrangement_preview_style"
 

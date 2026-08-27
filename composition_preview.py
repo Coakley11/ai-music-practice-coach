@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import math
 import struct
@@ -13,8 +14,14 @@ from composition_document import (
     playback_globals,
     section_by_id,
     section_melody_events,
+    section_playback_bars,
     song_melody_events,
 )
+
+COMPOSER_PREVIEW_NONCE_KEY = "composer_preview_nonce"
+COMPOSER_PREVIEW_AUTOPLAY_KEY = "composer_preview_autoplay"
+_MIN_PLAYABLE_PEAK = 0.02
+_MIN_PLAYABLE_SECONDS = 0.2
 
 
 def resolve_preview_groove(doc: dict[str, Any], arrangement_style: str | None = None) -> str:
@@ -26,6 +33,40 @@ def resolve_preview_groove(doc: dict[str, Any], arrangement_style: str | None = 
     if "groove" in override.lower():
         return override
     return f"{override} groove"
+
+
+def section_chords_for_declared_length(
+    doc: dict[str, Any],
+    section_id: str | None,
+) -> list[str]:
+    """Chord symbols padded/cycled to the section's declared playback length."""
+    chords = chords_for_playback(doc, scope="section", section_id=section_id)
+    if not chords or not section_id:
+        return list(chords)
+    sec = section_by_id(doc, section_id)
+    bars = section_playback_bars(doc, sec)
+    if bars <= 0 or len(chords) >= bars:
+        return list(chords)
+    out = list(chords)
+    i = 0
+    while len(out) < bars:
+        out.append(chords[i % len(chords)])
+        i += 1
+    return out
+
+
+def resolve_preview_chords(
+    doc: dict[str, Any],
+    *,
+    scope: str = "section",
+    section_id: str | None = None,
+    chord_override: list[str] | None = None,
+) -> list[str]:
+    if chord_override is not None:
+        return [str(c) for c in chord_override if str(c).strip()]
+    if str(scope or "section").strip().lower() == "section":
+        return section_chords_for_declared_length(doc, section_id)
+    return chords_for_playback(doc, scope=scope, section_id=section_id)
 
 
 def preview_signature(
@@ -40,10 +81,9 @@ def preview_signature(
     arrangement_style: str | None = None,
 ) -> tuple:
     pg = playback_globals(doc)
-    if chord_override is not None:
-        chords = [str(c) for c in chord_override if str(c).strip()]
-    else:
-        chords = chords_for_playback(doc, scope=scope, section_id=section_id)
+    chords = resolve_preview_chords(
+        doc, scope=scope, section_id=section_id, chord_override=chord_override
+    )
     mel_sig: tuple = ()
     if include_melody:
         events = (
@@ -224,10 +264,9 @@ def generate_preview_wav(
     melody_override: list[dict[str, Any]] | None = None,
     arrangement_style: str | None = None,
 ) -> bytes | None:
-    if chord_override is not None:
-        chords = [str(c) for c in chord_override if str(c).strip()]
-    else:
-        chords = chords_for_playback(doc, scope=scope, section_id=section_id)
+    chords = resolve_preview_chords(
+        doc, scope=scope, section_id=section_id, chord_override=chord_override
+    )
     if not chords:
         return None
     pg = playback_globals(doc)
@@ -263,20 +302,228 @@ def generate_preview_wav(
     return wav
 
 
+def inspect_preview_wav(wav: bytes | None) -> dict[str, Any]:
+    """Deterministic playability check — header + non-silent PCM, not mere presence."""
+    empty = {
+        "playable": False,
+        "reason": "empty",
+        "byte_len": 0,
+        "frames": 0,
+        "sample_rate": 0,
+        "duration_seconds": 0.0,
+        "peak": 0.0,
+    }
+    if not wav or not isinstance(wav, (bytes, bytearray)):
+        return dict(empty)
+    raw = bytes(wav)
+    empty["byte_len"] = len(raw)
+    if len(raw) < 44 or raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+        return {**empty, "reason": "not_wav"}
+    try:
+        mono, sr = _wav_to_mono_floats(raw)
+    except Exception:
+        return {**empty, "reason": "unreadable"}
+    if not mono or int(sr) <= 0:
+        return {**empty, "reason": "no_pcm", "sample_rate": int(sr or 0)}
+    peak = max(abs(s) for s in mono)
+    duration = len(mono) / float(sr)
+    playable = peak >= _MIN_PLAYABLE_PEAK and duration >= _MIN_PLAYABLE_SECONDS
+    return {
+        "playable": playable,
+        "reason": "" if playable else ("silent" if peak < _MIN_PLAYABLE_PEAK else "too_short"),
+        "byte_len": len(raw),
+        "frames": len(mono),
+        "sample_rate": int(sr),
+        "duration_seconds": duration,
+        "peak": float(peak),
+    }
+
+
+def build_composer_playback_html(
+    wav: bytes,
+    *,
+    nonce: int,
+    autoplay: bool = True,
+    stats: dict[str, Any] | None = None,
+) -> str:
+    """HTML5 player payload. Unique nonce remounts; JS restarts and pauses siblings."""
+    info = stats or inspect_preview_wav(wav)
+    b64 = base64.b64encode(bytes(wav)).decode("ascii")
+    auto_attr = "autoplay" if autoplay else ""
+    nid = int(nonce)
+    peak = float(info.get("peak") or 0.0)
+    dur = float(info.get("duration_seconds") or 0.0)
+    n_bytes = int(info.get("byte_len") or len(wav))
+    return f"""<div class="composer-playback" data-nonce="{nid}" data-bytes="{n_bytes}" data-duration="{dur:.3f}" data-peak="{peak:.4f}" data-autoplay="{'1' if autoplay else '0'}">
+<audio class="composer-playback-audio" id="composer-playback-{nid}" controls {auto_attr} preload="auto" src="data:audio/wav;base64,{b64}"></audio>
+<script>
+(function() {{
+  var id = "composer-playback-{nid}";
+  var current = document.getElementById(id);
+  var nodes = document.querySelectorAll("audio");
+  for (var i = 0; i < nodes.length; i++) {{
+    if (nodes[i] !== current) {{
+      try {{ nodes[i].pause(); nodes[i].currentTime = 0; }} catch (e) {{}}
+    }}
+  }}
+  if (!current) return;
+  try {{ current.currentTime = 0; }} catch (e) {{}}
+  var p = current.play();
+  if (p && p.catch) p.catch(function() {{}});
+}})();
+</script>
+</div>"""
+
+
+def play_composer_preview(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    scope: str = "section",
+    section_id: str | None = None,
+    loops: int = 2,
+    chord_override: list[str] | None = None,
+    include_melody: bool = False,
+    melody_override: list[dict[str, Any]] | None = None,
+    arrangement_style: str | None = None,
+    level: str = "Intermediate",
+) -> dict[str, Any]:
+    """Button-path seam: generate, validate, arm a remounting autoplay payload."""
+    pg = playback_globals(doc)
+    chords = resolve_preview_chords(
+        doc, scope=scope, section_id=section_id, chord_override=chord_override
+    )
+    sig = preview_signature(
+        doc,
+        scope=scope,
+        section_id=section_id,
+        loops=loops,
+        chord_override=chord_override,
+        include_melody=include_melody,
+        melody_override=melody_override,
+        arrangement_style=arrangement_style,
+    )
+    result: dict[str, Any] = {
+        "ok": False,
+        "reason": "no_chords",
+        "wav": None,
+        "signature": sig,
+        "nonce": int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0),
+        "html": "",
+        "playable": False,
+        "byte_len": 0,
+        "duration_seconds": 0.0,
+        "peak": 0.0,
+        "frames": 0,
+        "sample_rate": 0,
+        "chords": list(chords),
+        "include_melody": bool(include_melody),
+        "bpm": int(pg.get("bpm") or 0),
+        "meter": str(pg.get("time_signature") or ""),
+        "scope": scope,
+        "section_id": section_id or "",
+        "loops": int(loops),
+    }
+    if not chords:
+        invalidate_composer_preview(session_state)
+        result["reason"] = "Add chords to this section first — melody sits on your harmony."
+        return result
+    wav = generate_preview_wav(
+        doc,
+        scope=scope,
+        section_id=section_id,
+        loops=loops,
+        level=level,
+        chord_override=chord_override,
+        include_melody=include_melody,
+        melody_override=melody_override,
+        arrangement_style=arrangement_style,
+    )
+    stats = inspect_preview_wav(wav)
+    result.update(stats)
+    if not stats.get("playable"):
+        invalidate_composer_preview(session_state)
+        result["reason"] = "Could not generate playable audio."
+        return result
+    nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0) + 1
+    session_state[COMPOSER_PREVIEW_NONCE_KEY] = nonce
+    session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = True
+    set_composer_preview(session_state, wav, sig)
+    html = build_composer_playback_html(bytes(wav), nonce=nonce, autoplay=True, stats=stats)
+    result.update(
+        {
+            "ok": True,
+            "reason": "",
+            "wav": bytes(wav),
+            "nonce": nonce,
+            "html": html,
+        }
+    )
+    return result
+
+
+def composer_playback_is_armed(session_state: dict) -> bool:
+    wav = session_state.get("composer_preview_wav")
+    return bool(inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None).get("playable"))
+
+
+def render_composer_playback(
+    st_mod: Any,
+    session_state: dict,
+    *,
+    stop_key: str = "composer_preview_stop",
+) -> bool:
+    """Render the armed payload. Returns True when a playable player was mounted."""
+    wav = session_state.get("composer_preview_wav")
+    stats = inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None)
+    if not stats.get("playable"):
+        return False
+    nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 1)
+    autoplay = bool(session_state.get(COMPOSER_PREVIEW_AUTOPLAY_KEY, True))
+    html = build_composer_playback_html(bytes(wav), nonce=nonce, autoplay=autoplay, stats=stats)
+    st_mod.markdown("**Now playing**")
+    c1, c2 = st_mod.columns([4, 1])
+    with c1:
+        try:
+            import streamlit.components.v1 as components
+
+            components.html(html, height=88)
+        except Exception:
+            try:
+                st_mod.audio(
+                    bytes(wav),
+                    format="audio/wav",
+                    autoplay=autoplay,
+                    start_time=0,
+                    key=f"composer_preview_audio_{nonce}",
+                )
+            except TypeError:
+                st_mod.audio(bytes(wav), format="audio/wav")
+    with c2:
+        if st_mod.button("Stop", key=stop_key, use_container_width=True):
+            invalidate_composer_preview(session_state)
+            st_mod.rerun()
+    return True
+
+
 def set_composer_preview(
     session_state: dict,
     wav: bytes | None,
     signature: tuple | None = None,
 ) -> None:
     """Replace the active Composition preview (single owner — no stacked mystery audio)."""
-    if not wav:
+    if not wav or not inspect_preview_wav(wav).get("playable"):
         invalidate_composer_preview(session_state)
         return
     session_state["composer_preview_wav"] = wav
     if signature is not None:
         session_state["composer_preview_signature"] = signature
+    session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = True
+    if not session_state.get(COMPOSER_PREVIEW_NONCE_KEY):
+        session_state[COMPOSER_PREVIEW_NONCE_KEY] = 1
 
 
 def invalidate_composer_preview(session_state: dict) -> None:
     session_state.pop("composer_preview_wav", None)
     session_state.pop("composer_preview_signature", None)
+    session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = False

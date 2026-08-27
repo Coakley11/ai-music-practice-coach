@@ -27,6 +27,8 @@ _EPHEMERAL_SNAPSHOT_KEYS: frozenset[str] = frozenset(
     {
         "composer_preview_wav",
         "composer_preview_signature",
+        "composer_preview_nonce",
+        "composer_preview_autoplay",
         "_last_backing_wav",
         "_last_backing_timeline",
         "last_analysis_audio",
