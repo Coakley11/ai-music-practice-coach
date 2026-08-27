@@ -200,7 +200,13 @@ def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
         ):
             return ""
     except ImportError:
-        pass
+        tab = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if custom_preview and page == "creative" and tab not in {"", "Entry & Jam"}:
+            return ""
     # Songs / Practice / picker must write the Global Active catalog pick — leftover
     # SBI Custom entry/source flags must not redirect catalog Practice Key writes.
     sbi_surface = page in {"creative", "backing"} or (

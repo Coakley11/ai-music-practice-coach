@@ -68,11 +68,17 @@ def build_mission_backing_alignment_payload(
     concert = str(concert_key or session.get("concert_key") or "").strip()
     display = str(display_key or session.get("display_key") or "").strip()
     example_fp = ""
+    example_notes: list[Any] = []
+    example_midi: list[Any] = []
     if example is not None:
+        motif = getattr(example, "motif", None) or {}
+        if isinstance(motif, dict):
+            example_notes = [str(n) for n in (motif.get("notes") or [])]
+            example_midi = [int(m) for m in (motif.get("midi") or []) if str(m).strip() != ""]
         try:
             from improvisation_missions import motif_material_fingerprint
 
-            example_fp = motif_material_fingerprint(getattr(example, "motif", None) or {})
+            example_fp = motif_material_fingerprint(motif if isinstance(motif, dict) else {})
         except ImportError:
             example_fp = str(getattr(example, "chord", "") or "")
 
@@ -86,6 +92,8 @@ def build_mission_backing_alignment_payload(
         "chord_display_label": f"{section_label} · {cur_chord}".strip(" ·"),
         "chord_index": int(chord_idx),
         "example_fingerprint": example_fp,
+        "example_notes": example_notes,
+        "example_midi": example_midi,
         "concert_key": concert,
         "display_key": display,
         "concert_tonic": concert_tonic,

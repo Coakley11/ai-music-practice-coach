@@ -343,6 +343,15 @@ def set_backing_context(
         ):
             payload["mission_return_destination"] = copy.deepcopy(prev_mission_dest)
     session[BACKING_CONTEXT_KEY] = payload
+    if str(payload.get("source") or "") == "mission":
+        try:
+            from mission_return_destination import stamp_mission_return_destination_on_backing_context
+
+            stamp_mission_return_destination_on_backing_context(session)
+        except ImportError:
+            sealed = session.get("_music_mission_canonical_return_destination")
+            if isinstance(sealed, dict) and not payload.get("mission_return_destination"):
+                payload["mission_return_destination"] = copy.deepcopy(sealed)
     try:
         src = str(getattr(ctx, "source", "") or payload.get("source") or "").strip()
         if src:
@@ -1359,6 +1368,16 @@ def _entry_jam_context_from_owner_snapshot(
     selected_sections = list(snap.selected_section_ids or section_labels)
     jam_title = style or mode_label or "Style jam"
     gen_song_id = f"generated::{entry_mode}::{snap.artifact_id or jam_id}"
+    try:
+        from backing_play_session import backing_play_session_has_override
+
+        groove_locked = backing_play_session_has_override(session, "groove")
+    except ImportError:
+        groove_locked = False
+    if not groove_locked and (backing_style or rhythm_groove):
+        # Sealed Style Jam style owns the live groove slot so leftover catalog
+        # Pop cannot badge or configure this visit after hydration/rerun.
+        session["backing_groove_style"] = backing_style or rhythm_groove
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],

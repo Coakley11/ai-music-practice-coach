@@ -473,7 +473,11 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
             if custom_owns_active_song_material(session):
                 return True
         except ImportError:
-            pass
+            # Cycle-safe: do not silently drop Custom GA authority (embargo gate 6).
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            src = str(session.get("active_music_source") or "").strip().lower()
+            if pick.startswith("custom::") or src in {"custom", "custom_progression"}:
+                return True
         return False
     if src == "custom_progression":
         return True

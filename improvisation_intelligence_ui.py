@@ -98,6 +98,18 @@ MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
 
 
+def custom_lab_open_button_label() -> str:
+    """Rendered Custom Lab button label: page icon plus required text.
+
+    Keep the words ``Open Custom Lab`` (a bare ``Custom`` collides with
+    top-level Custom nav). Icon is presentation-only from STUDIO_PAGE_META.
+    """
+    from app_ui import STUDIO_PAGE_META
+
+    icon = str(STUDIO_PAGE_META.get("custom", {}).get("icon") or "✏️")
+    return f"{icon} Open Custom Lab"
+
+
 def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
     try:
         from music_workflow_pending_song_practice_key_edit import (
@@ -902,14 +914,8 @@ def _tab_entry_modes(
                 _nav1, _ = st.columns([1.2, 3.8])
                 with _nav1:
                     st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
-                    # Label must keep "Open Custom Lab" (harness/nav collisions used
-                    # to treat a bare "Custom" as the top-level Custom page). Icon
-                    # is presentation-only from STUDIO_PAGE_META.
-                    from app_ui import STUDIO_PAGE_META
-
-                    _custom_icon = str(STUDIO_PAGE_META.get("custom", {}).get("icon") or "✏️")
                     if st.button(
-                        f"{_custom_icon} Open Custom Lab",
+                        custom_lab_open_button_label(),
                         key="improv_go_custom",
                         type="secondary",
                     ):
@@ -2075,9 +2081,19 @@ def _render_section_chord_map(
                 gen_ch = musician_facing_chord(ch, concert_key=key_center, chart_key=chart_key) or ch
             except ImportError:
                 gen_ch = ch
+            try:
+                from harmonic_spelling import harmonic_reference_for_chord
+
+                motif_key = harmonic_reference_for_chord(
+                    gen_ch,
+                    song_display_key=str(ss.get("display_key") or key_center),
+                    song_key_center=str(key_center or ""),
+                )
+            except ImportError:
+                motif_key = key_center
             motif = generate_musical_phrase(
                 gen_ch,
-                key_center=key_center,
+                key_center=motif_key,
                 level=motif_level,
                 kind="creative",
             )

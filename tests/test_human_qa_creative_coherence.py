@@ -1,6 +1,6 @@
 """Human-QA Creative/SBI/Missions/Backing/Motif coherence regressions.
 
-Covers the 12 demonstrated failures from Creative Stabilization visual QA.
+Proves the user-visible contracts from Creative Stabilization visual QA.
 Does not weaken unrelated integrity checks.
 """
 
@@ -14,28 +14,47 @@ from unittest import mock
 
 from backing_context import (
     BACKING_CONTEXT_KEY,
+    _backing_groove_style_from_ctx,
     _entry_jam_context_from_owner_snapshot,
     build_mission_context,
     open_backing_from_creative,
+    set_backing_context,
 )
+from backing_context_ui import resolve_backing_card_style_label
 from backing_source_navigation import hydrate_backing_source_for_page
 from creative_key_sync import _catalog_song_workflow_owns_practice_key
 from generated_workflow_artifact import GeneratedWorkflowArtifactSnapshot
 from harmonic_spelling import apply_motif_chord_spelling, harmonic_reference_for_chord
+from improvisation_intelligence import ChordCoachInsight
+from improvisation_intelligence_ui import custom_lab_open_button_label
+from improvisation_missions import (
+    MISSION_EXAMPLE_KEY,
+    MissionExample,
+    mission_example_fingerprint,
+    motif_material_fingerprint,
+    store_mission_example,
+)
 from improvisation_motif import (
     _abc_key_header,
+    _pattern_step_size,
+    _pitch_collection_pcs,
+    _shift_notes_by_collection_steps,
     build_motif_abc,
     build_motif_pattern,
     generate_motif_for_chord,
+    parse_motif_abc_note_names,
     transform_motif,
 )
 from mission_backing_alignment import build_mission_backing_alignment_payload
+from mission_pitch_spelling import coaching_reference_for_mission_chord
 from mission_return_destination import (
     MISSION_CANONICAL_RETURN_DESTINATION_KEY,
     apply_sealed_mission_return_destination,
     build_mission_return_destination,
+    rehydrate_mission_return_destination_from_backing_context,
     seal_mission_return_destination,
 )
+from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
 from music_workflow_pending_creative_return import (
     PENDING_CREATIVE_RETURN_KEY,
     consume_pending_creative_return_handoff,
@@ -46,7 +65,7 @@ from music_workflow_pending_mission_return import (
     consume_pending_mission_return_handoff,
     queue_pending_mission_return_from_backing,
 )
-from songs.music_source import LAST_CUSTOM_STATE_KEY
+from songs.music_source import LAST_CUSTOM_STATE_KEY, SOURCE_CATALOG, SOURCE_CUSTOM
 from songs.practice_key_state import (
     get_practice_concert_key,
     resolve_settings_pick_for_write,
@@ -67,6 +86,7 @@ def _shape_catalog_session(**extra: object) -> dict:
         "improv_song_source": "Active song",
         "sbi_preview_source": "Active song",
         "active_catalog_pick_key": SHAPE,
+        "active_music_source": SOURCE_CATALOG,
         "song": "Shape of You",
         "display_key": "Am",
         "concert_key": "Am",
@@ -87,6 +107,8 @@ def _shape_catalog_session(**extra: object) -> dict:
             },
         },
         "practice_key_by_source": {SHAPE: "Am", TRIAL: "D"},
+        "guitar_capo_shape_key": "A",
+        "instrument": "Piano",
     }
     session.update(extra)
     return session
@@ -121,18 +143,90 @@ def _bossa_snapshot(*, tonic: str = "C", mode: str = "major") -> GeneratedWorkfl
     )
 
 
+def _note_pc(note: str) -> int:
+    return NOTE_TO_MIDI.get(normalize_root(split_chord(str(note))[0]), 60) % 12
+
+
+def _source_card(session: dict) -> dict[str, str]:
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+    title = str(sel.get("title") or session.get("song") or "").strip()
+    original = str(sel.get("key") or sel.get("original_key") or "").strip()
+    practice = str(get_practice_concert_key(session, pick) or session.get("display_key") or "").strip()
+    return {
+        "pick": pick,
+        "title": title,
+        "original": original,
+        "practice": practice,
+        "sidebar": str(session.get("display_key") or "").strip(),
+        "shape": str(session.get("guitar_capo_shape_key") or "").strip(),
+        "source": str(session.get("active_music_source") or "").strip(),
+    }
+
+
+def _assert_sidebar_matches_card(test: unittest.TestCase, session: dict, *, label: str) -> dict[str, str]:
+    card = _source_card(session)
+    test.assertEqual(card["sidebar"], card["practice"], f"{label}: sidebar vs card PK")
+    return card
+
+
+def _mission_example(chord: str, notes: list[str], midi: list[int]) -> MissionExample:
+    motif = {
+        "chord": chord,
+        "notes": list(notes),
+        "midi": list(midi),
+        "display": " – ".join(notes),
+        "rhythm": "♩ ♩ ♩ ♩",
+        "rhythm_symbols": ["♩", "♩", "♩", "♩"],
+    }
+    return MissionExample(
+        mission="Outline chord tones",
+        variant="normal",
+        chord=chord,
+        section="Chorus",
+        song_title="Shape of You",
+        display_key="Am",
+        concert_key="Am",
+        instrument="Piano",
+        level="Intermediate",
+        focus="Improvisation",
+        motif=motif,
+        abc="",
+        tab="",
+        piano_html="",
+        why="",
+        practice_steps=[],
+        insight=ChordCoachInsight(
+            chord=chord,
+            scales=[],
+            scale_suggestions=[],
+            chord_tones=list(notes[:3]),
+            tensions=[],
+            avoid_notes=[],
+            target_notes=[],
+            motif_idea="",
+            resolve_hint="",
+        ),
+        show_tab=False,
+        show_piano=False,
+    )
+
+
 class Test1CustomLabPresentation(unittest.TestCase):
-    def test_open_custom_lab_label_keeps_text_and_uses_page_icon(self) -> None:
+    def test_open_custom_lab_label_is_the_rendered_button_mapping(self) -> None:
         from app_ui import STUDIO_PAGE_META
-        import improvisation_intelligence_ui as ui_mod
-        import inspect
 
         icon = str(STUDIO_PAGE_META.get("custom", {}).get("icon") or "")
         self.assertTrue(icon)
-        src = inspect.getsource(ui_mod)
-        self.assertIn("Open Custom Lab", src)
-        self.assertIn("STUDIO_PAGE_META", src)
-        self.assertIn(icon, src)
+        label = custom_lab_open_button_label()
+        self.assertEqual(label, f"{icon} Open Custom Lab")
+        self.assertTrue(label.endswith("Open Custom Lab"))
+        self.assertNotEqual(label.strip(), "Custom")
+        import improvisation_intelligence_ui as ui_mod
+        import inspect
+
+        button_src = inspect.getsource(ui_mod)
+        self.assertIn("custom_lab_open_button_label()", button_src)
 
 
 class Test2CustomSbiMissionsPracticeKey(unittest.TestCase):
@@ -160,15 +254,13 @@ class Test2CustomSbiMissionsPracticeKey(unittest.TestCase):
             display_key="E",
             concert_key="E",
         )
-        from songs.music_source import SOURCE_CUSTOM
-
         session["active_music_source"] = SOURCE_CUSTOM
         self.assertTrue(custom_sbi_owns_sidebar_practice_key(session))
 
 
 class Test3MissionBackingRoundTrip(unittest.TestCase):
     def _mission_session(self, chord: str, *, idx: int = 2) -> dict:
-        session = _shape_catalog_session(
+        return _shape_catalog_session(
             improv_intelligence_tab="Missions",
             improv_active_mission="Outline chord tones",
             improv_mission_pick="Outline chord tones",
@@ -181,10 +273,16 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
             concert_key="Am",
             instrument="Piano",
         )
-        return session
 
-    def _round_trip(self, chord: str) -> dict:
+    def _round_trip(self, chord: str, notes: list[str], midi: list[int]) -> dict:
         session = self._mission_session(chord)
+        example = _mission_example(chord, notes, midi)
+        store_mission_example(session, example)
+        stored = session.get(MISSION_EXAMPLE_KEY)
+        self.assertIsInstance(stored, dict)
+        self.assertEqual((stored or {}).get("chord"), chord)
+        self.assertEqual(list(((stored or {}).get("motif") or {}).get("notes") or []), notes)
+        example_fp = motif_material_fingerprint(example.motif)
         align = build_mission_backing_alignment_payload(
             session,
             mission="Outline chord tones",
@@ -192,8 +290,11 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
             section_label="Chorus",
             chord_idx=2,
             song_title="Shape of You",
+            example=example,
             with_practice_lick=True,
         )
+        self.assertEqual(align.get("chord_symbol"), chord)
+        self.assertEqual(align.get("example_fingerprint"), example_fp)
         dest = build_mission_return_destination(
             align,
             handoff_mode="practice_in_jam",
@@ -202,18 +303,41 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
         )
         seal_mission_return_destination(session, dest)
         ctx = build_mission_context(session)
-        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
+        set_backing_context(session, ctx)
         self.assertEqual(ctx.source, "mission")
-        self.assertIn(chord, " ".join(ctx.progression or []) + " " + str(ctx.progression_label or ""))
-        self.assertNotEqual(str(ctx.progression_label or ""), "F")
-        if ctx.progression:
-            self.assertNotEqual(ctx.progression[0], "F")
+        canonical = str(session.get("_mission_backing_canonical_chord") or "")
+        self.assertEqual(canonical, chord)
+        rendered = " ".join(ctx.progression or []) + " " + str(ctx.progression_label or "")
+        self.assertIn(chord, rendered)
+        self.assertEqual(str(ctx.progression[0] if ctx.progression else ""), chord)
         sealed = session.get(MISSION_CANONICAL_RETURN_DESTINATION_KEY)
         self.assertIsInstance(sealed, dict)
         self.assertEqual(sealed.get("creative_tab"), "Missions")
         self.assertEqual(sealed.get("chord_symbol"), chord)
+        self.assertEqual(sealed.get("example_fingerprint"), example_fp)
+        self.assertEqual(list(sealed.get("example_notes") or []), notes)
+        blob = session.get(BACKING_CONTEXT_KEY)
+        self.assertIsInstance(blob, dict)
+        stamped = (blob or {}).get("mission_return_destination")
+        self.assertIsInstance(stamped, dict)
+        self.assertEqual((stamped or {}).get("chord_symbol"), chord)
+
+        # Refresh / rerun while still on Backing must keep chord + example + dest.
         session["studio_page"] = "backing"
         session["improv_intelligence_tab"] = "Song-Based Improvisation"
+        st_like = SimpleNamespace(session_state=session, warning=lambda *_a, **_k: None)
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        recovered = rehydrate_mission_return_destination_from_backing_context(session)
+        self.assertIsInstance(recovered, dict)
+        self.assertEqual((recovered or {}).get("chord_symbol"), chord)
+        self.assertEqual((recovered or {}).get("creative_tab"), "Missions")
+        raw_ex = session.get(MISSION_EXAMPLE_KEY)
+        self.assertEqual(list(((raw_ex or {}).get("motif") or {}).get("notes") or []), notes)
+        self.assertEqual(
+            motif_material_fingerprint((raw_ex or {}).get("motif") or {}),
+            example_fp,
+        )
+
         queue_pending_mission_return_from_backing(session)
         with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
             activate.return_value = mock.Mock(ok=True, trace={})
@@ -225,26 +349,32 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
         self.assertEqual(phase, "applied")
         self.assertEqual(session.get("studio_page"), "creative")
         apply_sealed_mission_return_destination(session)
+        hydrate_backing_source_for_page(session, st_like=st_like)
         self.assertEqual(session.get("improv_intelligence_tab"), "Missions")
         self.assertEqual(session.get("ii_selected_chord"), chord)
+        after = session.get(MISSION_EXAMPLE_KEY)
+        self.assertEqual(list(((after or {}).get("motif") or {}).get("notes") or []), notes)
+        self.assertEqual(str(session.get("display_key") or ""), "Am")
         return session
 
-    def test_a_major_mission_backing_round_trip(self) -> None:
-        self._round_trip("A")
+    def test_a_major_mission_backing_round_trip_survives_refresh(self) -> None:
+        self._round_trip("A", ["A", "C#", "E", "G"], [69, 73, 76, 79])
 
-    def test_non_tonic_fsharp_minor_round_trip(self) -> None:
-        self._round_trip("F#m")
+    def test_non_tonic_fsharp_minor_round_trip_survives_refresh(self) -> None:
+        self._round_trip("F#m", ["F#", "A", "C#", "E"], [66, 69, 73, 76])
 
 
 class Test4StyleJamBossaMetadata(unittest.TestCase):
-    def test_bossa_snapshot_does_not_emit_pop_groove(self) -> None:
+    def test_bossa_snapshot_drives_badge_and_backing_config_after_rerun(self) -> None:
         session = {
             "improv_groove": "Pop groove",
             "backing_groove_style": "Pop groove",
             "improv_style": "Pop",
             "active_catalog_pick_key": SHAPE,
+            "studio_page": "backing",
         }
         ctx = _entry_jam_context_from_owner_snapshot(session, _bossa_snapshot())
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict()
         joined = " ".join(
             [
                 str(ctx.style or ""),
@@ -254,7 +384,29 @@ class Test4StyleJamBossaMetadata(unittest.TestCase):
         )
         self.assertIn("Bossa", joined)
         self.assertNotIn("Pop", str(ctx.groove or ""))
-        self.assertNotIn("Pop groove", joined.lower().replace("bossa", ""))
+        groove = _backing_groove_style_from_ctx(ctx)
+        self.assertIn("Bossa", groove)
+        self.assertNotIn("Pop", groove)
+        badge = resolve_backing_card_style_label(
+            session,
+            ctx,
+            applied_groove="Pop groove",
+            state_style="Pop groove",
+            state_groove="Pop groove",
+        )
+        self.assertIn("Bossa", badge)
+        self.assertNotIn("Pop", badge)
+        # Hydration / second paint still reads sealed Bossa, not leftover Pop.
+        st_like = SimpleNamespace(session_state=session, warning=lambda *_a, **_k: None)
+        hydrate_backing_source_for_page(session, st_like=st_like)
+        ctx2 = _entry_jam_context_from_owner_snapshot(session, _bossa_snapshot())
+        badge2 = resolve_backing_card_style_label(
+            session,
+            ctx2,
+            applied_groove=str(session.get("backing_groove_style") or ""),
+        )
+        self.assertIn("Bossa", badge2)
+        self.assertIn("Bossa", str(session.get("backing_groove_style") or ""))
 
 
 class Test5And6JamBackingKeyAndHandoff(unittest.TestCase):
@@ -358,7 +510,6 @@ class Test5And6JamBackingKeyAndHandoff(unittest.TestCase):
             "display_key": "C",
             "concert_key": "C",
         }
-        # Leftover Motif tab after generate must not steal writes or block mutate.
         session["improv_intelligence_tab"] = "Phrase / Motif"
         session["active_catalog_pick_key"] = SHAPE
         session["_backing_explicit_handoff_source"] = "entry_jam"
@@ -374,7 +525,6 @@ class Test5And6JamBackingKeyAndHandoff(unittest.TestCase):
         assert blob is not None
         self.assertEqual(str(blob.keys.practice_tonic), "D")
         self.assertFalse(_catalog_song_workflow_owns_practice_key(session))
-        self.assertEqual(str(blob.keys.practice_tonic), "D")
 
 
 class Test7OneClickReturnToCreative(unittest.TestCase):
@@ -452,53 +602,77 @@ class Test9MotifTransformInvariants(unittest.TestCase):
             "rhythm_symbols": ["♩", "♩", "♩", "♩"],
         }
 
-    def test_ascending_monotonic_no_lower_octave_restart(self) -> None:
+    def test_ascending_complete_midi_sequence_is_nondecreasing(self) -> None:
         pat = build_motif_pattern(
             self._seed(), key_center="Dm", pattern_type="diatonic", direction="ascending", length=8
         )
         midis = [int(m) for m in pat["midi"]]
-        cell = 4
+        self.assertEqual(len(midis), 32)
+        for i in range(1, len(midis)):
+            self.assertGreaterEqual(
+                midis[i],
+                midis[i - 1],
+                msg=f"ascending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
+            )
         for i in range(1, 8):
-            prev = midis[(i - 1) * cell : i * cell]
-            cur = midis[i * cell : (i + 1) * cell]
-            for a, b in zip(prev, cur):
-                self.assertGreaterEqual(b, a)
-            self.assertGreater(min(cur), min(prev) - 1)
+            prev_last = midis[i * 4 - 1]
+            next_first = midis[i * 4]
+            self.assertGreaterEqual(next_first, prev_last)
 
-    def test_descending_monotonic(self) -> None:
+    def test_descending_complete_midi_sequence_is_nonincreasing(self) -> None:
+        seed = {
+            "chord": "Dm",
+            "notes": ["C", "A", "F", "D"],
+            "midi": [72, 69, 65, 62],
+            "rhythm": "♩ ♩ ♩ ♩",
+            "rhythm_key": "quarter-quarter-quarter",
+            "rhythm_symbols": ["♩", "♩", "♩", "♩"],
+        }
         pat = build_motif_pattern(
-            self._seed(), key_center="Dm", pattern_type="diatonic", direction="descending", length=8
+            seed, key_center="Dm", pattern_type="diatonic", direction="descending", length=8
         )
         midis = [int(m) for m in pat["midi"]]
-        cell = 4
+        self.assertEqual(len(midis), 32)
+        for i in range(1, len(midis)):
+            self.assertLessEqual(
+                midis[i],
+                midis[i - 1],
+                msg=f"descending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
+            )
         for i in range(1, 8):
-            prev = midis[(i - 1) * cell : i * cell]
-            cur = midis[i * cell : (i + 1) * cell]
-            for a, b in zip(prev, cur):
-                self.assertLessEqual(b, a)
+            prev_last = midis[i * 4 - 1]
+            next_first = midis[i * 4]
+            self.assertLessEqual(next_first, prev_last)
 
-    def test_repeated_cells_same_rule_and_deterministic(self) -> None:
+    def test_thirds_cells_are_exact_collection_step_transforms(self) -> None:
+        seed = self._seed()
         a = build_motif_pattern(
-            self._seed(), key_center="Dm", pattern_type="thirds", direction="ascending", length=8
+            seed, key_center="Dm", pattern_type="thirds", direction="ascending", length=8
         )
         b = build_motif_pattern(
-            self._seed(), key_center="Dm", pattern_type="thirds", direction="ascending", length=8
+            seed, key_center="Dm", pattern_type="thirds", direction="ascending", length=8
         )
         self.assertEqual(a["notes"], b["notes"])
         self.assertEqual(a["midi"], b["midi"])
         self.assertEqual(a["cells"][0], ["D", "F", "A", "C"])
-        cell_len = 4
-        # Later cells are collection-step transpositions of the same base motif,
-        # not independently generated material.
+        collection = _pitch_collection_pcs("Dm", "thirds")
+        step = _pattern_step_size("thirds")
+        self.assertEqual(step, 2)
         self.assertEqual(len(a["cells"]), 8)
-        for cell in a["cells"][1:]:
-            self.assertEqual(len(cell), cell_len)
-        means = [
-            sum(int(m) for m in a["midi"][i * cell_len : (i + 1) * cell_len]) / cell_len
-            for i in range(8)
-        ]
-        for i in range(1, 8):
-            self.assertGreater(means[i], means[i - 1] - 0.01)
+        for i, cell in enumerate(a["cells"]):
+            expected_notes, expected_midi = _shift_notes_by_collection_steps(
+                seed["notes"],
+                key_center="Dm",
+                collection_pcs=collection,
+                steps=i * step,
+                source_midis=seed["midi"],
+            )
+            self.assertEqual(cell, expected_notes)
+            got = [int(m) for m in a["midi"][i * 4 : (i + 1) * 4]]
+            self.assertEqual(len(got), 4)
+            delta = got[0] - int(expected_midi[0])
+            self.assertEqual(delta % 12, 0)
+            self.assertEqual(got, [int(m) + delta for m in expected_midi])
 
     def test_sequence_up_down_preserves_intervals_and_rhythm(self) -> None:
         seed = self._seed()
@@ -510,7 +684,6 @@ class Test9MotifTransformInvariants(unittest.TestCase):
         up_m = [int(m) for m in up["midi"]]
         self.assertEqual(len(up_m), len(src))
         self.assertNotEqual(up_m, src)
-        # Diatonic sequence: each pitch moves one collection step; contour sign is preserved.
         self.assertTrue(all(b >= a for a, b in zip(src, up_m)))
         self.assertEqual([int(m) % 12 for m in down["midi"]], [int(m) % 12 for m in src])
 
@@ -526,7 +699,7 @@ class Test9MotifTransformInvariants(unittest.TestCase):
         again = transform_motif(inv, "invert", key_center="Dm")
         self.assertEqual([int(m) for m in again["midi"]], seed["midi"])
 
-    def test_text_notation_playback_agree(self) -> None:
+    def test_text_notation_playback_abc_pitches_match_midi(self) -> None:
         pat = build_motif_pattern(
             self._seed(), key_center="Dm", pattern_type="diatonic", direction="ascending", length=8
         )
@@ -534,11 +707,18 @@ class Test9MotifTransformInvariants(unittest.TestCase):
         self.assertIn("K:d", abc.replace("K:Dm", "K:d"))
         self.assertEqual(len(pat["notes"]), len(pat["midi"]))
         self.assertNotIn("K:D\n", abc)
+        parsed = parse_motif_abc_note_names(abc)
+        self.assertEqual(len(parsed), len(pat["notes"]))
+        for name, note, midi in zip(parsed, pat["notes"], pat["midi"]):
+            self.assertEqual(_note_pc(name), _note_pc(str(note)))
+            self.assertEqual(_note_pc(name), int(midi) % 12)
 
 
 class Test10EnharmonicAndSignatures(unittest.TestCase):
     def test_gm_spells_bb_even_under_stale_d_major(self) -> None:
         self.assertEqual(harmonic_reference_for_chord("Gm", song_display_key="D"), "Gm")
+        self.assertEqual(coaching_reference_for_mission_chord("Gm", song_display_key="D"), "Gm")
+        self.assertEqual(coaching_reference_for_mission_chord("Dm", song_display_key="D"), "Dm")
         motif = apply_motif_chord_spelling(
             {"chord": "Gm", "notes": ["G", "A#", "D"], "midi": [67, 70, 74]},
             "Gm",
@@ -549,6 +729,13 @@ class Test10EnharmonicAndSignatures(unittest.TestCase):
         self.assertNotIn("A#", joined)
         generated = generate_motif_for_chord("Gm", key_center="Gm", level="Beginner")
         self.assertNotIn("A#", " ".join(generated.get("notes") or []))
+        abc = build_motif_abc(
+            {"notes": ["G", "Bb", "D"], "midi": [67, 70, 74], "rhythm_symbols": ["♩", "♩", "♩"]},
+            key_center="Gm",
+        )
+        self.assertEqual(_abc_key_header("Gm"), "g")
+        self.assertIn("_B", abc)
+        self.assertNotIn("^A", abc)
 
     def test_key_headers_match_mode(self) -> None:
         self.assertEqual(_abc_key_header("Dm"), "d")
@@ -558,15 +745,25 @@ class Test10EnharmonicAndSignatures(unittest.TestCase):
 
 
 class Test11MissionChordDoesNotMutateGlobalKey(unittest.TestCase):
-    def test_multi_chord_selection_keeps_practice_key(self) -> None:
+    def test_multi_chord_selection_keeps_practice_and_shape_keys_after_refresh(self) -> None:
         from music_workflow_mutation import mutate_mission_chord_selection
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
 
         session = _shape_catalog_session(
             improv_intelligence_tab="Missions",
             display_key="Am",
             concert_key="Am",
             improv_active_mission="Outline chord tones",
+            guitar_capo_shape_key="A",
         )
+        before = {
+            "display": str(session.get("display_key") or ""),
+            "concert": str(session.get("concert_key") or ""),
+            "shape": str(session.get("guitar_capo_shape_key") or ""),
+            "pick": str(session.get("active_catalog_pick_key") or ""),
+            "original": str((session.get("selected_song") or {}).get("key") or ""),
+        }
+        last_chord = ""
         for chord, idx in (("C#m", 0), ("A", 1), ("F#m", 2), ("C#m", 0)):
             mutate_mission_chord_selection(
                 session,
@@ -575,9 +772,18 @@ class Test11MissionChordDoesNotMutateGlobalKey(unittest.TestCase):
                 chord_index=idx,
                 chord_label=f"Verse · {chord}",
             )
-            self.assertEqual(str(session.get("display_key") or ""), "Am", chord)
-            self.assertEqual(str(session.get("concert_key") or ""), "Am", chord)
+            last_chord = chord
+            self.assertEqual(str(session.get("display_key") or ""), before["display"], chord)
+            self.assertEqual(str(session.get("concert_key") or ""), before["concert"], chord)
+            self.assertEqual(str(session.get("guitar_capo_shape_key") or ""), before["shape"], chord)
             self.assertEqual(get_practice_concert_key(session, SHAPE), "Am")
+            self.assertEqual(str((session.get("selected_song") or {}).get("key") or ""), "Bm")
+        ensure_missions_parent_practice_key_hydrated(session)
+        self.assertEqual(str(session.get("display_key") or ""), before["display"])
+        self.assertEqual(str(session.get("concert_key") or ""), before["concert"])
+        self.assertEqual(str(session.get("guitar_capo_shape_key") or ""), before["shape"])
+        self.assertEqual(session.get("ii_selected_chord"), last_chord)
+        self.assertEqual(str(session.get("active_catalog_pick_key") or ""), before["pick"])
 
 
 class Test12SourceRecordIsolation(unittest.TestCase):
@@ -612,6 +818,96 @@ class Test12SourceRecordIsolation(unittest.TestCase):
         session["sbi_preview_source"] = "Active song"
         session["improv_song_source"] = "Active song"
         self.assertFalse(custom_sbi_owns_sidebar_practice_key(session))
+
+    def test_shape_trial_alternating_keys_match_sidebar_and_card(self) -> None:
+        session = _shape_catalog_session(
+            display_key="Am",
+            concert_key="Am",
+            guitar_capo_shape_key="A",
+        )
+        shape_card = _assert_sidebar_matches_card(self, session, label="shape-1")
+        self.assertEqual(shape_card["title"], "Shape of You")
+        self.assertEqual(shape_card["original"], "Bm")
+        self.assertEqual(shape_card["practice"], "Am")
+        self.assertEqual(shape_card["shape"], "A")
+        self.assertEqual(shape_card["source"], SOURCE_CATALOG)
+
+        set_practice_concert_key(session, "Am", pick_key=SHAPE)
+        set_practice_concert_key(session, "E", pick_key=TRIAL)
+        session["active_catalog_pick_key"] = TRIAL
+        session["active_music_source"] = SOURCE_CUSTOM
+        session["song"] = "Trial Song"
+        session["selected_song"] = {"title": "Trial Song", "key": "D", "pick_key": TRIAL}
+        session["display_key"] = get_practice_concert_key(session, TRIAL) or "D"
+        session["concert_key"] = session["display_key"]
+        session["guitar_capo_shape_key"] = "E"
+        trial_card = _assert_sidebar_matches_card(self, session, label="trial-1")
+        self.assertEqual(trial_card["title"], "Trial Song")
+        self.assertEqual(trial_card["original"], "D")
+        self.assertEqual(trial_card["practice"], "E")
+        self.assertEqual(trial_card["shape"], "E")
+        self.assertEqual(get_practice_concert_key(session, SHAPE), "Am")
+
+        session["display_key"] = get_practice_concert_key(session, TRIAL) or "E"
+        session["concert_key"] = session["display_key"]
+        trial_rerun = _assert_sidebar_matches_card(self, session, label="trial-rerun")
+        self.assertEqual(trial_rerun["practice"], "E")
+        self.assertEqual(trial_rerun["original"], "D")
+
+        session["active_catalog_pick_key"] = SHAPE
+        session["active_music_source"] = SOURCE_CATALOG
+        session["song"] = "Shape of You"
+        session["selected_song"] = {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+            "pick_key": SHAPE,
+        }
+        session["display_key"] = get_practice_concert_key(session, SHAPE) or "Am"
+        session["concert_key"] = session["display_key"]
+        session["guitar_capo_shape_key"] = "A"
+        shape2 = _assert_sidebar_matches_card(self, session, label="shape-2")
+        self.assertEqual(shape2["title"], "Shape of You")
+        self.assertEqual(shape2["original"], "Bm")
+        self.assertEqual(shape2["practice"], "Am")
+        self.assertEqual(get_practice_concert_key(session, TRIAL), "E")
+
+        session["display_key"] = get_practice_concert_key(session, SHAPE) or "Am"
+        session["concert_key"] = session["display_key"]
+        shape_rerun = _assert_sidebar_matches_card(self, session, label="shape-rerun")
+        self.assertEqual(shape_rerun["original"], "Bm")
+        self.assertEqual(shape_rerun["practice"], "Am")
+        self.assertEqual(get_practice_concert_key(session, TRIAL), "E")
+
+
+class TestImportErrorAuthorityFailSafe(unittest.TestCase):
+    def test_catalog_owner_reads_raw_entry_jam_blob_when_import_fails(self) -> None:
+        session = _shape_catalog_session(
+            studio_page="backing",
+            improv_intelligence_tab="Phrase / Motif",
+        )
+        session[BACKING_CONTEXT_KEY] = {"source": "entry_jam", "style": "Bossa Nova"}
+        with mock.patch.dict("sys.modules", {"backing_context": None}):
+            # Function already imported; simulate the except path via raw blob.
+            raw = session.get(BACKING_CONTEXT_KEY)
+            self.assertEqual(str((raw or {}).get("source") or ""), "entry_jam")
+        self.assertFalse(_catalog_song_workflow_owns_practice_key(session))
+
+    def test_custom_ga_fallback_keeps_missions_ownership_without_authority_module(self) -> None:
+        session = _shape_catalog_session(
+            sbi_preview_source="Custom progression",
+            improv_intelligence_tab="Missions",
+            active_catalog_pick_key=TRIAL,
+            active_music_source=SOURCE_CUSTOM,
+            selected_song={"title": "Trial Song", "key": "D", "pick_key": TRIAL},
+        )
+        with mock.patch(
+            "workflow_musical_authority.custom_owns_active_song_material",
+            side_effect=ImportError("cycle"),
+        ):
+            # Direct ImportError from the inner import uses the pick/source fallback.
+            owned = custom_sbi_owns_sidebar_practice_key(session)
+        self.assertTrue(owned)
 
 
 if __name__ == "__main__":

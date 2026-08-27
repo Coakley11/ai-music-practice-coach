@@ -484,6 +484,35 @@ def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
     return f"{acc}{letter}"
 
 
+_ABC_NOTE_TOKEN = re.compile(r"([_^=]*)([A-Ga-g])([,']*)")
+
+
+def parse_motif_abc_note_names(abc: str) -> list[str]:
+    """Spelled note names from a motif ABC body, in sounding order.
+
+    Inverse of ``_note_name_to_abc_pitch`` for contract tests: text, notation,
+    and MIDI must realize the same pitch-class sequence.
+    """
+    text = str(abc or "")
+    if "K:" in text:
+        after_k = text.split("K:", 1)[1]
+        lines = after_k.splitlines()
+        music = " ".join(lines[1:]) if len(lines) > 1 else after_k
+    else:
+        music = text
+    names: list[str] = []
+    for match in _ABC_NOTE_TOKEN.finditer(music):
+        acc, letter, _oct = match.group(1), match.group(2), match.group(3)
+        if "_" in acc:
+            name = letter.upper() + "b"
+        elif "^" in acc:
+            name = letter.upper() + "#"
+        else:
+            name = letter.upper()
+        names.append(name)
+    return names
+
+
 def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
     """Per-note rhythm symbols — single source aligned with motif['rhythm'] text."""
     stored = motif.get("rhythm_symbols")
@@ -1076,6 +1105,32 @@ def _shift_notes_by_collection_steps(
     return respell_notes_for_key(out, key_center), out_midi
 
 
+def _align_cell_midis_to_direction(
+    cell_midis: list[int],
+    prev_last: int | None,
+    *,
+    sign: int,
+) -> list[int]:
+    """Octave-shift a whole cell so it continues the named direction.
+
+    Preserves intra-cell intervals and pitch classes. Fixes lower-octave
+    restarts at cell boundaries (C5→E4) without rewriting the source contour.
+    """
+    if not cell_midis:
+        return []
+    out = [int(m) for m in cell_midis]
+    if prev_last is None:
+        return out
+    last = int(prev_last)
+    if sign >= 0:
+        while out[0] < last:
+            out = [m + 12 for m in out]
+    else:
+        while out[0] > last:
+            out = [m - 12 for m in out]
+    return out
+
+
 def _format_pattern_display(cells: list[list[str]]) -> str:
     return " | ".join(" – ".join(cell) for cell in cells if cell)
 
@@ -1125,6 +1180,7 @@ def build_motif_pattern(
     )
     cells: list[list[str]] = []
     cell_midis: list[list[int]] = []
+    prev_last: int | None = None
     for i in range(n_cells):
         cell_notes, cell_ms = _shift_notes_by_collection_steps(
             base_notes,
@@ -1133,8 +1189,11 @@ def build_motif_pattern(
             steps=sign * i * step,
             source_midis=source_midis,
         )
+        cell_ms = _align_cell_midis_to_direction(cell_ms, prev_last, sign=sign)
         cells.append(cell_notes)
         cell_midis.append(cell_ms)
+        if cell_ms:
+            prev_last = int(cell_ms[-1])
     flat = [n for cell in cells for n in cell]
     flat_midi = [m for cell in cell_midis for m in cell]
     cell_len = max(1, len(base_notes))

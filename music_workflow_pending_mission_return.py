@@ -167,6 +167,24 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
                 session["ii_selected_chord_label"] = f"{section} · {chord}"
     except (TypeError, ValueError):
         pass
+    notes = dest.get("example_notes")
+    midi = dest.get("example_midi")
+    if isinstance(notes, list) and notes:
+        try:
+            from improvisation_missions import MISSION_EXAMPLE_KEY
+        except ImportError:
+            MISSION_EXAMPLE_KEY = "improv_mission_example"
+        raw = session.get(MISSION_EXAMPLE_KEY)
+        raw = dict(raw) if isinstance(raw, dict) else {}
+        motif = dict(raw.get("motif") or {})
+        motif["notes"] = [str(n) for n in notes]
+        if isinstance(midi, list) and midi:
+            motif["midi"] = [int(m) for m in midi]
+        if chord:
+            motif["chord"] = chord
+            raw["chord"] = chord
+        raw["motif"] = motif
+        session[MISSION_EXAMPLE_KEY] = raw
     # Return restores sealed selection; a later tile click must outrank this.
     session.pop("_mission_chord_click_authority", None)
     pick = str(dest.get("song_pick_key") or "").strip()

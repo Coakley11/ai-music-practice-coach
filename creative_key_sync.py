@@ -105,7 +105,9 @@ def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
             if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
                 return False
         except ImportError:
-            pass
+            raw = session.get("backing_context")
+            if isinstance(raw, dict) and str(raw.get("source") or "") == "entry_jam":
+                return False
     # Mid-open Style Jam / Jam Session handoff: leftover Motif/Missions tab
     # must not steal PK while seal_backing_handoff_snapshot_for_creative_open runs
     # (studio_page is still "creative" at that moment).

@@ -169,6 +169,54 @@ def render_backing_context_banner(
     return bool(ctx and ctx.source != "regular_song")
 
 
+def resolve_backing_card_style_label(
+    session: dict[str, Any],
+    ctx: BackingContext,
+    *,
+    applied_groove: str = "",
+    state_style: str = "",
+    state_groove: str = "",
+) -> str:
+    """User-visible Style badge for the Creative Backing card.
+
+    Play-session groove overrides win. For generated Style Jam / Jam Session,
+    sealed ctx.style/groove outrank leftover catalog ``backing_groove_style``
+    (Pop must not stamp a Bossa Nova snapshot).
+    """
+    live_override = ""
+    try:
+        from backing_play_session import (
+            backing_play_session_has_override,
+            effective_backing_play_overrides,
+        )
+
+        if backing_play_session_has_override(session, "groove"):
+            live_override = str(
+                effective_backing_play_overrides(session).get("groove") or ""
+            ).strip()
+    except ImportError:
+        live_override = ""
+    if live_override:
+        return live_override
+    src = str(getattr(ctx, "source", "") or "").strip()
+    sealed = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "").strip()
+    if src == "entry_jam" and sealed:
+        low = sealed.lower()
+        if "pop" in low and "bossa" not in low and str(getattr(ctx, "style", "") or "").strip():
+            sealed = str(ctx.style).strip()
+        return sealed
+    leftover = str(
+        session.get("backing_groove_style")
+        or applied_groove
+        or state_groove
+        or state_style
+        or ""
+    ).strip()
+    if leftover:
+        return leftover
+    return sealed or "Auto"
+
+
 def render_backing_creative_context_card(
     st: Any,
     ctx: BackingContext,
@@ -274,9 +322,8 @@ def render_backing_creative_context_card(
     elif ctx.source == "mission":
         style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
-    # Current Style/Meter = live Backing widgets / play-session (same-rerun owner).
-    # Sealed ctx.style/meter are Default/source only when live values are empty.
-    live_groove = ""
+    # Current Meter = live Backing widgets / play-session (same-rerun owner).
+    # Style: sealed generated ctx outranks leftover catalog Pop (see helper).
     live_meter = ""
     try:
         from backing_play_session import (
@@ -285,19 +332,10 @@ def render_backing_creative_context_card(
         )
 
         resolved = effective_backing_play_overrides(session)
-        if backing_play_session_has_override(session, "groove"):
-            live_groove = str(resolved.get("groove") or "").strip()
         if backing_play_session_has_override(session, "meter"):
             live_meter = str(resolved.get("meter") or "").strip()
     except ImportError:
         pass
-    if not live_groove:
-        live_groove = str(
-            session.get("backing_groove_style")
-            or applied_groove
-            or state.groove
-            or ""
-        ).strip()
     if not live_meter:
         live_meter = str(
             session.get("backing_time_signature")
@@ -305,11 +343,14 @@ def render_backing_creative_context_card(
             or state.meter
             or ""
         ).strip()
-    if live_groove:
-        style_label = live_groove
-        backing_style = html.escape(live_groove)
-    else:
-        backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
+    style_label = resolve_backing_card_style_label(
+        session,
+        ctx,
+        applied_groove=applied_groove,
+        state_style=str(getattr(state, "style", "") or ""),
+        state_groove=str(getattr(state, "groove", "") or ""),
+    )
+    backing_style = html.escape(style_label or "Auto")
     default_style = str(ctx.style or ctx.groove or "").strip()
     default_meter = str(ctx.meter or "4/4").strip() or "4/4"
     concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")

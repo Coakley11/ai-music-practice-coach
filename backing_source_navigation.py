@@ -1752,7 +1752,11 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             if str(session.get("studio_page") or "").strip().lower() != "backing":
                 return
     except ImportError:
-        pass
+        pending = session.get("_music_pending_creative_return_handoff")
+        if isinstance(pending, dict):
+            session["studio_page"] = "creative"
+            session.pop("_music_pending_creative_return_handoff", None)
+            return
     if session.get(CREATIVE_RESTORE_FROM_BACKING_KEY) and str(
         session.get("studio_page") or ""
     ).strip().lower() == "creative":
