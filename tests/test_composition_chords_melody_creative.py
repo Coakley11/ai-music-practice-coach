@@ -5,7 +5,11 @@ from __future__ import annotations
 import unittest
 
 from composition_chord_refinements import CHORD_REFINEMENT_INTENTS, propose_chord_refinement
-from composition_chord_suggestions import suggest_progressions
+from composition_chord_suggestions import (
+    guided_chord_vocabulary,
+    progression_bar_count,
+    suggest_progressions,
+)
 from composition_document import (
     apply_melody_concept,
     apply_melody_events,
@@ -79,6 +83,41 @@ class TestCompositionChordCreativeLoop(unittest.TestCase):
         apply_section_chords(doc, str(verse["id"]), sug["chords"])
         self.assertTrue(verse.get("chords"))
         self.assertNotEqual(verse.get("chords"), before)
+
+    def test_suggestions_span_full_section_and_more_options(self) -> None:
+        doc = self._song()
+        verse = ordered_sections(doc)[0]
+        self.assertEqual(int(verse.get("bars") or 0), 8)
+        ideas = suggest_progressions(doc, verse, "stable", limit=3)
+        self.assertGreaterEqual(len(ideas), 2)
+        for idea in ideas:
+            self.assertGreaterEqual(progression_bar_count(list(idea.get("chords") or [])), 8, idea.get("name"))
+        more = suggest_progressions(doc, verse, "stable", limit=3, more=True)
+        self.assertGreater(len(more), len(ideas))
+        more_ids = {str(i.get("id") or "") for i in more}
+        first_ids = {str(i.get("id") or "") for i in ideas}
+        self.assertTrue(more_ids - first_ids)
+
+    def test_guided_vocab_pop_vs_jazz(self) -> None:
+        pop = bootstrap_from_vision(genre="Pop", song_idea="x", key="C major", bpm=96, meter="4/4")
+        jazz = bootstrap_from_vision(genre="Jazz", song_idea="x", key="C major", bpm=96, meter="4/4")
+        pop_vocab = guided_chord_vocabulary(pop)
+        jazz_vocab = guided_chord_vocabulary(jazz)
+        self.assertIn("C", pop_vocab)
+        self.assertIn("Am", pop_vocab)
+        self.assertIn("G/B", pop_vocab)
+        self.assertNotIn("G7alt", pop_vocab)
+        self.assertNotIn("Cmaj7#11", pop_vocab)
+        self.assertTrue(any(sym.endswith("maj7") or sym.endswith("7") for sym in jazz_vocab))
+        self.assertIn("Cmaj7", jazz_vocab)
+
+    def test_guided_vocab_follows_song_key(self) -> None:
+        doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="G major", bpm=100, meter="4/4")
+        vocab = guided_chord_vocabulary(doc)
+        self.assertIn("G", vocab)
+        self.assertIn("Em", vocab)
+        self.assertIn("D/F#", vocab)
+        self.assertNotIn("Cmaj7#11", vocab)
 
     def test_manual_replace_insert_remove(self) -> None:
         doc = self._song()

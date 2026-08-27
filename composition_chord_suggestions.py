@@ -200,8 +200,101 @@ def _pick_ref_key(target_key: str, recipe_ref: str) -> str:
     return "C" if recipe_ref == "Am" else recipe_ref
 
 
-def symbols_to_entries(symbols: list[str]) -> list[dict[str, Any]]:
-    return [{"chord": str(sym), "bars": 1} for sym in symbols if str(sym).strip()]
+def symbols_to_entries(
+    symbols: list[str],
+    *,
+    section_bars: int | None = None,
+) -> list[dict[str, Any]]:
+    cleaned = [str(sym).strip() for sym in symbols if str(sym).strip()]
+    if not cleaned:
+        return []
+    bars = int(section_bars or 0)
+    if bars <= 0:
+        return [{"chord": sym, "bars": 1} for sym in cleaned]
+    n = len(cleaned)
+    base = bars // n
+    rem = bars % n
+    if base <= 0:
+        return [{"chord": sym, "bars": 1} for sym in cleaned]
+    return [
+        {"chord": sym, "bars": base + (1 if i < rem else 0)}
+        for i, sym in enumerate(cleaned)
+    ]
+
+
+def progression_bar_count(entries: list[dict[str, Any]] | None) -> int:
+    total = 0
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            total += max(1, int(entry.get("bars") or 1))
+        except (TypeError, ValueError):
+            total += 1
+    return total
+
+
+# Reference vocabularies in C major / A minor — transposed with music_theory.
+# Keep Pop/Rock/Folk guided (triads + useful slashes). Jazz may add sevenths.
+_GUIDED_VOCAB: dict[str, dict[str, tuple[str, ...]]] = {
+    "pop": {
+        "C": ("C", "Dm", "Em", "F", "G", "Am", "G/B", "C/E", "F/C", "Am/G", "G7"),
+        "Am": ("Am", "Dm", "Em", "F", "G", "C", "E", "Am/G", "G/B", "E7"),
+    },
+    "rock": {
+        "C": ("C", "Dm", "Em", "F", "G", "Am", "Bb", "G/B", "F/C", "G7"),
+        "Am": ("Am", "C", "G", "F", "Em", "Dm", "E", "G/B", "Am/G"),
+    },
+    "jazz": {
+        "C": ("Cmaj7", "Dm7", "Em7", "Fmaj7", "G7", "Am7", "Bm7b5", "A7", "D7", "G/B", "C/E"),
+        "Am": ("Am7", "Bm7b5", "Cmaj7", "Dm7", "E7", "Fmaj7", "G7", "E7b9", "Am/G"),
+    },
+    "blues": {
+        "C": ("C7", "F7", "G7", "C", "F", "G", "Am7"),
+        "Am": ("Am7", "Dm7", "E7", "Am", "Dm", "E"),
+    },
+    "folk": {
+        "C": ("C", "Dm", "Em", "F", "G", "Am", "G/B", "C/E", "F/C"),
+        "Am": ("Am", "Dm", "Em", "F", "G", "C", "E", "Am/G", "G/B"),
+    },
+}
+
+_STYLE_TO_VOCAB: dict[str, str] = {
+    "pop": "pop",
+    "rock": "rock",
+    "jazz": "jazz",
+    "blues": "blues",
+    "folk": "folk",
+    "country": "folk",
+    "soul/r&b": "pop",
+    "hip-hop": "pop",
+    "electronic": "pop",
+    "classical": "folk",
+    "jewish": "folk",
+    "other": "pop",
+}
+
+
+def _vocab_family_for_style(style: str) -> str:
+    key = str(style or "Pop").strip().lower()
+    return _STYLE_TO_VOCAB.get(key, "pop")
+
+
+def guided_chord_vocabulary(
+    doc: dict[str, Any] | None,
+    section: dict[str, Any] | None = None,
+) -> list[str]:
+    """Guided editor choices for this song — not the full Custom Progression universe."""
+    g = (doc or {}).get("global") if isinstance(doc, dict) else {}
+    meta = (doc or {}).get("metadata") if isinstance(doc, dict) else {}
+    target_key = str((g or {}).get("original_key_center") or "C")
+    style = str((meta or {}).get("style") or (g or {}).get("progression_style") or "Pop")
+    family = _vocab_family_for_style(style)
+    ref_key = "Am" if key_is_minor(target_key) else "C"
+    recipes = _GUIDED_VOCAB.get(family) or _GUIDED_VOCAB["pop"]
+    symbols = list(recipes.get(ref_key) or recipes["C"])
+    _ = section  # reserved for later neighbor-aware narrowing
+    return _transpose_symbols(symbols, ref_key, target_key)
 
 
 def _neighbor_harmony_symbols(doc: dict[str, Any], section: dict[str, Any]) -> list[str]:
@@ -233,6 +326,8 @@ def _continuity_recipe(
     doc: dict[str, Any],
     section: dict[str, Any],
     target_key: str,
+    *,
+    section_bars: int = 8,
 ) -> dict[str, Any] | None:
     """When a prior section has harmony, offer one lift/arrival idea that answers it."""
     prior = _neighbor_harmony_symbols(doc, section)
@@ -262,7 +357,7 @@ def _continuity_recipe(
         return None
 
     symbols = _transpose_symbols(ref_chords, tonic_ref if not key_is_minor(target_key) else "Am", target_key)
-    entries = symbols_to_entries(symbols)
+    entries = symbols_to_entries(symbols, section_bars=section_bars)
     return {
         "id": f"continuity_{label.lower()}_{last}",
         "name": name,
@@ -280,6 +375,7 @@ def suggest_progressions(
     feeling: str,
     *,
     limit: int = 3,
+    more: bool = False,
 ) -> list[dict[str, Any]]:
     """Return progression ideas for a section, transposed to the Composition key.
 
@@ -292,7 +388,14 @@ def suggest_progressions(
     genre = str(meta.get("style") or "").strip()
     mood = str(meta.get("mood") or "").strip()
     feeling = str(feeling or default_feeling_for_section(section)).strip().lower()
+    if more:
+        limit = max(int(limit or 3), 6)
     recipes = list(_PROGRESSION_LIBRARY.get(feeling) or _PROGRESSION_LIBRARY["stable"])
+    if more:
+        for extra_feel in ("uplifting", "reflective", "tense", "energetic", "stable"):
+            if extra_feel == feeling:
+                continue
+            recipes.extend(list(_PROGRESSION_LIBRARY.get(extra_feel) or []))
 
     section_label = str(section.get("label") or "")
     if section_label == "Chorus" and feeling not in {"uplifting", "energetic"}:
@@ -308,8 +411,12 @@ def suggest_progressions(
 
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
+    try:
+        section_bars = max(1, int((section or {}).get("bars") or 8))
+    except (TypeError, ValueError):
+        section_bars = 8
 
-    continuity = _continuity_recipe(doc, section, target_key)
+    continuity = _continuity_recipe(doc, section, target_key, section_bars=section_bars)
     if continuity and limit > 1:
         out.append(continuity)
         seen.add(str(continuity.get("id") or ""))
@@ -326,7 +433,7 @@ def suggest_progressions(
         seen.add(rid)
         ref_key = _pick_ref_key(target_key, recipe_ref)
         symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
-        entries = symbols_to_entries(symbols)
+        entries = symbols_to_entries(symbols, section_bars=section_bars)
         why = str(recipe.get("why") or "")
         if genre or mood:
             context_bits = [b for b in (genre, mood) if b]
@@ -356,7 +463,7 @@ def suggest_progressions(
             recipe_ref = str(recipe.get("ref_key") or "C")
             ref_key = _pick_ref_key(target_key, recipe_ref)
             symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
-            entries = symbols_to_entries(symbols)
+            entries = symbols_to_entries(symbols, section_bars=section_bars)
             out.append(
                 {
                     "id": rid,

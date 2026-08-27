@@ -17,6 +17,7 @@ from composition_chord_suggestions import (
     SECTION_HARMONY_FEELINGS,
     coach_line_for_section,
     default_feeling_for_section,
+    guided_chord_vocabulary,
     suggest_progressions,
 )
 from composition_chord_refinements import (
@@ -2596,7 +2597,8 @@ def _render_chords_lane(
     pending_key = _pending_chord_key(sid)
     pending = st.session_state.get(pending_key)
 
-    rows = [list(_COMPOSER_QUICK_CHORDS[i : i + 5]) for i in range(0, len(_COMPOSER_QUICK_CHORDS), 5)]
+    vocab = guided_chord_vocabulary(doc, section) or list(_COMPOSER_QUICK_CHORDS)
+    rows = [list(vocab[i : i + 5]) for i in range(0, len(vocab), 5)]
     for ri, row in enumerate(rows):
         cols = st.columns(len(row))
         for ci, chord in enumerate(row):
@@ -3403,7 +3405,9 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
             else:
                 st.info("Start by choosing or creating harmony for this section.")
 
-            suggestions = suggest_progressions(doc, section, picked, limit=3)
+            more_key = f"composer_chords_more_{active_id}"
+            more = bool(session_state.get(more_key))
+            suggestions = suggest_progressions(doc, section, picked, limit=3, more=more)
 
             # Visible compare tray (works from Explore or Compare path)
             _render_compare_tray(session_state, doc, target_id, suggestions)
@@ -3415,6 +3419,17 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
                 _render_suggestion_card(
                     session_state, doc, target_id, sug, prefix=f"composer_explore_{active_id}_{i}"
                 )
+            more_c1, more_c2 = st.columns(2)
+            with more_c1:
+                if st.button(
+                    "More options" if not more else "Show fewer options",
+                    key=f"composer_chords_more_btn_{active_id}",
+                    use_container_width=True,
+                ):
+                    session_state[more_key] = not more
+                    st.rerun()
+            with more_c2:
+                st.caption("Additional choices stay in this song's style and key.")
 
             # D. Refine
             if entries:
