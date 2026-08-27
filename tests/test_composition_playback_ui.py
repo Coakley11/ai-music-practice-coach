@@ -279,5 +279,37 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("over the chords", hum)
 
 
+class TestCompositionStudioQaSmoke(unittest.TestCase):
+    def test_studio_page_exposes_qa_controls(self) -> None:
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:
+            self.skipTest("streamlit.testing.v1.AppTest unavailable")
+        from pathlib import Path
+
+        from composition_preview import composition_surface_label
+
+        harness = str(Path(__file__).resolve().parent / "composer_studio_qa_smoke_app.py")
+        at = AppTest.from_file(harness, default_timeout=90)
+        at.run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        labels = [str(b.label) for b in at.button]
+        self.assertTrue(any("Shape accepted melody" in lab for lab in labels), labels)
+        self.assertTrue(any("Refine accepted melody" in lab for lab in labels), labels)
+        self.assertTrue(any("Hear the chords" in lab for lab in labels), labels)
+        section_like = [lab for lab in labels if "Verse" in lab or "Chorus" in lab]
+        self.assertGreaterEqual(len(section_like), 2, labels)
+        play_like = [lab for lab in labels if "Play" in lab or "Preview" in lab]
+        self.assertTrue(play_like, labels)
+        joined = "\n".join(str(m.value) for m in at.markdown) + "\n".join(str(c.value) for c in at.caption)
+        self.assertIn("Composition surface", joined)
+        self.assertTrue(
+            "progression" in joined.lower() or "C (1 bar)" in joined or "chord" in joined.lower(),
+            joined[:800],
+        )
+        stamp = composition_surface_label()
+        self.assertIn("Composition surface", stamp)
+
+
 if __name__ == "__main__":
     unittest.main()
