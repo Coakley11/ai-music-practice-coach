@@ -151,6 +151,23 @@ COMPOSITION_ENERGY_LEVELS: tuple[str, ...] = (
     "Driving — high energy",
 )
 
+# Canonical melody origin — persisted on section.melody.source.
+# "edit" is a correction flag, not a competing melody authority.
+MELODY_SOURCES: tuple[str, ...] = ("ai", "recorded", "manual", "edit")
+_MELODY_SOURCE_ALIASES: dict[str, str] = {
+    "ai": "ai",
+    "generated": "ai",
+    "suggestion": "ai",
+    "recorded": "recorded",
+    "hum": "recorded",
+    "hum_transcription": "recorded",
+    "transcription": "recorded",
+    "manual": "manual",
+    "user": "manual",
+    "edit": "edit",
+    "edited": "edit",
+}
+
 SEED_TYPES: frozenset[str] = frozenset(
     {
         "style_intent",
@@ -305,6 +322,8 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
             },
             "phrases": [],
             "events": [],
+            "source": "",
+            "edited": False,
         },
         "lyrics": {
             "intent": {
@@ -612,13 +631,102 @@ def default_global() -> dict[str, Any]:
     }
 
 
-def default_metadata(*, style: str = "", mood: str = "", description: str = "") -> dict[str, Any]:
+def default_metadata(*, style: str = "", mood: str = "", description: str = "", energy: str = "") -> dict[str, Any]:
     return {
         "style": style or DEFAULT_PROGRESSION_STYLE,
         "mood": mood or "",
+        "energy": energy or "",
         "language": "en",
         "description": description or "",
     }
+
+
+def composition_song_brief(doc: dict[str, Any] | None) -> dict[str, Any]:
+    """Read-only song brief from the existing metadata/origin/global authority.
+
+    Does not introduce a second store. Theme maps to ``metadata.description``
+    (vision song idea); style maps to ``metadata.style``.
+    """
+    if not isinstance(doc, dict):
+        return {
+            "title": "",
+            "style": "",
+            "mood": "",
+            "energy": "",
+            "theme": "",
+            "references": "",
+            "key": "",
+            "key_label": "",
+            "tempo": DEFAULT_BPM,
+            "meter": DEFAULT_METER,
+            "instrumental": False,
+        }
+    meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    origin = doc.get("origin") if isinstance(doc.get("origin"), dict) else {}
+    payload = origin.get("seed_payload") if isinstance(origin.get("seed_payload"), dict) else {}
+    g = doc.get("global") if isinstance(doc.get("global"), dict) else {}
+    wf = doc.get("workflow") if isinstance(doc.get("workflow"), dict) else {}
+    key_token = str(g.get("original_key_center") or DEFAULT_KEY)
+    key_label = str(g.get("original_key_label") or "").strip() or composition_key_label_from_token(key_token)
+    return {
+        "title": str(doc.get("title") or "").strip(),
+        "style": str(meta.get("style") or payload.get("genre") or "").strip(),
+        "mood": str(meta.get("mood") or "").strip(),
+        "energy": str(meta.get("energy") or payload.get("energy") or "").strip(),
+        "theme": str(meta.get("description") or origin.get("seed_summary") or "").strip(),
+        "references": str(meta.get("references") or payload.get("references") or "").strip(),
+        "key": key_token,
+        "key_label": key_label,
+        "tempo": coerce_composition_bpm(g.get("bpm")),
+        "meter": coerce_composition_meter(str(g.get("time_signature") or DEFAULT_METER)),
+        "instrumental": bool(wf.get("skip_lyrics")),
+    }
+
+
+def apply_song_brief(
+    doc: dict[str, Any],
+    *,
+    title: str | None = None,
+    style: str | None = None,
+    mood: str | None = None,
+    energy: str | None = None,
+    theme: str | None = None,
+    references: str | None = None,
+) -> dict[str, Any]:
+    """Write brief fields into the existing metadata/origin authority only."""
+    meta = doc.setdefault("metadata", default_metadata())
+    if not isinstance(meta, dict):
+        meta = default_metadata()
+        doc["metadata"] = meta
+    origin = doc.setdefault("origin", {"seed_type": "vision", "seed_summary": "", "seed_payload": {}})
+    if not isinstance(origin, dict):
+        origin = {"seed_type": "vision", "seed_summary": "", "seed_payload": {}}
+        doc["origin"] = origin
+    payload = origin.setdefault("seed_payload", {})
+    if not isinstance(payload, dict):
+        payload = {}
+        origin["seed_payload"] = payload
+    if title is not None:
+        text = str(title).strip()
+        if text:
+            doc["title"] = text
+    if style is not None:
+        meta["style"] = str(style).strip()
+        payload["genre"] = meta["style"]
+    if mood is not None:
+        meta["mood"] = str(mood).strip()
+    if energy is not None:
+        meta["energy"] = str(energy).strip()
+        payload["energy"] = meta["energy"]
+    if theme is not None:
+        text = str(theme).strip()
+        meta["description"] = text
+        origin["seed_summary"] = text[:500]
+    if references is not None:
+        meta["references"] = str(references).strip()
+        payload["references"] = meta["references"]
+    touch_composition(doc)
+    return composition_song_brief(doc)
 
 
 def new_composition_document(
@@ -923,10 +1031,53 @@ def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
     return done, len(sections)
 
 
+def normalize_melody_source(raw: Any) -> str:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return ""
+    if text in MELODY_SOURCES:
+        return text
+    return _MELODY_SOURCE_ALIASES.get(text, "")
+
+
+def infer_melody_source_from_concept(concept: dict[str, Any] | None) -> str:
+    if not isinstance(concept, dict) or not concept:
+        return ""
+    cid = str(concept.get("id") or "").strip().lower()
+    mapped = normalize_melody_source(cid)
+    if mapped:
+        return mapped
+    name = str(concept.get("name") or "").strip().lower()
+    if "record" in name or "hum" in name or "transcri" in name:
+        return "recorded"
+    return "ai"
+
+
+def section_melody_source(sec: dict[str, Any] | None) -> str:
+    if not isinstance(sec, dict):
+        return ""
+    melody = _ensure_melody_block(sec)
+    return normalize_melody_source(melody.get("source"))
+
+
+def _set_melody_source(melody: dict[str, Any], source: str, *, mark_edited: bool = False) -> None:
+    resolved = normalize_melody_source(source)
+    existing = normalize_melody_source(melody.get("source"))
+    if mark_edited or resolved == "edit":
+        melody["edited"] = True
+        if not existing:
+            melody["source"] = resolved or "edit"
+        return
+    if resolved:
+        if existing and existing != resolved:
+            melody["edited"] = True
+        melody["source"] = resolved
+
+
 def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
     melody = sec.get("melody")
     if not isinstance(melody, dict):
-        melody = {"intent": {}, "phrases": [], "events": []}
+        melody = {"intent": {}, "phrases": [], "events": [], "source": "", "edited": False}
         sec["melody"] = melody
     intent = melody.get("intent")
     if not isinstance(intent, dict):
@@ -939,6 +1090,8 @@ def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
         melody["phrases"] = []
     if not isinstance(melody.get("events"), list):
         melody["events"] = []
+    melody.setdefault("source", "")
+    melody.setdefault("edited", False)
     return melody
 
 
@@ -1034,6 +1187,8 @@ def apply_melody_events(
     *,
     concept: dict[str, Any] | None = None,
     replace: bool = True,
+    source: str = "",
+    edited: bool = False,
 ) -> list[dict[str, Any]]:
     sec = section_by_id(doc, section_id)
     if not sec:
@@ -1044,6 +1199,8 @@ def apply_melody_events(
         melody["events"] = normalized
     else:
         melody["events"] = normalize_melody_events(list(melody.get("events") or []) + normalized)
+    resolved = normalize_melody_source(source) or infer_melody_source_from_concept(concept)
+    _set_melody_source(melody, resolved, mark_edited=edited)
     if concept:
         phrase = {
             "id": str(uuid.uuid4()),
@@ -1098,6 +1255,7 @@ def apply_melody_concept(
     melody.setdefault("phrases", []).append(phrase)
     if events:
         melody["events"] = events
+    _set_melody_source(melody, infer_melody_source_from_concept(concept) or "ai")
     touch_composition(doc)
     return phrase
 
@@ -1122,6 +1280,8 @@ def add_melody_phrase(
         "notes": str(notes or "").strip(),
     }
     melody.setdefault("phrases", []).append(phrase)
+    if not normalize_melody_source(melody.get("source")):
+        melody["source"] = "manual"
     touch_composition(doc)
     return phrase
 

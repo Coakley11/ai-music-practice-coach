@@ -250,6 +250,76 @@ class TestCompositionDocument(unittest.TestCase):
         self.assertTrue(break_chord_link(doc, str(verse2["id"])))
         self.assertFalse((verse2.get("chord_link") or {}).get("linked"))
 
+    def test_song_brief_reads_existing_metadata_authority(self) -> None:
+        from composition_document import apply_song_brief, composition_song_brief
+
+        doc = bootstrap_from_vision(
+            genre="Jazz",
+            song_idea="A reflective late-night tune.",
+            mood="Reflective",
+            energy="Ballad — slow and intimate",
+            title="After Hours",
+            key="Bb major",
+            bpm=72,
+            meter="4/4",
+        )
+        brief = composition_song_brief(doc)
+        self.assertEqual(brief["style"], "Jazz")
+        self.assertEqual(brief["mood"], "Reflective")
+        self.assertEqual(brief["energy"], "Ballad — slow and intimate")
+        self.assertEqual(brief["theme"], "A reflective late-night tune.")
+        self.assertEqual(brief["title"], "After Hours")
+        self.assertEqual(brief["tempo"], 72)
+        self.assertNotIn("song_brief", doc)
+        apply_song_brief(doc, mood="Warm / hopeful", theme="Finding home after a long trip.")
+        updated = composition_song_brief(doc)
+        self.assertEqual(updated["mood"], "Warm / hopeful")
+        self.assertEqual(updated["theme"], "Finding home after a long trip.")
+        self.assertEqual(doc["metadata"]["mood"], "Warm / hopeful")
+        self.assertEqual(doc["metadata"]["description"], "Finding home after a long trip.")
+        self.assertEqual(doc["metadata"]["style"], "Jazz")
+
+    def test_melody_source_ai_recorded_manual(self) -> None:
+        from composition_document import (
+            add_melody_phrase,
+            apply_melody_events,
+            section_melody_source,
+        )
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Hook test.", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        sid = str(ordered_sections(doc)[0]["id"])
+        apply_melody_events(
+            doc,
+            sid,
+            [{"pitch": "C4", "duration_beats": 1.0, "beat": 0.0, "measure": 1}],
+            concept={"id": "hook_a", "name": "Lift"},
+            source="ai",
+        )
+        sec = ordered_sections(doc)[0]
+        self.assertEqual(section_melody_source(sec), "ai")
+        apply_melody_events(
+            doc,
+            sid,
+            [{"pitch": "E4", "duration_beats": 2.0, "beat": 0.0, "measure": 1}],
+            concept={"id": "hum_transcription", "name": "Recorded melody"},
+            source="recorded",
+        )
+        self.assertEqual(section_melody_source(ordered_sections(doc)[0]), "recorded")
+        apply_melody_events(
+            doc,
+            sid,
+            [{"pitch": "G4", "duration_beats": 1.0, "beat": 0.0, "measure": 1}],
+            source="edit",
+            edited=True,
+        )
+        melody = ordered_sections(doc)[0]["melody"]
+        self.assertEqual(section_melody_source(ordered_sections(doc)[0]), "recorded")
+        self.assertTrue(melody.get("edited"))
+        chorus_id = str(ordered_sections(doc)[1]["id"])
+        add_melody_phrase(doc, chorus_id, label="Hummed contour", motif="rise then fall")
+        self.assertEqual(section_melody_source(ordered_sections(doc)[1]), "manual")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ from composition_document import (
 from composition_session_state import (
     COMPOSER_ACTIVE_KEY,
     COMPOSER_ACTIVE_SECTION_KEY,
+    COMPOSER_ARRANGEMENT_PREVIEW_KEY,
     COMPOSER_FOCUS_LANE_KEY,
     COMPOSER_LIBRARY_KEY,
     COMPOSER_NEEDS_SEED_KEY,
@@ -58,6 +59,7 @@ def default_composition_workspace_state() -> dict[str, Any]:
         "active_section_id": "",
         "focus_lane": "chords",
         "workflow_phase": "vision",
+        "arrangement_preview_style": "",
         "updated_at": _utc_now_iso(),
     }
 
@@ -92,6 +94,7 @@ def upgrade_composition_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
     else:
         out["workflow_phase"] = "vision"
     out["active_section_id"] = str(raw.get("active_section_id") or "").strip()
+    out["arrangement_preview_style"] = str(raw.get("arrangement_preview_style") or "").strip()
     out["updated_at"] = str(raw.get("updated_at") or "").strip() or _utc_now_iso()
     return out
 
@@ -167,6 +170,10 @@ def gather_composition_workspace_from_session(session: dict[str, Any]) -> dict[s
         base.get("active_document") if isinstance(base.get("active_document"), dict) else None,
         str(session.get(COMPOSER_ACTIVE_SECTION_KEY) or base.get("active_section_id") or ""),
     )
+    preview_style = str(
+        session.get(COMPOSER_ARRANGEMENT_PREVIEW_KEY) or base.get("arrangement_preview_style") or ""
+    ).strip()
+    base["arrangement_preview_style"] = preview_style
     base["updated_at"] = _utc_now_iso()
     base["schema_version"] = SCHEMA_VERSION
     return base
@@ -240,6 +247,7 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
     elif overwrite:
         session.setdefault(COMPOSER_LIBRARY_KEY, {})
 
+    session[COMPOSER_ARRANGEMENT_PREVIEW_KEY] = str(canonical.get("arrangement_preview_style") or "").strip()
     session.pop(COMPOSER_PREVIEW_WAV_KEY, None)
     session.pop(COMPOSER_PREVIEW_SIG_KEY, None)
     session.pop(COMPOSER_SNAPSHOT_STAMP_KEY, None)

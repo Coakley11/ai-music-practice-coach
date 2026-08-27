@@ -11,6 +11,17 @@ from typing import Any
 from composition_document import chords_for_playback, playback_globals, section_by_id, section_melody_events
 
 
+def resolve_preview_groove(doc: dict[str, Any], arrangement_style: str | None = None) -> str:
+    """Backing groove for preview. Override never writes back to the document."""
+    pg = playback_globals(doc)
+    override = str(arrangement_style or "").strip()
+    if not override:
+        return str(pg.get("groove") or "")
+    if "groove" in override.lower():
+        return override
+    return f"{override} groove"
+
+
 def preview_signature(
     doc: dict[str, Any],
     *,
@@ -20,6 +31,7 @@ def preview_signature(
     chord_override: list[str] | None = None,
     include_melody: bool = False,
     melody_override: list[dict[str, Any]] | None = None,
+    arrangement_style: str | None = None,
 ) -> tuple:
     pg = playback_globals(doc)
     if chord_override is not None:
@@ -41,7 +53,7 @@ def preview_signature(
         pg["bpm"],
         pg["time_signature"],
         pg["style"],
-        pg["groove"],
+        resolve_preview_groove(doc, arrangement_style),
         int(loops),
         bool(include_melody),
         mel_sig,
@@ -193,6 +205,7 @@ def generate_preview_wav(
     chord_override: list[str] | None = None,
     include_melody: bool = False,
     melody_override: list[dict[str, Any]] | None = None,
+    arrangement_style: str | None = None,
 ) -> bytes | None:
     if chord_override is not None:
         chords = [str(c) for c in chord_override if str(c).strip()]
@@ -207,7 +220,7 @@ def generate_preview_wav(
         chords,
         bpm=pg["bpm"],
         loops=max(1, int(loops)),
-        style=pg["groove"],
+        style=resolve_preview_groove(doc, arrangement_style),
         level=level,
         song_title=str(doc.get("title") or "Composition"),
         song_artist="",

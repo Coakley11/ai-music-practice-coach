@@ -10,21 +10,26 @@ from unittest.mock import MagicMock
 from composition_document import (
     apply_melody_events,
     apply_section_chords,
+    apply_song_brief,
     apply_structure_template,
     bootstrap_from_vision,
+    composition_song_brief,
     ordered_sections,
     parse_chord_paste,
     section_melody_events,
+    section_melody_source,
     set_workflow_phase,
 )
-from composition_preview import generate_preview_wav, set_composer_preview
+from composition_preview import generate_preview_wav, resolve_preview_groove, set_composer_preview
 from composition_session_state import (
     COMPOSER_ACTIVE_KEY,
     COMPOSER_ACTIVE_SECTION_KEY,
+    COMPOSER_ARRANGEMENT_PREVIEW_KEY,
     COMPOSER_FOCUS_LANE_KEY,
     COMPOSER_LIBRARY_KEY,
     COMPOSER_NEEDS_SEED_KEY,
     COMPOSER_PREVIEW_WAV_KEY,
+    init_composer_page_state,
     set_active_document,
 )
 from composition_workspace_state_persistence import (
@@ -686,6 +691,130 @@ class TestCompositionNavRestoreShellAppTest(unittest.TestCase):
         self.assertFalse(at.exception, msg=repr(at.exception))
         self.assertIn("studio_page", at.session_state)
         self.assertEqual(at.session_state["studio_page"], "composer")
+
+
+class TestCompositionSongBriefAndMelodySourceRestore(unittest.TestCase):
+    def test_song_brief_and_melody_source_survive_reboot(self) -> None:
+        doc, chorus_id = _jewish_draft()
+        apply_song_brief(
+            doc,
+            mood="Devotional / reflective",
+            energy="Ballad — slow and intimate",
+            theme="Nigun draft under the lamps",
+        )
+        verse = ordered_sections(doc)[0]
+        apply_melody_events(
+            doc,
+            str(verse["id"]),
+            [
+                {"pitch": "D4", "midi": 62, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
+                {"pitch": "F4", "midi": 65, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+            ],
+            concept={"id": "hum_transcription", "name": "Recorded melody"},
+            source="recorded",
+            replace=True,
+        )
+        ss: dict = {
+            "studio_page": "composer",
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_ACTIVE_SECTION_KEY: chorus_id,
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            COMPOSER_ARRANGEMENT_PREVIEW_KEY: "Jazz",
+        }
+        sync_composition_workspace_before_persist(ss)
+        blob = build_music_disk_state(_FakeSt(ss))
+        cws = blob[COMPOSITION_WORKSPACE_STATE_KEY]
+        self.assertEqual(cws.get("arrangement_preview_style"), "Jazz")
+        fresh = _FakeSt({"studio_page": "practice"})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        prepare_composition_workspace_for_render(fresh.session_state)
+        restored = fresh.session_state[COMPOSER_ACTIVE_KEY]
+        brief = composition_song_brief(restored)
+        self.assertEqual(brief["style"], "Jewish")
+        self.assertEqual(brief["mood"], "Devotional / reflective")
+        self.assertEqual(brief["energy"], "Ballad — slow and intimate")
+        self.assertIn("Nigun", brief["theme"])
+        self.assertEqual(brief["tempo"], 118)
+        self.assertEqual(brief["meter"], "6/8")
+        rverse = ordered_sections(restored)[0]
+        self.assertEqual(section_melody_source(rverse), "recorded")
+        self.assertEqual(fresh.session_state.get(COMPOSER_ARRANGEMENT_PREVIEW_KEY), "Jazz")
+        # Arrangement preference must not rewrite canonical style/chords/melody.
+        self.assertEqual((restored.get("metadata") or {}).get("style"), "Jewish")
+        self.assertEqual((rverse.get("chords") or [])[0].get("chord"), "Dm")
+        self.assertEqual(section_melody_events(rverse)[0].get("pitch"), "D4")
+
+    def test_catalog_defaults_do_not_seize_composition_draft(self) -> None:
+        doc, chorus_id = _jewish_draft()
+        ss: dict = {
+            "studio_page": "composer",
+            "studio_nav_state": {"studio_page": "composer"},
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_ACTIVE_SECTION_KEY: chorus_id,
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            COMPOSER_NEEDS_SEED_KEY: False,
+            "active_catalog_pick_key": "Pop::Say — John Mayer",
+            "song": "Say",
+        }
+        sync_composition_workspace_before_persist(ss, reason="composer_edit")
+        blob = build_music_disk_state(_FakeSt(ss))
+        fresh = _FakeSt(
+            {
+                "studio_page": "practice",
+                "active_catalog_pick_key": "Pop::Say — John Mayer",
+                "song": "Say",
+            }
+        )
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        prepare_composition_workspace_for_render(fresh.session_state)
+        init_composer_page_state(fresh.session_state)
+        restored = fresh.session_state.get(COMPOSER_ACTIVE_KEY)
+        self.assertIsInstance(restored, dict)
+        self.assertEqual(restored.get("title"), "Test Song")
+        self.assertNotEqual(restored.get("title"), "Say")
+        self.assertEqual(fresh.session_state.get("studio_page"), "composer")
+        self.assertFalse(fresh.session_state.get(COMPOSER_NEEDS_SEED_KEY))
+        self.assertEqual(composition_song_brief(restored)["style"], "Jewish")
+
+    def test_workspace_blob_without_projection_does_not_open_welcome(self) -> None:
+        doc, _ = _jewish_draft()
+        ss = {COMPOSITION_WORKSPACE_STATE_KEY: {"active_document": doc, "needs_seed": False}}
+        init_composer_page_state(ss)
+        self.assertFalse(ss.get(COMPOSER_NEEDS_SEED_KEY))
+
+    def test_arrangement_preview_does_not_mutate_document(self) -> None:
+        doc, chorus_id = _jewish_draft()
+        before_style = (doc.get("metadata") or {}).get("style")
+        before_chords = copy.deepcopy(ordered_sections(doc)[0].get("chords") or [])
+        before_melody = copy.deepcopy(section_melody_events(ordered_sections(doc)[0]))
+        groove = resolve_preview_groove(doc, "Jazz")
+        self.assertIn("Jazz", groove)
+        self.assertEqual((doc.get("metadata") or {}).get("style"), before_style)
+        self.assertEqual(ordered_sections(doc)[0].get("chords") or [], before_chords)
+        self.assertEqual(section_melody_events(ordered_sections(doc)[0]), before_melody)
+        wav = generate_preview_wav(
+            doc,
+            section_id=chorus_id,
+            include_melody=False,
+            loops=1,
+            arrangement_style="Jazz",
+        )
+        if wav:
+            self.assertTrue(wav)
+        self.assertEqual((doc.get("metadata") or {}).get("style"), before_style)
+        self.assertEqual(ordered_sections(doc)[0].get("chords") or [], before_chords)
 
 
 class TestCompositionWelcomeStillRenders(unittest.TestCase):

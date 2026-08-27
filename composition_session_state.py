@@ -15,6 +15,7 @@ COMPOSER_FOCUS_LANE_KEY = "composer_focus_lane"
 COMPOSER_PREVIEW_WAV_KEY = "composer_preview_wav"
 COMPOSER_PREVIEW_SIG_KEY = "composer_preview_signature"
 COMPOSER_SNAPSHOT_STAMP_KEY = "composer_snapshot_stamp"
+COMPOSER_ARRANGEMENT_PREVIEW_KEY = "composer_arrangement_preview_style"
 
 COMPOSER_WIDGET_SCALAR_KEYS: frozenset[str] = frozenset(
     {
@@ -26,6 +27,7 @@ COMPOSER_WIDGET_SCALAR_KEYS: frozenset[str] = frozenset(
         COMPOSER_PREVIEW_WAV_KEY,
         COMPOSER_PREVIEW_SIG_KEY,
         COMPOSER_SNAPSHOT_STAMP_KEY,
+        COMPOSER_ARRANGEMENT_PREVIEW_KEY,
     }
 )
 
@@ -36,7 +38,13 @@ def init_composer_page_state(session_state: dict) -> None:
     session_state.setdefault(COMPOSER_LIBRARY_KEY, {})
     session_state.setdefault(COMPOSER_FOCUS_LANE_KEY, "chords")
     if COMPOSER_ACTIVE_KEY not in session_state:
-        session_state[COMPOSER_NEEDS_SEED_KEY] = True
+        # Durable workspace blob may already hold the draft before projection.
+        # Do not treat that as a blank welcome / catalog takeover.
+        meta = session_state.get("composition_workspace_state")
+        if isinstance(meta, dict) and isinstance(meta.get("active_document"), dict):
+            session_state[COMPOSER_NEEDS_SEED_KEY] = False
+        else:
+            session_state[COMPOSER_NEEDS_SEED_KEY] = True
 
 
 def get_active_document(session_state: dict) -> dict[str, Any] | None:

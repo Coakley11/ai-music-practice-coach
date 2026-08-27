@@ -2143,6 +2143,7 @@ def _render_hum_sing_panel(
                             "contour": "Captured from your recording — check the staff.",
                         },
                         replace=True,
+                        source="recorded",
                     )
                     _clear_hum_proposal(session_state, active_id)
                     invalidate_composer_preview(session_state)
@@ -2228,7 +2229,9 @@ def _render_melody_concept_card(
     with p2:
         if st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
             if events:
-                apply_melody_events(doc, section_id, events, concept=concept, replace=True)
+                apply_melody_events(
+                    doc, section_id, events, concept=concept, replace=True, source="ai"
+                )
             else:
                 apply_melody_concept(doc, section_id, concept)
             invalidate_composer_preview(session_state)
