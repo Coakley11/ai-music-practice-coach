@@ -1329,7 +1329,10 @@ def _entry_jam_context_from_owner_snapshot(
     from songs.playback_defaults import normalize_groove_label
 
     rhythm_groove = _entry_jam_rhythm_groove_label(style, str(snap.groove or ""))
-    backing_style = normalize_groove_label(style or "Pop groove")
+    # Never fall back to catalog Pop when the sealed Style Jam has an explicit style.
+    backing_style = normalize_groove_label(style) if style else ""
+    if not backing_style and not rhythm_groove:
+        backing_style = normalize_groove_label(style or "Jazz Swing")
     groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""), difficulty=difficulty)
     bpm = int(snap.bpm or 110)
     mood = str(snap.mood or "Mellow").strip()
@@ -1512,7 +1515,9 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         style,
         str(session.get("improv_groove") or groove if entry_mode == "Jam Session Generator" else session.get("improv_groove") or ""),
     )
-    backing_style = normalize_groove_label(style or "Pop groove")
+    backing_style = normalize_groove_label(style) if style else ""
+    if not backing_style and not rhythm_groove:
+        backing_style = normalize_groove_label(style or "Jazz Swing")
     meter = str(
         session.get("improv_style_meter") or session.get("backing_time_signature") or "4/4"
     ).strip()

@@ -90,7 +90,27 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
 
 
 def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
-    """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam."""
+    """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam.
+
+    Leftover Creative-tab labels must not steal Practice Key once Backing is
+    showing a generated Style Jam / Jam Session. That leftover Motif/Missions
+    tab was blocking Jam Backing key changes and breaking handoff seal.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+                return False
+        except ImportError:
+            pass
+    # Mid-open Style Jam / Jam Session handoff: leftover Motif/Missions tab
+    # must not steal PK while seal_backing_handoff_snapshot_for_creative_open runs
+    # (studio_page is still "creative" at that moment).
+    if str(session.get("_backing_explicit_handoff_source") or "").strip() == "entry_jam":
+        return False
     tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
     if tab in {
         "Missions",

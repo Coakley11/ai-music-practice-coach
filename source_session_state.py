@@ -450,9 +450,31 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         if src == "song_improv" and bound.startswith("custom::"):
             return True
         return False
-    # Creative: SBI tab on Custom progression preview.
+    # Creative: Custom SBI preview owns the sidebar only on the SBI surface.
+    # Missions / Motif / Live Coach / Harmony must not keep Custom overlay PK
+    # (Eb) merely because the previous tab was Custom SBI — unless Custom is
+    # the Global Active owner.
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    sbi_surface = tab in {"", "Entry & Jam"} and entry in {
+        "",
+        "Song-Based Improvisation",
+    }
     if get_sbi_preview_source(session) == "Custom progression":
-        return True
+        if sbi_surface:
+            return True
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if custom_owns_active_song_material(session):
+                return True
+        except ImportError:
+            pass
+        return False
     if src == "custom_progression":
         return True
     if src == "song_improv" and bound.startswith("custom::"):

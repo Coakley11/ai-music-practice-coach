@@ -902,10 +902,14 @@ def _tab_entry_modes(
                 _nav1, _ = st.columns([1.2, 3.8])
                 with _nav1:
                     st.markdown('<div class="ui-creative-quick-actions">', unsafe_allow_html=True)
-                    # Label must not be bare "Custom" — harness/nav collisions used to
-                    # leave Creative → SBI for the top-level Custom page.
+                    # Label must keep "Open Custom Lab" (harness/nav collisions used
+                    # to treat a bare "Custom" as the top-level Custom page). Icon
+                    # is presentation-only from STUDIO_PAGE_META.
+                    from app_ui import STUDIO_PAGE_META
+
+                    _custom_icon = str(STUDIO_PAGE_META.get("custom", {}).get("icon") or "✏️")
                     if st.button(
-                        "Open Custom Lab",
+                        f"{_custom_icon} Open Custom Lab",
                         key="improv_go_custom",
                         type="secondary",
                     ):
@@ -1311,6 +1315,14 @@ def _tab_motif(
         from song_creative_focus import hydrate_creative_pages_from_song_focus
 
         hydrate_creative_pages_from_song_focus(session_state, tab="Phrase / Motif")
+    except ImportError:
+        pass
+    try:
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+
+        # Phrase/Motif must restore the active song snapshot — leftover Style Jam
+        # C/D keys and Custom SBI overlay must not own this tab.
+        ensure_missions_parent_practice_key_hydrated(session_state)
     except ImportError:
         pass
     st.markdown(creative_tool_heading_markdown("Phrase / Motif"))

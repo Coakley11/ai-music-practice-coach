@@ -1235,6 +1235,24 @@ def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
     return sync_motif_midi(updated)
 
 
+def _invert_around_first_note(
+    notes: list[str],
+    source_midis: list[int],
+    *,
+    key_center: str,
+) -> tuple[list[str], list[int]]:
+    """Invert intervals around the first MIDI pitch (canonical motif pivot).
+
+    ``out[i] = 2 * pivot - in[i]``. Note names are re-spelled in ``key_center``.
+    """
+    if not notes or not source_midis:
+        return list(notes), list(source_midis)
+    pivot = int(source_midis[0])
+    out_midis = [2 * pivot - int(m) for m in source_midis[: len(notes)]]
+    out_notes = [_note_from_midi(m, key_center) for m in out_midis]
+    return out_notes, out_midis
+
+
 def transform_motif(
     motif: dict[str, Any],
     operation: str,
@@ -1272,8 +1290,14 @@ def transform_motif(
             source_midis=source_midis,
         )
     elif operation == "invert":
-        out_notes = list(reversed(notes))
-        out_midis = list(reversed(source_midis))
+        # Melodic inversion around the first note (documented pivot).
+        # Interval from pivot to each later pitch is negated; order, count,
+        # and rhythm stay the same. This is not a retrograde (reverse).
+        out_notes, out_midis = _invert_around_first_note(
+            notes,
+            source_midis,
+            key_center=key_center,
+        )
     elif operation in ("rhythmic", "change_rhythm"):
         return cycle_motif_rhythm(motif)
 
@@ -1332,7 +1356,11 @@ def transform_motif(
                 source_midis=base_midis,
             )
         elif operation == "invert":
-            updated["base_motif_notes"] = list(reversed(base))
+            updated["base_motif_notes"], _ = _invert_around_first_note(
+                base,
+                base_midis,
+                key_center=key_center,
+            )
     return sync_motif_midi(updated)
 
 

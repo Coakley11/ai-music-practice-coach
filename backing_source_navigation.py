@@ -1737,6 +1737,26 @@ def commit_active_catalog_source_before_backing_hydrate(
 
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    # One-click Return to Creative: consume any in-flight return before this
+    # hydrate can reclaim Backing (the first rerun used to stay on Backing).
+    # Only skip the rest of hydrate after an actual return consume — an unset
+    # studio_page must still restore_last / apply intent.
+    try:
+        from music_workflow_pending_creative_return import (
+            PENDING_CREATIVE_RETURN_KEY,
+            consume_pending_creative_return_handoff,
+        )
+
+        if isinstance(session.get(PENDING_CREATIVE_RETURN_KEY), dict):
+            consume_pending_creative_return_handoff(session, st=st_like)
+            if str(session.get("studio_page") or "").strip().lower() != "backing":
+                return
+    except ImportError:
+        pass
+    if session.get(CREATIVE_RESTORE_FROM_BACKING_KEY) and str(
+        session.get("studio_page") or ""
+    ).strip().lower() == "creative":
+        return
     # Explicit "Use catalog song backing" — next hydrates must seal Catalog ownership.
     # Backing runs hydrate twice per paint; keep the force for 2 consumes so the
     # second pass cannot restore_last a stale custom_progression ctx (H9).

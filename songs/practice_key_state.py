@@ -188,6 +188,19 @@ def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
         and not (ctx_src == "song_improv" and bound.startswith("custom::"))
     ):
         return ""
+    # Leftover Custom SBI preview on Missions / Motif must not steal PK writes
+    # from the catalog-owned Creative tab (same surface rule as sidebar owner).
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if (
+            custom_preview
+            and page == "creative"
+            and not custom_sbi_owns_sidebar_practice_key(session)
+        ):
+            return ""
+    except ImportError:
+        pass
     # Songs / Practice / picker must write the Global Active catalog pick — leftover
     # SBI Custom entry/source flags must not redirect catalog Practice Key writes.
     sbi_surface = page in {"creative", "backing"} or (
