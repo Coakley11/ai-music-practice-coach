@@ -81,22 +81,37 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
 
     def test_02_songs_custom_refresh_restore_stays_custom(self) -> None:
         from songs.music_source import (
+            EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY,
             SONG_PICKER_SOURCE_CATALOG,
             SONG_PICKER_SOURCE_CUSTOM,
+            SONG_PICKER_USER_TAB_AT_KEY,
+            SONG_PICKER_USER_TAB_KEY,
             SOURCE_CUSTOM,
             ensure_active_music_source_from_canonical,
             reconcile_music_picker_source_widget,
         )
 
         session = self._custom_session()
-        # Refresh may restore a Catalog tab while the blob still says Custom owns.
-        # Ownership stays Custom; the radio is tab state and must stay Catalog.
+        # Persist remount of Catalog after Set as Active is stale — remount Custom.
+        # Ownership stays Custom either way.
         session["song_picker_active_source"] = SONG_PICKER_SOURCE_CATALOG
         ensure_active_music_source_from_canonical(session)
         reconcile_music_picker_source_widget(session)
         self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
-        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CUSTOM)
         self.assertEqual(session["cpl_active_progression"]["name"], "Trial Song")
+
+        # A genuine Catalog-tab stamp after activation is preserved on refresh.
+        session = self._custom_session()
+        session["song_picker_active_source"] = SONG_PICKER_SOURCE_CATALOG
+        session[SONG_PICKER_USER_TAB_KEY] = SONG_PICKER_SOURCE_CATALOG
+        session[SONG_PICKER_USER_TAB_AT_KEY] = float(
+            session.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY) or 0
+        ) + 1
+        ensure_active_music_source_from_canonical(session)
+        reconcile_music_picker_source_widget(session)
+        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
 
     def test_03_creative_sbi_custom_rerun_stays_custom(self) -> None:
         from studio_page_state import flush_pending_improv_song_source, resolve_improv_song_source
@@ -179,7 +194,7 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
         self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
 
     def test_07b_lagging_catalog_radio_after_custom_activate_heals(self) -> None:
-        """After Set-as-Active, a Catalog radio is tab view — not Country Roads reclaim (E5)."""
+        """After Set-as-Active, a stale Catalog radio remounts Custom — not Country Roads (E5)."""
         from songs.music_source import (
             LAST_RECONCILED_SONG_PICKER_SOURCE_KEY,
             PENDING_CATALOG_FROM_PICKER_KEY,
@@ -195,7 +210,7 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
         session["song_picker_active_source"] = SONG_PICKER_SOURCE_CATALOG
         reconcile_music_picker_source_widget(session)
         self.assertFalse(session.get(PENDING_CATALOG_FROM_PICKER_KEY))
-        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CUSTOM)
         self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
         self.assertTrue(custom_progression_is_active(session))
 

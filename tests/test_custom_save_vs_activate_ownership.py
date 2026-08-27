@@ -25,6 +25,7 @@ from songs.music_source import (
     SONG_PICKER_PRESENTED_SOURCE_KEY,
     SONG_PICKER_SOURCE_CATALOG,
     SONG_PICKER_SOURCE_CUSTOM,
+    SONG_PICKER_USER_TAB_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
     USER_CATALOG_SOURCE_CHOICE_KEY,
@@ -33,6 +34,7 @@ from songs.music_source import (
     custom_progression_is_active,
     music_picker_shows_custom_hub,
     on_song_picker_source_change,
+    prepare_songs_picker_entry,
     promote_last_custom_for_picker_entry,
     reconcile_music_picker_source_widget,
     reconcile_picker_music_source,
@@ -212,6 +214,77 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
         self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
         self.assertIn("Trial Song", str(session.get("song") or ""))
+
+    def test_creative_to_songs_remounts_custom_tab_without_catalog_default(self) -> None:
+        """Creative → Songs after Set as Active must remount Custom, not Catalog default."""
+        session = _shape_catalog_session(practice_key="G")
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                _st(session),
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        self.assertEqual(session.get(SONG_PICKER_USER_TAB_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        # Persist / Streamlit remount restores Catalog radio + presented Catalog.
+        session["studio_page"] = "creative"
+        session["_script_run_seq"] = 20
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        session[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        navigate_studio_page(session, "picker")
+        _refresh(session)
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertTrue(music_picker_shows_custom_hub(session))
+        self.assertIn("Trial Song", str(session.get("song") or ""))
+
+        # Widget remount on_change must not keep the Catalog default.
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        on_song_picker_source_change(
+            _st(session),
+            song_picker_catalog=CATALOG,
+            invalidate_backing=lambda *_a, **_k: None,
+        )
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
+
+        # After Custom actually presented, a later Catalog click stays on Catalog.
+        session["_script_run_seq"] = 25
+        session.pop("_songs_expect_custom_radio", None)
+        session[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        session["_last_reconciled_song_picker_source"] = SONG_PICKER_SOURCE_CUSTOM
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        on_song_picker_source_change(
+            _st(session),
+            song_picker_catalog=CATALOG,
+            invalidate_backing=lambda *_a, **_k: None,
+        )
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        self.assertFalse(music_picker_shows_custom_hub(session))
+
+        session["studio_page"] = "creative"
+        session["_script_run_seq"] = 30
+        navigate_studio_page(session, "picker")
+        _refresh(session)
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+
+    def test_persist_catalog_radio_after_set_as_active_heals_without_user_tab(self) -> None:
+        session = _shape_catalog_session(practice_key="G")
+        with patch("songs.state.persist_music_local_state"):
+            commit_custom_active_song(
+                _st(session),
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        session["studio_page"] = "picker"
+        session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        session[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        prepare_songs_picker_entry(session)
+        _refresh(session)
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
 
     def test_hard_reboot_does_not_activate_merely_saved_custom(self) -> None:
         session = _shape_catalog_session(practice_key="Bm")
