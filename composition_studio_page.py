@@ -126,6 +126,7 @@ from composition_melody_notation import (
 )
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
+    COMPOSER_ARRANGEMENT_PREVIEW_KEY,
     COMPOSER_FOCUS_LANE_KEY,
     COMPOSER_NEEDS_SEED_KEY,
     COMPOSER_PREVIEW_SIG_KEY,
@@ -564,9 +565,9 @@ def _pending_chord_key(section_id: str) -> str:
 
 
 def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
+    """Persist the working draft. Does not add the song to the Composition Library."""
     touch_composition(doc)
     set_active_document(session_state, doc)
-    save_document_to_library(session_state, doc)
     try:
         from composition_workspace_state_persistence import checkpoint_composition_workspace
 
@@ -752,6 +753,26 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
                             _composer_navigate(session_state, doc, "lyrics", section_id=str(sec.get("id") or ""))
 
         st.markdown("---")
+        st.markdown("**Playback**")
+        playback_mode = st.radio(
+            "Playback",
+            ["Instrumental melody", "Vocal / sing lyrics"],
+            horizontal=True,
+            key="composer_review_playback_mode",
+            label_visibility="collapsed",
+        )
+        arrangement = str(session_state.get(COMPOSER_ARRANGEMENT_PREVIEW_KEY) or "").strip()
+        with st.expander("Advanced playback settings", expanded=False):
+            st.caption(
+                f"Original composition style: **{(doc.get('metadata') or {}).get('style') or 'Pop'}**. "
+                "Previewing another style changes backing only — not chords, melody, or lyrics."
+            )
+            style_choices = ["Original", "Pop", "Jazz", "Rock", "Funk"]
+            current = arrangement if arrangement in style_choices else "Original"
+            picked = st.selectbox("Preview arrangement", style_choices, index=style_choices.index(current) if current in style_choices else 0, key="composer_review_arrangement")
+            session_state[COMPOSER_ARRANGEMENT_PREVIEW_KEY] = "" if picked == "Original" else picked
+            arrangement = str(session_state.get(COMPOSER_ARRANGEMENT_PREVIEW_KEY) or "").strip()
+
         st.markdown("**Full song playthrough**")
         st.caption("Hear the entire composition in order — your first listen as a finished piece.")
         p1, p2, p3 = st.columns([2, 2, 3])
@@ -767,11 +788,29 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
                 use_container_width=True,
             )
         if play_full:
-            if not chords_for_playback(doc, scope="song"):
+            if playback_mode.startswith("Vocal"):
+                from composition_vocal_render import build_vocal_render_plan, render_vocal_audio
+
+                plan = build_vocal_render_plan(doc, scope="song")
+                result = render_vocal_audio(plan)
+                st.info(str(result.get("message") or "Sung lyrics are not available yet."))
+            elif not chords_for_playback(doc, scope="song"):
                 st.warning("Add chords to at least one section before playing.")
             else:
-                sig = preview_signature(doc, scope="song", loops=loops)
-                wav = generate_preview_wav(doc, scope="song", loops=loops)
+                sig = preview_signature(
+                    doc,
+                    scope="song",
+                    loops=loops,
+                    include_melody=True,
+                    arrangement_style=arrangement or None,
+                )
+                wav = generate_preview_wav(
+                    doc,
+                    scope="song",
+                    loops=loops,
+                    include_melody=True,
+                    arrangement_style=arrangement or None,
+                )
                 if wav:
                     session_state[COMPOSER_PREVIEW_WAV_KEY] = wav
                     session_state[COMPOSER_PREVIEW_SIG_KEY] = sig
@@ -801,7 +840,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
         else:
             st.info("Some areas still need attention — use the checklist and jump back to any phase.")
 
-        m1, m2 = st.columns(2)
+        m1, m2, m3 = st.columns(3)
         with m1:
             if st.button("Mark song ready", type="primary", key="composer_review_mark_ready", disabled=not ready):
                 doc["status"] = "ready"
@@ -809,13 +848,20 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
                 _save_doc(session_state, doc)
                 st.rerun()
         with m2:
+            if st.button("Save to Composition Library", key="composer_review_save_library", use_container_width=True):
+                save_document_to_library(session_state, doc)
+                st.success("Saved to Composition Library.")
+                st.rerun()
+        with m3:
             if st.button("Keep refining", key="composer_review_keep_refining", use_container_width=True):
                 set_workflow_phase(doc, "chords")
                 _save_doc(session_state, doc)
                 st.rerun()
 
         if str(doc.get("status") or "") == "ready":
-            st.caption("You've marked this song **ready** — it's saved in your library whenever you need it.")
+            st.caption("This song is marked **ready**. Use Save to Composition Library to keep a named library copy.")
+        else:
+            st.caption("Working drafts are kept automatically. Save to Composition Library is the explicit finished-song action.")
 
     with side:
         _render_coach_panel(doc, lead=coach_line_for_review(doc))
@@ -869,12 +915,12 @@ def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") 
 
 
 def _render_library_sidebar(session_state: dict) -> None:
-    if st.button("Save song", key="composer_save_btn", use_container_width=True):
+    if st.button("Save to Composition Library", key="composer_save_btn", use_container_width=True):
         doc = get_active_document(session_state)
         if doc:
             save_document_to_library(session_state, doc)
-            st.success("Saved to My Compositions.")
-    with st.expander("My compositions"):
+            st.success("Saved to Composition Library. The working draft was already being kept automatically.")
+    with st.expander("Composition Library"):
         for row in list_library_documents(session_state):
             rid = str(row.get("id") or "")
             label = str(row.get("title") or "Untitled")

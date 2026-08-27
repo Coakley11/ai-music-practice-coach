@@ -95,7 +95,12 @@ def save_document_to_library(session_state: dict, doc: dict[str, Any] | None = N
     sid = str(active.get("id") or "").strip()
     if not sid:
         return active
-    lib[sid] = touch_composition(deep_copy_document(active))
+    from datetime import datetime, timezone
+
+    prepared = touch_composition(deep_copy_document(active))
+    prepared["library_id"] = sid
+    prepared["library_saved_at"] = datetime.now(timezone.utc).isoformat()
+    lib[sid] = prepared
     # Keep audition audio across saves — only replace the active document copy.
     set_active_document(session_state, lib[sid], clear_preview=False, checkpoint=True)
     return lib[sid]
