@@ -1131,6 +1131,9 @@ def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
         "beat": max(0.0, beat),
         "measure": max(1, measure),
     }
+    chord = str(raw.get("chord") or "").strip()
+    if chord:
+        out["chord"] = chord
     if is_rest:
         out["is_rest"] = True
     if "confidence" in raw:

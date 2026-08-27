@@ -530,6 +530,76 @@ def align_events_to_record_timeline(
     return out
 
 
+def span_events_across_section_timeline(
+    events: list[dict[str, Any]] | None,
+    timeline: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Keep pitched notes on their beats; rest-fill the section; stamp every chord."""
+    if not events:
+        events = []
+    if not isinstance(timeline, dict) or not timeline:
+        return list(events)
+    max_beat = float(timeline.get("expected_duration_beats") or 0.0)
+    if max_beat <= 0:
+        return list(events)
+    bpb = float(timeline.get("beats_per_bar") or _beats_per_bar(str(timeline.get("meter") or "4/4")))
+    changes = list(timeline.get("chord_changes") or [])
+
+    def _chord_at(beat: float) -> str:
+        sounding = ""
+        for ch in changes:
+            if beat + 1e-6 >= float(ch.get("beat") or 0.0):
+                sounding = str(ch.get("chord") or "")
+            else:
+                break
+        return sounding
+
+    notes = sorted(
+        (dict(ev) for ev in events if isinstance(ev, dict)),
+        key=lambda ev: float(ev.get("beat") or 0.0),
+    )
+    spanned: list[dict[str, Any]] = []
+    cursor = 0.0
+    for ev in notes:
+        start = max(0.0, float(ev.get("beat") or 0.0))
+        if start >= max_beat - 1e-6:
+            break
+        if start > cursor + 1e-6:
+            spanned.append(
+                {
+                    "pitch": "rest",
+                    "midi": None,
+                    "duration_beats": start - cursor,
+                    "beat": cursor,
+                    "measure": int(cursor // max(1.0, bpb)) + 1,
+                    "is_rest": True,
+                    "chord": _chord_at(cursor),
+                }
+            )
+        dur = float(ev.get("duration_beats") or 1.0)
+        dur = min(dur, max(0.25, max_beat - start))
+        copied = dict(ev)
+        copied["beat"] = start
+        copied["duration_beats"] = dur
+        copied["measure"] = int(start // max(1.0, bpb)) + 1
+        copied["chord"] = str(copied.get("chord") or _chord_at(start))
+        spanned.append(copied)
+        cursor = start + dur
+    if cursor < max_beat - 1e-6:
+        spanned.append(
+            {
+                "pitch": "rest",
+                "midi": None,
+                "duration_beats": max_beat - cursor,
+                "beat": cursor,
+                "measure": int(cursor // max(1.0, bpb)) + 1,
+                "is_rest": True,
+                "chord": _chord_at(cursor),
+            }
+        )
+    return spanned
+
+
 def prepend_count_in_wav(
     wav: bytes | None,
     *,

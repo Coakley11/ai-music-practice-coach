@@ -231,7 +231,10 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
             set_workflow_phase(prepared, phase)
         session[COMPOSER_ACTIVE_KEY] = prepared
         session[COMPOSER_NEEDS_SEED_KEY] = False
-        section_id = resolve_valid_section_id(prepared, str(canonical.get("active_section_id") or ""))
+        live_sid = str(session.get(COMPOSER_ACTIVE_SECTION_KEY) or "").strip()
+        live_ok = resolve_valid_section_id(prepared, live_sid) if live_sid else ""
+        blob_sid = resolve_valid_section_id(prepared, str(canonical.get("active_section_id") or ""))
+        section_id = live_ok or blob_sid
         if section_id:
             session[COMPOSER_ACTIVE_SECTION_KEY] = section_id
         skip_lyrics = bool((prepared.get("workflow") or {}).get("skip_lyrics"))

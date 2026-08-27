@@ -523,25 +523,25 @@ def render_composer_playback(
         return False
     nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 1)
     autoplay = bool(session_state.get(COMPOSER_PREVIEW_AUTOPLAY_KEY, True))
-    html = build_composer_playback_html(bytes(wav), nonce=nonce, autoplay=autoplay, stats=stats)
     st_mod.markdown("**Now playing**")
     c1, c2 = st_mod.columns([4, 1])
     with c1:
+        # Native st.audio lives in the main document so the click gesture can
+        # autoplay. A sandbox iframe (components.html) is blocked after rerun.
         try:
-            import streamlit.components.v1 as components
-
-            components.html(html, height=88)
-        except Exception:
-            try:
-                st_mod.audio(
-                    bytes(wav),
-                    format="audio/wav",
-                    autoplay=autoplay,
-                    start_time=0,
-                    key=f"composer_preview_audio_{nonce}",
-                )
-            except TypeError:
-                st_mod.audio(bytes(wav), format="audio/wav")
+            st_mod.audio(
+                bytes(wav),
+                format="audio/wav",
+                autoplay=autoplay,
+                start_time=0,
+                key=f"composer_preview_audio_{nonce}",
+            )
+        except TypeError:
+            st_mod.audio(bytes(wav), format="audio/wav")
+        st_mod.caption(
+            f"Playable · {float(stats.get('duration_seconds') or 0.0):.1f}s · "
+            f"peak {float(stats.get('peak') or 0.0):.2f}"
+        )
     with c2:
         if st_mod.button("Stop", key=stop_key, use_container_width=True):
             invalidate_composer_preview(session_state)

@@ -615,6 +615,137 @@ def melody_notation_line(concept: dict[str, Any]) -> str:
     return f"♪ {motif[:72]}{'…' if len(motif) > 72 else ''}"
 
 
+def _rewrite_event_pitch(event: dict[str, Any], midi: int, key: str) -> dict[str, Any]:
+    from composition_hum_transcription import spell_midi_in_key
+
+    copied = dict(event)
+    midi_i = max(48, min(84, int(midi)))
+    copied["midi"] = midi_i
+    copied["pitch"] = spell_midi_in_key(midi_i, key)
+    copied["is_rest"] = False
+    return copied
+
+
+def shape_accepted_melody_events(
+    events: list[dict[str, Any]] | None,
+    *,
+    key: str = "C",
+) -> list[dict[str, Any]]:
+    """Bounded contour reshape: invert around the median, keep rhythm and order."""
+    from composition_document import normalize_melody_events
+
+    src = normalize_melody_events(events)
+    pitched_idx = [
+        i
+        for i, ev in enumerate(src)
+        if not ev.get("is_rest") and str(ev.get("pitch") or "").lower() != "rest"
+    ]
+    if not pitched_idx:
+        return src
+    midis = [int(src[i].get("midi") or 60) for i in pitched_idx]
+    median = sorted(midis)[len(midis) // 2]
+    out: list[dict[str, Any]] = []
+    changed = False
+    for i, ev in enumerate(src):
+        if i not in pitched_idx:
+            out.append(dict(ev))
+            continue
+        midi = int(ev.get("midi") or 60)
+        shaped = median - (midi - median)
+        shaped = max(55, min(74, shaped))
+        if shaped == midi:
+            shaped = max(55, min(74, midi + (2 if i >= pitched_idx[len(pitched_idx) // 2] else -2)))
+        if shaped != midi:
+            changed = True
+        out.append(_rewrite_event_pitch(ev, shaped, key))
+    if not changed and pitched_idx:
+        last = pitched_idx[-1]
+        out[last] = _rewrite_event_pitch(out[last], int(out[last].get("midi") or 60) + 2, key)
+    return out
+
+
+def refine_accepted_melody_events(
+    events: list[dict[str, Any]] | None,
+    *,
+    key: str = "C",
+    doc: dict[str, Any] | None = None,
+    section: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Smooth leaps and ease notes toward the sounding chord tone. Keeps the line."""
+    from composition_document import normalize_melody_events
+
+    src = normalize_melody_events(events)
+    spans = _chord_spans_for_section(doc, section) if doc and section else []
+    out: list[dict[str, Any]] = []
+    prev_midi: int | None = None
+    changed = False
+    for ev in src:
+        if ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest":
+            out.append(dict(ev))
+            continue
+        midi = int(ev.get("midi") or 60)
+        refined = midi
+        if prev_midi is not None and abs(midi - prev_midi) > 4:
+            step = 2 if midi > prev_midi else -2
+            refined = prev_midi + step
+            changed = True
+        chord = _chord_at_beat(spans, float(ev.get("beat") or 0.0)) if spans else ""
+        if chord:
+            snapped = _snap_midi_to_chord_tone(refined, chord)
+            if abs(snapped - refined) >= 1:
+                refined = snapped
+                changed = True
+        if refined != midi:
+            changed = True
+        written = _rewrite_event_pitch(ev, refined, key)
+        if chord:
+            written["chord"] = chord
+        out.append(written)
+        prev_midi = int(written.get("midi") or refined)
+    if not changed:
+        pitched = [
+            i
+            for i, ev in enumerate(out)
+            if not ev.get("is_rest") and str(ev.get("pitch") or "").lower() != "rest"
+        ]
+        if pitched:
+            i = pitched[min(1, len(pitched) - 1)]
+            out[i] = _rewrite_event_pitch(out[i], int(out[i].get("midi") or 60) - 1, key)
+    return out
+
+
+def apply_shaped_or_refined_melody(
+    doc: dict[str, Any],
+    section_id: str,
+    *,
+    action: str,
+) -> str:
+    """Shape or refine accepted events, then write the single melody authority."""
+    from composition_document import (
+        apply_accepted_melody_edits,
+        playback_globals,
+        section_by_id,
+        section_melody_events,
+    )
+
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return ""
+    events = section_melody_events(sec)
+    if not events:
+        return ""
+    key = str(playback_globals(doc).get("key_center") or "C")
+    kind = str(action or "").strip().lower()
+    if kind == "shape":
+        updated = shape_accepted_melody_events(events, key=key)
+        label = "Shaped the accepted melody — contour changed; rhythm kept."
+    else:
+        updated = refine_accepted_melody_events(events, key=key, doc=doc, section=sec)
+        label = "Refined the accepted melody — smoother motion over the chords."
+    apply_accepted_melody_edits(doc, section_id, updated)
+    return label
+
+
 def apply_melody_refinement_to_section(
     doc: dict[str, Any],
     section_id: str,
@@ -629,7 +760,6 @@ def apply_melody_refinement_to_section(
         section_by_id,
         touch_composition,
         _ensure_melody_block,
-        normalize_melody_events,
         section_melody_events,
     )
 
@@ -643,15 +773,19 @@ def apply_melody_refinement_to_section(
     events = section_melody_events(sec)
     key = _section_key(doc)
     if events:
+        from composition_document import apply_accepted_melody_edits
+        from composition_hum_transcription import spell_midi_in_key
+
         updated = [dict(e) for e in events]
-        if refinement_id == "range_up" and updated:
+        if refinement_id == "smoother":
+            updated = refine_accepted_melody_events(updated, key=key, doc=doc, section=sec)
+        elif refinement_id == "range_up" and updated:
             peak = max(range(len(updated)), key=lambda i: int(updated[i].get("midi") or 60))
             midi = int(updated[peak].get("midi") or 60) + 2
             updated[peak]["midi"] = midi
-            updated[peak]["pitch"] = spell_note_in_key(midi % 12, key)
+            updated[peak]["pitch"] = spell_midi_in_key(midi, key)
         elif refinement_id == "simplify" and len(updated) > 4:
             updated = updated[::2]
-            # re-pack beats
             beat = 0.0
             for ev in updated:
                 ev["beat"] = beat
@@ -662,8 +796,10 @@ def apply_melody_refinement_to_section(
                 ev["duration_beats"] = max(0.5, dur * 0.75)
         elif refinement_id == "emotional" and updated:
             updated[-1]["duration_beats"] = float(updated[-1].get("duration_beats") or 1.0) + 1.0
+        elif refinement_id in {"singable"}:
+            updated = refine_accepted_melody_events(updated, key=key, doc=doc, section=sec)
+        apply_accepted_melody_edits(doc, section_id, updated)
         melody = _ensure_melody_block(sec)
-        melody["events"] = normalize_melody_events(updated)
         phrases = list(melody.get("phrases") or [])
         if phrases and isinstance(phrases[-1], dict):
             phrases[-1]["notes"] = " ".join(str(e.get("pitch") or "") for e in melody["events"])
