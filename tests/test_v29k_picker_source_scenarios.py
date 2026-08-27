@@ -101,8 +101,11 @@ class TestV29kPickerSourceScenarios(unittest.TestCase):
         from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
 
         ss.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-        self.assertTrue(reconcile_picker_music_source(ss))
-        self.assertTrue(is_custom_progression(ss))
+        ss.pop("_catalog_switch_applied_this_run", None)
+        ss["_script_run_seq"] = int(ss.get("_script_run_seq") or 0) + 5
+        reconcile_picker_music_source(ss)
+        # Custom tab is view-only on hydrate — Catalog remains Global Active.
+        self.assertFalse(is_custom_progression(ss))
         self.assertTrue(_picker_shows_custom_hub(ss))
         names = list_saved_progression_names(ss.get(CPL_SAVED_KEY) or {})
         self.assertIn("Trial Song", names)

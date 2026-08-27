@@ -255,15 +255,13 @@ class TestH5H9OwnershipTransitions(unittest.TestCase):
             "cpl_active_progression": trial,
             "_script_run_seq": 10,
         }
-        # Songs Use Custom after Catalog must clear the multi-run Catalog guard.
+        # Songs Custom tab after Catalog is view-only on hydrate. Catalog remains
+        # Global Active; the Custom radio stays selectable.
         session.pop("_catalog_owns_until_custom_click", None)
-        self.assertTrue(reconcile_picker_music_source(session))
-        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
-        self.assertFalse(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
-        self.assertIsNone(session.get(EXPLICIT_CATALOG_SELECTION_EPOCH_KEY))
-        self.assertIsNone(session.get("_block_stale_custom_radio_reclaim"))
-        self.assertIsNone(session.get("_force_catalog_backing_after_use_catalog"))
-        self.assertIsInstance(session.get(PENDING_CUSTOM_ACTIVE_SONG_KEY), dict)
+        reconcile_picker_music_source(session)
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertIsNone(session.get(PENDING_CUSTOM_ACTIVE_SONG_KEY))
         self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
 
     def test_catalog_guard_blocks_custom_radio_reclaim(self) -> None:
@@ -284,9 +282,10 @@ class TestH5H9OwnershipTransitions(unittest.TestCase):
             "_script_run_seq": 3,
             "_catalog_owns_until_custom_click": True,
         }
-        self.assertTrue(reconcile_picker_music_source(session))
-        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CATALOG)
-        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
+        # Leftover catalog_owns must not hide the Custom tab or steal Custom GA.
+        reconcile_picker_music_source(session)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
 
     def test_same_run_catalog_switch_blocks_lagging_custom_radio(self) -> None:
         from songs.music_source import (
@@ -868,13 +867,12 @@ class TestH5H9OwnershipTransitions(unittest.TestCase):
         }
         reconcile_picker_music_source(session)
         self.assertTrue(session.get("_catalog_owns_until_custom_click"))
-        # Lagging Custom radio while guard is live must heal Catalog, not reclaim.
+        # Custom tab is view-only on hydrate — Catalog remains Global Active.
         session["song_picker_active_source"] = SONG_PICKER_SOURCE_CUSTOM
         reconcile_picker_music_source(session)
-        self.assertTrue(session.get("_catalog_owns_until_custom_click"))
         self.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
         self.assertNotEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CUSTOM)
-        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
 
     def test_release_mission_clears_sealed_mission_ctx(self) -> None:
         from backing_context import BackingContext, get_backing_context, set_backing_context

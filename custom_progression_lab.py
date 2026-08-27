@@ -552,6 +552,21 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     """
     active = active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
     home = cpl_draft_written_key(active) if isinstance(active, dict) else "C"
+    custom_is_ga = False
+    catalog_sticky = ""
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        custom_is_ga = bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+        catalog_pick = str(resolve_practice_source_pick(session_state) or "").strip()
+        if catalog_pick and not catalog_pick.startswith("custom::"):
+            catalog_sticky = str(get_practice_concert_key(session_state, catalog_pick) or "").strip()
+    except ImportError:
+        custom_is_ga = False
+        catalog_sticky = ""
     # 0) Force-home after New song / identity install outranks a stale dedicated widget
     # from the previous Custom song (widgets may still be locked from the prior run).
     force_home = str(session_state.get("_cpl_force_pk_to_home") or "").strip()
@@ -560,7 +575,11 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     # 1) Dedicated Custom-page Practice Key widget (authoritative while on Custom).
     dedicated = str(session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
     if dedicated:
-        return dedicated
+        # Catalog live PK must not seed local Custom editing when Catalog is GA.
+        if not custom_is_ga and catalog_sticky and dedicated == catalog_sticky and dedicated != home:
+            dedicated = ""
+        else:
+            return dedicated
     pending = str(session_state.get(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY) or "").strip()
     if pending:
         return pending
@@ -765,23 +784,26 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     live_global = str(
         session.get("display_key") or session.get("concert_key") or ""
     ).strip()
+    catalog_sticky = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_sticky = (
+            str(get_practice_concert_key(session, catalog_pick) or "").strip()
+            if catalog_pick and not catalog_pick.startswith("custom::")
+            else ""
+        )
+    except ImportError:
+        catalog_sticky = ""
     # Reject catalog live bleed into the dedicated Custom widget when Custom is not GA.
     if not custom_is_ga and live_widget:
-        try:
-            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
-
-            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-            catalog_sticky = (
-                str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if catalog_pick and not catalog_pick.startswith("custom::")
-                else ""
-            )
-            if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
-                live_widget = ""
-                session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
-        except ImportError:
-            pass
-    live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
+        if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
+            live_widget = ""
+            session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
+    # Local Custom editing never inherits Catalog display_key merely because
+    # Catalog remains Global Active.
+    live = live_widget
     if custom_is_ga and not live_widget:
         live = live_global
     pending = session.pop(PENDING_DISPLAY_KEY, None)
@@ -807,6 +829,13 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         # New Custom song/identity must not keep the prior song's live Practice Key
         # (pending can be lost across rerun; sticky/home are authoritative).
         selected = sticky or home
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
     elif live and live in options:
         # Prefer Custom sticky when global/live still holds the sealed catalog PK
@@ -823,9 +852,7 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
                 catalog_sticky = str(_get_pk(session, _cp) or "").strip()
         except ImportError:
             catalog_sticky = ""
-        if sticky and live != sticky and (
-            (catalog_sticky and live == catalog_sticky) or (not custom_is_ga and live != home and sticky == home)
-        ):
+        if sticky and live != sticky and catalog_sticky and live == catalog_sticky:
             selected = sticky
             force_seed_widget = True
         else:
@@ -835,9 +862,23 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         force_seed_widget = True
     elif sticky and sticky in options:
         selected = sticky
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
     else:
         selected = sticky or live or home
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
 
     if selected not in options:

@@ -470,8 +470,10 @@ class TestCplSetActiveSong(unittest.TestCase):
             },
             ACTIVE_CATALOG_PICK_KEY: PK_SAY,
         }
-        self.assertTrue(reconcile_picker_music_source(session))
-        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
+        # Songs Custom tab is view state — hydrate must not seize Global Active.
+        reconcile_picker_music_source(session)
+        self.assertEqual(session["active_music_source"], SOURCE_CATALOG)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CUSTOM)
 
     def test_save_and_restore_last_catalog_snapshot(self) -> None:
         session = {

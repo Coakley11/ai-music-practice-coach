@@ -8171,23 +8171,15 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
     try:
         from songs.music_source import (
             PENDING_CATALOG_FROM_PICKER_KEY,
-            SONG_PICKER_SOURCE_CATALOG,
             apply_pending_catalog_from_picker_before_widgets,
             custom_progression_is_active,
-            sync_song_picker_source_widget as _force_sync_picker,
         )
 
-        # Stale disk radio = Catalog while Custom owns practice must HEAL, not
-        # reclaim Country Roads (E5 refresh). Never heal away an explicit user
-        # Catalog choice (USER_CATALOG / recent catalog epoch).
-        if (
-            custom_progression_is_active(st.session_state)
-            and not st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY)
-            and not st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
-        ):
-            _choice = str(st.session_state.get("song_picker_active_source") or "").strip()
-            if _choice == SONG_PICKER_SOURCE_CATALOG:
-                _force_sync_picker(st.session_state, force=True, widget_safe=False)
+        # Songs Catalog / Custom radios are tab navigation, not ownership.
+        # Do not force the radio to Custom just because Custom owns Global Active —
+        # that made the Custom tab unreachable after a Catalog-tab visit, and
+        # hid Catalog while Trial was active. E5 reclaim is handled by not
+        # treating a Catalog radio as an ownership switch.
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
             explicit_custom_activation_is_authoritative,
@@ -8246,18 +8238,16 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         st.rerun()
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     from songs.music_source import (
-        USER_CATALOG_SOURCE_CHOICE_KEY,
-        explicit_catalog_selection_is_authoritative,
+        SONG_PICKER_SOURCE_CATALOG,
         music_picker_shows_custom_hub,
         note_song_picker_source_presented,
     )
 
     note_song_picker_source_presented(st.session_state, choice)
-    # Explicit Catalog choice must not keep rendering Custom hub because the
-    # Streamlit radio widget lagged on "Use Custom…" for one paint.
-    if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
-        st.session_state
-    ):
+    # Radio value owns which Songs hub is showing. Ownership flags must not
+    # hide the Custom tab after Set-as-Active, and must not keep Custom hub
+    # visible when the user selected Catalog.
+    if choice == SONG_PICKER_SOURCE_CATALOG:
         return False
     return music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom")
 

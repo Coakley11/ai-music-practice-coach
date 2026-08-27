@@ -1822,12 +1822,17 @@ def apply_cloud_active_song_state_if_allowed(
             str(custom_ctx.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) or "").strip() or None
         )
         write_canonical_active_song_state(session, custom_ctx, reason="cloud_restore_custom")
-        # Refresh must not leave Songs radio on Catalog while identity is Custom
-        # (stale radio previously auto-reclaimed last catalog song — E5).
+        # Restore ownership only. Songs radio is tab state — do not force it to
+        # Custom when a Catalog tab selection was persisted (E5 reclaim is no
+        # longer implied by a Catalog radio).
         try:
-            from songs.music_source import sync_song_picker_source_widget
+            from songs.music_source import (
+                SONG_PICKER_ACTIVE_SOURCE_KEY,
+                sync_song_picker_source_widget,
+            )
 
-            sync_song_picker_source_widget(session, force=True, widget_safe=False)
+            if not str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip():
+                sync_song_picker_source_widget(session, force=True, widget_safe=False)
         except ImportError:
             pass
         _record_transposing_restore_trace(session, custom_ctx, source="cloud_restore_custom")
