@@ -234,10 +234,19 @@ class TestCustomToCatalogOwnerSwitch(unittest.TestCase):
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(str(session.get("display_key") or ""), "G")
 
+        from songs.music_source import custom_pick_key_for
+
+        trial_pick = custom_pick_key_for(_trial_active())
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session["custom_workspace_practice_key"] = "G"
+        session["cpl_last_display_key"] = "G"
+        session[PRACTICE_KEY_BY_SOURCE_KEY][trial_pick] = "G"
         self._activate_trial(session)
         self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
         self.assertIn("Trial Song", str(session.get("song") or ""))
         self.assertEqual(str(session.get("display_key") or ""), "D")
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "D")
         last_custom = session.get(LAST_CUSTOM_STATE_KEY) or {}
         self.assertEqual(str((last_custom.get("active") or {}).get("name") or last_custom.get("name") or ""), "Trial Song")
 

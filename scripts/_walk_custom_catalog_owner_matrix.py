@@ -223,6 +223,53 @@ def main() -> int:
         )
         mark("G_trial_fresh_d", "PASS" if trial_again else "RED", f"act={act2} {json.dumps(snap)}")
 
+        from _walk_core_workflows_embargo import open_sbi_active
+        from _walk_pass8_validate import ensure_missions_workspace
+        from walk_creative_backing_matrix import click_open_backing_studio, goto_improv
+
+        sbi_ok = bool(goto_improv(page, NOTES) and open_sbi_active(page))
+        settle(page, 3)
+        body = shot(page, "08-sbi")
+        snap = owner_snapshot(page)
+        sbi_vis = (
+            sbi_ok
+            and has_any(body, "Trial Song")
+            and not has_any(body, "Say — John Mayer")
+            and (rendered_em_em_d_d(body) or "d major" in low(snap["practice"] or body))
+        )
+        mark("H_sbi", "PASS" if sbi_vis else "RED", json.dumps(snap))
+
+        click_nav(page, "Creative")
+        settle(page, 2)
+        goto_improv(page, NOTES)
+        ensure_missions_workspace(page, NOTES)
+        settle(page, 2)
+        body = shot(page, "09-missions")
+        snap = owner_snapshot(page)
+        from _walk_ownership_audit_full import missions_derived_from_custom_trial
+
+        m_vis = (
+            has_any(body, "Trial Song")
+            and missions_derived_from_custom_trial(body, projected="D")
+            and not has_any(body, "Say — John Mayer")
+        )
+        mark("I_missions", "PASS" if m_vis else "RED", json.dumps(snap))
+
+        clicked_back = click_open_backing_studio(page, NOTES, "visual-sanity-backing")
+        settle(page, 4)
+        body = shot(page, "10-backing")
+        snap = owner_snapshot(page)
+        back_vis = (
+            bool(clicked_back)
+            and has_any(body, "Trial Song")
+            and not has_any(body, "Say — John Mayer")
+            and not (
+                has_any(body, "Shape of You")
+                and has_any(page.inner_text('[data-testid="stSidebar"]') or "", "Trial Song")
+            )
+        )
+        mark("J_backing", "PASS" if back_vis else "RED", json.dumps(snap))
+
         browser.close()
 
     reds = [k for k, v in RESULTS.items() if v == "RED"]
