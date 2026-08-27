@@ -105,6 +105,15 @@ def practice_badge(body: str) -> str:
     )
     if m4:
         return f"{m4.group(1)} {m4.group(2).lower()}"
+    # SBI Creative card: "Practice concert key: C" (mode omitted; token "Cm" = minor).
+    m5 = re.search(
+        r"Practice\s+concert\s+key:\s*([A-G](?:#|b)?)(m)?\b",
+        text,
+        flags=re.I,
+    )
+    if m5:
+        mode = "minor" if (m5.group(2) or "").lower() == "m" else "major"
+        return f"{m5.group(1)} {mode}"
     return ""
 
 
@@ -1197,8 +1206,11 @@ def main() -> int:
                     sbi_c_prog = rendered_dm_dm_c_c(body_sbi_c)
                     sbi_c_title = has_any(body_sbi_c, "Embargo Trial", "Trial Song")
                     pk_sbi_c = practice_badge(body_sbi_c) or sidebar_pk_input(page2)
-                    pk_sbi_c_ok = "c major" in low(pk_sbi_c) or (
-                        "practice key: c" in low(body_sbi_c) and "minor" not in low(pk_sbi_c)
+                    pk_sbi_c_ok = "c major" in low(pk_sbi_c) or bool(
+                        re.search(
+                            r"practice concert key:\s*c\b(?!\s*minor)(?!m)",
+                            low(body_sbi_c),
+                        )
                     )
 
                     click_nav(page2, "Creative")
