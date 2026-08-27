@@ -79,6 +79,7 @@ def preview_signature(
     include_melody: bool = False,
     melody_override: list[dict[str, Any]] | None = None,
     arrangement_style: str | None = None,
+    count_in_bars: int = 0,
 ) -> tuple:
     pg = playback_globals(doc)
     chords = resolve_preview_chords(
@@ -107,6 +108,7 @@ def preview_signature(
         int(loops),
         bool(include_melody),
         mel_sig,
+        int(count_in_bars or 0),
     )
 
 
@@ -263,6 +265,7 @@ def generate_preview_wav(
     include_melody: bool = False,
     melody_override: list[dict[str, Any]] | None = None,
     arrangement_style: str | None = None,
+    count_in_bars: int = 0,
 ) -> bytes | None:
     chords = resolve_preview_chords(
         doc, scope=scope, section_id=section_id, chord_override=chord_override
@@ -299,6 +302,15 @@ def generate_preview_wav(
                 time_signature=str(pg["time_signature"]),
                 loops=max(1, int(loops)),
             )
+    if int(count_in_bars or 0) > 0:
+        from composition_hum_transcription import prepend_count_in_wav
+
+        wav = prepend_count_in_wav(
+            wav,
+            bpm=int(pg["bpm"]),
+            meter=str(pg["time_signature"]),
+            bars=int(count_in_bars),
+        )
     return wav
 
 
@@ -387,6 +399,7 @@ def play_composer_preview(
     melody_override: list[dict[str, Any]] | None = None,
     arrangement_style: str | None = None,
     level: str = "Intermediate",
+    count_in_bars: int = 0,
 ) -> dict[str, Any]:
     """Button-path seam: generate, validate, arm a remounting autoplay payload."""
     pg = playback_globals(doc)
@@ -402,6 +415,7 @@ def play_composer_preview(
         include_melody=include_melody,
         melody_override=melody_override,
         arrangement_style=arrangement_style,
+        count_in_bars=count_in_bars,
     )
     result: dict[str, Any] = {
         "ok": False,
@@ -423,6 +437,7 @@ def play_composer_preview(
         "scope": scope,
         "section_id": section_id or "",
         "loops": int(loops),
+        "count_in_bars": int(count_in_bars or 0),
     }
     if not chords:
         invalidate_composer_preview(session_state)
@@ -438,6 +453,7 @@ def play_composer_preview(
         include_melody=include_melody,
         melody_override=melody_override,
         arrangement_style=arrangement_style,
+        count_in_bars=count_in_bars,
     )
     stats = inspect_preview_wav(wav)
     result.update(stats)

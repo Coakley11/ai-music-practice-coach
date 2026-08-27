@@ -364,8 +364,89 @@ def build_section_record_timeline(doc: dict[str, Any], section_id: str) -> dict[
         "beats_per_bar": bpb,
         "expected_duration_beats": expected,
         "recording_onset_beat": 0.0,
+        "recorder_start_delay_beats": 0.0,
+        "count_in_beats": 0.0,
+        "count_in_bars": 0,
+        "origin": "section_timeline",
+        "sync_locked": False,
         "chord_changes": changes,
     }
+
+
+def apply_record_origin(
+    timeline: dict[str, Any] | None,
+    *,
+    recorder_start_delay_beats: float = 0.0,
+    count_in_beats: float | None = None,
+    count_in_bars: int | None = None,
+    origin: str = "armed_count_in",
+) -> dict[str, Any]:
+    """Persist the mic-start offset relative to backing/count-in.
+
+    ``section_beat = capture_beat + recorder_start_delay_beats - count_in_beats``.
+    Streamlit's recorder cannot share a gesture with playback, so the default
+    origin is an honest armed count-in — not a claimed lock.
+    """
+    out = dict(timeline or {})
+    bpb = float(out.get("beats_per_bar") or _beats_per_bar(str(out.get("meter") or "4/4")))
+    if count_in_beats is None:
+        if count_in_bars is not None:
+            cin = float(max(0, int(count_in_bars))) * bpb
+        else:
+            try:
+                cin = float(out.get("count_in_beats") or 0.0)
+            except (TypeError, ValueError):
+                cin = 0.0
+    else:
+        cin = float(count_in_beats)
+    try:
+        delay = float(recorder_start_delay_beats)
+    except (TypeError, ValueError):
+        delay = 0.0
+    out["recorder_start_delay_beats"] = delay
+    out["count_in_beats"] = cin
+    out["count_in_bars"] = int(round(cin / bpb)) if bpb else 0
+    out["recording_onset_beat"] = delay - cin
+    out["origin"] = str(origin or "armed_count_in")
+    out["sync_locked"] = str(origin) == "coordinated_transport"
+    return out
+
+
+def prepare_armed_record_transport(
+    doc: dict[str, Any],
+    section_id: str,
+    *,
+    recorder_start_delay_beats: float = 0.0,
+    count_in_bars: int = 1,
+) -> dict[str, Any]:
+    """Build the shared transport: count-in, then section, plus any late-start delay."""
+    timeline = build_section_record_timeline(doc, section_id)
+    return apply_record_origin(
+        timeline,
+        recorder_start_delay_beats=recorder_start_delay_beats,
+        count_in_bars=count_in_bars,
+        origin="armed_count_in",
+    )
+
+
+def record_origin_onset_beats(timeline: dict[str, Any] | None) -> float:
+    """Capture-beat 0 maps to this section beat (may be negative during count-in)."""
+    if not isinstance(timeline, dict) or not timeline:
+        return 0.0
+    if "recorder_start_delay_beats" in timeline or "count_in_beats" in timeline:
+        try:
+            delay = float(timeline.get("recorder_start_delay_beats") or 0.0)
+        except (TypeError, ValueError):
+            delay = 0.0
+        try:
+            cin = float(timeline.get("count_in_beats") or 0.0)
+        except (TypeError, ValueError):
+            cin = 0.0
+        return delay - cin
+    try:
+        return float(timeline.get("recording_onset_beat") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def align_events_to_record_timeline(
@@ -377,7 +458,7 @@ def align_events_to_record_timeline(
         return []
     if not isinstance(timeline, dict) or not timeline:
         return list(events)
-    onset = float(timeline.get("recording_onset_beat") or 0.0)
+    onset = record_origin_onset_beats(timeline)
     max_beat = float(timeline.get("expected_duration_beats") or 0.0)
     bpb = float(timeline.get("beats_per_bar") or _beats_per_bar(str(timeline.get("meter") or "4/4")))
     changes = list(timeline.get("chord_changes") or [])
@@ -391,6 +472,10 @@ def align_events_to_record_timeline(
             dur = float(ev.get("duration_beats") or 1.0)
         except (TypeError, ValueError):
             dur = 1.0
+        if start < -1e-6:
+            # Still inside the count-in — do not clamp onto beat 0 of the section.
+            continue
+        start = max(0.0, start)
         if max_beat and start >= max_beat - 1e-6:
             continue
         if max_beat:
@@ -408,6 +493,43 @@ def align_events_to_record_timeline(
             copied["chord"] = sounding
         out.append(copied)
     return out
+
+
+def prepend_count_in_wav(
+    wav: bytes | None,
+    *,
+    bpm: int,
+    meter: str = "4/4",
+    bars: int = 1,
+) -> bytes | None:
+    """Audible count-in clicks prepended to a Composition preview WAV."""
+    if not wav or int(bars) <= 0:
+        return wav
+    from composition_preview import _floats_to_wav_bytes, _wav_to_mono_floats
+
+    try:
+        body, sr = _wav_to_mono_floats(bytes(wav))
+    except Exception:
+        return wav
+    if not body or int(sr) <= 0:
+        return wav
+    num, _den = parse_meter(meter)
+    beat_sec = 60.0 / max(40.0, float(bpm))
+    click_len = int(sr * beat_sec * float(num) * int(bars))
+    if click_len <= 0:
+        return wav
+    clicks = [0.0] * click_len
+    total_beats = int(num) * int(bars)
+    for beat in range(total_beats):
+        start = int(beat * beat_sec * sr)
+        pulse_n = max(1, int(0.04 * sr))
+        end = min(start + pulse_n, click_len)
+        freq = 1200.0 if beat % int(num) == 0 else 880.0
+        gain = 0.35 if beat % int(num) == 0 else 0.22
+        for i in range(start, end):
+            t = (i - start) / float(sr)
+            clicks[i] += gain * math.sin(2.0 * math.pi * freq * t) * math.exp(-t * 40.0)
+    return _floats_to_wav_bytes(clicks + list(body), sr)
 
 
 def transcribe_hum_audio(
@@ -481,7 +603,11 @@ def transcribe_hum_audio(
             "bpm": timeline.get("bpm"),
             "meter": timeline.get("meter"),
             "expected_duration_beats": timeline.get("expected_duration_beats"),
-            "recording_onset_beat": timeline.get("recording_onset_beat"),
+            "recording_onset_beat": record_origin_onset_beats(timeline),
+            "recorder_start_delay_beats": timeline.get("recorder_start_delay_beats"),
+            "count_in_beats": timeline.get("count_in_beats"),
+            "origin": timeline.get("origin"),
+            "sync_locked": bool(timeline.get("sync_locked")),
         }
     pitched = [e for e in events if not e.get("is_rest")]
     if not pitched:
