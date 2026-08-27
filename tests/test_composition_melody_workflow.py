@@ -208,6 +208,9 @@ class TestRecordOverBacking(unittest.TestCase):
             origin="armed_count_in",
         )
         self.assertAlmostEqual(float(timeline["recording_onset_beat"]), 2.0)
+        self.assertAlmostEqual(float(timeline["backing_origin_in_capture_beats"]), -2.0)
+        self.assertAlmostEqual(float(timeline["recorder_late_beats"]), 2.0)
+        self.assertAlmostEqual(float(timeline["mic_lead_beats"]), 0.0)
         capture = [
             {"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 0.0, "measure": 1},
             {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
@@ -225,6 +228,7 @@ class TestRecordOverBacking(unittest.TestCase):
         )
         self.assertAlmostEqual(float(armed["count_in_beats"]), 4.0)
         self.assertAlmostEqual(float(armed["recording_onset_beat"]), -2.0)
+        self.assertAlmostEqual(float(armed["backing_origin_in_capture_beats"]), 2.0)
         mixed = align_events_to_record_timeline(
             [
                 {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
@@ -242,6 +246,83 @@ class TestRecordOverBacking(unittest.TestCase):
         transcribed = transcribe_hum_audio(b"", bpm=100, meter="4/4", key="C", timeline=armed)
         self.assertIn(transcribed["status"], {"unclear", "unavailable"})
 
+    def test_primary_mic_first_lead_maps_capture_6_to_section_0(self) -> None:
+        """Mic starts first; backing begins 2 beats later; 4-beat count-in.
+
+        A note sung on section beat 0 appears at capture beat 6
+        (lead 2 + count-in 4). section_beat = capture - backing_origin.
+        """
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Lead", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
+        verse["bars"] = 8
+        sid = str(verse["id"])
+        timeline = apply_record_origin(
+            build_section_record_timeline(doc, sid),
+            mic_lead_beats=2.0,
+            recorder_late_beats=0.0,
+            count_in_beats=4.0,
+            origin="armed_count_in",
+        )
+        self.assertAlmostEqual(float(timeline["mic_lead_beats"]), 2.0)
+        self.assertAlmostEqual(float(timeline["recorder_late_beats"]), 0.0)
+        self.assertAlmostEqual(float(timeline["count_in_beats"]), 4.0)
+        self.assertAlmostEqual(float(timeline["backing_origin_in_capture_beats"]), 6.0)
+        self.assertAlmostEqual(float(timeline["recording_onset_beat"]), -6.0)
+        self.assertEqual(timeline["origin"], "armed_count_in")
+        self.assertFalse(timeline["sync_locked"])
+
+        capture = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 2.0, "measure": 1},
+            {"pitch": "D4", "midi": 62, "duration_beats": 1.0, "beat": 4.0, "measure": 1},
+            {"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 6.0, "measure": 2},
+            {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 10.0, "measure": 3},
+        ]
+        aligned = align_events_to_record_timeline(capture, timeline)
+        self.assertEqual([e.get("pitch") for e in aligned], ["E4", "G4"])
+        self.assertAlmostEqual(float(aligned[0]["beat"]), 0.0)
+        self.assertEqual(aligned[0]["chord"], "C")
+        self.assertAlmostEqual(float(aligned[1]["beat"]), 4.0)
+
+        armed = prepare_armed_record_transport(
+            doc, sid, mic_lead_beats=2.0, recorder_late_beats=0.0, count_in_bars=1
+        )
+        self.assertAlmostEqual(float(armed["backing_origin_in_capture_beats"]), 6.0)
+        first = align_events_to_record_timeline(
+            [{"pitch": "E4", "midi": 64, "duration_beats": 2.0, "beat": 6.0, "measure": 2}],
+            armed,
+        )
+        self.assertEqual(len(first), 1)
+        self.assertAlmostEqual(float(first[0]["beat"]), 0.0)
+        self.assertEqual(first[0]["chord"], "C")
+
+    def test_panel_offsets_prefer_mic_lead_over_late_alias(self) -> None:
+        from composition_studio_page import _armed_record_offsets_from_panel
+
+        lead, late = _armed_record_offsets_from_panel(
+            {
+                "composer_record_origin_mode_s1": "mic_first",
+                "composer_mic_lead_s1": 2.0,
+                "composer_record_delay_s1": 9.0,
+            },
+            "s1",
+            bpm=120,
+        )
+        self.assertAlmostEqual(lead, 2.0)
+        self.assertAlmostEqual(late, 0.0)
+        lead, late = _armed_record_offsets_from_panel(
+            {
+                "composer_record_origin_mode_s1": "recorder_late",
+                "composer_mic_lead_s1": 2.0,
+                "composer_record_delay_s1": 3.0,
+            },
+            "s1",
+            bpm=120,
+        )
+        self.assertAlmostEqual(lead, 0.0)
+        self.assertAlmostEqual(late, 3.0)
+
     def test_hum_panel_render_exposes_origin_not_false_sync(self) -> None:
         import inspect
 
@@ -250,11 +331,16 @@ class TestRecordOverBacking(unittest.TestCase):
         src = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("prepare_armed_record_transport", src)
         self.assertIn("apply_record_origin", src)
-        self.assertIn("Recorder started late by (beats)", src)
+        self.assertIn("mic_lead_beats", src)
+        self.assertIn("backing_origin_in_capture_beats", src)
+        self.assertIn("Backing began this many beats after I started recording", src)
+        self.assertIn("Recorder started after backing", src)
+        self.assertIn("Mark I'm recording now", src)
         self.assertIn("cannot start with the backing from one click", src)
         self.assertIn("count_in_bars=1", src)
         self.assertIn("Not a locked", src)
         self.assertNotIn("Play backing and record", src)
+        self.assertNotIn("Recorder started late by (beats)", src)
 
 
 if __name__ == "__main__":

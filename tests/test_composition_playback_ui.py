@@ -203,7 +203,8 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("play_composer_preview", hum)
         self.assertIn("Start count-in + backing", hum)
         self.assertIn("prepare_armed_record_transport", hum)
-        self.assertIn("recorder_start_delay_beats", hum)
+        self.assertIn("mic_lead_beats", hum)
+        self.assertIn("backing_origin_in_capture_beats", hum)
 
 
 if __name__ == "__main__":

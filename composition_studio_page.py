@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import time
 from typing import Any
 
 import streamlit as st
@@ -2108,6 +2109,92 @@ def _render_accepted_melody_editor(
                 st.rerun()
 
 
+_ORIGIN_MIC_FIRST = "mic_first"
+_ORIGIN_RECORDER_LATE = "recorder_late"
+
+
+def _record_origin_keys(section_id: str) -> dict[str, str]:
+    sid = str(section_id or "")
+    return {
+        "mode": f"composer_record_origin_mode_{sid}",
+        "lead": f"composer_mic_lead_{sid}",
+        "late": f"composer_record_delay_{sid}",
+        "armed_at": f"composer_mic_armed_at_{sid}",
+        "resolved": f"composer_resolved_origin_{sid}",
+    }
+
+
+def _init_record_origin_widgets(session_state: dict, section_id: str, timeline: dict[str, Any] | None) -> None:
+    """Seed origin widgets from a persisted timeline once per section."""
+    keys = _record_origin_keys(section_id)
+    tl = timeline if isinstance(timeline, dict) else {}
+    try:
+        lead = float(tl.get("mic_lead_beats") or 0.0)
+    except (TypeError, ValueError):
+        lead = 0.0
+    try:
+        late = float(tl.get("recorder_late_beats") or tl.get("recorder_start_delay_beats") or 0.0)
+    except (TypeError, ValueError):
+        late = 0.0
+    if keys["mode"] not in session_state:
+        session_state[keys["mode"]] = _ORIGIN_RECORDER_LATE if late > 0 and lead <= 0 else _ORIGIN_MIC_FIRST
+    if keys["lead"] not in session_state:
+        session_state[keys["lead"]] = lead
+    if keys["late"] not in session_state:
+        session_state[keys["late"]] = late
+    if keys["resolved"] not in session_state and tl:
+        session_state[keys["resolved"]] = {
+            "mic_lead_beats": lead,
+            "recorder_late_beats": late,
+        }
+
+
+def _armed_record_offsets_from_panel(
+    session_state: dict,
+    section_id: str,
+    *,
+    bpm: int,
+) -> tuple[float, float]:
+    """Return (mic_lead_beats, recorder_late_beats) from the honest origin panel.
+
+    Mic-first is the primary workflow: backing/count-in began ``mic_lead`` capture
+    beats after the recorder. A leftover ``Mark I'm recording now`` timestamp
+    estimates that lead when the number field is still 0.
+    """
+    keys = _record_origin_keys(section_id)
+    mode = str(session_state.get(keys["mode"]) or _ORIGIN_MIC_FIRST)
+    try:
+        widget_lead = max(0.0, float(session_state.get(keys["lead"]) or 0.0))
+    except (TypeError, ValueError):
+        widget_lead = 0.0
+    try:
+        widget_late = max(0.0, float(session_state.get(keys["late"]) or 0.0))
+    except (TypeError, ValueError):
+        widget_late = 0.0
+    resolved = session_state.get(keys["resolved"])
+    resolved = resolved if isinstance(resolved, dict) else {}
+
+    if mode == _ORIGIN_RECORDER_LATE:
+        return 0.0, widget_late
+
+    if widget_lead > 0:
+        return widget_lead, 0.0
+    try:
+        stored_lead = max(0.0, float(resolved.get("mic_lead_beats") or 0.0))
+    except (TypeError, ValueError):
+        stored_lead = 0.0
+    if stored_lead > 0:
+        return stored_lead, 0.0
+    armed_at = session_state.get(keys["armed_at"])
+    if armed_at:
+        try:
+            elapsed = max(0.0, time.time() - float(armed_at))
+        except (TypeError, ValueError):
+            elapsed = 0.0
+        return elapsed * float(max(40, int(bpm or 96))) / 60.0, 0.0
+    return 0.0, 0.0
+
+
 def _render_hum_sing_panel(
     session_state: dict,
     doc: dict[str, Any],
@@ -2132,17 +2219,16 @@ def _render_hum_sing_panel(
     if not isinstance(timeline, dict):
         capture = ((section.get("melody") or {}).get("intent") or {}).get("hum_capture") or {}
         timeline = capture.get("timeline") if isinstance(capture, dict) else None
-    delay_key = f"composer_record_delay_{active_id}"
-    if delay_key not in session_state:
-        try:
-            session_state[delay_key] = float((timeline or {}).get("recorder_start_delay_beats") or 0.0)
-        except (TypeError, ValueError):
-            session_state[delay_key] = 0.0
+    origin_keys = _record_origin_keys(active_id)
+    _init_record_origin_widgets(session_state, active_id, timeline if isinstance(timeline, dict) else None)
 
     st.info(
         "The Streamlit microphone cannot start with the backing from one click, so this is not a locked sync. "
-        "**1. Start recording first.** **2. Start the count-in + backing.** Notes after the count-in land on beat 1. "
-        "If you started the recorder after the backing, set how many beats late."
+        "**1. Start recording first.** Optionally click **Mark I'm recording now**. "
+        "**2. Start the count-in + backing.** "
+        "A note on beat 1 of the section is at capture beat (mic lead + count-in). "
+        "Alignment is `section_beat = capture_beat − backing_origin_in_capture_beats`. "
+        "If the recorder started after the backing, switch to that mode instead of claiming a lock."
     )
 
     if not hum_analysis_available():
@@ -2161,13 +2247,68 @@ def _render_hum_sing_panel(
         audio = None
         st.caption("Audio recording will appear here when your browser supports it.")
 
-    late = st.number_input(
-        "Recorder started late by (beats)",
-        min_value=0.0,
-        max_value=32.0,
-        step=0.5,
-        key=delay_key,
-        help="0 if you armed the mic before the count-in. Use this when recording began after backing beat 0.",
+    st.radio(
+        "Recorder vs backing start",
+        options=[_ORIGIN_MIC_FIRST, _ORIGIN_RECORDER_LATE],
+        format_func=lambda v: (
+            "Microphone first (normal)"
+            if v == _ORIGIN_MIC_FIRST
+            else "Recorder started after backing"
+        ),
+        key=origin_keys["mode"],
+        help=(
+            "Primary flow: the mic is already running when count-in + backing begin. "
+            "Use the other option only if recording started after the backing."
+        ),
+    )
+    origin_mode = str(session_state.get(origin_keys["mode"]) or _ORIGIN_MIC_FIRST)
+    if origin_mode == _ORIGIN_RECORDER_LATE:
+        st.number_input(
+            "Recorder started after backing by (beats)",
+            min_value=0.0,
+            max_value=32.0,
+            step=0.5,
+            key=origin_keys["late"],
+            help="Mic started this many beats after backing/count-in. backing_origin = count-in − this value.",
+        )
+    else:
+        mark_col, lead_col = st.columns([1, 1])
+        with mark_col:
+            if st.button(
+                "Mark I'm recording now",
+                key=f"composer_mark_mic_{active_id}",
+                use_container_width=True,
+                help="Store the moment you started the recorder so Start can measure mic lead.",
+            ):
+                session_state[origin_keys["armed_at"]] = time.time()
+                st.rerun()
+        with lead_col:
+            st.number_input(
+                "Backing began this many beats after I started recording",
+                min_value=0.0,
+                max_value=32.0,
+                step=0.5,
+                key=origin_keys["lead"],
+                help=(
+                    "Primary offset D: mic at capture beat 0, backing/count-in starts D beats later. "
+                    "A note on section beat 0 is at capture beat D + count-in. "
+                    "Leave 0 and use Mark I'm recording now to measure D."
+                ),
+            )
+        armed_at = session_state.get(origin_keys["armed_at"])
+        if armed_at:
+            try:
+                elapsed = max(0.0, time.time() - float(armed_at))
+                est = elapsed * float(max(40, bpm)) / 60.0
+                st.caption(
+                    f"Recorder marked running · about {est:g} beats at {bpm} BPM. "
+                    "Start count-in will use this as mic lead if the box is still 0."
+                )
+            except (TypeError, ValueError):
+                pass
+
+    mic_lead_beats, recorder_late_beats = _armed_record_offsets_from_panel(
+        session_state, active_id, bpm=bpm
     )
 
     st.markdown("**2. Start count-in + backing**")
@@ -2181,16 +2322,24 @@ def _render_hum_sing_panel(
         timeline = prepare_armed_record_transport(
             doc,
             active_id,
-            recorder_start_delay_beats=float(late or 0.0),
+            mic_lead_beats=float(mic_lead_beats or 0.0),
+            recorder_late_beats=float(recorder_late_beats or 0.0),
             count_in_bars=1,
         )
         session_state[f"composer_record_timeline_{active_id}"] = timeline
+        session_state[origin_keys["resolved"]] = {
+            "mic_lead_beats": float(timeline.get("mic_lead_beats") or 0.0),
+            "recorder_late_beats": float(timeline.get("recorder_late_beats") or 0.0),
+        }
         intent = section.setdefault("melody", {}).setdefault("intent", {})
         capture = intent.setdefault("hum_capture", {})
         capture["timeline"] = timeline
         capture["analysis_status"] = "ready_to_record"
         capture["origin"] = timeline.get("origin")
         capture["sync_locked"] = False
+        capture["mic_lead_beats"] = timeline.get("mic_lead_beats")
+        capture["recorder_late_beats"] = timeline.get("recorder_late_beats")
+        capture["backing_origin_in_capture_beats"] = timeline.get("backing_origin_in_capture_beats")
         result = play_composer_preview(
             session_state,
             doc,
@@ -2204,12 +2353,16 @@ def _render_hum_sing_panel(
             st.warning(str(result.get("reason") or "Add chords first so backing can play while you record."))
         st.rerun()
     if isinstance(timeline, dict) and timeline.get("chord_changes"):
-        delay_beats = float(timeline.get("recorder_start_delay_beats") or 0.0)
+        lead_beats = float(timeline.get("mic_lead_beats") or 0.0)
+        late_beats = float(timeline.get("recorder_late_beats") or 0.0)
         cin = float(timeline.get("count_in_beats") or 0.0)
+        origin_in_capture = float(timeline.get("backing_origin_in_capture_beats") or 0.0)
         st.caption(
             f"Armed count-in transport · {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
             f"{int(timeline.get('section_bars') or 0)} bars · count-in {cin:g} beats · "
-            f"recorder delay {delay_beats:g} beats. Not a locked mic/speaker sync."
+            f"mic lead {lead_beats:g} · recorder late {late_beats:g} · "
+            f"backing_origin_in_capture_beats {origin_in_capture:g}. "
+            "section_beat = capture_beat − backing_origin. Not a locked mic/speaker sync."
         )
     elif not chords:
         st.caption("Add chords first — then arm the microphone and start the count-in.")
@@ -2253,21 +2406,30 @@ def _render_hum_sing_panel(
 
     if analyze:
         audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
+        mic_lead_beats, recorder_late_beats = _armed_record_offsets_from_panel(
+            session_state, active_id, bpm=bpm
+        )
         if not isinstance(timeline, dict):
             timeline = prepare_armed_record_transport(
                 doc,
                 active_id,
-                recorder_start_delay_beats=float(late or 0.0),
+                mic_lead_beats=float(mic_lead_beats or 0.0),
+                recorder_late_beats=float(recorder_late_beats or 0.0),
                 count_in_bars=1,
             )
         else:
             timeline = apply_record_origin(
                 timeline,
-                recorder_start_delay_beats=float(late or 0.0),
+                mic_lead_beats=float(mic_lead_beats or 0.0),
+                recorder_late_beats=float(recorder_late_beats or 0.0),
                 count_in_beats=timeline.get("count_in_beats"),
                 origin=str(timeline.get("origin") or "armed_count_in"),
             )
         session_state[f"composer_record_timeline_{active_id}"] = timeline
+        session_state[origin_keys["resolved"]] = {
+            "mic_lead_beats": float(timeline.get("mic_lead_beats") or 0.0),
+            "recorder_late_beats": float(timeline.get("recorder_late_beats") or 0.0),
+        }
         result = transcribe_hum_audio(
             audio_bytes,
             bpm=bpm,
@@ -2278,6 +2440,12 @@ def _render_hum_sing_panel(
         session_state[_hum_proposal_key(active_id)] = result
         intent = section.setdefault("melody", {}).setdefault("intent", {})
         capture = intent.setdefault("hum_capture", {})
+        capture["timeline"] = timeline
+        capture["origin"] = timeline.get("origin")
+        capture["sync_locked"] = False
+        capture["mic_lead_beats"] = timeline.get("mic_lead_beats")
+        capture["recorder_late_beats"] = timeline.get("recorder_late_beats")
+        capture["backing_origin_in_capture_beats"] = timeline.get("backing_origin_in_capture_beats")
         capture["analysis_status"] = str(result.get("status") or "unclear")
         capture["note_detection"] = bool(result.get("events"))
         _save_doc(session_state, doc)
