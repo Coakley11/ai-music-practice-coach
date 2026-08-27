@@ -37,6 +37,7 @@ from songs.music_source import (
     on_song_picker_source_change,
     prepare_songs_picker_entry,
     promote_last_custom_for_picker_entry,
+    restore_catalog_live_practice_key,
     reconcile_music_picker_source_widget,
     reconcile_picker_music_source,
     snapshot_last_custom_state,
@@ -62,14 +63,34 @@ def _refresh(session: dict) -> None:
     reconcile_music_picker_source_widget(session)
 
 
-def _assert_shape_catalog_owner(test: unittest.TestCase, session: dict, *, practice_key: str) -> None:
+def _assert_shape_catalog_owner(
+    test: unittest.TestCase,
+    session: dict,
+    *,
+    practice_key: str | None = None,
+) -> None:
     test.assertEqual(session.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
     test.assertFalse(custom_progression_is_active(session))
     test.assertEqual(session.get("song"), "Shape of You")
     test.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
-    test.assertEqual(str(session.get("display_key") or ""), practice_key)
     selected = session.get("selected_song") or {}
     test.assertEqual(str(selected.get("title") or session.get("song") or ""), "Shape of You")
+    if practice_key is not None:
+        test.assertEqual(str(session.get("display_key") or ""), practice_key)
+        test.assertEqual(get_practice_concert_key(session, PK_SHAPE), practice_key)
+
+
+def _assert_trial_page_projection(test: unittest.TestCase, session: dict, active: dict) -> None:
+    """Custom page shows Trial D locally and in the left sidebar; Shape still owns."""
+    _assert_shape_catalog_owner(test, session)
+    test.assertEqual(cpl_workspace_practice_key(session, active), "D")
+    test.assertEqual(session.get("custom_workspace_practice_key"), "D")
+    test.assertEqual(str(session.get("display_key") or ""), "D")
+    test.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Bm")
+    test.assertEqual(
+        get_practice_concert_key(session, custom_pick_key_for(active)),
+        "D",
+    )
 
 
 def _assert_trial_custom_owner(test: unittest.TestCase, session: dict) -> None:
@@ -100,9 +121,15 @@ def _persist_reboot_hydrate(session: dict) -> dict:
         CPL_ACTIVE_KEY: dict(session.get(CPL_ACTIVE_KEY) or {}),
         CPL_SAVED_KEY: dict(session.get(CPL_SAVED_KEY) or {}),
         PRACTICE_KEY_BY_SOURCE_KEY: dict(session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {}),
-        "studio_page": "picker",
+        "studio_page": session.get("studio_page") or "picker",
         "_reconcile_song_picker_catalog": CATALOG,
         "active_song_state": dict(session.get("active_song_state") or {}),
+        "custom_workspace_practice_key": session.get("custom_workspace_practice_key"),
+        "_custom_page_sealed_catalog_pk": session.get("_custom_page_sealed_catalog_pk"),
+        "_custom_page_sealed_catalog_pick": session.get("_custom_page_sealed_catalog_pick"),
+        "_sbi_custom_sealed_catalog_pk": session.get("_sbi_custom_sealed_catalog_pk"),
+        "_sbi_custom_sealed_catalog_pick": session.get("_sbi_custom_sealed_catalog_pick"),
+        "_custom_page_sidebar_overlay": session.get("_custom_page_sidebar_overlay"),
     }
     epoch = session.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY)
     if epoch is not None:
@@ -111,6 +138,10 @@ def _persist_reboot_hydrate(session: dict) -> dict:
     if tab_at is not None:
         restored[SONG_PICKER_USER_TAB_AT_KEY] = tab_at
     _refresh(restored)
+    page = str(restored.get("studio_page") or "").strip().lower()
+    if page in {"", "picker", "songs", "practice"}:
+        prepare_songs_picker_entry(restored)
+        restore_catalog_live_practice_key(restored)
     return restored
 
 
@@ -167,10 +198,11 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         self.assertEqual(cpl_workspace_practice_key(session, active), "D")
         self.assertEqual(session.get("custom_workspace_practice_key"), "D")
         self.assertEqual(session.get("song"), "Shape of You")
-        self.assertEqual(session.get("display_key"), "G")
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "G")
 
     def test_first_render_after_each_nav_keeps_shape_bm_and_trial_local_d(self) -> None:
-        """Human QA: no transient Trial D on Shape, and Custom first render is local D.
+        """Ownership stays Shape; Custom page projects Trial D; Songs restores Bm now.
 
         Capture state immediately after each navigation/hydrate — before refresh.
         """
@@ -180,14 +212,10 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         active = _save_trial_without_activating(session)
 
         prepare_custom_workspace_sidebar_display_key(_st(session), session)
-        _assert_shape_catalog_owner(self, session, practice_key="Bm")
-        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
-        self.assertEqual(session.get("custom_workspace_practice_key"), "D")
-        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Bm")
+        _assert_trial_page_projection(self, session, active)
 
         navigate_studio_page(session, "picker")
         _assert_shape_catalog_owner(self, session, practice_key="Bm")
-        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Bm")
         self.assertNotEqual(str(session.get("display_key") or ""), "D")
 
         _refresh(session)
@@ -199,14 +227,15 @@ class TestCustomSaveVsActivateOwnership(unittest.TestCase):
         session["studio_page"] = "custom"
         session["custom_workspace_practice_key"] = "Bm"
         prepare_custom_workspace_sidebar_display_key(_st(session), session)
-        _assert_shape_catalog_owner(self, session, practice_key="Bm")
-        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
-        self.assertEqual(session.get("custom_workspace_practice_key"), "D")
-        self.assertFalse(custom_progression_is_active(session))
+        _assert_trial_page_projection(self, session, active)
 
         prepare_custom_workspace_sidebar_display_key(_st(session), session)
-        _assert_shape_catalog_owner(self, session, practice_key="Bm")
-        self.assertEqual(session.get("custom_workspace_practice_key"), "D")
+        _assert_trial_page_projection(self, session, active)
+
+        session["studio_page"] = "custom"
+        custom_restored = _persist_reboot_hydrate(session)
+        prepare_custom_workspace_sidebar_display_key(_st(custom_restored), custom_restored)
+        _assert_trial_page_projection(self, custom_restored, active)
 
     def test_leaked_trial_d_restored_on_first_songs_nav_before_refresh(self) -> None:
         """Even if Custom overlay already wrote D, Custom→Songs restores Shape Bm now."""

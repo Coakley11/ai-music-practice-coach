@@ -158,7 +158,8 @@ def prepare_songs_picker_entry(session_state: dict[str, Any]) -> None:
 def catalog_owns_live_practice_key(session_state: dict[str, Any]) -> bool:
     """True when the globally active song is a Catalog owner, not Custom.
 
-    Saved / viewed Custom state must not write its Practice Key into ``display_key``.
+    Ownership is separate from the current page's sidebar projection. Custom page
+    may overlay Trial's Practice Key onto ``display_key`` without changing this.
     """
     if custom_progression_is_active(session_state) or is_custom_progression(session_state):
         return False
@@ -172,41 +173,133 @@ def catalog_owns_live_practice_key(session_state: dict[str, Any]) -> bool:
     return bool(pick) and not pick.startswith("custom::")
 
 
+def _catalog_pick_for_live_practice_key(session_state: dict[str, Any]) -> str:
+    pick = ""
+    try:
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session_state) or "").strip()
+    except ImportError:
+        pick = ""
+    if pick.startswith("custom::"):
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return ""
+    return pick
+
+
+def seal_catalog_live_practice_key_for_custom_page(
+    session_state: dict[str, Any],
+    *,
+    reject_live: str = "",
+) -> str:
+    """Remember Shape's Practice Key before the Custom page overlays Trial D.
+
+    Does not change Global Active. Never stamps the Custom overlay token onto an
+    existing catalog sticky.
+    """
+    if not catalog_owns_live_practice_key(session_state):
+        return ""
+    pick = _catalog_pick_for_live_practice_key(session_state)
+    sealed = str(session_state.get("_custom_page_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session_state.get("_custom_page_sealed_catalog_pick") or "").strip()
+    if not sealed:
+        sealed = str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+        sealed_pick = sealed_pick or str(
+            session_state.get("_sbi_custom_sealed_catalog_pick") or ""
+        ).strip()
+    sticky = ""
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
+    reject = str(reject_live or "").strip()
+    if not sealed:
+        # Prefer existing catalog sticky. Use live only before overlay, and never
+        # seal Trial's page-projection token as Shape's Practice Key.
+        already_overlay = bool(session_state.get("_custom_page_sidebar_overlay"))
+        if sticky:
+            sealed = sticky
+        elif live and not already_overlay and (not reject or live != reject):
+            sealed = live
+            if pick:
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(
+                        session_state,
+                        live,
+                        pick_key=pick,
+                        allow_catalog_during_sbi_custom=True,
+                    )
+                except ImportError:
+                    pass
+        if pick:
+            sealed_pick = pick
+    if sealed and sealed_pick:
+        session_state["_custom_page_sealed_catalog_pk"] = sealed
+        session_state["_custom_page_sealed_catalog_pick"] = sealed_pick
+        if not str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip():
+            session_state["_sbi_custom_sealed_catalog_pk"] = sealed
+            session_state["_sbi_custom_sealed_catalog_pick"] = sealed_pick
+    session_state["_custom_page_sidebar_overlay"] = True
+    return sealed
+
+
 def restore_catalog_live_practice_key(session_state: dict[str, Any]) -> str:
     """Put live ``display_key`` back to the Catalog owner's own Practice Key.
 
-    Custom save / Custom-page overlay must not leave Trial D on Shape of You
-    for the first Songs render. Persist refresh is not allowed to be the repair.
+    Custom-page overlay may show Trial D in the sidebar while Catalog still owns.
+    Leaving Custom must restore Shape/Bm before the first Songs render. Persist
+    refresh is not allowed to be the repair.
     """
     if not catalog_owns_live_practice_key(session_state):
         return str(session_state.get("display_key") or "").strip()
+    pick = _catalog_pick_for_live_practice_key(session_state)
+    sealed = str(session_state.get("_custom_page_sealed_catalog_pk") or "").strip()
+    if not sealed:
+        sealed = str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip()
     sticky = ""
-    pick = ""
-    try:
-        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
 
-        pick = str(resolve_practice_source_pick(session_state) or "").strip()
-        if pick.startswith("custom::"):
-            pick = str(session_state.get("active_catalog_pick_key") or "").strip()
-        if pick and not pick.startswith("custom::"):
             sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
-    except ImportError:
-        sticky = ""
-    if not sticky:
+        except ImportError:
+            sticky = ""
+    token = sealed or sticky
+    if not token:
         selected = session_state.get("selected_song")
         if isinstance(selected, dict):
-            sticky = str(selected.get("key") or "").strip()
-    if not sticky:
+            token = str(selected.get("key") or "").strip()
+    if not token:
         return str(session_state.get("display_key") or "").strip()
-    session_state["display_key"] = sticky
-    session_state["concert_key"] = sticky
+    if pick and token != sticky:
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(
+                session_state,
+                token,
+                pick_key=pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+        except ImportError:
+            pass
+    session_state["display_key"] = token
+    session_state["concert_key"] = token
     try:
         from songs.key_state import PENDING_DISPLAY_KEY
 
-        session_state[PENDING_DISPLAY_KEY] = sticky
+        session_state[PENDING_DISPLAY_KEY] = token
     except ImportError:
-        session_state["_pending_display_key"] = sticky
-    return sticky
+        session_state["_pending_display_key"] = token
+    session_state.pop("_custom_page_sidebar_overlay", None)
+    return token
 
 
 def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
