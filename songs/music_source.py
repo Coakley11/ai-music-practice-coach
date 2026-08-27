@@ -142,6 +142,7 @@ def prepare_songs_picker_entry(session_state: dict[str, Any]) -> None:
         custom_progression_is_active(session_state)
         or explicit_custom_activation_is_authoritative(session_state)
     ):
+        restore_catalog_live_practice_key(session_state)
         return
     if user_chose_catalog_tab_after_custom_activation(session_state):
         return
@@ -152,6 +153,60 @@ def prepare_songs_picker_entry(session_state: dict[str, Any]) -> None:
     session_state[SONGS_EXPECT_CUSTOM_RADIO_KEY] = True
     if str(session_state.get(SONG_PICKER_USER_TAB_KEY) or "").strip() != SONG_PICKER_SOURCE_CATALOG:
         _stamp_song_picker_user_tab(session_state, SONG_PICKER_SOURCE_CUSTOM)
+
+
+def catalog_owns_live_practice_key(session_state: dict[str, Any]) -> bool:
+    """True when the globally active song is a Catalog owner, not Custom.
+
+    Saved / viewed Custom state must not write its Practice Key into ``display_key``.
+    """
+    if custom_progression_is_active(session_state) or is_custom_progression(session_state):
+        return False
+    if str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CUSTOM:
+        return False
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return False
+    if str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CATALOG:
+        return True
+    return bool(pick) and not pick.startswith("custom::")
+
+
+def restore_catalog_live_practice_key(session_state: dict[str, Any]) -> str:
+    """Put live ``display_key`` back to the Catalog owner's own Practice Key.
+
+    Custom save / Custom-page overlay must not leave Trial D on Shape of You
+    for the first Songs render. Persist refresh is not allowed to be the repair.
+    """
+    if not catalog_owns_live_practice_key(session_state):
+        return str(session_state.get("display_key") or "").strip()
+    sticky = ""
+    pick = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session_state) or "").strip()
+        if pick.startswith("custom::"):
+            pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
+    except ImportError:
+        sticky = ""
+    if not sticky:
+        selected = session_state.get("selected_song")
+        if isinstance(selected, dict):
+            sticky = str(selected.get("key") or "").strip()
+    if not sticky:
+        return str(session_state.get("display_key") or "").strip()
+    session_state["display_key"] = sticky
+    session_state["concert_key"] = sticky
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session_state[PENDING_DISPLAY_KEY] = sticky
+    except ImportError:
+        session_state["_pending_display_key"] = sticky
+    return sticky
 
 
 def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
@@ -1420,6 +1475,9 @@ def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
         active = (snap or {}).get("active") if isinstance(snap, dict) else None
         if not isinstance(active, dict):
             return False
+    # Catalog still owns: undo any Custom-page overlay of Trial D onto display_key
+    # before the first Songs render.
+    restore_catalog_live_practice_key(session_state)
     # Do not call set_custom_source or queue PENDING_CUSTOM_ACTIVE_SONG —
     # those paths claim Global Active. If the user already Set as Active,
     # land on the Custom Songs tab so the hub/PK widget remounts for that owner.

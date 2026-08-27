@@ -598,7 +598,10 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     # 3) Original Key of the current Custom song (identity = no transpose).
     if home:
         return home
-    # 4) Last resort: shared display_key (Catalog/Custom may share this off Custom page).
+    # 4) Last resort: shared display_key only when Custom is Global Active.
+    # Catalog live PK must not become Trial's local editor key.
+    if not custom_is_ga:
+        return home or "C"
     try:
         from progression_helpers import session_display_key
 
@@ -685,15 +688,30 @@ def sync_custom_workspace_practice_key(
                 token,
                 widget_safe=True,
             )
-        # Custom page UX still mirrors display_key; Catalog sticky contamination is
-        # prevented by always writing set_practice_concert_key with custom pick below
-        # and by skipping on_sidebar sync when Custom is not Global Active.
-        safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
+        catalog_owns = False
+        try:
+            from songs.music_source import catalog_owns_live_practice_key
+
+            catalog_owns = catalog_owns_live_practice_key(session_state)
+        except ImportError:
+            catalog_owns = False
+        # Catalog Global Active keeps its own live Practice Key. Local Custom
+        # editing writes only the dedicated widget + Custom pick sticky.
+        if not catalog_owns:
+            safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
     except ImportError:
         session_state[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = token
-        session_state["display_key"] = token
-        session_state["concert_key"] = token
-        session_state["_pending_display_key"] = token
+        catalog_owns = False
+        try:
+            from songs.music_source import catalog_owns_live_practice_key
+
+            catalog_owns = catalog_owns_live_practice_key(session_state)
+        except ImportError:
+            catalog_owns = False
+        if not catalog_owns:
+            session_state["display_key"] = token
+            session_state["concert_key"] = token
+            session_state["_pending_display_key"] = token
     try:
         from songs.music_source import custom_pick_key_for
         from songs.practice_key_state import set_practice_concert_key
@@ -808,6 +826,10 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         live = live_global
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
+    # Global pending display_key is the Catalog owner's sidebar key while
+    # Catalog remains Global Active. It must not seed Trial's local editor.
+    if not custom_is_ga:
+        pending_s = ""
     original_just_changed = bool(
         widget_home and stored_home_n and widget_home != stored_home_n
     )
@@ -922,8 +944,6 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
             session["_custom_page_sidebar_overlay"] = True
         except ImportError:
             pass
-    session["display_key"] = selected
-    session["concert_key"] = selected
     session[CPL_LAST_DISPLAY_KEY] = selected
     try:
         from songs.music_source import custom_pick_key_for
@@ -934,6 +954,35 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         )
     except ImportError:
         pass
+    catalog_owns = False
+    try:
+        from songs.music_source import catalog_owns_live_practice_key
+
+        catalog_owns = catalog_owns_live_practice_key(session)
+    except ImportError:
+        catalog_owns = False
+    if catalog_owns:
+        # Sidebar / live display_key stay on the Catalog owner (Shape Bm).
+        # Local Custom editor uses CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET only.
+        try:
+            from songs.music_source import restore_catalog_live_practice_key
+
+            catalog_live = restore_catalog_live_practice_key(session)
+        except ImportError:
+            catalog_live = str(session.get("display_key") or "").strip()
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+            if catalog_live:
+                session[PENDING_DISPLAY_KEY] = catalog_live
+                _apply_display_key_before_widget(
+                    st, catalog_live, source="catalog_owner_sidebar"
+                )
+        except Exception:
+            pass
+        return options
+    session["display_key"] = selected
+    session["concert_key"] = selected
     try:
         from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
