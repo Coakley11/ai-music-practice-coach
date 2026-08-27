@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock
@@ -878,12 +879,16 @@ class TestCompositionColdProcessReboot(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            repo = str(Path(__file__).resolve().parents[1])
+            env = dict(os.environ)
+            env["PYTHONPATH"] = repo + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
             proc = subprocess.run(
                 [sys.executable, str(child), str(envelope), chorus_id],
                 check=False,
                 capture_output=True,
                 text=True,
-                cwd=str(Path(__file__).resolve().parents[1]),
+                cwd=repo,
+                env=env,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
             self.assertIn("COLD_OK", proc.stdout)

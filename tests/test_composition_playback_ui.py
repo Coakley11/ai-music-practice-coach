@@ -219,18 +219,22 @@ class TestClickRunRemount(unittest.TestCase):
             from streamlit.testing.v1 import AppTest
         except ImportError:
             self.skipTest("streamlit.testing.v1.AppTest unavailable")
-        at = AppTest.from_file("tests/composer_preview_click_app.py", default_timeout=45)
+        from pathlib import Path
+
+        harness = str(Path(__file__).resolve().parent / "composer_preview_click_app.py")
+        at = AppTest.from_file(harness, default_timeout=45)
         at.run()
         self.assertFalse(at.exception)
         buttons = [b for b in at.button if "Preview" in str(b.label)]
         self.assertTrue(buttons, "Preview button missing from harness")
         buttons[0].click().run()
         self.assertFalse(at.exception)
-        wav = at.session_state.get(COMPOSER_PREVIEW_WAV_KEY)
+        self.assertIn(COMPOSER_PREVIEW_WAV_KEY, at.session_state)
+        wav = at.session_state[COMPOSER_PREVIEW_WAV_KEY]
         stats = inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None)
         self.assertTrue(stats.get("playable"), stats)
-        self.assertGreater(int(at.session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0), 0)
-        self.assertTrue(at.session_state.get(COMPOSER_PREVIEW_AUTOPLAY_KEY))
+        self.assertGreater(int(at.session_state[COMPOSER_PREVIEW_NONCE_KEY] or 0), 0)
+        self.assertTrue(bool(at.session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY]))
 
 
 class TestButtonPathWiring(unittest.TestCase):
