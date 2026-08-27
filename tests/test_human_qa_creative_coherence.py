@@ -67,6 +67,7 @@ from music_workflow_pending_mission_return import (
 )
 from songs.music_source import LAST_CUSTOM_STATE_KEY, SOURCE_CATALOG, SOURCE_CUSTOM
 from songs.practice_key_state import (
+    apply_authoritative_practice_key,
     get_practice_concert_key,
     resolve_settings_pick_for_write,
     set_practice_concert_key,
@@ -354,6 +355,8 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
         self.assertEqual(session.get("ii_selected_chord"), chord)
         after = session.get(MISSION_EXAMPLE_KEY)
         self.assertEqual(list(((after or {}).get("motif") or {}).get("notes") or []), notes)
+        self.assertEqual(str((after or {}).get("material_fp") or ""), example_fp)
+        self.assertEqual(str((after or {}).get("mission") or ""), "Outline chord tones")
         self.assertEqual(str(session.get("display_key") or ""), "Am")
         return session
 
@@ -362,6 +365,63 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
 
     def test_non_tonic_fsharp_minor_round_trip_survives_refresh(self) -> None:
         self._round_trip("F#m", ["F#", "A", "C#", "E"], [66, 69, 73, 76])
+
+    def test_return_does_not_mix_sealed_notes_with_newer_example_identity(self) -> None:
+        notes_a = ["A", "C#", "E", "G"]
+        midi_a = [69, 73, 76, 79]
+        session = self._mission_session("A")
+        session["_mission_example_artifact_id"] = "artifact-a"
+        example_a = _mission_example("A", notes_a, midi_a)
+        store_mission_example(session, example_a)
+        fp_a = motif_material_fingerprint(example_a.motif)
+        align = build_mission_backing_alignment_payload(
+            session,
+            mission="Outline chord tones",
+            cur_chord="A",
+            section_label="Chorus",
+            chord_idx=2,
+            song_title="Shape of You",
+            example=example_a,
+            with_practice_lick=True,
+        )
+        self.assertEqual(align.get("example_fingerprint"), fp_a)
+        self.assertEqual(align.get("example_material_fp"), fp_a)
+        self.assertEqual(align.get("example_artifact_id"), "artifact-a")
+        self.assertEqual(align.get("example_mission"), "Outline chord tones")
+        dest = build_mission_return_destination(
+            align,
+            handoff_mode="practice_in_jam",
+            with_practice_lick=True,
+            request_seq=1,
+        )
+        seal_mission_return_destination(session, dest)
+
+        newer = _mission_example("Em", ["E", "G", "B", "D"], [64, 67, 71, 74])
+        newer.mission = "Guide tones"
+        newer.variant = "harder"
+        newer.section = "Verse"
+        newer.abc = "K:Em\nE G B D"
+        store_mission_example(session, newer)
+        session["_mission_example_artifact_id"] = "artifact-b"
+        session[MISSION_EXAMPLE_KEY]["artifact_id"] = "artifact-b"
+        session[MISSION_EXAMPLE_KEY]["material_fp"] = motif_material_fingerprint(newer.motif)
+        fp_b = motif_material_fingerprint(newer.motif)
+        self.assertNotEqual(fp_b, fp_a)
+
+        apply_sealed_mission_return_destination(session)
+        after = session.get(MISSION_EXAMPLE_KEY)
+        self.assertIsInstance(after, dict)
+        self.assertEqual(list(((after or {}).get("motif") or {}).get("notes") or []), notes_a)
+        self.assertEqual(list(((after or {}).get("motif") or {}).get("midi") or []), midi_a)
+        self.assertEqual(str((after or {}).get("material_fp") or ""), fp_a)
+        self.assertEqual(str((after or {}).get("chord") or ""), "A")
+        self.assertEqual(str((after or {}).get("mission") or ""), "Outline chord tones")
+        self.assertEqual(str((after or {}).get("section") or ""), "Chorus")
+        self.assertNotEqual(str((after or {}).get("mission") or ""), "Guide tones")
+        self.assertNotEqual(str((after or {}).get("artifact_id") or ""), "artifact-b")
+        self.assertEqual(str((after or {}).get("artifact_id") or ""), "artifact-a")
+        self.assertNotIn("K:Em", str((after or {}).get("abc") or ""))
+        self.assertEqual(motif_material_fingerprint((after or {}).get("motif") or {}), fp_a)
 
 
 class Test4StyleJamBossaMetadata(unittest.TestCase):
@@ -653,22 +713,29 @@ class Test9MotifTransformInvariants(unittest.TestCase):
             "rhythm_symbols": ["♩", "♩", "♩", "♩"],
         }
 
+    def _assert_direction_midis(self, midis: list[int], *, sign: int, label: str) -> None:
+        self.assertGreaterEqual(len(midis), 8, label)
+        for i in range(1, len(midis)):
+            if sign >= 0:
+                self.assertGreaterEqual(
+                    midis[i],
+                    midis[i - 1],
+                    msg=f"{label} ascending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
+                )
+            else:
+                self.assertLessEqual(
+                    midis[i],
+                    midis[i - 1],
+                    msg=f"{label} descending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
+                )
+
     def test_ascending_complete_midi_sequence_is_nondecreasing(self) -> None:
         pat = build_motif_pattern(
             self._seed(), key_center="Dm", pattern_type="diatonic", direction="ascending", length=8
         )
         midis = [int(m) for m in pat["midi"]]
         self.assertEqual(len(midis), 32)
-        for i in range(1, len(midis)):
-            self.assertGreaterEqual(
-                midis[i],
-                midis[i - 1],
-                msg=f"ascending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
-            )
-        for i in range(1, 8):
-            prev_last = midis[i * 4 - 1]
-            next_first = midis[i * 4]
-            self.assertGreaterEqual(next_first, prev_last)
+        self._assert_direction_midis(midis, sign=1, label="seed-asc")
 
     def test_descending_complete_midi_sequence_is_nonincreasing(self) -> None:
         seed = {
@@ -684,18 +751,85 @@ class Test9MotifTransformInvariants(unittest.TestCase):
         )
         midis = [int(m) for m in pat["midi"]]
         self.assertEqual(len(midis), 32)
-        for i in range(1, len(midis)):
-            self.assertLessEqual(
-                midis[i],
-                midis[i - 1],
-                msg=f"descending adjacent {i - 1}->{i}: {midis[i - 1]}->{midis[i]}",
-            )
-        for i in range(1, 8):
-            prev_last = midis[i * 4 - 1]
-            next_first = midis[i * 4]
-            self.assertLessEqual(next_first, prev_last)
+        self._assert_direction_midis(midis, sign=-1, label="seed-desc")
 
-    def test_thirds_cells_are_exact_collection_step_transforms(self) -> None:
+    def test_zigzag_seed_every_adjacent_midi_follows_named_direction(self) -> None:
+        """Non-monotone source must still realize every adjacent MIDI in direction."""
+        zigzag = {
+            "chord": "Fm",
+            "notes": ["F", "B", "Ab", "C"],
+            "midi": [65, 71, 68, 72],
+            "rhythm": "♩ ♩ ♩ ♩",
+            "rhythm_key": "quarter-quarter-quarter",
+            "rhythm_symbols": ["♩", "♩", "♩", "♩"],
+        }
+        self.assertFalse(all(b >= a for a, b in zip(zigzag["midi"], zigzag["midi"][1:])))
+        self.assertFalse(all(b <= a for a, b in zip(zigzag["midi"], zigzag["midi"][1:])))
+
+        asc = build_motif_pattern(
+            zigzag, key_center="Fm", pattern_type="diatonic", direction="ascending", length=8
+        )
+        desc = build_motif_pattern(
+            zigzag, key_center="Fm", pattern_type="diatonic", direction="descending", length=8
+        )
+        again = build_motif_pattern(
+            zigzag, key_center="Fm", pattern_type="diatonic", direction="ascending", length=8
+        )
+        self.assertEqual(asc["midi"], again["midi"])
+        self.assertEqual(asc["notes"], again["notes"])
+        self.assertEqual(asc["rhythm_symbols"], zigzag["rhythm_symbols"] * 8)
+        self.assertEqual(asc["cells"][0], ["F", "B", "Ab", "C"])
+        self.assertEqual(desc["cells"][0], ["F", "B", "Ab", "C"])
+        self.assertEqual([_note_pc(n) for n in asc["cells"][0]], [5, 11, 8, 0])
+        self._assert_direction_midis([int(m) for m in asc["midi"]], sign=1, label="zigzag-asc")
+        self._assert_direction_midis([int(m) for m in desc["midi"]], sign=-1, label="zigzag-desc")
+        neighbor = {
+            "chord": "Fm",
+            "notes": ["Ab", "G", "F", "G"],
+            "midi": [68, 67, 65, 67],
+            "rhythm": "♩ ♩ ♩ ♩",
+            "rhythm_key": "quarter-quarter-quarter",
+            "rhythm_symbols": ["♩", "♩", "♩", "♩"],
+        }
+        n_asc = build_motif_pattern(
+            neighbor, key_center="Fm", pattern_type="diatonic", direction="ascending", length=8
+        )
+        n_desc = build_motif_pattern(
+            neighbor, key_center="Fm", pattern_type="diatonic", direction="descending", length=8
+        )
+        self.assertEqual(n_asc["cells"][0], ["Ab", "G", "F", "G"])
+        self._assert_direction_midis([int(m) for m in n_asc["midi"]], sign=1, label="neighbor-asc")
+        self._assert_direction_midis([int(m) for m in n_desc["midi"]], sign=-1, label="neighbor-desc")
+
+    def test_generated_nonmonotone_motif_pattern_obeys_direction(self) -> None:
+        motif = generate_motif_for_chord("Fm", key_center="Fm", level="Intermediate")
+        self.assertGreaterEqual(len(motif.get("notes") or []), 3)
+        source_pcs = [_note_pc(n) for n in motif["notes"]]
+        source_rhythm = list(motif.get("rhythm_symbols") or [])
+        # Prefer a compact generated contour; if it is already monotone the
+        # zigzag-seed test still proves within-cell direction.
+        pat = build_motif_pattern(
+            motif,
+            key_center="Fm",
+            pattern_type="diatonic",
+            direction="ascending",
+            length=8,
+        )
+        self.assertEqual([_note_pc(n) for n in pat["cells"][0]], source_pcs)
+        if source_rhythm:
+            self.assertEqual(pat["rhythm_symbols"][: len(source_rhythm)], source_rhythm)
+        self._assert_direction_midis([int(m) for m in pat["midi"]], sign=1, label="generated-asc")
+        down = build_motif_pattern(
+            motif,
+            key_center="Fm",
+            pattern_type="diatonic",
+            direction="descending",
+            length=8,
+        )
+        self.assertEqual([_note_pc(n) for n in down["cells"][0]], source_pcs)
+        self._assert_direction_midis([int(m) for m in down["midi"]], sign=-1, label="generated-desc")
+
+    def test_thirds_cells_keep_collection_step_pitch_classes(self) -> None:
         seed = self._seed()
         a = build_motif_pattern(
             seed, key_center="Dm", pattern_type="thirds", direction="ascending", length=8
@@ -721,9 +855,8 @@ class Test9MotifTransformInvariants(unittest.TestCase):
             self.assertEqual(cell, expected_notes)
             got = [int(m) for m in a["midi"][i * 4 : (i + 1) * 4]]
             self.assertEqual(len(got), 4)
-            delta = got[0] - int(expected_midi[0])
-            self.assertEqual(delta % 12, 0)
-            self.assertEqual(got, [int(m) + delta for m in expected_midi])
+            self.assertEqual([m % 12 for m in got], [int(m) % 12 for m in expected_midi])
+        self._assert_direction_midis([int(m) for m in a["midi"]], sign=1, label="thirds-asc")
 
     def test_sequence_up_down_preserves_intervals_and_rhythm(self) -> None:
         seed = self._seed()
@@ -871,64 +1004,134 @@ class Test12SourceRecordIsolation(unittest.TestCase):
         self.assertFalse(custom_sbi_owns_sidebar_practice_key(session))
 
     def test_shape_trial_alternating_keys_match_sidebar_and_card(self) -> None:
-        session = _shape_catalog_session(
-            display_key="Am",
-            concert_key="Am",
-            guitar_capo_shape_key="A",
+        """Real Catalog↔Custom activate/hydrate — no manual pick/source assignment."""
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+        from songs.music_source import (
+            begin_explicit_catalog_selection,
+            commit_custom_active_song,
+            custom_pick_key_for,
         )
-        shape_card = _assert_sidebar_matches_card(self, session, label="shape-1")
-        self.assertEqual(shape_card["title"], "Shape of You")
-        self.assertEqual(shape_card["original"], "Bm")
-        self.assertEqual(shape_card["practice"], "Am")
-        self.assertEqual(shape_card["shape"], "A")
-        self.assertEqual(shape_card["source"], SOURCE_CATALOG)
+        from songs.state import apply_pick_key
 
-        set_practice_concert_key(session, "Am", pick_key=SHAPE)
-        set_practice_concert_key(session, "E", pick_key=TRIAL)
-        session["active_catalog_pick_key"] = TRIAL
-        session["active_music_source"] = SOURCE_CUSTOM
-        session["song"] = "Trial Song"
-        session["selected_song"] = {"title": "Trial Song", "key": "D", "pick_key": TRIAL}
-        session["display_key"] = get_practice_concert_key(session, TRIAL) or "D"
-        session["concert_key"] = session["display_key"]
+        try:
+            from tests.test_custom_to_catalog_owner_switch import (
+                CATALOG,
+                PK_SHAPE,
+                _shape_catalog_session as _owner_shape_session,
+                _trial_active,
+            )
+        except ImportError:
+            from test_custom_to_catalog_owner_switch import (
+                CATALOG,
+                PK_SHAPE,
+                _shape_catalog_session as _owner_shape_session,
+                _trial_active,
+            )
+
+        session = _owner_shape_session(practice_key="Bm")
+        session.update(
+            {
+                "studio_page": "creative",
+                "improv_intelligence_tab": "Song-Based Improvisation",
+                "improv_entry_mode": "Song-Based Improvisation",
+                "improv_song_source": "Active song",
+                "sbi_preview_source": "Active song",
+                "guitar_capo_shape_key": "A",
+                "instrument": "Piano",
+            }
+        )
+        set_practice_concert_key(session, "Am", pick_key=PK_SHAPE)
+        session["display_key"] = "Am"
+        session["concert_key"] = "Am"
+        shape1 = _assert_sidebar_matches_card(self, session, label="shape-1")
+        self.assertEqual(shape1["title"], "Shape of You")
+        self.assertEqual(shape1["original"], "Bm")
+        self.assertEqual(shape1["practice"], "Am")
+        self.assertEqual(shape1["shape"], "A")
+        self.assertEqual(shape1["source"], SOURCE_CATALOG)
+
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        with mock.patch("songs.state.persist_music_local_state"), mock.patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(
+                st,
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        trial_pick = custom_pick_key_for(_trial_active())
+        # Activating Trial as Global Active is a fresh Custom original — leftover
+        # Shape Am/Dm sticky must not survive (product: EXPLICIT USER SONG PICK).
+        self.assertFalse(get_practice_concert_key(session, PK_SHAPE))
+        trial1 = _assert_sidebar_matches_card(self, session, label="trial-activate")
+        self.assertEqual(trial1["title"], "Trial Song")
+        self.assertEqual(trial1["original"], "D")
+        self.assertEqual(trial1["source"], SOURCE_CUSTOM)
+        self.assertEqual(trial1["practice"], "D")
+
+        apply_authoritative_practice_key(
+            session,
+            "E",
+            pick_key=trial_pick,
+            sync_display=True,
+            sync_custom_widgets=True,
+        )
         session["guitar_capo_shape_key"] = "E"
-        trial_card = _assert_sidebar_matches_card(self, session, label="trial-1")
-        self.assertEqual(trial_card["title"], "Trial Song")
-        self.assertEqual(trial_card["original"], "D")
-        self.assertEqual(trial_card["practice"], "E")
-        self.assertEqual(trial_card["shape"], "E")
-        self.assertEqual(get_practice_concert_key(session, SHAPE), "Am")
-
-        session["display_key"] = get_practice_concert_key(session, TRIAL) or "E"
-        session["concert_key"] = session["display_key"]
-        trial_rerun = _assert_sidebar_matches_card(self, session, label="trial-rerun")
-        self.assertEqual(trial_rerun["practice"], "E")
+        trial_live = _assert_sidebar_matches_card(self, session, label="trial-pk")
+        self.assertEqual(trial_live["original"], "D")
+        self.assertEqual(trial_live["practice"], "E")
+        self.assertEqual(trial_live["shape"], "E")
+        # Creative rerun hydrate — not Backing reclaim.
+        ensure_missions_parent_practice_key_hydrated(session)
+        trial_rerun = _assert_sidebar_matches_card(self, session, label="trial-hydrate")
+        self.assertEqual(trial_rerun["title"], "Trial Song")
         self.assertEqual(trial_rerun["original"], "D")
+        self.assertEqual(trial_rerun["practice"], "E")
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "E")
 
-        session["active_catalog_pick_key"] = SHAPE
-        session["active_music_source"] = SOURCE_CATALOG
-        session["song"] = "Shape of You"
-        session["selected_song"] = {
-            "title": "Shape of You",
-            "artist": "Ed Sheeran",
-            "key": "Bm",
-            "pick_key": SHAPE,
-        }
-        session["display_key"] = get_practice_concert_key(session, SHAPE) or "Am"
-        session["concert_key"] = session["display_key"]
+        begin_explicit_catalog_selection(session)
+        with mock.patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SHAPE, CATALOG, persist=False, origin="user")
+        # Return to Shape is a fresh original B minor — Trial E must not leak.
+        shape_fresh = _assert_sidebar_matches_card(self, session, label="shape-fresh")
+        self.assertEqual(shape_fresh["title"], "Shape of You")
+        self.assertEqual(shape_fresh["original"], "Bm")
+        self.assertEqual(shape_fresh["source"], SOURCE_CATALOG)
+        self.assertEqual(shape_fresh["practice"], "Bm")
+        self.assertNotEqual(shape_fresh["practice"], "E")
+        self.assertNotEqual(get_practice_concert_key(session, PK_SHAPE), "E")
+
+        apply_authoritative_practice_key(session, "Am", pick_key=PK_SHAPE, sync_display=True)
         session["guitar_capo_shape_key"] = "A"
-        shape2 = _assert_sidebar_matches_card(self, session, label="shape-2")
-        self.assertEqual(shape2["title"], "Shape of You")
+        shape2 = _assert_sidebar_matches_card(self, session, label="shape-pk")
         self.assertEqual(shape2["original"], "Bm")
         self.assertEqual(shape2["practice"], "Am")
-        self.assertEqual(get_practice_concert_key(session, TRIAL), "E")
-
-        session["display_key"] = get_practice_concert_key(session, SHAPE) or "Am"
-        session["concert_key"] = session["display_key"]
-        shape_rerun = _assert_sidebar_matches_card(self, session, label="shape-rerun")
+        self.assertEqual(shape2["shape"], "A")
+        self.assertNotEqual(get_practice_concert_key(session, trial_pick), "Am")
+        ensure_missions_parent_practice_key_hydrated(session)
+        shape_rerun = _assert_sidebar_matches_card(self, session, label="shape-hydrate")
         self.assertEqual(shape_rerun["original"], "Bm")
         self.assertEqual(shape_rerun["practice"], "Am")
-        self.assertEqual(get_practice_concert_key(session, TRIAL), "E")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Am")
+        self.assertNotEqual(get_practice_concert_key(session, trial_pick), "Am")
+
+        with mock.patch("songs.state.persist_music_local_state"), mock.patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(
+                st,
+                _trial_active(),
+                invalidate_backing=lambda *_a, **_k: None,
+            )
+        trial_again = _assert_sidebar_matches_card(self, session, label="trial-reactivate")
+        self.assertEqual(trial_again["title"], "Trial Song")
+        self.assertEqual(trial_again["original"], "D")
+        self.assertEqual(trial_again["source"], SOURCE_CUSTOM)
+        self.assertNotEqual(trial_again["practice"], "Am")
+        ensure_missions_parent_practice_key_hydrated(session)
+        trial_again_h = _assert_sidebar_matches_card(self, session, label="trial-reactivate-hydrate")
+        self.assertEqual(trial_again_h["original"], "D")
+        self.assertNotEqual(trial_again_h["practice"], "Am")
 
 
 class TestImportErrorAuthorityFailSafe(unittest.TestCase):

@@ -465,7 +465,11 @@ def _abc_pitch(midi: int) -> str:
 
 
 def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
-    """Spell a note name (with b or #) for ABC; respects flats like Bb."""
+    """Spell a note name (with b or #) for ABC; respects flats like Bb.
+
+    Accidentals precede the letter; octave marks follow it (``_B,`` not ``_,b``)
+    so parsers and key-signature-aware readers see the same pitch class.
+    """
     text = str(note or "C").strip()
     if not text:
         return "C"
@@ -476,11 +480,12 @@ def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
         acc = "_"
     elif rest.startswith("#") or rest.startswith("♯"):
         acc = "^"
-    letter = head.lower() if octave <= 3 else head
-    if octave < 4:
-        letter = "," + letter
-    elif octave >= 5:
-        letter = letter + "'" * (octave - 4)
+    if int(octave) >= 5:
+        letter = head.lower() + ("'" * (int(octave) - 5))
+    elif int(octave) < 4:
+        letter = head + ("," * (4 - int(octave)))
+    else:
+        letter = head
     return f"{acc}{letter}"
 
 
@@ -1131,6 +1136,69 @@ def _align_cell_midis_to_direction(
     return out
 
 
+def _realize_pc_in_direction(pc: int, prev: int, sign: int) -> int:
+    """Nearest octave of ``pc`` that continues the named direction from ``prev``.
+
+    Unison is allowed when the pitch class repeats. Does not change pitch class.
+    """
+    target = int(pc) % 12
+    last = int(prev)
+    base = (last // 12) * 12 + target
+    if sign >= 0:
+        if base < last:
+            base += 12
+        while base < last:
+            base += 12
+        return base
+    if base > last:
+        base -= 12
+    while base > last:
+        base -= 12
+    return base
+
+
+def _realize_midis_in_named_direction(
+    midis: list[int],
+    *,
+    sign: int,
+    start_midi: int | None = None,
+) -> list[int]:
+    """Place each next pitch class in the nearest octave that follows ``sign``.
+
+    Keeps the note-order / pitch-class sequence. Used so every adjacent MIDI
+    (within a cell and across cell boundaries) obeys ascending or descending.
+    """
+    if not midis:
+        return []
+    first = int(start_midi) if start_midi is not None else int(midis[0])
+    # Keep the planned first pitch class even if start_midi was supplied.
+    first = (first // 12) * 12 + (int(midis[0]) % 12)
+    out = [first]
+    for raw in midis[1:]:
+        out.append(_realize_pc_in_direction(int(raw) % 12, out[-1], sign))
+    return out
+
+
+_PATTERN_MIDI_ABS_LO = 24  # C1
+_PATTERN_MIDI_ABS_HI = 108  # C8
+
+
+def _fit_realized_pattern_register(midis: list[int], *, sign: int) -> list[int]:
+    """Octave-shift a fully realized pattern into a playable instrument range.
+
+    Long ascending/descending patterns may exceed the staff-ish window; do not
+    collapse them into negative MIDI. Shift the whole sequence only.
+    """
+    if not midis:
+        return []
+    out = [int(m) for m in midis]
+    while min(out) < _PATTERN_MIDI_ABS_LO:
+        out = [m + 12 for m in out]
+    while max(out) > _PATTERN_MIDI_ABS_HI and min(out) - 12 >= _PATTERN_MIDI_ABS_LO:
+        out = [m - 12 for m in out]
+    return out
+
+
 def _format_pattern_display(cells: list[list[str]]) -> str:
     return " | ".join(" – ".join(cell) for cell in cells if cell)
 
@@ -1147,7 +1215,11 @@ def build_motif_pattern(
 
     Register is planned globally before generation: ascending starts low enough,
     descending starts high enough, and cells climb/fall continuously with no
-    mid-pattern octave reset. Cell 1 preserves exact source pitch classes.
+    mid-pattern octave reset. Cell 0 preserves exact source pitch classes
+    (including non-diatonic tones). Named direction then realizes every
+    adjacent MIDI — within a cell and across cell boundaries — by placing each
+    next pitch class in the nearest continuing octave. Rhythm and note order
+    are unchanged.
     """
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
     if not base_notes:
@@ -1179,8 +1251,7 @@ def build_motif_pattern(
         sign=sign,
     )
     cells: list[list[str]] = []
-    cell_midis: list[list[int]] = []
-    prev_last: int | None = None
+    planned_cell_midis: list[list[int]] = []
     for i in range(n_cells):
         cell_notes, cell_ms = _shift_notes_by_collection_steps(
             base_notes,
@@ -1189,14 +1260,20 @@ def build_motif_pattern(
             steps=sign * i * step,
             source_midis=source_midis,
         )
-        cell_ms = _align_cell_midis_to_direction(cell_ms, prev_last, sign=sign)
         cells.append(cell_notes)
-        cell_midis.append(cell_ms)
-        if cell_ms:
-            prev_last = int(cell_ms[-1])
+        planned_cell_midis.append(cell_ms)
     flat = [n for cell in cells for n in cell]
-    flat_midi = [m for cell in cell_midis for m in cell]
+    planned_flat = [m for cell in planned_cell_midis for m in cell]
+    start_midi = int(source_midis[0]) if source_midis else None
+    flat_midi = _fit_realized_pattern_register(
+        _realize_midis_in_named_direction(planned_flat, sign=sign, start_midi=start_midi),
+        sign=sign,
+    )
     cell_len = max(1, len(base_notes))
+    cell_midis = [
+        flat_midi[i * cell_len : (i + 1) * cell_len]
+        for i in range(n_cells)
+    ]
     base_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
     base_syms = list(motif.get("rhythm_symbols") or _RHYTHM_PATTERNS.get(base_rk, ["♩"] * cell_len))
     while len(base_syms) < cell_len:
