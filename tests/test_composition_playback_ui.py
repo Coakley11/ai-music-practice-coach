@@ -17,9 +17,11 @@ from composition_preview import (
     COMPOSER_PREVIEW_AUTOPLAY_KEY,
     COMPOSER_PREVIEW_NONCE_KEY,
     build_composer_playback_html,
+    flush_composer_preview_dock,
     inspect_preview_wav,
     play_composer_preview,
     render_composer_playback,
+    request_composer_preview_dock,
 )
 from composition_session_state import COMPOSER_PREVIEW_WAV_KEY
 from composition_studio_page import (
@@ -28,6 +30,7 @@ from composition_studio_page import (
     _render_hum_sing_panel,
     _render_phase_chords,
     _render_section_transport,
+    render_composition_studio_page,
 )
 
 
@@ -190,13 +193,55 @@ class TestPlayablePayloadSeam(unittest.TestCase):
         self.assertTrue(inspect_preview_wav(ss.get(COMPOSER_PREVIEW_WAV_KEY)).get("playable"))
 
 
+class TestClickRunRemount(unittest.TestCase):
+    def test_click_run_mounts_audio_element_without_extra_rerun(self) -> None:
+        """Click-run: arm → flush dock in the same script run (keeps the gesture)."""
+        doc, verse = _song_with_chords()
+        ss: dict = {}
+        request_composer_preview_dock(ss, "t_stop")
+        result = play_composer_preview(ss, doc, section_id=str(verse["id"]), loops=1)
+        self.assertTrue(result["ok"], result.get("reason"))
+        fake = FakeStreamlit()
+        mounted = flush_composer_preview_dock(fake, ss)
+        self.assertTrue(mounted)
+        self.assertTrue(any("Now playing" in m for m in fake.markdowns) or fake.audio_calls)
+        if fake.audio_calls:
+            data, kwargs = fake.audio_calls[0]
+            self.assertTrue(data)
+            self.assertTrue(kwargs.get("autoplay", True))
+        transport = inspect.getsource(_render_section_transport)
+        self.assertNotIn("st.rerun()", transport)
+        page = inspect.getsource(render_composition_studio_page)
+        self.assertIn("flush_composer_preview_dock", page)
+
+    def test_streamlit_click_harness_arms_playable_wav(self) -> None:
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:
+            self.skipTest("streamlit.testing.v1.AppTest unavailable")
+        at = AppTest.from_file("tests/composer_preview_click_app.py", default_timeout=45)
+        at.run()
+        self.assertFalse(at.exception)
+        buttons = [b for b in at.button if "Preview" in str(b.label)]
+        self.assertTrue(buttons, "Preview button missing from harness")
+        buttons[0].click().run()
+        self.assertFalse(at.exception)
+        wav = at.session_state.get(COMPOSER_PREVIEW_WAV_KEY)
+        stats = inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None)
+        self.assertTrue(stats.get("playable"), stats)
+        self.assertGreater(int(at.session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0), 0)
+        self.assertTrue(at.session_state.get(COMPOSER_PREVIEW_AUTOPLAY_KEY))
+
+
 class TestButtonPathWiring(unittest.TestCase):
     def test_transport_and_preview_call_playable_seam(self) -> None:
         transport = inspect.getsource(_render_section_transport)
         self.assertIn("play_composer_preview", transport)
         self.assertNotIn("st.audio(", transport)
         preview = inspect.getsource(_render_active_preview)
-        self.assertIn("render_composer_playback", preview)
+        self.assertIn("request_composer_preview_dock", preview)
+        page = inspect.getsource(render_composition_studio_page)
+        self.assertIn("flush_composer_preview_dock", page)
         chords = inspect.getsource(_render_phase_chords)
         self.assertIn("_render_section_transport", chords)
         hum = inspect.getsource(_render_hum_sing_panel)

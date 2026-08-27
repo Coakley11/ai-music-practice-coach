@@ -109,9 +109,11 @@ from composition_document import (
     touch_composition,
 )
 from composition_preview import (
+    composition_surface_label,
+    flush_composer_preview_dock,
     invalidate_composer_preview,
     play_composer_preview,
-    render_composer_playback,
+    request_composer_preview_dock,
 )
 from composition_hum_transcription import (
     apply_record_origin,
@@ -408,10 +410,17 @@ body[data-studio-page="composer"] .block-container {
   padding: 0.55rem 0.65rem 0.75rem;
   margin: 0.45rem 0 0.75rem;
 }
+.composer-score-progression {
+  font-weight: 650;
+  font-size: 0.98rem;
+  color: #0f172a;
+  padding: 0.2rem 0.35rem 0.35rem;
+  letter-spacing: 0.01em;
+}
 .composer-score-chords {
   display: flex;
   gap: 0.35rem;
-  margin-top: 0.15rem;
+  margin: 0.15rem 0 0.45rem;
   padding: 0 0.35rem 0.15rem;
 }
 .composer-score-chord {
@@ -583,8 +592,8 @@ def _save_doc(session_state: dict, doc: dict[str, Any]) -> None:
             force_disk=True,
             st=st,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        session_state["_composition_workspace_force_save_error"] = str(exc)
 
 
 def _composer_navigate(
@@ -998,8 +1007,8 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
 
 
 def _render_active_preview(session_state: dict, *, stop_key: str = "composer_preview_stop") -> None:
-    """Always-available audition dock — click path must remount playable autoplay audio."""
-    render_composer_playback(st, session_state, stop_key=stop_key)
+    """Queue the audition dock for end-of-page mount (same click-run as Play/Preview)."""
+    request_composer_preview_dock(session_state, stop_key=stop_key)
 
 
 def _play_chord_idea(
@@ -1052,9 +1061,7 @@ def _render_compare_tray(
         with c2:
             if st.button("▶", key=f"composer_cmp_tray_prev_{section_id}_{qid}", help="Preview"):
                 chord_syms = expand_entries_to_chords(list(sug.get("chords") or []))
-                if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                    st.rerun()
-                else:
+                if not _play_chord_idea(session_state, doc, section_id, chord_syms):
                     st.warning("Could not preview that progression.")
         with c3:
             if st.button("Use", key=f"composer_cmp_tray_use_{section_id}_{qid}", type="primary"):
@@ -1827,8 +1834,9 @@ def _render_melody_staff(
     chords: list[Any] | None = None,
     lyrics_text: str = "",
     lyric_syllables: list[str] | None = None,
+    section_bars: int | None = None,
 ) -> None:
-    """Primary musician-facing score: staff, then chord symbols, then lyrics."""
+    """Primary musician-facing score: full progression above staff, then lyrics."""
     score = build_section_score_model(
         events=events,
         chords=chords,
@@ -1838,8 +1846,20 @@ def _render_melody_staff(
         title=title,
         lyrics_text=lyrics_text,
         lyric_syllables=lyric_syllables,
+        section_bars=section_bars,
     )
     st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
+    if score.get("progression_line"):
+        st.markdown(
+            f'<div class="composer-score-progression">{html.escape(str(score["progression_line"]))}</div>',
+            unsafe_allow_html=True,
+        )
+    if score.get("chord_strip_html"):
+        st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
+        st.caption(
+            f"Full section harmony · {int(score.get('measures') or 0)} measures · "
+            f"{html.escape(str(score.get('meter') or meter))}"
+        )
     if score["has_melody"]:
         try:
             import streamlit.components.v1 as components
@@ -1853,11 +1873,9 @@ def _render_melody_staff(
             st.code(str(score["abc"]), language="text")
     elif score["has_chords"]:
         st.markdown(
-            '<div class="composer-score-empty">Melody not written yet — chords below.</div>',
+            '<div class="composer-score-empty">Melody not written yet — full progression above.</div>',
             unsafe_allow_html=True,
         )
-    if score.get("chord_strip_html"):
-        st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
     if score.get("lyrics_text"):
         st.markdown(
             f'<div class="composer-score-lyrics">{html.escape(str(score["lyrics_text"]))}</div>',
@@ -1909,6 +1927,7 @@ def _render_section_score_view(
                 for row in section_lyric_alignment(section)
                 if row.get("event_index") is not None
             ],
+            section_bars=section_playback_bars(doc, section),
         )
     elif has_chords:
         meter = str(pg.get("time_signature") or "4/4")
@@ -2351,7 +2370,6 @@ def _render_hum_sing_panel(
         _save_doc(session_state, doc)
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add chords first so backing can play while you record."))
-        st.rerun()
     if isinstance(timeline, dict) and timeline.get("chord_changes"):
         lead_beats = float(timeline.get("mic_lead_beats") or 0.0)
         late_beats = float(timeline.get("recorder_late_beats") or 0.0)
@@ -2473,6 +2491,7 @@ def _render_hum_sing_panel(
                 bpm=bpm,
                 title=f"{section.get('label_variant') or section.get('label') or 'Section'} — proposed",
                 chords=chords,
+                section_bars=section_playback_bars(doc, section),
             )
             _render_active_preview(session_state, stop_key=f"composer_hum_preview_stop_{active_id}")
 
@@ -2491,9 +2510,7 @@ def _render_hum_sing_panel(
                         melody_override=events,
                         loops=1,
                     )
-                    if result.get("ok"):
-                        st.rerun()
-                    else:
+                    if not result.get("ok"):
                         st.warning(str(result.get("reason") or "Add chords to this section first."))
             with p2:
                 use_label = "Replace existing melody" if accepted else "Use this melody"
@@ -2575,6 +2592,7 @@ def _render_melody_concept_card(
             title=name,
             height=180,
             chords=chords,
+            section_bars=section_playback_bars(doc, sec),
         )
     p1, p2 = st.columns(2)
     with p1:
@@ -2586,12 +2604,11 @@ def _render_melody_concept_card(
                 include_melody=True,
                 melody_override=events or None,
             )
-            if result.get("ok"):
-                st.rerun()
-            elif section_has_resolved_chords(doc, section_id):
-                st.warning(str(result.get("reason") or "Could not generate preview."))
-            else:
-                st.info("Add chords to this section first — then hear melody ideas in context.")
+            if not result.get("ok"):
+                if section_has_resolved_chords(doc, section_id):
+                    st.warning(str(result.get("reason") or "Could not generate preview."))
+                else:
+                    st.info("Add chords to this section first — then hear melody ideas in context.")
     with p2:
         if st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
             if events:
@@ -3116,9 +3133,7 @@ def _render_section_transport(
             include_melody=include_melody,
             melody_override=melody_override,
         )
-        if result.get("ok"):
-            st.rerun()
-        else:
+        if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add chords to this section first — melody sits on your harmony."))
 
     if render_preview:
@@ -3521,9 +3536,7 @@ def _render_suggestion_card(
     p1, p2, p3 = st.columns(3)
     with p1:
         if st.button("▶ Preview", key=f"{prefix}_preview_{sid}", use_container_width=True):
-            if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                st.rerun()
-            else:
+            if not _play_chord_idea(session_state, doc, section_id, chord_syms):
                 st.warning("Could not generate preview for that progression.")
     with p2:
         if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
@@ -3592,9 +3605,7 @@ def _render_chord_refinement_panel(
     a1, a2, a3, a4 = st.columns(4)
     with a1:
         if st.button("▶ Preview", key=f"composer_refine_preview_{section_id}", use_container_width=True):
-            if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                st.rerun()
-            else:
+            if not _play_chord_idea(session_state, doc, section_id, chord_syms):
                 st.warning("Could not preview that proposal.")
     with a2:
         if st.button("Use this", key=f"composer_refine_use_{section_id}", type="primary", use_container_width=True):
@@ -3640,9 +3651,7 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
             loops=loops,
             include_melody=True,
         )
-        if result.get("ok"):
-            st.rerun()
-        else:
+        if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add at least one chord before playing."))
 
     _render_active_preview(session_state)
@@ -3814,6 +3823,7 @@ def render_composition_studio_page() -> None:
         pass
     init_composer_page_state(session_state)
     inject_composition_studio_styles()
+    st.caption(composition_surface_label())
 
     needs_welcome = bool(session_state.get(COMPOSER_NEEDS_SEED_KEY)) and not get_active_document(session_state)
     if needs_welcome:
@@ -3847,3 +3857,4 @@ def render_composition_studio_page() -> None:
         _render_phase_review(session_state, doc)
     else:
         _render_phase_vision(session_state, doc)
+    flush_composer_preview_dock(st, session_state)

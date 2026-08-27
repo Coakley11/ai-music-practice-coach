@@ -20,6 +20,7 @@ from composition_document import (
 
 COMPOSER_PREVIEW_NONCE_KEY = "composer_preview_nonce"
 COMPOSER_PREVIEW_AUTOPLAY_KEY = "composer_preview_autoplay"
+COMPOSER_PREVIEW_DOCK_STOP_KEY = "_composer_preview_dock_stop_key"
 _MIN_PLAYABLE_PEAK = 0.02
 _MIN_PLAYABLE_SECONDS = 0.2
 
@@ -481,6 +482,32 @@ def play_composer_preview(
 def composer_playback_is_armed(session_state: dict) -> bool:
     wav = session_state.get("composer_preview_wav")
     return bool(inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None).get("playable"))
+
+
+def request_composer_preview_dock(session_state: dict, stop_key: str = "composer_preview_stop") -> None:
+    """Defer the player to the end of this script run (keeps the click gesture)."""
+    session_state[COMPOSER_PREVIEW_DOCK_STOP_KEY] = str(stop_key or "composer_preview_stop")
+
+
+def flush_composer_preview_dock(st_mod: Any, session_state: dict) -> bool:
+    """Mount the armed player once, after Play/Preview handlers in the same run."""
+    stop_key = session_state.pop(COMPOSER_PREVIEW_DOCK_STOP_KEY, None)
+    if not stop_key:
+        return False
+    return render_composer_playback(st_mod, session_state, stop_key=str(stop_key))
+
+
+def composition_surface_label() -> str:
+    """Exact git surface so QA can tell Cloud `dev` from this PR head."""
+    try:
+        from suite_deploy_marker import resolve_git_branch, resolve_git_commit_full
+
+        return (
+            f"Composition surface · {resolve_git_branch()} · "
+            f"{resolve_git_commit_full()}"
+        )
+    except Exception:
+        return "Composition surface · unknown"
 
 
 def render_composer_playback(
