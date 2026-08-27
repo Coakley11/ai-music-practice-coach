@@ -365,6 +365,57 @@ class Test3MissionBackingRoundTrip(unittest.TestCase):
 
 
 class Test4StyleJamBossaMetadata(unittest.TestCase):
+    def test_custom_sbi_backing_card_renders_progression_after_leftover_pop(self) -> None:
+        from backing_context import BackingContext
+        from backing_context_ui import render_backing_creative_context_card
+
+        ctx = BackingContext(
+            source="song_improv",
+            source_label="Song-Based Improvisation",
+            active_song_id=TRIAL,
+            song_title="Trial Song",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            bpm=100,
+            style="Pop",
+            groove="Pop groove",
+            progression=["Em", "Em", "D", "D"],
+            progression_label="Trial Song · Em–Em–D–D",
+            entry_mode="Song-Based Improvisation",
+            mode_label="Song-Based Improvisation",
+            bound_pick_key=TRIAL,
+        )
+        captured: list[str] = []
+        st = SimpleNamespace(markdown=lambda html, **_k: captured.append(str(html)))
+        state = SimpleNamespace(
+            style="Pop groove",
+            groove="Pop groove",
+            meter="4/4",
+            instrument="Piano",
+            practice_concert_key="D",
+            show_chart_badge=False,
+            chart_badge_value="",
+            chart_badge_label="",
+            chart_sections=None,
+            concert_sections={"Verse": ["Em", "Em", "D", "D"]},
+            applied_bpm=100,
+        )
+        render_backing_creative_context_card(
+            st,
+            ctx,
+            {"backing_groove_style": "Pop groove", "instrument": "Piano"},
+            applied_bpm=100,
+            applied_groove="Pop groove",
+            practice_key="D",
+            musical_state=state,
+        )
+        html = "\n".join(captured)
+        self.assertIn("Progression:", html)
+        self.assertIn("Em", html)
+        self.assertIn("Trial", html + ctx.song_title)
+
+
     def test_bossa_snapshot_drives_badge_and_backing_config_after_rerun(self) -> None:
         session = {
             "improv_groove": "Pop groove",

@@ -517,7 +517,7 @@ def render_backing_creative_context_card(
         )
 
     style_line = f"Style: <strong>{backing_style}</strong>"
-    if default_style and live_groove and default_style.lower() != live_groove.lower():
+    if default_style and style_label and default_style.lower() != style_label.lower():
         style_line = (
             f"Default Style: <strong>{html.escape(default_style)}</strong>"
             f" · Current Style: <strong>{backing_style}</strong>"
