@@ -142,7 +142,10 @@ def prepare_songs_picker_entry(session_state: dict[str, Any]) -> None:
         custom_progression_is_active(session_state)
         or explicit_custom_activation_is_authoritative(session_state)
     ):
-        restore_catalog_live_practice_key(session_state)
+        try:
+            restore_catalog_live_practice_key(session_state)
+        except Exception:
+            pass
         return
     if user_chose_catalog_tab_after_custom_activation(session_state):
         return
@@ -174,15 +177,18 @@ def catalog_owns_live_practice_key(session_state: dict[str, Any]) -> bool:
 
 
 def _catalog_pick_for_live_practice_key(session_state: dict[str, Any]) -> str:
-    pick = ""
-    try:
-        from songs.practice_key_state import resolve_practice_source_pick
+    """Catalog pick only — never call resolve_practice_source_pick here.
 
-        pick = str(resolve_practice_source_pick(session_state) or "").strip()
-    except ImportError:
-        pick = ""
+    That helper can install a Custom identity when the catalog pick is empty
+    and would abort or contaminate Songs navigation.
+    """
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
     if pick.startswith("custom::"):
-        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+        pick = ""
+    if not pick:
+        selected = session_state.get("selected_song")
+        if isinstance(selected, dict):
+            pick = str(selected.get("pick_key") or "").strip()
     if pick.startswith("custom::"):
         return ""
     return pick
@@ -1569,8 +1575,11 @@ def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
         if not isinstance(active, dict):
             return False
     # Catalog still owns: undo any Custom-page overlay of Trial D onto display_key
-    # before the first Songs render.
-    restore_catalog_live_practice_key(session_state)
+    # before the first Songs render. Must never abort Songs navigation.
+    try:
+        restore_catalog_live_practice_key(session_state)
+    except Exception:
+        pass
     # Do not call set_custom_source or queue PENDING_CUSTOM_ACTIVE_SONG —
     # those paths claim Global Active. If the user already Set as Active,
     # land on the Custom Songs tab so the hub/PK widget remounts for that owner.

@@ -10441,11 +10441,10 @@ else:
                     active = cpl_active_from_session(st.session_state)
                     pick = custom_pick_key_for(active)
                     set_practice_concert_key(st.session_state, tok, pick_key=pick)
-                    if custom_progression_is_active(st.session_state) or is_custom_progression(
-                        st.session_state
-                    ):
-                        st.session_state["display_key"] = tok
-                        st.session_state["concert_key"] = tok
+                    # Page-scoped sidebar projection: Custom page left panel
+                    # follows Trial. Catalog sticky stays sealed on Shape.
+                    st.session_state["display_key"] = tok
+                    st.session_state["concert_key"] = tok
                     st.session_state.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
                 except Exception:
                     st.session_state["display_key"] = tok
