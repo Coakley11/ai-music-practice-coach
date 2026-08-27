@@ -51,6 +51,9 @@ class FakeStreamlit:
     def markdown(self, text: str, **_kwargs) -> None:
         self.markdowns.append(str(text))
 
+    def caption(self, text: str, **_kwargs) -> None:
+        self.markdowns.append(str(text))
+
     def columns(self, _spec):
         return (self, self)
 
@@ -180,11 +183,13 @@ class TestPlayablePayloadSeam(unittest.TestCase):
         fake = FakeStreamlit()
         mounted = render_composer_playback(fake, ss, stop_key="t_stop")
         self.assertTrue(mounted)
-        self.assertTrue(any("Now playing" in m for m in fake.markdowns) or fake.audio_calls)
-        if fake.audio_calls:
-            data, kwargs = fake.audio_calls[0]
-            self.assertTrue(data)
-            self.assertTrue(kwargs.get("autoplay", True))
+        self.assertTrue(any("Now playing" in m for m in fake.markdowns))
+        self.assertTrue(fake.audio_calls, "Playable path must mount native st.audio")
+        data, kwargs = fake.audio_calls[0]
+        self.assertTrue(data)
+        self.assertGreater(len(data), 44)
+        self.assertTrue(kwargs.get("autoplay"), kwargs)
+        self.assertIn("composer_preview_audio_", str(kwargs.get("key") or ""))
 
     def test_chord_idea_button_uses_same_seam(self) -> None:
         doc, verse = _song_with_chords()
@@ -204,11 +209,11 @@ class TestClickRunRemount(unittest.TestCase):
         fake = FakeStreamlit()
         mounted = flush_composer_preview_dock(fake, ss)
         self.assertTrue(mounted)
-        self.assertTrue(any("Now playing" in m for m in fake.markdowns) or fake.audio_calls)
-        if fake.audio_calls:
-            data, kwargs = fake.audio_calls[0]
-            self.assertTrue(data)
-            self.assertTrue(kwargs.get("autoplay", True))
+        self.assertTrue(fake.audio_calls, "Same-run flush must mount native st.audio")
+        data, kwargs = fake.audio_calls[0]
+        self.assertTrue(data)
+        self.assertTrue(kwargs.get("autoplay"), kwargs)
+        self.assertIn("composer_preview_audio_", str(kwargs.get("key") or ""))
         transport = inspect.getsource(_render_section_transport)
         self.assertNotIn("st.rerun()", transport)
         page = inspect.getsource(render_composition_studio_page)
@@ -225,9 +230,11 @@ class TestClickRunRemount(unittest.TestCase):
         at = AppTest.from_file(harness, default_timeout=45)
         at.run()
         self.assertFalse(at.exception)
-        buttons = [b for b in at.button if "Preview" in str(b.label)]
-        self.assertTrue(buttons, "Preview button missing from harness")
-        buttons[0].click().run()
+        preview = [b for b in at.button if "Preview" in str(b.label)]
+        play_chords = [b for b in at.button if "Play chords" in str(b.label)]
+        self.assertTrue(preview, "Preview button missing from harness")
+        self.assertTrue(play_chords, "Play chords button missing from harness")
+        play_chords[0].click().run()
         self.assertFalse(at.exception)
         self.assertIn(COMPOSER_PREVIEW_WAV_KEY, at.session_state)
         wav = at.session_state[COMPOSER_PREVIEW_WAV_KEY]
@@ -235,6 +242,9 @@ class TestClickRunRemount(unittest.TestCase):
         self.assertTrue(stats.get("playable"), stats)
         self.assertGreater(int(at.session_state[COMPOSER_PREVIEW_NONCE_KEY] or 0), 0)
         self.assertTrue(bool(at.session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY]))
+        preview[0].click().run()
+        self.assertFalse(at.exception)
+        self.assertGreater(int(at.session_state[COMPOSER_PREVIEW_NONCE_KEY] or 0), 1)
 
 
 class TestButtonPathWiring(unittest.TestCase):
@@ -248,12 +258,25 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("flush_composer_preview_dock", page)
         chords = inspect.getsource(_render_phase_chords)
         self.assertIn("_render_section_transport", chords)
+        self.assertIn('button_label="▶ Play chords"', chords)
+        self.assertIn("include_melody=False", chords)
+        render = inspect.getsource(render_composer_playback)
+        self.assertIn("st_mod.audio", render)
+        self.assertIn("autoplay", render)
+        self.assertIn("composer_preview_audio_", render)
+        self.assertNotIn("components.v1", render)
+        self.assertNotIn("st_mod.components", render)
         hum = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("play_composer_preview", hum)
         self.assertIn("Start count-in + backing", hum)
         self.assertIn("prepare_armed_record_transport", hum)
         self.assertIn("mic_lead_beats", hum)
         self.assertIn("backing_origin_in_capture_beats", hum)
+        self.assertIn("▶ Hear the chords", hum)
+        self.assertIn("include_melody=False", hum)
+        self.assertIn("progression_line", hum)
+        self.assertIn("span_events_across_section_timeline", hum)
+        self.assertIn("over the chords", hum)
 
 
 if __name__ == "__main__":

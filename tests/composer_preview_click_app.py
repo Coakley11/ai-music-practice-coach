@@ -39,6 +39,16 @@ def main() -> None:
         )
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Could not preview."))
+    if st.button("▶ Play chords", key="harness_play_chords"):
+        result = play_composer_preview(
+            st.session_state,
+            st.session_state["harness_doc"],
+            section_id=st.session_state["harness_sid"],
+            loops=1,
+            include_melody=False,
+        )
+        if not result.get("ok"):
+            st.warning(str(result.get("reason") or "Could not play chords."))
     flush_composer_preview_dock(st, st.session_state)
 
 

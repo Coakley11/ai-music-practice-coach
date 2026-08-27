@@ -21,6 +21,7 @@ from composition_document import (
     section_melody_source,
     set_workflow_phase,
 )
+from composition_melody_suggestions import apply_shaped_or_refined_melody
 from composition_preview import generate_preview_wav, resolve_preview_groove, set_composer_preview
 from composition_session_state import (
     COMPOSER_ACTIVE_KEY,
@@ -161,6 +162,69 @@ class TestCompositionDocumentReboot(unittest.TestCase):
         self.assertIsInstance(blob.get("active_document"), dict)
         # No completion flag required
         self.assertNotEqual(str((blob["active_document"] or {}).get("status") or ""), "ready")
+
+    def test_cold_restore_keeps_chosen_section_and_shaped_melody(self) -> None:
+        doc = bootstrap_from_vision(
+            genre="Pop",
+            song_idea="Cold shape",
+            title="Shape Restore",
+            key="C major",
+            bpm=100,
+            meter="4/4",
+        )
+        apply_structure_template(doc, "simple")
+        verse, chorus = ordered_sections(doc)[0], ordered_sections(doc)[1]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
+        apply_melody_events(
+            doc,
+            str(verse["id"]),
+            [
+                {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+                {"pitch": "E4", "midi": 64, "duration_beats": 1.0, "beat": 1.0, "measure": 1},
+                {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+                {"pitch": "C5", "midi": 72, "duration_beats": 2.0, "beat": 4.0, "measure": 1},
+            ],
+            replace=True,
+        )
+        apply_section_chords(doc, str(chorus["id"]), parse_chord_paste("F G C C"))
+        apply_melody_events(
+            doc,
+            str(chorus["id"]),
+            [{"pitch": "A4", "midi": 69, "duration_beats": 2.0, "beat": 0.0, "measure": 1}],
+            replace=True,
+        )
+        before_verse = [int(e.get("midi") or 0) for e in section_melody_events(verse)]
+        msg = apply_shaped_or_refined_melody(doc, str(verse["id"]), action="shape")
+        self.assertTrue(msg)
+        shaped = [int(e.get("midi") or 0) for e in section_melody_events(verse)]
+        self.assertNotEqual(shaped, before_verse)
+        set_workflow_phase(doc, "melody")
+        ss: dict = {
+            "studio_page": "composer",
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_LIBRARY_KEY: {str(doc["id"]): copy.deepcopy(doc)},
+            COMPOSER_ACTIVE_SECTION_KEY: str(chorus["id"]),
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            COMPOSER_NEEDS_SEED_KEY: False,
+        }
+        sync_composition_workspace_before_persist(ss, reason="composer_edit")
+        blob = build_music_disk_state(_FakeSt(ss))
+        fresh = _FakeSt({})
+        apply_music_disk_state(
+            fresh,
+            blob,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        prepare_composition_workspace_for_render(fresh.session_state)
+        restored = fresh.session_state.get(COMPOSER_ACTIVE_KEY)
+        self.assertIsInstance(restored, dict)
+        self.assertEqual(fresh.session_state.get(COMPOSER_ACTIVE_SECTION_KEY), str(chorus["id"]))
+        rverse = ordered_sections(restored)[0]
+        rchorus = next(s for s in ordered_sections(restored) if s.get("id") == chorus["id"])
+        self.assertEqual([int(e.get("midi") or 0) for e in section_melody_events(rverse)], shaped)
+        self.assertEqual(section_melody_events(rchorus)[0]["pitch"], "A4")
 
 
 class TestCompositionActivePageRestore(unittest.TestCase):

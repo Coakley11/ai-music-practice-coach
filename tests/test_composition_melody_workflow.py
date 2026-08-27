@@ -341,6 +341,211 @@ class TestRecordOverBacking(unittest.TestCase):
         self.assertIn("Not a locked", src)
         self.assertNotIn("Play backing and record", src)
         self.assertNotIn("Recorder started late by (beats)", src)
+        self.assertIn("▶ Hear the chords", src)
+        self.assertIn("progression_line", src)
+        self.assertIn("span_events_across_section_timeline", src)
+        self.assertIn("over the chords", src)
+
+
+class TestShapeAndRefineAcceptedMelody(unittest.TestCase):
+    def _prepared(self):
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Shape", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
+        events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+            {"pitch": "E4", "midi": 64, "duration_beats": 1.0, "beat": 1.0, "measure": 1},
+            {"pitch": "G4", "midi": 67, "duration_beats": 2.0, "beat": 2.0, "measure": 1},
+            {"pitch": "C5", "midi": 72, "duration_beats": 2.0, "beat": 4.0, "measure": 2},
+        ]
+        apply_melody_events(doc, str(verse["id"]), events, replace=True, source="ai")
+        apply_lyrics_text(doc, str(verse["id"]), "Home again now")
+        return doc, verse
+
+    def test_shape_rewrites_contour_keeps_rhythm_and_one_authority(self) -> None:
+        from composition_melody_suggestions import apply_shaped_or_refined_melody
+
+        doc, verse = self._prepared()
+        sid = str(verse["id"])
+        before = [dict(e) for e in section_melody_events(verse)]
+        abc_before = build_abc_from_melody_events(before, key="C major", meter="4/4", bpm=100)
+        sig_before = preview_signature(doc, section_id=sid, include_melody=True, loops=1)
+        msg = apply_shaped_or_refined_melody(doc, sid, action="shape")
+        self.assertTrue(msg)
+        self.assertIn("Shaped", msg)
+        after = section_melody_events(verse)
+        self.assertEqual(len(after), len(before))
+        self.assertEqual(
+            [float(e.get("duration_beats") or 0) for e in after],
+            [float(e.get("duration_beats") or 0) for e in before],
+        )
+        self.assertEqual(
+            [float(e.get("beat") or 0) for e in after],
+            [float(e.get("beat") or 0) for e in before],
+        )
+        self.assertNotEqual([e.get("midi") for e in after], [e.get("midi") for e in before])
+        self.assertEqual(section_melody_events(verse), (verse.get("melody") or {}).get("events"))
+        abc_after = build_abc_from_melody_events(after, key="C major", meter="4/4", bpm=100)
+        self.assertNotEqual(abc_before, abc_after)
+        self.assertNotEqual(
+            sig_before,
+            preview_signature(doc, section_id=sid, include_melody=True, loops=1),
+        )
+        play = play_composer_preview({}, doc, section_id=sid, include_melody=True, loops=1)
+        self.assertTrue(play["ok"], play.get("reason"))
+        self.assertTrue(section_lyric_alignment(verse))
+
+    def test_refine_smooths_without_replacing_the_line(self) -> None:
+        from composition_melody_suggestions import apply_shaped_or_refined_melody
+
+        doc, verse = self._prepared()
+        sid = str(verse["id"])
+        before = [dict(e) for e in section_melody_events(verse)]
+        msg = apply_shaped_or_refined_melody(doc, sid, action="refine")
+        self.assertTrue(msg)
+        self.assertIn("Refined", msg)
+        after = section_melody_events(verse)
+        self.assertEqual(len(after), len(before))
+        self.assertEqual(
+            [float(e.get("beat") or 0) for e in after],
+            [float(e.get("beat") or 0) for e in before],
+        )
+        self.assertNotEqual([e.get("midi") for e in after], [e.get("midi") for e in before])
+        leaps = [
+            abs(int(after[i]["midi"]) - int(after[i - 1]["midi"]))
+            for i in range(1, len(after))
+        ]
+        before_leaps = [
+            abs(int(before[i]["midi"]) - int(before[i - 1]["midi"]))
+            for i in range(1, len(before))
+        ]
+        self.assertLessEqual(max(leaps), max(before_leaps))
+        self.assertTrue((verse.get("melody") or {}).get("edited"))
+
+    def test_shape_refine_buttons_are_wired_through_persist(self) -> None:
+        import inspect
+
+        from composition_studio_page import _render_phase_melody
+
+        src = inspect.getsource(_render_phase_melody)
+        self.assertIn("Shape accepted melody", src)
+        self.assertIn("Refine accepted melody", src)
+        self.assertIn('action="shape"', src)
+        self.assertIn('action="refine"', src)
+        self.assertIn("apply_shaped_or_refined_melody", src)
+        self.assertIn("_save_doc", src)
+        self.assertIn("composer_melody_action_", src)
+
+
+class TestSectionSwitchWithoutStaleState(unittest.TestCase):
+    def _two_sections(self):
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Switch", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse, chorus = ordered_sections(doc)[0], ordered_sections(doc)[1]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C F G C"))
+        apply_melody_events(
+            doc,
+            str(verse["id"]),
+            [{"pitch": "C4", "midi": 60, "duration_beats": 2.0, "beat": 0.0, "measure": 1}],
+            replace=True,
+        )
+        apply_section_chords(doc, str(chorus["id"]), parse_chord_paste("Am F C G"))
+        apply_melody_events(
+            doc,
+            str(chorus["id"]),
+            [{"pitch": "A4", "midi": 69, "duration_beats": 2.0, "beat": 0.0, "measure": 1}],
+            replace=True,
+        )
+        return doc, verse, chorus
+
+    def test_select_active_section_persists_and_does_not_snap_back(self) -> None:
+        from composition_session_state import COMPOSER_ACTIVE_KEY, COMPOSER_ACTIVE_SECTION_KEY, COMPOSER_FOCUS_LANE_KEY, COMPOSER_NEEDS_SEED_KEY
+        from composition_studio_page import _hum_proposal_key, _select_active_section
+        from composition_workspace_state_persistence import (
+            COMPOSITION_WORKSPACE_STATE_KEY,
+            gather_composition_workspace_from_session,
+            project_composition_workspace_to_session,
+            sync_composition_workspace_before_persist,
+        )
+
+        doc, verse, chorus = self._two_sections()
+        ss: dict = {
+            COMPOSER_ACTIVE_KEY: doc,
+            COMPOSER_ACTIVE_SECTION_KEY: str(verse["id"]),
+            COMPOSER_FOCUS_LANE_KEY: "melody",
+            COMPOSER_NEEDS_SEED_KEY: False,
+            _hum_proposal_key(str(verse["id"])): {"status": "ok", "events": [{"pitch": "C4"}]},
+        }
+        _select_active_section(ss, doc, str(chorus["id"]))
+        self.assertEqual(ss[COMPOSER_ACTIVE_SECTION_KEY], str(chorus["id"]))
+        self.assertIsNone(ss.get(_hum_proposal_key(str(verse["id"]))))
+        blob = gather_composition_workspace_from_session(ss)
+        self.assertEqual(str(blob.get("active_section_id") or ""), str(chorus["id"]))
+        # Hydrate must keep the live chorus — not snap back to a stale verse blob.
+        ss[COMPOSITION_WORKSPACE_STATE_KEY] = {
+            **blob,
+            "active_section_id": str(verse["id"]),
+        }
+        project_composition_workspace_to_session(ss, overwrite=True)
+        self.assertEqual(ss[COMPOSER_ACTIVE_SECTION_KEY], str(chorus["id"]))
+        verse_events = section_melody_events(verse)
+        chorus_events = section_melody_events(chorus)
+        self.assertEqual(verse_events[0]["pitch"], "C4")
+        self.assertEqual(chorus_events[0]["pitch"], "A4")
+        sync_composition_workspace_before_persist(ss, reason="test")
+
+    def test_nav_strip_uses_select_and_save(self) -> None:
+        import inspect
+
+        from composition_studio_page import _render_section_nav_strip, _select_active_section
+
+        nav = inspect.getsource(_render_section_nav_strip)
+        self.assertIn("_select_active_section", nav)
+        sel = inspect.getsource(_select_active_section)
+        self.assertIn("_save_doc", sel)
+        self.assertIn("_clear_hum_proposal", sel)
+        self.assertIn("invalidate_composer_preview", sel)
+
+
+class TestTranscriptionOverChordProgression(unittest.TestCase):
+    def test_events_map_across_every_chord_boundary_and_span_section(self) -> None:
+        from composition_hum_transcription import (
+            align_events_to_record_timeline,
+            build_section_record_timeline,
+            span_events_across_section_timeline,
+        )
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="Align", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
+        verse["bars"] = 4
+        sid = str(verse["id"])
+        timeline = build_section_record_timeline(doc, sid)
+        self.assertGreaterEqual(len(timeline.get("chord_changes") or []), 4)
+        chords = [c["chord"] for c in timeline["chord_changes"][:4]]
+        self.assertEqual(chords, ["C", "Am", "F", "G"])
+        hummed = [
+            {"pitch": "E4", "midi": 64, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+            {"pitch": "A4", "midi": 69, "duration_beats": 1.0, "beat": 4.0, "measure": 2},
+            {"pitch": "C5", "midi": 72, "duration_beats": 1.0, "beat": 8.0, "measure": 3},
+            {"pitch": "B4", "midi": 71, "duration_beats": 1.0, "beat": 12.0, "measure": 4},
+        ]
+        aligned = align_events_to_record_timeline(hummed, timeline)
+        self.assertEqual([e.get("chord") for e in aligned], ["C", "Am", "F", "G"])
+        self.assertEqual([float(e.get("beat") or 0) for e in aligned], [0.0, 4.0, 8.0, 12.0])
+        spanned = span_events_across_section_timeline(aligned, timeline)
+        end = max(float(e.get("beat") or 0) + float(e.get("duration_beats") or 0) for e in spanned)
+        self.assertGreaterEqual(end, float(timeline["expected_duration_beats"]) - 0.01)
+        self.assertTrue(any(e.get("is_rest") for e in spanned))
+        pitched = [e for e in spanned if not e.get("is_rest")]
+        self.assertEqual([e.get("chord") for e in pitched], ["C", "Am", "F", "G"])
+        apply_melody_events(doc, sid, aligned, replace=True, source="recorded")
+        accepted = section_melody_events(verse)
+        self.assertEqual([e.get("chord") or "" for e in accepted if e.get("chord")], ["C", "Am", "F", "G"])
+        abc = build_abc_from_melody_events(spanned, key="C major", meter="4/4", bpm=100)
+        self.assertTrue(abc)
 
 
 if __name__ == "__main__":
