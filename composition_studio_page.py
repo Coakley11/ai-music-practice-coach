@@ -39,6 +39,7 @@ from composition_melody_suggestions import (
     MELODY_STYLES,
     coach_line_for_melody,
     default_melody_feel_for_section,
+    melody_choice_blurb,
     suggest_melody_concepts,
     MELODY_REFINEMENTS,
     apply_melody_refinement_to_section,
@@ -442,6 +443,26 @@ body[data-studio-page="composer"] .block-container {
 }
 .composer-score-chords-timed .composer-score-chord {
   min-width: 0;
+}
+.composer-score-measures {
+  display: flex;
+  gap: 0.15rem;
+  margin: 0.1rem 0 0.35rem;
+  padding: 0 0.25rem;
+}
+.composer-score-measures .composer-score-chord {
+  flex: 1 1 0;
+  min-width: 0;
+  border-bottom: 2px solid rgba(49, 46, 129, 0.25);
+}
+.composer-melody-now {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 0.45rem 0;
+}
+.composer-melody-now span {
+  color: #312e81;
 }
 .composer-local-player {
   margin: 0.35rem 0 0.55rem;
@@ -981,7 +1002,70 @@ def _render_library_sidebar(session_state: dict) -> None:
         st.rerun()
 
 
-def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_melody_side_tools(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+) -> None:
+    """On-demand Guided Path / Song Settings / Song Sections next to the library."""
+    variant = str(section.get("label_variant") or section.get("label") or "Section")
+    current = str(session_state.get(COMPOSER_MELODY_SIDE_PANEL_KEY) or "")
+    st.markdown("**Song tools**")
+    for name, label in (
+        ("path", "Guided Path"),
+        ("settings", "Song Settings"),
+        ("sections", "Song Sections"),
+    ):
+        opened = current == name
+        if st.button(
+            label,
+            key=f"composer_melody_tool_{name}",
+            type="primary" if opened else "secondary",
+            use_container_width=True,
+        ):
+            session_state[COMPOSER_MELODY_SIDE_PANEL_KEY] = "" if opened else name
+            st.rerun()
+
+    if current == "path":
+        st.caption("You are already writing the line. Jump to another step if you need it.")
+        _render_journey_rail(session_state, doc, label_map=_MELODY_PATH_LABELS)
+        if st.button("Close Guided Path", key="composer_melody_close_path", use_container_width=True):
+            session_state[COMPOSER_MELODY_SIDE_PANEL_KEY] = ""
+            st.rerun()
+    elif current == "settings":
+        _render_compact_song_settings(
+            session_state, doc, key_prefix=f"composer_melody_settings_{doc.get('id')}"
+        )
+        if st.button("Close Song Settings", key="composer_melody_close_settings", use_container_width=True):
+            session_state[COMPOSER_MELODY_SIDE_PANEL_KEY] = ""
+            st.rerun()
+    elif current == "sections":
+        st.markdown(f"**Now working on:** {variant}")
+        _render_section_nav_strip(session_state, doc, button_prefix="composer_melody_nav")
+        _render_section_lane_switcher(session_state, doc, active_lane="melody")
+        if st.button("Close Song Sections", key="composer_melody_close_sections", use_container_width=True):
+            session_state[COMPOSER_MELODY_SIDE_PANEL_KEY] = ""
+            st.rerun()
+
+
+_MELODY_PATH_LABELS: dict[str, str] = {
+    "vision": "Song Vision",
+    "structure": "Song Structure",
+    "chords": "Chords",
+    "melody": "Write the line",
+    "lyrics": "Lyrics",
+    "review": "Review",
+}
+
+COMPOSER_MELODY_SIDE_PANEL_KEY = "composer_melody_side_panel"
+
+
+def _render_journey_rail(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    label_map: dict[str, str] | None = None,
+) -> None:
     wf = ensure_workflow(doc)
     current = get_workflow_phase(doc)
     st.markdown(
@@ -989,8 +1073,9 @@ def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
         unsafe_allow_html=True,
     )
     cols = st.columns(len(COMPOSITION_PHASES))
+    labels = label_map or COMPOSITION_PHASE_LABELS
     for col, phase in zip(cols, COMPOSITION_PHASES):
-        label = COMPOSITION_PHASE_LABELS[phase]
+        label = labels.get(phase) or COMPOSITION_PHASE_LABELS[phase]
         if phase == "lyrics" and wf.get("skip_lyrics"):
             label = "Lyrics · N/A"
         with col:
@@ -1919,17 +2004,8 @@ def _render_melody_staff(
         section_bars=section_bars,
     )
     st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
-    if score.get("progression_line"):
-        st.markdown(
-            f'<div class="composer-score-progression">{html.escape(str(score["progression_line"]))}</div>',
-            unsafe_allow_html=True,
-        )
     if score.get("chord_strip_html"):
         st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
-        st.caption(
-            f"Chords sit on the staff at their beats · {int(score.get('measures') or 0)} measures · "
-            f"{html.escape(str(score.get('meter') or meter))}"
-        )
     if score.get("abc"):
         try:
             import streamlit.components.v1 as components
@@ -2346,33 +2422,29 @@ def _render_hum_sing_panel(
     elif not chords:
         st.caption("Add chords for this section so recording can follow the progression.")
 
-    st.caption(
-        "Turn on the microphone, then press Start. After the count-in, sing or play "
-        "while the highlighted chord moves."
-    )
+    st.caption("Turn on the microphone, then start the count-in. Sing or play after 1.")
     if not hum_analysis_available():
         st.caption("Pitch transcription needs librosa on this server. You can still record a capture.")
 
-    try:
-        audio = st.audio_input(
-            "Microphone",
-            key=f"composer_melody_record_{active_id}",
-        )
-    except Exception:
-        audio = None
-        st.caption("Audio recording will appear here when your browser supports it.")
-
-    start_col, hear_col = st.columns(2)
+    mic_col, start_col = st.columns([1.6, 1])
+    with mic_col:
+        try:
+            audio = st.audio_input(
+                "Microphone",
+                key=f"composer_melody_record_{active_id}",
+            )
+        except Exception:
+            audio = None
+            st.caption("Audio recording will appear here when your browser supports it.")
     with start_col:
         start_backing = st.button(
-            "Start",
+            "Start count-in & backing",
             key=f"composer_hum_play_backing_{active_id}",
             type="primary",
             use_container_width=True,
             disabled=not bool(chords),
-            help="Count-in, then the chord backing. Sing or play after 1.",
+            help="Hear a count-in, then the chords. Sing or play after 1.",
         )
-    with hear_col:
         hear_chords = st.button(
             "▶ Hear the chords",
             key=f"composer_hum_hear_chords_{active_id}",
@@ -2736,8 +2808,7 @@ def _render_melody_concept_card(
 ) -> None:
     cid = str(concept.get("id") or prefix)
     name = str(concept.get("name") or "Melodic idea")
-    contour = str(concept.get("contour") or "")
-    why = str(concept.get("why") or "")
+    blurb = melody_choice_blurb(concept)
     events = list(concept.get("events") or concept.get("notes_events") or [])
     sec = section_by_id(doc, section_id) or {}
     chords = list(sec.get("chords") or [])
@@ -2747,8 +2818,7 @@ def _render_melody_concept_card(
         f"""
 <div class="composer-suggestion-card">
   <h4>{html.escape(name)}</h4>
-  <p class="composer-suggestion-why">{html.escape(contour)}</p>
-  {f'<p class="composer-suggestion-why">{html.escape(why)}</p>' if why else ""}
+  <p class="composer-suggestion-why">{html.escape(blurb)}</p>
 </div>
         """,
         unsafe_allow_html=True,
@@ -2860,17 +2930,15 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
     melody = section.setdefault("melody", {"intent": {}, "phrases": []})
     intent = melody.setdefault("intent", {})
 
+    variant = str(section.get("label_variant") or section.get("label") or "Section")
     center, side = st.columns([2.3, 1])
     with center:
         done, total = melodized_section_count(doc)
         st.markdown(
-            f'<p class="composer-harmony-progress">Melody progress: <strong>{done}/{total}</strong> sections</p>',
+            f'<p class="composer-melody-now">Now writing: <span>{html.escape(variant)}</span></p>',
             unsafe_allow_html=True,
         )
-        _render_compact_song_settings(session_state, doc, key_prefix=f"composer_melody_settings_{doc.get('id')}")
-        _render_section_nav_strip(session_state, doc, button_prefix="composer_melody_nav")
-        _render_section_lane_switcher(session_state, doc, active_lane="melody")
-        _render_section_workspace_header(session_state, doc, section, lane="melody")
+        st.caption(f"Melody on {done}/{total} sections")
 
         has_harmony = section_has_resolved_chords(doc, active_id)
         if not has_harmony:
@@ -3016,16 +3084,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
             st.rerun()
 
     with side:
-        _render_coach_panel(
-            doc,
-            lead=coach_line_for_melody(
-                doc,
-                section,
-                feel=str(intent.get("feel") or picked_feel),
-                remember=str(intent.get("remember") or remember),
-            ),
-        )
-        st.caption("Record or explore ideas — sheet music is the main result.")
+        _render_melody_side_tools(session_state, doc, section)
         _render_library_sidebar(session_state)
 
 
@@ -4083,7 +4142,8 @@ def render_composition_studio_page() -> None:
     phase = get_workflow_phase(doc)
     if phase in {"chords", "melody", "lyrics", "review"}:
         session_state[COMPOSER_FOCUS_LANE_KEY] = phase
-    _render_journey_rail(session_state, doc)
+    if phase != "melody":
+        _render_journey_rail(session_state, doc)
 
     if phase == "vision":
         _render_phase_vision(session_state, doc)

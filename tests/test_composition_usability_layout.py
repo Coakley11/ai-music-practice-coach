@@ -155,7 +155,8 @@ class TestChordSymbolToNoteAlignment(unittest.TestCase):
         self.assertIn('"F"', score["abc"])
         self.assertIn('"G"', score["abc"])
         self.assertIn('data-onset="0"', score["chord_strip_html"])
-        self.assertIn("composer-score-chords-timed", score["chord_strip_html"])
+        self.assertIn("composer-score-measures", score["chord_strip_html"])
+        self.assertIn('data-measure="1"', score["chord_strip_html"])
         self.assertGreaterEqual(len(score["timed_spans"]), 3)
         self.assertEqual(score["note_chord_alignment"][0]["chord"], "C")
 
@@ -180,13 +181,19 @@ class TestChordSymbolToNoteAlignment(unittest.TestCase):
         self.assertIn('"Am"', score["abc"])
         self.assertIn('"F"', score["abc"])
         self.assertIn('"G"', score["abc"])
-        self.assertIn("data-duration=", score["chord_strip_html"])
+        self.assertIn('data-measure="1"', score["chord_strip_html"])
+        self.assertIn('data-measure="2"', score["chord_strip_html"])
+        self.assertIn('data-measure="3"', score["chord_strip_html"])
+        self.assertIn('data-measure="4"', score["chord_strip_html"])
+        self.assertRegex(score["chord_strip_html"], r'data-measure="1"[^>]*>C<')
+        self.assertRegex(score["chord_strip_html"], r'data-measure="2"[^>]*>Am<')
 
     def test_staff_render_uses_aligned_model(self) -> None:
         src = inspect.getsource(_render_melody_staff)
         self.assertIn("note_chord_alignment", src)
         self.assertIn("chord_strip_html", src)
         self.assertIn("Notes over chords", src)
+        self.assertNotIn("progression_line", src)
 
 
 class TestLocalPlayerPlacement(unittest.TestCase):
@@ -350,6 +357,76 @@ class TestRecordingTimelineAndReboot(unittest.TestCase):
         self.assertIn('"F"', cscore["abc"])
         self.assertEqual(section_melody_events(rverse)[0]["pitch"], "E4")
         self.assertEqual(section_melody_events(rchorus)[0]["pitch"], "A4")
+
+
+class TestMelodyWorkspaceUnclutter(unittest.TestCase):
+    def test_side_panels_are_on_demand(self) -> None:
+        from composition_studio_page import (
+            COMPOSER_MELODY_SIDE_PANEL_KEY,
+            _render_melody_side_tools,
+            _render_phase_melody,
+            render_composition_studio_page,
+        )
+
+        side = inspect.getsource(_render_melody_side_tools)
+        self.assertIn("Guided Path", side)
+        self.assertIn("Song Settings", side)
+        self.assertIn("Song Sections", side)
+        self.assertIn("Write the line", side)
+        self.assertIn("Now working on:", side)
+        self.assertIn(COMPOSER_MELODY_SIDE_PANEL_KEY, side)
+        melody = inspect.getsource(_render_phase_melody)
+        self.assertIn("_render_melody_side_tools", melody)
+        self.assertIn("Now writing:", melody)
+        self.assertNotIn("_render_compact_song_settings", melody)
+        self.assertNotIn("_render_section_nav_strip", melody)
+        self.assertNotIn("_render_journey_rail", melody)
+        self.assertNotIn("_render_section_workspace_header", melody)
+        page = inspect.getsource(render_composition_studio_page)
+        self.assertIn('if phase != "melody"', page)
+
+    def test_repeated_chord_sits_over_each_measure(self) -> None:
+        chords = [{"chord": "C", "bars": 1}, {"chord": "C", "bars": 1}, {"chord": "F", "bars": 1}]
+        score = build_section_score_model(
+            events=[
+                {"pitch": "E4", "duration_beats": 4.0, "beat": 0.0},
+                {"pitch": "G4", "duration_beats": 4.0, "beat": 4.0},
+                {"pitch": "A4", "duration_beats": 4.0, "beat": 8.0},
+            ],
+            chords=chords,
+            key="C major",
+            meter="4/4",
+            bpm=100,
+            title="Repeat C",
+            section_bars=3,
+        )
+        html = score["chord_strip_html"]
+        self.assertRegex(html, r'data-measure="1"[^>]*>C<')
+        self.assertRegex(html, r'data-measure="2"[^>]*>C<')
+        self.assertRegex(html, r'data-measure="3"[^>]*>F<')
+        self.assertGreaterEqual(score["abc"].count('"C"'), 2)
+        self.assertIn('"F"', score["abc"])
+
+
+class TestMelodyChoiceCopy(unittest.TestCase):
+    def test_blurbs_are_one_sentence_not_lessons(self) -> None:
+        from composition_melody_suggestions import melody_choice_blurb, suggest_melody_concepts
+
+        doc, verse, _chorus = _song()
+        concepts = suggest_melody_concepts(doc, verse, "energetic", "simple", limit=3)
+        self.assertTrue(concepts)
+        for concept in concepts:
+            blurb = melody_choice_blurb(concept)
+            self.assertTrue(concept.get("name"))
+            self.assertEqual(blurb.count("."), 1, blurb)
+            lower = blurb.lower()
+            self.assertNotIn("designed to sit", lower)
+            self.assertNotIn("full harmony", lower)
+            self.assertNotIn("chorus or pre-chorus", lower)
+            self.assertNotIn("how hooks", lower)
+            self.assertLessEqual(len(blurb.split()), 16, blurb)
+        climb = next((c for c in concepts if "climb" in str(c.get("name") or "").lower()), concepts[0])
+        self.assertTrue(melody_choice_blurb(climb))
 
 
 if __name__ == "__main__":

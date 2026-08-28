@@ -367,6 +367,7 @@ def build_abc_from_melody_events(
     bar_len = float(num)
     spans = timed_chord_spans(chords, meter=meter, section_bars=section_bars) if chords else []
     last_span_start: float | None = None
+    last_measure_announced: int | None = None
     cursor = 0.0
     evs = [e for e in list(events or []) if isinstance(e, dict)]
     evs.sort(key=lambda e: float(e.get("beat") or 0.0))
@@ -381,12 +382,19 @@ def build_abc_from_melody_events(
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
             token = f"{pitch}{length}"
         span = span_at_beat(spans, onset)
-        if span is not None:
-            start = float(span.get("start_beat") or 0.0)
-            symbol = _abc_chord_token(str(span.get("chord") or ""))
-            if symbol and last_span_start != start:
-                token = f'"{symbol}"{token}'
-                last_span_start = start
+        measure_i = int(onset // bar_len + 1e-9)
+        symbol = _abc_chord_token(str((span or {}).get("chord") or ""))
+        span_start = None if span is None else float(span.get("start_beat") or 0.0)
+        announce = False
+        if symbol and last_measure_announced != measure_i:
+            announce = True
+            last_measure_announced = measure_i
+            last_span_start = span_start
+        elif symbol and span_start is not None and last_span_start != span_start:
+            announce = True
+            last_span_start = span_start
+        if announce:
+            token = f'"{symbol}"{token}'
         tokens.append(token)
         beats_in_bar += dur
         cursor = onset + dur
@@ -407,6 +415,43 @@ L:1/8
 Q:{q_unit}={int(bpm)}
 K:{k_field}
 {body}"""
+
+
+def measure_aligned_chord_html(
+    spans: list[dict[str, Any]] | None,
+    *,
+    meter: str = "4/4",
+    measures: int | None = None,
+) -> str:
+    """One cell per measure so each chord sits over the bar it governs."""
+    bar = max(1.0, beats_per_bar(meter))
+    try:
+        n = int(measures or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if spans:
+        last_end = max(float(s.get("end_beat") or 0.0) for s in spans)
+        n = max(n, int((last_end + bar - 1e-9) // bar))
+    if n <= 0:
+        return ""
+    cells: list[str] = []
+    for i in range(n):
+        start = float(i) * bar
+        end = start + bar
+        names: list[str] = []
+        for span in spans or []:
+            s0 = float(span.get("start_beat") or 0.0)
+            s1 = float(span.get("end_beat") or (s0 + float(span.get("duration_beats") or 0.0)))
+            if s0 < end - 1e-9 and s1 > start + 1e-9:
+                name = str(span.get("chord") or "").strip()
+                if name and (not names or names[-1] != name):
+                    names.append(name)
+        label = " ".join(names)
+        cells.append(
+            f'<div class="composer-score-chord" data-measure="{i + 1}" '
+            f'data-onset="{start:g}">{html.escape(label)}</div>'
+        )
+    return f'<div class="composer-score-measures">{"".join(cells)}</div>'
 
 
 def timed_chord_strip_html(spans: list[dict[str, Any]] | None) -> str:
@@ -438,7 +483,7 @@ def build_chord_strip_html(
 ) -> str:
     """HTML row of chord symbols aligned to timed spans above the staff."""
     spans = timed_chord_spans(chords, meter=meter, section_bars=measures)
-    return timed_chord_strip_html(spans)
+    return measure_aligned_chord_html(spans, meter=meter, measures=measures)
 
 
 def build_live_chord_follow_html(
@@ -576,7 +621,7 @@ def build_section_score_model(
         "chord_labels": chord_labels,
         "timed_spans": spans,
         "note_chord_alignment": alignment,
-        "chord_strip_html": timed_chord_strip_html(spans),
+        "chord_strip_html": measure_aligned_chord_html(spans, meter=meter, measures=measures),
         "progression_line": " → ".join(timing),
         "progression_timing": timing,
         "lyrics_text": str(lyrics_text or "").strip(),

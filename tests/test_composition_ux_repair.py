@@ -259,7 +259,7 @@ class TestNotationFirstMelody(unittest.TestCase):
         src = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("Hum, sing, or play one melodic line", src)
         self.assertIn("Record your melody over these chords.", src)
-        self.assertIn('"Start"', src)
+        self.assertIn("Start count-in & backing", src)
         self.assertIn("cannot start with the backing from one click", src)
         self.assertNotIn("What instrument did you record", src)
         # Primary result is staff, not a default note list dump.

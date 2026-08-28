@@ -48,7 +48,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "smooth_stepwise",
             "name": "Gentle stepwise line",
-            "contour": "Move mostly by step — calm and approachable.",
+            "contour": "Notes walk up and down by neighboring steps.",
             "motif_hint": "Root → 2nd → 3rd → 2nd → root",
             "why": "Stepwise motion feels natural to sing and keeps focus on the lyric.",
             "degrees": [1, 2, 3, 2, 1],
@@ -57,7 +57,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "smooth_arc",
             "name": "Soft arch",
-            "contour": "Rise through the phrase, then settle back down by step.",
+            "contour": "The line rises, then eases back down.",
             "motif_hint": "Climb to the 5th, float down to the 3rd",
             "why": "A gentle arch creates emotional shape without demanding range.",
             "degrees": [1, 3, 5, 3, 2, 1],
@@ -68,7 +68,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "bold_leap_hook",
             "name": "Leap to the hook",
-            "contour": "Open with a confident interval jump onto a strong chord tone.",
+            "contour": "A jump opens the line, then the notes settle.",
             "motif_hint": "5th → root leap, then up to the 3rd",
             "why": "Strategic leaps make a chorus feel anthemic and memorable.",
             "degrees": [5, 1, 3, 5, 8],
@@ -77,7 +77,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "bold_peak",
             "name": "High-point arrival",
-            "contour": "Build toward one peak note that lands with the harmony.",
+            "contour": "The notes build to one high note, then come down.",
             "motif_hint": "Hold the 3rd, leap to the 5th on the change",
             "why": "One clear peak gives listeners something to wait for.",
             "degrees": [1, 2, 3, 3, 5, 3],
@@ -88,7 +88,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "lyrical_conversation",
             "name": "Conversational phrase",
-            "contour": "Short groups of notes that mirror natural speech rhythm.",
+            "contour": "Short groups of notes that follow the rhythm.",
             "motif_hint": "Three-note cells with a short rest of space between",
             "why": "Speech-like phrasing helps verses feel like storytelling.",
             "degrees": [1, 2, 3, 1, 2, 5],
@@ -97,7 +97,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "lyrical_question",
             "name": "Question & answer",
-            "contour": "First phrase rises (question), second resolves (answer).",
+            "contour": "One phrase rises and the next phrase answers it.",
             "motif_hint": "End first idea on 2nd; answer steps down to root",
             "why": "Call-and-response keeps verses engaging across lines.",
             "degrees": [1, 3, 5, 2, 5, 3, 1],
@@ -108,7 +108,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "rhythmic_syncopated",
             "name": "Off-beat accent",
-            "contour": "Emphasize notes that sit slightly ahead of the beat.",
+            "contour": "Notes land just ahead of the beat.",
             "motif_hint": "Repeated 3-note cell with lighter longer landings",
             "why": "Syncopation adds groove without changing your chords.",
             "degrees": [1, 1, 5, 1, 1, 5, 3],
@@ -117,7 +117,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "rhythmic_pocket",
             "name": "Groove pocket",
-            "contour": "Fewer notes, stronger rhythm — let space do the work.",
+            "contour": "Fewer notes, with space between them.",
             "motif_hint": "Root on 1, 5th later, 3rd to close",
             "why": "A rhythmic pocket feels modern and leaves room to breathe.",
             "degrees": [1, 5, 3, 1],
@@ -128,7 +128,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "emotional_sigh",
             "name": "Sighing descent",
-            "contour": "Start high, descend by step — like an exhale.",
+            "contour": "The line starts high and steps downward.",
             "motif_hint": "Begin on 5th or 6th, step down to root",
             "why": "Descending stepwise lines carry intimacy.",
             "degrees": [5, 4, 3, 2, 1],
@@ -137,7 +137,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "emotional_delayed",
             "name": "Delayed resolution",
-            "contour": "Hold tension on a non-root tone, then resolve late.",
+            "contour": "A note hangs, then finally lands.",
             "motif_hint": "Sit on the 2nd, resolve to root or 3rd",
             "why": "Delaying resolution creates yearning before the line lands.",
             "degrees": [2, 2, 2, 1, 3],
@@ -148,7 +148,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "energy_rise",
             "name": "Forward climb",
-            "contour": "Steady upward motion through the phrase.",
+            "contour": "The notes keep stepping higher.",
             "motif_hint": "Root → 2 → 3 → 4 → 5 across the opening",
             "why": "Rising lines build momentum into a chorus or pre-chorus.",
             "degrees": [1, 2, 3, 4, 5],
@@ -157,7 +157,7 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
         {
             "id": "energy_repetition",
             "name": "Motif repetition",
-            "contour": "Repeat a short cell with one note changing each time.",
+            "contour": "A short group of notes repeats with one change.",
             "motif_hint": "Do–Mi–Sol, Do–Mi–La, Do–Mi–Sol",
             "why": "Repetition with tiny variation is how hooks stick.",
             "degrees": [1, 3, 5, 1, 3, 6, 1, 3, 5],
@@ -170,6 +170,34 @@ _CONCEPT_LIBRARY: dict[str, list[dict[str, Any]]] = {
 def default_melody_feel_for_section(section: dict[str, Any]) -> str:
     label = str(section.get("label") or "Verse")
     return DEFAULT_MELODY_FEEL_BY_SECTION.get(label, "lyrical")
+
+
+def melody_choice_blurb(concept: dict[str, Any] | None) -> str:
+    """One short sentence for a melody-choice card — not a lesson."""
+    raw = str((concept or {}).get("contour") or "").strip()
+    if not raw:
+        raw = str((concept or {}).get("name") or "A short melodic idea.")
+    banned = (
+        "designed to sit",
+        "full harmony",
+        "shaped to sit",
+        "chorus or pre-chorus",
+        "momentum into",
+        "how hooks",
+        "natural to sing",
+    )
+    lower = raw.lower()
+    if any(token in lower for token in banned):
+        raw = str((concept or {}).get("name") or "A short melodic idea.")
+    end = len(raw)
+    for sep in (". ", "! ", "? "):
+        idx = raw.find(sep)
+        if idx >= 0:
+            end = min(end, idx + 1)
+    text = raw[:end].strip()
+    if text and text[-1] not in ".!?":
+        text += "."
+    return text
 
 
 def feel_label(feel_id: str) -> str:
@@ -508,15 +536,6 @@ def suggest_melody_concepts(
     if style == "simple":
         recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=False)
 
-    # Prefer concepts that sit near chord tones when harmony exists.
-    try:
-        from composition_document import chords_for_playback, section_by_id
-
-        sid = str(section.get("id") or "")
-        chords = chords_for_playback(doc, scope="section", section_id=sid) if sid else []
-    except Exception:
-        chords = []
-
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for recipe in recipes:
@@ -532,16 +551,13 @@ def suggest_melody_concepts(
         events = build_melody_events_from_degrees(degrees, durations, key=key)
         events = expand_melody_events_to_section(events, doc, section, key=key)
         notes_line = " ".join(str(e["pitch"]) for e in events if not e.get("is_rest"))
-        why = str(recipe.get("why") or "")
-        if chords:
-            why = f"{why} Shaped to sit over this section's full harmony in {key}."
         out.append(
             {
                 "id": rid,
                 "name": str(recipe.get("name") or "Melodic idea"),
-                "contour": str(recipe.get("contour") or ""),
+                "contour": melody_choice_blurb({"contour": str(recipe.get("contour") or "")}),
                 "motif_hint": str(recipe.get("motif_hint") or ""),
-                "why": why,
+                "why": "",
                 "feel": feel,
                 "style": style,
                 "events": events,

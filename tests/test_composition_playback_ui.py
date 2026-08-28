@@ -294,6 +294,7 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("build_live_chord_follow_html", hum)
         self.assertNotIn("**1. Arm the microphone**", hum)
         self.assertNotIn("**2. Start count-in + backing**", hum)
+        self.assertIn("Start count-in & backing", hum)
 
 
 class TestCompositionStudioQaSmoke(unittest.TestCase):
@@ -314,6 +315,13 @@ class TestCompositionStudioQaSmoke(unittest.TestCase):
         self.assertTrue(any("Shape accepted melody" in lab for lab in labels), labels)
         self.assertTrue(any("Refine accepted melody" in lab for lab in labels), labels)
         self.assertTrue(any("Hear the chords" in lab for lab in labels), labels)
+        self.assertTrue(any(lab == "Song Sections" for lab in labels), labels)
+        self.assertTrue(any(lab == "Guided Path" for lab in labels), labels)
+        self.assertTrue(any(lab == "Song Settings" for lab in labels), labels)
+        section_btn = next(b for b in at.button if str(b.label) == "Song Sections")
+        section_btn.click().run()
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        labels = [str(b.label) for b in at.button]
         section_like = [lab for lab in labels if "Verse" in lab or "Chorus" in lab]
         self.assertGreaterEqual(len(section_like), 2, labels)
         play_like = [lab for lab in labels if "Play" in lab or "Preview" in lab]
