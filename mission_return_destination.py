@@ -115,6 +115,12 @@ def seal_mission_return_destination(session: dict[str, Any], destination: dict[s
     dest = _valid_dest(destination)
     if dest is None:
         return
+    try:
+        from mission_backing_transpose import ensure_mission_backing_pitch_seal
+
+        dest = ensure_mission_backing_pitch_seal(dest)
+    except ImportError:
+        pass
     session[MISSION_CANONICAL_RETURN_DESTINATION_KEY] = dest
     stamp_mission_return_destination_on_backing_context(session, dest)
 
@@ -151,10 +157,24 @@ def sync_mission_return_destination_after_practice_key_change(
         new = token
     except ImportError:
         pass
-    # Prefer live Mission selection (already transposed by PK mutation reconcile).
+    # Prefer live Mission selection when it is not just the song tonic replacing
+    # a sealed Mission chord (Daniel: PK D#m must not become the selected chord).
     live_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
     live_sec = str(session.get("ii_selected_section") or session.get("II_SELECTED_SECTION") or "").strip()
-    if live_chord:
+    sealed_chord = str(dest.get("sealed_chord_symbol") or dest.get("chord_symbol") or "").strip()
+    live_is_song_tonic = False
+    try:
+        from mission_backing_transpose import _chord_root_matches_key
+
+        live_is_song_tonic = bool(
+            live_chord
+            and _chord_root_matches_key(live_chord, new)
+            and sealed_chord
+            and not _chord_root_matches_key(sealed_chord, new)
+        )
+    except ImportError:
+        live_is_song_tonic = False
+    if live_chord and not live_is_song_tonic:
         dest["chord_symbol"] = live_chord
     elif old and old != new:
         try:
@@ -172,6 +192,21 @@ def sync_mission_return_destination_after_practice_key_change(
     chord = str(dest.get("chord_symbol") or "").strip()
     if section or chord:
         dest["chord_display_label"] = f"{section} · {chord}".strip(" ·")
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY
+
+        raw = session.get(MISSION_EXAMPLE_KEY)
+        if isinstance(raw, dict):
+            motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
+            notes = list(motif.get("notes") or [])
+            if notes:
+                dest["example_notes"] = [str(n) for n in notes]
+                dest["example_midi"] = [int(m) for m in (motif.get("midi") or []) if str(m).strip() != ""]
+                dest["example_display"] = str(motif.get("display") or " – ".join(str(n) for n in notes))
+                dest["example_abc"] = str(raw.get("abc") or dest.get("example_abc") or "")
+                dest["example_rhythm"] = str(motif.get("rhythm") or dest.get("example_rhythm") or "")
+    except ImportError:
+        pass
     try:
         idx = session.get("ii_selected_chord_index")
         if idx is not None and str(idx).strip() != "":

@@ -1133,8 +1133,20 @@ def prepare_cpl_backing_handoff(
     if section:
         ctx.section = section
         ctx.scope = "Single section"
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
     set_backing_context(session_state, ctx)
     apply_backing_context_to_session(session_state, ctx)
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
 
 
 def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:

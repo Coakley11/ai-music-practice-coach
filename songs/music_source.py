@@ -1248,6 +1248,71 @@ def snapshot_catalog_before_creative(
     )
 
 
+def restore_sbi_active_from_sealed_global_owner(session_state: dict[str, Any]) -> bool:
+    """Rehydrate SBI Active Source from the sealed catalog owner after Entry Jam.
+
+    Entry Style Jam / Backing is temporary Creative ownership. Returning to SBI
+    Active must use the global-active catalog song and its sticky Practice Key,
+    not LAST_CUSTOM / last Custom preview. Trial stays under Custom SBI only.
+    """
+    try:
+        from source_session_state import set_sbi_preview_source, sync_catalog_session
+    except ImportError:
+        set_sbi_preview_source = None  # type: ignore[assignment]
+        sync_catalog_session = None  # type: ignore[assignment]
+    if callable(set_sbi_preview_source):
+        set_sbi_preview_source(session_state, "Active song")
+    session_state["improv_song_source"] = "Active song"
+    snap = session_state.get(CATALOG_BEFORE_CREATIVE_KEY)
+    if not isinstance(snap, dict):
+        snap = session_state.get("catalog_session")
+    pick = ""
+    if isinstance(snap, dict):
+        pick = str(snap.get("pick_key") or "").strip()
+        sel = snap.get("selected_song")
+        if isinstance(sel, dict) and sel and not str(sel.get("pick_key") or "").startswith("custom::"):
+            session_state["selected_song"] = dict(sel)
+            title = str(sel.get("title") or "").strip()
+            if title:
+                session_state["song"] = title
+                session_state["active_song_title"] = title
+    if not pick:
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick and not str(pick).startswith("custom::"):
+        session_state["active_catalog_pick_key"] = pick
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            pk = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            pk = ""
+        if not pk and isinstance(snap, dict):
+            pk = str(snap.get("display_key") or "").strip()
+        # Do not overwrite a live Style Jam sidebar key; only restore catalog sticky.
+        if pk:
+            try:
+                from songs.practice_key_state import set_practice_concert_key
+
+                set_practice_concert_key(session_state, pk, pick_key=pick)
+            except ImportError:
+                pass
+    try:
+        from creative_session_state import get_creative_session, set_creative_session
+
+        sess = get_creative_session(session_state)
+        if sess is not None:
+            sess.song_source = "Active song"
+            set_creative_session(session_state, sess)
+    except ImportError:
+        pass
+    if callable(sync_catalog_session):
+        try:
+            sync_catalog_session(session_state)
+        except Exception:
+            pass
+    return True
+
+
 def peek_catalog_restore_pin(session_state: dict[str, Any]) -> str:
     """Pinned catalog pick from a recent Use Catalog Song Backing restore."""
     return str(session_state.get(CATALOG_RESTORE_PIN_KEY) or "").strip()

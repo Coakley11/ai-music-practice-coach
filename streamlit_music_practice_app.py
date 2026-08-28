@@ -9149,18 +9149,23 @@ def _render_backing_return_source_action() -> None:
             elif action.action_id == "return_custom_songs":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
-                        from songs.music_source import LAST_CUSTOM_STATE_KEY
-                        from custom_progression_lab import apply_cpl_session_progression
+                        from custom_page_return_destination import consume_custom_page_return_destination
 
-                        snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
-                        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-                            apply_cpl_session_progression(
-                                st.session_state,
-                                dict(snap["active"]),
-                                reset_display_key=False,
-                            )
-                    except Exception:
-                        pass
+                        consume_custom_page_return_destination(st.session_state)
+                    except ImportError:
+                        try:
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY
+                            from custom_progression_lab import apply_cpl_session_progression
+
+                            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                                apply_cpl_session_progression(
+                                    st.session_state,
+                                    dict(snap["active"]),
+                                    reset_display_key=False,
+                                )
+                        except Exception:
+                            pass
                     navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
@@ -9182,10 +9187,11 @@ def _render_backing_return_source_action() -> None:
             src = str(getattr(ctx, "source", "") or "")
             if src == "custom_progression":
                 # Custom Backing → actual Custom page (not Creative).
+                # Consume the sealed Trial workspace dest — do not seize Global Active.
                 try:
-                    from songs.music_source import restore_last_custom_active_song
+                    from custom_page_return_destination import consume_custom_page_return_destination
 
-                    restore_last_custom_active_song(st.session_state)
+                    consume_custom_page_return_destination(st.session_state)
                 except ImportError:
                     pass
                 navigate_studio_page(st.session_state, "custom")
@@ -15691,6 +15697,12 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_go_custom_progression() -> None:
+        try:
+            from custom_sbi_page_origin import stamp_custom_sbi_page_origin
+
+            stamp_custom_sbi_page_origin(st.session_state)
+        except ImportError:
+            pass
         navigate_studio_page(st.session_state, "custom")
         st.rerun()
 

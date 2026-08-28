@@ -308,7 +308,7 @@ def motif_notes_from_body(body: str) -> list[str]:
     chunk = body or ""
     m = re.search(
         r"(?:MOTIF\s+(?:PATTERN\s+)?ON[^\n]*\n+|MOTIF PATTERN[^\n]*\n+|Notes:\s*)"
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+        r"([A-G](?:#|b)?(?:\s*(?:[–—\-]|\|)\s*[A-G](?:#|b)?){2,})",
         chunk,
         re.I,
     )
@@ -326,7 +326,7 @@ def motif_notes_from_body(body: str) -> list[str]:
     if numbered:
         return numbered[:32]
     line = re.search(
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+        r"([A-G](?:#|b)?(?:\s*(?:[–—\-]|\|)\s*[A-G](?:#|b)?){2,})",
         window,
     )
     if line:
@@ -580,11 +580,12 @@ def main() -> int:
         # Back to D
         set_custom_pk(page, "D") or set_baseweb_select(page, "Practice / Concert Key", "D")
         settle(page, 2)
-        custom_ok = custom_restore and pk_changed and orig_ok
+        nav_exits = has_any(body, "Songs") and has_any(body, "Practice")
+        custom_ok = custom_restore and pk_changed and orig_ok and nav_exits
         mark(
             "3_custom_page",
             "PASS" if custom_ok else ("PARTIAL" if custom_restore else "RED"),
-            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok}",
+            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok} nav={nav_exits}",
         )
 
         # ========== 4. Custom SBI Backing ==========

@@ -300,7 +300,18 @@ _MOTIF_PITCH_PRESERVING_TRANSFORMS = frozenset(
 
 
 def _motif_display_text(motif: dict[str, Any]) -> str:
-    """Prefer live notes[] — display string can lag after transforms."""
+    """Musician-facing motif text. Pattern cells use | ; notes inside a cell use – .
+
+    Staff/ABC/playback still read notes[] in order. This is display-only.
+    """
+    cells = motif.get("cells")
+    if motif.get("is_pattern") and isinstance(cells, list) and cells:
+        try:
+            from improvisation_motif import format_motif_pattern_display
+
+            return format_motif_pattern_display([[str(n) for n in cell] for cell in cells if cell])
+        except ImportError:
+            return " | ".join(" – ".join(str(n) for n in cell) for cell in cells if cell)
     notes = list(motif.get("notes") or [])
     if notes:
         return " – ".join(str(n) for n in notes)

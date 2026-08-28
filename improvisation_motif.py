@@ -1203,6 +1203,11 @@ def _format_pattern_display(cells: list[list[str]]) -> str:
     return " | ".join(" – ".join(cell) for cell in cells if cell)
 
 
+def format_motif_pattern_display(cells: list[list[str]]) -> str:
+    """Public musician-facing pattern text: notes joined by – , cells by | ."""
+    return _format_pattern_display(cells)
+
+
 def build_motif_pattern(
     motif: dict[str, Any],
     *,
@@ -1435,7 +1440,7 @@ def transform_motif(
             key_center=key_center,
         )
     elif operation in ("rhythmic", "change_rhythm"):
-        return cycle_motif_rhythm(motif)
+        return vary_motif_rhythm(motif)
 
     op_labels = {
         "sequence_up": "Sequence up",
@@ -1500,39 +1505,125 @@ def transform_motif(
     return sync_motif_midi(updated)
 
 
-def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
-    """Keep the same pitches; change only rhythm (sheet music / display update)."""
+def _beats_of_rhythm_symbol(sym: str) -> float:
+    return float(_RHYTHM_BEATS.get(str(sym), 1.0))
+
+
+def _symbol_from_beats(beats: float) -> str:
+    by_beats = {float(v): k for k, v in _RHYTHM_BEATS.items() if k not in {"z", "Z"}}
+    if beats in by_beats:
+        return by_beats[beats]
+    return min(by_beats.items(), key=lambda pair: abs(pair[0] - beats))[1]
+
+
+def _rhythm_edit_distance(before: list[str], after: list[str]) -> int:
+    n = max(len(before), len(after))
+    changed = 0
+    for i in range(n):
+        a = before[i] if i < len(before) else ""
+        b = after[i] if i < len(after) else ""
+        if a != b:
+            changed += 1
+    return changed
+
+
+def vary_motif_rhythm(motif: dict[str, Any], *, nonce: int | None = None) -> dict[str, Any]:
+    """Small musical rhythm variation of the current cell — not a catalog cycle.
+
+    Starts from the previous symbols, preserves total duration, and applies one
+    bounded edit (shift an attack, swap adjacent durations, or a last-note
+    dotted/undotted trade). Deterministic for the same seed/nonce.
+    """
     notes = list(motif.get("notes") or [])
-    rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
-    order = list(RHYTHM_PATTERN_KEYS)
-    try:
-        idx = order.index(rk)
-    except ValueError:
-        idx = 0
-    new_rk = order[(idx + 1) % len(order)]
-    syms = _RHYTHM_PATTERNS[new_rk]
-    while len(syms) < len(notes):
-        syms = syms + syms
-    syms = syms[: len(notes)]
+    old = motif_rhythm_symbols(motif)
     updated = dict(motif)
     updated["notes"] = notes
     cells = updated.get("cells")
     if updated.get("is_pattern") and isinstance(cells, list) and cells:
         updated["display"] = _format_pattern_display(cells)
     else:
-        updated["display"] = " – ".join(notes)
-    updated["rhythm_key"] = new_rk
-    updated["rhythm"] = " ".join(syms)
-    updated["rhythm_symbols"] = syms[: len(notes)]
-    # Durations only — never flatten register to octave 4.
+        updated["display"] = " \u2013 ".join(str(n) for n in notes)
+    if not notes:
+        updated["last_transform"] = "change_rhythm"
+        return sync_motif_midi(updated)
+    beats = [_beats_of_rhythm_symbol(s) for s in old]
+    total = sum(beats)
+    stored_nonce = int(motif.get("_rhythm_variation_nonce") or 0)
+    use_nonce = stored_nonce if nonce is None else int(nonce)
+    import hashlib
+
+    seed_src = f"{use_nonce}|{' '.join(old)}|{' '.join(str(n) for n in notes)}"
+    seed_int = int(hashlib.md5(seed_src.encode("utf-8")).hexdigest()[:8], 16)
+    rng = random.Random(seed_int)
+    candidates: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    n = len(beats)
+    raw_beats: list[list[float]] = []
+    for i in range(max(0, n - 1)):
+        for amt in (0.5, 0.25):
+            if beats[i] - amt >= 0.25 and beats[i + 1] + amt <= 2.0:
+                cand = list(beats)
+                cand[i] -= amt
+                cand[i + 1] += amt
+                raw_beats.append(cand)
+            if beats[i + 1] - amt >= 0.25 and beats[i] + amt <= 2.0:
+                cand = list(beats)
+                cand[i + 1] -= amt
+                cand[i] += amt
+                raw_beats.append(cand)
+        if beats[i] != beats[i + 1]:
+            cand = list(beats)
+            cand[i], cand[i + 1] = cand[i + 1], cand[i]
+            raw_beats.append(cand)
+    for cand in raw_beats:
+        if abs(sum(cand) - total) > 1e-9:
+            continue
+        syms = [_symbol_from_beats(b) for b in cand]
+        if abs(sum(_beats_of_rhythm_symbol(s) for s in syms) - total) > 1e-9:
+            continue
+        key = tuple(syms)
+        if key == tuple(old) or key in seen:
+            continue
+        dist = _rhythm_edit_distance(old, syms)
+        if 1 <= dist <= max(2, max(1, n // 2)):
+            seen.add(key)
+            candidates.append(syms)
+    if candidates:
+        new_syms = candidates[rng.randrange(len(candidates))]
+    else:
+        new_syms = list(old)
+        if n >= 2 and new_syms[-1] != new_syms[-2]:
+            new_syms[-1], new_syms[-2] = new_syms[-2], new_syms[-1]
+        elif n >= 2 and _beats_of_rhythm_symbol(new_syms[-1]) >= 1.0:
+            last = _beats_of_rhythm_symbol(new_syms[-1])
+            prev = _beats_of_rhythm_symbol(new_syms[-2])
+            if last - 0.5 >= 0.25 and prev + 0.5 <= 2.0:
+                new_syms[-1] = _symbol_from_beats(last - 0.5)
+                new_syms[-2] = _symbol_from_beats(prev + 0.5)
+    new_syms = new_syms[: len(notes)]
+    while len(new_syms) < len(notes):
+        new_syms.append(old[len(new_syms)] if len(new_syms) < len(old) else "\u2669")
+    short = {1.0: "q", 0.5: "e", 0.25: "s", 1.5: "qd", 2.0: "h"}
+    updated["rhythm_symbols"] = new_syms
+    updated["rhythm"] = " ".join(new_syms)
+    updated["rhythm_key"] = "varied-" + "-".join(
+        short.get(_beats_of_rhythm_symbol(s), "x") for s in new_syms
+    )
+    updated["_rhythm_variation_nonce"] = use_nonce + 1
     existing = list(motif.get("midi") or [])
     if len(existing) >= len(notes):
         updated["midi"] = [int(m) for m in existing[: len(notes)]]
     updated["variation_prompt"] = (
-        f"Rhythm on **{motif.get('chord', '')}**: {updated['display']} · {updated['rhythm']}"
+        f"Rhythm on **{motif.get('chord', '')}**: {updated['display']} \u00b7 {updated['rhythm']}"
     )
     updated["last_transform"] = "change_rhythm"
     return sync_motif_midi(updated)
+
+
+def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
+    """Keep the same pitches; apply a bounded rhythm variation (not a catalog cycle)."""
+    return vary_motif_rhythm(motif)
+
 
 
 def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:

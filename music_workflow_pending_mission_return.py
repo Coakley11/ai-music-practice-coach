@@ -38,11 +38,16 @@ def queue_pending_mission_return_from_backing(session: dict[str, Any]) -> dict[s
     try:
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
         if live:
-            from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+            try:
+                from mission_backing_transpose import apply_mission_backing_practice_key_interval
 
-            sync_mission_return_destination_after_practice_key_change(
-                session, new_key=live, from_key=""
-            )
+                apply_mission_backing_practice_key_interval(session, live)
+            except ImportError:
+                from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+                sync_mission_return_destination_after_practice_key_change(
+                    session, new_key=live, from_key=""
+                )
     except ImportError:
         pass
     dest = peek_mission_return_destination(session)

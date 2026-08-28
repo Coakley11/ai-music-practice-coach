@@ -453,7 +453,15 @@ def render_backing_creative_context_card(
     except ImportError:
         pass
     if ctx.source == "mission":
-        if mission_chord:
+        try:
+            from mission_backing_transpose import mission_card_progression_symbols
+
+            card_syms = mission_card_progression_symbols(session, ctx)
+        except ImportError:
+            card_syms = []
+        if card_syms:
+            progression_line = html.escape(" – ".join(card_syms))
+        elif mission_chord:
             progression_line = html.escape(mission_chord)
         elif ctx.progression:
             # Retranspose sealed progression to live chart when possible.

@@ -2,7 +2,27 @@
 
 from __future__ import annotations
 
-from app_ui import nav_icon_button_label
+from app_ui import STUDIO_PAGE_META, nav_icon_button_label
+
+
+def custom_page_exit_nav_items() -> list[dict[str, str]]:
+    """Persistent Custom-page exits: Songs + Practice with existing page icons.
+
+    Used by the finished view and builder launch row. Tests assert labels,
+    icons, and destinations without instantiating Streamlit widgets.
+    """
+    items: list[dict[str, str]] = []
+    for page_id in ("picker", "practice"):
+        meta = STUDIO_PAGE_META.get(page_id) or {}
+        items.append(
+            {
+                "page_id": page_id,
+                "label": nav_icon_button_label(page_id),
+                "destination": page_id,
+                "icon": str(meta.get("icon") or ""),
+            }
+        )
+    return items
 
 
 def _cpl_active_is_substantive(active: object) -> bool:
@@ -617,6 +637,22 @@ def render_custom_progression_lab_page() -> None:
                 if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
                     st.session_state["cpl_finished"] = False
                     st.rerun()
+
+            st.markdown("#### Continue in the studio")
+            exits = st.columns(2)
+            for col, item in zip(exits, custom_page_exit_nav_items()):
+                with col:
+                    dest = str(item.get("destination") or "")
+                    if st.button(
+                        str(item.get("label") or dest),
+                        key=f"cpl_exit_{dest}_finish",
+                        use_container_width=True,
+                        disabled=dest == "practice" and not has_chords,
+                    ):
+                        if dest == "picker":
+                            _go_songs()
+                        elif dest == "practice":
+                            _open_practice()
 
             _save(None)
             return
