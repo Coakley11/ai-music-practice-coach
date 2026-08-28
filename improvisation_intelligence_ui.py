@@ -121,6 +121,43 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
         return token
 
 
+def _catalog_library_original_sections(session_state: dict, pick: str) -> tuple[dict, str]:
+    """Catalog-library original-pitch chart + Original Key — never concert-pitch selected.sections."""
+    pick = str(pick or "").strip()
+    if not pick or pick.startswith("custom::"):
+        return {}, ""
+    try:
+        from songs.music_source import (
+            _catalog_library_from_session,
+            _catalog_picker_from_session,
+            _catalog_row_for_pick,
+            _section_map_from_record,
+            resolve_catalog_song_for_pick,
+        )
+    except ImportError:
+        return {}, ""
+    orig = ""
+    try:
+        _sel, row_orig = resolve_catalog_song_for_pick(session_state, pick)
+        orig = str(row_orig or "").strip()
+    except Exception:
+        orig = ""
+    for src in (
+        _catalog_library_from_session(session_state),
+        _catalog_picker_from_session(session_state),
+    ):
+        if not isinstance(src, dict) or not src:
+            continue
+        row = _catalog_row_for_pick(pick, src)
+        if not isinstance(row, dict):
+            continue
+        sections = _section_map_from_record(row.get("sections"))
+        row_key = str(row.get("key") or "").strip()
+        if sections:
+            return sections, (row_key or orig)
+    return {}, orig
+
+
 def _align_mission_section_map_to_practice_key(
     session_state: dict,
     section_map: list,
@@ -145,10 +182,15 @@ def _align_mission_section_map_to_practice_key(
                     break
         if first:
             break
-    sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
-    orig = str((sel or {}).get("key") or (sel or {}).get("original_key") or "").strip()
     pick = str(session_state.get("active_catalog_pick_key") or "").strip()
-    catalog = catalog_chart_sections_for_pick(session_state, pick) if pick else {}
+    if pick.startswith("custom::"):
+        return section_map
+    catalog, orig = _catalog_library_original_sections(session_state, pick)
+    if not isinstance(catalog, dict) or not catalog:
+        catalog = catalog_chart_sections_for_pick(session_state, pick) if pick else {}
+    sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    if not orig:
+        orig = str((sel or {}).get("original_key") or (sel or {}).get("key") or "").strip()
     if not isinstance(catalog, dict) or not catalog:
         home = session_state.get("home_sections")
         if isinstance(home, dict) and home:
@@ -3538,7 +3580,7 @@ def _tab_missions(
         section_map = resolve_improv_sections(session_state, improv_ctx)
     if not section_map:
         section_map = resolve_improv_sections(session_state, improv_ctx)
-    dest_for_map = str(
+    auth_for_map = str(
         _authoritative_practice_chart_key(session_state, blob_key or concert_key)
         or blob_key
         or concert_key
@@ -3553,21 +3595,9 @@ def _tab_missions(
             or ""
         ).strip(),
     )
-    # Caption and map must share the catalog Practice Key. Leftover live Fm
-    # (or LAST_CUSTOM D, already filtered) must not replace Songs Dm.
-    if live_for_map and not dest_for_map:
-        dest_for_map = live_for_map
-    elif live_for_map and dest_for_map:
-        try:
-            from music_theory import normalize_root, split_chord
-
-            live_root = normalize_root(split_chord(live_for_map)[0])
-            dest_root = normalize_root(split_chord(dest_for_map)[0])
-            if live_root and dest_root and live_root == dest_root:
-                dest_for_map = live_for_map
-        except ImportError:
-            if live_for_map == dest_for_map:
-                dest_for_map = live_for_map
+    # Same token the Missions caption will show: live Songs/sidebar PK
+    # (Dm) outranks a leftover blob Fm. LAST_CUSTOM D is already filtered.
+    dest_for_map = live_for_map or auth_for_map
     section_map = _align_mission_section_map_to_practice_key(
         session_state, section_map, dest_key=dest_for_map
     )

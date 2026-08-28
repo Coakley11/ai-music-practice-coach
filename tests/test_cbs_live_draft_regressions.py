@@ -275,6 +275,27 @@ class TestStaleLiveFmDoesNotBeatSongsDm(unittest.TestCase):
 
 
 class TestMissionMapAlignsToPracticeKey(unittest.TestCase):
+    def test_align_uses_library_original_not_concert_selected_sections(self) -> None:
+        from improvisation_intelligence_ui import _align_mission_section_map_to_practice_key
+
+        session = _shape_session(practice_key="Dm")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["selected_song"] = {
+            **session["selected_song"],
+            "key": "Fm",
+            "sections": copy.deepcopy(FM),
+        }
+        session["home_sections"] = copy.deepcopy(FM)
+        stale = [("Verse 1", ["Fm", "Bbm", "Db", "Eb"])]
+        with patch(
+            "improvisation_intelligence_ui._catalog_library_original_sections",
+            return_value=(copy.deepcopy(BM), "Bm"),
+        ):
+            out = _align_mission_section_map_to_practice_key(session, stale, "Dm")
+        first = out[0][1][0] if out and out[0][1] else ""
+        self.assertIn(first, {"Em", "Dm"})
+        self.assertNotEqual(first, "Fm")
+
     def test_fm_map_rebuilds_to_dm_from_catalog_original(self) -> None:
         from improvisation_intelligence_ui import _align_mission_section_map_to_practice_key
 
