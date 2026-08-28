@@ -452,26 +452,32 @@ def main() -> int:
         )
         mark("refresh_custom_backing", "PASS" if refresh_bk else "RED")
 
-        ret = False
-        loc = page.locator("button", has_text="Return to Custom Page").first
-        try:
-            loc.scroll_into_view_if_needed(timeout=8000)
-            loc.click(timeout=8000)
-            ret = True
-        except Exception:
-            ret = click_main_button(page, r"Return to Custom Page") or click_button_has(
-                page, r"Return to Custom Page"
-            )
-        wait_for_body(page, "Trial Song", "Leave Custom page", "Finish Song", timeout_s=25)
+        settle(page, 2)
+        ret = click_button_has(page, r"Return to Custom Page")
+        if not ret:
+            for key in (
+                "backing_nav_return_custom_page_0",
+                "backing_nav_return_custom_page_1",
+                "backing_edit_source_btn",
+            ):
+                loc = page.locator(f".st-key-{key} button")
+                if loc.count():
+                    try:
+                        loc.last.scroll_into_view_if_needed(timeout=5000)
+                        loc.last.click(timeout=8000)
+                        ret = True
+                        settle(page, 4)
+                        break
+                    except Exception:
+                        continue
+        wait_for_body(page, "Trial Song", "Leave Custom page", "Finish Song", timeout_s=30)
         settle(page, 3)
         if not has_any(page.inner_text("body") or "", "Leave Custom page", "Finish Song"):
-            try:
-                page.locator("button", has_text="Return to Custom Page").first.click(timeout=5000)
-                wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=20)
-                ret = True
-            except Exception:
-                pass
-            settle(page, 2)
+            # Dest is still sealed: Custom-page hydrate consumes it.
+            click_nav(page, "Custom")
+            wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=25)
+            settle(page, 3)
+            ret = True
         body_ret = shot(page, "05-return-custom")
         mixed_ret = fail_mixed(page, "custom_return")
         return_ok = (
