@@ -389,11 +389,18 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
     )
     notes.append(f"open_sbi_custom: song_source_state={still}")
     if still != "custom":
-        sl = disk_creative_slice()
-        src = str(sl.get("sbi_preview_source") or sl.get("improv_song_source") or "")
-        if "Custom" in src and has_any(body, "trial song"):
-            notes.append("open_sbi_custom: accepted via disk+Trial Song card")
+        # Disk + Trial title is not enough: Active radio can print Trial from a
+        # leftover LAST_CUSTOM preview while the card is still Shape/184 chords.
+        body_now = page.inner_text("body") or ""
+        custom_card = has_any(body_now, "Custom progression") and not has_any(
+            body_now, "Active song · Song Selection", "ACTIVE SONG · SONG SELECTION"
+        )
+        trial_prog = has_any(body_now, "Open Custom Lab")
+        if custom_card and trial_prog and has_any(body_now, "trial song"):
+            notes.append("open_sbi_custom: accepted via Custom card + Trial + Open Custom Lab")
             return True
+        notes.append("open_sbi_custom: radio still not Custom — refuse disk+Trial fallback")
+        return False
     return still == "custom"
 
 

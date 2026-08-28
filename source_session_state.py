@@ -334,10 +334,17 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
     # Global Active Custom: both Active song and Custom tabs must use Trial/CPL material.
+    # Active-song radio + a live catalog pick must never show LAST_CUSTOM Trial
+    # on the Active card while catalog sections still render (Trial title / 184 chords).
     try:
         from songs.music_source import custom_progression_is_active
 
-        if custom_progression_is_active(session):
+        use_custom_ga = custom_progression_is_active(session)
+        if use_custom_ga and source == "Active song":
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if pick and not pick.startswith("custom::"):
+                use_custom_ga = False
+        if use_custom_ga:
             custom = sync_custom_session(session)
             if custom:
                 return {

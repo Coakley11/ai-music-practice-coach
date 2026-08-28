@@ -121,6 +121,51 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
         return token
 
 
+def _catalog_live_key_or_empty(session_state: dict, live: str) -> str:
+    """Return live Practice Key only when it is not LAST_CUSTOM leaking onto catalog GA."""
+    token = str(live or "").strip()
+    if not token:
+        return ""
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if not pick or pick.startswith("custom::"):
+        return token
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+
+        snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+        if not isinstance(snap, dict):
+            return token
+        custom_pick = str(snap.get("pick_key") or "").strip()
+        active = snap.get("active")
+        if isinstance(active, dict):
+            custom_pick = str(custom_pick_key_for(active) or custom_pick or "").strip()
+        custom_saved = ""
+        if custom_pick.startswith("custom::"):
+            custom_saved = str(get_practice_concert_key(session_state, custom_pick) or "").strip()
+        custom_home = str(
+            snap.get("custom_home_key")
+            or (active or {}).get("original_key_center")
+            or ""
+        ).strip()
+        matches = {str(custom_saved or "").strip(), str(custom_home or "").strip()}
+        matches.discard("")
+        if token in matches:
+            return ""
+        # "D" vs "D major" only — do not treat catalog Dm as Trial D.
+        for cand in list(matches):
+            if token in {cand, f"{cand} major", f"{cand} Major"} or cand in {
+                token,
+                f"{token} major",
+                f"{token} Major",
+            }:
+                if "minor" not in token.lower() and not token.endswith("m"):
+                    return ""
+    except ImportError:
+        return token
+    return token
+
+
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
         from source_session_state import custom_sbi_owns_sidebar_practice_key
@@ -3544,6 +3589,8 @@ def _tab_missions(
             chart_key = practice_key
     # Missions caption must track the left-panel Practice Key the user just set.
     # Blob hydrate can lag a rerun behind the sidebar widget (Dm caption + Em/E sidebar).
+    # Do not adopt LAST_CUSTOM Trial D and respell it as Dm — that split the
+    # caption from the Shape concert map (Fm) after Custom SBI.
     try:
         page = str(session_state.get("studio_page") or "").strip().lower()
         tab = str(
@@ -3557,6 +3604,8 @@ def _tab_missions(
             or session_state.get("_pending_display_key")
             or ""
         ).strip()
+        if page == "creative" and tab == "Missions" and live:
+            live = _catalog_live_key_or_empty(session_state, live)
         if page == "creative" and tab == "Missions" and live:
             from workflow_key_identity import normalize_user_practice_key_selection
 

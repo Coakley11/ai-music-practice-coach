@@ -646,7 +646,13 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
             )
             if still_original_pitch:
                 pass
-            elif not catalog_sections or _section_maps_same_song(expected, song.section_map):
+            elif expected and (
+                section_maps_equivalent(expected, song.section_map)
+                or _section_maps_same_song(expected, song.section_map)
+            ):
+                # Blob is already at the live Practice Key. Do not return a
+                # prior-key map just because catalog_chart_sections_for_pick
+                # was empty this rerun (that left Missions at Fm after Songs→Dm).
                 session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
                 return copy.deepcopy(song.section_map)
     except ImportError:

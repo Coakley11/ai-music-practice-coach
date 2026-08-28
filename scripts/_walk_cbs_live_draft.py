@@ -303,8 +303,15 @@ def main() -> int:
         ok_cs = open_sbi_custom_source(page, NOTES)
         settle(page, 3)
         body_sc = shot(page, "A-sbi-custom")
-        custom_on = bool(ok_cs) and has_any(body_sc, "Trial Song")
-        mark("A_sbi_switch_custom", "PASS" if custom_on else "RED", f"open={ok_cs}")
+        custom_card = has_any(body_sc, "Open Custom Lab") and not has_any(
+            body_sc, "Active song · Song Selection", "ACTIVE SONG · SONG SELECTION"
+        )
+        custom_on = bool(ok_cs) and has_any(body_sc, "Trial Song") and custom_card
+        mark(
+            "A_sbi_switch_custom",
+            "PASS" if custom_on else "RED",
+            f"open={ok_cs} card={custom_card}",
+        )
 
         ok_back = open_sbi_active(page)
         settle(page, 3)
@@ -350,28 +357,53 @@ def main() -> int:
         )
         settle(page, 2)
         body_b = shot(page, "B-custom-sbi")
-        trial_ok = has_any(body_b, "Trial Song") and (
-            rendered_em_em_d_d(body_b) or has_any(body_b, "Custom")
+        custom_card_b = has_any(body_b, "Open Custom Lab") and not has_any(
+            body_b, "Active song · Song Selection", "ACTIVE SONG · SONG SELECTION"
+        )
+        trial_ok = (
+            has_any(body_b, "Trial Song")
+            and custom_card_b
+            and (rendered_em_em_d_d(body_b) or has_any(body_b, "Em"))
         )
         split_b = owner_split(body_b) or (
-            has_any(body_b, "Trial Song") and has_any(body_b, "Shape of You") and has_any(body_b, "D minor")
+            has_any(body_b, "Trial Song")
+            and has_any(body_b, "184 chords", "Active song · Song Selection")
+        ) or (
+            has_any(body_b, "Trial Song")
+            and has_any(body_b, "Shape of You")
+            and has_any(body_b, "D minor")
             and not rendered_em_em_d_d(body_b)
         )
         mark(
             "B_custom_sbi_trial",
             "PASS" if trial_ok and not split_b else "RED",
-            f"split={split_b}",
+            f"split={split_b} card={custom_card_b}",
         )
 
-        opened_lab = click_button_has(page, r"Open Custom Lab")
+        from _walk_cbs_rendered_sweep import click_main_button
+
+        opened_lab = click_main_button(page, r"Open Custom Lab") or click_button_has(
+            page, r"Open Custom Lab"
+        )
         settle(page, 3)
         body_lab = shot(page, "B-custom-lab")
         pk_lab = pk_val(page) or sidebar_pk_input(page)
         lab_d = str(pk_lab or "").strip() in {"D", "D major"} or (
             "d" in low(str(pk_lab or "")) and "minor" not in low(str(pk_lab or ""))
         )
-        lab_ok = bool(opened_lab) and has_any(body_lab, "Trial Song") and lab_d
-        mark("B_open_custom_lab", "PASS" if lab_ok else "RED", f"pk={pk_lab!r}")
+        landed_lab = has_any(body_lab, "Leave Custom page", "Custom Progression Lab", "Presets")
+        lab_ok = (
+            bool(opened_lab)
+            and has_any(body_lab, "Trial Song")
+            and lab_d
+            and landed_lab
+            and not has_any(body_lab, "184 chords", "Active song · Song Selection")
+        )
+        mark(
+            "B_open_custom_lab",
+            "PASS" if lab_ok else "RED",
+            f"pk={pk_lab!r} landed={landed_lab}",
+        )
 
         page.reload(wait_until="domcontentloaded")
         wait_for_body(page, "Trial Song", timeout_s=40)
@@ -429,7 +461,9 @@ def main() -> int:
         goto_improv(page, NOTES)
         ensure_missions_workspace(page, NOTES)
         settle(page, 2)
-        h_gm = click_available_mission_chord(page, prefer=["Gm"])
+        # Prefer chords that exist on Shape-in-Dm (Em Am C D) and the simplified
+        # test chart (Dm Gm Bb C). Fail if the map is still at a prior Fm PK.
+        h_gm = click_available_mission_chord(page, prefer=["Gm", "Em", "Am", "Bb"])
         settle(page, 2)
         click_generate_example(page)
         settle(page, 2)
@@ -438,10 +472,14 @@ def main() -> int:
         nm = re.search(r"Notes:\s*([^\n]+)", body_gm, re.I)
         if nm:
             notes_gm = nm.group(1)
+        stale_fm = has_any(body_gm, "Selected Mission Chord: Fm") and has_any(
+            body_gm, "Practice Key: Dm"
+        )
+        chord_ok = bool(h_gm) and str(h_gm) not in {"Fm", "Bbm"} and not stale_fm
         mark(
             "C_mission_gm",
-            "PASS" if h_gm and has_any(body_gm, "Mission") else "RED",
-            f"chord={h_gm!r} notes={notes_gm!r}",
+            "PASS" if chord_ok and has_any(body_gm, "Mission") else "RED",
+            f"chord={h_gm!r} stale_fm={stale_fm} notes={notes_gm!r}",
         )
 
         h2 = click_available_mission_chord(page, prefer=["Am", "Bb", "Em"])
@@ -554,6 +592,10 @@ def main() -> int:
         body_mo = shot(page, "E-motif")
         notes0 = motif_notes_from_body(body_mo)
         click_button_has(page, r"Sequence Up") or click_button_has(page, r"Ascending")
+        settle(page, 3)
+        click_button_has(page, r"Build Motif Pattern") or click_button_has(
+            page, r"Build Pattern"
+        )
         settle(page, 3)
         body_up = shot(page, "E-motif-up")
         notes_up = motif_notes_from_body(body_up)
@@ -706,7 +748,6 @@ def main() -> int:
         body_sx = shot(page, "H-alto")
         pk_sx = pk_val(page) or sidebar_pk_input(page)
         concert_held = has_any(str(pk_sx) + " " + body_sx, "E", "Eb", "D#")
-        written_moved = written_val(page) != written_val  # presence only
         written_txt = written_val(page)
         inst_ok = bool(pk_sx) and concert_held and "undefined" not in low(body_sx)
         mark(

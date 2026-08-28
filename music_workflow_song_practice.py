@@ -183,6 +183,63 @@ def rehydrate_full_song_concert_sections(session: dict[str, Any], *, source: str
     return {}
 
 
+def rebuild_concert_map_if_practice_key_mismatch(
+    session: dict[str, Any], dest_token: str = ""
+) -> dict[str, list[str]]:
+    """If the concert map is still spelled at a prior Practice Key, rebuild it.
+
+    Songs can move Practice Key to Dm while ``improv_song_concert_sections`` /
+    the song blob remain at Fm from the previous visit. Missions then showed
+    ``Practice Key: Dm`` with an Fm chord map. Rebuild from catalog original.
+    """
+    dest = str(dest_token or resolve_song_practice_key_token(session) or "").strip()
+    raw = session.get("improv_song_concert_sections")
+    if not dest:
+        return copy.deepcopy(raw) if isinstance(raw, dict) else {}
+    src = dest
+    if isinstance(raw, dict) and raw:
+        try:
+            from music_workflow_pending_song_practice_key_edit import (
+                infer_catalog_sections_spelled_in_key,
+            )
+
+            src = str(
+                infer_catalog_sections_spelled_in_key(session, raw, fallback=dest) or dest
+            ).strip()
+        except ImportError:
+            src = dest
+    if src and dest and src == dest and isinstance(raw, dict) and raw:
+        return copy.deepcopy(raw)
+    song = song_practice_blob(session)
+    if song is not None and isinstance(song.section_map, dict) and song.section_map:
+        try:
+            from music_workflow_pending_song_practice_key_edit import (
+                infer_catalog_sections_spelled_in_key,
+            )
+
+            blob_src = str(
+                infer_catalog_sections_spelled_in_key(
+                    session, song.section_map, fallback=dest
+                )
+                or dest
+            ).strip()
+        except ImportError:
+            blob_src = dest
+        if blob_src and dest and blob_src != dest:
+            song.section_map = {}
+            save_workflow_blob(session, song, source="rebuild_concert_map_pk_mismatch")
+    try:
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+        out = sync_song_improv_sections_to_practice_key(session)
+        if _section_map_total_chords(out) > 0:
+            session["_music_song_concert_sections_source"] = "rebuild_concert_map_pk_mismatch"
+            return copy.deepcopy(out)
+    except ImportError:
+        pass
+    return copy.deepcopy(session.get("improv_song_concert_sections") or {})
+
+
 def mirror_mission_keys_from_song_blob(session: dict[str, Any]) -> bool:
     """Before mission chord/example mutations — mission blob must not own practice key."""
     song = song_practice_blob(session)
@@ -649,6 +706,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         # using a stale blob token while live identity is already the destination.
         token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
+        rebuild_concert_map_if_practice_key_mismatch(session, token)
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
@@ -663,6 +721,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             mirror_mission_keys_from_song_blob(session)
             token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
             rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
+            rebuild_concert_map_if_practice_key_mismatch(session, token)
             try:
                 from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
@@ -686,6 +745,7 @@ __all__ = [
     "reconcile_practice_key_after_active_source_change",
     "reconcile_catalog_practice_key_owner",
     "rehydrate_full_song_concert_sections",
+    "rebuild_concert_map_if_practice_key_mismatch",
     "resolve_song_practice_key_token",
     "seed_song_practice_blob_from_live_practice_key",
     "song_based_blob_session_id",

@@ -413,11 +413,17 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
-    if is_custom_progression(session_state):
-        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    source = session_state.get(ACTIVE_MUSIC_SOURCE_KEY)
+    # Live catalog pick outranks leftover Custom active_song_state from visiting
+    # Custom Lab / LAST_CUSTOM without Set as Active. Explicit Custom GA
+    # (SOURCE_CUSTOM) still wins even if a master pick leftover is catalog.
+    if pick_key and not pick_key.startswith("custom::") and source != SOURCE_CUSTOM:
+        return False
+    if is_custom_progression(session_state):
+        return True
     if pick_key.startswith("custom::"):
         return True
     meta = session_state.get("active_song_state")
