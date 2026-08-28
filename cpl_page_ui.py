@@ -296,8 +296,8 @@ def render_custom_progression_lab_page() -> None:
         CPL_TIME_SIGNATURES,
         CPL_UI_SECTION_ORDER,
         apply_cpl_session_progression,
+        apply_cpl_style_preset_append,
         apply_quick_chord_edit,
-        build_style_preset_entries,
         clear_all_cpl_sections,
         build_cpl_developer_diagnostics,
         cpl_active_from_session,
@@ -332,15 +332,19 @@ def render_custom_progression_lab_page() -> None:
         flatten_sections_to_events,
         format_key_label,
         CPL_KEY_OPTIONS,
+        CPL_PRESET_KEY,
+        coerce_preset_key_for_family,
         invalidate_cpl_derived_outputs,
         list_saved_progression_names,
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
-        practice_entries_to_original_key,
         preset_button_label,
+        preset_key_options_for_style,
+        preset_tonal_family,
         prepare_cpl_backing_handoff,
         presets_for_style,
+        resolve_cpl_preset_key,
         progression_is_empty,
         purge_cpl_ephemeral_widget_keys,
         save_progression,
@@ -792,7 +796,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown(
             f'<p class="cpl-key-line">Original key <strong>{original_label}</strong> · '
             f"Practice key <strong>{preview_label}</strong> "
-            f"(builder, presets, and progression project from Practice Key)</p>",
+            f"(builder and progression project from Practice Key)</p>",
             unsafe_allow_html=True,
         )
 
@@ -1014,26 +1018,42 @@ def render_custom_progression_lab_page() -> None:
 
         if style_presets:
             st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-            st.markdown(f"**{style} presets** ({preview_label}) — fills {edit_section} only")
+            st.markdown(f"**{style} presets** — appends to {edit_section} only")
+            preset_options = preset_key_options_for_style(style)
+            resolve_cpl_preset_key(st.session_state, style)
+            st.selectbox(
+                "Preset Key",
+                preset_options,
+                key=CPL_PRESET_KEY,
+                format_func=format_key_label,
+                help="Transposes this preset only. Your song key and Practice Key stay unchanged.",
+            )
+            st.caption(
+                "Transposes this preset only. Your song key and Practice Key stay unchanged."
+            )
+            preset_key_now = resolve_cpl_preset_key(st.session_state, style)
             for preset_id, spec in style_presets.items():
-                label = preset_button_label(preset_id, practice_key, spec)
+                family = preset_tonal_family(style, preset_id)
+                batch_key = coerce_preset_key_for_family(preset_key_now, family)
+                label = preset_button_label(preset_id, batch_key, spec)
                 if st.button(
                     label,
                     key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
                     use_container_width=True,
                 ):
-                    practice_entries = build_style_preset_entries(
-                        style, preset_id, practice_key
-                    )
-                    home_sections[edit_section] = practice_entries_to_original_key(
-                        practice_entries, practice_key, original_key
+                    apply_cpl_style_preset_append(
+                        st.session_state,
+                        style=style,
+                        preset_id=preset_id,
+                        section_name=edit_section,
                     )
                     cpl_clear_pending_chord(st.session_state, edit_section)
-                    if home_sections[edit_section]:
+                    home_now = _home_sections()
+                    if home_now.get(edit_section):
                         st.session_state[last_bars_key] = int(
-                            home_sections[edit_section][-1].get("bars", 1) or 1
+                            home_now[edit_section][-1].get("bars", 1) or 1
                         )
-                    _save(home_sections)
+                    _save(home_now)
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 

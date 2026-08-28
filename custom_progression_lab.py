@@ -83,6 +83,7 @@ except ImportError:
 CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
 CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
+CPL_PRESET_KEY = "cpl_preset_key"
 
 CPL_SECTION_NAMES: list[str] = [
     "Intro",
@@ -1871,6 +1872,7 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     "cpl_style_early",
     "cpl_bpm_builder",
     "cpl_groove_style",
+    CPL_PRESET_KEY,
     CPL_PENDING_CHORD_KEY,
     CPL_PENDING_SECTION_KEY,
 )
@@ -3258,6 +3260,207 @@ STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
 
 # Backward-compatible alias
 SIMPLE_PRESET_SPECS = STYLE_PRESET_SPECS.get("Pop", {})
+
+# Preset tonal family is metadata on the preset itself — never the song mode.
+STYLE_PRESET_TONAL_FAMILY: dict[str, dict[str, str]] = {
+    "Pop": {
+        "I–V–vi–IV": "major",
+        "vi–IV–I–V": "major",
+        "I–vi–IV–V": "major",
+    },
+    "Soul/R&B": {
+        "I–vi–IV–V": "major",
+        "vi–IV–I–V": "major",
+        "ii–V–I": "major",
+        "I–IV–vi–V": "major",
+    },
+    "Jazz": {
+        "ii–V–I": "major",
+        "I–vi–ii–V": "major",
+        "Jazz turnaround": "major",
+        "Neo soul": "major",
+    },
+    "Bossa": {
+        "Bossa ii–V": "major",
+        "Minor bossa": "minor",
+        "Bossa cadence": "major",
+        "I–V–vi–IV": "major",
+    },
+    "Blues": {
+        "Blues (8 bars)": "major",
+        "Quick change": "major",
+        "ii–V–I": "major",
+    },
+    "Funk": {
+        "I7 vamp": "major",
+        "i7–IV7": "minor",
+        "I–IV–I": "major",
+    },
+    "Rock": {
+        "I–V–vi–IV": "major",
+        "I–IV–V": "major",
+        "vi–IV–I–V": "major",
+        "I–V–IV–V": "major",
+    },
+}
+
+
+def preset_tonal_family(style: str, preset_id: str) -> str:
+    """Return ``major`` or ``minor`` from the preset's own family, not the song key."""
+    explicit = str(
+        (STYLE_PRESET_TONAL_FAMILY.get(style) or {}).get(preset_id) or ""
+    ).strip().lower()
+    if explicit in {"major", "minor"}:
+        return explicit
+    pid = str(preset_id or "").strip().lower()
+    if "minor" in pid:
+        return "minor"
+    spec = presets_for_style(style).get(preset_id) or []
+    if spec:
+        deg, qual = spec[0]
+        q = str(qual or "")
+        if int(deg or 0) == 0 and q.startswith("m") and "maj" not in q:
+            return "minor"
+    return "major"
+
+
+def preset_key_options_for_style(style: str) -> list[str]:
+    """Key choices for the Preset Key dropdown from the style's preset families."""
+    families = {
+        preset_tonal_family(style, preset_id)
+        for preset_id in (presets_for_style(style) or {})
+    }
+    try:
+        from music_theory import enharmonic_keys_for_mode
+    except ImportError:
+        def enharmonic_keys_for_mode(mode: str) -> list[str]:
+            return list(
+                ENHARMONIC_MINOR_KEYS if str(mode).lower() == "minor" else ENHARMONIC_MAJOR_KEYS
+            )
+
+    if families == {"minor"}:
+        return list(enharmonic_keys_for_mode("minor"))
+    if families == {"major"}:
+        return list(enharmonic_keys_for_mode("major"))
+    return list(enharmonic_keys_for_mode("major")) + list(enharmonic_keys_for_mode("minor"))
+
+
+def coerce_preset_key_for_family(token: str, family: str) -> str:
+    """Keep the chosen tonic; spell it in the preset's major/minor family."""
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        tonic, _mode = split_key_center(str(token or "C").strip() or "C")
+        return key_center_token(tonic, "minor" if family == "minor" else "major")
+    except ImportError:
+        raw = str(token or "C").strip() or "C"
+        if family == "minor":
+            return raw if _is_minor_home_key(raw) else f"{chord_root(raw)}m"
+        return chord_root(raw) or "C"
+
+
+def default_cpl_preset_key(style: str = "") -> str:
+    families = {
+        preset_tonal_family(style, preset_id)
+        for preset_id in (presets_for_style(style) or {})
+    }
+    if families == {"minor"}:
+        return "Am"
+    return "C"
+
+
+def _coerce_preset_key_to_options(token: str, options: list[str]) -> str:
+    raw = str(token or "").strip()
+    if raw in options:
+        return raw
+    try:
+        from music_theory import split_key_center
+
+        tonic, _mode = split_key_center(raw or "C")
+    except ImportError:
+        tonic = chord_root(raw or "C")
+    for opt in options:
+        try:
+            from music_theory import split_key_center
+
+            ot, _om = split_key_center(opt)
+        except ImportError:
+            ot = chord_root(opt)
+        if ot == tonic:
+            return opt
+    return ""
+
+
+def resolve_cpl_preset_key(session_state: dict, style: str = "") -> str:
+    """Local Preset Key only — never writes song / Practice / Written / Shape keys."""
+    options = preset_key_options_for_style(style)
+    token = str(session_state.get(CPL_PRESET_KEY) or "").strip()
+    if token in options:
+        return token
+    coerced = _coerce_preset_key_to_options(token, options)
+    chosen = coerced or default_cpl_preset_key(style)
+    session_state[CPL_PRESET_KEY] = chosen
+    return chosen
+
+
+def set_cpl_preset_key(session_state: dict, token: str, style: str = "") -> str:
+    """Set the local Preset Key without touching song identity or Practice Key."""
+    session_state[CPL_PRESET_KEY] = str(token or "").strip() or default_cpl_preset_key(style)
+    return resolve_cpl_preset_key(session_state, style)
+
+
+def preview_style_preset_chords(style: str, preset_id: str, preset_key: str) -> list[str]:
+    family = preset_tonal_family(style, preset_id)
+    batch_key = coerce_preset_key_for_family(preset_key, family)
+    return preset_chords_for_key(presets_for_style(style).get(preset_id) or [], batch_key)
+
+
+def append_entries_to_cpl_section(
+    sections: dict | None,
+    section_name: str,
+    entries: list[dict],
+) -> dict[str, list]:
+    """Append entries to one section. Never replace existing chords or other sections."""
+    out = ensure_all_cpl_sections(sections)
+    name = str(section_name or "").strip() or "Verse"
+    if name not in out:
+        out[name] = []
+    existing = [dict(entry) for entry in (out.get(name) or [])]
+    added: list[dict] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        chord = str(entry.get("chord") or "").strip()
+        if not chord:
+            continue
+        added.append(dict(entry))
+    out[name] = existing + added
+    return out
+
+
+def apply_cpl_style_preset_append(
+    session_state: dict,
+    *,
+    style: str,
+    preset_id: str,
+    section_name: str,
+) -> dict:
+    """Append the previewed preset batch to one section. Does not seize Global Active."""
+    active = ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or {})
+    original_key = cpl_draft_written_key(active)
+    practice_key = cpl_workspace_practice_key(session_state, active)
+    preset_key = resolve_cpl_preset_key(session_state, style)
+    family = preset_tonal_family(style, preset_id)
+    batch_key = coerce_preset_key_for_family(preset_key, family)
+    preview_entries = build_style_preset_entries(style, preset_id, batch_key)
+    stored = practice_entries_to_original_key(preview_entries, practice_key, original_key)
+    active["original_sections"] = append_entries_to_cpl_section(
+        active.get("original_sections"),
+        section_name,
+        stored,
+    )
+    session_state[CPL_ACTIVE_KEY] = active
+    return active
 
 
 def preset_chords_for_key(spec: list[tuple[int, str]], home_key: str) -> list[str]:
