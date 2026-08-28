@@ -10397,6 +10397,27 @@ try:
                 original_key,
                 _song_identity,
             )
+        elif str(st.session_state.get("studio_page") or "").strip().lower() in {
+            "picker",
+            "songs",
+            "practice",
+            "",
+        }:
+            try:
+                from songs.music_source import (
+                    catalog_owns_live_practice_key,
+                    restore_catalog_live_practice_key,
+                )
+
+                if catalog_owns_live_practice_key(st.session_state):
+                    restore_catalog_live_practice_key(st.session_state)
+            except ImportError:
+                pass
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
         elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
             st.session_state
         ):
