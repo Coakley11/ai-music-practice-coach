@@ -437,6 +437,23 @@ class TestCCustomSbiPageOrigin(unittest.TestCase):
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("song"), "Shape of You")
 
+    def test_custom_ga_keeps_transposed_local_c(self) -> None:
+        from custom_progression_lab import custom_sbi_local_practice_key, sync_custom_workspace_practice_key
+        from songs.music_source import SOURCE_CUSTOM
+
+        session = _shape_session(practice_key="C")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["active_music_source"] = SOURCE_CUSTOM
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="C",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_ga",
+        )
+        self.assertEqual(custom_sbi_local_practice_key(session), "C")
+
 
 class TestDEMissionBackingInterval(unittest.TestCase):
     def _seal_gm_example(self, session: dict) -> dict:

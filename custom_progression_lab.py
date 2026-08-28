@@ -626,6 +626,19 @@ def custom_sbi_local_practice_key(session_state: dict, active: dict | None = Non
             home = str(cpl_draft_written_key(active) or active.get("original_key_center") or "").strip()
         except Exception:
             home = str(active.get("original_key_center") or "").strip()
+    custom_is_ga = False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        custom_is_ga = bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+    except ImportError:
+        custom_is_ga = False
+    # When Custom is Global Active, live PK is Trial's own key (including C).
+    # Only reject catalog-family tokens while Catalog still owns.
+    if custom_is_ga:
+        return token or home or "C"
     if token and home and token != home:
         ga_pk = str(
             session_state.get("display_key") or session_state.get("concert_key") or ""
