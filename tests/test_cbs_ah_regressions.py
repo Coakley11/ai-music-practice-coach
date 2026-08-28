@@ -511,6 +511,45 @@ class TestDEMissionBackingInterval(unittest.TestCase):
         self.assertEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("B"))
         self.assertNotEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("C"))
 
+    def test_empty_dest_notes_backfill_from_live_example(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        dest = self._seal_gm_example(session)
+        dest["example_notes"] = []
+        dest["sealed_example_notes"] = []
+        dest["example_midi"] = []
+        dest["sealed_example_midi"] = []
+        from mission_return_destination import seal_mission_return_destination
+
+        seal_mission_return_destination(session, dest)
+        from backing_context import BackingContext, set_backing_context
+
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission Backing Jam",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                progression=["Gm"],
+                mission_id="Outline chord tones",
+            ),
+        )
+        out = apply_mission_backing_practice_key_interval(session, "D#m", from_key="Dm")
+        notes = list((out or {}).get("example_notes") or [])
+        self.assertTrue(notes)
+        self.assertEqual(_pc(notes[0]), _pc("B"))
+        from mission_backing_transpose import mission_backing_interval_example
+
+        lick = mission_backing_interval_example(session)
+        self.assertEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("B"))
+
     def test_return_keeps_transposed_chord_and_example_not_song_tonic(self) -> None:
         session = _shape_session(practice_key="Dm")
         session["studio_page"] = "backing"

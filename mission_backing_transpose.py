@@ -86,6 +86,31 @@ def _transpose_notes(
     return out_notes, out_midi
 
 
+def _fill_dest_example_from_session(dest: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
+    """Backfill dest example notes from the live Mission example / lick if the seal is empty."""
+    if dest.get("example_notes") or dest.get("sealed_example_notes"):
+        return dest
+    try:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY
+    except ImportError:
+        return dest
+    for raw in (session.get(MISSION_EXAMPLE_KEY), session.get(MISSION_PRACTICE_LICK_KEY)):
+        if not isinstance(raw, dict):
+            continue
+        motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
+        notes = [str(n) for n in (motif.get("notes") or raw.get("example_notes") or []) if str(n).strip()]
+        if not notes:
+            continue
+        dest["example_notes"] = notes
+        dest["example_midi"] = [int(m) for m in (motif.get("midi") or []) if str(m).strip() != ""]
+        dest["example_display"] = str(motif.get("display") or dest.get("example_display") or " – ".join(notes))
+        dest["example_rhythm"] = str(motif.get("rhythm") or dest.get("example_rhythm") or "")
+        if not str(dest.get("chord_symbol") or "").strip():
+            dest["chord_symbol"] = str(raw.get("chord") or motif.get("chord") or "")
+        break
+    return dest
+
+
 def apply_mission_backing_practice_key_interval(
     session: dict[str, Any],
     new_key: str,
@@ -113,19 +138,16 @@ def apply_mission_backing_practice_key_interval(
             "example_notes": [],
             "example_midi": [],
         }
-        try:
-            from improvisation_missions import MISSION_EXAMPLE_KEY
-
-            raw = session.get(MISSION_EXAMPLE_KEY)
-            if isinstance(raw, dict):
-                motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
-                dest["example_notes"] = list(motif.get("notes") or raw.get("example_notes") or [])
-                dest["example_midi"] = list(motif.get("midi") or [])
-                dest["example_display"] = str(motif.get("display") or "")
-                dest["chord_symbol"] = str(raw.get("chord") or dest.get("chord_symbol") or "")
-        except ImportError:
-            pass
-    dest = ensure_mission_backing_pitch_seal(copy.deepcopy(dest))
+    dest = copy.deepcopy(dest)
+    dest = _fill_dest_example_from_session(dest, session)
+    dest = ensure_mission_backing_pitch_seal(dest)
+    if not dest.get("sealed_example_notes"):
+        dest["sealed_example_notes"] = [str(n) for n in (dest.get("example_notes") or [])]
+        dest["sealed_example_midi"] = [
+            int(m) for m in (dest.get("example_midi") or []) if str(m).strip() != ""
+        ]
+        dest["sealed_example_display"] = str(dest.get("example_display") or "")
+        dest["sealed_example_rhythm"] = str(dest.get("example_rhythm") or "")
     sealed_pk = str(dest.get("sealed_practice_key") or from_key or "").strip()
     if not sealed_pk:
         sealed_pk = new
