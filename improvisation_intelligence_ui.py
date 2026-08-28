@@ -3538,8 +3538,20 @@ def _tab_missions(
         section_map = resolve_improv_sections(session_state, improv_ctx)
     if not section_map:
         section_map = resolve_improv_sections(session_state, improv_ctx)
+    dest_for_map = str(concert_key or blob_key or "").strip()
+    live_for_map = _catalog_live_key_or_empty(
+        session_state,
+        str(
+            session_state.get("display_key")
+            or session_state.get("concert_key")
+            or session_state.get("_pending_display_key")
+            or ""
+        ).strip(),
+    )
+    if live_for_map:
+        dest_for_map = live_for_map
     section_map = _align_mission_section_map_to_practice_key(
-        session_state, section_map, dest_key=str(concert_key or blob_key or "")
+        session_state, section_map, dest_key=dest_for_map
     )
     try:
         from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
@@ -3586,7 +3598,7 @@ def _tab_missions(
         except ImportError:
             session_state["_improv_mission_section_map"] = section_map
         section_map = _align_mission_section_map_to_practice_key(
-            session_state, section_map, dest_key=str(concert_key or blob_key or "")
+            session_state, section_map, dest_key=dest_for_map or str(concert_key or blob_key or "")
         )
         chords = flatten_section_map(section_map)
         _ensure_chord_selection(session_state, chords, section_map)

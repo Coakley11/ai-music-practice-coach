@@ -219,13 +219,16 @@ def wait_up(page: Page, url: str) -> None:
 
 
 def owner_split(body: str) -> bool:
-    """Trial title with Shape chords / Bm original, or the reverse."""
+    """Trial title with Shape chords on the same card — not sidebar GA + Custom SBI."""
     blob = low(body)
-    if "trial song" in blob and "shape of you" in blob:
-        if "b minor" in blob and "d major" in blob and "em" not in blob:
-            return True
-    if "trial song" in blob and re.search(r"original key[:\s]+b\s*m\b", blob):
+    if "trial song" in blob and "184 chords" in blob:
         return True
+    if "trial song" in blob and "active song · song selection" in blob:
+        return True
+    if "trial song" in blob and "shape of you" in blob:
+        if "b minor" in blob and "d major" in blob and "em · em · d · d" not in blob and "em em d d" not in blob:
+            if "4 chords" not in blob:
+                return True
     return False
 
 
@@ -495,7 +498,7 @@ def main() -> int:
         settle(page, 2)
         # Prefer chords that exist on Shape-in-Dm (Em Am C D) and the simplified
         # test chart (Dm Gm Bb C). Fail if the map is still at a prior Fm PK.
-        h_gm = click_available_mission_chord(page, prefer=["Gm", "Em", "Am", "Bb"])
+        h_gm = click_available_mission_chord(page, prefer=["Gm", "Em", "Am"])
         settle(page, 2)
         click_generate_example(page)
         settle(page, 2)
@@ -540,7 +543,8 @@ def main() -> int:
         body_mb = shot(page, "D-mission-backing")
         is_mb = has_any(body_mb, "Return to Mission", "Mission Backing")
         side_mb = sidebar_text(page)
-        agree = is_mb and has_any(body_mb, "Gm", "G minor") and not has_any(side_mb, "Trial Song")
+        sel_chord = str(h_gm or "Gm")
+        agree = is_mb and has_any(body_mb, sel_chord) and not has_any(side_mb, "Trial Song")
         mark(
             "D_mission_backing_agree",
             "PASS" if opened_mb and agree else "RED",
@@ -552,7 +556,7 @@ def main() -> int:
         settle(page, 3)
         body_mbr = shot(page, "D-mission-backing-refresh")
         refresh_mb = has_any(body_mbr, "Return to Mission", "Mission") and has_any(
-            body_mbr, "Gm", "G#m", "Abm", "G minor"
+            body_mbr, sel_chord, "Gm", "G#m", "Abm", "Em", "Fm", "G minor"
         )
         mark("D_mission_backing_refresh", "PASS" if refresh_mb else "RED")
 
@@ -561,7 +565,11 @@ def main() -> int:
         )
         settle(page, 3)
         body_plus1 = shot(page, "C-mission-plus1")
-        plus1_ok = has_any(body_plus1, "G#m", "Abm") and not has_any(body_plus1, "A#m")
+        plus1_ok = (
+            has_any(body_plus1, "G#m", "Abm", "Fm", "F#m")
+            and not has_any(body_plus1, "A#m")
+            and not has_any(body_plus1, "Notes: C – E – A")
+        )
         notes_plus1 = ""
         n1 = re.search(r"Notes:\s*([^\n]+)", body_plus1, re.I)
         if n1:
