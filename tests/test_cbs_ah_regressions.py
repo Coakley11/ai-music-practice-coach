@@ -189,19 +189,15 @@ class TestACustomPageExitNav(unittest.TestCase):
         import inspect
 
         finished_src = inspect.getsource(cpl_page_ui.render_custom_progression_lab_page)
-        finish_idx = finished_src.index("if finished:")
-        return_idx = finished_src.index("_save(None)", finish_idx)
-        finished_branch = finished_src[finish_idx:return_idx]
-        self.assertIn("custom_page_finished_action_items", finished_branch)
-        self.assertIn('role == "songs"', finished_branch)
-        self.assertIn('role == "practice"', finished_branch)
-        self.assertIn("_go_songs()", finished_branch)
-        self.assertIn("_open_practice()", finished_branch)
-        self.assertIn("exit_cols", finished_branch)
-        self.assertIn("studio_cols", finished_branch)
-        self.assertNotIn("st.columns(len(primary)", finished_branch)
+        helper_src = inspect.getsource(cpl_page_ui.render_custom_page_finished_exits)
+        self.assertIn("render_custom_page_finished_exits(", finished_src)
+        self.assertIn("custom_page_finished_exits", helper_src)
+        self.assertIn('role == "songs"', helper_src)
+        self.assertIn('role == "practice"', helper_src)
+        self.assertIn("use_container_width=True", helper_src)
+        self.assertNotIn("st.columns", helper_src)
         self.assertIn("display_key_label=preview_label", finished_src)
-        self.assertIn("song_structure_overview_html(active, practice_key", finished_branch)
+        self.assertIn("song_structure_overview_html(active, practice_key", finished_src)
 
 
 class TestBCustomBackingReturn(unittest.TestCase):
@@ -233,12 +229,15 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
         self.assertEqual(session.get("song"), "Shape of You")
 
-    def test_custom_page_backing_opens_trial_not_catalog_shape(self) -> None:
-        session = _shape_session()
+    def test_custom_page_backing_catalog_when_trial_not_active(self) -> None:
+        session = _shape_session(practice_key="Bm")
         apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
         session["studio_page"] = "custom"
         session["cpl_finished"] = True
-        from custom_progression_lab import sync_custom_workspace_practice_key
+        from custom_progression_lab import (
+            CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY,
+            sync_custom_workspace_practice_key,
+        )
 
         sync_custom_workspace_practice_key(
             session,
@@ -274,26 +273,25 @@ class TestBCustomBackingReturn(unittest.TestCase):
         simulate_production_backing_page_hydrate(session)
         ctx = get_backing_context(session)
         self.assertIsNotNone(ctx)
-        self.assertEqual(str(getattr(ctx, "source", "") or ""), "custom_progression")
-        self.assertIn("Trial Song", str(getattr(ctx, "song_title", "") or ""))
-        prog = [str(ch) for ch in list(getattr(ctx, "progression", None) or [])]
-        self.assertIn("Em", prog)
-        self.assertIn("D", prog)
-        self.assertIn(str(getattr(ctx, "concert_key", "") or ""), {"D", "D major"})
-        self.assertTrue(session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY))
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "regular_song")
+        self.assertIn("Shape of You", str(getattr(ctx, "song_title", "") or ""))
+        self.assertIn(str(getattr(ctx, "concert_key", "") or ""), {"Bm", "B minor"})
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        self.assertFalse(session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY))
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
         self.assertEqual(session.get("song"), "Shape of You")
         dest = peek_custom_page_return_destination(session)
         self.assertIsInstance(dest, dict)
         self.assertEqual(dest.get("song_title"), "Trial Song")
+        self.assertEqual(str(dest.get("practice_key") or ""), "D")
         from backing_context import format_backing_context_banner
         from backing_nav_actions import build_backing_nav_actions
 
         banner = format_backing_context_banner(ctx)
-        self.assertNotIn("Backing source: Catalog song · Shape of You", banner)
-        self.assertIn("Custom progression", banner)
-        self.assertIn("Trial Song", banner)
+        self.assertIn("Catalog song", banner)
+        self.assertIn("Shape of You", banner)
+        self.assertNotIn("Trial Song", banner)
         actions, _ = build_backing_nav_actions(session)
         labels = [str(a.label) for a in actions]
         self.assertTrue(any("Return to Custom Page" in lab for lab in labels))
@@ -307,12 +305,14 @@ class TestBCustomBackingReturn(unittest.TestCase):
 
     def test_keep_catalog_owner_flag_reads_streamlit_like_session(self) -> None:
         from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+        from songs.music_source import SOURCE_CUSTOM
 
         class _StreamlitLike:
             def __init__(self) -> None:
                 self._data = {
                     CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY: True,
                     "_backing_explicit_handoff_source": "custom_progression",
+                    "active_music_source": SOURCE_CUSTOM,
                 }
 
             def get(self, key, default=None):
@@ -343,8 +343,19 @@ class TestCCustomSbiPageOrigin(unittest.TestCase):
         self.assertEqual(origin.get("source"), "Custom progression")
         self.assertEqual(origin.get("song_title"), "Trial Song")
         session["studio_page"] = "custom"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
         session["improv_song_source"] = "Active song"
         session["sbi_preview_source"] = "Active song"
+        from custom_sbi_page_origin import apply_custom_sbi_origin_on_custom_page
+        from custom_progression_lab import cpl_workspace_practice_key
+
+        self.assertTrue(apply_custom_sbi_origin_on_custom_page(session))
+        self.assertEqual(
+            str(cpl_workspace_practice_key(session, session.get(CPL_ACTIVE_KEY)) or ""),
+            "D",
+        )
+        self.assertEqual(session.get("active_music_source"), ga_before["source"])
 
         session["studio_page"] = "creative"
         from creative_session_state import hydrate_creative_session_for_page

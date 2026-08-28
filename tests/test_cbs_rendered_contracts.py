@@ -6,6 +6,7 @@ import unittest
 
 from cbs_rendered_contracts import (
     backing_must_be_trial_custom,
+    catalog_backing_from_custom_page_coherent,
     catalog_shape_backing_banner,
     finished_main_has_songs_and_practice,
     mixed_state_failures,
@@ -45,27 +46,35 @@ class TestCbsRenderedContracts(unittest.TestCase):
         errs = mixed_state_failures(body=DANIEL_CUSTOM_FINISH, main=DANIEL_CUSTOM_FINISH, surface="custom_page")
         self.assertTrue(errs)
 
-    def test_catalog_backing_from_trial_is_a_failure(self) -> None:
+    def test_catalog_backing_split_brain_is_a_failure(self) -> None:
         self.assertTrue(catalog_shape_backing_banner(DANIEL_CUSTOM_BACKING))
-        self.assertTrue(backing_must_be_trial_custom(DANIEL_CUSTOM_BACKING))
         errs = mixed_state_failures(
             body=DANIEL_CUSTOM_BACKING,
             main=DANIEL_CUSTOM_BACKING,
-            sidebar="Trial Song — Your progression\nTrial Song · Custom\nSong Original Key: Bm",
+            sidebar="Trial Song — Your progression\nTrial Song · Custom\nSong Original Key: Bm\nPractice / Concert Key D",
             surface="custom_backing",
         )
-        self.assertTrue(any("Catalog song" in e or "Return to Song Catalog" in e or "sidebar" in e.lower() for e in errs))
+        self.assertTrue(errs)
+        coherent_errs = catalog_backing_from_custom_page_coherent(
+            main=DANIEL_CUSTOM_BACKING,
+            sidebar="Trial Song — Your progression\nPractice / Concert Key D",
+            body=DANIEL_CUSTOM_BACKING,
+        )
+        self.assertTrue(coherent_errs)
 
-    def test_healthy_trial_backing_passes(self) -> None:
+    def test_healthy_catalog_backing_from_custom_page_passes(self) -> None:
         healthy = """
-        Backing source: Custom progression · Trial Song · D · 100 BPM
-        BLUE_CARD source=custom_progression title=Trial Song original=D pk=D
+        Backing source: Catalog song · Shape of You · Bm · 100 BPM
+        BLUE_CARD source=regular_song title=Shape of You original=Bm pk=Bm
         Return to Custom Page
-        SIDEBAR_TITLE Trial Song
-        SIDEBAR_ORIGINAL D
-        SIDEBAR_PK D
+        SIDEBAR_TITLE Shape of You
+        SIDEBAR_ORIGINAL Bm
+        SIDEBAR_PK Bm
         """
-        self.assertEqual(backing_must_be_trial_custom(healthy), [])
+        self.assertEqual(
+            catalog_backing_from_custom_page_coherent(main=healthy, sidebar=healthy, body=healthy),
+            [],
+        )
         self.assertEqual(
             mixed_state_failures(body=healthy, main=healthy, sidebar=healthy, surface="custom_backing"),
             [],

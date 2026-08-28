@@ -198,13 +198,10 @@ def _render_backing_surface(session: dict[str, Any]) -> None:
         catalog_song_data=session.get("selected_song") or {},
         cpl_active_key=CPL_ACTIVE_KEY,
     )
-    active = session.get(CPL_ACTIVE_KEY) if isinstance(session.get(CPL_ACTIVE_KEY), dict) else {}
-    title = str((active or {}).get("name") or "")
+    title = str(session.get("song") or session.get("active_song_title") or "")
     st.markdown(f"SIDEBAR_TITLE {title}")
     st.markdown(f"SIDEBAR_ORIGINAL {original}")
-    st.markdown(
-        f"SIDEBAR_PK {cpl_workspace_practice_key(session, session.get(CPL_ACTIVE_KEY))}"
-    )
+    st.markdown(f"SIDEBAR_PK {session.get('display_key') or ctx and (ctx.concert_key or ctx.display_key)}")
     st.markdown(f"GA_OWNER {session.get('active_music_source')} {session.get('song')}")
 
 

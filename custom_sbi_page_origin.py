@@ -75,8 +75,63 @@ def stamp_custom_sbi_page_origin(session: dict[str, Any]) -> dict[str, Any] | No
         "global_active_title": str(session.get("song") or session.get("active_song_title") or "").strip(),
         "global_active_pk": str(session.get("display_key") or session.get("concert_key") or "").strip(),
     }
+    try:
+        from source_session_state import resolve_sbi_preview
+
+        preview = resolve_sbi_preview(session)
+        if isinstance(preview, dict) and preview.get("sections"):
+            origin["sections"] = copy.deepcopy(preview.get("sections") or {})
+    except ImportError:
+        pass
     session[CUSTOM_SBI_PAGE_ORIGIN_KEY] = origin
     return copy.deepcopy(origin)
+
+
+def peek_custom_sbi_page_origin(session: dict[str, Any]) -> dict[str, Any] | None:
+    raw = session.get(CUSTOM_SBI_PAGE_ORIGIN_KEY)
+    if not isinstance(raw, dict) or str(raw.get("source") or "") != "Custom progression":
+        return None
+    if not isinstance(raw.get("active"), dict):
+        return None
+    return copy.deepcopy(raw)
+
+
+def apply_custom_sbi_origin_on_custom_page(session: dict[str, Any]) -> bool:
+    """Project sealed Custom SBI / Trial onto the Custom page without consuming.
+
+    Opening Custom Lab must not hydrate Catalog Bm into Trial's local workspace.
+    Origin stays sealed for Creative return.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "custom":
+        return False
+    origin = peek_custom_sbi_page_origin(session)
+    if origin is None:
+        return False
+    active = origin.get("active")
+    if not isinstance(active, dict):
+        return False
+    try:
+        from custom_progression_lab import apply_cpl_session_progression, sync_custom_workspace_practice_key
+
+        apply_cpl_session_progression(session, copy.deepcopy(active), reset_display_key=False)
+        practice_key = str(origin.get("practice_key") or "").strip()
+        if practice_key:
+            sync_custom_workspace_practice_key(
+                session,
+                practice_key=practice_key,
+                active=active,
+                source="custom_sbi_origin_custom_page",
+            )
+    except ImportError:
+        session["cpl_active_progression"] = copy.deepcopy(active)
+    ga_source = str(origin.get("global_active_source") or "").strip()
+    ga_pick = str(origin.get("global_active_pick") or "").strip()
+    if ga_source:
+        session["active_music_source"] = ga_source
+    if ga_pick and not ga_pick.startswith("custom::"):
+        session["active_catalog_pick_key"] = ga_pick
+    return True
 
 
 def consume_custom_sbi_page_origin_on_creative(session: dict[str, Any]) -> bool:
@@ -84,8 +139,8 @@ def consume_custom_sbi_page_origin_on_creative(session: dict[str, Any]) -> bool:
     page = str(session.get("studio_page") or "").strip().lower()
     if page != "creative":
         return False
-    origin = session.pop(CUSTOM_SBI_PAGE_ORIGIN_KEY, None)
-    if not isinstance(origin, dict) or str(origin.get("source") or "") != "Custom progression":
+    origin = peek_custom_sbi_page_origin(session)
+    if origin is None:
         return False
     active = origin.get("active")
     if not isinstance(active, dict):
@@ -146,7 +201,9 @@ def consume_custom_sbi_page_origin_on_creative(session: dict[str, Any]) -> bool:
 
         sess = get_creative_session(session)
         preview = resolve_sbi_preview(session)
-        sections = preview.get("sections") if isinstance(preview, dict) else {}
+        sections = origin.get("sections") if isinstance(origin.get("sections"), dict) else {}
+        if not sections:
+            sections = preview.get("sections") if isinstance(preview, dict) else {}
         if sess is not None:
             sess.tool_type = "song_based_improvisation"
             sess.entry_mode = "Song-Based Improvisation"
@@ -170,11 +227,14 @@ def consume_custom_sbi_page_origin_on_creative(session: dict[str, Any]) -> bool:
         snapshot_last_custom_state(session)
     except ImportError:
         pass
+    session.pop(CUSTOM_SBI_PAGE_ORIGIN_KEY, None)
     return True
 
 
 __all__ = [
     "CUSTOM_SBI_PAGE_ORIGIN_KEY",
+    "apply_custom_sbi_origin_on_custom_page",
     "consume_custom_sbi_page_origin_on_creative",
+    "peek_custom_sbi_page_origin",
     "stamp_custom_sbi_page_origin",
 ]

@@ -25,7 +25,7 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
 from cbs_rendered_contracts import (  # noqa: E402
-    backing_must_be_trial_custom,
+    catalog_backing_from_custom_page_coherent,
     mixed_state_failures,
 )
 
@@ -116,11 +116,36 @@ def main_button_labels(page: Page) -> list[str]:
             || document.querySelector('[data-testid="stAppViewContainer"]');
           if (!root) return [];
           return [...root.querySelectorAll('button')]
-            .filter((b) => b.offsetParent !== null)
+            .filter((b) => {
+              const r = b.getBoundingClientRect();
+              return b.offsetParent !== null && r.width > 8 && r.height > 8;
+            })
             .map((b) => (b.innerText || '').trim())
             .filter(Boolean);
         }"""
     ) or []
+
+
+def finished_exits_visible(page: Page) -> dict[str, bool]:
+    """Cloud-viewport check: Songs/Practice must be visible and clickable in main."""
+    return page.evaluate(
+        """() => {
+          const root = document.querySelector('[data-testid="stMain"]')
+            || document.querySelector('[data-testid="stAppViewContainer"]');
+          const out = {songs: false, practice: false};
+          if (!root) return out;
+          const scoped = root.querySelector('.st-key-custom_page_finished_exits') || root;
+          for (const b of scoped.querySelectorAll('button')) {
+            const t = (b.innerText || '').trim();
+            const r = b.getBoundingClientRect();
+            const vis = b.offsetParent !== null && r.width > 8 && r.height > 8
+              && r.bottom > 0 && r.right > 0;
+            if (/songs/i.test(t) && !/catalog/i.test(t)) out.songs = vis;
+            if (/practice/i.test(t) && !/concert/i.test(t) && !/key/i.test(t)) out.practice = vis;
+          }
+          return out;
+        }"""
+    ) or {"songs": False, "practice": False}
 
 
 def click_main_button(page: Page, pattern: str) -> bool:
@@ -292,9 +317,10 @@ def main() -> int:
         settle(page, 3)
         body_f = shot(page, "03-finish-song")
         labels = main_button_labels(page)
+        vis = finished_exits_visible(page)
         label_blob = " ".join(labels)
-        has_songs = bool(re.search(r"Songs", label_blob))
-        has_practice = bool(re.search(r"Practice", label_blob))
+        has_songs = bool(re.search(r"Songs", label_blob)) and bool(vis.get("songs"))
+        has_practice = bool(re.search(r"Practice", label_blob)) and bool(vis.get("practice"))
         has_backing = bool(re.search(r"Backing", label_blob))
         has_activate = bool(re.search(r"Set as Active", label_blob))
         finish_nav = finish_clicked and has_songs and has_practice and has_backing
@@ -303,7 +329,7 @@ def main() -> int:
         mark(
             "custom_finish_nav",
             "PASS" if finish_nav and not mixed_f else "RED",
-            f"labels={labels!r} mixed={mixed_f}",
+            f"labels={labels!r} vis={vis!r} mixed={mixed_f}",
         )
         mark(
             "custom_finish_pk",
@@ -334,32 +360,31 @@ def main() -> int:
         body_b = shot(page, "04-custom-page-backing")
         main_b = main_text(page)
         side_b = sidebar_text(page)
-        backing_errs = backing_must_be_trial_custom(main_b + "\n" + body_b)
-        mixed_b = fail_mixed(page, "custom_backing")
-        trial_prog = rendered_em_em_d_d(body_b) or (
-            has_any(body_b, "Trial Song") and has_any(body_b, "Em") and has_any(body_b, "D")
+        backing_errs = catalog_backing_from_custom_page_coherent(
+            main=main_b, sidebar=side_b, body=body_b
         )
+        mixed_b = fail_mixed(page, "custom_backing")
         backing_ok = (
             not backing_errs
             and not mixed_b
-            and trial_prog
-            and has_any(main_b, "Trial Song", "Custom")
-            and not has_any(main_b, "Backing source: Catalog song · Shape of You")
-            and not has_any(main_b + body_b, "Return to Song Catalog")
+            and has_any(main_b, "Shape of You")
+            and has_any(main_b, "Backing source: Catalog song")
+            and has_any(main_b + body_b, "Return to Custom Page")
+            and not has_any(side_b, "Trial Song")
         )
         mark(
             "custom_page_backing",
             "PASS" if backing_ok else "RED",
-            f"errs={backing_errs} mixed={mixed_b} prog={trial_prog} pk={pk_val(page)!r}",
+            f"errs={backing_errs} mixed={mixed_b} pk={pk_val(page)!r}",
         )
 
-        # Refresh on Custom-page Backing
+        # Refresh on Custom-page Backing — Catalog owner + Custom return survive
         page.reload(wait_until="domcontentloaded")
-        wait_for_body(page, "Backing", "Trial Song", "Return", timeout_s=50)
+        wait_for_body(page, "Backing", "Shape of You", "Return", timeout_s=50)
         settle(page, 3)
         body_br = shot(page, "04b-backing-refresh")
-        refresh_bk = has_any(body_br, "Trial Song") and not has_any(
-            body_br, "Backing source: Catalog song · Shape of You"
+        refresh_bk = has_any(body_br, "Shape of You") and has_any(
+            body_br, "Return to Custom Page"
         )
         mark("refresh_custom_backing", "PASS" if refresh_bk else "RED")
 
@@ -412,8 +437,21 @@ def main() -> int:
         )
         settle(page, 3)
         body_lab = shot(page, "06c-custom-from-sbi")
-        lab_ok = bool(opened_lab) and has_any(body_lab, "Trial Song")
-        mark("sbi_open_custom_lab", "PASS" if lab_ok else "RED")
+        pk_lab = pk_val(page) or sidebar_pk_input(page)
+        lab_pk_d = str(pk_lab or "").strip() in {"D", "D major"} or (
+            "d" in low(str(pk_lab or "")) and "minor" not in low(str(pk_lab or ""))
+        )
+        lab_ok = (
+            bool(opened_lab)
+            and has_any(body_lab, "Trial Song")
+            and lab_pk_d
+            and "practice / concert key b minor" not in low(body_lab)
+        )
+        mark(
+            "sbi_open_custom_lab",
+            "PASS" if lab_ok else "RED",
+            f"pk={pk_lab!r}",
+        )
 
         click_nav(page, "Creative")
         settle(page, 4)

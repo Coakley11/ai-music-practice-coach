@@ -916,7 +916,8 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         from custom_sbi_page_origin import consume_custom_sbi_page_origin_on_creative
 
         if consume_custom_sbi_page_origin_on_creative(session):
-            session.pop(f"_creative_session_hydrated_{page}", None)
+            session[f"_creative_session_hydrated_{page}"] = True
+            return
     except ImportError:
         pass
     hydrate_flag = f"_creative_session_hydrated_{page}"

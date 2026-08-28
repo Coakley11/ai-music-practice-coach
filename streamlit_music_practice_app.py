@@ -9146,7 +9146,7 @@ def _render_backing_return_source_action() -> None:
                     set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
                     navigate_studio_page(st.session_state, "picker")
                     st.rerun()
-            elif action.action_id == "return_custom_songs":
+            elif action.action_id in {"return_custom_songs", "return_custom_page"}:
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
                         from custom_page_return_destination import consume_custom_page_return_destination
@@ -9185,8 +9185,15 @@ def _render_backing_return_source_action() -> None:
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
             src = str(getattr(ctx, "source", "") or "")
-            if src == "custom_progression":
-                # Custom Backing → actual Custom page (not Creative).
+            dest = None
+            try:
+                from custom_page_return_destination import peek_custom_page_return_destination
+
+                dest = peek_custom_page_return_destination(st.session_state)
+            except ImportError:
+                dest = None
+            if src == "custom_progression" or dest is not None:
+                # Custom-page launch origin wins over backing owner.
                 # Consume the sealed Trial workspace dest — do not seize Global Active.
                 try:
                     from custom_page_return_destination import consume_custom_page_return_destination
@@ -10297,13 +10304,16 @@ try:
         _generated_backing_sidebar = False
     if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
-    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom" or (
-        str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
-        and bool(st.session_state.get("_custom_page_backing_keep_catalog_owner"))
-    ):
+    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
+    elif _catalog_regular_backing:
+        _display_key_options = sync_display_key_before_widget(
+            st,
+            original_key,
+            _song_identity,
+        )
     else:
         _sbi_custom_sidebar = False
         _custom_ga_sidebar = False
@@ -10330,10 +10340,13 @@ try:
                 )
 
                 page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+                # Catalog regular backing (including Custom-page launch while Shape
+                # remains GA) must not overlay Trial/SBI D onto the left panel.
                 # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
-                # Do not clear overlay on Open Backing — that restored Shape Dm.
-                if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
-                    st.session_state
+                if (
+                    page_now in {"creative", "backing"}
+                    and not _catalog_regular_backing
+                    and custom_sbi_owns_sidebar_practice_key(st.session_state)
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
                         st, st.session_state

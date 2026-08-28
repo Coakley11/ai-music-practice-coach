@@ -94,20 +94,19 @@ class TestCustomPageFinishBackingRender(unittest.TestCase):
 
         visible = _all_text(at)
         labels = _button_labels(at)
-        self.assertNotIn("Backing source: Catalog song · Shape of You", visible)
+        self.assertIn("Backing source: Catalog song · Shape of You", visible)
         self.assertNotIn("Return to Song Catalog", visible)
         self.assertFalse(any("Return to Song Catalog" in lab for lab in labels))
-        self.assertIn("Custom progression", visible)
-        self.assertIn("Trial Song", visible)
         self.assertTrue(
             any("Return to Custom Page" in lab for lab in labels),
             labels,
         )
-        self.assertIn("BLUE_CARD source=custom_progression", visible)
-        self.assertNotIn("BLUE_CARD source=regular_song", visible)
-        self.assertIn("SIDEBAR_TITLE Trial Song", visible)
-        self.assertIn("SIDEBAR_ORIGINAL D", visible)
-        self.assertIn("SIDEBAR_PK D", visible)
+        self.assertIn("BLUE_CARD source=regular_song", visible)
+        self.assertIn("BLUE_CARD", visible)
+        self.assertIn("Shape of You", visible)
+        self.assertIn("SIDEBAR_TITLE Shape of You", visible)
+        self.assertIn("SIDEBAR_ORIGINAL Bm", visible)
+        self.assertIn("SIDEBAR_PK Bm", visible)
         ss = at.session_state
         stages = list(_ss_get(ss, "_custom_finish_backing_stages") or [])
         self.assertTrue(stages, "harness must log owner/source keys at each stage")
@@ -127,18 +126,24 @@ class TestCustomPageFinishBackingRender(unittest.TestCase):
             ),
             {},
         )
-        self.assertEqual(after.get("ctx_source"), "custom_progression", after)
-        self.assertIn("Trial Song", str(after.get("ctx_title") or ""), after)
+        self.assertEqual(after.get("ctx_source"), "regular_song", after)
+        self.assertIn("Shape of You", str(after.get("ctx_title") or ""), after)
         self.assertEqual(after.get("ga_source"), "catalog_song", {"before": before, "after": after})
         self.assertEqual(after.get("ga_song"), "Shape of You", after)
         self.assertEqual(str(_ss_get(ss, "active_music_source") or ""), "catalog_song")
         self.assertEqual(str(_ss_get(ss, "song") or ""), "Shape of You")
 
-        from cbs_rendered_contracts import backing_must_be_trial_custom, mixed_state_failures
+        from cbs_rendered_contracts import (
+            catalog_backing_from_custom_page_coherent,
+            mixed_state_failures,
+        )
 
-        self.assertEqual(backing_must_be_trial_custom(visible), [])
         self.assertEqual(
-            mixed_state_failures(body=visible, main=visible, surface="custom_backing"),
+            catalog_backing_from_custom_page_coherent(main=visible, sidebar=visible, body=visible),
+            [],
+        )
+        self.assertEqual(
+            mixed_state_failures(body=visible, main=visible, sidebar=visible, surface="custom_backing"),
             [],
         )
 

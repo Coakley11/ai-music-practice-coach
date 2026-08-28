@@ -1844,9 +1844,31 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             return
         except ImportError:
             pass
-    # Custom-page Trial Backing must win before generic/restore_last consume.
-    # Production hydrates twice per paint; the second pass otherwise initializes
-    # Catalog Shape while the sidebar still shows Trial.
+    # Custom-page Catalog Backing (Trial viewed, not Set as Active): keep Shape
+    # owner + sealed Return to Custom Page. Do not overlay Trial on the sidebar.
+    try:
+        from custom_progression_lab import custom_page_launched_catalog_backing
+        from songs.music_source import restore_catalog_live_practice_key
+
+        if custom_page_launched_catalog_backing(session):
+            restore_catalog_live_practice_key(session)
+            try:
+                from backing_context import restore_regular_song_backing
+
+                restore_regular_song_backing(session, st_like=st_like)
+            except ImportError:
+                pass
+            try:
+                from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+                stamp_custom_page_return_destination_on_backing_context(session)
+            except ImportError:
+                pass
+            trace_backing_hydrate_phase(session, "03_custom_page_catalog_owner")
+            return
+    except ImportError:
+        pass
+    # Custom-page Trial Backing only when Trial is Global Active.
     try:
         from custom_progression_lab import ensure_custom_page_trial_backing
 

@@ -743,6 +743,13 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         display_key_options,
     )
 
+    try:
+        from custom_sbi_page_origin import apply_custom_sbi_origin_on_custom_page
+
+        apply_custom_sbi_origin_on_custom_page(session)
+    except ImportError:
+        pass
+
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
     stored_home = cpl_draft_written_key(active)
     widget_home_raw = str(session.get("cpl_original_key") or "").strip()
@@ -1117,6 +1124,29 @@ def clear_all_cpl_sections(home_sections: dict[str, list]) -> None:
 
 
 CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY = "_custom_page_backing_keep_catalog_owner"
+CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY = "_custom_page_launched_catalog_backing"
+
+
+def trial_custom_is_global_active(session_state: object | None) -> bool:
+    """True only when Trial/Custom has been Set as Active Song."""
+    if session_state is None:
+        return False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        return bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+    except Exception:
+        src = str(_session_get(session_state, "active_music_source") or "")
+        return src in {"custom_progression", "custom"}
+
+
+def custom_page_launched_catalog_backing(session_state: object | None) -> bool:
+    """True when Custom-page Backing opened the Global Active Catalog owner."""
+    if session_state is None:
+        return False
+    return bool(_session_get(session_state, CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
 
 
 def _session_get(session_state: object, key: str, default: object = None) -> object:
@@ -1136,13 +1166,17 @@ def _session_get(session_state: object, key: str, default: object = None) -> obj
 
 
 def custom_page_backing_keeps_catalog_owner(session_state: object | None) -> bool:
-    """True when Custom-page Backing must stay Trial without seizing Global Active.
+    """True when Custom-page Backing opened Trial *and* Trial is Global Active.
 
-    Live Streamlit ``session_state`` is not a ``dict``. Treating it as one made
-    the keep-flag look unset, so hydrate called ``activate_custom_ownership``
-    and the second paint became Catalog Shape / seized Custom GA.
+    If Trial is only being viewed (not Set as Active), Custom-page Backing
+    opens Catalog Shape. That path must not set this flag — otherwise the
+    sidebar overlays Trial/D onto Catalog Bm.
     """
     if session_state is None:
+        return False
+    if custom_page_launched_catalog_backing(session_state):
+        return False
+    if not trial_custom_is_global_active(session_state):
         return False
     if _session_get(session_state, CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY):
         return True
@@ -1151,27 +1185,25 @@ def custom_page_backing_keeps_catalog_owner(session_state: object | None) -> boo
     )
 
 
+def _session_pop(session_state: object, key: str) -> None:
+    try:
+        session_state.pop(key, None)  # type: ignore[attr-defined]
+    except Exception:
+        try:
+            del session_state[key]  # type: ignore[index]
+        except Exception:
+            pass
+
+
 def clear_custom_page_backing_keep_catalog_owner(session_state: object | None) -> None:
     """Drop the Custom-page Trial overlay when the user opens ordinary Catalog Backing."""
     if session_state is None:
         return
-    try:
-        session_state.pop(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY, None)  # type: ignore[attr-defined]
-    except Exception:
-        try:
-            del session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY]  # type: ignore[index]
-        except Exception:
-            pass
+    _session_pop(session_state, CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY)
     if str(_session_get(session_state, "_backing_explicit_handoff_source") or "").strip() == (
         "custom_progression"
     ):
-        try:
-            session_state.pop("_backing_explicit_handoff_source", None)  # type: ignore[attr-defined]
-        except Exception:
-            try:
-                del session_state["_backing_explicit_handoff_source"]  # type: ignore[index]
-            except Exception:
-                pass
+        _session_pop(session_state, "_backing_explicit_handoff_source")
 
 
 def ensure_custom_page_trial_backing(
@@ -1179,17 +1211,17 @@ def ensure_custom_page_trial_backing(
     *,
     st_like: object | None = None,
 ) -> bool:
-    """Keep or rebuild Trial Custom Backing through the live double-hydrate path.
+    """Keep Trial Custom Backing only when Trial is Global Active.
 
-    Production paints Backing twice: early hydrate consumes specialized/FROM_CREATIVE
-    into restore_last, then the page hydrate + reconcile treat Catalog GA vs
-    ``custom::`` as a restore miss and initialize Shape Catalog. Unit tests that
-    call hydrate once miss that overwrite.
-
-    When this page launched Custom-page Backing, rebuild from the CPL workspace
-    without ``activate_custom_ownership`` (that no-ops under Catalog GA).
+    Viewing Trial on the Custom page (Catalog still GA) must not force Trial
+    backing — Catalog Shape is the correct owner. The Custom-page return
+    destination is sealed separately.
     """
     _ = st_like
+    if custom_page_launched_catalog_backing(session_state):
+        return False
+    if not trial_custom_is_global_active(session_state):
+        return False
     if not custom_page_backing_keeps_catalog_owner(session_state):
         return False
     page = str(session_state.get("studio_page") or "").strip().lower()
@@ -1320,19 +1352,105 @@ def prepare_cpl_backing_handoff(
         pass
 
 
+def launch_custom_page_catalog_backing(session_state: dict) -> None:
+    """Open Global Active Catalog backing from the Custom page.
+
+    Launch origin (Return to Custom Page / Trial workspace) is sealed separately
+    from the backing owner. Sidebar and main card must both show Catalog.
+    """
+    clear_custom_page_backing_keep_catalog_owner(session_state)
+    session_state[CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY] = True
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
+    try:
+        from songs.music_source import (
+            restore_catalog_live_practice_key,
+            seal_catalog_live_practice_key_for_custom_page,
+        )
+
+        reject = ""
+        try:
+            from custom_page_return_destination import peek_custom_page_return_destination
+
+            dest = peek_custom_page_return_destination(session_state)
+            if isinstance(dest, dict):
+                reject = str(dest.get("practice_key") or "").strip()
+        except ImportError:
+            reject = ""
+        if not reject:
+            reject = str(cpl_workspace_practice_key(session_state) or "").strip()
+        seal_catalog_live_practice_key_for_custom_page(session_state, reject_live=reject)
+        restore_catalog_live_practice_key(session_state)
+    except ImportError:
+        pass
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            restore_regular_song_backing,
+            set_backing_source_preference,
+        )
+
+        set_backing_source_preference(session_state, BACKING_PREF_CATALOG)
+        restore_regular_song_backing(session_state)
+    except ImportError:
+        pass
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
+    try:
+        from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+
+        set_pending_anchor(session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+    except ImportError:
+        pass
+    from studio_nav_history import navigate_studio_page
+
+    navigate_studio_page(session_state, "backing")
+    session_state[CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY] = True
+    try:
+        from backing_context import restore_regular_song_backing
+
+        restore_regular_song_backing(session_state)
+    except ImportError:
+        pass
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
+
+
 def launch_custom_page_backing(
     session_state: dict,
     active: dict | None = None,
     *,
     section: str | None = None,
 ) -> None:
-    """Open Trial Custom Backing from the Custom page without seizing Global Active.
+    """Open Backing from the Custom page.
 
-    Ordering matters: seal Trial context first, navigate (which may stamp generic
-    catalog entry from ``custom``), then re-seal specialized custom_progression.
+    If Trial is not Set as Active, open the Global Active Catalog backing
+    (Shape). Always seal Return to Custom Page for the Trial workspace.
     """
     if not isinstance(active, dict):
         active = cpl_active_from_session(session_state)
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
+    if not trial_custom_is_global_active(session_state):
+        launch_custom_page_catalog_backing(session_state)
+        return
+    session_state.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
     prepare_cpl_backing_handoff(
         session_state,
         active,

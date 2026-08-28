@@ -653,6 +653,13 @@ def render_backing_edit_source_action(
     from backing_source_navigation import return_to_source_button_label
 
     label = return_to_source_button_label(ctx)
+    try:
+        from custom_page_return_destination import peek_custom_page_return_destination
+
+        if peek_custom_page_return_destination(session) is not None:
+            label = "✏️ Return to Custom Page"
+    except ImportError:
+        pass
     if st.button(label, key="backing_edit_source_btn", use_container_width=False):
         on_navigate()
 

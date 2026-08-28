@@ -28,8 +28,9 @@ def custom_page_exit_nav_items() -> list[dict[str, str]]:
 def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[str, object]]:
     """Primary finished-song actions. Songs / Practice stay after Finish Song.
 
-    Finish Song may swap editing controls, but these icon exits remain in the
-    same launch row as Set as Active and Backing.
+    Rendered as a dedicated full-width stack *outside* the builder panel so
+    Cloud viewports cannot clip them. Finish Song may swap editing controls,
+    but these icon exits remain.
     """
     exits = {str(item.get("destination") or ""): item for item in custom_page_exit_nav_items()}
     songs = exits.get("picker") or {}
@@ -70,6 +71,70 @@ def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[s
             "disabled": False,
         },
     ]
+
+
+def render_custom_page_finished_exits(
+    st,
+    *,
+    has_chords: bool,
+    on_songs,
+    on_practice,
+    on_activate,
+    on_backing,
+    on_edit,
+) -> None:
+    """Full-width Songs / Practice / studio exits outside the clipped builder panel."""
+    actions = custom_page_finished_action_items(has_chords=has_chords)
+    with st.container(key="custom_page_finished_exits"):
+        st.markdown("##### Leave Custom page")
+        for spec in actions:
+            role = str(spec.get("role") or "")
+            label = str(spec.get("label") or role)
+            key = str(spec.get("key") or f"cpl_{role}_finish")
+            if role == "songs":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_songs()
+            elif role == "practice":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_practice()
+            elif role == "activate":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_activate()
+            elif role == "backing":
+                if st.button(
+                    label,
+                    key=key,
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_backing()
+            elif role == "edit":
+                if st.button(
+                    label,
+                    key=key,
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_edit()
 
 
 def _cpl_active_is_substantive(active: object) -> bool:
@@ -467,6 +532,24 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "picker")
         st.rerun()
 
+    def _keep_editing() -> None:
+        st.session_state["cpl_finished"] = False
+        st.rerun()
+
+    # Finished exits live *outside* the keyed builder panel. Cloud CSS / overflow
+    # on `.st-key-custom_song_builder_panel` previously clipped Songs / Practice.
+    if finished:
+        _early_sections = deep_copy_sections(display_sections_for_key(active, practice_key))
+        render_custom_page_finished_exits(
+            st,
+            has_chords=bool(flatten_sections_to_events(_early_sections)),
+            on_songs=_go_songs,
+            on_practice=_open_practice,
+            on_activate=_activate_custom_song,
+            on_backing=_open_backing,
+            on_edit=_keep_editing,
+        )
+
     with st.container(key="custom_song_builder_panel", border=False):
         render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
@@ -655,52 +738,8 @@ def render_custom_progression_lab_page() -> None:
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
-            actions = custom_page_finished_action_items(has_chords=has_chords)
-            # Dedicated full-width rows — a 4-col row inside overflow:hidden clipped
-            # Songs / Practice after Finish Song (Daniel live QA on ec408d0).
-            exits = [spec for spec in actions if str(spec.get("role") or "") in {"songs", "practice"}]
-            studio = [
-                spec for spec in actions if str(spec.get("role") or "") in {"activate", "backing"}
-            ]
-            exit_cols = st.columns(len(exits) or 1)
-            for col, spec in zip(exit_cols, exits):
-                role = str(spec.get("role") or "")
-                with col:
-                    if st.button(
-                        str(spec.get("label") or role),
-                        key=str(spec.get("key") or f"cpl_{role}_finish"),
-                        type="secondary",
-                        use_container_width=True,
-                        disabled=bool(spec.get("disabled")),
-                    ):
-                        if role == "songs":
-                            _go_songs()
-                        elif role == "practice":
-                            _open_practice()
-            studio_cols = st.columns(len(studio) or 1)
-            for col, spec in zip(studio_cols, studio):
-                role = str(spec.get("role") or "")
-                with col:
-                    if st.button(
-                        str(spec.get("label") or role),
-                        key=str(spec.get("key") or f"cpl_{role}_finish"),
-                        type="primary" if role == "activate" else "secondary",
-                        use_container_width=True,
-                        disabled=bool(spec.get("disabled")),
-                    ):
-                        if role == "activate":
-                            _activate_custom_song()
-                        elif role == "backing":
-                            _open_backing()
-            edit = next((spec for spec in actions if str(spec.get("role") or "") == "edit"), None)
-            if edit and st.button(
-                str(edit.get("label") or "Keep editing"),
-                key=str(edit.get("key") or "cpl_unfinish"),
-                use_container_width=True,
-            ):
-                st.session_state["cpl_finished"] = False
-                st.rerun()
-
+            # Songs / Practice / studio exits are rendered above this panel
+            # (Cloud-safe, unclipped). Keep editing stays in that same stack.
             _save(None)
             return
 

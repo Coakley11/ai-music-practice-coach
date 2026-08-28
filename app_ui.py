@@ -4120,6 +4120,38 @@ body.custom-builder-page .st-key-custom_song_builder_panel {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
+.st-key-custom_page_finished_exits,
+body[data-studio-page="custom"] .st-key-custom_page_finished_exits,
+body.custom-builder-page .st-key-custom_page_finished_exits {
+  display: block !important;
+  visibility: visible !important;
+  overflow: visible !important;
+  max-height: none !important;
+  min-height: 14rem !important;
+  margin: 0.35rem 0 0.85rem !important;
+  padding: 0.85rem 1rem 0.95rem !important;
+  border: 2px solid rgba(16, 185, 129, 0.5) !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  position: relative !important;
+  z-index: 30 !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.st-key-custom_page_finished_exits [data-testid="stVerticalBlock"] {
+  gap: 0.45rem !important;
+}
+.st-key-custom_page_finished_exits [data-testid="stButton"],
+.st-key-custom_page_finished_exits [data-testid="stButton"] button {
+  display: block !important;
+  width: 100% !important;
+  min-height: 2.75rem !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  pointer-events: auto !important;
+}
 .ui-studio-meta-badges {
   display: flex;
   flex-wrap: wrap;

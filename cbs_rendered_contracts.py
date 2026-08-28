@@ -77,18 +77,23 @@ def mixed_state_failures(
             errors.append("Trial title + Shape/Bm original key on Custom page")
 
     if hint in {"custom_backing", "backing"}:
-        if catalog_shape_backing_banner(main_text):
-            errors.append("Backing source: Catalog song · Shape of You after Custom-page Backing")
-        if return_to_song_catalog_visible(main_text) or return_to_song_catalog_visible(all_text):
-            errors.append("Return to Song Catalog after Custom-page Backing")
+        # Catalog Shape backing is allowed when Trial is not Set as Active.
+        # Fail only on split-brain / broken return.
         if _has(side_text, "Trial Song") and catalog_shape_backing_banner(main_text):
-            errors.append("Trial sidebar + Shape Catalog backing card")
+            if not _has(side_text, "Shape of You"):
+                errors.append("Trial sidebar + Shape Catalog backing card")
+        if _has(side_text, "D major") and catalog_shape_backing_banner(main_text):
+            errors.append("Trial/D projection leaked into Catalog backing sidebar")
+        if catalog_shape_backing_banner(main_text) and return_to_song_catalog_visible(all_text):
+            if "return to custom page" not in low(all_text):
+                errors.append("Catalog backing from Custom page missing Return to Custom Page")
         if _has(main_text, "Trial Song") and _has(main_text, "B minor") and catalog_shape_backing_banner(
             main_text
         ):
             errors.append("Trial identity mixed with Shape Bm backing keys")
         if _has(all_text, "Trial Song") and return_to_song_catalog_visible(all_text):
-            errors.append("Custom PK / Trial identity + Catalog return route")
+            if "return to custom page" not in low(all_text):
+                errors.append("Custom PK / Trial identity + Catalog return route")
 
     if hint in {"songs", "picker"}:
         if _has(main_text, "Trial Song") and not _has(main_text, "Shape of You"):
@@ -116,7 +121,7 @@ def finished_main_has_songs_and_practice(button_labels: list[str]) -> bool:
 
 
 def backing_must_be_trial_custom(text: str) -> list[str]:
-    """Positive + negative checks for Trial Custom-page Backing."""
+    """Legacy helper — Trial Custom backing when Trial *is* Global Active."""
     errors: list[str] = []
     blob = low(text)
     if catalog_shape_backing_banner(text):
@@ -129,4 +134,30 @@ def backing_must_be_trial_custom(text: str) -> list[str]:
         errors.append("missing Custom source")
     if "return to custom page" not in blob and "return to custom" not in blob:
         errors.append("missing Return to Custom Page")
+    return errors
+
+
+def catalog_backing_from_custom_page_coherent(
+    *,
+    main: str = "",
+    sidebar: str = "",
+    body: str = "",
+) -> list[str]:
+    """Trial not active: Catalog Shape backing + matching sidebar + Return to Custom."""
+    errors: list[str] = []
+    main_text = main or body
+    side_text = sidebar or ""
+    all_text = "\n".join(part for part in (body, main, sidebar) if part)
+    if not catalog_shape_backing_banner(main_text) and not catalog_shape_backing_banner(all_text):
+        errors.append("expected Catalog Shape backing while Trial is not Global Active")
+    if "return to custom page" not in low(all_text):
+        errors.append("missing Return to Custom Page")
+    if return_to_song_catalog_visible(all_text) and "return to custom page" not in low(all_text):
+        errors.append("Return to Song Catalog without Custom-page return")
+    if _has(side_text, "Trial Song") and not _has(side_text, "Shape of You"):
+        errors.append("Trial sidebar on Catalog backing")
+    if _has(side_text, "D major") or re.search(r"sidebar_pk\s+d\b", low(side_text)):
+        errors.append("Trial D leaked into Catalog backing sidebar")
+    if _has(main_text, "Trial Song") and catalog_shape_backing_banner(main_text):
+        errors.append("Trial title on Catalog Shape backing card")
     return errors

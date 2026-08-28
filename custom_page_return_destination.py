@@ -172,6 +172,12 @@ def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
         pass
     session["studio_page"] = "custom"
     session.pop(CUSTOM_PAGE_RETURN_DESTINATION_KEY, None)
+    try:
+        from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
+
+        session.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
+    except ImportError:
+        session.pop("_custom_page_launched_catalog_backing", None)
     return True
 
 
