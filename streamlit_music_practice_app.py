@@ -10343,12 +10343,15 @@ try:
                 )
 
                 page_now = str(st.session_state.get("studio_page") or "").strip().lower()
-                # Catalog regular backing (including Custom-page launch while Shape
-                # remains GA) must not overlay Trial/SBI D onto the left panel.
-                # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
+                # Leftover regular_song ctx from a prior Catalog backing must not
+                # steal Creative SBI Custom. Catalog sidebar applies only while
+                # the user is actually on the Backing page.
+                _catalog_on_backing = bool(
+                    _catalog_regular_backing and page_now == "backing"
+                )
                 if (
                     page_now in {"creative", "backing"}
-                    and not _catalog_regular_backing
+                    and not _catalog_on_backing
                     and custom_sbi_owns_sidebar_practice_key(st.session_state)
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
@@ -10385,7 +10388,10 @@ try:
             pass
         elif is_creative_major_jam_active(st.session_state):
             _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
-        elif _catalog_regular_backing:
+        elif (
+            _catalog_regular_backing
+            and str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+        ):
             _display_key_options = sync_display_key_before_widget(
                 st,
                 original_key,

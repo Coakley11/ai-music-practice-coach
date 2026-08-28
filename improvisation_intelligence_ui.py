@@ -123,6 +123,17 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if custom_sbi_owns_sidebar_practice_key(session_state):
+            from custom_progression_lab import custom_sbi_local_practice_key
+
+            token = str(custom_sbi_local_practice_key(session_state) or "").strip()
+            if token:
+                return token
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import user_sidebar_display_key_authoritative
         from music_workflow_pending_song_practice_key_edit import (
             overlay_destination_practice_key,

@@ -611,6 +611,41 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     return live or "C"
 
 
+def custom_sbi_local_practice_key(session_state: dict, active: dict | None = None) -> str:
+    """Trial/Custom SBI local Practice Key — never Catalog Shape Dm/Bm.
+
+    Visiting Custom SBI or Open Custom Lab must not inherit the Global Active
+    catalog key. If the workspace token equals the catalog sticky / live GA
+    key and differs from the Custom home, use the Custom home.
+    """
+    active = active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
+    token = str(cpl_workspace_practice_key(session_state, active) or "").strip()
+    home = ""
+    if isinstance(active, dict):
+        try:
+            home = str(cpl_draft_written_key(active) or active.get("original_key_center") or "").strip()
+        except Exception:
+            home = str(active.get("original_key_center") or "").strip()
+    if token and home and token != home:
+        ga_pk = str(
+            session_state.get("display_key") or session_state.get("concert_key") or ""
+        ).strip()
+        catalog_sticky = ""
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            catalog_pick = str(resolve_practice_source_pick(session_state) or "").strip()
+            if catalog_pick and not catalog_pick.startswith("custom::"):
+                catalog_sticky = str(
+                    get_practice_concert_key(session_state, catalog_pick) or ""
+                ).strip()
+        except ImportError:
+            catalog_sticky = ""
+        if token == ga_pk or (catalog_sticky and token == catalog_sticky):
+            return home
+    return token or home or "C"
+
+
 def practice_chord_to_original_key(chord: str, practice_key: str, original_key: str) -> str:
     """Project a Practice-Key chord symbol back into Original-Key storage spelling."""
     symbol = normalize_chord_symbol(chord) or str(chord or "").strip()

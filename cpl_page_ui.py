@@ -37,12 +37,6 @@ def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[s
     practice = exits.get("practice") or {}
     return [
         {
-            "role": "activate",
-            "label": "Set as Active Song",
-            "key": "cpl_set_active_finish",
-            "disabled": False,
-        },
-        {
             "role": "songs",
             "destination": "picker",
             "label": str(songs.get("label") or nav_icon_button_label("picker")),
@@ -51,17 +45,23 @@ def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[s
             "disabled": False,
         },
         {
-            "role": "backing",
-            "label": nav_icon_button_label("backing"),
-            "key": "cpl_to_backing_finish",
-            "disabled": not has_chords,
-        },
-        {
             "role": "practice",
             "destination": "practice",
             "label": str(practice.get("label") or nav_icon_button_label("practice")),
             "icon": str(practice.get("icon") or ""),
             "key": "cpl_exit_practice_finish",
+            "disabled": not has_chords,
+        },
+        {
+            "role": "activate",
+            "label": "Set as Active Song",
+            "key": "cpl_set_active_finish",
+            "disabled": False,
+        },
+        {
+            "role": "backing",
+            "label": nav_icon_button_label("backing"),
+            "key": "cpl_to_backing_finish",
             "disabled": not has_chords,
         },
         {

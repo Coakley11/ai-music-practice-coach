@@ -41,6 +41,8 @@ CRITICAL = {
     "custom_finish_pk",
     "custom_page_backing",
     "custom_backing_return",
+    "sbi_open_custom_lab",
+    "sbi_custom_page_creative",
 }
 
 
@@ -127,29 +129,42 @@ def main_button_labels(page: Page) -> list[str]:
 
 
 def finished_exits_visible(page: Page) -> dict[str, bool]:
-    """Cloud-viewport check: Songs/Practice must be visible and clickable in main."""
-    return page.evaluate(
+    """Cloud-viewport check: finished-view Songs/Practice widgets, not hub cards."""
+    info = page.evaluate(
         """() => {
-          const root = document.querySelector('[data-testid="stMain"]')
-            || document.querySelector('[data-testid="stAppViewContainer"]');
-          const out = {songs: false, practice: false};
-          if (!root) return out;
-          const nodes = [
-            ...root.querySelectorAll('.st-key-custom_page_finished_exits button'),
-            ...root.querySelectorAll('button'),
-          ];
-          for (const b of nodes) {
-            const t = (b.innerText || '').replace(/\\s+/g, ' ').trim();
+          const pick = (key) => {
+            const wrap = document.querySelector('.st-key-' + key);
+            const b = wrap ? wrap.querySelector('button') : null;
+            if (!b) return {exists: false, visible: false, text: ''};
+            b.scrollIntoView({block: 'center'});
             const r = b.getBoundingClientRect();
-            const vis = b.offsetParent !== null && r.width > 8 && r.height > 8
-              && r.bottom > 0 && r.right > 0;
-            if (!vis) continue;
-            if (/songs/i.test(t) && !/catalog/i.test(t) && !/selection/i.test(t)) out.songs = true;
-            if (/^🎯?\\s*practice$/i.test(t) || t === '🎯 Practice') out.practice = true;
-          }
-          return out;
+            const style = window.getComputedStyle(b);
+            const vis = r.width > 8 && r.height > 8
+              && style.visibility !== 'hidden'
+              && style.display !== 'none'
+              && parseFloat(style.opacity || '1') > 0.1;
+            return {exists: true, visible: vis, text: (b.innerText || '').trim()};
+          };
+          const songs = pick('cpl_exit_picker_finish');
+          const practice = pick('cpl_exit_practice_finish');
+          return {
+            songs: !!(songs.exists && songs.visible),
+            practice: !!(practice.exists && practice.visible),
+            songs_exists: songs.exists,
+            practice_exists: practice.exists,
+            songs_text: songs.text,
+            practice_text: practice.text,
+          };
         }"""
-    ) or {"songs": False, "practice": False}
+    ) or {}
+    return {
+        "songs": bool(info.get("songs")),
+        "practice": bool(info.get("practice")),
+        "songs_exists": bool(info.get("songs_exists")),
+        "practice_exists": bool(info.get("practice_exists")),
+        "songs_text": str(info.get("songs_text") or ""),
+        "practice_text": str(info.get("practice_text") or ""),
+    }
 
 
 def click_finished_backing(page: Page) -> bool:
@@ -351,9 +366,20 @@ def main() -> int:
         body_f = shot(page, "03-finish-song")
         labels = main_button_labels(page)
         vis = finished_exits_visible(page)
+        page.set_viewport_size({"width": 1100, "height": 720})
+        settle(page, 1)
+        vis_cloud = finished_exits_visible(page)
+        page.set_viewport_size({"width": 1440, "height": 960})
+        settle(page, 1)
+        vis = {
+            "songs": bool(vis.get("songs") and vis_cloud.get("songs")),
+            "practice": bool(vis.get("practice") and vis_cloud.get("practice")),
+            "wide": vis,
+            "cloud": vis_cloud,
+        }
         label_blob = " ".join(labels)
-        has_songs = bool(re.search(r"Songs", label_blob)) and bool(vis.get("songs"))
-        has_practice = bool(re.search(r"Practice", label_blob)) and bool(vis.get("practice"))
+        has_songs = bool(vis.get("songs"))
+        has_practice = bool(vis.get("practice"))
         has_backing = bool(re.search(r"Backing", label_blob))
         has_activate = bool(re.search(r"Set as Active", label_blob))
         finish_nav = finish_clicked and has_songs and has_practice and has_backing
@@ -486,6 +512,17 @@ def main() -> int:
             f"pk={pk_lab!r}",
         )
 
+        page.reload(wait_until="domcontentloaded")
+        wait_for_body(page, "Trial Song", timeout_s=50)
+        settle(page, 3)
+        body_lab_r = shot(page, "06c2-custom-lab-refresh")
+        pk_lab_r = pk_val(page) or sidebar_pk_input(page)
+        lab_refresh_ok = has_any(body_lab_r, "Trial Song") and (
+            str(pk_lab_r or "").strip() in {"D", "D major"}
+            or ("d" in low(str(pk_lab_r or "")) and "minor" not in low(str(pk_lab_r or "")))
+        )
+        mark("refresh_custom_lab_from_sbi", "PASS" if lab_refresh_ok else "RED", f"pk={pk_lab_r!r}")
+
         click_nav(page, "Creative")
         settle(page, 4)
         body_cr = shot(page, "06d-creative-return")
@@ -501,6 +538,19 @@ def main() -> int:
             "sbi_custom_page_creative",
             "PASS" if creative_ok and not split else "RED",
             f"trial={has_any(body_cr,'Trial Song')} split={split}",
+        )
+
+        page.reload(wait_until="domcontentloaded")
+        wait_for_body(page, "Trial Song", "Creative", timeout_s=50)
+        settle(page, 3)
+        body_cr_r = shot(page, "06d2-creative-return-refresh")
+        creative_refresh_ok = has_any(body_cr_r, "Trial Song") and (
+            has_any(body_cr_r, "Custom progression", "Custom Progression")
+            or rendered_em_em_d_d(body_cr_r)
+        )
+        mark(
+            "refresh_sbi_custom_page_creative",
+            "PASS" if creative_refresh_ok else "RED",
         )
 
         # 5. Mission Gm in Dm → Backing → D#m/Ebm → Return

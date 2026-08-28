@@ -172,7 +172,7 @@ class TestACustomPageExitNav(unittest.TestCase):
     def test_finish_song_keeps_songs_and_practice_in_primary_launch_row(self) -> None:
         actions = custom_page_finished_action_items(has_chords=True)
         roles = [str(item.get("role") or "") for item in actions]
-        self.assertEqual(roles, ["activate", "songs", "backing", "practice", "edit"])
+        self.assertEqual(roles, ["songs", "practice", "activate", "backing", "edit"])
         songs = next(item for item in actions if item["role"] == "songs")
         practice = next(item for item in actions if item["role"] == "practice")
         self.assertEqual(songs["destination"], "picker")
@@ -377,6 +377,45 @@ class TestCCustomSbiPageOrigin(unittest.TestCase):
         self.assertEqual(session.get("active_music_source"), ga_before["source"])
         self.assertEqual(session.get("active_catalog_pick_key"), ga_before["pick"])
         self.assertEqual(session.get("song"), ga_before["title"])
+
+    def test_custom_sbi_leftover_catalog_ctx_keeps_trial_local_d(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        snapshot_last_custom_state(session)
+        set_sbi_preview_source(session, "Custom progression")
+        session["improv_song_source"] = "Custom progression"
+        session["practice_key_by_source"]["custom::trial-ah-1"] = "Dm"
+        session["display_key"] = "Dm"
+        session["concert_key"] = "Dm"
+        from backing_context import BackingContext, set_backing_context
+
+        set_backing_context(
+            session,
+            BackingContext(
+                source="regular_song",
+                source_label="Catalog song",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                bound_pick_key=PK_SHAPE,
+                progression=["Bm", "Em", "G", "D"],
+            ),
+        )
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        self.assertTrue(custom_sbi_owns_sidebar_practice_key(session))
+        self.assertEqual(_authoritative_practice_chart_key(session, "Dm"), "D")
+        origin = stamp_custom_sbi_page_origin(session)
+        self.assertIsInstance(origin, dict)
+        self.assertEqual(str(origin.get("practice_key") or ""), "D")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
 
 
 class TestDEMissionBackingInterval(unittest.TestCase):

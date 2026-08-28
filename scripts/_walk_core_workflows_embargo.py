@@ -585,7 +585,26 @@ def main() -> int:
         if click_button_has(page, r"Finish Song"):
             settle(page, 2)
             body_fin = shot(page, "03c-custom-finish")
-            finish_nav = has_any(body_fin, "Songs") and has_any(body_fin, "Practice")
+            finish_keys = page.evaluate(
+                """() => {
+                  const songs = document.querySelector('.st-key-cpl_exit_picker_finish button');
+                  const practice = document.querySelector('.st-key-cpl_exit_practice_finish button');
+                  const vis = (b) => {
+                    if (!b) return false;
+                    b.scrollIntoView({block: 'center'});
+                    const r = b.getBoundingClientRect();
+                    const s = window.getComputedStyle(b);
+                    return r.width > 8 && r.height > 8
+                      && s.visibility !== 'hidden' && s.display !== 'none';
+                  };
+                  return {songs: vis(songs), practice: vis(practice)};
+                }"""
+            ) or {}
+            finish_nav = bool(finish_keys.get("songs") and finish_keys.get("practice"))
+            if not finish_nav:
+                finish_nav = has_any(body_fin, "Leave Custom page") and has_any(
+                    body_fin, "🎼 Songs"
+                ) and has_any(body_fin, "🎯 Practice")
             click_button_has(page, r"Keep editing")
             settle(page, 1)
         else:

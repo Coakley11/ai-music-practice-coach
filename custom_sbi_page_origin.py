@@ -52,9 +52,9 @@ def stamp_custom_sbi_page_origin(session: dict[str, Any]) -> dict[str, Any] | No
     if active is None:
         return None
     try:
-        from custom_progression_lab import cpl_workspace_practice_key
+        from custom_progression_lab import custom_sbi_local_practice_key
 
-        practice_key = str(cpl_workspace_practice_key(session, active) or "").strip()
+        practice_key = str(custom_sbi_local_practice_key(session, active) or "").strip()
     except Exception:
         practice_key = str(active.get("original_key_center") or "").strip()
     origin = {
