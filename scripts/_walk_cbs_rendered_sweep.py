@@ -209,7 +209,7 @@ def click_return_to_custom_page_widget(page: Page) -> dict:
     Identifies `.st-key-backing_nav_return_custom_page_*` only.
     Does not fall through to sidebar Custom nav or a generic label search.
     """
-    info = page.evaluate(
+    found = page.evaluate(
         """(keys) => {
           const wraps = [];
           for (const key of keys) {
@@ -229,21 +229,34 @@ def click_return_to_custom_page_widget(page: Page) -> dict:
             const r = b.getBoundingClientRect();
             const visible = b.offsetParent !== null && r.width > 8 && r.height > 8;
             if (!visible) continue;
-            b.scrollIntoView({block: 'center'});
-            b.click();
-            return {clicked: true, key: item.key, text, visible: true};
+            return {found: true, key: item.key, text, visible: true};
           }
-          return {clicked: false, key: '', text: '', visible: false};
+          return {found: false, key: '', text: '', visible: false};
         }""",
         list(RETURN_CUSTOM_PAGE_WIDGET_KEYS),
     ) or {}
-    if info.get("clicked"):
-        settle(page, 5)
+    clicked = False
+    key = str(found.get("key") or "")
+    if found.get("found") and key:
+        loc = page.locator(f".st-key-{key} button")
+        try:
+            if loc.count():
+                loc.last.scroll_into_view_if_needed(timeout=5000)
+                # Prefer a real Playwright click — JS click() often does not
+                # register with Streamlit after a refresh remount.
+                try:
+                    loc.last.click(timeout=8000, force=False)
+                except Exception:
+                    loc.last.click(timeout=8000, force=True)
+                clicked = True
+                settle(page, 5)
+        except Exception:
+            clicked = False
     return {
-        "clicked": bool(info.get("clicked")),
-        "key": str(info.get("key") or ""),
-        "text": str(info.get("text") or ""),
-        "visible": bool(info.get("visible")),
+        "clicked": clicked,
+        "key": key,
+        "text": str(found.get("text") or ""),
+        "visible": bool(found.get("visible")),
     }
 
 
@@ -510,10 +523,10 @@ def main() -> int:
             f"return_widget clicked={ret} key={ret_info.get('key')!r} "
             f"text={ret_info.get('text')!r}"
         )
-        wait_for_body(page, "Trial Song", "Leave Custom page", "Finish Song", timeout_s=30)
+        wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=30)
         settle(page, 3)
         landed_custom = has_any(
-            page.inner_text("body") or "", "Leave Custom page", "Finish Song"
+            page.inner_text("body") or "", "Leave Custom page"
         ) and has_any(page.inner_text("body") or "", "Trial Song")
         if not ret or not landed_custom:
             # Diagnostic only — never counts as PASS for Return to Custom Page.
@@ -559,7 +572,7 @@ def main() -> int:
             body_rr = shot(page, "05c-return-custom-rerun")
             bounce = has_any(
                 body_rr, "Backing source: Catalog song", "Return to Song Catalog"
-            ) or not has_any(body_rr, "Leave Custom page", "Finish Song")
+            ) or not has_any(body_rr, "Leave Custom page")
             return_ok = return_ok and not bounce and has_any(body_rr, "Trial Song")
         mark(
             "custom_backing_return",

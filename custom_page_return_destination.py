@@ -128,12 +128,17 @@ def apply_custom_page_return_destination(
     session: dict[str, Any],
     *,
     consume: bool = False,
+    set_page: bool = True,
 ) -> bool:
     """Restore Trial Custom workspace. Does not change Global Active ownership.
 
     The Backing click must not pop the dest until the Custom page actually
     hydrates. Persist/rerun can bounce the first paint back to Catalog Backing;
     keeping the dest makes Return to Custom Page still work.
+
+    ``set_page=False`` leaves ``studio_page`` alone so the caller can
+    ``navigate_studio_page(..., "custom")`` and persist the transition. If apply
+    already flipped the page, navigate is a no-op and disk still has Backing.
     """
     dest = peek_custom_page_return_destination(session)
     if dest is None:
@@ -184,7 +189,8 @@ def apply_custom_page_return_destination(
         sync_custom_session(session)
     except ImportError:
         pass
-    session["studio_page"] = "custom"
+    if set_page:
+        session["studio_page"] = "custom"
     # Keep the Catalog-launch flag until Custom actually hydrates and consumes
     # dest. Persist/rerun can bounce the first paint back onto Backing; dropping
     # the flag here lets hydrate overlay Trial onto Catalog Shape and replaces
@@ -209,12 +215,29 @@ def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
     return apply_custom_page_return_destination(session, consume=(page == "custom"))
 
 
+def navigate_return_to_custom_page(session: dict[str, Any]) -> bool:
+    """Restore Trial, then persist Custom via navigate so rerun cannot restore Backing.
+
+    Apply must not claim ``studio_page`` first — ``navigate_studio_page`` no-ops
+    when the page is already custom and skips the page-change persist.
+    """
+    ok = apply_custom_page_return_destination(session, consume=False, set_page=False)
+    try:
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(session, "custom")
+    except ImportError:
+        session["studio_page"] = "custom"
+    return ok
+
+
 __all__ = [
     "CUSTOM_PAGE_RETURN_DESTINATION_BLOB_KEY",
     "CUSTOM_PAGE_RETURN_DESTINATION_KEY",
     "apply_custom_page_return_destination",
     "build_custom_page_return_destination",
     "consume_custom_page_return_destination",
+    "navigate_return_to_custom_page",
     "peek_custom_page_return_destination",
     "seal_custom_page_return_destination",
     "stamp_custom_page_return_destination_on_backing_context",

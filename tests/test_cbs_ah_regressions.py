@@ -365,6 +365,48 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertEqual(session.get("song"), "Shape of You")
         self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
 
+    def test_return_click_does_not_claim_page_before_navigate_persist(self) -> None:
+        """Apply must not set custom first — navigate would no-op and skip persist."""
+        session = _shape_session(practice_key="Bm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        from custom_progression_lab import sync_custom_workspace_practice_key
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        seal_custom_page_return_destination(session)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import simulate_production_backing_page_hydrate
+
+        simulate_production_backing_page_hydrate(session)
+        self.assertEqual(session.get("studio_page"), "backing")
+        from custom_page_return_destination import (
+            apply_custom_page_return_destination,
+            navigate_return_to_custom_page,
+        )
+
+        self.assertTrue(
+            apply_custom_page_return_destination(session, consume=False, set_page=False)
+        )
+        self.assertEqual(session.get("studio_page"), "backing")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertTrue(navigate_return_to_custom_page(session))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        from pathlib import Path
+
+        app_src = Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
+        text = app_src.read_text(encoding="utf-8")
+        self.assertIn("navigate_return_to_custom_page", text)
+
     def test_sweep_return_pass_path_does_not_use_custom_nav_fallback(self) -> None:
         from pathlib import Path
 

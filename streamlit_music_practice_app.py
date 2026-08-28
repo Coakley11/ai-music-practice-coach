@@ -9149,9 +9149,9 @@ def _render_backing_return_source_action() -> None:
             elif action.action_id in {"return_custom_songs", "return_custom_page"}:
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
-                        from custom_page_return_destination import apply_custom_page_return_destination
+                        from custom_page_return_destination import navigate_return_to_custom_page
 
-                        apply_custom_page_return_destination(st.session_state, consume=False)
+                        navigate_return_to_custom_page(st.session_state)
                     except ImportError:
                         try:
                             from songs.music_source import LAST_CUSTOM_STATE_KEY
@@ -9166,7 +9166,7 @@ def _render_backing_return_source_action() -> None:
                                 )
                         except Exception:
                             pass
-                    navigate_studio_page(st.session_state, "custom")
+                        navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
@@ -9195,13 +9195,14 @@ def _render_backing_return_source_action() -> None:
             if src == "custom_progression" or dest is not None:
                 # Custom-page launch origin wins over backing owner.
                 # Apply Trial workspace but keep the dest until Custom hydrates.
+                # Do not claim studio_page before navigate — that skips persist
+                # and the next rerun restores leftover Catalog Backing.
                 try:
-                    from custom_page_return_destination import apply_custom_page_return_destination
+                    from custom_page_return_destination import navigate_return_to_custom_page
 
-                    apply_custom_page_return_destination(st.session_state, consume=False)
+                    navigate_return_to_custom_page(st.session_state)
                 except ImportError:
-                    pass
-                navigate_studio_page(st.session_state, "custom")
+                    navigate_studio_page(st.session_state, "custom")
                 st.rerun()
                 return
             if src in {"entry_jam", "song_improv", "mission"}:
