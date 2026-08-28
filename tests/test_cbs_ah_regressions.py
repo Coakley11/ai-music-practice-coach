@@ -323,6 +323,45 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertEqual(session.get("concert_key"), "Bm")
         self.assertEqual(session.get(PENDING_DISPLAY_KEY), "Bm")
 
+    def test_restore_catalog_prefers_sticky_over_stale_mission_seal(self) -> None:
+        """Songs Dm must survive refresh even if Custom/Mission still sealed F minor."""
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "picker"
+        session["display_key"] = "Dm"
+        session["concert_key"] = "Dm"
+        session["_custom_page_sealed_catalog_pk"] = "Fm"
+        session["_custom_page_sealed_catalog_pick"] = PK_SHAPE
+        session["_sbi_custom_sealed_catalog_pk"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pick"] = PK_SHAPE
+        from songs.music_source import restore_catalog_live_practice_key
+        from songs.practice_key_state import get_practice_concert_key
+
+        token = restore_catalog_live_practice_key(session)
+        self.assertEqual(token, "Dm")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+        self.assertEqual(session.get("_custom_page_sealed_catalog_pk"), "Dm")
+        self.assertEqual(session.get("concert_key"), "Dm")
+
+    def test_heal_sealed_catalog_does_not_overwrite_newer_songs_sticky(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "picker"
+        session["display_key"] = "Fm"
+        session["concert_key"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pk"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pick"] = PK_SHAPE
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+        from songs.practice_key_state import get_practice_concert_key
+
+        class _St:
+            session_state = session
+
+        healed = heal_sealed_catalog_sidebar_if_needed(_St(), session)
+        self.assertEqual(healed, "Dm")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+        self.assertEqual(session.get("_sbi_custom_sealed_catalog_pk"), "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        self.assertEqual(session.get("concert_key"), "Dm")
+
     def test_keep_catalog_owner_flag_reads_streamlit_like_session(self) -> None:
         from custom_progression_lab import custom_page_backing_keeps_catalog_owner
         from songs.music_source import SOURCE_CUSTOM

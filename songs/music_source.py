@@ -277,14 +277,20 @@ def restore_catalog_live_practice_key(session_state: dict[str, Any]) -> str:
             sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
         except ImportError:
             sticky = ""
-    token = sealed or sticky
+    # Prefer the Catalog pick's current sticky over a stale Custom-page seal.
+    # Mission F minor used to win here and overwrite a later Songs Dm click.
+    token = sticky or sealed
+    if pick and sticky and sealed and sticky != sealed:
+        session_state["_custom_page_sealed_catalog_pk"] = sticky
+        if str(session_state.get("_sbi_custom_sealed_catalog_pick") or "").strip() == pick:
+            session_state["_sbi_custom_sealed_catalog_pk"] = sticky
     if not token:
         selected = session_state.get("selected_song")
         if isinstance(selected, dict):
             token = str(selected.get("key") or "").strip()
     if not token:
         return str(session_state.get("display_key") or "").strip()
-    if pick and token != sticky:
+    if pick and token and not sticky:
         try:
             from songs.practice_key_state import set_practice_concert_key
 

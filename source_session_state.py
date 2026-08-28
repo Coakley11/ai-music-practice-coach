@@ -643,6 +643,26 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
                 custom_tokens.add(tok)
     except Exception:
         pass
+    try:
+        from songs.practice_key_state import get_practice_concert_key as _get_cat_sticky
+
+        catalog_sticky = str(_get_cat_sticky(session, sealed_pick) or "").strip()
+    except Exception:
+        catalog_sticky = ""
+    # Songs may have moved Catalog sticky past a leftover Mission/Custom seal
+    # (Dm after F minor). Do not resurrect the stale seal over that sticky.
+    original_sealed = sealed
+    if (
+        catalog_sticky
+        and catalog_sticky != sealed
+        and catalog_sticky not in custom_tokens
+    ):
+        session["_sbi_custom_sealed_catalog_pk"] = catalog_sticky
+        sealed = catalog_sticky
+        if live == catalog_sticky:
+            return ""
+        if live == original_sealed or (live and live in custom_tokens):
+            live = sealed
     # Force sealed whenever live still equals a Custom sticky token (bleed).
     if live == sealed or (live and live in custom_tokens):
         try:

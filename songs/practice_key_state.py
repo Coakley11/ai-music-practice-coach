@@ -695,12 +695,18 @@ def set_practice_concert_key(
                 )
     except Exception:
         pass
-    # Intentional catalog write refreshes isolation seal (Shape Dm → user F, etc.).
-    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
-    if sealed_pick and not str(write_pk).startswith("custom::"):
-        sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
-        if write_pk in sealed_aliases or pk in sealed_aliases:
-            session["_sbi_custom_sealed_catalog_pk"] = key
+    # Intentional catalog write refreshes isolation seals (Shape Dm → user F, etc.).
+    if not str(write_pk).startswith("custom::"):
+        for seal_pick_key, seal_pk_key in (
+            ("_sbi_custom_sealed_catalog_pick", "_sbi_custom_sealed_catalog_pk"),
+            ("_custom_page_sealed_catalog_pick", "_custom_page_sealed_catalog_pk"),
+        ):
+            sealed_pick = str(session.get(seal_pick_key) or "").strip()
+            if not sealed_pick:
+                continue
+            sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
+            if write_pk in sealed_aliases or pk in sealed_aliases:
+                session[seal_pk_key] = key
 
 
 def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
