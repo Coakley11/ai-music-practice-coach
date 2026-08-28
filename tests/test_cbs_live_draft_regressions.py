@@ -207,6 +207,24 @@ class TestMissionCaptionIgnoresLastCustomD(unittest.TestCase):
         self.assertEqual(_catalog_live_key_or_empty(session, "Fm"), "Fm")
 
 
+class TestMissionMapAlignsToPracticeKey(unittest.TestCase):
+    def test_fm_map_rebuilds_to_dm_from_catalog_original(self) -> None:
+        from improvisation_intelligence_ui import _align_mission_section_map_to_practice_key
+
+        session = _shape_session(practice_key="Dm")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["home_sections"] = copy.deepcopy(BM)
+        stale = [("Verse 1", ["Fm", "Bbm", "Db", "Eb"])]
+        with patch(
+            "songs.music_source.catalog_chart_sections_for_pick",
+            return_value=copy.deepcopy(BM),
+        ):
+            out = _align_mission_section_map_to_practice_key(session, stale, "Dm")
+        first = out[0][1][0] if out and out[0][1] else ""
+        self.assertIn(first, {"Em", "Dm"})
+        self.assertNotEqual(first, "Fm")
+
+
 class TestLiveDraftWalkPredicates(unittest.TestCase):
     """Static guard: computed key/owner flags must be required for PASS."""
 

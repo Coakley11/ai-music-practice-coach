@@ -762,14 +762,25 @@ def main() -> int:
         enh_ok = has_any(body_enh, "C# minor", "Db minor", "C#m", "Dbm")
         mark("G_enharmonic_pk", "PASS" if enh_ok else "PARTIAL")
 
+        def _caption_key(body: str, label: str) -> str:
+            m = re.search(label + r":\s*([A-G](?:#|b)?(?:\s*(?:major|minor|m))?)", body or "", re.I)
+            return (m.group(1) if m else "").strip()
+
         # ---------- H. Instrument-sensitive ----------
         set_instrument(page, "Piano")
         settle(page, 2)
+        click_nav(page, "Songs")
+        settle(page, 2)
+        pick_song(page, NOTES, "Shape of You", "Pop")
+        settle(page, 2)
         set_songs_practice_key(page, "Eb") or set_songs_practice_key(page, "D#")
         settle(page, 2)
+        if not key_hits(page.inner_text("body") or "", "Eb", "D#"):
+            set_songs_practice_key(page, "Eb")
+            settle(page, 2)
         body_p = shot(page, "H-piano")
-        pk_p = pk_val(page) or sidebar_pk_input(page)
-        written_p = written_val(page)
+        pk_p = pk_val(page) or sidebar_pk_input(page) or _caption_key(body_p, "Concert key")
+        written_p = written_val(page) or _caption_key(body_p, "Written key")
         set_instrument(page, "Saxophone") or set_instrument(page, "Alto Saxophone")
         settle(page, 2)
         set_baseweb_select(page, "Saxophone", "Alto") or set_baseweb_select(
@@ -779,8 +790,8 @@ def main() -> int:
         enable_written_charts(page)
         settle(page, 2)
         body_sx = shot(page, "H-alto")
-        pk_sx = pk_val(page) or sidebar_pk_input(page)
-        written_sx = written_val(page)
+        pk_sx = pk_val(page) or sidebar_pk_input(page) or _caption_key(body_sx, "Concert key")
+        written_sx = written_val(page) or _caption_key(body_sx, "Written key")
         concert_held = key_hits(str(pk_p) + " " + str(pk_sx) + " " + body_sx, "Eb", "D#")
         written_moved = bool(written_sx) and low(written_sx) != low(written_p or "")
         owner_held = has_any(body_sx, "Shape of You") and not (

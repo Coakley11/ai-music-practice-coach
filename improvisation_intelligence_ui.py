@@ -121,6 +121,72 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
         return token
 
 
+def _align_mission_section_map_to_practice_key(
+    session_state: dict,
+    section_map: list,
+    dest_key: str,
+) -> list:
+    """Rebuild the Mission chord map when it is still spelled at a prior Practice Key."""
+    dest = str(dest_key or "").strip()
+    if not dest or not section_map:
+        return section_map
+    try:
+        from music_theory import normalize_root, split_chord, transpose_sections_dict
+        from songs.music_source import catalog_chart_sections_for_pick
+        from improvisation_motif import dedupe_sections_for_display
+    except ImportError:
+        return section_map
+    first = ""
+    for _label, chs in section_map:
+        if isinstance(chs, list):
+            for c in chs:
+                if str(c).strip() and str(c).strip().upper() != "N.C.":
+                    first = str(c).strip()
+                    break
+        if first:
+            break
+    sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
+    orig = str((sel or {}).get("key") or (sel or {}).get("original_key") or "").strip()
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    catalog = catalog_chart_sections_for_pick(session_state, pick) if pick else {}
+    if not isinstance(catalog, dict) or not catalog:
+        home = session_state.get("home_sections")
+        if isinstance(home, dict) and home:
+            catalog = home
+    if not catalog or not orig:
+        return section_map
+    try:
+        expected = transpose_sections_dict(catalog, orig, dest) if orig != dest else catalog
+    except Exception:
+        return section_map
+    exp_first = ""
+    for chs in expected.values() if isinstance(expected, dict) else []:
+        if isinstance(chs, list):
+            for c in chs:
+                if str(c).strip() and str(c).strip().upper() != "N.C.":
+                    exp_first = str(c).strip()
+                    break
+        if exp_first:
+            break
+    if not first or not exp_first:
+        return section_map
+    if normalize_root(split_chord(first)[0]) == normalize_root(split_chord(exp_first)[0]):
+        return section_map
+    mapped = dedupe_sections_for_display(expected)
+    if mapped:
+        session_state["improv_song_concert_sections"] = {
+            str(name): list(chs) for name, chs in (expected or {}).items() if isinstance(chs, list)
+        }
+        try:
+            from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
+
+            session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = mapped
+        except ImportError:
+            session_state["_improv_mission_section_map"] = mapped
+        return mapped
+    return section_map
+
+
 def _catalog_live_key_or_empty(session_state: dict, live: str) -> str:
     """Return live Practice Key only when it is not LAST_CUSTOM leaking onto catalog GA."""
     token = str(live or "").strip()
@@ -933,15 +999,29 @@ def _tab_entry_modes(
         if source == "Active song":
             flat_preview = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
             chord_count = len(flat_preview) if flat_preview else len(improv_ctx.progression_flat)
-            practice_key = _authoritative_practice_chart_key(
-                session_state,
-                str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
-            )
+            # Active radio must show the catalog identity + catalog Practice Key.
+            # LAST_CUSTOM / Custom SBI leftover in resolve_sbi_preview must not
+            # paint Trial + D on this card while sections stay Shape (184 chords).
+            active_title = str(improv_ctx.song_title or "").strip()
+            active_artist = str(improv_ctx.artist or "").strip()
+            sel = session_state.get("selected_song")
+            if isinstance(sel, dict) and str(sel.get("title") or "").strip():
+                active_title = str(sel.get("title") or active_title).strip()
+                active_artist = str(sel.get("artist") or active_artist).strip()
+            practice_key = str(improv_ctx.display_key or session_state.get("display_key") or "C")
+            try:
+                from music_workflow_song_practice import resolve_song_practice_key_token
+
+                practice_key = str(
+                    resolve_song_practice_key_token(session_state) or practice_key
+                ).strip()
+            except ImportError:
+                pass
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
-                    title=str(song_preview.get("title") or improv_ctx.song_title),
-                    artist=str(song_preview.get("artist") or improv_ctx.artist),
+                    title=active_title or str(song_preview.get("title") or "Active song"),
+                    artist=active_artist or str(song_preview.get("artist") or ""),
                     display_key=practice_key,
                     chord_count=chord_count,
                     source_label="Active song · Song Selection",
@@ -3458,6 +3538,9 @@ def _tab_missions(
         section_map = resolve_improv_sections(session_state, improv_ctx)
     if not section_map:
         section_map = resolve_improv_sections(session_state, improv_ctx)
+    section_map = _align_mission_section_map_to_practice_key(
+        session_state, section_map, dest_key=str(concert_key or blob_key or "")
+    )
     try:
         from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
 
@@ -3502,6 +3585,9 @@ def _tab_missions(
             session_state[IMPROV_MISSION_SECTION_MAP_SESSION_KEY] = section_map
         except ImportError:
             session_state["_improv_mission_section_map"] = section_map
+        section_map = _align_mission_section_map_to_practice_key(
+            session_state, section_map, dest_key=str(concert_key or blob_key or "")
+        )
         chords = flatten_section_map(section_map)
         _ensure_chord_selection(session_state, chords, section_map)
         cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
