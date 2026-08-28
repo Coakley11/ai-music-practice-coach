@@ -30,8 +30,10 @@
 - [x] Persistent Guided Path / Song Settings / Song Sections after structure is chosen
 - [x] Melody diagnostic “Notes over chords” prose removed (staff chord alignment kept)
 - [x] Record workspace: count-in + section backing, Transcribe melody, Edit transcription
-- [x] Accepted-melody shape/refine/local refinements + undo
-- [x] Octave-stabilize transcription helper + chord-quality audio pitch-class tests
+- [x] Accepted-melody shape/refine/local refinements + undo (directly below accepted staff; no Edit-this-melody on suggestion cards)
+- [x] Every local refinement produces an observable event change; refinements are composable
+- [x] Flute-oriented F0 energy gate + harmonic-octave prior; synthetic phrase tests (pitch/onset/chord alignment)
+- [x] Chord-quality pitch classes include 7#5 / 7b5 / slash bass; preview uses active-section authority
 
 ### Composition Studio — Manual / advanced chord editor (2026-08-28, testing branch)
 
