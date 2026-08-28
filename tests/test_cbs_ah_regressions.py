@@ -7,13 +7,19 @@ import unittest
 from unittest.mock import patch
 
 from app_ui import STUDIO_PAGE_META, nav_icon_button_label
-from cpl_page_ui import custom_page_exit_nav_items
+from cpl_page_ui import custom_page_exit_nav_items, custom_page_finished_action_items
 from custom_page_return_destination import (
     consume_custom_page_return_destination,
     peek_custom_page_return_destination,
     seal_custom_page_return_destination,
 )
-from custom_progression_lab import CPL_ACTIVE_KEY, apply_cpl_session_progression, prepare_cpl_backing_handoff
+from custom_progression_lab import (
+    CPL_ACTIVE_KEY,
+    CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY,
+    apply_cpl_session_progression,
+    launch_custom_page_backing,
+    prepare_cpl_backing_handoff,
+)
 from custom_sbi_page_origin import (
     CUSTOM_SBI_PAGE_ORIGIN_KEY,
     consume_custom_sbi_page_origin_on_creative,
@@ -158,10 +164,38 @@ class TestACustomPageExitNav(unittest.TestCase):
         import inspect
 
         src = inspect.getsource(cpl_page_ui)
-        self.assertIn("custom_page_exit_nav_items()", src)
-        self.assertIn('key=f"cpl_exit_{dest}_finish"', src)
+        self.assertIn("custom_page_finished_action_items(", src)
         self.assertIn("_go_songs()", src)
         self.assertIn("_open_practice()", src)
+
+    def test_finish_song_keeps_songs_and_practice_in_primary_launch_row(self) -> None:
+        actions = custom_page_finished_action_items(has_chords=True)
+        roles = [str(item.get("role") or "") for item in actions]
+        self.assertEqual(roles, ["activate", "songs", "backing", "practice", "edit"])
+        songs = next(item for item in actions if item["role"] == "songs")
+        practice = next(item for item in actions if item["role"] == "practice")
+        self.assertEqual(songs["destination"], "picker")
+        self.assertEqual(practice["destination"], "practice")
+        self.assertEqual(songs["label"], nav_icon_button_label("picker"))
+        self.assertEqual(practice["label"], nav_icon_button_label("practice"))
+        self.assertEqual(songs["icon"], STUDIO_PAGE_META["picker"]["icon"])
+        self.assertEqual(practice["icon"], STUDIO_PAGE_META["practice"]["icon"])
+        self.assertEqual(songs["key"], "cpl_exit_picker_finish")
+        self.assertEqual(practice["key"], "cpl_exit_practice_finish")
+        self.assertFalse(bool(songs.get("disabled")))
+        self.assertFalse(bool(practice.get("disabled")))
+        import cpl_page_ui
+        import inspect
+
+        finished_src = inspect.getsource(cpl_page_ui.render_custom_progression_lab_page)
+        finish_idx = finished_src.index("if finished:")
+        return_idx = finished_src.index("_save(None)", finish_idx)
+        finished_branch = finished_src[finish_idx:return_idx]
+        self.assertIn("custom_page_finished_action_items", finished_branch)
+        self.assertIn('role == "songs"', finished_branch)
+        self.assertIn('role == "practice"', finished_branch)
+        self.assertIn("_go_songs()", finished_branch)
+        self.assertIn("_open_practice()", finished_branch)
 
 
 class TestBCustomBackingReturn(unittest.TestCase):
@@ -191,6 +225,67 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertGreaterEqual(len(verse), 4)
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+        self.assertEqual(session.get("song"), "Shape of You")
+
+    def test_custom_page_backing_opens_trial_not_catalog_shape(self) -> None:
+        session = _shape_session()
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        session["cpl_finished"] = True
+        from custom_progression_lab import sync_custom_workspace_practice_key
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        from backing_context import (
+            BackingContext,
+            get_backing_context,
+            set_backing_context,
+        )
+
+        leftover = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id=PK_SHAPE,
+            song_title="Shape of You",
+            key="Bm",
+            display_key="Bm",
+            concert_key="Bm",
+            bpm=96,
+            style="Pop",
+            groove="Pop",
+            bound_pick_key=PK_SHAPE,
+            progression=["Bm", "Em", "G", "D"],
+        )
+        set_backing_context(session, leftover)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import hydrate_backing_source_for_page
+
+        hydrate_backing_source_for_page(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "custom_progression")
+        self.assertIn("Trial Song", str(getattr(ctx, "song_title", "") or ""))
+        prog = [str(ch) for ch in list(getattr(ctx, "progression", None) or [])]
+        self.assertIn("Em", prog)
+        self.assertIn("D", prog)
+        self.assertIn(str(getattr(ctx, "concert_key", "") or ""), {"D", "D major"})
+        self.assertTrue(session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY))
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+        self.assertEqual(session.get("song"), "Shape of You")
+        dest = peek_custom_page_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        self.assertEqual(dest.get("song_title"), "Trial Song")
+        ok = consume_custom_page_return_destination(session)
+        self.assertTrue(ok)
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("song"), "Shape of You")
 
 

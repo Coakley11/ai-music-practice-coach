@@ -2232,6 +2232,7 @@ def apply_backing_context_to_session(
     st_like: Any | None = None,
     widget_safe: bool = True,
     apply_transport_bpm: bool | None = None,
+    promote_to_global_active: bool = True,
 ) -> None:
     """Mirror BackingContext into backing session keys.
 
@@ -2267,7 +2268,7 @@ def apply_backing_context_to_session(
     if apply_transport_bpm and ctx.source in {"entry_jam", "mission", "song_improv"}:
         session[BACKING_CTX_TRANSPORT_APPLIED_SIG] = sig
 
-    if ctx.source == "custom_progression":
+    if ctx.source == "custom_progression" and promote_to_global_active:
         try:
             from songs.music_source import set_custom_source
 
@@ -2276,6 +2277,7 @@ def apply_backing_context_to_session(
             pass
     # Creative specialized backing (entry_jam / mission / song_improv) must not flip
     # Global Catalog/Custom ownership. SBI Active/Custom are preview/handoff only (H5).
+    # Custom-page Backing is the same: Trial playback without Set as Active.
 
     if ctx.display_key or ctx.concert_key:
         concert = str(ctx.concert_key or ctx.display_key or "").strip()
@@ -2313,7 +2315,10 @@ def apply_backing_context_to_session(
         jam_ctx = str(ctx.source or "") == "entry_jam"
         # song_improv / mission backing seals must never overwrite the sidebar Practice Key.
         # Live identity (display_key / practice store) owns Practice Key; backing only consumes it.
-        backing_must_not_own_practice_key = str(ctx.source or "") in {"song_improv", "mission"}
+        # Custom-page Trial backing also must not write Trial's key into Shape's sticky.
+        backing_must_not_own_practice_key = str(ctx.source or "") in {"song_improv", "mission"} or (
+            str(ctx.source or "") == "custom_progression" and not promote_to_global_active
+        )
         if concert and not jam_ctx and not backing_must_not_own_practice_key:
             try:
                 from session_widget_safe import safe_assign_display_key

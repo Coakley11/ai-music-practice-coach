@@ -1116,19 +1116,63 @@ def clear_all_cpl_sections(home_sections: dict[str, list]) -> None:
         home_sections[name] = []
 
 
+CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY = "_custom_page_backing_keep_catalog_owner"
+
+
+def seal_custom_page_backing_handoff(session_state: dict) -> None:
+    """Mark Custom-page → Backing as specialized Trial Custom, not Catalog.
+
+    ``navigate_studio_page`` treats ``custom`` like a top-level page and stamps
+    generic catalog entry. Re-seal after that nav so hydrate cannot fall through
+    to Shape of You merely because Catalog is still Global Active.
+    """
+    session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY] = True
+    try:
+        from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+        stamp_explicit_backing_handoff(session_state, "custom_progression")
+    except ImportError:
+        session_state["_backing_explicit_handoff_source"] = "custom_progression"
+    try:
+        from backing_source_navigation import mark_specialized_backing_handoff_entry
+
+        mark_specialized_backing_handoff_entry(session_state)
+    except ImportError:
+        pass
+    try:
+        from backing_context import BACKING_PREF_CUSTOM, set_backing_source_preference
+
+        set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    except ImportError:
+        pass
+
+
 def prepare_cpl_backing_handoff(
     session_state: dict,
     active: dict,
     *,
     section: str | None = None,
+    promote_to_global_active: bool = True,
 ) -> None:
-    """Sync CPL tempo/groove into Backing Track via canonical backing context."""
+    """Sync CPL tempo/groove into Backing Track via canonical backing context.
+
+    Custom-page Backing passes ``promote_to_global_active=False`` so Trial
+    progression/playback can open while Shape remains Global Active.
+    """
     from backing_context import (
         apply_backing_context_to_session,
         build_custom_progression_context,
         set_backing_context,
     )
 
+    if not promote_to_global_active:
+        try:
+            from songs.music_source import seal_catalog_live_practice_key_for_custom_page
+
+            seal_catalog_live_practice_key_for_custom_page(session_state)
+        except ImportError:
+            pass
+        session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY] = True
     ctx = build_custom_progression_context(session_state)
     if section:
         ctx.section = section
@@ -1140,13 +1184,66 @@ def prepare_cpl_backing_handoff(
     except ImportError:
         pass
     set_backing_context(session_state, ctx)
-    apply_backing_context_to_session(session_state, ctx)
+    apply_backing_context_to_session(
+        session_state,
+        ctx,
+        promote_to_global_active=promote_to_global_active,
+    )
+    if not promote_to_global_active:
+        try:
+            practice_key = str(
+                ctx.concert_key
+                or ctx.display_key
+                or cpl_workspace_practice_key(session_state, active)
+                or ""
+            ).strip()
+            if practice_key:
+                sync_custom_workspace_practice_key(
+                    session_state,
+                    practice_key=practice_key,
+                    active=active,
+                    source="custom_page_backing",
+                )
+        except Exception:
+            pass
+        seal_custom_page_backing_handoff(session_state)
     try:
         from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
 
         stamp_custom_page_return_destination_on_backing_context(session_state)
     except ImportError:
         pass
+
+
+def launch_custom_page_backing(
+    session_state: dict,
+    active: dict | None = None,
+    *,
+    section: str | None = None,
+) -> None:
+    """Open Trial Custom Backing from the Custom page without seizing Global Active.
+
+    Ordering matters: seal Trial context first, navigate (which may stamp generic
+    catalog entry from ``custom``), then re-seal specialized custom_progression.
+    """
+    if not isinstance(active, dict):
+        active = cpl_active_from_session(session_state)
+    prepare_cpl_backing_handoff(
+        session_state,
+        active,
+        section=section,
+        promote_to_global_active=False,
+    )
+    try:
+        from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+
+        set_pending_anchor(session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+    except ImportError:
+        pass
+    from studio_nav_history import navigate_studio_page
+
+    navigate_studio_page(session_state, "backing")
+    seal_custom_page_backing_handoff(session_state)
 
 
 def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:

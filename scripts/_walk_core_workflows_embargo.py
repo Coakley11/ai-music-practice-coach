@@ -581,11 +581,20 @@ def main() -> int:
         set_custom_pk(page, "D") or set_baseweb_select(page, "Practice / Concert Key", "D")
         settle(page, 2)
         nav_exits = has_any(body, "Songs") and has_any(body, "Practice")
-        custom_ok = custom_restore and pk_changed and orig_ok and nav_exits
+        finish_nav = False
+        if click_button_has(page, r"Finish Song"):
+            settle(page, 2)
+            body_fin = shot(page, "03c-custom-finish")
+            finish_nav = has_any(body_fin, "Songs") and has_any(body_fin, "Practice")
+            click_button_has(page, r"Keep editing")
+            settle(page, 1)
+        else:
+            finish_nav = nav_exits
+        custom_ok = custom_restore and pk_changed and orig_ok and nav_exits and finish_nav
         mark(
             "3_custom_page",
             "PASS" if custom_ok else ("PARTIAL" if custom_restore else "RED"),
-            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok} nav={nav_exits}",
+            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok} nav={nav_exits} finish_nav={finish_nav}",
         )
 
         # ========== 4. Custom SBI Backing ==========

@@ -25,6 +25,53 @@ def custom_page_exit_nav_items() -> list[dict[str, str]]:
     return items
 
 
+def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[str, object]]:
+    """Primary finished-song actions. Songs / Practice stay after Finish Song.
+
+    Finish Song may swap editing controls, but these icon exits remain in the
+    same launch row as Set as Active and Backing.
+    """
+    exits = {str(item.get("destination") or ""): item for item in custom_page_exit_nav_items()}
+    songs = exits.get("picker") or {}
+    practice = exits.get("practice") or {}
+    return [
+        {
+            "role": "activate",
+            "label": "Set as Active Song",
+            "key": "cpl_set_active_finish",
+            "disabled": False,
+        },
+        {
+            "role": "songs",
+            "destination": "picker",
+            "label": str(songs.get("label") or nav_icon_button_label("picker")),
+            "icon": str(songs.get("icon") or ""),
+            "key": "cpl_exit_picker_finish",
+            "disabled": False,
+        },
+        {
+            "role": "backing",
+            "label": nav_icon_button_label("backing"),
+            "key": "cpl_to_backing_finish",
+            "disabled": not has_chords,
+        },
+        {
+            "role": "practice",
+            "destination": "practice",
+            "label": str(practice.get("label") or nav_icon_button_label("practice")),
+            "icon": str(practice.get("icon") or ""),
+            "key": "cpl_exit_practice_finish",
+            "disabled": not has_chords,
+        },
+        {
+            "role": "edit",
+            "label": "Keep editing",
+            "key": "cpl_unfinish",
+            "disabled": False,
+        },
+    ]
+
+
 def _cpl_active_is_substantive(active: object) -> bool:
     """True when live CPL is a real Custom song, not the empty My Progression shell."""
     try:
@@ -385,17 +432,9 @@ def render_custom_progression_lab_page() -> None:
 
     def _open_backing() -> None:
         _save(None)
-        set_custom_source(st.session_state)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        prepare_cpl_backing_handoff(st.session_state, active, section=None)
-        from studio_nav_history import navigate_studio_page
-        from studio_scroll_anchors import (
-            ANCHOR_BACKING_MAIN_CONTROLS,
-            set_pending_anchor,
-        )
+        from custom_progression_lab import launch_custom_page_backing
 
-        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
-        navigate_studio_page(st.session_state, "backing")
+        launch_custom_page_backing(st.session_state, active, section=None)
         st.rerun()
 
     def _home_sections() -> dict:
@@ -616,43 +655,35 @@ def render_custom_progression_lab_page() -> None:
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
-            launch = st.columns([1, 1, 1])
-            with launch[0]:
-                if st.button(
-                    "Set as Active Song",
-                    key="cpl_set_active_finish",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    _activate_custom_song()
-            with launch[1]:
-                if st.button(
-                    nav_icon_button_label("backing"),
-                    key="cpl_to_backing_finish",
-                    use_container_width=True,
-                    disabled=not has_chords,
-                ):
-                    _open_backing()
-            with launch[2]:
-                if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
-                    st.session_state["cpl_finished"] = False
-                    st.rerun()
-
-            st.markdown("#### Continue in the studio")
-            exits = st.columns(2)
-            for col, item in zip(exits, custom_page_exit_nav_items()):
+            actions = custom_page_finished_action_items(has_chords=has_chords)
+            primary = [spec for spec in actions if str(spec.get("role") or "") != "edit"]
+            launch = st.columns(len(primary) or 1)
+            for col, spec in zip(launch, primary):
+                role = str(spec.get("role") or "")
                 with col:
-                    dest = str(item.get("destination") or "")
                     if st.button(
-                        str(item.get("label") or dest),
-                        key=f"cpl_exit_{dest}_finish",
+                        str(spec.get("label") or role),
+                        key=str(spec.get("key") or f"cpl_{role}_finish"),
+                        type="primary" if role == "activate" else "secondary",
                         use_container_width=True,
-                        disabled=dest == "practice" and not has_chords,
+                        disabled=bool(spec.get("disabled")),
                     ):
-                        if dest == "picker":
+                        if role == "activate":
+                            _activate_custom_song()
+                        elif role == "songs":
                             _go_songs()
-                        elif dest == "practice":
+                        elif role == "backing":
+                            _open_backing()
+                        elif role == "practice":
                             _open_practice()
+            edit = next((spec for spec in actions if str(spec.get("role") or "") == "edit"), None)
+            if edit and st.button(
+                str(edit.get("label") or "Keep editing"),
+                key=str(edit.get("key") or "cpl_unfinish"),
+                use_container_width=True,
+            ):
+                st.session_state["cpl_finished"] = False
+                st.rerun()
 
             _save(None)
             return

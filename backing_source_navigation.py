@@ -775,6 +775,20 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         if handoff == "entry_jam":
             return activate_entry_jam_ownership(session, st_like=st_like)
         if handoff == "custom_progression":
+            try:
+                from custom_progression_lab import CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY
+                from backing_context import is_backing_context_valid
+
+                sealed = get_backing_context(session)
+                if (
+                    session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY)
+                    and sealed is not None
+                    and str(getattr(sealed, "source", "") or "") == "custom_progression"
+                    and is_backing_context_valid(session, sealed)
+                ):
+                    return sealed
+            except ImportError:
+                pass
             return activate_custom_ownership(session, st_like=st_like)
 
         # Live Creative entry wins over a sealed Mission/Jam ctx. Opening SBI
