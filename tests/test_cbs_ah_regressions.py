@@ -412,6 +412,20 @@ class TestBCustomBackingReturn(unittest.TestCase):
 
         src = Path(__file__).resolve().parents[1] / "scripts" / "_walk_cbs_rendered_sweep.py"
         text = src.read_text(encoding="utf-8")
+        preview = (
+            "PREVIEW\nTrial Song\nOriginal key D major · Practice / Concert Key D major\n"
+            "Verse:\n|\nEm\n|\nEm\n|\nD\n|\nD\n|"
+        )
+        self.assertRegex(
+            preview,
+            r"Verse:\s*(?:\|\s*)?Em\b(?:\s|\|)+Em\b(?:\s|\|)+D\b(?:\s|\|)+D\b",
+        )
+        helper = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "_walk_ownership_audit_full.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(r"Verse:\s*(?:\|\s*)?Em\b", helper)
         self.assertIn("click_return_to_custom_page_widget", text)
         self.assertIn("Custom nav is evidence only", text)
         self.assertIn("st-key-backing_nav_return_custom_page", text)

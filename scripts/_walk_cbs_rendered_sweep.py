@@ -552,15 +552,17 @@ def main() -> int:
         ) or (
             has_any(main_ret, "Shape of You") and has_any(main_ret, "Backing source")
         )
+        prog_ret = rendered_em_em_d_d(body_ret)
+        preview_bm = "practice / concert key b minor" in low(body_ret)
         return_ok = (
             bool(ret)
             and landed_custom
             and has_any(body_ret, "Trial Song")
             and has_any(body_ret, "Leave Custom page")
             and pk_ret_d
-            and rendered_em_em_d_d(body_ret)
+            and prog_ret
             and not catalog_on_custom
-            and "practice / concert key b minor" not in low(body_ret)
+            and not preview_bm
             and not mixed_ret
         )
         # Second rerun must not bounce back to Catalog Backing.
@@ -578,7 +580,9 @@ def main() -> int:
             "custom_backing_return",
             "PASS" if return_ok else "RED",
             f"ret={ret} key={ret_info.get('key')!r} pk={pk_ret!r} "
-            f"landed={landed_custom} bounce={bounce} mixed={mixed_ret}",
+            f"landed={landed_custom} pk_d={pk_ret_d} prog={prog_ret} "
+            f"catalog={catalog_on_custom} preview_bm={preview_bm} "
+            f"bounce={bounce} mixed={mixed_ret}",
         )
 
         # Shape still Global Active on Songs

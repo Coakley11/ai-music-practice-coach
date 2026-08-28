@@ -164,6 +164,13 @@ def rendered_em_em_d_d(body: str) -> bool:
             re.search(r"(?<![A-G#b])\bD\b(?![#bmA-Za-z])", line)
         ):
             return True
+    # Custom page preview / structure map after Finish Song.
+    if re.search(
+        r"Verse:\s*(?:\|\s*)?Em\b(?:\s|\|)+Em\b(?:\s|\|)+D\b(?:\s|\|)+D\b",
+        text,
+        re.I,
+    ):
+        return True
     return False
 
 
