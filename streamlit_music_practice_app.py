@@ -10308,7 +10308,10 @@ try:
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
-    elif _catalog_regular_backing:
+    elif (
+        _catalog_regular_backing
+        and str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+    ):
         _display_key_options = sync_display_key_before_widget(
             st,
             original_key,

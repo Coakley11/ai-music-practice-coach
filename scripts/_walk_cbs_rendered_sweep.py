@@ -134,18 +134,51 @@ def finished_exits_visible(page: Page) -> dict[str, bool]:
             || document.querySelector('[data-testid="stAppViewContainer"]');
           const out = {songs: false, practice: false};
           if (!root) return out;
-          const scoped = root.querySelector('.st-key-custom_page_finished_exits') || root;
-          for (const b of scoped.querySelectorAll('button')) {
-            const t = (b.innerText || '').trim();
+          const nodes = [
+            ...root.querySelectorAll('.st-key-custom_page_finished_exits button'),
+            ...root.querySelectorAll('button'),
+          ];
+          for (const b of nodes) {
+            const t = (b.innerText || '').replace(/\\s+/g, ' ').trim();
             const r = b.getBoundingClientRect();
             const vis = b.offsetParent !== null && r.width > 8 && r.height > 8
               && r.bottom > 0 && r.right > 0;
-            if (/songs/i.test(t) && !/catalog/i.test(t)) out.songs = vis;
-            if (/practice/i.test(t) && !/concert/i.test(t) && !/key/i.test(t)) out.practice = vis;
+            if (!vis) continue;
+            if (/songs/i.test(t) && !/catalog/i.test(t) && !/selection/i.test(t)) out.songs = true;
+            if (/^🎯?\\s*practice$/i.test(t) || t === '🎯 Practice') out.practice = true;
           }
           return out;
         }"""
     ) or {"songs": False, "practice": False}
+
+
+def click_finished_backing(page: Page) -> bool:
+    """Click the finished-view Backing exit, not a hub/nav twin."""
+    clicked = page.evaluate(
+        """() => {
+          const root = document.querySelector('[data-testid="stMain"]')
+            || document.querySelector('[data-testid="stAppViewContainer"]');
+          if (!root) return false;
+          const scoped = [
+            ...root.querySelectorAll('.st-key-custom_page_finished_exits button'),
+            ...root.querySelectorAll('button'),
+          ];
+          const b = scoped.find((el) => {
+            const t = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+            const r = el.getBoundingClientRect();
+            return /backing/i.test(t) && !/open/i.test(t) && !/track/i.test(t)
+              && el.offsetParent !== null && r.width > 8 && r.height > 8;
+          });
+          if (!b) return false;
+          b.scrollIntoView({block: 'center'});
+          b.click();
+          return true;
+        }"""
+    )
+    if clicked:
+        settle(page, 4)
+        return True
+    return click_main_button(page, r"🎧\\s*Backing") or click_main_button(page, r"^🎧 Backing$")
 
 
 def click_main_button(page: Page, pattern: str) -> bool:
@@ -349,8 +382,8 @@ def main() -> int:
         mark("refresh_custom_finish", "PASS" if refresh_finish else "RED", f"labels={labels_r!r}")
 
         # 3. Custom Trial → main Backing (not sidebar) → Return to Custom
-        if not click_main_button(page, r"Backing"):
-            click_main_button(page, r"🎧")
+        if not click_finished_backing(page):
+            click_main_button(page, r"🎧\\s*Backing")
         settle(page, 4)
         try:
             wait_for_backing(page, NOTES, "custom-page")
