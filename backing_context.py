@@ -1705,7 +1705,13 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     chords_flat = session.get("improv_mission_chord_options")
     idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
     target_chord = ""
-    if isinstance(chords_flat, list) and chords_flat:
+    try:
+        from mission_backing_transpose import mission_backing_locked_chord
+
+        target_chord = mission_backing_locked_chord(session)
+    except ImportError:
+        target_chord = ""
+    if not target_chord and isinstance(chords_flat, list) and chords_flat:
         idx = max(0, min(idx, len(chords_flat) - 1))
         target_chord = str(chords_flat[idx] or "").strip()
     if not target_chord:
@@ -1737,7 +1743,7 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
             target_chord = musician_facing_chord(src, concert_key=concert, chart_key=chart)
     except ImportError:
         pass
-    if canonical_target:
+    if canonical_target and not str(session.get("_mission_backing_canonical_chord") or "").strip():
         session["_mission_backing_canonical_chord"] = canonical_target
 
     section = str(

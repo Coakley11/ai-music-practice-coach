@@ -245,6 +245,37 @@ def apply_mission_backing_practice_key_interval(
     return dest
 
 
+def mission_backing_locked_chord(session: dict[str, Any]) -> str:
+    """Interval-projected Mission chord. Song-map sticky index must not replace it.
+
+    Only while Mission Backing is the live page — Creative Missions still resolve
+    from the section map / click seal.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "backing":
+        return ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is None or str(getattr(ctx, "source", "") or "") != "mission":
+            return ""
+    except ImportError:
+        if str(session.get("_backing_explicit_handoff_source") or "") != "mission":
+            return ""
+    try:
+        from mission_return_destination import peek_mission_return_destination
+
+        dest = peek_mission_return_destination(session)
+    except ImportError:
+        dest = None
+    if isinstance(dest, dict):
+        chord = str(dest.get("chord_symbol") or "").strip()
+        if chord:
+            return chord
+    return str(session.get("_mission_backing_canonical_chord") or "").strip()
+
+
 def mission_card_progression_symbols(session: dict[str, Any], ctx: Any | None = None) -> list[str]:
     """Blue-card progression from the interval-projected dest / live chord."""
     try:
@@ -273,5 +304,6 @@ def mission_card_progression_symbols(session: dict[str, Any], ctx: Any | None = 
 __all__ = [
     "apply_mission_backing_practice_key_interval",
     "ensure_mission_backing_pitch_seal",
+    "mission_backing_locked_chord",
     "mission_card_progression_symbols",
 ]

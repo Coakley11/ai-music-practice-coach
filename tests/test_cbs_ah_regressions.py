@@ -43,6 +43,7 @@ from improvisation_missions import MISSION_EXAMPLE_KEY, MissionExample
 from mission_backing_alignment import build_mission_backing_alignment_payload
 from mission_backing_transpose import (
     apply_mission_backing_practice_key_interval,
+    mission_backing_locked_chord,
     mission_card_progression_symbols,
 )
 from mission_return_destination import (
@@ -457,6 +458,51 @@ class TestDEMissionBackingInterval(unittest.TestCase):
         live_ex = session.get(MISSION_EXAMPLE_KEY) or {}
         live_notes = list((live_ex.get("motif") or {}).get("notes") or [])
         self.assertEqual(_pc(live_notes[0]), _pc("B"))
+
+    def test_dsharp_song_map_cannot_replace_interval_chord_with_am(self) -> None:
+        from backing_context import BackingContext, build_mission_context, set_backing_context
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+        from mission_projection_state import resolve_mission_projection_state
+
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        session["ii_selected_chord_index"] = 1
+        session["improv_mission_chord_options"] = ["D#m", "Am", "B", "F#"]
+        self._seal_gm_example(session)
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission Backing Jam",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                progression=["Gm"],
+                mission_id="Outline chord tones",
+            ),
+        )
+        apply_mission_backing_practice_key_interval(session, "D#m", from_key="Dm")
+        # Song map at D#m has Am at the sticky index that used to be Gm.
+        section_map = [("Verse 1", ["D#m", "Am", "B", "F#"])]
+        session["_improv_mission_section_map"] = section_map
+        locked = mission_backing_locked_chord(session)
+        self.assertIn(_pc(locked), {_pc("G#m"), _pc("Abm")}, locked)
+        auth_ch, _sec, _idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertIn(_pc(auth_ch), {_pc("G#m"), _pc("Abm")}, auth_ch)
+        self.assertNotEqual(_pc(auth_ch), _pc("Am"))
+        proj = resolve_mission_projection_state(
+            session, section_map=section_map, fallback_key="D#m"
+        )
+        self.assertIn(_pc(proj.concert_chord), {_pc("G#m"), _pc("Abm")})
+        self.assertNotEqual(_pc(proj.display_chord), _pc("Am"))
+        ctx = build_mission_context(session)
+        self.assertIn(_pc((ctx.progression or [""])[0]), {_pc("G#m"), _pc("Abm")})
+        self.assertNotIn("Am", " ".join(ctx.progression or []))
 
     def test_return_keeps_transposed_chord_and_example_not_song_tonic(self) -> None:
         session = _shape_session(practice_key="Dm")

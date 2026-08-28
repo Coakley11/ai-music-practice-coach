@@ -480,15 +480,26 @@ def main() -> int:
         nma = re.search(r"Notes:\s*([^\n]+)", body_mt, re.I)
         if nma:
             notes_after = nma.group(1)
-        # One-semitone Gm → G#m/Abm; Bb → B. Fail the known-wrong A#m / C# / Am card.
+        # One-semitone Gm → G#m/Abm; Bb → B. Fail independent/double paths
+        # (A#m / C# from stale +3, or Am / C-E-A from song-map remap).
         wrong_xpose = has_any(body_mt, "A#m", "A# minor") or bool(
             re.search(r"Notes:\s*C#", body_mt, re.I)
         )
-        chord_ok = low(chord_after) in {"g#m", "abm", "g#", "ab", "gm", ""} or has_any(
-            body_mt, "G#m", "Abm", "G# minor", "Ab minor"
+        remap_am = has_any(body_mt, "· Am", "Chord Am", "Verse 1 · Am") and has_any(
+            body_mt, "D#m", "D# minor", "Eb minor", "Ebm"
         )
-        # Accept if we at least stayed on Mission and did not hit the known-wrong spelling.
-        xpose_ok = bool(opened_mb and is_mb and not wrong_xpose)
+        notes_am = bool(re.search(r"Notes:\s*C\s*[–-]\s*E\s*[–-]\s*A", body_mt, re.I))
+        card_gsm = has_any(body_mt, "Progression: G#m", "Progression: Abm", "G#m", "Abm")
+        banner_wrong = has_any(body_mt, "Verse 1 · Am") and card_gsm
+        xpose_ok = bool(
+            opened_mb
+            and is_mb
+            and not wrong_xpose
+            and not remap_am
+            and not notes_am
+            and not banner_wrong
+            and card_gsm
+        )
         mark(
             "mission_transpose",
             "PASS" if xpose_ok else "RED",

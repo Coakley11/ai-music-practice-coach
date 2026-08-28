@@ -75,6 +75,27 @@ def resolve_authoritative_chord_selection(
       2. session (section, symbol) when present on the map
       3. sticky index only when there is no newer click / map pair
     """
+    try:
+        from mission_backing_transpose import mission_backing_locked_chord
+
+        locked = mission_backing_locked_chord(session)
+    except ImportError:
+        locked = ""
+    if locked:
+        sec = str(session.get(II_SELECTED_SECTION) or "").strip()
+        try:
+            idx = int(session.get(II_SELECTED_CHORD_INDEX, 0) or 0)
+        except (TypeError, ValueError):
+            idx = 0
+        click = session.get("_mission_chord_click_authority")
+        if isinstance(click, dict):
+            sec = str(click.get("section") or sec).strip()
+            try:
+                idx = int(click.get("chord_index", idx) or idx)
+            except (TypeError, ValueError):
+                pass
+        return locked, sec, max(0, idx)
+
     click = session.get("_mission_chord_click_authority")
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()

@@ -3083,6 +3083,27 @@ def _maybe_refresh_mission_example_outputs(
                 sm = read_mission_section_map_from_session(session_state)
             except ImportError:
                 sm = None
+        try:
+            from mission_backing_transpose import mission_backing_locked_chord
+            from mission_return_destination import peek_mission_return_destination
+
+            dest = peek_mission_return_destination(session_state)
+            locked = mission_backing_locked_chord(session_state)
+        except ImportError:
+            dest = None
+            locked = ""
+        if (
+            locked
+            and isinstance(dest, dict)
+            and dest.get("example_notes")
+            and str(dest.get("display_key") or dest.get("concert_key") or "").strip()
+            in {
+                str(concert or "").strip(),
+                str(session_state.get("display_key") or "").strip(),
+                str(session_state.get("concert_key") or "").strip(),
+            }
+        ):
+            return example
         proj = resolve_mission_projection_state(
             session_state,
             section_map=sm if isinstance(sm, list) else None,
