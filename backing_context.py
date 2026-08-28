@@ -4198,9 +4198,15 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     except ImportError:
         pass
     try:
+        from custom_progression_lab import (
+            custom_page_backing_keeps_catalog_owner,
+            ensure_custom_page_trial_backing,
+        )
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
-        if not intentional_creative_backing_active(session):
+        if custom_page_backing_keeps_catalog_owner(session):
+            ensure_custom_page_trial_backing(session, st_like=st_like)
+        elif not intentional_creative_backing_active(session):
             try:
                 from mission_pk_reclaim_trace import note_mission_pk_reclaim
 

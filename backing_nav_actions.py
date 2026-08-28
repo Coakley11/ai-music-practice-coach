@@ -67,6 +67,21 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
     wf_id = _workflow_identity(session, ctx)
     jam_label = return_to_regular_backing_label(session)
 
+    if src == "custom_progression":
+        candidates.append(
+            BackingNavAction(
+                action_id="return_custom_page",
+                label=return_to_source_button_label(ctx),
+                destination="custom",
+                purpose="return_custom_page",
+                icon="custom",
+                priority=10,
+            )
+        )
+        deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+        _store_nav_diag(session, candidates, deduped, removed)
+        return deduped, removed
+
     if src in {"entry_jam", "song_improv", "mission"}:
         creative_dest = "creative:missions" if src == "mission" or wf == "mission_jam" else "creative:improvisation"
         candidates.append(

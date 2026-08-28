@@ -3902,7 +3902,7 @@ def _custom_builder_panel_css() -> str:
     0 2px 8px rgba(15, 23, 42, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
   position: relative !important;
-  overflow: hidden !important;
+  overflow: visible !important;
 }
 .st-key-custom_song_builder_panel::before {
   content: "";

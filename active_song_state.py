@@ -28,6 +28,19 @@ ACTIVE_SONG_DIRTY_KEY = "active_song_state_dirty"
 ACTIVE_SONG_LOCAL_EDIT_TS_KEY = "active_song_state_last_local_edit_ts"
 ACTIVE_SONG_PENDING_SYNC_KEY = "_active_song_pending_sync"
 
+def _custom_page_backing_must_preserve_catalog_ga(session: dict[str, Any]) -> bool:
+    """Custom-page Trial Backing must not rewrite Global Active to Custom."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "backing":
+        return False
+    try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        return bool(custom_page_backing_keeps_catalog_owner(session))
+    except ImportError:
+        return bool(session.get("_custom_page_backing_keep_catalog_owner"))
+
+
 ACTIVE_SONG_SCALAR_KEYS = (
     "pick_key",
     "display_key",
@@ -1002,6 +1015,8 @@ def _apply_context_to_session_keys(
     except ImportError:
         record_global_control_change = None  # type: ignore[assignment,misc]
 
+    if _custom_page_backing_must_preserve_catalog_ga(session):
+        return
     pick_key = str(ctx.get("pick_key") or "").strip()
     master_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick_key or "").strip()
     ctx_pick = str(ctx.get("pick_key") or "").strip()
@@ -1225,7 +1240,8 @@ def write_canonical_active_song_blob_only(
     }
     music_source = str(ctx.get("music_source") or "").strip()
     if music_source == SOURCE_CUSTOM:
-        session["active_music_source"] = SOURCE_CUSTOM
+        if not _custom_page_backing_must_preserve_catalog_ga(session):
+            session["active_music_source"] = SOURCE_CUSTOM
     elif music_source == SOURCE_CATALOG:
         session["active_music_source"] = SOURCE_CATALOG
     if local_edit:
@@ -1812,7 +1828,8 @@ def apply_cloud_active_song_state_if_allowed(
                 session.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
         except ImportError:
             pass
-        session["active_music_source"] = SOURCE_CUSTOM
+        if not _custom_page_backing_must_preserve_catalog_ga(session):
+            session["active_music_source"] = SOURCE_CUSTOM
         session["_written_key_mode_cloud"] = (
             bool(custom_ctx[CHART_IN_INSTRUMENT_KEY_KEY])
             if _written_key_is_set(custom_ctx)

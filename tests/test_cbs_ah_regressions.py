@@ -196,6 +196,11 @@ class TestACustomPageExitNav(unittest.TestCase):
         self.assertIn('role == "practice"', finished_branch)
         self.assertIn("_go_songs()", finished_branch)
         self.assertIn("_open_practice()", finished_branch)
+        self.assertIn("exit_cols", finished_branch)
+        self.assertIn("studio_cols", finished_branch)
+        self.assertNotIn("st.columns(len(primary)", finished_branch)
+        self.assertIn("display_key_label=preview_label", finished_src)
+        self.assertIn("song_structure_overview_html(active, practice_key", finished_branch)
 
 
 class TestBCustomBackingReturn(unittest.TestCase):
@@ -263,9 +268,9 @@ class TestBCustomBackingReturn(unittest.TestCase):
         )
         set_backing_context(session, leftover)
         launch_custom_page_backing(session)
-        from backing_source_navigation import hydrate_backing_source_for_page
+        from backing_source_navigation import simulate_production_backing_page_hydrate
 
-        hydrate_backing_source_for_page(session)
+        simulate_production_backing_page_hydrate(session)
         ctx = get_backing_context(session)
         self.assertIsNotNone(ctx)
         self.assertEqual(str(getattr(ctx, "source", "") or ""), "custom_progression")
@@ -281,12 +286,42 @@ class TestBCustomBackingReturn(unittest.TestCase):
         dest = peek_custom_page_return_destination(session)
         self.assertIsInstance(dest, dict)
         self.assertEqual(dest.get("song_title"), "Trial Song")
+        from backing_context import format_backing_context_banner
+        from backing_nav_actions import build_backing_nav_actions
+
+        banner = format_backing_context_banner(ctx)
+        self.assertNotIn("Backing source: Catalog song · Shape of You", banner)
+        self.assertIn("Custom progression", banner)
+        self.assertIn("Trial Song", banner)
+        actions, _ = build_backing_nav_actions(session)
+        labels = [str(a.label) for a in actions]
+        self.assertTrue(any("Return to Custom Page" in lab for lab in labels))
+        self.assertFalse(any("Return to Song Catalog" in lab for lab in labels))
         ok = consume_custom_page_return_destination(session)
         self.assertTrue(ok)
         self.assertEqual(session.get("studio_page"), "custom")
         self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("song"), "Shape of You")
+
+    def test_keep_catalog_owner_flag_reads_streamlit_like_session(self) -> None:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        class _StreamlitLike:
+            def __init__(self) -> None:
+                self._data = {
+                    CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY: True,
+                    "_backing_explicit_handoff_source": "custom_progression",
+                }
+
+            def get(self, key, default=None):
+                return self._data.get(key, default)
+
+            def __getitem__(self, key):
+                return self._data[key]
+
+        self.assertTrue(custom_page_backing_keeps_catalog_owner(_StreamlitLike()))
+        self.assertFalse(custom_page_backing_keeps_catalog_owner(object()))
 
 
 class TestCCustomSbiPageOrigin(unittest.TestCase):

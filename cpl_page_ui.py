@@ -629,7 +629,7 @@ def render_custom_progression_lab_page() -> None:
                 title=prog_title,
                 artist=str(active.get("artist") or ""),
                 key_label=original_label,
-                display_key_label=display_label,
+                display_key_label=preview_label,
                 bpm=int(active.get("bpm", 100) or 100),
                 time_signature=str(active.get("time_signature") or "4/4"),
                 style=str(active.get("progression_style") or "Pop"),
@@ -651,14 +651,34 @@ def render_custom_progression_lab_page() -> None:
                 ),
                 unsafe_allow_html=True,
             )
-            map_html = song_structure_overview_html(active, display_key, only_filled=True)
+            map_html = song_structure_overview_html(active, practice_key, only_filled=True)
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
             actions = custom_page_finished_action_items(has_chords=has_chords)
-            primary = [spec for spec in actions if str(spec.get("role") or "") != "edit"]
-            launch = st.columns(len(primary) or 1)
-            for col, spec in zip(launch, primary):
+            # Dedicated full-width rows — a 4-col row inside overflow:hidden clipped
+            # Songs / Practice after Finish Song (Daniel live QA on ec408d0).
+            exits = [spec for spec in actions if str(spec.get("role") or "") in {"songs", "practice"}]
+            studio = [
+                spec for spec in actions if str(spec.get("role") or "") in {"activate", "backing"}
+            ]
+            exit_cols = st.columns(len(exits) or 1)
+            for col, spec in zip(exit_cols, exits):
+                role = str(spec.get("role") or "")
+                with col:
+                    if st.button(
+                        str(spec.get("label") or role),
+                        key=str(spec.get("key") or f"cpl_{role}_finish"),
+                        type="secondary",
+                        use_container_width=True,
+                        disabled=bool(spec.get("disabled")),
+                    ):
+                        if role == "songs":
+                            _go_songs()
+                        elif role == "practice":
+                            _open_practice()
+            studio_cols = st.columns(len(studio) or 1)
+            for col, spec in zip(studio_cols, studio):
                 role = str(spec.get("role") or "")
                 with col:
                     if st.button(
@@ -670,12 +690,8 @@ def render_custom_progression_lab_page() -> None:
                     ):
                         if role == "activate":
                             _activate_custom_song()
-                        elif role == "songs":
-                            _go_songs()
                         elif role == "backing":
                             _open_backing()
-                        elif role == "practice":
-                            _open_practice()
             edit = next((spec for spec in actions if str(spec.get("role") or "") == "edit"), None)
             if edit and st.button(
                 str(edit.get("label") or "Keep editing"),

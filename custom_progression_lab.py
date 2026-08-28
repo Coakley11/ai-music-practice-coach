@@ -1119,6 +1119,111 @@ def clear_all_cpl_sections(home_sections: dict[str, list]) -> None:
 CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY = "_custom_page_backing_keep_catalog_owner"
 
 
+def _session_get(session_state: object, key: str, default: object = None) -> object:
+    """Read a session key from a dict or live Streamlit SessionState."""
+    if session_state is None:
+        return default
+    getter = getattr(session_state, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except Exception:
+            pass
+    try:
+        return session_state[key]  # type: ignore[index]
+    except Exception:
+        return default
+
+
+def custom_page_backing_keeps_catalog_owner(session_state: object | None) -> bool:
+    """True when Custom-page Backing must stay Trial without seizing Global Active.
+
+    Live Streamlit ``session_state`` is not a ``dict``. Treating it as one made
+    the keep-flag look unset, so hydrate called ``activate_custom_ownership``
+    and the second paint became Catalog Shape / seized Custom GA.
+    """
+    if session_state is None:
+        return False
+    if _session_get(session_state, CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY):
+        return True
+    return str(_session_get(session_state, "_backing_explicit_handoff_source") or "").strip() == (
+        "custom_progression"
+    )
+
+
+def clear_custom_page_backing_keep_catalog_owner(session_state: object | None) -> None:
+    """Drop the Custom-page Trial overlay when the user opens ordinary Catalog Backing."""
+    if session_state is None:
+        return
+    try:
+        session_state.pop(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY, None)  # type: ignore[attr-defined]
+    except Exception:
+        try:
+            del session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY]  # type: ignore[index]
+        except Exception:
+            pass
+    if str(_session_get(session_state, "_backing_explicit_handoff_source") or "").strip() == (
+        "custom_progression"
+    ):
+        try:
+            session_state.pop("_backing_explicit_handoff_source", None)  # type: ignore[attr-defined]
+        except Exception:
+            try:
+                del session_state["_backing_explicit_handoff_source"]  # type: ignore[index]
+            except Exception:
+                pass
+
+
+def ensure_custom_page_trial_backing(
+    session_state: dict,
+    *,
+    st_like: object | None = None,
+) -> bool:
+    """Keep or rebuild Trial Custom Backing through the live double-hydrate path.
+
+    Production paints Backing twice: early hydrate consumes specialized/FROM_CREATIVE
+    into restore_last, then the page hydrate + reconcile treat Catalog GA vs
+    ``custom::`` as a restore miss and initialize Shape Catalog. Unit tests that
+    call hydrate once miss that overwrite.
+
+    When this page launched Custom-page Backing, rebuild from the CPL workspace
+    without ``activate_custom_ownership`` (that no-ops under Catalog GA).
+    """
+    _ = st_like
+    if not custom_page_backing_keeps_catalog_owner(session_state):
+        return False
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    if page and page != "backing":
+        return False
+    try:
+        from backing_context import get_backing_context, is_backing_context_valid
+    except ImportError:
+        return False
+    ctx = get_backing_context(session_state)
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    valid_custom = bool(
+        ctx is not None
+        and src == "custom_progression"
+        and is_backing_context_valid(session_state, ctx)
+    )
+    if not valid_custom:
+        active = session_state.get(CPL_ACTIVE_KEY)
+        if not isinstance(active, dict):
+            active = cpl_active_from_session(session_state)
+        prepare_cpl_backing_handoff(
+            session_state,
+            active,
+            promote_to_global_active=False,
+        )
+        ctx = get_backing_context(session_state)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        valid_custom = bool(ctx is not None and src == "custom_progression")
+    if valid_custom:
+        seal_custom_page_backing_handoff(session_state)
+        return True
+    return False
+
+
 def seal_custom_page_backing_handoff(session_state: dict) -> None:
     """Mark Custom-page → Backing as specialized Trial Custom, not Catalog.
 

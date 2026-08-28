@@ -776,17 +776,10 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             return activate_entry_jam_ownership(session, st_like=st_like)
         if handoff == "custom_progression":
             try:
-                from custom_progression_lab import CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY
-                from backing_context import is_backing_context_valid
+                from custom_progression_lab import ensure_custom_page_trial_backing
 
-                sealed = get_backing_context(session)
-                if (
-                    session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY)
-                    and sealed is not None
-                    and str(getattr(sealed, "source", "") or "") == "custom_progression"
-                    and is_backing_context_valid(session, sealed)
-                ):
-                    return sealed
+                if ensure_custom_page_trial_backing(session, st_like=st_like):
+                    return get_backing_context(session)
             except ImportError:
                 pass
             return activate_custom_ownership(session, st_like=st_like)
@@ -1172,9 +1165,21 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
     """
     try:
         from backing_context import get_backing_context, is_backing_context_valid
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
     except ImportError:
-        return False
+        try:
+            from backing_context import get_backing_context, is_backing_context_valid
+        except ImportError:
+            return False
+        custom_page_backing_keeps_catalog_owner = lambda _s: False  # type: ignore[assignment]
     ctx = get_backing_context(session)
+    if (
+        custom_page_backing_keeps_catalog_owner(session)
+        and ctx is not None
+        and str(getattr(ctx, "source", "") or "") == "custom_progression"
+        and is_backing_context_valid(session, ctx)
+    ):
+        return True
     if ctx is None:
         return False
     src = str(getattr(ctx, "source", "") or "").strip()
@@ -1392,6 +1397,13 @@ def mark_generic_catalog_backing_entry(session: dict[str, Any]) -> None:
         from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
 
         append_jam_backing_handoff_trace(session, "mark_generic_catalog_backing_entry")
+    except ImportError:
+        pass
+    try:
+        from custom_progression_lab import clear_custom_page_backing_keep_catalog_owner
+
+        # Ordinary Songs/Practice → Backing. Custom-page launch re-seals after navigate.
+        clear_custom_page_backing_keep_catalog_owner(session)
     except ImportError:
         pass
     session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_GENERIC_CATALOG
@@ -1701,10 +1713,12 @@ def commit_active_catalog_source_before_backing_hydrate(
                         ctx_is_stale_creative_for_practice,
                         is_backing_context_valid,
                     )
+                    from custom_progression_lab import custom_page_backing_keeps_catalog_owner
                     from music_source_ownership import intentional_creative_backing_active
 
                     keep_specialized = bool(
-                        intentional_creative_backing_active(session)
+                        custom_page_backing_keeps_catalog_owner(session)
+                        or intentional_creative_backing_active(session)
                         or (
                             is_backing_context_valid(session, ctx)
                             and not ctx_is_stale_creative_for_practice(session, ctx)
@@ -1747,6 +1761,29 @@ def commit_active_catalog_source_before_backing_hydrate(
 
     trace_backing_hydrate_phase(session, "02_post_commit")
     return True
+
+
+def simulate_production_backing_page_hydrate(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> None:
+    """Same commit → hydrate → commit → hydrate → reconcile order as the live app.
+
+    ``streamlit_music_practice_app`` runs this twice per Backing paint (early
+    sidebar hydrate, then the Backing page). Tests that call hydrate once miss
+    the Catalog Shape overwrite Daniel hit in screenshots.
+    """
+    commit_active_catalog_source_before_backing_hydrate(session, st_like=st_like)
+    hydrate_backing_source_for_page(session, st_like=st_like)
+    commit_active_catalog_source_before_backing_hydrate(session, st_like=st_like)
+    hydrate_backing_source_for_page(session, st_like=st_like)
+    try:
+        from backing_context import reconcile_backing_context_on_backing_page
+
+        reconcile_backing_context_on_backing_page(session, st_like=st_like)
+    except ImportError:
+        pass
 
 
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
@@ -1807,6 +1844,23 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             return
         except ImportError:
             pass
+    # Custom-page Trial Backing must win before generic/restore_last consume.
+    # Production hydrates twice per paint; the second pass otherwise initializes
+    # Catalog Shape while the sidebar still shows Trial.
+    try:
+        from custom_progression_lab import ensure_custom_page_trial_backing
+
+        if ensure_custom_page_trial_backing(session, st_like=st_like):
+            try:
+                from backing_context import sync_live_keys_from_backing_context
+
+                sync_live_keys_from_backing_context(session, st_like=st_like)
+            except ImportError:
+                pass
+            trace_backing_hydrate_phase(session, "03_custom_page_trial_keep")
+            return
+    except ImportError:
+        pass
     trace_backing_hydrate_phase(session, "03_hydrate_entry")
     try:
         import json
@@ -3385,6 +3439,7 @@ __all__ = [
     "edit_in_creative_button_label",
     "explicit_specialized_backing_handoff_pending",
     "hydrate_backing_source_for_page",
+    "simulate_production_backing_page_hydrate",
     "hydrate_picker_source_for_page",
     "hydrate_practice_source_for_page",
     "last_valid_backing_session_survives_ordinary_nav",

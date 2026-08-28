@@ -165,6 +165,15 @@ def intentional_creative_backing_active(session: dict[str, Any]) -> bool:
     if session.get("_backing_released_specialized_context"):
         return False
     try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        if custom_page_backing_keeps_catalog_owner(session):
+            page = str(session.get("studio_page") or "").strip().lower()
+            if page in {"", "backing"}:
+                return True
+    except ImportError:
+        pass
+    try:
         from backing_context import (
             BACKING_PREF_CATALOG,
             BACKING_PREF_CREATIVE,

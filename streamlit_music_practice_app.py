@@ -10297,7 +10297,10 @@ try:
         _generated_backing_sidebar = False
     if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
-    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":
+    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom" or (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+        and bool(st.session_state.get("_custom_page_backing_keep_catalog_owner"))
+    ):
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
@@ -10416,8 +10419,11 @@ if is_fixed_practice_key_mode(st.session_state):
         on_change=_on_sidebar_fixed_key_quick_toggle,
     )
 else:
-    _custom_page_pk = (
-        str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
+    _custom_page_pk = str(st.session_state.get("studio_page") or "").strip().lower() == (
+        "custom"
+    ) or (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+        and bool(st.session_state.get("_custom_page_backing_keep_catalog_owner"))
     )
     if _custom_page_pk:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET

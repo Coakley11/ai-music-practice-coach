@@ -1512,6 +1512,21 @@ def _ignore_stale_custom_radio_after_catalog_switch(session_state: dict[str, Any
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
+    # Custom-page Backing must not seize Global Active. The live double-hydrate
+    # path (st_like=Streamlit) was promoting Trial via restore/apply helpers
+    # that default promote_to_global_active=True.
+    try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        page = str(session_state.get("studio_page") or "").strip().lower()
+        if custom_page_backing_keeps_catalog_owner(session_state) and page == "backing":
+            return
+    except ImportError:
+        if (
+            session_state.get("_custom_page_backing_keep_catalog_owner")
+            and str(session_state.get("studio_page") or "").strip().lower() == "backing"
+        ):
+            return
     # Heal Catalog pick from Global Active title *before* sync — otherwise a stale
     # Say pick makes sync_catalog_session wipe a good Shape catalog_session, and
     # capture then stamps Say into _catalog_before_custom_state (H1/H9).
@@ -3333,6 +3348,37 @@ def display_key_context(
         or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
         or ""
     ).strip()
+    # Custom-page Backing projects Trial identity/original without seizing GA.
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    keep_custom_backing = False
+    try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        keep_custom_backing = bool(custom_page_backing_keeps_catalog_owner(session_state))
+    except ImportError:
+        keep_custom_backing = bool(
+            session_state.get("_custom_page_backing_keep_catalog_owner")
+        )
+    if page == "backing" and keep_custom_backing:
+        from custom_progression_lab import (
+            default_active_progression,
+            ensure_original_structure,
+        )
+
+        active = ensure_original_structure(
+            session_state.get(cpl_active_key) or default_active_progression()
+        )
+        home = custom_original_key(active)
+        title = active.get("name", "Custom Progression")
+        from songs.key_state import song_display_identity
+
+        return home, song_display_identity(
+            str(title),
+            "Custom progression",
+            home,
+            pick_key="",
+        )
+
     # Catalog Global Active must use catalog Original Key even if CPL widgets lag.
     if _pick_key_is_catalog(pick_key) or (
         session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG
