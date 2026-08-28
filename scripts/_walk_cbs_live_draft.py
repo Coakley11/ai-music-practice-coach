@@ -77,6 +77,34 @@ def has_any(body: str, *needles: str) -> bool:
     return any(n.lower() in blob for n in needles if n)
 
 
+def key_hits(text: str, *tokens: str) -> bool:
+    """Normalized key-label match. Never treat a lone letter such as E as a hit."""
+    blob = f" {low(text)} "
+    aliases = {
+        "fm": ("f minor", "fm"),
+        "f minor": ("f minor", "fm"),
+        "dm": ("d minor", "dm"),
+        "d minor": ("d minor", "dm"),
+        "bm": ("b minor", "bm"),
+        "b minor": ("b minor", "bm"),
+        "eb": ("eb", "e-flat", "e flat", "eb major", "d#", "d# major"),
+        "d#": ("eb", "e-flat", "e flat", "eb major", "d#", "d# major"),
+        "a major": ("a major",),
+        "c#m": ("c# minor", "c#m", "db minor", "dbm"),
+        "dbm": ("c# minor", "c#m", "db minor", "dbm"),
+    }
+    for tok in tokens:
+        t = low(tok).strip()
+        if not t or t in {"e", "a", "d", "c", "b", "f", "g"}:
+            continue
+        for lab in aliases.get(t, (t,)):
+            if f" {lab} " in blob or f" {lab}\n" in blob or f"\n{lab} " in blob:
+                return True
+            if re.search(rf"(?<![a-z#]){re.escape(lab)}(?![a-z])", blob):
+                return True
+    return False
+
+
 def settle(page: Page, sec: float = 2.0) -> None:
     from walk_creative_backing_matrix import wait_idle
 
@@ -319,10 +347,10 @@ def main() -> int:
         restored = bool(ok_back) and has_any(body_back, "Shape of You") and not (
             has_any(body_back, "Trial Song") and not has_any(body_back, "Shape of You")
         )
-        pk_restored = has_any(body_back + sidebar_text(page), "F minor", "Fm")
+        pk_restored = key_hits(body_back + sidebar_text(page), "F minor", "Fm")
         mark(
             "A_sbi_active_restore",
-            "PASS" if restored else "RED",
+            "PASS" if restored and pk_restored else "RED",
             f"pk={pk_restored}",
         )
 
@@ -437,8 +465,12 @@ def main() -> int:
         ga_ok = has_any(body_ga, "Shape of You") and not (
             has_any(body_ga, "Trial Song") and not has_any(body_ga, "Shape of You")
         )
-        ga_pk = has_any(body_ga + sidebar_text(page), "B minor", "Bm")
-        mark("B_active_restores_shape", "PASS" if ga_ok else "RED", f"pk_bm={ga_pk}")
+        ga_pk = key_hits(body_ga + sidebar_text(page), "B minor", "Bm")
+        mark(
+            "B_active_restores_shape",
+            "PASS" if ga_ok and ga_pk else "RED",
+            f"pk_bm={ga_pk}",
+        )
 
         open_sbi_custom_source(page, NOTES)
         settle(page, 3)
@@ -665,10 +697,10 @@ def main() -> int:
         sbi_after = bool(ok_sa2) and has_any(body_sa2, "Shape of You") and not (
             has_any(body_sa2, "Trial Song") and not has_any(body_sa2, "Shape of You")
         )
-        pk_dm = has_any(body_sa2 + sidebar_text(page), "D minor", "Dm")
+        pk_dm = key_hits(body_sa2 + sidebar_text(page), "D minor", "Dm")
         mark(
             "F_jam_ga_restore",
-            "PASS" if ej_ok and sbi_after else "RED",
+            "PASS" if ej_ok and sbi_after and pk_dm else "RED",
             f"open={opened_ej} sbi={sbi_after} pk_dm={pk_dm}",
         )
         ok_cs2 = open_sbi_custom_source(page, NOTES)
@@ -713,7 +745,7 @@ def main() -> int:
         body_gmaj = shot(page, "G-major-layers")
         pk_a = pk_val(page) or sidebar_pk_input(page)
         card_a = card_practice_label(body_gmaj)
-        major_ok = has_any(str(pk_a) + " " + card_a + " " + body_gmaj, "A major", "A")
+        major_ok = key_hits(str(pk_a) + " " + card_a + " " + body_gmaj, "A major")
         minor_leak = has_any(card_a, "A minor") and not has_any(card_a, "A major")
         mark(
             "G_key_layers_major",
@@ -737,6 +769,7 @@ def main() -> int:
         settle(page, 2)
         body_p = shot(page, "H-piano")
         pk_p = pk_val(page) or sidebar_pk_input(page)
+        written_p = written_val(page)
         set_instrument(page, "Saxophone") or set_instrument(page, "Alto Saxophone")
         settle(page, 2)
         set_baseweb_select(page, "Saxophone", "Alto") or set_baseweb_select(
@@ -747,19 +780,29 @@ def main() -> int:
         settle(page, 2)
         body_sx = shot(page, "H-alto")
         pk_sx = pk_val(page) or sidebar_pk_input(page)
-        concert_held = has_any(str(pk_sx) + " " + body_sx, "E", "Eb", "D#")
-        written_txt = written_val(page)
-        inst_ok = bool(pk_sx) and concert_held and "undefined" not in low(body_sx)
+        written_sx = written_val(page)
+        concert_held = key_hits(str(pk_p) + " " + str(pk_sx) + " " + body_sx, "Eb", "D#")
+        written_moved = bool(written_sx) and low(written_sx) != low(written_p or "")
+        owner_held = has_any(body_sx, "Shape of You") and not (
+            has_any(body_sx, "Trial Song") and not has_any(body_sx, "Shape of You")
+        )
+        inst_ok = concert_held and owner_held and "undefined" not in low(body_sx)
         mark(
             "H_instrument_pk",
-            "PASS" if inst_ok else "RED",
-            f"piano={pk_p!r} sax={pk_sx!r} written={written_txt!r}",
+            "PASS" if inst_ok and written_moved else "RED",
+            f"piano={pk_p!r} sax={pk_sx!r} written_p={written_p!r} written_sx={written_sx!r} "
+            f"concert={concert_held} moved={written_moved} owner={owner_held}",
         )
         set_instrument(page, "Piano")
         settle(page, 2)
         body_back_i = shot(page, "H-piano-return")
-        back_i = has_any(body_back_i, "Shape of You", "Perfect") and "undefined" not in low(body_back_i)
-        mark("H_instrument_return", "PASS" if back_i else "RED")
+        pk_back = pk_val(page) or sidebar_pk_input(page)
+        back_i = (
+            has_any(body_back_i, "Shape of You")
+            and key_hits(str(pk_back) + " " + body_back_i, "Eb", "D#")
+            and "undefined" not in low(body_back_i)
+        )
+        mark("H_instrument_return", "PASS" if back_i else "RED", f"pk={pk_back!r}")
 
         # ---------- I. Navigation / persistence ----------
         click_nav(page, "Songs")
@@ -803,14 +846,14 @@ def main() -> int:
         click_nav(page2, "Songs")
         settle(page2, 2)
         body_rbs = shot(page2, "I-post-reboot-songs")
-        reboot_pk = has_any(body_rbs, "D minor", "Dm", "Shape of You")
+        reboot_pk = key_hits(body_rbs, "D minor", "Dm")
         goto_custom(page2)
         settle(page2, 3)
         body_rbc = shot(page2, "I-post-reboot-custom")
-        reboot_custom = has_any(body_rbc, "Trial Song") or has_any(body_rbc, "Custom")
+        reboot_custom = has_any(body_rbc, "Trial Song")
         mark(
             "I_hard_reboot",
-            "PASS" if reboot_songs and reboot_pk else "RED",
+            "PASS" if reboot_songs and reboot_pk and reboot_custom else "RED",
             f"songs={reboot_songs} pk={reboot_pk} custom={reboot_custom}",
         )
 

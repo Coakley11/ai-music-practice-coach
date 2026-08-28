@@ -207,5 +207,42 @@ class TestMissionCaptionIgnoresLastCustomD(unittest.TestCase):
         self.assertEqual(_catalog_live_key_or_empty(session, "Fm"), "Fm")
 
 
+class TestLiveDraftWalkPredicates(unittest.TestCase):
+    """Static guard: computed key/owner flags must be required for PASS."""
+
+    def _src(self) -> str:
+        from pathlib import Path
+
+        return Path("scripts/_walk_cbs_live_draft.py").read_text(encoding="utf-8")
+
+    def test_key_hits_rejects_lone_letter_e(self) -> None:
+        import importlib.util
+        from pathlib import Path
+
+        path = Path("scripts/_walk_cbs_live_draft.py")
+        spec = importlib.util.spec_from_file_location("_walk_cbs_live_draft", path)
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        key_hits = mod.key_hits
+        self.assertFalse(key_hits("Practice / Concert Key\nEm", "E", "Eb"))
+        self.assertTrue(key_hits("Practice / Concert Key\nEb", "Eb", "D#"))
+        self.assertTrue(key_hits("F minor", "Fm", "F minor"))
+        self.assertFalse(key_hits("A minor", "A major"))
+
+    def test_restore_gates_require_computed_key_flags(self) -> None:
+        src = self._src()
+        self.assertIn('"PASS" if restored and pk_restored else "RED"', src)
+        self.assertIn('"PASS" if ga_ok and ga_pk else "RED"', src)
+        self.assertIn('"PASS" if ej_ok and sbi_after and pk_dm else "RED"', src)
+        self.assertIn('"PASS" if inst_ok and written_moved else "RED"', src)
+        self.assertIn(
+            '"PASS" if reboot_songs and reboot_pk and reboot_custom else "RED"', src
+        )
+        self.assertNotRegex(src, r'has_any\([^)]*"E",\s*"Eb"')
+        self.assertNotIn("written_val(page) != written_val", src)
+        self.assertNotIn('has_any(body_rbs, "D minor", "Dm", "Shape of You")', src)
+
+
 if __name__ == "__main__":
     unittest.main()
