@@ -20,12 +20,14 @@ except ImportError:  # pragma: no cover
 from music_theory import spell_note_in_key
 
 # Tunable segmentation (conservative — favor fewer, clearer notes).
-_MIN_NOTE_SEC = 0.09
+_MIN_NOTE_SEC = 0.11
 _MERGE_GAP_SEC = 0.08
-_REST_GAP_SEC = 0.18
+_REST_GAP_SEC = 0.16
 _CENTS_MERGE = 55.0  # vibrato / wobble within one note
 _OCTAVE_JUMP_CENTS = 900.0  # ~7.5 semitones — keep legitimate leaps, filter wild spikes
 _MIN_VOICED_RATIO = 0.12
+_FLUTE_MIDI_LO = 60  # C4 — sanity prior only
+_FLUTE_MIDI_HI = 96  # C7
 _MIN_EVENTS = 1
 
 # Duration grid in beats (1.0 = one BPM pulse).
@@ -126,6 +128,8 @@ def extract_f0_track(y: np.ndarray, sr: int) -> dict[str, Any]:
         if voiced_flag is not None:
             voiced_mask = np.asarray(voiced_flag, dtype=bool)
             f0 = np.where(voiced_mask, f0, np.nan)
+        f0 = _gate_breath_and_noise(y, sr, f0, times)
+        f0 = _prefer_stable_fundamental(y, sr, f0, times)
         voiced = f0[~np.isnan(f0)]
         ratio = float(len(voiced) / max(1, len(f0)))
         return {
@@ -140,6 +144,78 @@ def extract_f0_track(y: np.ndarray, sr: int) -> dict[str, Any]:
 
 def _cents_delta(a_midi: float, b_midi: float) -> float:
     return abs(float(a_midi) - float(b_midi)) * 100.0
+
+
+def _gate_breath_and_noise(
+    y: np.ndarray,
+    sr: int,
+    f0: np.ndarray,
+    times: np.ndarray,
+    *,
+    rel_rms: float = 0.045,
+) -> np.ndarray:
+    """Unvoice low-energy frames (breath, room noise) without rewriting pitch."""
+    if len(f0) == 0 or len(y) == 0:
+        return f0
+    hop = max(1, int(round(float(times[1] - times[0]) * sr))) if len(times) > 1 else max(1, sr // 40)
+    peak = float(np.max(np.abs(y))) if len(y) else 0.0
+    if peak <= 1e-9:
+        return f0
+    gated = np.asarray(f0, dtype=float).copy()
+    for i, t in enumerate(times):
+        if np.isnan(gated[i]):
+            continue
+        start = max(0, int(float(t) * sr))
+        end = min(len(y), start + hop)
+        if end <= start:
+            gated[i] = np.nan
+            continue
+        rms = float(np.sqrt(np.mean(np.square(y[start:end]))))
+        if rms < rel_rms * peak:
+            gated[i] = np.nan
+    return gated
+
+
+def _prefer_stable_fundamental(
+    y: np.ndarray,
+    sr: int,
+    f0: np.ndarray,
+    times: np.ndarray,
+) -> np.ndarray:
+    """If f0/2 has comparable energy, take the lower candidate (flute octave errors).
+
+    Instrument range is a sanity bound only — never force a note into range.
+    """
+    if librosa is None or len(f0) == 0 or len(y) == 0:
+        return f0
+    try:
+        hop_length = max(64, int(round(float(times[1] - times[0]) * sr))) if len(times) > 1 else 512
+        S = np.abs(librosa.stft(y, n_fft=2048, hop_length=hop_length))
+        freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    except Exception:
+        return f0
+    fmin = float(librosa.note_to_hz("C2"))
+    out = np.asarray(f0, dtype=float).copy()
+    scale = (S.shape[1] - 1) / max(1, len(f0) - 1) if len(f0) > 1 else 0.0
+
+    def _band(mag: np.ndarray, hz: float) -> float:
+        if hz <= 0 or not math.isfinite(hz):
+            return 0.0
+        idx = int(np.argmin(np.abs(freqs - hz)))
+        lo, hi = max(0, idx - 2), min(len(mag), idx + 3)
+        return float(np.mean(mag[lo:hi])) if hi > lo else 0.0
+
+    for i, hz in enumerate(out):
+        if not math.isfinite(float(hz)) or hz < fmin:
+            continue
+        frame = min(S.shape[1] - 1, max(0, int(round(i * scale))))
+        mag = S[:, frame]
+        e0 = _band(mag, float(hz))
+        e_lo = _band(mag, float(hz) / 2.0)
+        if e_lo > 0.58 * max(e0, 1e-9) and (hz / 2.0) >= fmin:
+            # Stronger or comparable sub-octave: pyin likely locked onto a harmonic.
+            out[i] = float(hz) / 2.0
+    return out
 
 
 def segment_f0_track(
@@ -249,6 +325,48 @@ def segment_f0_track(
     return merged
 
 
+def stabilize_midi_octaves(
+    midis: list[int | None],
+    *,
+    prefer_lo: int = _FLUTE_MIDI_LO,
+    prefer_hi: int = _FLUTE_MIDI_HI,
+) -> list[int | None]:
+    """Keep leaps honest; fold only clear stray octaves toward a neighbor or prior.
+
+    prefer_lo/hi are a sanity prior, not a force into range.
+    """
+    out: list[int | None] = []
+    prev: int | None = None
+    for raw in midis:
+        if raw is None:
+            out.append(None)
+            continue
+        midi = int(raw)
+        if prev is not None:
+            # Prefer continuity: fold ±12 if that is closer to the previous note.
+            folded = midi
+            while folded - prev >= 10:
+                candidate = folded - 12
+                if abs(candidate - prev) < abs(folded - prev):
+                    folded = candidate
+                else:
+                    break
+            while prev - folded >= 10:
+                candidate = folded + 12
+                if abs(candidate - prev) < abs(folded - prev):
+                    folded = candidate
+                else:
+                    break
+            midi = folded
+        elif midi < prefer_lo - 12:
+            midi += 12
+        elif midi > prefer_hi + 12:
+            midi -= 12
+        out.append(int(midi))
+        prev = int(midi)
+    return out
+
+
 def segments_to_melody_events(
     segments: list[dict[str, Any]],
     *,
@@ -261,7 +379,12 @@ def segments_to_melody_events(
     sec_per_beat = 60.0 / bpm_f
     events: list[dict[str, Any]] = []
     cursor_beat = 0.0
-    for seg in segments:
+    raw_midis = [
+        None if seg.get("kind") == "rest" else int(seg.get("midi") or round(float(seg.get("midi_f") or 60)))
+        for seg in segments
+    ]
+    stable_midis = stabilize_midi_octaves(raw_midis)
+    for seg, midi_stable in zip(segments, stable_midis):
         dur_sec = float(seg.get("duration_sec") or 0.0)
         dur_beats = quantize_beats(dur_sec / sec_per_beat, meter=meter)
         if dur_beats < 0.5 and seg.get("kind") == "rest":
@@ -288,7 +411,7 @@ def segments_to_melody_events(
                 }
             )
         else:
-            midi_i = int(seg.get("midi") or round(float(seg.get("midi_f") or 60)))
+            midi_i = int(midi_stable if midi_stable is not None else (seg.get("midi") or 60))
             conf = float(seg.get("confidence") or 0.5)
             pitch = spell_midi_in_key(midi_i, key)
             events.append(

@@ -762,6 +762,44 @@ def apply_shaped_or_refined_melody(
     return label
 
 
+def add_rhythmic_variety(
+    events: list[dict[str, Any]] | None,
+    *,
+    key: str = "C",
+) -> list[dict[str, Any]]:
+    """Keep pitches; add attacks by splitting longer notes into a short-long cell."""
+    from composition_document import normalize_melody_events
+
+    src = normalize_melody_events(events)
+    out: list[dict[str, Any]] = []
+    beat = 0.0
+    split = False
+    for i, ev in enumerate(src):
+        item = dict(ev)
+        dur = float(item.get("duration_beats") or 1.0)
+        is_rest = bool(item.get("is_rest")) or str(item.get("pitch") or "").lower() == "rest"
+        if (not is_rest) and dur >= 1.0 and (i % 2 == 1 or not split):
+            first = dict(item)
+            first["duration_beats"] = 0.5
+            first["beat"] = beat
+            second = dict(item)
+            second["duration_beats"] = max(0.5, dur - 0.5)
+            second["beat"] = beat + 0.5
+            out.extend([first, second])
+            beat += dur
+            split = True
+            continue
+        item["beat"] = beat
+        out.append(item)
+        beat += dur
+    if not split and src:
+        last = dict(out[-1] if out else src[-1])
+        last["duration_beats"] = max(0.5, float(last.get("duration_beats") or 1.0) * 0.5)
+        if out:
+            out[-1] = last
+    return out
+
+
 def apply_melody_refinement_to_section(
     doc: dict[str, Any],
     section_id: str,
@@ -792,6 +830,46 @@ def apply_melody_refinement_to_section(
         from composition_document import apply_accepted_melody_edits
         from composition_hum_transcription import spell_midi_in_key
 
+        def _sig(rows: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+            return [
+                (
+                    bool(e.get("is_rest")),
+                    int(e.get("midi") or 0),
+                    round(float(e.get("duration_beats") or 0.0), 4),
+                    round(float(e.get("beat") or 0.0), 4),
+                )
+                for e in rows
+            ]
+
+        def _force_change(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            out = [dict(e) for e in rows]
+            pitched = [
+                i
+                for i, e in enumerate(out)
+                if not e.get("is_rest") and str(e.get("pitch") or "").lower() != "rest"
+            ]
+            if not pitched:
+                return out
+            if refinement_id in {"rhythm", "energetic"}:
+                return add_rhythmic_variety(out, key=key)
+            if refinement_id == "simplify" and len(out) >= 2:
+                keep = out[:-1]
+                keep[-1]["duration_beats"] = float(keep[-1].get("duration_beats") or 1.0) + float(
+                    out[-1].get("duration_beats") or 1.0
+                )
+                return keep
+            if refinement_id == "emotional":
+                i = pitched[-1]
+                out[i]["duration_beats"] = float(out[i].get("duration_beats") or 1.0) + 0.5
+                return out
+            i = pitched[-1] if refinement_id == "range_up" else pitched[0]
+            step = 2 if refinement_id == "range_up" else -1
+            midi = int(out[i].get("midi") or 60) + step
+            out[i]["midi"] = midi
+            out[i]["pitch"] = spell_midi_in_key(midi, key)
+            out[i]["is_rest"] = False
+            return out
+
         updated = [dict(e) for e in events]
         if refinement_id == "smoother":
             updated = refine_accepted_melody_events(updated, key=key, doc=doc, section=sec)
@@ -800,20 +878,27 @@ def apply_melody_refinement_to_section(
             midi = int(updated[peak].get("midi") or 60) + 2
             updated[peak]["midi"] = midi
             updated[peak]["pitch"] = spell_midi_in_key(midi, key)
-        elif refinement_id == "simplify" and len(updated) > 4:
-            updated = updated[::2]
-            beat = 0.0
-            for ev in updated:
-                ev["beat"] = beat
-                beat += float(ev.get("duration_beats") or 1.0)
-        elif refinement_id in {"energetic", "rhythm"}:
+        elif refinement_id == "simplify":
+            if len(updated) > 4:
+                updated = updated[::2]
+                beat = 0.0
+                for ev in updated:
+                    ev["beat"] = beat
+                    beat += float(ev.get("duration_beats") or 1.0)
+            elif len(updated) >= 2:
+                updated = _force_change(updated)
+        elif refinement_id == "energetic":
             for ev in updated:
                 dur = float(ev.get("duration_beats") or 1.0)
                 ev["duration_beats"] = max(0.5, dur * 0.75)
+        elif refinement_id == "rhythm":
+            updated = add_rhythmic_variety(updated, key=key)
         elif refinement_id == "emotional" and updated:
             updated[-1]["duration_beats"] = float(updated[-1].get("duration_beats") or 1.0) + 1.0
         elif refinement_id in {"singable"}:
             updated = refine_accepted_melody_events(updated, key=key, doc=doc, section=sec)
+        if _sig(updated) == _sig(events):
+            updated = _force_change(updated)
         apply_accepted_melody_edits(doc, section_id, updated)
         melody = _ensure_melody_block(sec)
         phrases = list(melody.get("phrases") or [])

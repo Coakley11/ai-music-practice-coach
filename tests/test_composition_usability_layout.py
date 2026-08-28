@@ -190,10 +190,12 @@ class TestChordSymbolToNoteAlignment(unittest.TestCase):
 
     def test_staff_render_uses_aligned_model(self) -> None:
         src = inspect.getsource(_render_melody_staff)
-        self.assertIn("note_chord_alignment", src)
         self.assertIn("chord_strip_html", src)
-        self.assertIn("Notes over chords", src)
+        self.assertNotIn("Notes over chords", src)
         self.assertNotIn("progression_line", src)
+        from composition_melody_notation import build_section_score_model as _bsm
+
+        self.assertIn("note_chord_alignment", inspect.getsource(_bsm))
 
 
 class TestLocalPlayerPlacement(unittest.TestCase):
@@ -283,7 +285,8 @@ class TestRecordingTimelineAndReboot(unittest.TestCase):
         self.assertIn("backing_origin_in_capture_beats", hum)
         self.assertIn("mic_lead_beats", hum)
         self.assertIn("Record your melody over these chords.", hum)
-        self.assertIn("Notes landed on the wrong chord?", hum)
+        self.assertNotIn("Notes landed on the wrong chord?", hum)
+        self.assertIn("Edit transcription", hum)
         self.assertNotIn("**1. Arm the microphone**", hum)
 
     def test_preview_uses_same_section_chords_as_score(self) -> None:
@@ -365,17 +368,18 @@ class TestMelodyWorkspaceUnclutter(unittest.TestCase):
             COMPOSER_MELODY_SIDE_PANEL_KEY,
             _render_melody_side_tools,
             _render_phase_melody,
+            _render_song_tools_panel,
             render_composition_studio_page,
         )
 
-        side = inspect.getsource(_render_melody_side_tools)
+        side = inspect.getsource(_render_song_tools_panel)
         self.assertIn("Guided Path", side)
         self.assertIn("Song Settings", side)
         self.assertIn("Song Sections", side)
-        self.assertIn("writing the line", side)
         self.assertIn("_MELODY_PATH_LABELS", side)
         self.assertIn("Now working on:", side)
         self.assertIn("COMPOSER_MELODY_SIDE_PANEL_KEY", side)
+        self.assertIn("_render_song_tools_panel", inspect.getsource(_render_melody_side_tools))
         melody = inspect.getsource(_render_phase_melody)
         self.assertIn("_render_melody_side_tools", melody)
         self.assertIn("Now writing:", melody)
@@ -384,7 +388,7 @@ class TestMelodyWorkspaceUnclutter(unittest.TestCase):
         self.assertNotIn("_render_journey_rail", melody)
         self.assertNotIn("_render_section_workspace_header", melody)
         page = inspect.getsource(render_composition_studio_page)
-        self.assertIn('if phase != "melody"', page)
+        self.assertIn("_song_structure_ready", page)
 
     def test_repeated_chord_sits_over_each_measure(self) -> None:
         chords = [{"chord": "C", "bars": 1}, {"chord": "C", "bars": 1}, {"chord": "F", "bars": 1}]

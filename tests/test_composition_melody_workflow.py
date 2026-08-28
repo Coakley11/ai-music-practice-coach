@@ -333,17 +333,14 @@ class TestRecordOverBacking(unittest.TestCase):
         self.assertIn("apply_record_origin", src)
         self.assertIn("mic_lead_beats", src)
         self.assertIn("backing_origin_in_capture_beats", src)
-        self.assertIn("Backing began this many beats after I started recording", src)
-        self.assertIn("Recorder started after backing", src)
-        self.assertIn("Mark I'm recording now", src)
-        self.assertIn("cannot start with the backing from one click", src)
         self.assertIn("count_in_bars=1", src)
-        self.assertIn("Not a locked", src)
         self.assertNotIn("Play backing and record", src)
-        self.assertNotIn("Recorder started late by (beats)", src)
-        self.assertIn("▶ Hear the chords", src)
+        self.assertNotIn("▶ Hear the chords", src)
+        self.assertIn("Start mic count-in + chord backing", src)
         self.assertIn("Record your melody over these chords.", src)
-        self.assertIn("Notes landed on the wrong chord?", src)
+        self.assertNotIn("Notes landed on the wrong chord?", src)
+        self.assertIn("Transcribe melody", src)
+        self.assertIn("Edit transcription", src)
         self.assertIn("progression_line", src)
         self.assertIn("span_events_across_section_timeline", src)
         self.assertIn("over the chords", src)
@@ -430,9 +427,11 @@ class TestShapeAndRefineAcceptedMelody(unittest.TestCase):
     def test_shape_refine_buttons_are_wired_through_persist(self) -> None:
         import inspect
 
-        from composition_studio_page import _render_phase_melody
+        from composition_studio_page import _render_accepted_melody_tools, _render_phase_melody
 
-        src = inspect.getsource(_render_phase_melody)
+        phase = inspect.getsource(_render_phase_melody)
+        self.assertIn("_render_accepted_melody_tools", phase)
+        src = inspect.getsource(_render_accepted_melody_tools)
         self.assertIn("Shape accepted melody", src)
         self.assertIn("Refine accepted melody", src)
         self.assertIn('action="shape"', src)

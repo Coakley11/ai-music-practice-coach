@@ -286,7 +286,7 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("prepare_armed_record_transport", hum)
         self.assertIn("mic_lead_beats", hum)
         self.assertIn("backing_origin_in_capture_beats", hum)
-        self.assertIn("▶ Hear the chords", hum)
+        self.assertNotIn("▶ Hear the chords", hum)
         self.assertIn("include_melody=False", hum)
         self.assertIn("progression_line", hum)
         self.assertIn("span_events_across_section_timeline", hum)
@@ -294,7 +294,11 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("build_live_chord_follow_html", hum)
         self.assertNotIn("**1. Arm the microphone**", hum)
         self.assertNotIn("**2. Start count-in + backing**", hum)
-        self.assertIn("Start count-in & backing", hum)
+        self.assertIn("Start mic count-in + chord backing", hum)
+        self.assertIn("Transcribe melody", hum)
+        self.assertIn("Edit transcription", hum)
+        self.assertNotIn("Analyze recording", hum)
+        self.assertNotIn("Record again", hum)
 
 
 class TestCompositionStudioQaSmoke(unittest.TestCase):
@@ -314,7 +318,9 @@ class TestCompositionStudioQaSmoke(unittest.TestCase):
         labels = [str(b.label) for b in at.button]
         self.assertTrue(any("Shape accepted melody" in lab for lab in labels), labels)
         self.assertTrue(any("Refine accepted melody" in lab for lab in labels), labels)
-        self.assertTrue(any("Hear the chords" in lab for lab in labels), labels)
+        self.assertTrue(any("Start mic count-in + chord backing" in lab for lab in labels), labels)
+        self.assertTrue(any("Transcribe melody" in lab for lab in labels), labels)
+        self.assertFalse(any("Hear the chords" in lab for lab in labels), labels)
         self.assertTrue(any(lab == "Song Sections" for lab in labels), labels)
         self.assertTrue(any(lab == "Guided Path" for lab in labels), labels)
         self.assertTrue(any(lab == "Song Settings" for lab in labels), labels)

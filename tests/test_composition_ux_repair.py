@@ -259,12 +259,14 @@ class TestNotationFirstMelody(unittest.TestCase):
         src = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("Hum, sing, or play one melodic line", src)
         self.assertIn("Record your melody over these chords.", src)
-        self.assertIn("Start count-in & backing", src)
-        self.assertIn("cannot start with the backing from one click", src)
+        self.assertIn("Start mic count-in + chord backing", src)
         self.assertNotIn("What instrument did you record", src)
         # Primary result is staff, not a default note list dump.
         self.assertIn("You sang / played this", src)
-        self.assertIn("Edit melody (notes)", src)
+        self.assertIn("Edit transcription", src)
+        self.assertNotIn("Analyze recording", src)
+        self.assertNotIn("Hear the chords", src)
+        self.assertNotIn("Record again", src)
 
     def test_harmony_edit_updates_chords_not_melody(self) -> None:
         doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="G major", bpm=96, meter="4/4")

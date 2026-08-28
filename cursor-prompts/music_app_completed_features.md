@@ -24,6 +24,15 @@
 
 ## Completed Features
 
+### Composition Studio — Chords/Melody QA follow-up (2026-08-28, testing branch)
+
+- [x] Compare removed from Chords suggestion cards
+- [x] Persistent Guided Path / Song Settings / Song Sections after structure is chosen
+- [x] Melody diagnostic “Notes over chords” prose removed (staff chord alignment kept)
+- [x] Record workspace: count-in + section backing, Transcribe melody, Edit transcription
+- [x] Accepted-melody shape/refine/local refinements + undo
+- [x] Octave-stabilize transcription helper + chord-quality audio pitch-class tests
+
 ### Composition Studio — Manual / advanced chord editor (2026-08-28, testing branch)
 
 - [x] Widget-safe refine-intent ownership (canonical / widget / pending) — no post-instantiate write

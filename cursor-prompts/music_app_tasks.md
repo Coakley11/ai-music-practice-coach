@@ -1,11 +1,23 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-28 (Composition testing branch: Manual / advanced chord editor widget-safe fix — do not merge to `dev`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-28 (Composition Chords/Melody QA follow-up — do not merge to `dev`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
+
+### Composition Chords/Melody QA (testing branch only — do not merge to `dev`)
+
+Follow-up head: `cursor/composition-chords-melody-qa-f2f8` based on `cursor/composition-cloud-wip-20260827`.
+
+- [x] Remove Chords Compare; persistent right-side Song tools after structure
+- [x] Remove Melody “Notes over chords” diagnostic prose
+- [x] Record-over-chords: one backing+mic action, Transcribe melody, Edit transcription
+- [x] Stronger monophonic octave/rest segmentation + deterministic tests
+- [x] Accepted-melody refinements + undo on the accepted section melody
+- [x] Chord-quality pitch-class + preview-authority tests
+- [ ] Hosted smoke on Daniel’s Composition Streamlit app after reboot
 
 ### P0 — Mission Take → Upload Analysis durable handoff (queued)
 

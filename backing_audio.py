@@ -105,6 +105,18 @@ def chord_notes(chord):
     elif "dim" in low:
         intervals = [0,3,6]
 
+    elif "7#5" in low or ("#5" in low and "7" in low and "maj" not in low and "m" not in low):
+        intervals = [0,4,8,10]
+
+    elif "7b5" in low:
+        intervals = [0,4,6,10]
+
+    elif "aug" in low or ("#5" in low and "m" not in low):
+        intervals = [0,4,8]
+
+    elif "b5" in low and "m7" not in low and "dim" not in low:
+        intervals = [0,4,6] if "m" not in low else [0,3,6]
+
     elif "maj9" in low:
         intervals = [0,4,7,11,14]
 
