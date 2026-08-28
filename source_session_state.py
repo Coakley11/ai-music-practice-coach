@@ -334,10 +334,17 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
     # Global Active Custom: both Active song and Custom tabs must use Trial/CPL material.
+    # Active-song radio + a live catalog pick must never show LAST_CUSTOM Trial
+    # on the Active card while catalog sections still render (Trial title / 184 chords).
     try:
         from songs.music_source import custom_progression_is_active
 
-        if custom_progression_is_active(session):
+        use_custom_ga = custom_progression_is_active(session)
+        if use_custom_ga and source == "Active song":
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if pick and not pick.startswith("custom::"):
+                use_custom_ga = False
+        if use_custom_ga:
             custom = sync_custom_session(session)
             if custom:
                 return {
@@ -450,9 +457,35 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         if src == "song_improv" and bound.startswith("custom::"):
             return True
         return False
-    # Creative: SBI tab on Custom progression preview.
+    # Creative: Custom SBI preview owns the sidebar only on the SBI surface.
+    # Missions / Motif / Live Coach / Harmony must not keep Custom overlay PK
+    # (Eb) merely because the previous tab was Custom SBI — unless Custom is
+    # the Global Active owner.
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    sbi_surface = tab in {"", "Entry & Jam"} and entry in {
+        "",
+        "Song-Based Improvisation",
+    }
     if get_sbi_preview_source(session) == "Custom progression":
-        return True
+        if sbi_surface:
+            return True
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if custom_owns_active_song_material(session):
+                return True
+        except ImportError:
+            # Cycle-safe: do not silently drop Custom GA authority (embargo gate 6).
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            src = str(session.get("active_music_source") or "").strip().lower()
+            if pick.startswith("custom::") or src in {"custom", "custom_progression"}:
+                return True
+        return False
     if src == "custom_progression":
         return True
     if src == "song_improv" and bound.startswith("custom::"):
@@ -617,6 +650,26 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
                 custom_tokens.add(tok)
     except Exception:
         pass
+    try:
+        from songs.practice_key_state import get_practice_concert_key as _get_cat_sticky
+
+        catalog_sticky = str(_get_cat_sticky(session, sealed_pick) or "").strip()
+    except Exception:
+        catalog_sticky = ""
+    # Songs may have moved Catalog sticky past a leftover Mission/Custom seal
+    # (Dm after F minor). Do not resurrect the stale seal over that sticky.
+    original_sealed = sealed
+    if (
+        catalog_sticky
+        and catalog_sticky != sealed
+        and catalog_sticky not in custom_tokens
+    ):
+        session["_sbi_custom_sealed_catalog_pk"] = catalog_sticky
+        sealed = catalog_sticky
+        if live == catalog_sticky:
+            return ""
+        if live == original_sealed or (live and live in custom_tokens):
+            live = sealed
     # Force sealed whenever live still equals a Custom sticky token (bleed).
     if live == sealed or (live and live in custom_tokens):
         try:

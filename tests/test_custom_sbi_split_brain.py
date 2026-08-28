@@ -388,8 +388,18 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         mission_flat = [c for _s, chs in mapped for c in chs]
         self.assertIn("Dm", mission_flat)
         self.assertIn("C", mission_flat)
+        self.assertTrue(set(mission_flat).issubset({"Dm", "C"}))
         _section_map, owner = resolve_missions_section_map(session, _Ctx())
         self.assertEqual(owner, "custom_song_sections")
+        from backing_context import _song_improv_sections_dict
+        from improvisation_motif import concert_song_sections_from_session
+
+        concert = concert_song_sections_from_session(session) or {}
+        concert_flat = [c for chs in concert.values() for c in chs]
+        self.assertEqual(concert_flat[:4], ["Dm", "Dm", "C", "C"])
+        backing = _song_improv_sections_dict(session)
+        backing_flat = [c for chs in (backing or {}).values() for c in chs]
+        self.assertEqual(backing_flat[:4], ["Dm", "Dm", "C", "C"])
 
 
 if __name__ == "__main__":

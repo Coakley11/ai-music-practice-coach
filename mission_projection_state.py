@@ -87,6 +87,27 @@ def resolve_mission_projection_state(
         idx = 0
     section_label = str(session.get(II_SELECTED_SECTION) or "").strip()
     concert_chord = str(session.get(II_SELECTED_CHORD) or "").strip()
+    try:
+        from mission_backing_transpose import mission_backing_locked_chord
+
+        locked = mission_backing_locked_chord(session)
+    except ImportError:
+        locked = ""
+    if locked:
+        concert_chord = locked
+        display_chord = display_chord_from_concert(
+            concert_chord,
+            concert_key=concert_key,
+            chart_key=chart_key,
+        )
+        return MissionProjectionState(
+            concert_key=concert_key,
+            chart_key=chart_key,
+            concert_chord=concert_chord,
+            display_chord=display_chord,
+            section_label=section_label or "Progression",
+            chord_index=int(idx),
+        )
     if section_map:
         try:
             from creative_chord_selection_authority import (

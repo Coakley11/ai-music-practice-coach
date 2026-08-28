@@ -10,6 +10,9 @@ FORCE_BPM_SYNC_ONCE_KEY = "_force_bpm_sync_once"
 CREATIVE_STYLE_JAM_PICK = "creative::entry_style_jam"
 CREATIVE_JAM_SESSION_PICK = "creative::jam_session_generator"
 CREATIVE_SBI_PICK = "creative::song_improv"
+PK_USER_COMMIT_TOKEN_KEY = "_pk_user_commit_token"
+PK_USER_COMMIT_AT_KEY = "_pk_user_commit_at"
+PK_USER_COMMIT_PICK_KEY = "_pk_user_commit_pick"
 
 
 def _practice_key_store(session: dict[str, Any]) -> dict[str, str]:
@@ -185,6 +188,25 @@ def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
         and not (ctx_src == "song_improv" and bound.startswith("custom::"))
     ):
         return ""
+    # Leftover Custom SBI preview on Missions / Motif must not steal PK writes
+    # from the catalog-owned Creative tab (same surface rule as sidebar owner).
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if (
+            custom_preview
+            and page == "creative"
+            and not custom_sbi_owns_sidebar_practice_key(session)
+        ):
+            return ""
+    except ImportError:
+        tab = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if custom_preview and page == "creative" and tab not in {"", "Entry & Jam"}:
+            return ""
     # Songs / Practice / picker must write the Global Active catalog pick — leftover
     # SBI Custom entry/source flags must not redirect catalog Practice Key writes.
     sbi_surface = page in {"creative", "backing"} or (
@@ -340,6 +362,74 @@ def get_practice_concert_key(
     return str(default or "").strip()
 
 
+def stamp_practice_key_user_commit(
+    session: dict[str, Any],
+    concert_key: str,
+    *,
+    pick_key: str = "",
+) -> None:
+    """Restamp the 5s remount guard to *concert_key* — never leave it empty.
+
+    When *pick_key* is set, later writes for a *different* song source are not
+    blocked (Custom D must not freeze Shape's first-click Dm).
+    """
+    key = str(concert_key or "").strip()
+    if not key:
+        return
+    try:
+        import time as _time
+
+        session[PK_USER_COMMIT_TOKEN_KEY] = key
+        session[PK_USER_COMMIT_AT_KEY] = float(_time.time())
+        pk = str(pick_key or "").strip()
+        if pk:
+            session[PK_USER_COMMIT_PICK_KEY] = pk
+    except Exception:
+        pass
+
+
+def apply_authoritative_practice_key(
+    session: dict[str, Any],
+    concert_key: str,
+    *,
+    pick_key: str = "",
+    sync_display: bool = True,
+    sync_custom_widgets: bool = False,
+) -> str:
+    """Write Practice Key once and restamp the user-commit guard to the new key.
+
+    Fresh Catalog→Custom activation must replace a leftover Catalog token
+    (Perfect G) with the new Custom key. Popping the guard without restamping
+    leaves a window where a stale remount can overwrite Original D.
+    """
+    key = str(concert_key or "").strip()
+    if not key:
+        return ""
+    if sync_display:
+        session["display_key"] = key
+        session["concert_key"] = key
+    if sync_custom_widgets:
+        try:
+            from custom_progression_lab import (
+                CPL_LAST_DISPLAY_KEY,
+                CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            )
+
+            session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = key
+            session[CPL_LAST_DISPLAY_KEY] = key
+            session["_cpl_force_pk_to_home"] = key
+        except ImportError:
+            pass
+    set_practice_concert_key(
+        session,
+        key,
+        pick_key=pick_key,
+        allow_restore_original=True,
+    )
+    stamp_practice_key_user_commit(session, key, pick_key=pick_key)
+    return key
+
+
 def set_practice_concert_key(
     session: dict[str, Any],
     concert_key: str,
@@ -357,14 +447,23 @@ def set_practice_concert_key(
     try:
         import time as _time
 
-        commit = str(session.get("_pk_user_commit_token") or "").strip()
-        committed_at = float(session.get("_pk_user_commit_at") or 0.0)
+        commit = str(session.get(PK_USER_COMMIT_TOKEN_KEY) or "").strip()
+        committed_at = float(session.get(PK_USER_COMMIT_AT_KEY) or 0.0)
+        commit_pick = str(session.get(PK_USER_COMMIT_PICK_KEY) or "").strip()
+        same_pick = True
+        if commit_pick and pk:
+            same_pick = commit_pick == pk
+            if not same_pick:
+                commit_aliases = set(_practice_pick_aliases(commit_pick))
+                write_aliases = set(_practice_pick_aliases(pk))
+                same_pick = bool(commit_aliases & write_aliases)
         if (
             commit
             and committed_at
             and (_time.time() - committed_at) < 5.0
             and key != commit
             and not allow_restore_original
+            and same_pick
         ):
             return
     except Exception:
@@ -596,12 +695,18 @@ def set_practice_concert_key(
                 )
     except Exception:
         pass
-    # Intentional catalog write refreshes isolation seal (Shape Dm → user F, etc.).
-    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
-    if sealed_pick and not str(write_pk).startswith("custom::"):
-        sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
-        if write_pk in sealed_aliases or pk in sealed_aliases:
-            session["_sbi_custom_sealed_catalog_pk"] = key
+    # Intentional catalog write refreshes isolation seals (Shape Dm → user F, etc.).
+    if not str(write_pk).startswith("custom::"):
+        for seal_pick_key, seal_pk_key in (
+            ("_sbi_custom_sealed_catalog_pick", "_sbi_custom_sealed_catalog_pk"),
+            ("_custom_page_sealed_catalog_pick", "_custom_page_sealed_catalog_pk"),
+        ):
+            sealed_pick = str(session.get(seal_pick_key) or "").strip()
+            if not sealed_pick:
+                continue
+            sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
+            if write_pk in sealed_aliases or pk in sealed_aliases:
+                session[seal_pk_key] = key
 
 
 def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
@@ -736,7 +841,11 @@ __all__ = [
     "CREATIVE_SBI_PICK",
     "CREATIVE_STYLE_JAM_PICK",
     "FORCE_BPM_SYNC_ONCE_KEY",
+    "PK_USER_COMMIT_AT_KEY",
+    "PK_USER_COMMIT_PICK_KEY",
+    "PK_USER_COMMIT_TOKEN_KEY",
     "PRACTICE_KEY_BY_SOURCE_KEY",
+    "apply_authoritative_practice_key",
     "clear_practice_concert_key",
     "clear_source_bpm",
     "consume_force_bpm_sync",
@@ -755,4 +864,5 @@ __all__ = [
     "sbi_uses_custom_progression_preview",
     "set_practice_concert_key",
     "set_source_bpm",
+    "stamp_practice_key_user_commit",
 ]

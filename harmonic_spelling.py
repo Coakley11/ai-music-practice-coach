@@ -35,13 +35,24 @@ def harmonic_reference_for_chord(
     if "#" in root:
         return root
     try:
-        from music_theory import key_is_minor, normalize_chord_for_theory, normalize_root, split_chord
+        from music_theory import (
+            key_is_minor,
+            normalize_chord_for_theory,
+            normalize_root,
+            reference_spelling_mode,
+            split_chord,
+        )
 
         head = normalize_chord_for_theory(chord).split("/", 1)[0].strip() or str(chord or "").split("/", 1)[0].strip()
         _, suffix = split_chord(head or "C")
         low = str(suffix or "").lower()
         song = str(song_display_key or song_key_center or "").strip()
         is_minor_chord = "m" in low and "maj" not in low and "dim" not in low
+        # Chord-quality family wins for the chord's own notes: Gm is Bb (not A#)
+        # even when a leftover song Written Key is a sharp-side major (D).
+        chord_ref = f"{root}m" if is_minor_chord else root
+        if reference_spelling_mode(chord_ref) in {"flat", "sharp"}:
+            return chord_ref
         if song and key_is_minor(song) and not is_minor_chord:
             if normalize_root(split_chord(song)[0]) != normalize_root(root):
                 return root

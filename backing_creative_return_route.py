@@ -214,6 +214,15 @@ def apply_creative_return_route(
             refresh_mission_practice_context(session)
         except ImportError:
             pass
+    if src == "entry_jam":
+        # Entry Style Jam is temporary Creative ownership. Returning must not
+        # leave SBI Active Source on the last Custom preview (Trial).
+        try:
+            from songs.music_source import restore_sbi_active_from_sealed_global_owner
+
+            restore_sbi_active_from_sealed_global_owner(session)
+        except ImportError:
+            pass
     try:
         from backing_source_navigation import project_return_destination_to_canonical_creative_selectors
 

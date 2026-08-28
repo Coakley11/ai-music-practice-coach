@@ -67,6 +67,21 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
     wf_id = _workflow_identity(session, ctx)
     jam_label = return_to_regular_backing_label(session)
 
+    if src == "custom_progression":
+        candidates.append(
+            BackingNavAction(
+                action_id="return_custom_page",
+                label=return_to_source_button_label(ctx),
+                destination="custom",
+                purpose="return_custom_page",
+                icon="custom",
+                priority=10,
+            )
+        )
+        deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+        _store_nav_diag(session, candidates, deduped, removed)
+        return deduped, removed
+
     if src in {"entry_jam", "song_improv", "mission"}:
         creative_dest = "creative:missions" if src == "mission" or wf == "mission_jam" else "creative:improvisation"
         candidates.append(
@@ -121,34 +136,53 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         return deduped, removed
 
     if src == "regular_song" or not src:
+        custom_dest = None
         try:
-            from backing_session_route import get_backing_session_route
+            from custom_page_return_destination import peek_custom_page_return_destination
 
-            route = get_backing_session_route(session)
-            if route and route.song_source_type == "custom":
-                candidates.append(
-                    BackingNavAction(
-                        action_id="return_custom_songs",
-                        label="Return to Custom Songs",
-                        destination="creative:custom",
-                        purpose="return_custom_page",
-                        icon="creative",
-                        priority=10,
-                    )
-                )
-            else:
-                candidates.append(
-                    BackingNavAction(
-                        action_id="return_song_catalog",
-                        label="🎵 Return to Song Catalog",
-                        destination="picker:catalog",
-                        purpose="return_catalog_picker",
-                        icon="song_catalog",
-                        priority=10,
-                    )
-                )
+            custom_dest = peek_custom_page_return_destination(session)
         except ImportError:
-            pass
+            custom_dest = None
+        if isinstance(custom_dest, dict):
+            candidates.append(
+                BackingNavAction(
+                    action_id="return_custom_page",
+                    label="✏️ Return to Custom Page",
+                    destination="custom",
+                    purpose="return_custom_page",
+                    icon="custom",
+                    priority=10,
+                )
+            )
+        else:
+            try:
+                from backing_session_route import get_backing_session_route
+
+                route = get_backing_session_route(session)
+                if route and route.song_source_type == "custom":
+                    candidates.append(
+                        BackingNavAction(
+                            action_id="return_custom_songs",
+                            label="Return to Custom Songs",
+                            destination="creative:custom",
+                            purpose="return_custom_page",
+                            icon="creative",
+                            priority=10,
+                        )
+                    )
+                else:
+                    candidates.append(
+                        BackingNavAction(
+                            action_id="return_song_catalog",
+                            label="🎵 Return to Song Catalog",
+                            destination="picker:catalog",
+                            purpose="return_catalog_picker",
+                            icon="song_catalog",
+                            priority=10,
+                        )
+                    )
+            except ImportError:
+                pass
 
     deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
     _store_nav_diag(session, candidates, deduped, removed)

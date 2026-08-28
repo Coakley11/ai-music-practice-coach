@@ -90,7 +90,29 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
 
 
 def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
-    """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam."""
+    """Song-Based / Missions with an active catalog pick reclaim practice key from entry jam.
+
+    Leftover Creative-tab labels must not steal Practice Key once Backing is
+    showing a generated Style Jam / Jam Session. That leftover Motif/Missions
+    tab was blocking Jam Backing key changes and breaking handoff seal.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+                return False
+        except ImportError:
+            raw = session.get("backing_context")
+            if isinstance(raw, dict) and str(raw.get("source") or "") == "entry_jam":
+                return False
+    # Mid-open Style Jam / Jam Session handoff: leftover Motif/Missions tab
+    # must not steal PK while seal_backing_handoff_snapshot_for_creative_open runs
+    # (studio_page is still "creative" at that moment).
+    if str(session.get("_backing_explicit_handoff_source") or "").strip() == "entry_jam":
+        return False
     tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
     if tab in {
         "Missions",
@@ -1703,54 +1725,30 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 session["_pending_display_key"] = new
                 mutated = False
                 try:
-                    # Prefer immediate mutation so example/lick transpose on this click.
-                    # Never let blob errors roll back the sidebar widget selection.
-                    result = update_active_practice_key(
-                        session, new, source="sidebar_song_improv", transpose_progression=True
+                    from mission_backing_transpose import apply_mission_backing_practice_key_interval
+
+                    apply_mission_backing_practice_key_interval(
+                        session, new, from_key=from_key
                     )
-                    mutated = bool(result.ok)
-                    if mutated:
-                        finalize_sidebar_song_practice_key_after_mutation(
-                            session, new, st_like=st_like
-                        )
+                    mutated = True
                 except Exception:
                     mutated = False
-                if not mutated and from_key and from_key != new:
-                    try:
-                        from improvisation_missions import transpose_stored_mission_example
-                        from music_theory import semitone_distance, transpose_chord
-
-                        transpose_stored_mission_example(
-                            session, from_key=from_key, to_key=new
-                        )
-                        steps = semitone_distance(from_key, new)
-                        if steps:
-                            for key in (
-                                "ii_selected_chord",
-                                "II_SELECTED_CHORD",
-                                "_mission_backing_canonical_chord",
-                            ):
-                                raw = str(session.get(key) or "").strip()
-                                if raw:
-                                    session[key] = transpose_chord(
-                                        raw, steps, reference_key=new
-                                    )
-                            click = session.get("_mission_chord_click_authority")
-                            if isinstance(click, dict) and str(click.get("chord") or "").strip():
-                                click = dict(click)
-                                click["chord"] = transpose_chord(
-                                    str(click.get("chord")), steps, reference_key=new
-                                )
-                                session["_mission_chord_click_authority"] = click
-                    except Exception:
-                        pass
+                try:
+                    # Update owner blob keys only — musical interval is already applied once.
+                    result = update_active_practice_key(
+                        session, new, source="sidebar_song_improv", transpose_progression=False
+                    )
+                    mutated = mutated or bool(result.ok)
+                except Exception:
+                    pass
+                if mutated:
                     try:
                         finalize_sidebar_song_practice_key_after_mutation(
                             session, new, st_like=st_like
                         )
                     except Exception:
                         pass
-                elif not mutated and sidebar_song_practice_key_mutation_deferred(session):
+                elif sidebar_song_practice_key_mutation_deferred(session):
                     # Intent already queued by capture_*; hydrate will consume.
                     pass
             except Exception:

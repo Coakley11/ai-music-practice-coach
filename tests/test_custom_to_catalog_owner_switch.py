@@ -32,7 +32,11 @@ from songs.music_source import (
     switch_to_catalog_from_custom,
 )
 from songs.practice_key_state import (
+    PK_USER_COMMIT_AT_KEY,
+    PK_USER_COMMIT_PICK_KEY,
+    PK_USER_COMMIT_TOKEN_KEY,
     PRACTICE_KEY_BY_SOURCE_KEY,
+    apply_authoritative_practice_key,
     get_practice_concert_key,
     set_practice_concert_key,
 )
@@ -285,6 +289,116 @@ class TestCustomToCatalogOwnerSwitch(unittest.TestCase):
         session[PRACTICE_KEY_BY_SOURCE_KEY] = {PK_SHAPE: "Dm"}
         session[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY] = 1.0
         set_custom_source(session)
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+
+    def test_same_custom_reactivation_preserves_sticky_practice_key(self) -> None:
+        """Re-Set-as-Active while already Custom must keep the user's sticky key."""
+        from songs.music_source import custom_pick_key_for
+
+        session = _shape_catalog_session(practice_key="Bm")
+        self._activate_trial(session)
+        trial_pick = custom_pick_key_for(_trial_active())
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+        set_practice_concert_key(session, "E", pick_key=trial_pick, allow_restore_original=True)
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        self._activate_trial(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertIn("Trial Song", str(session.get("song") or ""))
+        self.assertEqual(str(session.get("display_key") or ""), "E")
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "E")
+
+    def test_stale_catalog_commit_token_cannot_overwrite_fresh_custom_key(self) -> None:
+        """Leftover Perfect G commit token must restamp to D, then refuse remount G."""
+        import time
+
+        from songs.music_source import custom_pick_key_for
+
+        session = _shape_catalog_session(practice_key="G")
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session[PK_USER_COMMIT_TOKEN_KEY] = "G"
+        session[PK_USER_COMMIT_AT_KEY] = time.time()
+        trial_pick = custom_pick_key_for(_trial_active())
+        session[PRACTICE_KEY_BY_SOURCE_KEY][trial_pick] = "G"
+        self._activate_trial(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "D")
+        self.assertEqual(str(session.get(PK_USER_COMMIT_TOKEN_KEY) or ""), "D")
+        set_practice_concert_key(session, "G", pick_key=trial_pick)
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "D")
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+
+    def test_catalog_to_custom_fixed_mode_uses_family_not_leftover_g(self) -> None:
+        import time
+
+        from practice_key_mode import (
+            MODE_FIXED,
+            PRACTICE_KEY_MODE_KEY,
+            apply_fixed_mode_target,
+            family_option_id,
+            set_fixed_practice_key_family,
+        )
+        from songs.music_source import custom_pick_key_for
+
+        session = _shape_catalog_session(practice_key="G")
+        session[PRACTICE_KEY_MODE_KEY] = MODE_FIXED
+        set_fixed_practice_key_family(session, family_option_id("C", "A"))
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session[PK_USER_COMMIT_TOKEN_KEY] = "G"
+        session[PK_USER_COMMIT_AT_KEY] = time.time()
+        self._activate_trial(session)
+        self.assertEqual(apply_fixed_mode_target(session, "D", "D"), "C")
+        self.assertEqual(str(session.get("display_key") or ""), "C")
+        trial_pick = custom_pick_key_for(_trial_active())
+        self.assertEqual(get_practice_concert_key(session, trial_pick), "C")
+
+    def test_written_and_guitar_shape_do_not_seize_custom_ownership(self) -> None:
+        session = _shape_catalog_session(practice_key="Bm")
+        session["instrument"] = "Guitar"
+        session["guitar_capo_enabled"] = True
+        session["guitar_capo_shape_key"] = "A"
+        session["written_key_mode"] = True
+        self._activate_trial(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertTrue(custom_owns_active_song_material(session))
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+        session["guitar_capo_shape_key"] = "E"
+        session["instrument"] = "Saxophone"
+        session["selected_transposing_instrument"] = "Alto saxophone (Eb)"
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertTrue(custom_owns_active_song_material(session))
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+
+    def test_authoritative_helper_restamps_instead_of_clearing_guard(self) -> None:
+        import time
+
+        session = {
+            "display_key": "G",
+            "concert_key": "G",
+            PK_USER_COMMIT_TOKEN_KEY: "G",
+            PK_USER_COMMIT_AT_KEY: time.time(),
+            PRACTICE_KEY_BY_SOURCE_KEY: {"custom::trial-rev-owner-1": "G"},
+        }
+        apply_authoritative_practice_key(
+            session,
+            "D",
+            pick_key="custom::trial-rev-owner-1",
+            sync_display=True,
+            sync_custom_widgets=True,
+        )
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("concert_key"), "D")
+        self.assertEqual(get_practice_concert_key(session, "custom::trial-rev-owner-1"), "D")
+        self.assertEqual(session.get(PK_USER_COMMIT_TOKEN_KEY), "D")
+        self.assertEqual(session.get(PK_USER_COMMIT_PICK_KEY), "custom::trial-rev-owner-1")
+        self.assertGreater(float(session.get(PK_USER_COMMIT_AT_KEY) or 0.0), 0.0)
+        set_practice_concert_key(session, "G", pick_key="custom::trial-rev-owner-1")
+        self.assertEqual(get_practice_concert_key(session, "custom::trial-rev-owner-1"), "D")
+        # A different owner (Shape) must still accept first-click Dm.
+        set_practice_concert_key(session, "Dm", pick_key=PK_SHAPE)
         self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
 
 

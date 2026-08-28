@@ -912,6 +912,14 @@ def merge_live_key_into_creative_session(session: dict[str, Any]) -> None:
 def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     """Apply persisted Creative session to widgets at page entry (after cloud restore)."""
     page = str(session.get("studio_page") or "").strip().lower()
+    try:
+        from custom_sbi_page_origin import consume_custom_sbi_page_origin_on_creative
+
+        if consume_custom_sbi_page_origin_on_creative(session):
+            session[f"_creative_session_hydrated_{page}"] = True
+            return
+    except ImportError:
+        pass
     hydrate_flag = f"_creative_session_hydrated_{page}"
     if session.get(hydrate_flag):
         return

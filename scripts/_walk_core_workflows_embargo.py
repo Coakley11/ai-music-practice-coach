@@ -308,7 +308,7 @@ def motif_notes_from_body(body: str) -> list[str]:
     chunk = body or ""
     m = re.search(
         r"(?:MOTIF\s+(?:PATTERN\s+)?ON[^\n]*\n+|MOTIF PATTERN[^\n]*\n+|Notes:\s*)"
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+        r"([A-G](?:#|b)?(?:\s*(?:[–—\-]|\|)\s*[A-G](?:#|b)?){2,})",
         chunk,
         re.I,
     )
@@ -326,7 +326,7 @@ def motif_notes_from_body(body: str) -> list[str]:
     if numbered:
         return numbered[:32]
     line = re.search(
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+        r"([A-G](?:#|b)?(?:\s*(?:[–—\-]|\|)\s*[A-G](?:#|b)?){2,})",
         window,
     )
     if line:
@@ -580,11 +580,40 @@ def main() -> int:
         # Back to D
         set_custom_pk(page, "D") or set_baseweb_select(page, "Practice / Concert Key", "D")
         settle(page, 2)
-        custom_ok = custom_restore and pk_changed and orig_ok
+        nav_exits = has_any(body, "Songs") and has_any(body, "Practice")
+        finish_nav = False
+        if click_button_has(page, r"Finish Song"):
+            settle(page, 2)
+            body_fin = shot(page, "03c-custom-finish")
+            finish_keys = page.evaluate(
+                """() => {
+                  const songs = document.querySelector('.st-key-cpl_exit_picker_finish button');
+                  const practice = document.querySelector('.st-key-cpl_exit_practice_finish button');
+                  const vis = (b) => {
+                    if (!b) return false;
+                    b.scrollIntoView({block: 'center'});
+                    const r = b.getBoundingClientRect();
+                    const s = window.getComputedStyle(b);
+                    return r.width > 8 && r.height > 8
+                      && s.visibility !== 'hidden' && s.display !== 'none';
+                  };
+                  return {songs: vis(songs), practice: vis(practice)};
+                }"""
+            ) or {}
+            finish_nav = bool(finish_keys.get("songs") and finish_keys.get("practice"))
+            if not finish_nav:
+                finish_nav = has_any(body_fin, "Leave Custom page") and has_any(
+                    body_fin, "🎼 Songs"
+                ) and has_any(body_fin, "🎯 Practice")
+            click_button_has(page, r"Keep editing")
+            settle(page, 1)
+        else:
+            finish_nav = nav_exits
+        custom_ok = custom_restore and pk_changed and orig_ok and nav_exits and finish_nav
         mark(
             "3_custom_page",
             "PASS" if custom_ok else ("PARTIAL" if custom_restore else "RED"),
-            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok}",
+            f"restore={custom_restore} before={before!r} after={after!r} orig={orig_ok} nav={nav_exits} finish_nav={finish_nav}",
         )
 
         # ========== 4. Custom SBI Backing ==========
@@ -747,12 +776,18 @@ def main() -> int:
                     or str(pk_label).strip().lower() in {"em", "bm", "e", "b"}
                 )
             content_moved = bool(notes_before and notes_after and notes_before != notes_after)
+            # Dm caption + Fm-family map is a real split (Songs Dm, leftover Fm
+            # concert). content_moved alone must not certify that as PASS.
+            stale_dm_fm = str(pk_heading or "").lower() in {"dm", "d minor"} and str(
+                heading_chord or ""
+            ).replace(" ", "") in {"Fm", "Bbm", "Db", "Eb", "fm", "bbm", "db", "eb"}
             mission_ok = bool(
                 one_click
                 and heading_chord
                 and has_example
                 and example_matches
                 and (pk_changed or content_moved)
+                and not stale_dm_fm
             )
             mark(
                 "6_missions",

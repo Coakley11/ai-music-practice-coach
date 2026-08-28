@@ -2,7 +2,139 @@
 
 from __future__ import annotations
 
-from app_ui import nav_icon_button_label
+from app_ui import STUDIO_PAGE_META, nav_icon_button_label
+
+
+def custom_page_exit_nav_items() -> list[dict[str, str]]:
+    """Persistent Custom-page exits: Songs + Practice with existing page icons.
+
+    Used by the finished view and builder launch row. Tests assert labels,
+    icons, and destinations without instantiating Streamlit widgets.
+    """
+    items: list[dict[str, str]] = []
+    for page_id in ("picker", "practice"):
+        meta = STUDIO_PAGE_META.get(page_id) or {}
+        items.append(
+            {
+                "page_id": page_id,
+                "label": nav_icon_button_label(page_id),
+                "destination": page_id,
+                "icon": str(meta.get("icon") or ""),
+            }
+        )
+    return items
+
+
+def custom_page_finished_action_items(*, has_chords: bool = True) -> list[dict[str, object]]:
+    """Primary finished-song actions. Songs / Practice stay after Finish Song.
+
+    Rendered as a dedicated full-width stack *outside* the builder panel so
+    Cloud viewports cannot clip them. Finish Song may swap editing controls,
+    but these icon exits remain.
+    """
+    exits = {str(item.get("destination") or ""): item for item in custom_page_exit_nav_items()}
+    songs = exits.get("picker") or {}
+    practice = exits.get("practice") or {}
+    return [
+        {
+            "role": "songs",
+            "destination": "picker",
+            "label": str(songs.get("label") or nav_icon_button_label("picker")),
+            "icon": str(songs.get("icon") or ""),
+            "key": "cpl_exit_picker_finish",
+            "disabled": False,
+        },
+        {
+            "role": "practice",
+            "destination": "practice",
+            "label": str(practice.get("label") or nav_icon_button_label("practice")),
+            "icon": str(practice.get("icon") or ""),
+            "key": "cpl_exit_practice_finish",
+            "disabled": not has_chords,
+        },
+        {
+            "role": "activate",
+            "label": "Set as Active Song",
+            "key": "cpl_set_active_finish",
+            "disabled": False,
+        },
+        {
+            "role": "backing",
+            "label": nav_icon_button_label("backing"),
+            "key": "cpl_to_backing_finish",
+            "disabled": not has_chords,
+        },
+        {
+            "role": "edit",
+            "label": "Keep editing",
+            "key": "cpl_unfinish",
+            "disabled": False,
+        },
+    ]
+
+
+def render_custom_page_finished_exits(
+    st,
+    *,
+    has_chords: bool,
+    on_songs,
+    on_practice,
+    on_activate,
+    on_backing,
+    on_edit,
+) -> None:
+    """Full-width Songs / Practice / studio exits outside the clipped builder panel."""
+    actions = custom_page_finished_action_items(has_chords=has_chords)
+    with st.container(key="custom_page_finished_exits"):
+        st.markdown("##### Leave Custom page")
+        for spec in actions:
+            role = str(spec.get("role") or "")
+            label = str(spec.get("label") or role)
+            key = str(spec.get("key") or f"cpl_{role}_finish")
+            if role == "songs":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_songs()
+            elif role == "practice":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_practice()
+            elif role == "activate":
+                if st.button(
+                    label,
+                    key=key,
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_activate()
+            elif role == "backing":
+                if st.button(
+                    label,
+                    key=key,
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_backing()
+            elif role == "edit":
+                if st.button(
+                    label,
+                    key=key,
+                    use_container_width=True,
+                    disabled=bool(spec.get("disabled")),
+                ):
+                    on_edit()
 
 
 def _cpl_active_is_substantive(active: object) -> bool:
@@ -164,8 +296,8 @@ def render_custom_progression_lab_page() -> None:
         CPL_TIME_SIGNATURES,
         CPL_UI_SECTION_ORDER,
         apply_cpl_session_progression,
+        apply_cpl_style_preset_append,
         apply_quick_chord_edit,
-        build_style_preset_entries,
         clear_all_cpl_sections,
         build_cpl_developer_diagnostics,
         cpl_active_from_session,
@@ -200,15 +332,19 @@ def render_custom_progression_lab_page() -> None:
         flatten_sections_to_events,
         format_key_label,
         CPL_KEY_OPTIONS,
+        CPL_PRESET_KEY,
+        coerce_preset_key_for_family,
         invalidate_cpl_derived_outputs,
         list_saved_progression_names,
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
-        practice_entries_to_original_key,
         preset_button_label,
+        preset_key_options_for_style,
+        preset_tonal_family,
         prepare_cpl_backing_handoff,
         presets_for_style,
+        resolve_cpl_preset_key,
         progression_is_empty,
         purge_cpl_ephemeral_widget_keys,
         save_progression,
@@ -365,17 +501,9 @@ def render_custom_progression_lab_page() -> None:
 
     def _open_backing() -> None:
         _save(None)
-        set_custom_source(st.session_state)
-        note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-        prepare_cpl_backing_handoff(st.session_state, active, section=None)
-        from studio_nav_history import navigate_studio_page
-        from studio_scroll_anchors import (
-            ANCHOR_BACKING_MAIN_CONTROLS,
-            set_pending_anchor,
-        )
+        from custom_progression_lab import launch_custom_page_backing
 
-        set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
-        navigate_studio_page(st.session_state, "backing")
+        launch_custom_page_backing(st.session_state, active, section=None)
         st.rerun()
 
     def _home_sections() -> dict:
@@ -407,6 +535,24 @@ def render_custom_progression_lab_page() -> None:
 
         navigate_studio_page(st.session_state, "picker")
         st.rerun()
+
+    def _keep_editing() -> None:
+        st.session_state["cpl_finished"] = False
+        st.rerun()
+
+    # Finished exits live *outside* the keyed builder panel. Cloud CSS / overflow
+    # on `.st-key-custom_song_builder_panel` previously clipped Songs / Practice.
+    if finished:
+        _early_sections = deep_copy_sections(display_sections_for_key(active, practice_key))
+        render_custom_page_finished_exits(
+            st,
+            has_chords=bool(flatten_sections_to_events(_early_sections)),
+            on_songs=_go_songs,
+            on_practice=_open_practice,
+            on_activate=_activate_custom_song,
+            on_backing=_open_backing,
+            on_edit=_keep_editing,
+        )
 
     with st.container(key="custom_song_builder_panel", border=False):
         render_custom_builder_panel_header(st, working_title=prog_title)
@@ -570,7 +716,7 @@ def render_custom_progression_lab_page() -> None:
                 title=prog_title,
                 artist=str(active.get("artist") or ""),
                 key_label=original_label,
-                display_key_label=display_label,
+                display_key_label=preview_label,
                 bpm=int(active.get("bpm", 100) or 100),
                 time_signature=str(active.get("time_signature") or "4/4"),
                 style=str(active.get("progression_style") or "Pop"),
@@ -592,32 +738,12 @@ def render_custom_progression_lab_page() -> None:
                 ),
                 unsafe_allow_html=True,
             )
-            map_html = song_structure_overview_html(active, display_key, only_filled=True)
+            map_html = song_structure_overview_html(active, practice_key, only_filled=True)
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
-            launch = st.columns([1, 1, 1])
-            with launch[0]:
-                if st.button(
-                    "Set as Active Song",
-                    key="cpl_set_active_finish",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    _activate_custom_song()
-            with launch[1]:
-                if st.button(
-                    nav_icon_button_label("backing"),
-                    key="cpl_to_backing_finish",
-                    use_container_width=True,
-                    disabled=not has_chords,
-                ):
-                    _open_backing()
-            with launch[2]:
-                if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
-                    st.session_state["cpl_finished"] = False
-                    st.rerun()
-
+            # Songs / Practice / studio exits are rendered above this panel
+            # (Cloud-safe, unclipped). Keep editing stays in that same stack.
             _save(None)
             return
 
@@ -670,7 +796,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown(
             f'<p class="cpl-key-line">Original key <strong>{original_label}</strong> · '
             f"Practice key <strong>{preview_label}</strong> "
-            f"(builder, presets, and progression project from Practice Key)</p>",
+            f"(builder and progression project from Practice Key)</p>",
             unsafe_allow_html=True,
         )
 
@@ -892,26 +1018,42 @@ def render_custom_progression_lab_page() -> None:
 
         if style_presets:
             st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-            st.markdown(f"**{style} presets** ({preview_label}) — fills {edit_section} only")
+            st.markdown(f"**{style} presets** — appends to {edit_section} only")
+            preset_options = preset_key_options_for_style(style)
+            resolve_cpl_preset_key(st.session_state, style)
+            st.selectbox(
+                "Preset Key",
+                preset_options,
+                key=CPL_PRESET_KEY,
+                format_func=format_key_label,
+                help="Transposes this preset only. Your song key and Practice Key stay unchanged.",
+            )
+            st.caption(
+                "Transposes this preset only. Your song key and Practice Key stay unchanged."
+            )
+            preset_key_now = resolve_cpl_preset_key(st.session_state, style)
             for preset_id, spec in style_presets.items():
-                label = preset_button_label(preset_id, practice_key, spec)
+                family = preset_tonal_family(style, preset_id)
+                batch_key = coerce_preset_key_for_family(preset_key_now, family)
+                label = preset_button_label(preset_id, batch_key, spec)
                 if st.button(
                     label,
                     key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
                     use_container_width=True,
                 ):
-                    practice_entries = build_style_preset_entries(
-                        style, preset_id, practice_key
-                    )
-                    home_sections[edit_section] = practice_entries_to_original_key(
-                        practice_entries, practice_key, original_key
+                    apply_cpl_style_preset_append(
+                        st.session_state,
+                        style=style,
+                        preset_id=preset_id,
+                        section_name=edit_section,
                     )
                     cpl_clear_pending_chord(st.session_state, edit_section)
-                    if home_sections[edit_section]:
+                    home_now = _home_sections()
+                    if home_now.get(edit_section):
                         st.session_state[last_bars_key] = int(
-                            home_sections[edit_section][-1].get("bars", 1) or 1
+                            home_now[edit_section][-1].get("bars", 1) or 1
                         )
-                    _save(home_sections)
+                    _save(home_now)
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 

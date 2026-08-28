@@ -83,6 +83,7 @@ except ImportError:
 CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
 CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
+CPL_PRESET_KEY = "cpl_preset_key"
 
 CPL_SECTION_NAMES: list[str] = [
     "Intro",
@@ -552,6 +553,21 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     """
     active = active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
     home = cpl_draft_written_key(active) if isinstance(active, dict) else "C"
+    custom_is_ga = False
+    catalog_sticky = ""
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        custom_is_ga = bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+        catalog_pick = str(resolve_practice_source_pick(session_state) or "").strip()
+        if catalog_pick and not catalog_pick.startswith("custom::"):
+            catalog_sticky = str(get_practice_concert_key(session_state, catalog_pick) or "").strip()
+    except ImportError:
+        custom_is_ga = False
+        catalog_sticky = ""
     # 0) Force-home after New song / identity install outranks a stale dedicated widget
     # from the previous Custom song (widgets may still be locked from the prior run).
     force_home = str(session_state.get("_cpl_force_pk_to_home") or "").strip()
@@ -560,7 +576,11 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     # 1) Dedicated Custom-page Practice Key widget (authoritative while on Custom).
     dedicated = str(session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
     if dedicated:
-        return dedicated
+        # Catalog live PK must not seed local Custom editing when Catalog is GA.
+        if not custom_is_ga and catalog_sticky and dedicated == catalog_sticky and dedicated != home:
+            dedicated = ""
+        else:
+            return dedicated
     pending = str(session_state.get(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY) or "").strip()
     if pending:
         return pending
@@ -579,7 +599,10 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     # 3) Original Key of the current Custom song (identity = no transpose).
     if home:
         return home
-    # 4) Last resort: shared display_key (Catalog/Custom may share this off Custom page).
+    # 4) Last resort: shared display_key only when Custom is Global Active.
+    # Catalog live PK must not become Trial's local editor key.
+    if not custom_is_ga:
+        return home or "C"
     try:
         from progression_helpers import session_display_key
 
@@ -587,6 +610,54 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
     except ImportError:
         live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
     return live or "C"
+
+
+def custom_sbi_local_practice_key(session_state: dict, active: dict | None = None) -> str:
+    """Trial/Custom SBI local Practice Key — never Catalog Shape Dm/Bm.
+
+    Visiting Custom SBI or Open Custom Lab must not inherit the Global Active
+    catalog key. If the workspace token equals the catalog sticky / live GA
+    key and differs from the Custom home, use the Custom home.
+    """
+    active = active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
+    token = str(cpl_workspace_practice_key(session_state, active) or "").strip()
+    home = ""
+    if isinstance(active, dict):
+        try:
+            home = str(cpl_draft_written_key(active) or active.get("original_key_center") or "").strip()
+        except Exception:
+            home = str(active.get("original_key_center") or "").strip()
+    custom_is_ga = False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        custom_is_ga = bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+    except ImportError:
+        custom_is_ga = False
+    # When Custom is Global Active, live PK is Trial's own key (including C).
+    # Only reject catalog-family tokens while Catalog still owns.
+    if custom_is_ga:
+        return token or home or "C"
+    if token and home and token != home:
+        ga_pk = str(
+            session_state.get("display_key") or session_state.get("concert_key") or ""
+        ).strip()
+        catalog_sticky = ""
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            catalog_pick = str(resolve_practice_source_pick(session_state) or "").strip()
+            if catalog_pick and not catalog_pick.startswith("custom::"):
+                catalog_sticky = str(
+                    get_practice_concert_key(session_state, catalog_pick) or ""
+                ).strip()
+        except ImportError:
+            catalog_sticky = ""
+        if token == ga_pk or (catalog_sticky and token == catalog_sticky):
+            return home
+    return token or home or "C"
 
 
 def practice_chord_to_original_key(chord: str, practice_key: str, original_key: str) -> str:
@@ -666,9 +737,9 @@ def sync_custom_workspace_practice_key(
                 token,
                 widget_safe=True,
             )
-        # Custom page UX still mirrors display_key; Catalog sticky contamination is
-        # prevented by always writing set_practice_concert_key with custom pick below
-        # and by skipping on_sidebar sync when Custom is not Global Active.
+        # Page-scoped sidebar projection: Custom page may show Trial D in
+        # display_key while Catalog still owns. Catalog sticky is sealed
+        # separately and is not written here.
         safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
     except ImportError:
         session_state[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = token
@@ -721,6 +792,19 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         display_key_options,
     )
 
+    try:
+        from custom_sbi_page_origin import apply_custom_sbi_origin_on_custom_page
+
+        apply_custom_sbi_origin_on_custom_page(session)
+    except ImportError:
+        pass
+    try:
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        apply_custom_page_return_destination(session, consume=True)
+    except ImportError:
+        pass
+
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
     stored_home = cpl_draft_written_key(active)
     widget_home_raw = str(session.get("cpl_original_key") or "").strip()
@@ -765,27 +849,34 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     live_global = str(
         session.get("display_key") or session.get("concert_key") or ""
     ).strip()
+    catalog_sticky = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_sticky = (
+            str(get_practice_concert_key(session, catalog_pick) or "").strip()
+            if catalog_pick and not catalog_pick.startswith("custom::")
+            else ""
+        )
+    except ImportError:
+        catalog_sticky = ""
     # Reject catalog live bleed into the dedicated Custom widget when Custom is not GA.
     if not custom_is_ga and live_widget:
-        try:
-            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
-
-            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-            catalog_sticky = (
-                str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if catalog_pick and not catalog_pick.startswith("custom::")
-                else ""
-            )
-            if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
-                live_widget = ""
-                session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
-        except ImportError:
-            pass
-    live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
+        if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
+            live_widget = ""
+            session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
+    # Local Custom editing never inherits Catalog display_key merely because
+    # Catalog remains Global Active.
+    live = live_widget
     if custom_is_ga and not live_widget:
         live = live_global
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
+    # Global pending display_key is the Catalog owner's sidebar key while
+    # Catalog remains Global Active. It must not seed Trial's local editor.
+    if not custom_is_ga:
+        pending_s = ""
     original_just_changed = bool(
         widget_home and stored_home_n and widget_home != stored_home_n
     )
@@ -807,6 +898,13 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         # New Custom song/identity must not keep the prior song's live Practice Key
         # (pending can be lost across rerun; sticky/home are authoritative).
         selected = sticky or home
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
     elif live and live in options:
         # Prefer Custom sticky when global/live still holds the sealed catalog PK
@@ -823,9 +921,7 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
                 catalog_sticky = str(_get_pk(session, _cp) or "").strip()
         except ImportError:
             catalog_sticky = ""
-        if sticky and live != sticky and (
-            (catalog_sticky and live == catalog_sticky) or (not custom_is_ga and live != home and sticky == home)
-        ):
+        if sticky and live != sticky and catalog_sticky and live == catalog_sticky:
             selected = sticky
             force_seed_widget = True
         else:
@@ -835,9 +931,23 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         force_seed_widget = True
     elif sticky and sticky in options:
         selected = sticky
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
     else:
         selected = sticky or live or home
+        if (
+            not custom_is_ga
+            and catalog_sticky
+            and selected == catalog_sticky
+            and selected != home
+        ):
+            selected = home
         force_seed_widget = True
 
     if selected not in options:
@@ -848,41 +958,16 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     if force_seed_widget or not widget_now or widget_now not in options:
         session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = selected
 
-    # Project Custom PK into the left-panel sidebar for this Custom visit.
-    # Seal catalog sticky first so Shape Dm/F survives when the user leaves Custom.
+    # Page-scoped sidebar projection: Custom page shows Trial's Practice Key
+    # (local control + left panel) without seizing Global Active. Seal Shape's
+    # catalog sticky first so leaving Custom restores Bm on the first Songs render.
     if not custom_is_ga:
         try:
-            from songs.practice_key_state import (
-                get_practice_concert_key,
-                resolve_practice_source_pick,
-                set_practice_concert_key,
-            )
+            from songs.music_source import seal_catalog_live_practice_key_for_custom_page
 
-            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-            live_catalog = str(
-                session.get("display_key") or session.get("concert_key") or ""
-            ).strip()
-            # Seal catalog sticky once on enter — never overwrite an existing Shape
-            # sticky with Custom live (E / C# / Eb → Shape contamination).
-            if (
-                catalog_pick
-                and not catalog_pick.startswith("custom::")
-                and live_catalog
-                and not session.get("_custom_page_sidebar_overlay")
-            ):
-                existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if not existing:
-                    set_practice_concert_key(
-                        session,
-                        live_catalog,
-                        pick_key=catalog_pick,
-                        allow_catalog_during_sbi_custom=True,
-                    )
-            session["_custom_page_sidebar_overlay"] = True
+            seal_catalog_live_practice_key_for_custom_page(session, reject_live=selected)
         except ImportError:
-            pass
-    session["display_key"] = selected
-    session["concert_key"] = selected
+            session["_custom_page_sidebar_overlay"] = True
     session[CPL_LAST_DISPLAY_KEY] = selected
     try:
         from songs.music_source import custom_pick_key_for
@@ -893,6 +978,8 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         )
     except ImportError:
         pass
+    session["display_key"] = selected
+    session["concert_key"] = selected
     try:
         from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
@@ -1091,25 +1178,350 @@ def clear_all_cpl_sections(home_sections: dict[str, list]) -> None:
         home_sections[name] = []
 
 
+CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY = "_custom_page_backing_keep_catalog_owner"
+CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY = "_custom_page_launched_catalog_backing"
+
+
+def trial_custom_is_global_active(session_state: object | None) -> bool:
+    """True only when Trial/Custom has been Set as Active Song."""
+    if session_state is None:
+        return False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        return bool(
+            custom_progression_is_active(session_state) or is_custom_progression(session_state)
+        )
+    except Exception:
+        src = str(_session_get(session_state, "active_music_source") or "")
+        return src in {"custom_progression", "custom"}
+
+
+def custom_page_launched_catalog_backing(session_state: object | None) -> bool:
+    """True when Custom-page Backing opened the Global Active Catalog owner."""
+    if session_state is None:
+        return False
+    return bool(_session_get(session_state, CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+
+
+def _session_get(session_state: object, key: str, default: object = None) -> object:
+    """Read a session key from a dict or live Streamlit SessionState."""
+    if session_state is None:
+        return default
+    getter = getattr(session_state, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except Exception:
+            pass
+    try:
+        return session_state[key]  # type: ignore[index]
+    except Exception:
+        return default
+
+
+def custom_page_backing_keeps_catalog_owner(session_state: object | None) -> bool:
+    """True when Custom-page Backing opened Trial *and* Trial is Global Active.
+
+    If Trial is only being viewed (not Set as Active), Custom-page Backing
+    opens Catalog Shape. That path must not set this flag — otherwise the
+    sidebar overlays Trial/D onto Catalog Bm.
+    """
+    if session_state is None:
+        return False
+    if custom_page_launched_catalog_backing(session_state):
+        return False
+    if not trial_custom_is_global_active(session_state):
+        return False
+    if _session_get(session_state, CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY):
+        return True
+    return str(_session_get(session_state, "_backing_explicit_handoff_source") or "").strip() == (
+        "custom_progression"
+    )
+
+
+def _session_pop(session_state: object, key: str) -> None:
+    try:
+        session_state.pop(key, None)  # type: ignore[attr-defined]
+    except Exception:
+        try:
+            del session_state[key]  # type: ignore[index]
+        except Exception:
+            pass
+
+
+def clear_custom_page_backing_keep_catalog_owner(session_state: object | None) -> None:
+    """Drop the Custom-page Trial overlay when the user opens ordinary Catalog Backing."""
+    if session_state is None:
+        return
+    _session_pop(session_state, CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY)
+    if str(_session_get(session_state, "_backing_explicit_handoff_source") or "").strip() == (
+        "custom_progression"
+    ):
+        _session_pop(session_state, "_backing_explicit_handoff_source")
+
+
+def ensure_custom_page_trial_backing(
+    session_state: dict,
+    *,
+    st_like: object | None = None,
+) -> bool:
+    """Keep Trial Custom Backing only when Trial is Global Active.
+
+    Viewing Trial on the Custom page (Catalog still GA) must not force Trial
+    backing — Catalog Shape is the correct owner. The Custom-page return
+    destination is sealed separately.
+    """
+    _ = st_like
+    if custom_page_launched_catalog_backing(session_state):
+        return False
+    if not trial_custom_is_global_active(session_state):
+        return False
+    if not custom_page_backing_keeps_catalog_owner(session_state):
+        return False
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    if page and page != "backing":
+        return False
+    try:
+        from backing_context import get_backing_context, is_backing_context_valid
+    except ImportError:
+        return False
+    ctx = get_backing_context(session_state)
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    valid_custom = bool(
+        ctx is not None
+        and src == "custom_progression"
+        and is_backing_context_valid(session_state, ctx)
+    )
+    if not valid_custom:
+        active = session_state.get(CPL_ACTIVE_KEY)
+        if not isinstance(active, dict):
+            active = cpl_active_from_session(session_state)
+        prepare_cpl_backing_handoff(
+            session_state,
+            active,
+            promote_to_global_active=False,
+        )
+        ctx = get_backing_context(session_state)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        valid_custom = bool(ctx is not None and src == "custom_progression")
+    if valid_custom:
+        seal_custom_page_backing_handoff(session_state)
+        return True
+    return False
+
+
+def seal_custom_page_backing_handoff(session_state: dict) -> None:
+    """Mark Custom-page → Backing as specialized Trial Custom, not Catalog.
+
+    ``navigate_studio_page`` treats ``custom`` like a top-level page and stamps
+    generic catalog entry. Re-seal after that nav so hydrate cannot fall through
+    to Shape of You merely because Catalog is still Global Active.
+    """
+    session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY] = True
+    try:
+        from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+        stamp_explicit_backing_handoff(session_state, "custom_progression")
+    except ImportError:
+        session_state["_backing_explicit_handoff_source"] = "custom_progression"
+    try:
+        from backing_source_navigation import mark_specialized_backing_handoff_entry
+
+        mark_specialized_backing_handoff_entry(session_state)
+    except ImportError:
+        pass
+    try:
+        from backing_context import BACKING_PREF_CUSTOM, set_backing_source_preference
+
+        set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    except ImportError:
+        pass
+
+
 def prepare_cpl_backing_handoff(
     session_state: dict,
     active: dict,
     *,
     section: str | None = None,
+    promote_to_global_active: bool = True,
 ) -> None:
-    """Sync CPL tempo/groove into Backing Track via canonical backing context."""
+    """Sync CPL tempo/groove into Backing Track via canonical backing context.
+
+    Custom-page Backing passes ``promote_to_global_active=False`` so Trial
+    progression/playback can open while Shape remains Global Active.
+    """
     from backing_context import (
         apply_backing_context_to_session,
         build_custom_progression_context,
         set_backing_context,
     )
 
+    if not promote_to_global_active:
+        try:
+            from songs.music_source import seal_catalog_live_practice_key_for_custom_page
+
+            seal_catalog_live_practice_key_for_custom_page(session_state)
+        except ImportError:
+            pass
+        session_state[CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY] = True
     ctx = build_custom_progression_context(session_state)
     if section:
         ctx.section = section
         ctx.scope = "Single section"
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
     set_backing_context(session_state, ctx)
-    apply_backing_context_to_session(session_state, ctx)
+    apply_backing_context_to_session(
+        session_state,
+        ctx,
+        promote_to_global_active=promote_to_global_active,
+    )
+    if not promote_to_global_active:
+        try:
+            practice_key = str(
+                ctx.concert_key
+                or ctx.display_key
+                or cpl_workspace_practice_key(session_state, active)
+                or ""
+            ).strip()
+            if practice_key:
+                sync_custom_workspace_practice_key(
+                    session_state,
+                    practice_key=practice_key,
+                    active=active,
+                    source="custom_page_backing",
+                )
+        except Exception:
+            pass
+        seal_custom_page_backing_handoff(session_state)
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
+
+
+def launch_custom_page_catalog_backing(session_state: dict) -> None:
+    """Open Global Active Catalog backing from the Custom page.
+
+    Launch origin (Return to Custom Page / Trial workspace) is sealed separately
+    from the backing owner. Sidebar and main card must both show Catalog.
+    """
+    clear_custom_page_backing_keep_catalog_owner(session_state)
+    session_state[CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY] = True
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
+    try:
+        from songs.music_source import (
+            restore_catalog_live_practice_key,
+            seal_catalog_live_practice_key_for_custom_page,
+        )
+
+        reject = ""
+        try:
+            from custom_page_return_destination import peek_custom_page_return_destination
+
+            dest = peek_custom_page_return_destination(session_state)
+            if isinstance(dest, dict):
+                reject = str(dest.get("practice_key") or "").strip()
+        except ImportError:
+            reject = ""
+        if not reject:
+            reject = str(cpl_workspace_practice_key(session_state) or "").strip()
+        seal_catalog_live_practice_key_for_custom_page(session_state, reject_live=reject)
+        restore_catalog_live_practice_key(session_state)
+    except ImportError:
+        pass
+    try:
+        from backing_context import (
+            BACKING_PREF_CATALOG,
+            restore_regular_song_backing,
+            set_backing_source_preference,
+        )
+
+        set_backing_source_preference(session_state, BACKING_PREF_CATALOG)
+        restore_regular_song_backing(session_state)
+    except ImportError:
+        pass
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
+    try:
+        from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+
+        set_pending_anchor(session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+    except ImportError:
+        pass
+    from studio_nav_history import navigate_studio_page
+
+    navigate_studio_page(session_state, "backing")
+    session_state[CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY] = True
+    try:
+        from backing_context import restore_regular_song_backing
+
+        restore_regular_song_backing(session_state)
+    except ImportError:
+        pass
+    try:
+        from custom_page_return_destination import stamp_custom_page_return_destination_on_backing_context
+
+        stamp_custom_page_return_destination_on_backing_context(session_state)
+    except ImportError:
+        pass
+
+
+def launch_custom_page_backing(
+    session_state: dict,
+    active: dict | None = None,
+    *,
+    section: str | None = None,
+) -> None:
+    """Open Backing from the Custom page.
+
+    If Trial is not Set as Active, open the Global Active Catalog backing
+    (Shape). Always seal Return to Custom Page for the Trial workspace.
+    """
+    if not isinstance(active, dict):
+        active = cpl_active_from_session(session_state)
+    try:
+        from custom_page_return_destination import seal_custom_page_return_destination
+
+        seal_custom_page_return_destination(session_state)
+    except ImportError:
+        pass
+    if not trial_custom_is_global_active(session_state):
+        launch_custom_page_catalog_backing(session_state)
+        return
+    session_state.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
+    prepare_cpl_backing_handoff(
+        session_state,
+        active,
+        section=section,
+        promote_to_global_active=False,
+    )
+    try:
+        from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+
+        set_pending_anchor(session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+    except ImportError:
+        pass
+    from studio_nav_history import navigate_studio_page
+
+    navigate_studio_page(session_state, "backing")
+    seal_custom_page_backing_handoff(session_state)
 
 
 def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:
@@ -1460,6 +1872,7 @@ CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     "cpl_style_early",
     "cpl_bpm_builder",
     "cpl_groove_style",
+    CPL_PRESET_KEY,
     CPL_PENDING_CHORD_KEY,
     CPL_PENDING_SECTION_KEY,
 )
@@ -2847,6 +3260,207 @@ STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
 
 # Backward-compatible alias
 SIMPLE_PRESET_SPECS = STYLE_PRESET_SPECS.get("Pop", {})
+
+# Preset tonal family is metadata on the preset itself — never the song mode.
+STYLE_PRESET_TONAL_FAMILY: dict[str, dict[str, str]] = {
+    "Pop": {
+        "I–V–vi–IV": "major",
+        "vi–IV–I–V": "major",
+        "I–vi–IV–V": "major",
+    },
+    "Soul/R&B": {
+        "I–vi–IV–V": "major",
+        "vi–IV–I–V": "major",
+        "ii–V–I": "major",
+        "I–IV–vi–V": "major",
+    },
+    "Jazz": {
+        "ii–V–I": "major",
+        "I–vi–ii–V": "major",
+        "Jazz turnaround": "major",
+        "Neo soul": "major",
+    },
+    "Bossa": {
+        "Bossa ii–V": "major",
+        "Minor bossa": "minor",
+        "Bossa cadence": "major",
+        "I–V–vi–IV": "major",
+    },
+    "Blues": {
+        "Blues (8 bars)": "major",
+        "Quick change": "major",
+        "ii–V–I": "major",
+    },
+    "Funk": {
+        "I7 vamp": "major",
+        "i7–IV7": "minor",
+        "I–IV–I": "major",
+    },
+    "Rock": {
+        "I–V–vi–IV": "major",
+        "I–IV–V": "major",
+        "vi–IV–I–V": "major",
+        "I–V–IV–V": "major",
+    },
+}
+
+
+def preset_tonal_family(style: str, preset_id: str) -> str:
+    """Return ``major`` or ``minor`` from the preset's own family, not the song key."""
+    explicit = str(
+        (STYLE_PRESET_TONAL_FAMILY.get(style) or {}).get(preset_id) or ""
+    ).strip().lower()
+    if explicit in {"major", "minor"}:
+        return explicit
+    pid = str(preset_id or "").strip().lower()
+    if "minor" in pid:
+        return "minor"
+    spec = presets_for_style(style).get(preset_id) or []
+    if spec:
+        deg, qual = spec[0]
+        q = str(qual or "")
+        if int(deg or 0) == 0 and q.startswith("m") and "maj" not in q:
+            return "minor"
+    return "major"
+
+
+def preset_key_options_for_style(style: str) -> list[str]:
+    """Key choices for the Preset Key dropdown from the style's preset families."""
+    families = {
+        preset_tonal_family(style, preset_id)
+        for preset_id in (presets_for_style(style) or {})
+    }
+    try:
+        from music_theory import enharmonic_keys_for_mode
+    except ImportError:
+        def enharmonic_keys_for_mode(mode: str) -> list[str]:
+            return list(
+                ENHARMONIC_MINOR_KEYS if str(mode).lower() == "minor" else ENHARMONIC_MAJOR_KEYS
+            )
+
+    if families == {"minor"}:
+        return list(enharmonic_keys_for_mode("minor"))
+    if families == {"major"}:
+        return list(enharmonic_keys_for_mode("major"))
+    return list(enharmonic_keys_for_mode("major")) + list(enharmonic_keys_for_mode("minor"))
+
+
+def coerce_preset_key_for_family(token: str, family: str) -> str:
+    """Keep the chosen tonic; spell it in the preset's major/minor family."""
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        tonic, _mode = split_key_center(str(token or "C").strip() or "C")
+        return key_center_token(tonic, "minor" if family == "minor" else "major")
+    except ImportError:
+        raw = str(token or "C").strip() or "C"
+        if family == "minor":
+            return raw if _is_minor_home_key(raw) else f"{chord_root(raw)}m"
+        return chord_root(raw) or "C"
+
+
+def default_cpl_preset_key(style: str = "") -> str:
+    families = {
+        preset_tonal_family(style, preset_id)
+        for preset_id in (presets_for_style(style) or {})
+    }
+    if families == {"minor"}:
+        return "Am"
+    return "C"
+
+
+def _coerce_preset_key_to_options(token: str, options: list[str]) -> str:
+    raw = str(token or "").strip()
+    if raw in options:
+        return raw
+    try:
+        from music_theory import split_key_center
+
+        tonic, _mode = split_key_center(raw or "C")
+    except ImportError:
+        tonic = chord_root(raw or "C")
+    for opt in options:
+        try:
+            from music_theory import split_key_center
+
+            ot, _om = split_key_center(opt)
+        except ImportError:
+            ot = chord_root(opt)
+        if ot == tonic:
+            return opt
+    return ""
+
+
+def resolve_cpl_preset_key(session_state: dict, style: str = "") -> str:
+    """Local Preset Key only — never writes song / Practice / Written / Shape keys."""
+    options = preset_key_options_for_style(style)
+    token = str(session_state.get(CPL_PRESET_KEY) or "").strip()
+    if token in options:
+        return token
+    coerced = _coerce_preset_key_to_options(token, options)
+    chosen = coerced or default_cpl_preset_key(style)
+    session_state[CPL_PRESET_KEY] = chosen
+    return chosen
+
+
+def set_cpl_preset_key(session_state: dict, token: str, style: str = "") -> str:
+    """Set the local Preset Key without touching song identity or Practice Key."""
+    session_state[CPL_PRESET_KEY] = str(token or "").strip() or default_cpl_preset_key(style)
+    return resolve_cpl_preset_key(session_state, style)
+
+
+def preview_style_preset_chords(style: str, preset_id: str, preset_key: str) -> list[str]:
+    family = preset_tonal_family(style, preset_id)
+    batch_key = coerce_preset_key_for_family(preset_key, family)
+    return preset_chords_for_key(presets_for_style(style).get(preset_id) or [], batch_key)
+
+
+def append_entries_to_cpl_section(
+    sections: dict | None,
+    section_name: str,
+    entries: list[dict],
+) -> dict[str, list]:
+    """Append entries to one section. Never replace existing chords or other sections."""
+    out = ensure_all_cpl_sections(sections)
+    name = str(section_name or "").strip() or "Verse"
+    if name not in out:
+        out[name] = []
+    existing = [dict(entry) for entry in (out.get(name) or [])]
+    added: list[dict] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        chord = str(entry.get("chord") or "").strip()
+        if not chord:
+            continue
+        added.append(dict(entry))
+    out[name] = existing + added
+    return out
+
+
+def apply_cpl_style_preset_append(
+    session_state: dict,
+    *,
+    style: str,
+    preset_id: str,
+    section_name: str,
+) -> dict:
+    """Append the previewed preset batch to one section. Does not seize Global Active."""
+    active = ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or {})
+    original_key = cpl_draft_written_key(active)
+    practice_key = cpl_workspace_practice_key(session_state, active)
+    preset_key = resolve_cpl_preset_key(session_state, style)
+    family = preset_tonal_family(style, preset_id)
+    batch_key = coerce_preset_key_for_family(preset_key, family)
+    preview_entries = build_style_preset_entries(style, preset_id, batch_key)
+    stored = practice_entries_to_original_key(preview_entries, practice_key, original_key)
+    active["original_sections"] = append_entries_to_cpl_section(
+        active.get("original_sections"),
+        section_name,
+        stored,
+    )
+    session_state[CPL_ACTIVE_KEY] = active
+    return active
 
 
 def preset_chords_for_key(spec: list[tuple[int, str]], home_key: str) -> list[str]:

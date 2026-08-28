@@ -465,7 +465,11 @@ def _abc_pitch(midi: int) -> str:
 
 
 def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
-    """Spell a note name (with b or #) for ABC; respects flats like Bb."""
+    """Spell a note name (with b or #) for ABC; respects flats like Bb.
+
+    Accidentals precede the letter; octave marks follow it (``_B,`` not ``_,b``)
+    so parsers and key-signature-aware readers see the same pitch class.
+    """
     text = str(note or "C").strip()
     if not text:
         return "C"
@@ -476,12 +480,42 @@ def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
         acc = "_"
     elif rest.startswith("#") or rest.startswith("♯"):
         acc = "^"
-    letter = head.lower() if octave <= 3 else head
-    if octave < 4:
-        letter = "," + letter
-    elif octave >= 5:
-        letter = letter + "'" * (octave - 4)
+    if int(octave) >= 5:
+        letter = head.lower() + ("'" * (int(octave) - 5))
+    elif int(octave) < 4:
+        letter = head + ("," * (4 - int(octave)))
+    else:
+        letter = head
     return f"{acc}{letter}"
+
+
+_ABC_NOTE_TOKEN = re.compile(r"([_^=]*)([A-Ga-g])([,']*)")
+
+
+def parse_motif_abc_note_names(abc: str) -> list[str]:
+    """Spelled note names from a motif ABC body, in sounding order.
+
+    Inverse of ``_note_name_to_abc_pitch`` for contract tests: text, notation,
+    and MIDI must realize the same pitch-class sequence.
+    """
+    text = str(abc or "")
+    if "K:" in text:
+        after_k = text.split("K:", 1)[1]
+        lines = after_k.splitlines()
+        music = " ".join(lines[1:]) if len(lines) > 1 else after_k
+    else:
+        music = text
+    names: list[str] = []
+    for match in _ABC_NOTE_TOKEN.finditer(music):
+        acc, letter, _oct = match.group(1), match.group(2), match.group(3)
+        if "_" in acc:
+            name = letter.upper() + "b"
+        elif "^" in acc:
+            name = letter.upper() + "#"
+        else:
+            name = letter.upper()
+        names.append(name)
+    return names
 
 
 def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
@@ -1076,8 +1110,102 @@ def _shift_notes_by_collection_steps(
     return respell_notes_for_key(out, key_center), out_midi
 
 
+def _align_cell_midis_to_direction(
+    cell_midis: list[int],
+    prev_last: int | None,
+    *,
+    sign: int,
+) -> list[int]:
+    """Octave-shift a whole cell so it continues the named direction.
+
+    Preserves intra-cell intervals and pitch classes. Fixes lower-octave
+    restarts at cell boundaries (C5→E4) without rewriting the source contour.
+    """
+    if not cell_midis:
+        return []
+    out = [int(m) for m in cell_midis]
+    if prev_last is None:
+        return out
+    last = int(prev_last)
+    if sign >= 0:
+        while out[0] < last:
+            out = [m + 12 for m in out]
+    else:
+        while out[0] > last:
+            out = [m - 12 for m in out]
+    return out
+
+
+def _realize_pc_in_direction(pc: int, prev: int, sign: int) -> int:
+    """Nearest octave of ``pc`` that continues the named direction from ``prev``.
+
+    Unison is allowed when the pitch class repeats. Does not change pitch class.
+    """
+    target = int(pc) % 12
+    last = int(prev)
+    base = (last // 12) * 12 + target
+    if sign >= 0:
+        if base < last:
+            base += 12
+        while base < last:
+            base += 12
+        return base
+    if base > last:
+        base -= 12
+    while base > last:
+        base -= 12
+    return base
+
+
+def _realize_midis_in_named_direction(
+    midis: list[int],
+    *,
+    sign: int,
+    start_midi: int | None = None,
+) -> list[int]:
+    """Place each next pitch class in the nearest octave that follows ``sign``.
+
+    Keeps the note-order / pitch-class sequence. Used so every adjacent MIDI
+    (within a cell and across cell boundaries) obeys ascending or descending.
+    """
+    if not midis:
+        return []
+    first = int(start_midi) if start_midi is not None else int(midis[0])
+    # Keep the planned first pitch class even if start_midi was supplied.
+    first = (first // 12) * 12 + (int(midis[0]) % 12)
+    out = [first]
+    for raw in midis[1:]:
+        out.append(_realize_pc_in_direction(int(raw) % 12, out[-1], sign))
+    return out
+
+
+_PATTERN_MIDI_ABS_LO = 24  # C1
+_PATTERN_MIDI_ABS_HI = 108  # C8
+
+
+def _fit_realized_pattern_register(midis: list[int], *, sign: int) -> list[int]:
+    """Octave-shift a fully realized pattern into a playable instrument range.
+
+    Long ascending/descending patterns may exceed the staff-ish window; do not
+    collapse them into negative MIDI. Shift the whole sequence only.
+    """
+    if not midis:
+        return []
+    out = [int(m) for m in midis]
+    while min(out) < _PATTERN_MIDI_ABS_LO:
+        out = [m + 12 for m in out]
+    while max(out) > _PATTERN_MIDI_ABS_HI and min(out) - 12 >= _PATTERN_MIDI_ABS_LO:
+        out = [m - 12 for m in out]
+    return out
+
+
 def _format_pattern_display(cells: list[list[str]]) -> str:
     return " | ".join(" – ".join(cell) for cell in cells if cell)
+
+
+def format_motif_pattern_display(cells: list[list[str]]) -> str:
+    """Public musician-facing pattern text: notes joined by – , cells by | ."""
+    return _format_pattern_display(cells)
 
 
 def build_motif_pattern(
@@ -1092,7 +1220,11 @@ def build_motif_pattern(
 
     Register is planned globally before generation: ascending starts low enough,
     descending starts high enough, and cells climb/fall continuously with no
-    mid-pattern octave reset. Cell 1 preserves exact source pitch classes.
+    mid-pattern octave reset. Cell 0 preserves exact source pitch classes
+    (including non-diatonic tones). Named direction then realizes every
+    adjacent MIDI — within a cell and across cell boundaries — by placing each
+    next pitch class in the nearest continuing octave. Rhythm and note order
+    are unchanged.
     """
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
     if not base_notes:
@@ -1124,7 +1256,7 @@ def build_motif_pattern(
         sign=sign,
     )
     cells: list[list[str]] = []
-    cell_midis: list[list[int]] = []
+    planned_cell_midis: list[list[int]] = []
     for i in range(n_cells):
         cell_notes, cell_ms = _shift_notes_by_collection_steps(
             base_notes,
@@ -1134,10 +1266,19 @@ def build_motif_pattern(
             source_midis=source_midis,
         )
         cells.append(cell_notes)
-        cell_midis.append(cell_ms)
+        planned_cell_midis.append(cell_ms)
     flat = [n for cell in cells for n in cell]
-    flat_midi = [m for cell in cell_midis for m in cell]
+    planned_flat = [m for cell in planned_cell_midis for m in cell]
+    start_midi = int(source_midis[0]) if source_midis else None
+    flat_midi = _fit_realized_pattern_register(
+        _realize_midis_in_named_direction(planned_flat, sign=sign, start_midi=start_midi),
+        sign=sign,
+    )
     cell_len = max(1, len(base_notes))
+    cell_midis = [
+        flat_midi[i * cell_len : (i + 1) * cell_len]
+        for i in range(n_cells)
+    ]
     base_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
     base_syms = list(motif.get("rhythm_symbols") or _RHYTHM_PATTERNS.get(base_rk, ["♩"] * cell_len))
     while len(base_syms) < cell_len:
@@ -1235,6 +1376,24 @@ def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
     return sync_motif_midi(updated)
 
 
+def _invert_around_first_note(
+    notes: list[str],
+    source_midis: list[int],
+    *,
+    key_center: str,
+) -> tuple[list[str], list[int]]:
+    """Invert intervals around the first MIDI pitch (canonical motif pivot).
+
+    ``out[i] = 2 * pivot - in[i]``. Note names are re-spelled in ``key_center``.
+    """
+    if not notes or not source_midis:
+        return list(notes), list(source_midis)
+    pivot = int(source_midis[0])
+    out_midis = [2 * pivot - int(m) for m in source_midis[: len(notes)]]
+    out_notes = [_note_from_midi(m, key_center) for m in out_midis]
+    return out_notes, out_midis
+
+
 def transform_motif(
     motif: dict[str, Any],
     operation: str,
@@ -1272,10 +1431,16 @@ def transform_motif(
             source_midis=source_midis,
         )
     elif operation == "invert":
-        out_notes = list(reversed(notes))
-        out_midis = list(reversed(source_midis))
+        # Melodic inversion around the first note (documented pivot).
+        # Interval from pivot to each later pitch is negated; order, count,
+        # and rhythm stay the same. This is not a retrograde (reverse).
+        out_notes, out_midis = _invert_around_first_note(
+            notes,
+            source_midis,
+            key_center=key_center,
+        )
     elif operation in ("rhythmic", "change_rhythm"):
-        return cycle_motif_rhythm(motif)
+        return vary_motif_rhythm(motif)
 
     op_labels = {
         "sequence_up": "Sequence up",
@@ -1332,43 +1497,133 @@ def transform_motif(
                 source_midis=base_midis,
             )
         elif operation == "invert":
-            updated["base_motif_notes"] = list(reversed(base))
+            updated["base_motif_notes"], _ = _invert_around_first_note(
+                base,
+                base_midis,
+                key_center=key_center,
+            )
     return sync_motif_midi(updated)
 
 
-def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
-    """Keep the same pitches; change only rhythm (sheet music / display update)."""
+def _beats_of_rhythm_symbol(sym: str) -> float:
+    return float(_RHYTHM_BEATS.get(str(sym), 1.0))
+
+
+def _symbol_from_beats(beats: float) -> str:
+    by_beats = {float(v): k for k, v in _RHYTHM_BEATS.items() if k not in {"z", "Z"}}
+    if beats in by_beats:
+        return by_beats[beats]
+    return min(by_beats.items(), key=lambda pair: abs(pair[0] - beats))[1]
+
+
+def _rhythm_edit_distance(before: list[str], after: list[str]) -> int:
+    n = max(len(before), len(after))
+    changed = 0
+    for i in range(n):
+        a = before[i] if i < len(before) else ""
+        b = after[i] if i < len(after) else ""
+        if a != b:
+            changed += 1
+    return changed
+
+
+def vary_motif_rhythm(motif: dict[str, Any], *, nonce: int | None = None) -> dict[str, Any]:
+    """Small musical rhythm variation of the current cell — not a catalog cycle.
+
+    Starts from the previous symbols, preserves total duration, and applies one
+    bounded edit (shift an attack, swap adjacent durations, or a last-note
+    dotted/undotted trade). Deterministic for the same seed/nonce.
+    """
     notes = list(motif.get("notes") or [])
-    rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
-    order = list(RHYTHM_PATTERN_KEYS)
-    try:
-        idx = order.index(rk)
-    except ValueError:
-        idx = 0
-    new_rk = order[(idx + 1) % len(order)]
-    syms = _RHYTHM_PATTERNS[new_rk]
-    while len(syms) < len(notes):
-        syms = syms + syms
-    syms = syms[: len(notes)]
+    old = motif_rhythm_symbols(motif)
     updated = dict(motif)
     updated["notes"] = notes
     cells = updated.get("cells")
     if updated.get("is_pattern") and isinstance(cells, list) and cells:
         updated["display"] = _format_pattern_display(cells)
     else:
-        updated["display"] = " – ".join(notes)
-    updated["rhythm_key"] = new_rk
-    updated["rhythm"] = " ".join(syms)
-    updated["rhythm_symbols"] = syms[: len(notes)]
-    # Durations only — never flatten register to octave 4.
+        updated["display"] = " \u2013 ".join(str(n) for n in notes)
+    if not notes:
+        updated["last_transform"] = "change_rhythm"
+        return sync_motif_midi(updated)
+    beats = [_beats_of_rhythm_symbol(s) for s in old]
+    total = sum(beats)
+    stored_nonce = int(motif.get("_rhythm_variation_nonce") or 0)
+    use_nonce = stored_nonce if nonce is None else int(nonce)
+    import hashlib
+
+    seed_src = f"{use_nonce}|{' '.join(old)}|{' '.join(str(n) for n in notes)}"
+    seed_int = int(hashlib.md5(seed_src.encode("utf-8")).hexdigest()[:8], 16)
+    rng = random.Random(seed_int)
+    candidates: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    n = len(beats)
+    raw_beats: list[list[float]] = []
+    for i in range(max(0, n - 1)):
+        for amt in (0.5, 0.25):
+            if beats[i] - amt >= 0.25 and beats[i + 1] + amt <= 2.0:
+                cand = list(beats)
+                cand[i] -= amt
+                cand[i + 1] += amt
+                raw_beats.append(cand)
+            if beats[i + 1] - amt >= 0.25 and beats[i] + amt <= 2.0:
+                cand = list(beats)
+                cand[i + 1] -= amt
+                cand[i] += amt
+                raw_beats.append(cand)
+        if beats[i] != beats[i + 1]:
+            cand = list(beats)
+            cand[i], cand[i + 1] = cand[i + 1], cand[i]
+            raw_beats.append(cand)
+    for cand in raw_beats:
+        if abs(sum(cand) - total) > 1e-9:
+            continue
+        syms = [_symbol_from_beats(b) for b in cand]
+        if abs(sum(_beats_of_rhythm_symbol(s) for s in syms) - total) > 1e-9:
+            continue
+        key = tuple(syms)
+        if key == tuple(old) or key in seen:
+            continue
+        dist = _rhythm_edit_distance(old, syms)
+        if 1 <= dist <= max(2, max(1, n // 2)):
+            seen.add(key)
+            candidates.append(syms)
+    if candidates:
+        new_syms = candidates[rng.randrange(len(candidates))]
+    else:
+        new_syms = list(old)
+        if n >= 2 and new_syms[-1] != new_syms[-2]:
+            new_syms[-1], new_syms[-2] = new_syms[-2], new_syms[-1]
+        elif n >= 2 and _beats_of_rhythm_symbol(new_syms[-1]) >= 1.0:
+            last = _beats_of_rhythm_symbol(new_syms[-1])
+            prev = _beats_of_rhythm_symbol(new_syms[-2])
+            if last - 0.5 >= 0.25 and prev + 0.5 <= 2.0:
+                new_syms[-1] = _symbol_from_beats(last - 0.5)
+                new_syms[-2] = _symbol_from_beats(prev + 0.5)
+    new_syms = new_syms[: len(notes)]
+    while len(new_syms) < len(notes):
+        new_syms.append(old[len(new_syms)] if len(new_syms) < len(old) else "\u2669")
+    short = {1.0: "q", 0.5: "e", 0.25: "s", 1.5: "qd", 2.0: "h"}
+    updated["rhythm_symbols"] = new_syms
+    updated["rhythm"] = " ".join(new_syms)
+    updated["rhythm_key"] = "varied-" + "-".join(
+        short.get(_beats_of_rhythm_symbol(s), "x") for s in new_syms
+    )
+    updated["_rhythm_variation_nonce"] = use_nonce + 1
     existing = list(motif.get("midi") or [])
     if len(existing) >= len(notes):
         updated["midi"] = [int(m) for m in existing[: len(notes)]]
     updated["variation_prompt"] = (
-        f"Rhythm on **{motif.get('chord', '')}**: {updated['display']} · {updated['rhythm']}"
+        f"Rhythm on **{motif.get('chord', '')}**: {updated['display']} \u00b7 {updated['rhythm']}"
     )
     updated["last_transform"] = "change_rhythm"
     return sync_motif_midi(updated)
+
+
+def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
+    """Keep the same pitches; apply a bounded rhythm variation (not a catalog cycle)."""
+    return vary_motif_rhythm(motif)
+
 
 
 def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:

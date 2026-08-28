@@ -31,10 +31,14 @@ class TestM1SourceMotifPreservation(unittest.TestCase):
             length=8,
         )
         self.assertEqual(pat["cells"][0], ["F", "B", "Ab", "C"])
-        # Contour preserved (may be globally shifted for long ascending span).
+        # Named-direction realization keeps pitch classes and note order. Intra-cell
+        # octaves may move so every adjacent MIDI continues ascending (B→Ab no
+        # longer drops). B must not snap to Bb.
         cell0 = [int(m) for m in pat["midi"][:4]]
-        self.assertEqual([a - cell0[0] for a in cell0], [0, 6, 3, 7])
-        self.assertLessEqual(_max_leap(cell0), 7)
+        self.assertEqual([int(m) % 12 for m in cell0], [5, 11, 8, 0])
+        for i in range(1, 4):
+            self.assertGreaterEqual(cell0[i], cell0[i - 1])
+        self.assertLessEqual(_max_leap(cell0), 12)
         self.assertNotEqual(pat["cells"][0], ["F", "Bb", "Ab", "C"])
 
 

@@ -68,13 +68,42 @@ def build_mission_backing_alignment_payload(
     concert = str(concert_key or session.get("concert_key") or "").strip()
     display = str(display_key or session.get("display_key") or "").strip()
     example_fp = ""
+    example_notes: list[Any] = []
+    example_midi: list[Any] = []
+    example_mission = ""
+    example_variant = ""
+    example_section = ""
+    example_artifact_id = ""
+    example_abc = ""
+    example_tab = ""
+    example_display = ""
+    example_rhythm = ""
+    example_rhythm_key = ""
+    example_rhythm_symbols: list[Any] = []
     if example is not None:
+        motif = getattr(example, "motif", None) or {}
+        if isinstance(motif, dict):
+            example_notes = [str(n) for n in (motif.get("notes") or [])]
+            example_midi = [int(m) for m in (motif.get("midi") or []) if str(m).strip() != ""]
+            example_display = str(motif.get("display") or "")
+            example_rhythm = str(motif.get("rhythm") or "")
+            example_rhythm_key = str(motif.get("rhythm_key") or "")
+            example_rhythm_symbols = [str(s) for s in (motif.get("rhythm_symbols") or [])]
+        example_mission = str(getattr(example, "mission", "") or "")
+        example_variant = str(getattr(example, "variant", "") or "")
+        example_section = str(getattr(example, "section", "") or "")
+        example_abc = str(getattr(example, "abc", "") or "")
+        example_tab = str(getattr(example, "tab", "") or "")
         try:
             from improvisation_missions import motif_material_fingerprint
 
-            example_fp = motif_material_fingerprint(getattr(example, "motif", None) or {})
+            example_fp = motif_material_fingerprint(motif if isinstance(motif, dict) else {})
         except ImportError:
             example_fp = str(getattr(example, "chord", "") or "")
+        try:
+            example_artifact_id = str(session.get("_mission_example_artifact_id") or "")
+        except Exception:
+            example_artifact_id = ""
 
     payload = {
         "song_pick_key": pick,
@@ -86,6 +115,19 @@ def build_mission_backing_alignment_payload(
         "chord_display_label": f"{section_label} · {cur_chord}".strip(" ·"),
         "chord_index": int(chord_idx),
         "example_fingerprint": example_fp,
+        "example_material_fp": example_fp,
+        "example_artifact_id": example_artifact_id,
+        "example_mission": example_mission,
+        "example_variant": example_variant,
+        "example_section": example_section or str(section_label or "").strip(),
+        "example_abc": example_abc,
+        "example_tab": example_tab,
+        "example_display": example_display,
+        "example_rhythm": example_rhythm,
+        "example_rhythm_key": example_rhythm_key,
+        "example_rhythm_symbols": example_rhythm_symbols,
+        "example_notes": example_notes,
+        "example_midi": example_midi,
         "concert_key": concert,
         "display_key": display,
         "concert_tonic": concert_tonic,

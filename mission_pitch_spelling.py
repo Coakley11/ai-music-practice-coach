@@ -34,10 +34,17 @@ def coaching_reference_for_mission_chord(
     low = str(suffix or "").lower()
     song = str(song_display_key or song_key_center or "").strip()
     spelled_root = str(root_raw or root).strip() or root
+    chord_minor = "m" in low and "maj" not in low and "dim" not in low
     if song and normalize_root(split_chord(song)[0]) == root:
-        return song
-    if not key_is_minor(song) and "m" in low and "maj" not in low and "dim" not in low:
-        return song if song else f"{spelled_root} minor"
+        # Same tonic, different mode: chord family wins so Dm is not spelled
+        # under leftover D major (two-sharp K:D while content is minor).
+        if key_is_minor(song) == chord_minor:
+            return song
+        if chord_minor:
+            return f"{spelled_root}m"
+        return spelled_root
+    if not key_is_minor(song) and chord_minor:
+        return f"{spelled_root}m"
     if key_is_minor(song) and "m" in low and "maj" not in low:
         return f"{root} minor"
     if key_is_minor(song) and "m" not in low and "dim" not in low and "aug" not in low:

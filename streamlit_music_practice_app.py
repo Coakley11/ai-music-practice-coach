@@ -8171,23 +8171,15 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
     try:
         from songs.music_source import (
             PENDING_CATALOG_FROM_PICKER_KEY,
-            SONG_PICKER_SOURCE_CATALOG,
             apply_pending_catalog_from_picker_before_widgets,
             custom_progression_is_active,
-            sync_song_picker_source_widget as _force_sync_picker,
         )
 
-        # Stale disk radio = Catalog while Custom owns practice must HEAL, not
-        # reclaim Country Roads (E5 refresh). Never heal away an explicit user
-        # Catalog choice (USER_CATALOG / recent catalog epoch).
-        if (
-            custom_progression_is_active(st.session_state)
-            and not st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY)
-            and not st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
-        ):
-            _choice = str(st.session_state.get("song_picker_active_source") or "").strip()
-            if _choice == SONG_PICKER_SOURCE_CATALOG:
-                _force_sync_picker(st.session_state, force=True, widget_safe=False)
+        # Songs Catalog / Custom radios are tab navigation, not ownership.
+        # Do not force the radio to Custom just because Custom owns Global Active —
+        # that made the Custom tab unreachable after a Catalog-tab visit, and
+        # hid Catalog while Trial was active. E5 reclaim is handled by not
+        # treating a Catalog radio as an ownership switch.
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
             explicit_custom_activation_is_authoritative,
@@ -8246,18 +8238,16 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         st.rerun()
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     from songs.music_source import (
-        USER_CATALOG_SOURCE_CHOICE_KEY,
-        explicit_catalog_selection_is_authoritative,
+        SONG_PICKER_SOURCE_CATALOG,
         music_picker_shows_custom_hub,
         note_song_picker_source_presented,
     )
 
     note_song_picker_source_presented(st.session_state, choice)
-    # Explicit Catalog choice must not keep rendering Custom hub because the
-    # Streamlit radio widget lagged on "Use Custom…" for one paint.
-    if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
-        st.session_state
-    ):
+    # Radio value owns which Songs hub is showing. Ownership flags must not
+    # hide the Custom tab after Set-as-Active, and must not keep Custom hub
+    # visible when the user selected Catalog.
+    if choice == SONG_PICKER_SOURCE_CATALOG:
         return False
     return music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom")
 
@@ -9156,22 +9146,27 @@ def _render_backing_return_source_action() -> None:
                     set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
                     navigate_studio_page(st.session_state, "picker")
                     st.rerun()
-            elif action.action_id == "return_custom_songs":
+            elif action.action_id in {"return_custom_songs", "return_custom_page"}:
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
-                        from songs.music_source import LAST_CUSTOM_STATE_KEY
-                        from custom_progression_lab import apply_cpl_session_progression
+                        from custom_page_return_destination import navigate_return_to_custom_page
 
-                        snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
-                        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-                            apply_cpl_session_progression(
-                                st.session_state,
-                                dict(snap["active"]),
-                                reset_display_key=False,
-                            )
-                    except Exception:
-                        pass
-                    navigate_studio_page(st.session_state, "custom")
+                        navigate_return_to_custom_page(st.session_state)
+                    except ImportError:
+                        try:
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY
+                            from custom_progression_lab import apply_cpl_session_progression
+
+                            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                                apply_cpl_session_progression(
+                                    st.session_state,
+                                    dict(snap["active"]),
+                                    reset_display_key=False,
+                                )
+                        except Exception:
+                            pass
+                        navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
@@ -9190,15 +9185,24 @@ def _render_backing_return_source_action() -> None:
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
             src = str(getattr(ctx, "source", "") or "")
-            if src == "custom_progression":
-                # Custom Backing → actual Custom page (not Creative).
-                try:
-                    from songs.music_source import restore_last_custom_active_song
+            dest = None
+            try:
+                from custom_page_return_destination import peek_custom_page_return_destination
 
-                    restore_last_custom_active_song(st.session_state)
+                dest = peek_custom_page_return_destination(st.session_state)
+            except ImportError:
+                dest = None
+            if src == "custom_progression" or dest is not None:
+                # Custom-page launch origin wins over backing owner.
+                # Apply Trial workspace but keep the dest until Custom hydrates.
+                # Do not claim studio_page before navigate — that skips persist
+                # and the next rerun restores leftover Catalog Backing.
+                try:
+                    from custom_page_return_destination import navigate_return_to_custom_page
+
+                    navigate_return_to_custom_page(st.session_state)
                 except ImportError:
-                    pass
-                navigate_studio_page(st.session_state, "custom")
+                    navigate_studio_page(st.session_state, "custom")
                 st.rerun()
                 return
             if src in {"entry_jam", "song_improv", "mission"}:
@@ -10305,6 +10309,15 @@ try:
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
+    elif (
+        _catalog_regular_backing
+        and str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+    ):
+        _display_key_options = sync_display_key_before_widget(
+            st,
+            original_key,
+            _song_identity,
+        )
     else:
         _sbi_custom_sidebar = False
         _custom_ga_sidebar = False
@@ -10331,10 +10344,16 @@ try:
                 )
 
                 page_now = str(st.session_state.get("studio_page") or "").strip().lower()
-                # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
-                # Do not clear overlay on Open Backing — that restored Shape Dm.
-                if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
-                    st.session_state
+                # Leftover regular_song ctx from a prior Catalog backing must not
+                # steal Creative SBI Custom. Catalog sidebar applies only while
+                # the user is actually on the Backing page.
+                _catalog_on_backing = bool(
+                    _catalog_regular_backing and page_now == "backing"
+                )
+                if (
+                    page_now in {"creative", "backing"}
+                    and not _catalog_on_backing
+                    and custom_sbi_owns_sidebar_practice_key(st.session_state)
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
                         st, st.session_state
@@ -10370,7 +10389,31 @@ try:
             pass
         elif is_creative_major_jam_active(st.session_state):
             _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
-        elif _catalog_regular_backing:
+        elif (
+            _catalog_regular_backing
+            and str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+        ):
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
+        elif str(st.session_state.get("studio_page") or "").strip().lower() in {
+            "picker",
+            "songs",
+            "practice",
+            "",
+        }:
+            try:
+                from songs.music_source import (
+                    catalog_owns_live_practice_key,
+                    restore_catalog_live_practice_key,
+                )
+
+                if catalog_owns_live_practice_key(st.session_state):
+                    restore_catalog_live_practice_key(st.session_state)
+            except ImportError:
+                pass
             _display_key_options = sync_display_key_before_widget(
                 st,
                 original_key,
@@ -10420,8 +10463,11 @@ if is_fixed_practice_key_mode(st.session_state):
         on_change=_on_sidebar_fixed_key_quick_toggle,
     )
 else:
-    _custom_page_pk = (
-        str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
+    _custom_page_pk = str(st.session_state.get("studio_page") or "").strip().lower() == (
+        "custom"
+    ) or (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "backing"
+        and bool(st.session_state.get("_custom_page_backing_keep_catalog_owner"))
     )
     if _custom_page_pk:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
@@ -10451,11 +10497,10 @@ else:
                     active = cpl_active_from_session(st.session_state)
                     pick = custom_pick_key_for(active)
                     set_practice_concert_key(st.session_state, tok, pick_key=pick)
-                    if custom_progression_is_active(st.session_state) or is_custom_progression(
-                        st.session_state
-                    ):
-                        st.session_state["display_key"] = tok
-                        st.session_state["concert_key"] = tok
+                    # Page-scoped sidebar projection: Custom page left panel
+                    # follows Trial. Catalog sticky stays sealed on Shape.
+                    st.session_state["display_key"] = tok
+                    st.session_state["concert_key"] = tok
                     st.session_state.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
                 except Exception:
                     st.session_state["display_key"] = tok
@@ -15702,6 +15747,12 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_go_custom_progression() -> None:
+        try:
+            from custom_sbi_page_origin import stamp_custom_sbi_page_origin
+
+            stamp_custom_sbi_page_origin(st.session_state)
+        except ImportError:
+            pass
         navigate_studio_page(st.session_state, "custom")
         st.rerun()
 

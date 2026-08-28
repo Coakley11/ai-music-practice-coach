@@ -38,11 +38,16 @@ def queue_pending_mission_return_from_backing(session: dict[str, Any]) -> dict[s
     try:
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
         if live:
-            from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+            try:
+                from mission_backing_transpose import apply_mission_backing_practice_key_interval
 
-            sync_mission_return_destination_after_practice_key_change(
-                session, new_key=live, from_key=""
-            )
+                apply_mission_backing_practice_key_interval(session, live)
+            except ImportError:
+                from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+                sync_mission_return_destination_after_practice_key_change(
+                    session, new_key=live, from_key=""
+                )
     except ImportError:
         pass
     dest = peek_mission_return_destination(session)
@@ -167,6 +172,70 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
                 session["ii_selected_chord_label"] = f"{section} · {chord}"
     except (TypeError, ValueError):
         pass
+    notes = dest.get("example_notes")
+    midi = dest.get("example_midi")
+    if isinstance(notes, list) and notes:
+        try:
+            from improvisation_missions import MISSION_EXAMPLE_KEY, motif_material_fingerprint
+        except ImportError:
+            MISSION_EXAMPLE_KEY = "improv_mission_example"
+            motif_material_fingerprint = None  # type: ignore[assignment]
+        sealed_fp = str(
+            dest.get("example_fingerprint") or dest.get("example_material_fp") or ""
+        ).strip()
+        raw = session.get(MISSION_EXAMPLE_KEY)
+        raw = dict(raw) if isinstance(raw, dict) else {}
+        existing_motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
+        existing_fp = str(raw.get("material_fp") or "").strip()
+        if not existing_fp and existing_motif and callable(motif_material_fingerprint):
+            existing_fp = str(motif_material_fingerprint(existing_motif) or "").strip()
+        # A newer generated example must not keep its metadata under restored notes.
+        if sealed_fp and existing_fp and existing_fp != sealed_fp:
+            raw = {}
+            motif: dict[str, Any] = {}
+        else:
+            motif = dict(existing_motif)
+        motif["notes"] = [str(n) for n in notes]
+        if isinstance(midi, list) and midi:
+            motif["midi"] = [int(m) for m in midi]
+        display = str(dest.get("example_display") or "").strip()
+        motif["display"] = display or " – ".join(str(n) for n in notes)
+        rhythm = str(dest.get("example_rhythm") or "").strip()
+        if rhythm:
+            motif["rhythm"] = rhythm
+        rhythm_key = str(dest.get("example_rhythm_key") or "").strip()
+        if rhythm_key:
+            motif["rhythm_key"] = rhythm_key
+        rhythm_syms = dest.get("example_rhythm_symbols")
+        if isinstance(rhythm_syms, list) and rhythm_syms:
+            motif["rhythm_symbols"] = [str(s) for s in rhythm_syms]
+        if chord:
+            motif["chord"] = chord
+            raw["chord"] = chord
+        mission = str(dest.get("example_mission") or dest.get("mission_id") or "").strip()
+        if mission:
+            raw["mission"] = mission
+        variant = str(dest.get("example_variant") or "").strip()
+        if variant:
+            raw["variant"] = variant
+        section = str(dest.get("example_section") or dest.get("section_label") or "").strip()
+        if section:
+            raw["section"] = section
+        if sealed_fp:
+            raw["material_fp"] = sealed_fp
+            session["_mission_example_material_fp"] = sealed_fp
+        artifact = str(dest.get("example_artifact_id") or "").strip()
+        if artifact:
+            raw["artifact_id"] = artifact
+            session["_mission_example_artifact_id"] = artifact
+        abc = dest.get("example_abc")
+        if abc is not None:
+            raw["abc"] = str(abc)
+        tab = dest.get("example_tab")
+        if tab is not None:
+            raw["tab"] = str(tab)
+        raw["motif"] = motif
+        session[MISSION_EXAMPLE_KEY] = raw
     # Return restores sealed selection; a later tile click must outrank this.
     session.pop("_mission_chord_click_authority", None)
     pick = str(dest.get("song_pick_key") or "").strip()

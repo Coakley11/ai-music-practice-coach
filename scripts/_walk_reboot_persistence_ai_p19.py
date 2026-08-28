@@ -356,6 +356,55 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
     wait_idle(page, 7000)
     settle(page, 3)
 
+    still = page.evaluate(
+        """() => {
+          const labels = [...document.querySelectorAll('[role="radiogroup"] label')];
+          for (const l of labels) {
+            const t = (l.innerText || '').trim();
+            if (!/custom progression/i.test(t)) continue;
+            const input = l.querySelector('input[type=radio]');
+            const role = l.closest('[role=radio]') || l;
+            const checked = (input && input.checked)
+              || role.getAttribute('aria-checked') === 'true';
+            if (checked) return 'custom';
+          }
+          return 'active';
+        }"""
+    )
+    if still != "custom":
+        notes.append("open_sbi_custom: first click did not stick — retry ArrowRight")
+        try:
+            active = page.get_by_role("radio", name=re.compile(r"^Active song$", re.I))
+            if active.count():
+                active.last.focus()
+                page.keyboard.press("ArrowRight")
+                wait_idle(page, 4000)
+                settle(page, 2)
+        except Exception as exc:
+            notes.append(f"open_sbi_custom: retry error {exc!r}")
+        try:
+            via2 = page.evaluate(
+                """() => {
+                  const groups = [...document.querySelectorAll('[role="radiogroup"]')];
+                  for (const g of groups) {
+                    const gtxt = (g.innerText || '').toLowerCase();
+                    if (!gtxt.includes('active song') || !gtxt.includes('custom progression')) continue;
+                    const labels = [...g.querySelectorAll('label')];
+                    const custom = labels.find((l) => /custom progression/i.test(l.innerText || ''));
+                    if (!custom) continue;
+                    const input = custom.querySelector('input[type=radio]');
+                    if (input) { input.click(); return 'retry-input'; }
+                  }
+                  return '';
+                }"""
+            )
+            if via2:
+                notes.append(f"open_sbi_custom: retry via={via2}")
+            wait_idle(page, 4000)
+            settle(page, 2)
+        except Exception as exc:
+            notes.append(f"open_sbi_custom: retry js {exc!r}")
+
     body = low(page.inner_text("body") or "")
     if has_any(body, "custom progression lab", "create your own song") and not has_any(
         body, "song source", "entry & jam", "song-based", "play song-based"
@@ -389,11 +438,18 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
     )
     notes.append(f"open_sbi_custom: song_source_state={still}")
     if still != "custom":
-        sl = disk_creative_slice()
-        src = str(sl.get("sbi_preview_source") or sl.get("improv_song_source") or "")
-        if "Custom" in src and has_any(body, "trial song"):
-            notes.append("open_sbi_custom: accepted via disk+Trial Song card")
+        # Disk + Trial title is not enough: Active radio can print Trial from a
+        # leftover LAST_CUSTOM preview while the card is still Shape/184 chords.
+        body_now = page.inner_text("body") or ""
+        custom_card = has_any(body_now, "Custom progression") and not has_any(
+            body_now, "Active song · Song Selection", "ACTIVE SONG · SONG SELECTION"
+        )
+        trial_prog = has_any(body_now, "Open Custom Lab")
+        if custom_card and trial_prog and has_any(body_now, "trial song"):
+            notes.append("open_sbi_custom: accepted via Custom card + Trial + Open Custom Lab")
             return True
+        notes.append("open_sbi_custom: radio still not Custom — refuse disk+Trial fallback")
+        return False
     return still == "custom"
 
 

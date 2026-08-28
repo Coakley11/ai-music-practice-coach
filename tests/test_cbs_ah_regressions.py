@@ -1,0 +1,918 @@
+"""Creative Backing Stabilization — Daniel QA regressions A–H on the Custom/Mission/Motif/Jam paths."""
+
+from __future__ import annotations
+
+import copy
+import unittest
+from unittest.mock import patch
+
+from app_ui import STUDIO_PAGE_META, nav_icon_button_label
+from cpl_page_ui import custom_page_exit_nav_items, custom_page_finished_action_items
+from custom_page_return_destination import (
+    consume_custom_page_return_destination,
+    peek_custom_page_return_destination,
+    seal_custom_page_return_destination,
+)
+from custom_progression_lab import (
+    CPL_ACTIVE_KEY,
+    CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY,
+    apply_cpl_session_progression,
+    launch_custom_page_backing,
+    prepare_cpl_backing_handoff,
+)
+from custom_sbi_page_origin import (
+    CUSTOM_SBI_PAGE_ORIGIN_KEY,
+    consume_custom_sbi_page_origin_on_creative,
+    stamp_custom_sbi_page_origin,
+)
+from improvisation_intelligence_ui import _motif_display_text
+from improvisation_intelligence import ChordCoachInsight
+from improvisation_motif import (
+    _beats_of_rhythm_symbol,
+    _rhythm_edit_distance,
+    build_motif_abc,
+    build_motif_pattern,
+    format_motif_pattern_display,
+    generate_motif_for_chord,
+    motif_rhythm_symbols,
+    parse_motif_abc_note_names,
+    transform_motif,
+    vary_motif_rhythm,
+)
+from improvisation_missions import MISSION_EXAMPLE_KEY, MissionExample
+from mission_backing_alignment import build_mission_backing_alignment_payload
+from mission_backing_transpose import (
+    apply_mission_backing_practice_key_interval,
+    mission_backing_locked_chord,
+    mission_card_progression_symbols,
+)
+from mission_return_destination import (
+    apply_sealed_mission_return_destination,
+    build_mission_return_destination,
+    peek_mission_return_destination,
+    seal_mission_return_destination,
+)
+from music_theory import NOTE_TO_MIDI, normalize_root, split_chord
+from songs.music_source import (
+    CATALOG_BEFORE_CREATIVE_KEY,
+    LAST_CUSTOM_STATE_KEY,
+    SOURCE_CATALOG,
+    restore_sbi_active_from_sealed_global_owner,
+    snapshot_catalog_before_creative,
+    snapshot_last_custom_state,
+)
+from source_session_state import get_sbi_preview_source, resolve_sbi_preview, set_sbi_preview_source
+
+
+PK_SHAPE = "Pop\x1fShape of You"
+
+
+def _trial_active() -> dict:
+    return {
+        "id": "trial-ah-1",
+        "name": "Trial Song",
+        "original_key_center": "D",
+        "original_sections": {
+            "Intro": [],
+            "Verse": [
+                {"chord": "Em", "bars": 1},
+                {"chord": "Em", "bars": 1},
+                {"chord": "D", "bars": 1},
+                {"chord": "D", "bars": 1},
+            ],
+            "Pre-Chorus": [],
+            "Chorus": [],
+            "Bridge": [],
+            "Solo": [],
+            "Outro": [],
+        },
+        "bpm": 100,
+        "progression_style": "Pop",
+        "groove_style": "Pop",
+    }
+
+
+def _shape_session(*, practice_key: str = "Dm") -> dict:
+    trial = _trial_active()
+    return {
+        "studio_page": "creative",
+        "active_music_source": SOURCE_CATALOG,
+        "active_catalog_pick_key": PK_SHAPE,
+        "song": "Shape of You",
+        "active_song_title": "Shape of You",
+        "display_key": practice_key,
+        "concert_key": practice_key,
+        "selected_song": {
+            "pick_key": PK_SHAPE,
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+        },
+        "practice_key_by_source": {PK_SHAPE: practice_key},
+        "catalog_session": {
+            "pick_key": PK_SHAPE,
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+            "display_key": practice_key,
+            "original_key": "Bm",
+        },
+        CATALOG_BEFORE_CREATIVE_KEY: {
+            "pick_key": PK_SHAPE,
+            "original_key": "Bm",
+            "display_key": practice_key,
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+        },
+        CPL_ACTIVE_KEY: copy.deepcopy(trial),
+        LAST_CUSTOM_STATE_KEY: {
+            "name": "Trial Song",
+            "pick_key": "custom::trial-ah-1",
+            "custom_home_key": "D",
+            "active": copy.deepcopy(trial),
+        },
+        "improv_entry_mode": "Song-Based Improvisation",
+        "improv_intelligence_tab": "Entry & Jam",
+        "improv_song_source": "Active song",
+        "sbi_preview_source": "Active song",
+    }
+
+
+def _pc(note: str) -> int:
+    return NOTE_TO_MIDI.get(normalize_root(split_chord(str(note))[0]), 60) % 12
+
+
+class TestACustomPageExitNav(unittest.TestCase):
+    def test_finished_view_exposes_songs_and_practice_icon_exits(self) -> None:
+        items = custom_page_exit_nav_items()
+        self.assertEqual([i["destination"] for i in items], ["picker", "practice"])
+        self.assertEqual(items[0]["label"], nav_icon_button_label("picker"))
+        self.assertEqual(items[1]["label"], nav_icon_button_label("practice"))
+        self.assertEqual(items[0]["icon"], STUDIO_PAGE_META["picker"]["icon"])
+        self.assertEqual(items[1]["icon"], STUDIO_PAGE_META["practice"]["icon"])
+        self.assertIn("Songs", items[0]["label"])
+        self.assertIn("Practice", items[1]["label"])
+        self.assertTrue(items[0]["icon"])
+        self.assertTrue(items[1]["icon"])
+        import cpl_page_ui
+        import inspect
+
+        src = inspect.getsource(cpl_page_ui)
+        self.assertIn("custom_page_finished_action_items(", src)
+        self.assertIn("_go_songs()", src)
+        self.assertIn("_open_practice()", src)
+
+    def test_finish_song_keeps_songs_and_practice_in_primary_launch_row(self) -> None:
+        actions = custom_page_finished_action_items(has_chords=True)
+        roles = [str(item.get("role") or "") for item in actions]
+        self.assertEqual(roles, ["songs", "practice", "activate", "backing", "edit"])
+        songs = next(item for item in actions if item["role"] == "songs")
+        practice = next(item for item in actions if item["role"] == "practice")
+        self.assertEqual(songs["destination"], "picker")
+        self.assertEqual(practice["destination"], "practice")
+        self.assertEqual(songs["label"], nav_icon_button_label("picker"))
+        self.assertEqual(practice["label"], nav_icon_button_label("practice"))
+        self.assertEqual(songs["icon"], STUDIO_PAGE_META["picker"]["icon"])
+        self.assertEqual(practice["icon"], STUDIO_PAGE_META["practice"]["icon"])
+        self.assertEqual(songs["key"], "cpl_exit_picker_finish")
+        self.assertEqual(practice["key"], "cpl_exit_practice_finish")
+        self.assertFalse(bool(songs.get("disabled")))
+        self.assertFalse(bool(practice.get("disabled")))
+        import cpl_page_ui
+        import inspect
+
+        finished_src = inspect.getsource(cpl_page_ui.render_custom_progression_lab_page)
+        helper_src = inspect.getsource(cpl_page_ui.render_custom_page_finished_exits)
+        self.assertIn("render_custom_page_finished_exits(", finished_src)
+        self.assertIn("custom_page_finished_exits", helper_src)
+        self.assertIn('role == "songs"', helper_src)
+        self.assertIn('role == "practice"', helper_src)
+        self.assertIn("use_container_width=True", helper_src)
+        self.assertNotIn("st.columns", helper_src)
+        self.assertIn("display_key_label=preview_label", finished_src)
+        self.assertIn("song_structure_overview_html(active, practice_key", finished_src)
+
+
+class TestBCustomBackingReturn(unittest.TestCase):
+    def test_custom_backing_return_restores_trial_workspace_without_seizing_ga(self) -> None:
+        session = _shape_session()
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        session["cpl_finished"] = True
+        session["cpl_edit_section"] = "Verse"
+        snapshot_last_custom_state(session)
+        dest = seal_custom_page_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        self.assertEqual(dest.get("destination_page"), "custom")
+        self.assertEqual(dest.get("song_title"), "Trial Song")
+        self.assertEqual(str((dest.get("active") or {}).get("name") or ""), "Trial Song")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+
+        session["studio_page"] = "backing"
+        session[CPL_ACTIVE_KEY] = {"name": "My Progression", "original_sections": {}}
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        session["sbi_preview_source"] = "Active song"
+        ok = consume_custom_page_return_destination(session)
+        self.assertTrue(ok)
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+        verse = (session.get(CPL_ACTIVE_KEY) or {}).get("original_sections", {}).get("Verse") or []
+        self.assertGreaterEqual(len(verse), 4)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+        self.assertEqual(session.get("song"), "Shape of You")
+
+    def test_custom_page_backing_catalog_when_trial_not_active(self) -> None:
+        session = _shape_session(practice_key="Bm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        session["cpl_finished"] = True
+        from custom_progression_lab import (
+            CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY,
+            sync_custom_workspace_practice_key,
+        )
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        from backing_context import (
+            BackingContext,
+            get_backing_context,
+            set_backing_context,
+        )
+
+        leftover = BackingContext(
+            source="regular_song",
+            source_label="Catalog song",
+            active_song_id=PK_SHAPE,
+            song_title="Shape of You",
+            key="Bm",
+            display_key="Bm",
+            concert_key="Bm",
+            bpm=96,
+            style="Pop",
+            groove="Pop",
+            bound_pick_key=PK_SHAPE,
+            progression=["Bm", "Em", "G", "D"],
+        )
+        set_backing_context(session, leftover)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import simulate_production_backing_page_hydrate
+
+        simulate_production_backing_page_hydrate(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "regular_song")
+        self.assertIn("Shape of You", str(getattr(ctx, "song_title", "") or ""))
+        self.assertIn(str(getattr(ctx, "concert_key", "") or ""), {"Bm", "B minor"})
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        self.assertFalse(session.get(CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY))
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+        self.assertEqual(session.get("song"), "Shape of You")
+        dest = peek_custom_page_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        self.assertEqual(dest.get("song_title"), "Trial Song")
+        self.assertEqual(str(dest.get("practice_key") or ""), "D")
+        from backing_context import format_backing_context_banner
+        from backing_nav_actions import build_backing_nav_actions
+
+        banner = format_backing_context_banner(ctx)
+        self.assertIn("Catalog song", banner)
+        self.assertIn("Shape of You", banner)
+        self.assertNotIn("Trial Song", banner)
+        actions, _ = build_backing_nav_actions(session)
+        labels = [str(a.label) for a in actions]
+        self.assertTrue(any("Return to Custom Page" in lab for lab in labels))
+        self.assertFalse(any("Return to Song Catalog" in lab for lab in labels))
+        ok = consume_custom_page_return_destination(session)
+        self.assertTrue(ok)
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        # Dest stays sealed until the Custom page hydrates (consume=True there).
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        self.assertTrue(apply_custom_page_return_destination(session, consume=True))
+        self.assertIsNone(peek_custom_page_return_destination(session))
+
+    def test_return_dest_consumed_only_on_custom_hydrate_no_backing_bounce(self) -> None:
+        """Backing click applies Trial but must not pop dest; Custom hydrate consumes it."""
+        session = _shape_session(practice_key="Bm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        from custom_progression_lab import sync_custom_workspace_practice_key
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        dest = seal_custom_page_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import simulate_production_backing_page_hydrate
+
+        simulate_production_backing_page_hydrate(session)
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        # Button click: restore workspace, keep dest until Custom hydrates.
+        self.assertTrue(apply_custom_page_return_destination(session, consume=False))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
+
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        # Persist/rerun bounce back onto Backing must still see Catalog Shape
+        # plus the keyed Return to Custom Page action — not Song Catalog.
+        session["studio_page"] = "backing"
+        simulate_production_backing_page_hydrate(session)
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        from backing_context import get_backing_context
+        from backing_nav_actions import build_backing_nav_actions
+
+        ctx = get_backing_context(session)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "regular_song")
+        self.assertIn("Shape of You", str(getattr(ctx, "song_title", "") or ""))
+        labels = [str(a.label) for a in build_backing_nav_actions(session)[0]]
+        self.assertTrue(any("Return to Custom Page" in lab for lab in labels))
+        self.assertFalse(any("Return to Song Catalog" in lab for lab in labels))
+        # Custom-page hydrate consumes dest. A second Custom rerun stays Custom.
+        session["studio_page"] = "custom"
+        self.assertTrue(apply_custom_page_return_destination(session, consume=True))
+        self.assertIsNone(peek_custom_page_return_destination(session))
+        self.assertFalse(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertFalse(apply_custom_page_return_destination(session, consume=True))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertNotEqual(session.get("studio_page"), "backing")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+
+    def test_return_click_does_not_claim_page_before_navigate_persist(self) -> None:
+        """Apply must not set custom first — navigate would no-op and skip persist."""
+        session = _shape_session(practice_key="Bm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        from custom_progression_lab import sync_custom_workspace_practice_key
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        seal_custom_page_return_destination(session)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import simulate_production_backing_page_hydrate
+
+        simulate_production_backing_page_hydrate(session)
+        self.assertEqual(session.get("studio_page"), "backing")
+        from custom_page_return_destination import (
+            apply_custom_page_return_destination,
+            navigate_return_to_custom_page,
+        )
+
+        self.assertTrue(
+            apply_custom_page_return_destination(session, consume=False, set_page=False)
+        )
+        self.assertEqual(session.get("studio_page"), "backing")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertTrue(navigate_return_to_custom_page(session))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        from pathlib import Path
+
+        app_src = Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
+        text = app_src.read_text(encoding="utf-8")
+        self.assertIn("navigate_return_to_custom_page", text)
+
+    def test_sweep_return_pass_path_does_not_use_custom_nav_fallback(self) -> None:
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parents[1] / "scripts" / "_walk_cbs_rendered_sweep.py"
+        text = src.read_text(encoding="utf-8")
+        preview = (
+            "PREVIEW\nTrial Song\nOriginal key D major · Practice / Concert Key D major\n"
+            "Verse:\n|\nEm\n|\nEm\n|\nD\n|\nD\n|"
+        )
+        self.assertRegex(
+            preview,
+            r"Verse:\s*(?:\|\s*)?Em\b(?:\s|\|)+Em\b(?:\s|\|)+D\b(?:\s|\|)+D\b",
+        )
+        helper = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "_walk_ownership_audit_full.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(r"Verse:\s*(?:\|\s*)?Em\b", helper)
+        self.assertIn("click_return_to_custom_page_widget", text)
+        self.assertIn("Custom nav is evidence only", text)
+        self.assertIn("st-key-backing_nav_return_custom_page", text)
+        self.assertNotIn("ret = True", text)
+        self.assertNotIn('click_nav(page, "Custom")\n                wait_for_body', text.split("Custom nav is evidence only")[0])
+
+    def test_restore_catalog_practice_key_is_widget_safe(self) -> None:
+        session = _shape_session(practice_key="Bm")
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["_custom_page_sealed_catalog_pk"] = "Bm"
+        session["_streamlit_widgets_locked_this_run"] = True
+        from songs.key_state import PENDING_DISPLAY_KEY
+        from songs.music_source import restore_catalog_live_practice_key
+
+        token = restore_catalog_live_practice_key(session)
+        self.assertEqual(token, "Bm")
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("concert_key"), "Bm")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "Bm")
+
+    def test_restore_catalog_prefers_sticky_over_stale_mission_seal(self) -> None:
+        """Songs Dm must survive refresh even if Custom/Mission still sealed F minor."""
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "picker"
+        session["display_key"] = "Dm"
+        session["concert_key"] = "Dm"
+        session["_custom_page_sealed_catalog_pk"] = "Fm"
+        session["_custom_page_sealed_catalog_pick"] = PK_SHAPE
+        session["_sbi_custom_sealed_catalog_pk"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pick"] = PK_SHAPE
+        from songs.music_source import restore_catalog_live_practice_key
+        from songs.practice_key_state import get_practice_concert_key
+
+        token = restore_catalog_live_practice_key(session)
+        self.assertEqual(token, "Dm")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+        self.assertEqual(session.get("_custom_page_sealed_catalog_pk"), "Dm")
+        self.assertEqual(session.get("concert_key"), "Dm")
+
+    def test_heal_sealed_catalog_does_not_overwrite_newer_songs_sticky(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "picker"
+        session["display_key"] = "Fm"
+        session["concert_key"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pk"] = "Fm"
+        session["_sbi_custom_sealed_catalog_pick"] = PK_SHAPE
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+        from songs.practice_key_state import get_practice_concert_key
+
+        class _St:
+            session_state = session
+
+        healed = heal_sealed_catalog_sidebar_if_needed(_St(), session)
+        self.assertEqual(healed, "Dm")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+        self.assertEqual(session.get("_sbi_custom_sealed_catalog_pk"), "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        self.assertEqual(session.get("concert_key"), "Dm")
+
+    def test_keep_catalog_owner_flag_reads_streamlit_like_session(self) -> None:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+        from songs.music_source import SOURCE_CUSTOM
+
+        class _StreamlitLike:
+            def __init__(self) -> None:
+                self._data = {
+                    CUSTOM_PAGE_BACKING_KEEP_CATALOG_OWNER_KEY: True,
+                    "_backing_explicit_handoff_source": "custom_progression",
+                    "active_music_source": SOURCE_CUSTOM,
+                }
+
+            def get(self, key, default=None):
+                return self._data.get(key, default)
+
+            def __getitem__(self, key):
+                return self._data[key]
+
+        self.assertTrue(custom_page_backing_keeps_catalog_owner(_StreamlitLike()))
+        self.assertFalse(custom_page_backing_keeps_catalog_owner(object()))
+
+
+class TestCCustomSbiPageOrigin(unittest.TestCase):
+    def test_custom_sbi_custom_page_creative_restores_trial_not_active_sbi(self) -> None:
+        session = _shape_session()
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        snapshot_last_custom_state(session)
+        set_sbi_preview_source(session, "Custom progression")
+        session["improv_song_source"] = "Custom progression"
+        ga_before = {
+            "source": session.get("active_music_source"),
+            "pick": session.get("active_catalog_pick_key"),
+            "title": session.get("song"),
+        }
+
+        origin = stamp_custom_sbi_page_origin(session)
+        self.assertIsInstance(origin, dict)
+        self.assertEqual(origin.get("source"), "Custom progression")
+        self.assertEqual(origin.get("song_title"), "Trial Song")
+        session["studio_page"] = "custom"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        from custom_sbi_page_origin import apply_custom_sbi_origin_on_custom_page
+        from custom_progression_lab import cpl_workspace_practice_key
+
+        self.assertTrue(apply_custom_sbi_origin_on_custom_page(session))
+        self.assertEqual(
+            str(cpl_workspace_practice_key(session, session.get(CPL_ACTIVE_KEY)) or ""),
+            "D",
+        )
+        self.assertEqual(session.get("active_music_source"), ga_before["source"])
+
+        session["studio_page"] = "creative"
+        from creative_session_state import hydrate_creative_session_for_page
+
+        with patch("songs.state.persist_music_local_state"), patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            hydrate_creative_session_for_page(session)
+        if session.get(CUSTOM_SBI_PAGE_ORIGIN_KEY):
+            consume_custom_sbi_page_origin_on_creative(session)
+
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview.get("title"), "Trial Song")
+        self.assertEqual(preview.get("source"), "Custom progression")
+        chords = [c for chs in (preview.get("sections") or {}).values() for c in chs]
+        self.assertIn("Em", chords)
+        self.assertIn("D", chords)
+        self.assertEqual(session.get("active_music_source"), ga_before["source"])
+        self.assertEqual(session.get("active_catalog_pick_key"), ga_before["pick"])
+        self.assertEqual(session.get("song"), ga_before["title"])
+
+    def test_custom_sbi_leftover_catalog_ctx_keeps_trial_local_d(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        snapshot_last_custom_state(session)
+        set_sbi_preview_source(session, "Custom progression")
+        session["improv_song_source"] = "Custom progression"
+        session["practice_key_by_source"]["custom::trial-ah-1"] = "Dm"
+        session["display_key"] = "Dm"
+        session["concert_key"] = "Dm"
+        from backing_context import BackingContext, set_backing_context
+
+        set_backing_context(
+            session,
+            BackingContext(
+                source="regular_song",
+                source_label="Catalog song",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                bound_pick_key=PK_SHAPE,
+                progression=["Bm", "Em", "G", "D"],
+            ),
+        )
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        self.assertTrue(custom_sbi_owns_sidebar_practice_key(session))
+        self.assertEqual(_authoritative_practice_chart_key(session, "Dm"), "D")
+        origin = stamp_custom_sbi_page_origin(session)
+        self.assertIsInstance(origin, dict)
+        self.assertEqual(str(origin.get("practice_key") or ""), "D")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+
+    def test_custom_ga_keeps_transposed_local_c(self) -> None:
+        from custom_progression_lab import custom_sbi_local_practice_key, sync_custom_workspace_practice_key
+        from songs.music_source import SOURCE_CUSTOM
+
+        session = _shape_session(practice_key="C")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["active_music_source"] = SOURCE_CUSTOM
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="C",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_ga",
+        )
+        self.assertEqual(custom_sbi_local_practice_key(session), "C")
+
+
+class TestDEMissionBackingInterval(unittest.TestCase):
+    def _seal_gm_example(self, session: dict) -> dict:
+        example = MissionExample(
+            mission="Outline chord tones",
+            variant="normal",
+            chord="Gm",
+            section="Chorus",
+            song_title="Shape of You",
+            display_key="Dm",
+            concert_key="Dm",
+            instrument="Piano",
+            level="Intermediate",
+            focus="Improvisation",
+            motif={
+                "chord": "Gm",
+                "notes": ["Bb", "D", "G"],
+                "midi": [70, 74, 79],
+                "display": "Bb – D – G",
+                "rhythm": "♩ ♩ ♩",
+                "rhythm_symbols": ["♩", "♩", "♩"],
+            },
+            abc="",
+            tab="",
+            piano_html="",
+            why="",
+            practice_steps=[],
+            insight=ChordCoachInsight(
+                chord="Gm",
+                scales=[],
+                scale_suggestions=[],
+                chord_tones=["Bb", "D", "G"],
+                tensions=[],
+                avoid_notes=[],
+                target_notes=[],
+                motif_idea="",
+                resolve_hint="",
+            ),
+            show_tab=False,
+            show_piano=False,
+        )
+        align = build_mission_backing_alignment_payload(
+            session,
+            mission="Outline chord tones",
+            cur_chord="Gm",
+            section_label="Chorus",
+            chord_idx=1,
+            song_title="Shape of You",
+            song_pick_key=PK_SHAPE,
+            concert_key="Dm",
+            display_key="Dm",
+            example=example,
+        )
+        dest = build_mission_return_destination(
+            align, handoff_mode="mission_backing", with_practice_lick=False, request_seq=1
+        )
+        seal_mission_return_destination(session, dest)
+        session["ii_selected_chord"] = "Gm"
+        session["II_SELECTED_CHORD"] = "Gm"
+        session["ii_selected_section"] = "Chorus"
+        session[MISSION_EXAMPLE_KEY] = {
+            "chord": "Gm",
+            "mission": "Outline chord tones",
+            "section": "Chorus",
+            "concert_key": "Dm",
+            "display_key": "Dm",
+            "motif": dict(example.motif),
+            "abc": "",
+        }
+        return dest
+
+    def test_one_semitone_up_projects_gm_and_bb_once(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        self._seal_gm_example(session)
+        dest = apply_mission_backing_practice_key_interval(session, "D#m", from_key="Dm")
+        self.assertIsInstance(dest, dict)
+        chord = str(dest.get("chord_symbol") or "")
+        self.assertIn(_pc(chord), {_pc("G#m"), _pc("Abm")})
+        notes = list(dest.get("example_notes") or [])
+        self.assertTrue(notes)
+        self.assertEqual(_pc(notes[0]), _pc("B"))
+        card = mission_card_progression_symbols(session)
+        self.assertTrue(card)
+        self.assertIn(_pc(card[0]), {_pc("G#m"), _pc("Abm")})
+        self.assertEqual(_pc(session.get("ii_selected_chord") or ""), _pc(chord))
+        self.assertNotEqual(_pc(chord), _pc("A#m"))
+        self.assertNotEqual(_pc(notes[0]), _pc("C#"))
+        live_ex = session.get(MISSION_EXAMPLE_KEY) or {}
+        live_notes = list((live_ex.get("motif") or {}).get("notes") or [])
+        self.assertEqual(_pc(live_notes[0]), _pc("B"))
+
+    def test_dsharp_song_map_cannot_replace_interval_chord_with_am(self) -> None:
+        from backing_context import BackingContext, build_mission_context, set_backing_context
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+        from mission_projection_state import resolve_mission_projection_state
+
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        session["ii_selected_chord_index"] = 1
+        session["improv_mission_chord_options"] = ["D#m", "Am", "B", "F#"]
+        self._seal_gm_example(session)
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission Backing Jam",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                progression=["Gm"],
+                mission_id="Outline chord tones",
+            ),
+        )
+        apply_mission_backing_practice_key_interval(session, "D#m", from_key="Dm")
+        # Song map at D#m has Am at the sticky index that used to be Gm.
+        section_map = [("Verse 1", ["D#m", "Am", "B", "F#"])]
+        session["_improv_mission_section_map"] = section_map
+        locked = mission_backing_locked_chord(session)
+        self.assertIn(_pc(locked), {_pc("G#m"), _pc("Abm")}, locked)
+        auth_ch, _sec, _idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertIn(_pc(auth_ch), {_pc("G#m"), _pc("Abm")}, auth_ch)
+        self.assertNotEqual(_pc(auth_ch), _pc("Am"))
+        proj = resolve_mission_projection_state(
+            session, section_map=section_map, fallback_key="D#m"
+        )
+        self.assertIn(_pc(proj.concert_chord), {_pc("G#m"), _pc("Abm")})
+        self.assertNotEqual(_pc(proj.display_chord), _pc("Am"))
+        ctx = build_mission_context(session)
+        self.assertIn(_pc((ctx.progression or [""])[0]), {_pc("G#m"), _pc("Abm")})
+        self.assertNotIn("Am", " ".join(ctx.progression or []))
+        from mission_backing_transpose import mission_backing_interval_example
+
+        lick = mission_backing_interval_example(session)
+        self.assertIsNotNone(lick)
+        self.assertIn(_pc(str((lick or {}).get("chord") or "")), {_pc("G#m"), _pc("Abm")})
+        self.assertEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("B"))
+        self.assertNotEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("C"))
+
+    def test_empty_dest_notes_backfill_from_live_example(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        dest = self._seal_gm_example(session)
+        dest["example_notes"] = []
+        dest["sealed_example_notes"] = []
+        dest["example_midi"] = []
+        dest["sealed_example_midi"] = []
+        from mission_return_destination import seal_mission_return_destination
+
+        seal_mission_return_destination(session, dest)
+        from backing_context import BackingContext, set_backing_context
+
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission Backing Jam",
+                active_song_id=PK_SHAPE,
+                song_title="Shape of You",
+                key="Dm",
+                display_key="Dm",
+                concert_key="Dm",
+                bpm=96,
+                style="Pop",
+                groove="Pop",
+                progression=["Gm"],
+                mission_id="Outline chord tones",
+            ),
+        )
+        out = apply_mission_backing_practice_key_interval(session, "D#m", from_key="Dm")
+        notes = list((out or {}).get("example_notes") or [])
+        self.assertTrue(notes)
+        self.assertEqual(_pc(notes[0]), _pc("B"))
+        from mission_backing_transpose import mission_backing_interval_example
+
+        lick = mission_backing_interval_example(session)
+        self.assertEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("B"))
+
+    def test_return_keeps_transposed_chord_and_example_not_song_tonic(self) -> None:
+        session = _shape_session(practice_key="Dm")
+        session["studio_page"] = "backing"
+        self._seal_gm_example(session)
+        apply_mission_backing_practice_key_interval(session, "Ebm", from_key="Dm")
+        # Poison the live selection the way the song-tonic leak used to.
+        session["ii_selected_chord"] = "D#m"
+        session["II_SELECTED_CHORD"] = "D#m"
+        dest = peek_mission_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        self.assertNotEqual(_pc(str(dest.get("chord_symbol") or "")), _pc("D#m"))
+        session["studio_page"] = "creative"
+        self.assertTrue(apply_sealed_mission_return_destination(session, dest))
+        returned = str(session.get("ii_selected_chord") or "")
+        self.assertIn(_pc(returned), {_pc("G#m"), _pc("Abm")})
+        self.assertNotEqual(_pc(returned), _pc("D#m"))
+        raw = session.get(MISSION_EXAMPLE_KEY) or {}
+        notes = list((raw.get("motif") or {}).get("notes") or [])
+        self.assertTrue(notes)
+        self.assertEqual(_pc(notes[0]), _pc("B"))
+        self.assertEqual(str(raw.get("chord") or returned), returned)
+        # Rerun/refresh must not replace the Mission chord with the song tonic.
+        session["display_key"] = "Ebm"
+        apply_sealed_mission_return_destination(session)
+        self.assertIn(_pc(str(session.get("ii_selected_chord") or "")), {_pc("G#m"), _pc("Abm")})
+        notes2 = list(((session.get(MISSION_EXAMPLE_KEY) or {}).get("motif") or {}).get("notes") or [])
+        self.assertEqual(_pc(notes2[0]), _pc("B"))
+
+
+class TestFGMotifRhythmAndCells(unittest.TestCase):
+    def test_change_rhythm_is_bounded_variation(self) -> None:
+        motif = generate_motif_for_chord("Am", key_center="A minor", level="Intermediate")
+        before = motif_rhythm_symbols(motif)
+        total = sum(_beats_of_rhythm_symbol(s) for s in before)
+        changed = vary_motif_rhythm(motif, nonce=0)
+        after = motif_rhythm_symbols(changed)
+        self.assertEqual(list(changed.get("notes") or []), list(motif.get("notes") or []))
+        self.assertEqual(sum(_beats_of_rhythm_symbol(s) for s in after), total)
+        self.assertGreaterEqual(_rhythm_edit_distance(before, after), 1)
+        self.assertLessEqual(_rhythm_edit_distance(before, after), max(2, max(1, len(before) // 2)))
+        again = vary_motif_rhythm(motif, nonce=0)
+        self.assertEqual(motif_rhythm_symbols(again), after)
+        abc = build_motif_abc(changed, key_center="A minor", bpm=100)
+        parsed = parse_motif_abc_note_names(abc)
+        self.assertEqual([_pc(n) for n in parsed], [_pc(n) for n in (changed.get("notes") or [])])
+
+    def test_transform_change_rhythm_does_not_cycle_catalog(self) -> None:
+        motif = generate_motif_for_chord("Em", key_center="E minor", level="Intermediate")
+        out = transform_motif(motif, "change_rhythm", key_center="E minor")
+        self.assertEqual(list(out.get("notes") or []), list(motif.get("notes") or []))
+        self.assertTrue(str(out.get("rhythm_key") or "").startswith("varied-"))
+
+    def test_pattern_display_uses_actual_cell_boundaries(self) -> None:
+        motif = generate_motif_for_chord("Ab", key_center="Ab", level="Intermediate")
+        pattern = build_motif_pattern(
+            motif,
+            key_center="Ab",
+            pattern_type="diatonic",
+            direction="descending",
+            length=8,
+        )
+        cells = list(pattern.get("cells") or [])
+        self.assertGreaterEqual(len(cells), 2)
+        rendered = _motif_display_text(pattern)
+        expected = format_motif_pattern_display(cells)
+        self.assertEqual(rendered, expected)
+        self.assertIn(" | ", rendered)
+        parts = [p.strip() for p in rendered.split("|")]
+        self.assertEqual(len(parts), len(cells))
+        for part, cell in zip(parts, cells):
+            self.assertEqual([n.strip() for n in part.split("–")], list(cell))
+
+
+class TestHEntryJamRestoresSbiActive(unittest.TestCase):
+    def test_entry_jam_return_then_sbi_active_is_shape_not_trial(self) -> None:
+        session = _shape_session(practice_key="D#m")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        snapshot_last_custom_state(session)
+        set_sbi_preview_source(session, "Custom progression")
+        session["improv_song_source"] = "Custom progression"
+        snapshot_catalog_before_creative(session, refresh_if_pick_changed=True)
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(session, "D#m", pick_key=PK_SHAPE)
+
+        from backing_creative_return_route import apply_creative_return_route
+
+        apply_creative_return_route(
+            session,
+            {
+                "intelligence_tab": "Entry & Jam",
+                "entry_mode": "Style Jam Mode",
+                "workflow_owner": "style_jam",
+                "backing_source": "entry_jam",
+            },
+        )
+        restore_sbi_active_from_sealed_global_owner(session)
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        session["improv_intelligence_tab"] = "Entry & Jam"
+
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview.get("title"), "Shape of You")
+        self.assertEqual(session.get("active_catalog_pick_key"), PK_SHAPE)
+        from songs.practice_key_state import get_practice_concert_key
+
+        self.assertIn(_pc(get_practice_concert_key(session, PK_SHAPE) or ""), {_pc("D#m"), _pc("Ebm")})
+        last = session.get(LAST_CUSTOM_STATE_KEY) or {}
+        self.assertEqual(str((last.get("active") or {}).get("name") or last.get("name") or ""), "Trial Song")
+        set_sbi_preview_source(session, "Custom progression")
+        custom_preview = resolve_sbi_preview(session)
+        self.assertEqual(custom_preview.get("title"), "Trial Song")
+
+
+if __name__ == "__main__":
+    unittest.main()

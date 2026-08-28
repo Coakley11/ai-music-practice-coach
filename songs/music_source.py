@@ -36,6 +36,12 @@ EXPLICIT_CATALOG_SELECTION_EPOCH_KEY = "_explicit_catalog_selection_epoch"
 # Used to distinguish genuine Catalog clicks from stale Catalog widget callbacks after
 # Custom Set-as-Active (E5) — not a wall-clock grace window.
 SONG_PICKER_PRESENTED_SOURCE_KEY = "_song_picker_presented_source"
+# Last Catalog/Custom tab the user actually chose. Distinct from widget remount
+# defaults and persist-restored radio values (those stamp PRESENTED, not this).
+SONG_PICKER_USER_TAB_KEY = "_song_picker_user_tab"
+SONG_PICKER_USER_TAB_AT_KEY = "_song_picker_user_tab_at"
+SONGS_PICKER_ENTERED_RUN_KEY = "_songs_picker_entered_run"
+SONGS_EXPECT_CUSTOM_RADIO_KEY = "_songs_expect_custom_radio"
 
 
 def explicit_custom_activation_is_authoritative(session_state: dict[str, Any]) -> bool:
@@ -73,6 +79,247 @@ def explicit_catalog_selection_is_authoritative(session_state: dict[str, Any]) -
         return float(catalog_epoch) >= float(custom_epoch)
     except Exception:
         return True
+
+
+def _stamp_song_picker_user_tab(session_state: dict[str, Any], source: str) -> None:
+    """Record an intentional Songs Catalog/Custom tab choice."""
+    session_state[SONG_PICKER_USER_TAB_KEY] = source
+    try:
+        import time as _time
+
+        stamped = float(_time.time())
+    except Exception:
+        try:
+            stamped = float(session_state.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY) or 1.0)
+        except Exception:
+            stamped = 1.0
+    if source == SONG_PICKER_SOURCE_CATALOG:
+        try:
+            epoch = float(session_state.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY) or 0.0)
+        except Exception:
+            epoch = 0.0
+        if epoch and stamped <= epoch:
+            stamped = epoch + 0.001
+    session_state[SONG_PICKER_USER_TAB_AT_KEY] = stamped
+
+
+def user_chose_catalog_tab_after_custom_activation(session_state: dict[str, Any]) -> bool:
+    """True when the user opened the Catalog tab after the current Custom Set-as-Active."""
+    if str(session_state.get(SONG_PICKER_USER_TAB_KEY) or "").strip() != SONG_PICKER_SOURCE_CATALOG:
+        return False
+    try:
+        tab_at = float(session_state.get(SONG_PICKER_USER_TAB_AT_KEY) or 0.0)
+        epoch = float(session_state.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY) or 0.0)
+    except Exception:
+        return False
+    return bool(epoch) and tab_at > epoch
+
+
+def _songs_radio_remount_lag(session_state: dict[str, Any]) -> bool:
+    """True when a Catalog radio event is widget remount lag after landing on Songs."""
+    if session_state.get(SONGS_EXPECT_CUSTOM_RADIO_KEY):
+        return True
+    entered = session_state.get(SONGS_PICKER_ENTERED_RUN_KEY)
+    if entered is None:
+        return False
+    try:
+        run_seq = int(session_state.get("_script_run_seq") or 0)
+        return run_seq <= int(entered) + 1
+    except Exception:
+        return False
+
+
+def prepare_songs_picker_entry(session_state: dict[str, Any]) -> None:
+    """Landing on Songs: remount Custom when Custom owns, unless the user chose Catalog.
+
+    Creative → Songs remounts the radio with Streamlit's Catalog default. That is
+    not a Catalog-tab visit and must not hide the Custom hub / Practice Key badge.
+    A genuine Catalog-tab click stamps ``SONG_PICKER_USER_TAB_KEY`` after the
+    Custom activation epoch and is preserved.
+    """
+    session_state[SONGS_PICKER_ENTERED_RUN_KEY] = int(session_state.get("_script_run_seq") or 0)
+    if not (
+        custom_progression_is_active(session_state)
+        or explicit_custom_activation_is_authoritative(session_state)
+    ):
+        try:
+            restore_catalog_live_practice_key(session_state)
+        except Exception:
+            pass
+        return
+    if user_chose_catalog_tab_after_custom_activation(session_state):
+        return
+    _assign_song_picker_source_widget(
+        session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
+    )
+    session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+    session_state[SONGS_EXPECT_CUSTOM_RADIO_KEY] = True
+    if str(session_state.get(SONG_PICKER_USER_TAB_KEY) or "").strip() != SONG_PICKER_SOURCE_CATALOG:
+        _stamp_song_picker_user_tab(session_state, SONG_PICKER_SOURCE_CUSTOM)
+
+
+def catalog_owns_live_practice_key(session_state: dict[str, Any]) -> bool:
+    """True when the globally active song is a Catalog owner, not Custom.
+
+    Ownership is separate from the current page's sidebar projection. Custom page
+    may overlay Trial's Practice Key onto ``display_key`` without changing this.
+    """
+    if custom_progression_is_active(session_state) or is_custom_progression(session_state):
+        return False
+    if str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CUSTOM:
+        return False
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return False
+    if str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CATALOG:
+        return True
+    return bool(pick) and not pick.startswith("custom::")
+
+
+def _catalog_pick_for_live_practice_key(session_state: dict[str, Any]) -> str:
+    """Catalog pick only — never call resolve_practice_source_pick here.
+
+    That helper can install a Custom identity when the catalog pick is empty
+    and would abort or contaminate Songs navigation.
+    """
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        pick = ""
+    if not pick:
+        selected = session_state.get("selected_song")
+        if isinstance(selected, dict):
+            pick = str(selected.get("pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return ""
+    return pick
+
+
+def seal_catalog_live_practice_key_for_custom_page(
+    session_state: dict[str, Any],
+    *,
+    reject_live: str = "",
+) -> str:
+    """Remember Shape's Practice Key before the Custom page overlays Trial D.
+
+    Does not change Global Active. Never stamps the Custom overlay token onto an
+    existing catalog sticky.
+    """
+    if not catalog_owns_live_practice_key(session_state):
+        return ""
+    pick = _catalog_pick_for_live_practice_key(session_state)
+    sealed = str(session_state.get("_custom_page_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session_state.get("_custom_page_sealed_catalog_pick") or "").strip()
+    if not sealed:
+        sealed = str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+        sealed_pick = sealed_pick or str(
+            session_state.get("_sbi_custom_sealed_catalog_pick") or ""
+        ).strip()
+    sticky = ""
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    live = str(session_state.get("display_key") or session_state.get("concert_key") or "").strip()
+    reject = str(reject_live or "").strip()
+    if not sealed:
+        # Prefer existing catalog sticky. Use live only before overlay, and never
+        # seal Trial's page-projection token as Shape's Practice Key.
+        already_overlay = bool(session_state.get("_custom_page_sidebar_overlay"))
+        if sticky:
+            sealed = sticky
+        elif live and not already_overlay and (not reject or live != reject):
+            sealed = live
+            if pick:
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(
+                        session_state,
+                        live,
+                        pick_key=pick,
+                        allow_catalog_during_sbi_custom=True,
+                    )
+                except ImportError:
+                    pass
+        if pick:
+            sealed_pick = pick
+    if sealed and sealed_pick:
+        session_state["_custom_page_sealed_catalog_pk"] = sealed
+        session_state["_custom_page_sealed_catalog_pick"] = sealed_pick
+        if not str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip():
+            session_state["_sbi_custom_sealed_catalog_pk"] = sealed
+            session_state["_sbi_custom_sealed_catalog_pick"] = sealed_pick
+    session_state["_custom_page_sidebar_overlay"] = True
+    return sealed
+
+
+def restore_catalog_live_practice_key(session_state: dict[str, Any]) -> str:
+    """Put live ``display_key`` back to the Catalog owner's own Practice Key.
+
+    Custom-page overlay may show Trial D in the sidebar while Catalog still owns.
+    Leaving Custom must restore Shape/Bm before the first Songs render. Persist
+    refresh is not allowed to be the repair.
+    """
+    if not catalog_owns_live_practice_key(session_state):
+        return str(session_state.get("display_key") or "").strip()
+    pick = _catalog_pick_for_live_practice_key(session_state)
+    sealed = str(session_state.get("_custom_page_sealed_catalog_pk") or "").strip()
+    if not sealed:
+        sealed = str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sticky = ""
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    # Prefer the Catalog pick's current sticky over a stale Custom-page seal.
+    # Mission F minor used to win here and overwrite a later Songs Dm click.
+    token = sticky or sealed
+    if pick and sticky and sealed and sticky != sealed:
+        session_state["_custom_page_sealed_catalog_pk"] = sticky
+        if str(session_state.get("_sbi_custom_sealed_catalog_pick") or "").strip() == pick:
+            session_state["_sbi_custom_sealed_catalog_pk"] = sticky
+    if not token:
+        selected = session_state.get("selected_song")
+        if isinstance(selected, dict):
+            token = str(selected.get("key") or "").strip()
+    if not token:
+        return str(session_state.get("display_key") or "").strip()
+    if pick and token and not sticky:
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(
+                session_state,
+                token,
+                pick_key=pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+        except ImportError:
+            pass
+    session_state["concert_key"] = token
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
+    except ImportError:
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            if session_state.get("_streamlit_widgets_locked_this_run"):
+                session_state[PENDING_DISPLAY_KEY] = token
+            else:
+                session_state["display_key"] = token
+                session_state.pop(PENDING_DISPLAY_KEY, None)
+        except Exception:
+            session_state["_pending_display_key"] = token
+    session_state.pop("_custom_page_sidebar_overlay", None)
+    return token
 
 
 def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
@@ -166,11 +413,17 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
-    if is_custom_progression(session_state):
-        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    source = session_state.get(ACTIVE_MUSIC_SOURCE_KEY)
+    # Live catalog pick outranks leftover Custom active_song_state from visiting
+    # Custom Lab / LAST_CUSTOM without Set as Active. Explicit Custom GA
+    # (SOURCE_CUSTOM) still wins even if a master pick leftover is catalog.
+    if pick_key and not pick_key.startswith("custom::") and source != SOURCE_CUSTOM:
+        return False
+    if is_custom_progression(session_state):
+        return True
     if pick_key.startswith("custom::"):
         return True
     meta = session_state.get("active_song_state")
@@ -313,30 +566,39 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     # Deliberate flips go through on_change / hub button (USER_CATALOG + switch)
     # or PENDING already queued above.
 
-    # Stale catalog radio while Custom owns the source (refresh / pre-widget hydrate).
-    # Force widget_safe=False so a locked radio key cannot keep Catalog and later
-    # trigger an accidental Country Roads reclaim on the Songs page (E5).
-    if custom_active and current == SONG_PICKER_SOURCE_CATALOG:
+    # Songs Catalog / Custom radios are tab navigation, not ownership.
+    # Persist / Creative remount often restores a stale Catalog radio after
+    # Set as Active. Remount Custom unless the user opened Catalog after that
+    # activation (USER_TAB, not persist-restored PRESENTED).
+    if (
+        custom_active
+        and current == SONG_PICKER_SOURCE_CATALOG
+        and explicit_custom_activation_is_authoritative(session_state)
+        and not user_chose_catalog_tab_after_custom_activation(session_state)
+    ):
         _assign_song_picker_source_widget(
             session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
         )
         current = SONG_PICKER_SOURCE_CUSTOM
         changed = True
-
     if custom_active:
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
             session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
             changed = True
     elif pick_key and not pick_key.startswith("custom::"):
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+        if (
+            session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG
+            and not explicit_custom_activation_is_authoritative(session_state)
+        ):
             set_catalog_source(session_state)
             changed = True
 
-    if current != expected:
+    if not current:
         _assign_song_picker_source_widget(session_state, expected, widget_safe=False)
+        current = expected
         changed = True
     session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = str(
-        session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or expected
+        session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or current or expected
     )
     return changed
 
@@ -1006,6 +1268,71 @@ def snapshot_catalog_before_creative(
     )
 
 
+def restore_sbi_active_from_sealed_global_owner(session_state: dict[str, Any]) -> bool:
+    """Rehydrate SBI Active Source from the sealed catalog owner after Entry Jam.
+
+    Entry Style Jam / Backing is temporary Creative ownership. Returning to SBI
+    Active must use the global-active catalog song and its sticky Practice Key,
+    not LAST_CUSTOM / last Custom preview. Trial stays under Custom SBI only.
+    """
+    try:
+        from source_session_state import set_sbi_preview_source, sync_catalog_session
+    except ImportError:
+        set_sbi_preview_source = None  # type: ignore[assignment]
+        sync_catalog_session = None  # type: ignore[assignment]
+    if callable(set_sbi_preview_source):
+        set_sbi_preview_source(session_state, "Active song")
+    session_state["improv_song_source"] = "Active song"
+    snap = session_state.get(CATALOG_BEFORE_CREATIVE_KEY)
+    if not isinstance(snap, dict):
+        snap = session_state.get("catalog_session")
+    pick = ""
+    if isinstance(snap, dict):
+        pick = str(snap.get("pick_key") or "").strip()
+        sel = snap.get("selected_song")
+        if isinstance(sel, dict) and sel and not str(sel.get("pick_key") or "").startswith("custom::"):
+            session_state["selected_song"] = dict(sel)
+            title = str(sel.get("title") or "").strip()
+            if title:
+                session_state["song"] = title
+                session_state["active_song_title"] = title
+    if not pick:
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick and not str(pick).startswith("custom::"):
+        session_state["active_catalog_pick_key"] = pick
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            pk = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            pk = ""
+        if not pk and isinstance(snap, dict):
+            pk = str(snap.get("display_key") or "").strip()
+        # Do not overwrite a live Style Jam sidebar key; only restore catalog sticky.
+        if pk:
+            try:
+                from songs.practice_key_state import set_practice_concert_key
+
+                set_practice_concert_key(session_state, pk, pick_key=pick)
+            except ImportError:
+                pass
+    try:
+        from creative_session_state import get_creative_session, set_creative_session
+
+        sess = get_creative_session(session_state)
+        if sess is not None:
+            sess.song_source = "Active song"
+            set_creative_session(session_state, sess)
+    except ImportError:
+        pass
+    if callable(sync_catalog_session):
+        try:
+            sync_catalog_session(session_state)
+        except Exception:
+            pass
+    return True
+
+
 def peek_catalog_restore_pin(session_state: dict[str, Any]) -> str:
     """Pinned catalog pick from a recent Use Catalog Song Backing restore."""
     return str(session_state.get(CATALOG_RESTORE_PIN_KEY) or "").strip()
@@ -1205,6 +1532,21 @@ def _ignore_stale_custom_radio_after_catalog_switch(session_state: dict[str, Any
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
+    # Custom-page Backing must not seize Global Active. The live double-hydrate
+    # path (st_like=Streamlit) was promoting Trial via restore/apply helpers
+    # that default promote_to_global_active=True.
+    try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        page = str(session_state.get("studio_page") or "").strip().lower()
+        if custom_page_backing_keeps_catalog_owner(session_state) and page == "backing":
+            return
+    except ImportError:
+        if (
+            session_state.get("_custom_page_backing_keep_catalog_owner")
+            and str(session_state.get("studio_page") or "").strip().lower() == "backing"
+        ):
+            return
     # Heal Catalog pick from Global Active title *before* sync — otherwise a stale
     # Say pick makes sync_catalog_session wipe a good Shape catalog_session, and
     # capture then stamps Say into _catalog_before_custom_state (H1/H9).
@@ -1315,15 +1657,13 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
 
 
 def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
-    """Custom→Songs nav: hydrate LAST_CUSTOM identity + Custom picker without radio click."""
+    """Custom→Songs nav: remember LAST_CUSTOM identity without seizing Global Active.
+
+    Saved / viewed Custom state is not ownership. Only explicit Set as Active
+    (``commit_custom_active_song``) may change ``active_music_source``.
+    """
     try:
-        from songs.music_source import (
-            SONG_PICKER_SOURCE_CUSTOM,
-            _queue_last_custom_restore_from_session,
-            install_last_custom_into_live_cpl,
-            set_custom_source,
-        )
-        from songs.state import ACTIVE_CATALOG_PICK_KEY
+        from songs.music_source import install_last_custom_into_live_cpl
     except ImportError:
         return False
     installed = install_last_custom_into_live_cpl(
@@ -1334,33 +1674,25 @@ def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
         active = (snap or {}).get("active") if isinstance(snap, dict) else None
         if not isinstance(active, dict):
             return False
-    session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-    session_state.pop("_catalog_owns_until_custom_click", None)
-    set_custom_source(session_state)
-    _assign_song_picker_source_widget(
-        session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
-    )
-    session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
-    _queue_last_custom_restore_from_session(session_state)
-    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if not pick.startswith("custom::"):
-        try:
-            from custom_progression_lab import cpl_active_from_session
-            from songs.music_source import custom_pick_key_for, ensure_custom_active_song_identity
-
-            ensure_custom_active_song_identity(session_state)
-            active = cpl_active_from_session(session_state)
-            pick = str(custom_pick_key_for(active) or "").strip()
-            if pick.startswith("custom::"):
-                session_state[ACTIVE_CATALOG_PICK_KEY] = pick
-        except ImportError:
-            pass
+    # Catalog still owns: undo any Custom-page overlay of Trial D onto display_key
+    # before the first Songs render. Must never abort Songs navigation.
     try:
-        from workflow_musical_authority import refresh_custom_improv_concert_sections
-
-        refresh_custom_improv_concert_sections(session_state)
-    except ImportError:
+        restore_catalog_live_practice_key(session_state)
+    except Exception:
         pass
+    # Do not call set_custom_source or queue PENDING_CUSTOM_ACTIVE_SONG —
+    # those paths claim Global Active. If the user already Set as Active,
+    # land on the Custom Songs tab so the hub/PK widget remounts for that owner.
+    if custom_progression_is_active(session_state) or explicit_custom_activation_is_authoritative(
+        session_state
+    ):
+        _assign_song_picker_source_widget(
+            session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
+        )
+        session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        session_state[SONGS_EXPECT_CUSTOM_RADIO_KEY] = True
+        _stamp_song_picker_user_tab(session_state, SONG_PICKER_SOURCE_CUSTOM)
     return True
 
 
@@ -1427,6 +1759,8 @@ def note_song_picker_source_presented(session_state: dict[str, Any], value: str 
     choice = str(value or session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice:
         session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = choice
+        if choice.startswith("Use Custom") or choice == SONG_PICKER_SOURCE_CUSTOM:
+            session_state.pop(SONGS_EXPECT_CUSTOM_RADIO_KEY, None)
 
 
 def sync_song_picker_source_widget(
@@ -2195,9 +2529,18 @@ def on_song_picker_source_change(
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice.startswith("Use Custom") or choice == SONG_PICKER_SOURCE_CUSTOM:
         # After "Use catalog song backing/instead", suppress stale Custom radio
-        # restores from Streamlit widget lag (H7/H9). Genuine Songs Custom a few
-        # seconds later still wins (H1/H8) once the Catalog epoch ages out.
-        if _ignore_stale_custom_radio_after_catalog_switch(st.session_state):
+        # restores from Streamlit widget lag on Backing only (H7/H9). On Songs
+        # the Custom tab is navigation — never snap it back to Catalog, and
+        # never treat the tab click as Set-as-Active.
+        page_now = str(
+            st.session_state.get("studio_page") or st.session_state.get("page") or ""
+        ).strip()
+        ignore_stale = (
+            page_now == "backing"
+            and _ignore_stale_custom_radio_after_catalog_switch(st.session_state)
+            and not explicit_custom_activation_is_authoritative(st.session_state)
+        )
+        if ignore_stale:
             _block_n = int(st.session_state.get("_block_stale_custom_radio_reclaim") or 0)
             if _block_n > 0:
                 st.session_state["_block_stale_custom_radio_reclaim"] = _block_n - 1
@@ -2218,46 +2561,32 @@ def on_song_picker_source_change(
             )
             st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
             return
-        # Songs (or other): retire Catalog transition intents; explicit Custom wins.
+        # Songs Custom tab: show the Custom hub. Do not seize Global Active —
+        # that is Set as Active / library activate only.
         session_state = st.session_state
         session_state.pop("_catalog_owns_until_custom_click", None)
-        retire_catalog_transition_intents(session_state)
-        set_custom_source(session_state)
-        if not restore_last_custom_active_song(st, invalidate_backing=invalidate_backing):
-            try:
-                from custom_progression_lab import cpl_active_from_session
-
-                queue_custom_active_song_activation(st, cpl_active_from_session(st.session_state))
-            except Exception:
-                pass
-        else:
-            note_active_source_change(st, invalidate_backing=invalidate_backing)
+        session_state.pop(SONGS_EXPECT_CUSTOM_RADIO_KEY, None)
         st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        st.session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+        _stamp_song_picker_user_tab(st.session_state, SONG_PICKER_SOURCE_CUSTOM)
         st.rerun()
         return
-    # Stale Catalog radio callbacks after Custom Set-as-Active must not reclaim
-    # Country Roads (E5). Distinguish:
-    # - Spurious: Custom owns AND the radio never left Catalog (presented still Catalog)
-    #   → heal, ignore.
-    # - Genuine: Custom owns AND radio was showing Custom (or last reconciled Custom),
-    #   user selected Catalog → switch immediately. Explicit user choice always wins.
+    # Catalog tab is Songs navigation. Do not steal Custom Global Active — hub
+    # "Use catalog song instead" and explicit catalog song picks own that switch.
+    # A lagging Catalog widget after Set-as-Active / Creative→Songs remount must
+    # also not reclaim the previous catalog song (E5) or hide the Custom tab.
     if explicit_custom_activation_is_authoritative(st.session_state):
         presented = str(st.session_state.get(SONG_PICKER_PRESENTED_SOURCE_KEY) or "").strip()
         presented_custom = presented.startswith("Use Custom") or presented == SONG_PICKER_SOURCE_CUSTOM
         last_rec = str(st.session_state.get(LAST_RECONCILED_SONG_PICKER_SOURCE_KEY) or "").strip()
         last_was_custom = last_rec.startswith("Use Custom") or last_rec == SONG_PICKER_SOURCE_CUSTOM
-        pick_now = str(st.session_state.get("active_catalog_pick_key") or "").strip()
-        identity_still_custom = (
-            pick_now.startswith("custom::")
-            or is_custom_progression(st.session_state)
-            or custom_progression_is_active(st.session_state)
+        remount_lag = _songs_radio_remount_lag(st.session_state)
+        genuine_catalog_tab = (
+            (presented_custom or last_was_custom)
+            and not remount_lag
+            and not st.session_state.get(SONGS_EXPECT_CUSTOM_RADIO_KEY)
         )
-        # If Custom still owns Global Active, a Catalog radio click is genuine only
-        # when the Songs radio actually presented Custom (user flipped Catalog), not
-        # when Set-as-Active left a lagging Catalog widget (E5). Hub "Use catalog"
-        # buttons call switch_to_catalog_from_custom directly (H7/H9).
-        genuine_catalog_from_custom = presented_custom or last_was_custom
-        if not genuine_catalog_from_custom:
+        if not genuine_catalog_tab:
             try:
                 from e5_reclaim_trace import note_e5_reclaim_writer
 
@@ -2268,12 +2597,17 @@ def on_song_picker_source_change(
                 )
             except ImportError:
                 pass
-            st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
             _assign_song_picker_source_widget(
                 st.session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
             )
             st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
             return
+        st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        st.session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        _stamp_song_picker_user_tab(st.session_state, SONG_PICKER_SOURCE_CATALOG)
+        st.rerun()
+        return
     st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
     pick_now = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     leaving_custom = (
@@ -2358,16 +2692,21 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if page != "picker":
         return reconcile_music_picker_source_widget(session_state)
     if choice_custom:
+        # Songs Custom tab is view state. Hydrate must not seize Global Active
+        # and must not snap the radio back to Catalog after Set-as-Active.
+        if explicit_custom_activation_is_authoritative(session_state):
+            session_state.pop("_catalog_owns_until_custom_click", None)
+            _assign_song_picker_source_widget(
+                session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
+            )
+            session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
+            return False
         stamped = session_state.get(CATALOG_SWITCH_APPLIED_THIS_RUN_KEY)
         run_seq = int(session_state.get("_script_run_seq") or 0)
-        catalog_guard = bool(session_state.get("_catalog_owns_until_custom_click"))
-        if (
-            (stamped is not None and int(stamped) == run_seq)
-            or catalog_guard
-            or _ignore_stale_custom_radio_after_catalog_switch(session_state)
-        ):
-            # Catalog switch still owns — heal lagging Custom radio; do not reclaim.
-            # Cleared only by explicit Songs Custom on_change / set_custom (H1/H8).
+        same_run_catalog_switch = stamped is not None and int(stamped) == run_seq
+        # Same-run Catalog-switch widget lag (H7) may still heal. A leftover
+        # catalog_owns latch must not hide the Custom tab after a later visit.
+        if same_run_catalog_switch:
             _assign_song_picker_source_widget(
                 session_state, SONG_PICKER_SOURCE_CATALOG, widget_safe=False
             )
@@ -2377,22 +2716,12 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
             if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
                 set_catalog_source(session_state)
             return True
-        # Explicit Songs Custom (H1/H8): retire Catalog transition intents and promote.
-        session_state.pop("_catalog_owns_until_custom_click", None)
-        retire_catalog_transition_intents(session_state)
-        changed = False
-        if not is_custom_progression(session_state):
-            set_custom_source(session_state)
-            changed = True
-        else:
-            retire_catalog_transition_intents(session_state)
+        # Keep the Custom tab selected without claiming Global Active.
         _assign_song_picker_source_widget(
             session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
         )
         session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
-        if _queue_last_custom_restore_from_session(session_state):
-            changed = True
-        return changed or True
+        return False
     # Catalog radio showing. Keep ``_catalog_owns_until_custom_click`` until an
     # explicit Custom click — clearing it here let lagging Custom reclaim after
     # Use Catalog restored Shape (H7).
@@ -3039,6 +3368,37 @@ def display_key_context(
         or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
         or ""
     ).strip()
+    # Custom-page Backing projects Trial identity/original without seizing GA.
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    keep_custom_backing = False
+    try:
+        from custom_progression_lab import custom_page_backing_keeps_catalog_owner
+
+        keep_custom_backing = bool(custom_page_backing_keeps_catalog_owner(session_state))
+    except ImportError:
+        keep_custom_backing = bool(
+            session_state.get("_custom_page_backing_keep_catalog_owner")
+        )
+    if page == "backing" and keep_custom_backing:
+        from custom_progression_lab import (
+            default_active_progression,
+            ensure_original_structure,
+        )
+
+        active = ensure_original_structure(
+            session_state.get(cpl_active_key) or default_active_progression()
+        )
+        home = custom_original_key(active)
+        title = active.get("name", "Custom Progression")
+        from songs.key_state import song_display_identity
+
+        return home, song_display_identity(
+            str(title),
+            "Custom progression",
+            home,
+            pick_key="",
+        )
+
     # Catalog Global Active must use catalog Original Key even if CPL widgets lag.
     if _pick_key_is_catalog(pick_key) or (
         session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG
@@ -3612,46 +3972,45 @@ def commit_custom_active_song(
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
-    leaving_catalog = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() != SOURCE_CUSTOM
+    current_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    already_this_custom = (
+        str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CUSTOM
+        and bool(pick_key)
+        and current_pick == pick_key
+    )
+    leaving_catalog = not already_this_custom
     practice_key = home_key
     if leaving_catalog:
         # New Custom activation from Catalog is fresh at Original Key.
         # Leftover Perfect G / Shape Dm must not become Trial Practice Key.
         try:
-            from practice_key_mode import apply_fixed_mode_target, is_fixed_practice_key_mode
-
-            if is_fixed_practice_key_mode(session):
-                practice_key = apply_fixed_mode_target(session, home_key, home_key)
-        except ImportError:
-            pass
-        session["display_key"] = practice_key
-        session["concert_key"] = practice_key
-        try:
-            from custom_progression_lab import (
-                CPL_LAST_DISPLAY_KEY,
-                CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            from practice_key_mode import (
+                is_fixed_practice_key_mode,
+                resolve_family_option_id,
+                resolve_fixed_practice_concert_key_for_family,
             )
 
-            session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = practice_key
-            session[CPL_LAST_DISPLAY_KEY] = practice_key
-            session["_cpl_force_pk_to_home"] = practice_key
+            if is_fixed_practice_key_mode(session):
+                # Use Custom original mode — leftover Catalog selected_song
+                # (Shape Bm) must not resolve a D-major song to Am.
+                fam = resolve_family_option_id(session)
+                if fam:
+                    practice_key = resolve_fixed_practice_concert_key_for_family(fam, home_key)
         except ImportError:
             pass
         try:
-            from songs.practice_key_state import set_practice_concert_key
+            from songs.practice_key_state import apply_authoritative_practice_key
 
-            if pick_key.startswith("custom::"):
-                # Catalog's last sidebar commit (Perfect G) must not block Original D.
-                session.pop("_pk_user_commit_token", None)
-                session.pop("_pk_user_commit_at", None)
-                set_practice_concert_key(
-                    session,
-                    practice_key,
-                    pick_key=pick_key,
-                    allow_restore_original=True,
-                )
+            apply_authoritative_practice_key(
+                session,
+                practice_key,
+                pick_key=pick_key,
+                sync_display=True,
+                sync_custom_widgets=True,
+            )
         except ImportError:
-            pass
+            session["display_key"] = practice_key
+            session["concert_key"] = practice_key
     else:
         try:
             from practice_key_mode import resolve_practice_concert_key_for_song
@@ -3673,7 +4032,8 @@ def commit_custom_active_song(
                 pass
 
     set_custom_source(session)
-    sync_song_picker_source_widget(session, force=True)
+    sync_song_picker_source_widget(session, force=True, widget_safe=False)
+    _stamp_song_picker_user_tab(session, SONG_PICKER_SOURCE_CUSTOM)
 
     try:
         from workflow_musical_authority import refresh_custom_improv_concert_sections
@@ -3761,20 +4121,19 @@ def commit_custom_active_song(
         pass
 
     if leaving_catalog:
-        session["display_key"] = practice_key
-        session["concert_key"] = practice_key
         try:
-            from songs.practice_key_state import set_practice_concert_key
+            from songs.practice_key_state import apply_authoritative_practice_key
 
-            if pick_key.startswith("custom::"):
-                set_practice_concert_key(
-                    session,
-                    practice_key,
-                    pick_key=pick_key,
-                    allow_restore_original=True,
-                )
+            apply_authoritative_practice_key(
+                session,
+                practice_key,
+                pick_key=pick_key,
+                sync_display=True,
+                sync_custom_widgets=True,
+            )
         except ImportError:
-            pass
+            session["display_key"] = practice_key
+            session["concert_key"] = practice_key
 
     return active
 

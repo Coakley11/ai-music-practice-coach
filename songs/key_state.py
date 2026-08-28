@@ -394,10 +394,9 @@ def mark_display_key_changed(st: Any) -> None:
                     allow_restore_original=True,
                 )
                 try:
-                    import time as _time
+                    from songs.practice_key_state import stamp_practice_key_user_commit
 
-                    st.session_state["_pk_user_commit_token"] = dk
-                    st.session_state["_pk_user_commit_at"] = _time.time()
+                    stamp_practice_key_user_commit(st.session_state, dk, pick_key=pick)
                 except Exception:
                     pass
                 if should_write_song_source_settings(st.session_state, pick):
