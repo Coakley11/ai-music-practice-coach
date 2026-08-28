@@ -296,14 +296,22 @@ def restore_catalog_live_practice_key(session_state: dict[str, Any]) -> str:
             )
         except ImportError:
             pass
-    session_state["display_key"] = token
     session_state["concert_key"] = token
     try:
-        from songs.key_state import PENDING_DISPLAY_KEY
+        from session_widget_safe import safe_assign_display_key
 
-        session_state[PENDING_DISPLAY_KEY] = token
+        safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
     except ImportError:
-        session_state["_pending_display_key"] = token
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            if session_state.get("_streamlit_widgets_locked_this_run"):
+                session_state[PENDING_DISPLAY_KEY] = token
+            else:
+                session_state["display_key"] = token
+                session_state.pop(PENDING_DISPLAY_KEY, None)
+        except Exception:
+            session_state["_pending_display_key"] = token
     session_state.pop("_custom_page_sidebar_overlay", None)
     return token
 

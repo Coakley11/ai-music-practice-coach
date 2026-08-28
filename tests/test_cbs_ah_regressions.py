@@ -303,6 +303,21 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("song"), "Shape of You")
 
+    def test_restore_catalog_practice_key_is_widget_safe(self) -> None:
+        session = _shape_session(practice_key="Bm")
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["_custom_page_sealed_catalog_pk"] = "Bm"
+        session["_streamlit_widgets_locked_this_run"] = True
+        from songs.key_state import PENDING_DISPLAY_KEY
+        from songs.music_source import restore_catalog_live_practice_key
+
+        token = restore_catalog_live_practice_key(session)
+        self.assertEqual(token, "Bm")
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("concert_key"), "Bm")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "Bm")
+
     def test_keep_catalog_owner_flag_reads_streamlit_like_session(self) -> None:
         from custom_progression_lab import custom_page_backing_keeps_catalog_owner
         from songs.music_source import SOURCE_CUSTOM

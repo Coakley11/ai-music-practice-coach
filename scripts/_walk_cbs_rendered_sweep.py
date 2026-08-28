@@ -169,31 +169,31 @@ def finished_exits_visible(page: Page) -> dict[str, bool]:
 
 def click_finished_backing(page: Page) -> bool:
     """Click the finished-view Backing exit, not a hub/nav twin."""
+    loc = page.locator(".st-key-cpl_to_backing_finish button").first
+    try:
+        loc.scroll_into_view_if_needed(timeout=8000)
+        loc.click(timeout=8000)
+        settle(page, 5)
+        return True
+    except Exception:
+        pass
     clicked = page.evaluate(
         """() => {
-          const root = document.querySelector('[data-testid="stMain"]')
-            || document.querySelector('[data-testid="stAppViewContainer"]');
-          if (!root) return false;
-          const scoped = [
-            ...root.querySelectorAll('.st-key-custom_page_finished_exits button'),
-            ...root.querySelectorAll('button'),
-          ];
-          const b = scoped.find((el) => {
-            const t = (el.innerText || '').replace(/\\s+/g, ' ').trim();
-            const r = el.getBoundingClientRect();
-            return /backing/i.test(t) && !/open/i.test(t) && !/track/i.test(t)
-              && el.offsetParent !== null && r.width > 8 && r.height > 8;
-          });
+          const wrap = document.querySelector('.st-key-cpl_to_backing_finish')
+            || document.querySelector('.st-key-custom_page_finished_exits');
+          const b = wrap ? wrap.querySelector('button') : null;
           if (!b) return false;
+          const t = (b.innerText || '').replace(/\\s+/g, ' ').trim();
+          if (!/backing/i.test(t) || /open/i.test(t)) return false;
           b.scrollIntoView({block: 'center'});
           b.click();
           return true;
         }"""
     )
     if clicked:
-        settle(page, 4)
+        settle(page, 5)
         return True
-    return click_main_button(page, r"🎧\\s*Backing") or click_main_button(page, r"^🎧 Backing$")
+    return False
 
 
 def click_main_button(page: Page, pattern: str) -> bool:
@@ -292,8 +292,13 @@ def main() -> int:
         settle(page, 5)
 
         # ----- Seed Shape Bm (catalog owner) -----
-        click_nav(page, "Songs")
-        settle(page, 2)
+        wait_for_body(page, "Songs", "Practice", timeout_s=40)
+        settle(page, 4)
+        opened_songs = click_nav(page, "Songs")
+        if not opened_songs:
+            settle(page, 3)
+            opened_songs = click_nav(page, "Songs")
+        settle(page, 3)
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 3)
         set_songs_practice_key(page, "Bm")

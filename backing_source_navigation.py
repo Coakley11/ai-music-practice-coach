@@ -1851,7 +1851,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         from songs.music_source import restore_catalog_live_practice_key
 
         if custom_page_launched_catalog_backing(session):
-            restore_catalog_live_practice_key(session)
+            try:
+                restore_catalog_live_practice_key(session)
+            except Exception:
+                pass
             try:
                 from backing_context import restore_regular_song_backing
 
