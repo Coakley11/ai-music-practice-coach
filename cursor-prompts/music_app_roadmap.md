@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-04 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-08-28 · **Branch:** `cursor/composition-usability-layout-0398` (Composition testing; do not merge to `dev`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -193,7 +193,7 @@ Catalog browse/search/filters, active song dropdown, favorites, recent chips, ly
 Hero card (keys, BPM, meter, sections), Practice/Backing/Karaoke/Chord Coach actions, edit chart CTA; custom progression variant on CPL.
 
 ### Composition Studio
-Sprint A foundation: `CompositionDocument`, library save/load, preview audio, musical snapshot. Current UI still CPL-like — **six-phase guided UX next** ([plan](./plans/2026-07-29-composition-studio-six-phase-songwriting.md)): Vision → Structure → Chords → Melody → Lyrics → Review.
+Sprint A foundation + six-phase guided UX. On the Composition testing branch, the Manual / advanced chord editor is a focused selected-section editor (not Custom Page) and the refine-intent selectbox is widget-safe ([plan](./plans/2026-08-28-manual-chord-editor.md)). Do not merge that slice to `dev` until human QA signs it off.
 
 ### Creative Progressions
 **Custom:** click-build sections, subdivisions, save/list, harmonic hints. **Creative:** Improvisation Intelligence tabs + text labs; **Missions** use the [Mission workspace contract](./plans/2026-07-30-mission-workspace-contract.md) (motif SSOT, cloud sync).
@@ -208,6 +208,22 @@ Display/practice key (concert); transposing instrument sidebar; “chart in writ
 Karaoke Performance Setlist (voice): queue on Song Selection, persisted, session on Backing with auto-generate between songs.
 
 ---
+
+## Current Priorities
+
+*See [music_app_tasks.md](./music_app_tasks.md). Composition testing branch: Manual / advanced chord editor is the blocking QA item — do not merge to `dev`.*
+
+## Next Features
+
+*See [music_app_feature_backlog.md](./music_app_feature_backlog.md) and [music_app_tasks.md](./music_app_tasks.md).*
+
+## Long-Term Vision
+
+*See platform architecture above and [music_app_tasks.md](./music_app_tasks.md#long-term-vision).*
+
+## Completed Features
+
+*See [music_app_completed_features.md](./music_app_completed_features.md).*
 
 ## Notes
 

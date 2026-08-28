@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-04 (Phase 2A Missions recording @ `227a55b` pending live acceptance; new P0 handoff + speed plans) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-08-28 (Composition testing branch: Manual / advanced chord editor widget-safe fix — do not merge to `dev`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -183,6 +183,7 @@ Music Coach AMI: expand send context (song, section, mission, analysis, practice
 
 - [x] **CS-B5** — Review: cover summary, structure/harmony/melody/lyrics overviews, full-song play, readiness checklist, whole-song coach
 - [x] **Structure + Melody polish** — visual timeline, tap-to-select, grouped section actions, linked-harmony playback, hear-section, melody refinements, chords-first guidance, hum-record scaffold
+- [x] **Manual / advanced chord editor (Composition testing branch only)** — widget-safe refine intent; focused section editor (location, replace, quality, insert, suggestions, preview/accept). Plan: [plans/2026-08-28-manual-chord-editor.md](./plans/2026-08-28-manual-chord-editor.md). **Do not merge to `dev`.**
 - [ ] **Melody Capture sprint** — hum-over-looping-chords → pitch/rhythm → editable melody ([backlog](./music_app_feature_backlog.md#song-composer--composition-studio))
 - [ ] **CS-C** — OpenAI proposals per phase (after Melody Capture planning)
 
@@ -357,6 +358,7 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 - [x] Back arrow main-panel positioning (`9e0728a`)
 - [x] Roadmap documentation system (`cursor-prompts/`)
 - [x] Flagship masterclass coaching foundation frozen (2026-07-29) — see [plan](./plans/2026-07-29-flagship-coaching-quality-standard.md)
+- [x] Composition Manual / advanced chord editor + refine-intent widget fix (2026-08-28, testing branch only)
 
 ---
 
@@ -366,7 +368,8 @@ Recent task completions (see [music_app_completed_features.md](./music_app_compl
 - **Phase 1 Items 1–8 (2026-08-03):** **Live-accepted & frozen** on `dev` — Item 8 @ **`8ef698e`** (CAS + revision unification; TEST A/B/C). **Phase 2 gate open.** Do not modify frozen persistence/CAS or Item 8 diagnostics without `?dev=1` proof.
 - **Phase 1 page save/hydration (2026-08-02):** Accepted on live `dev` — do not regress queued startup release or authoritative page_change path. **Deferred:** align `last_cloud_fetch` vs `fresh_hydration` cache flags (diagnostics only).
 - **SSOT + One Music Engine:** New musical logic belongs in canonical modules (`music_theory`, `motif_engine`, mission rules, persistence contracts)—not page files. See [2026-07-31 architecture plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.
-- Work on branch **`dev`** only; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.
+- Composition testing work stays on `cursor/composition-cloud-wip-20260827` / follow-up heads — **do not merge to `dev`** until Daniel signs off.
+- Work on branch **`dev`** only for production-bound work; push `origin/dev` for Streamlit Cloud dev app. Do not push `main` unless releasing.
 - **UI polish** and **nav audit/fix** = separate commits; never mix with persistence.
 - When a task ships, move detail to `music_app_completed_features.md` and uncheck here.
 - For large implementation plans, save the full plan body under `cursor-prompts/plans/` and link from this file.

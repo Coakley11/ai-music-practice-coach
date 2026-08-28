@@ -18,13 +18,48 @@ from composition_chord_suggestions import (
     SECTION_HARMONY_FEELINGS,
     coach_line_for_section,
     default_feeling_for_section,
-    guided_chord_vocabulary,
     suggest_progressions,
 )
 from composition_chord_refinements import (
     CHORD_REFINEMENT_INTENTS,
     propose_chord_refinement,
     refinement_intent_label,
+)
+from composition_chord_editor import (
+    MANUAL_EDITOR_EXPANDED_KEY,
+    apply_draft_to_document,
+    baseline_key,
+    build_chord_symbol,
+    cancel_editor_draft,
+    chromatic_warning,
+    clear_editor_session,
+    consume_refine_intent_choice,
+    draft_changed,
+    draft_key,
+    duration_token,
+    editor_duration_widget_key,
+    editor_quality_widget_key,
+    editor_root_widget_key,
+    insert_draft_chord,
+    location_labels,
+    next_edit_id,
+    parse_chord_parts,
+    prepare_editor_widgets,
+    prepare_refine_intent_widget,
+    push_editor_history,
+    quality_choices,
+    quality_label,
+    queue_editor_draft,
+    queue_refine_intent_change,
+    refine_intent_widget_key,
+    remove_draft_chord,
+    replace_draft_chord,
+    strip_edit_metadata,
+    suggest_slot_chords,
+    undo_editor_draft,
+    widget_seeds_from_draft,
+    CHORD_ROOTS,
+    DURATION_OPTIONS,
 )
 from composition_lyric_suggestions import (
     LYRIC_EMOTIONS,
@@ -620,6 +655,22 @@ body[data-studio-page="composer"] .block-container {
   font-size: 0.82rem;
   color: #64748b;
   margin-bottom: 0.5rem;
+}
+.composer-cedit-help {
+  font-size: 0.88rem;
+  color: #475569;
+  margin: 0 0 0.55rem 0;
+  line-height: 1.45;
+}
+.composer-cedit-loc {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0.15rem 0 0.05rem;
+}
+.composer-cedit-warn {
+  font-size: 0.78rem;
+  color: #b45309;
+  margin: 0.1rem 0 0.35rem;
 }
 </style>
         """,
@@ -3234,6 +3285,226 @@ def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def _render_manual_chord_editor(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    owner_id: str | None = None,
+) -> None:
+    """Compact section-local editor: edit / insert / preview / accept."""
+    sid = str(owner_id or section.get("id") or "")
+    g = doc.setdefault("global", {})
+    meter = str(g.get("time_signature") or "4/4")
+    key_center = str(g.get("original_key_center") or "C")
+    canonical = list(section.get("chords") or [])
+    draft = prepare_editor_widgets(session_state, sid, canonical)
+    locs = location_labels(draft, meter=meter)
+
+    st.markdown(
+        '<p class="composer-cedit-help">Edit the chords already chosen for this section. '
+        "Change a quality, add a passing or ending chord, preview, then accept. "
+        "This does not open the Custom Progression page.</p>",
+        unsafe_allow_html=True,
+    )
+
+    for i, row in enumerate(list(draft)):
+        eid = str(row.get("_edit_id") or i)
+        parts = parse_chord_parts(str(row.get("chord") or "C"))
+        roots = list(CHORD_ROOTS)
+        if parts["root"] not in roots:
+            roots = [parts["root"], *roots]
+        quals = quality_choices(parts["quality"])
+        loc = locs[i] if i < len(locs) else f"Chord {i + 1}"
+        st.markdown(f'<p class="composer-cedit-loc">{i + 1}. {loc}</p>', unsafe_allow_html=True)
+        c_root, c_qual, c_dur, c_del = st.columns([1.1, 1.4, 1.1, 0.7])
+        with c_root:
+            root = st.selectbox(
+                "Root",
+                roots,
+                index=roots.index(parts["root"]) if parts["root"] in roots else 0,
+                key=editor_root_widget_key(sid, eid),
+                label_visibility="collapsed",
+            )
+        with c_qual:
+            quality = st.selectbox(
+                "Quality",
+                quals,
+                index=quals.index(parts["quality"]) if parts["quality"] in quals else 0,
+                format_func=quality_label,
+                key=editor_quality_widget_key(sid, eid),
+                label_visibility="collapsed",
+            )
+        with c_dur:
+            dur_ids = [tok for tok, _lab in DURATION_OPTIONS]
+            current_dur = duration_token(row, meter=meter)
+            if current_dur not in dur_ids:
+                current_dur = "1bar"
+            duration = st.selectbox(
+                "Length",
+                dur_ids,
+                index=dur_ids.index(current_dur),
+                format_func=lambda tok: next((lab for t, lab in DURATION_OPTIONS if t == tok), tok),
+                key=editor_duration_widget_key(sid, eid),
+                label_visibility="collapsed",
+            )
+        with c_del:
+            if st.button("Remove", key=f"composer_cedit_rm_{sid}_{eid}", use_container_width=True):
+                push_editor_history(session_state, sid, draft)
+                queue_editor_draft(session_state, sid, remove_draft_chord(draft, i))
+                st.rerun()
+
+        new_sym = build_chord_symbol(str(root), str(quality), parts.get("bass") or "")
+        changed = new_sym != str(row.get("chord") or "") or duration != current_dur
+        if changed:
+            push_editor_history(session_state, sid, draft)
+            updated = replace_draft_chord(draft, i, new_sym, duration=str(duration), meter=meter)
+            session_state[draft_key(sid)] = updated
+            draft = updated
+            row = draft[i] if i < len(draft) else row
+
+        warn = chromatic_warning(str(row.get("chord") or new_sym), key_center)
+        if warn:
+            st.markdown(f'<p class="composer-cedit-warn">{warn}</p>', unsafe_allow_html=True)
+
+        suggestions = suggest_slot_chords(doc, section, draft, i, limit=3)
+        if suggestions:
+            scols = st.columns(len(suggestions))
+            for j, sug in enumerate(suggestions):
+                label = str(sug.get("symbol") or "")
+                if sug.get("chromatic"):
+                    label = f"{label} · color"
+                with scols[j]:
+                    if st.button(label, key=f"composer_cedit_sug_{sid}_{eid}_{j}", use_container_width=True):
+                        push_editor_history(session_state, sid, draft)
+                        nxt = replace_draft_chord(draft, i, str(sug.get("symbol") or ""), meter=meter)
+                        queue_editor_draft(
+                            session_state,
+                            sid,
+                            nxt,
+                            widget_seeds=widget_seeds_from_draft(sid, nxt),
+                        )
+                        st.rerun()
+
+    st.caption("Add a passing or ending chord")
+    insert_at_ids = list(range(len(draft) + 1))
+
+    def _insert_label(idx: int) -> str:
+        if idx <= 0:
+            return "At the start"
+        if idx >= len(draft):
+            return "At the end"
+        prev = str(draft[idx - 1].get("chord") or f"chord {idx}")
+        return f"After {prev}"
+
+    insert_sugs = suggest_slot_chords(doc, section, draft, len(draft), for_insert=True, limit=4)
+    default_insert = str((insert_sugs[0] or {}).get("symbol") or "C") if insert_sugs else "C"
+    ins_parts = parse_chord_parts(default_insert)
+    pending_ins = session_state.pop(f"composer_cedit_pending_ins_{sid}", None)
+    if isinstance(pending_ins, dict):
+        if pending_ins.get("root"):
+            session_state[f"composer_cedit_ins_root_{sid}"] = pending_ins["root"]
+        if pending_ins.get("quality") is not None:
+            session_state[f"composer_cedit_ins_qual_{sid}"] = pending_ins["quality"]
+        if pending_ins.get("duration"):
+            session_state[f"composer_cedit_ins_dur_{sid}"] = pending_ins["duration"]
+    i1, i2, i3, i4 = st.columns([1.4, 1.1, 1.2, 0.9])
+    with i1:
+        insert_at = st.selectbox(
+            "Where",
+            insert_at_ids,
+            index=len(draft),
+            format_func=_insert_label,
+            key=f"composer_cedit_ins_at_{sid}",
+        )
+    with i2:
+        ins_roots = list(CHORD_ROOTS)
+        if ins_parts["root"] not in ins_roots:
+            ins_roots = [ins_parts["root"], *ins_roots]
+        ins_root = st.selectbox("New root", ins_roots, key=f"composer_cedit_ins_root_{sid}")
+    with i3:
+        ins_quals = quality_choices(ins_parts["quality"])
+        ins_qual = st.selectbox(
+            "New quality",
+            ins_quals,
+            format_func=quality_label,
+            key=f"composer_cedit_ins_qual_{sid}",
+        )
+    with i4:
+        ins_dur = st.selectbox(
+            "New length",
+            [tok for tok, _lab in DURATION_OPTIONS],
+            format_func=lambda tok: next((lab for t, lab in DURATION_OPTIONS if t == tok), tok),
+            key=f"composer_cedit_ins_dur_{sid}",
+        )
+    ins_sym = build_chord_symbol(str(ins_root), str(ins_qual))
+    ins_warn = chromatic_warning(ins_sym, key_center)
+    if ins_warn:
+        st.markdown(f'<p class="composer-cedit-warn">{ins_warn}</p>', unsafe_allow_html=True)
+    if insert_sugs:
+        st.caption("Ideas that fit this key and the neighboring chords")
+        icols = st.columns(len(insert_sugs))
+        for j, sug in enumerate(insert_sugs):
+            label = str(sug.get("symbol") or "")
+            if sug.get("chromatic"):
+                label = f"{label} · color"
+            with icols[j]:
+                if st.button(label, key=f"composer_cedit_ins_sug_{sid}_{j}", use_container_width=True):
+                    session_state[f"composer_cedit_pending_ins_{sid}"] = parse_chord_parts(
+                        str(sug.get("symbol") or "")
+                    )
+                    st.rerun()
+
+    if st.button("Insert chord", key=f"composer_cedit_insert_{sid}", use_container_width=True):
+        push_editor_history(session_state, sid, draft)
+        nxt = insert_draft_chord(
+            draft,
+            int(insert_at),
+            ins_sym,
+            duration=str(ins_dur),
+            meter=meter,
+            edit_id=next_edit_id(session_state, sid),
+        )
+        queue_editor_draft(session_state, sid, nxt, widget_seeds=widget_seeds_from_draft(sid, nxt))
+        st.rerun()
+
+    preview_syms = expand_entries_to_chords(strip_edit_metadata(draft))
+    dirty = draft_changed(draft, session_state.get(baseline_key(sid)))
+    a1, a2, a3, a4 = st.columns(4)
+    with a1:
+        edit_slot = f"chords:{sid}:manual"
+        if st.button("▶ Preview edit", key=f"composer_cedit_preview_{sid}", use_container_width=True):
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                sid,
+                preview_syms,
+                slot=edit_slot,
+                label="Playing · edited progression",
+            ):
+                st.warning("Could not preview that edit.")
+        _attach_local_preview(session_state, slot=edit_slot, stop_key=f"composer_cedit_stop_{sid}")
+    with a2:
+        if st.button("Undo", key=f"composer_cedit_undo_{sid}", use_container_width=True):
+            if undo_editor_draft(session_state, sid) is None:
+                st.info("Nothing to undo yet.")
+            else:
+                st.rerun()
+    with a3:
+        if st.button("Cancel", key=f"composer_cedit_cancel_{sid}", use_container_width=True):
+            cancel_editor_draft(session_state, sid)
+            st.rerun()
+    with a4:
+        if st.button("Accept edit", key=f"composer_cedit_accept_{sid}", type="primary", use_container_width=True):
+            if apply_draft_to_document(doc, sid, draft):
+                clear_editor_session(session_state, sid)
+                invalidate_composer_preview(session_state)
+                _save_doc(session_state, doc)
+                st.rerun()
+    if dirty:
+        st.caption("Preview plays the draft only. Accept writes this section’s canonical chords.")
+
+
 def _render_chords_lane(
     session_state: dict,
     doc: dict[str, Any],
@@ -3241,67 +3512,7 @@ def _render_chords_lane(
     *,
     owner_id: str | None = None,
 ) -> None:
-    sid = str(section.get("id") or "")
-    owner_id = owner_id or sid
-    entries = section.setdefault("chords", [])
-    g = doc.setdefault("global", {})
-    meter = str(g.get("time_signature") or "4/4")
-
-    chart = cpl_progression_bar_chart_html(entries, time_signature=meter)
-    if chart:
-        st.markdown(chart, unsafe_allow_html=True)
-    else:
-        st.caption("Build your progression below — one chord at a time, or paste a full line.")
-
-    pending_key = _pending_chord_key(sid)
-    pending = st.session_state.get(pending_key)
-
-    vocab = guided_chord_vocabulary(doc, section) or list(_COMPOSER_QUICK_CHORDS)
-    rows = [list(vocab[i : i + 5]) for i in range(0, len(vocab), 5)]
-    for ri, row in enumerate(rows):
-        cols = st.columns(len(row))
-        for ci, chord in enumerate(row):
-            with cols[ci]:
-                if st.button(chord, key=f"composer_ch_{sid}_{ri}_{ci}", use_container_width=True):
-                    sym = normalize_chord_symbol(chord)
-                    if sym:
-                        entries.append({"chord": sym, "bars": 1})
-                        st.session_state.pop(pending_key, None)
-                        sync_linked_chord_sections(doc, owner_id)
-                        _save_doc(session_state, doc)
-                        st.rerun()
-
-    st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("Same as previous (%)", key=f"composer_repeat_{sid}", use_container_width=True):
-            entries.append({"repeat": True, "bars": 1})
-            sync_linked_chord_sections(doc, owner_id)
-            _save_doc(session_state, doc)
-            st.rerun()
-    with c2:
-        if st.button("Undo last chord", key=f"composer_undo_chord_{sid}", use_container_width=True):
-            if entries:
-                entries.pop()
-                sync_linked_chord_sections(doc, owner_id)
-                _save_doc(session_state, doc)
-                st.rerun()
-    with c3:
-        if st.button("Clear section", key=f"composer_clear_{sid}", use_container_width=True):
-            section["chords"] = []
-            sync_linked_chord_sections(doc, owner_id)
-            _save_doc(session_state, doc)
-            st.rerun()
-
-    paste = st.text_input("Paste progression", key=f"composer_paste_{sid}", placeholder="| G | Am | C | D |")
-    if st.button("Apply paste", key=f"composer_paste_apply_{sid}") and paste:
-        section["chords"] = parse_chord_paste(paste)
-        sync_linked_chord_sections(doc, owner_id)
-        _save_doc(session_state, doc)
-        st.rerun()
-
-    if pending:
-        st.info(f"Pending chord: {pending} (legacy — use grid buttons)")
+    _render_manual_chord_editor(session_state, doc, section, owner_id=owner_id)
 
 
 def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
@@ -3856,12 +4067,14 @@ def _render_chord_refinement_panel(
     st.markdown("**Refine this progression**")
     st.caption("Describe the musical change — we propose an edit you can preview before accepting.")
     intent_ids = [i[0] for i in CHORD_REFINEMENT_INTENTS]
+    prepare_refine_intent_widget(session_state, section_id, intent_ids)
     picked = st.selectbox(
         "I want this to…",
         intent_ids,
         format_func=refinement_intent_label,
-        key=f"composer_refine_intent_{section_id}",
+        key=refine_intent_widget_key(section_id),
     )
+    picked = consume_refine_intent_choice(session_state, section_id, str(picked or ""))
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Propose change", key=f"composer_refine_propose_{section_id}", type="primary", use_container_width=True):
@@ -3917,10 +4130,10 @@ def _render_chord_refinement_panel(
             st.rerun()
     with a3:
         if st.button("Try another", key=f"composer_refine_another_{section_id}", use_container_width=True):
-            # Rotate to next intent for a fresh local proposal.
+            # Rotate via pending key — never write the live selectbox key this run.
             idx = intent_ids.index(picked) if picked in intent_ids else 0
             nxt = intent_ids[(idx + 1) % len(intent_ids)]
-            session_state[f"composer_refine_intent_{section_id}"] = nxt
+            queue_refine_intent_change(session_state, section_id, nxt)
             session_state[f"composer_refine_proposal_{section_id}"] = propose_chord_refinement(
                 doc, section, nxt, entries=entries
             )
@@ -4099,9 +4312,10 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
                 _render_chord_refinement_panel(session_state, doc, target_id, edit_section or section)
 
             # E. Manual / Advanced
-            with st.expander("Manual / advanced chord editor", expanded=False):
+            editor_open = bool(session_state.get(MANUAL_EDITOR_EXPANDED_KEY))
+            with st.expander("Manual / advanced chord editor", expanded=editor_open):
                 if edit_section:
-                    _render_chords_lane(session_state, doc, edit_section, owner_id=target_id)
+                    _render_manual_chord_editor(session_state, doc, edit_section, owner_id=target_id)
 
         if done > 0 and st.button("Continue to Melody →", type="primary", key="composer_chords_continue"):
             advance_workflow(doc, from_phase="chords")

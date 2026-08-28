@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-28
 
 ---
 
@@ -16,7 +16,22 @@
 
 ---
 
+## Current Priorities
+
+*See [music_app_tasks.md](./music_app_tasks.md).*
+
+---
+
 ## Completed Features
+
+### Composition Studio — Manual / advanced chord editor (2026-08-28, testing branch)
+
+- [x] Widget-safe refine-intent ownership (canonical / widget / pending) — no post-instantiate write
+- [x] Focused selected-section editor: location, replace, quality/extensions, insert with duration, key-aware suggestions + chromatic warning, undo/cancel/preview/accept
+- [x] Accept writes the canonical section timeline (`apply_section_chords`) — linked repeats preserved; Custom Page not opened
+- [x] AppTest harness: open editor, change refine intent, Try another, section switch, refresh, cold restore
+- [x] Plan: [plans/2026-08-28-manual-chord-editor.md](./plans/2026-08-28-manual-chord-editor.md)
+- **Not** merged to `dev` / production
 
 ### Phase 1 Creative-state persistence — Item 8 (2026-08-03)
 

@@ -950,6 +950,7 @@ def insert_section_chord(
     chord: str,
     *,
     bars: int = 1,
+    duration_beats: float | None = None,
     propagate_links: bool = True,
 ) -> bool:
     edit_id, sec = harmony_edit_target(doc, section_id)
@@ -957,10 +958,18 @@ def insert_section_chord(
         return False
     entries = list(sec.get("chords") or [])
     idx = max(0, min(int(index), len(entries)))
-    entries.insert(
-        idx,
-        {"chord": normalize_chord_symbol(chord) or str(chord).strip(), "bars": max(1, int(bars or 1))},
-    )
+    row: dict[str, Any] = {
+        "chord": normalize_chord_symbol(chord) or str(chord).strip(),
+        "bars": max(1, int(bars or 1)),
+    }
+    if duration_beats is not None:
+        try:
+            beats = float(duration_beats)
+        except (TypeError, ValueError):
+            beats = 0.0
+        if beats > 0:
+            row["duration_beats"] = beats
+    entries.insert(idx, row)
     sec["chords"] = entries
     if propagate_links and edit_id:
         sync_linked_chord_sections(doc, edit_id)
