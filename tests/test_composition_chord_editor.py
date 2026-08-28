@@ -345,7 +345,9 @@ class TestManualEditorAppTest(unittest.TestCase):
         box = at.selectbox(key=widget_k)
         box.set_value("darker").run(timeout=120)
         self.assertFalse(at.exception, msg=repr(at.exception))
-        self.assertEqual(str(at.session_state.get(refine_intent_value_key(verse_id)) or ""), "darker")
+        value_k = refine_intent_value_key(verse_id)
+        self.assertIn(value_k, at.session_state)
+        self.assertEqual(str(at.session_state[value_k]), "darker")
 
         propose = [b for b in at.button if str(b.label) == "Propose change"]
         self.assertTrue(propose, [b.label for b in at.button])
@@ -356,15 +358,14 @@ class TestManualEditorAppTest(unittest.TestCase):
         self.assertTrue(another, [b.label for b in at.button])
         another[0].click().run(timeout=120)
         self.assertFalse(at.exception, msg=repr(at.exception))
-        self.assertNotIn(
-            legacy_refine_intent_key(verse_id),
-            [k for k in at.session_state if str(k) == legacy_refine_intent_key(verse_id) and False],
-        )
+        self.assertNotIn(legacy_refine_intent_key(verse_id), at.session_state)
 
         qual_key = f"composer_cedit_qual_{verse_id}_1"
-        if qual_key in [s.key for s in at.selectbox]:
+        try:
             at.selectbox(key=qual_key).set_value("m7").run(timeout=120)
-            self.assertFalse(at.exception, msg=repr(at.exception))
+        except KeyError:
+            self.fail(f"quality selectbox {qual_key} missing")
+        self.assertFalse(at.exception, msg=repr(at.exception))
 
         accept = [b for b in at.button if str(b.label) == "Accept edit"]
         self.assertTrue(accept, [b.label for b in at.button])
@@ -380,12 +381,16 @@ class TestManualEditorAppTest(unittest.TestCase):
         self.assertTrue(chorus_btn, [b.label for b in at.button])
         chorus_btn[0].click().run(timeout=120)
         self.assertFalse(at.exception, msg=repr(at.exception))
-        self.assertEqual(str(at.session_state.get(COMPOSER_ACTIVE_SECTION_KEY)), chorus_id)
+        self.assertIn(COMPOSER_ACTIVE_SECTION_KEY, at.session_state)
+        self.assertEqual(str(at.session_state[COMPOSER_ACTIVE_SECTION_KEY]), chorus_id)
         chorus_widget = refine_intent_widget_key(chorus_id)
-        verse_intent = at.session_state.get(refine_intent_value_key(verse_id))
-        chorus_intent = at.session_state.get(refine_intent_value_key(chorus_id))
-        if chorus_widget in at.session_state and verse_intent:
-            self.assertNotEqual(chorus_intent, verse_intent)
+        verse_value_k = refine_intent_value_key(verse_id)
+        chorus_value_k = refine_intent_value_key(chorus_id)
+        if chorus_widget in at.session_state and verse_value_k in at.session_state:
+            verse_intent = at.session_state[verse_value_k]
+            chorus_intent = at.session_state[chorus_value_k] if chorus_value_k in at.session_state else None
+            if chorus_intent:
+                self.assertNotEqual(chorus_intent, verse_intent)
 
         refresh = [b for b in at.button if str(b.label) == "Harness: simulate refresh"]
         self.assertTrue(refresh)
