@@ -196,6 +196,57 @@ def click_finished_backing(page: Page) -> bool:
     return False
 
 
+RETURN_CUSTOM_PAGE_WIDGET_KEYS = (
+    "backing_nav_return_custom_page_0",
+    "backing_nav_return_custom_page_1",
+    "backing_nav_return_custom_page_2",
+)
+
+
+def click_return_to_custom_page_widget(page: Page) -> dict:
+    """Click the visible Streamlit Return to Custom Page widget by key.
+
+    Identifies `.st-key-backing_nav_return_custom_page_*` only.
+    Does not fall through to sidebar Custom nav or a generic label search.
+    """
+    info = page.evaluate(
+        """(keys) => {
+          const wraps = [];
+          for (const key of keys) {
+            const wrap = document.querySelector('.st-key-' + key);
+            if (wrap) wraps.push({key, wrap});
+          }
+          document.querySelectorAll('[class*="st-key-backing_nav_return_custom_page"]').forEach((wrap) => {
+            const m = [...wrap.classList].find((c) => c.startsWith('st-key-backing_nav_return_custom_page'));
+            const key = m ? m.slice('st-key-'.length) : '';
+            if (key && !wraps.some((w) => w.key === key)) wraps.push({key, wrap});
+          });
+          for (const item of wraps) {
+            const b = item.wrap.querySelector('button');
+            if (!b) continue;
+            const text = (b.innerText || '').replace(/\\s+/g, ' ').trim();
+            if (!/return to custom page/i.test(text)) continue;
+            const r = b.getBoundingClientRect();
+            const visible = b.offsetParent !== null && r.width > 8 && r.height > 8;
+            if (!visible) continue;
+            b.scrollIntoView({block: 'center'});
+            b.click();
+            return {clicked: true, key: item.key, text, visible: true};
+          }
+          return {clicked: false, key: '', text: '', visible: false};
+        }""",
+        list(RETURN_CUSTOM_PAGE_WIDGET_KEYS),
+    ) or {}
+    if info.get("clicked"):
+        settle(page, 5)
+    return {
+        "clicked": bool(info.get("clicked")),
+        "key": str(info.get("key") or ""),
+        "text": str(info.get("text") or ""),
+        "visible": bool(info.get("visible")),
+    }
+
+
 def click_main_button(page: Page, pattern: str) -> bool:
     """Click a visible button in the main pane — never the sidebar nav twin."""
     clicked = page.evaluate(
@@ -453,44 +504,68 @@ def main() -> int:
         mark("refresh_custom_backing", "PASS" if refresh_bk else "RED")
 
         settle(page, 2)
-        ret = click_button_has(page, r"Return to Custom Page")
-        if not ret:
-            for key in (
-                "backing_nav_return_custom_page_0",
-                "backing_nav_return_custom_page_1",
-                "backing_edit_source_btn",
-            ):
-                loc = page.locator(f".st-key-{key} button")
-                if loc.count():
-                    try:
-                        loc.last.scroll_into_view_if_needed(timeout=5000)
-                        loc.last.click(timeout=8000)
-                        ret = True
-                        settle(page, 4)
-                        break
-                    except Exception:
-                        continue
+        ret_info = click_return_to_custom_page_widget(page)
+        ret = bool(ret_info.get("clicked"))
+        log(
+            f"return_widget clicked={ret} key={ret_info.get('key')!r} "
+            f"text={ret_info.get('text')!r}"
+        )
         wait_for_body(page, "Trial Song", "Leave Custom page", "Finish Song", timeout_s=30)
         settle(page, 3)
-        if not has_any(page.inner_text("body") or "", "Leave Custom page", "Finish Song"):
-            # Dest is still sealed: Custom-page hydrate consumes it.
-            click_nav(page, "Custom")
-            wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=25)
-            settle(page, 3)
-            ret = True
+        landed_custom = has_any(
+            page.inner_text("body") or "", "Leave Custom page", "Finish Song"
+        ) and has_any(page.inner_text("body") or "", "Trial Song")
+        if not ret or not landed_custom:
+            # Diagnostic only — never counts as PASS for Return to Custom Page.
+            log("DIAG return widget missed Trial Custom; Custom nav is evidence only")
+            try:
+                click_nav(page, "Custom")
+                wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=25)
+                settle(page, 3)
+                shot(page, "05-return-custom-nav-diag")
+            except Exception as exc:
+                log(f"DIAG custom-nav fallback failed: {exc!r}")
         body_ret = shot(page, "05-return-custom")
+        main_ret = main_text(page)
         mixed_ret = fail_mixed(page, "custom_return")
+        pk_ret = pk_val(page) or sidebar_pk_input(page)
+        pk_ret_d = str(pk_ret or "").strip() in {"D", "D major"} or (
+            "d" in low(str(pk_ret or body_ret))
+            and "minor" not in low(str(pk_ret or ""))
+            and has_any(body_ret, "D major")
+        )
+        catalog_on_custom = has_any(
+            main_ret, "Backing source: Catalog song", "Return to Song Catalog"
+        ) or (
+            has_any(main_ret, "Shape of You") and has_any(main_ret, "Backing source")
+        )
         return_ok = (
             bool(ret)
+            and landed_custom
             and has_any(body_ret, "Trial Song")
-            and has_any(body_ret, "D major")
+            and has_any(body_ret, "Leave Custom page")
+            and pk_ret_d
+            and rendered_em_em_d_d(body_ret)
+            and not catalog_on_custom
             and "practice / concert key b minor" not in low(body_ret)
             and not mixed_ret
         )
+        # Second rerun must not bounce back to Catalog Backing.
+        bounce = False
+        if return_ok:
+            page.reload(wait_until="domcontentloaded")
+            wait_for_body(page, "Trial Song", timeout_s=50)
+            settle(page, 3)
+            body_rr = shot(page, "05c-return-custom-rerun")
+            bounce = has_any(
+                body_rr, "Backing source: Catalog song", "Return to Song Catalog"
+            ) or not has_any(body_rr, "Leave Custom page", "Finish Song")
+            return_ok = return_ok and not bounce and has_any(body_rr, "Trial Song")
         mark(
             "custom_backing_return",
             "PASS" if return_ok else "RED",
-            f"ret={ret} pk={pk_val(page)!r} mixed={mixed_ret}",
+            f"ret={ret} key={ret_info.get('key')!r} pk={pk_ret!r} "
+            f"landed={landed_custom} bounce={bounce} mixed={mixed_ret}",
         )
 
         # Shape still Global Active on Songs

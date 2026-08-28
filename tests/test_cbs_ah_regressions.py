@@ -308,6 +308,74 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertTrue(apply_custom_page_return_destination(session, consume=True))
         self.assertIsNone(peek_custom_page_return_destination(session))
 
+    def test_return_dest_consumed_only_on_custom_hydrate_no_backing_bounce(self) -> None:
+        """Backing click applies Trial but must not pop dest; Custom hydrate consumes it."""
+        session = _shape_session(practice_key="Bm")
+        apply_cpl_session_progression(session, _trial_active(), reset_display_key=False)
+        session["studio_page"] = "custom"
+        from custom_progression_lab import sync_custom_workspace_practice_key
+
+        sync_custom_workspace_practice_key(
+            session,
+            practice_key="D",
+            active=session.get(CPL_ACTIVE_KEY),
+            source="custom_page",
+        )
+        snapshot_last_custom_state(session)
+        dest = seal_custom_page_return_destination(session)
+        self.assertIsInstance(dest, dict)
+        launch_custom_page_backing(session)
+        from backing_source_navigation import simulate_production_backing_page_hydrate
+
+        simulate_production_backing_page_hydrate(session)
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        # Button click: restore workspace, keep dest until Custom hydrates.
+        self.assertTrue(apply_custom_page_return_destination(session, consume=False))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
+
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        # Persist/rerun bounce back onto Backing must still see Catalog Shape
+        # plus the keyed Return to Custom Page action — not Song Catalog.
+        session["studio_page"] = "backing"
+        simulate_production_backing_page_hydrate(session)
+        self.assertIsNotNone(peek_custom_page_return_destination(session))
+        self.assertTrue(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        from backing_context import get_backing_context
+        from backing_nav_actions import build_backing_nav_actions
+
+        ctx = get_backing_context(session)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "regular_song")
+        self.assertIn("Shape of You", str(getattr(ctx, "song_title", "") or ""))
+        labels = [str(a.label) for a in build_backing_nav_actions(session)[0]]
+        self.assertTrue(any("Return to Custom Page" in lab for lab in labels))
+        self.assertFalse(any("Return to Song Catalog" in lab for lab in labels))
+        # Custom-page hydrate consumes dest. A second Custom rerun stays Custom.
+        session["studio_page"] = "custom"
+        self.assertTrue(apply_custom_page_return_destination(session, consume=True))
+        self.assertIsNone(peek_custom_page_return_destination(session))
+        self.assertFalse(session.get(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertFalse(apply_custom_page_return_destination(session, consume=True))
+        self.assertEqual(session.get("studio_page"), "custom")
+        self.assertNotEqual(session.get("studio_page"), "backing")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
+
+    def test_sweep_return_pass_path_does_not_use_custom_nav_fallback(self) -> None:
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parents[1] / "scripts" / "_walk_cbs_rendered_sweep.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("click_return_to_custom_page_widget", text)
+        self.assertIn("Custom nav is evidence only", text)
+        self.assertIn("st-key-backing_nav_return_custom_page", text)
+        self.assertNotIn("ret = True", text)
+        self.assertNotIn('click_nav(page, "Custom")\n                wait_for_body', text.split("Custom nav is evidence only")[0])
+
     def test_restore_catalog_practice_key_is_widget_safe(self) -> None:
         session = _shape_session(practice_key="Bm")
         session["display_key"] = "D"

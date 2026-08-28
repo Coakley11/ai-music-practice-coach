@@ -185,17 +185,21 @@ def apply_custom_page_return_destination(
     except ImportError:
         pass
     session["studio_page"] = "custom"
-    try:
-        from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
-
-        session.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
-    except ImportError:
-        session.pop("_custom_page_launched_catalog_backing", None)
+    # Keep the Catalog-launch flag until Custom actually hydrates and consumes
+    # dest. Persist/rerun can bounce the first paint back onto Backing; dropping
+    # the flag here lets hydrate overlay Trial onto Catalog Shape and replaces
+    # Return to Custom Page with Return to Song Catalog.
     if consume and str(session.get("studio_page") or "").strip().lower() == "custom":
         session.pop(CUSTOM_PAGE_RETURN_DESTINATION_KEY, None)
         blob = _backing_context_blob(session)
         if isinstance(blob, dict):
             blob.pop(CUSTOM_PAGE_RETURN_DESTINATION_BLOB_KEY, None)
+        try:
+            from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
+
+            session.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
+        except ImportError:
+            session.pop("_custom_page_launched_catalog_backing", None)
     return True
 
 
