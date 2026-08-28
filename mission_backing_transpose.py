@@ -153,6 +153,9 @@ def apply_mission_backing_practice_key_interval(
     dest["example_notes"] = new_notes
     dest["example_midi"] = new_midi
     dest["example_display"] = " – ".join(new_notes)
+    dest["example_rhythm"] = str(
+        dest.get("sealed_example_rhythm") or dest.get("example_rhythm") or ""
+    )
     dest["progression"] = list(new_prog)
     section = str(dest.get("section_label") or session.get("ii_selected_section") or "").strip()
     if section or new_chord:
@@ -276,6 +279,36 @@ def mission_backing_locked_chord(session: dict[str, Any]) -> str:
     return str(session.get("_mission_backing_canonical_chord") or "").strip()
 
 
+def mission_backing_interval_example(session: dict[str, Any]) -> dict[str, Any] | None:
+    """Sealed interval-projected lick. Lick panel must not regenerate from the song map."""
+    locked = mission_backing_locked_chord(session)
+    if not locked:
+        return None
+    try:
+        from mission_return_destination import peek_mission_return_destination
+
+        dest = peek_mission_return_destination(session)
+    except ImportError:
+        dest = None
+    if not isinstance(dest, dict):
+        return None
+    notes = [str(n) for n in (dest.get("example_notes") or []) if str(n).strip()]
+    if not notes:
+        return None
+    return {
+        "chord": locked,
+        "notes": notes,
+        "display": str(dest.get("example_display") or " – ".join(notes)),
+        "midi": [int(m) for m in (dest.get("example_midi") or []) if str(m).strip() != ""],
+        "abc": str(dest.get("example_abc") or ""),
+        "rhythm": str(
+            dest.get("example_rhythm")
+            or dest.get("sealed_example_rhythm")
+            or ""
+        ),
+    }
+
+
 def mission_card_progression_symbols(session: dict[str, Any], ctx: Any | None = None) -> list[str]:
     """Blue-card progression from the interval-projected dest / live chord."""
     try:
@@ -305,5 +338,6 @@ __all__ = [
     "apply_mission_backing_practice_key_interval",
     "ensure_mission_backing_pitch_seal",
     "mission_backing_locked_chord",
+    "mission_backing_interval_example",
     "mission_card_progression_symbols",
 ]

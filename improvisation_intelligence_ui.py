@@ -2243,7 +2243,16 @@ def render_mission_practice_lick_on_backing(
         return
     inst = str(payload.get("instrument") or "Piano")
     motif = dict(payload.get("motif") or {})
+    interval_example = None
+    try:
+        from mission_backing_transpose import mission_backing_interval_example
+
+        interval_example = mission_backing_interval_example(session_state)
+    except ImportError:
+        interval_example = None
     concert_chord = str(motif.get("_concert_chord") or payload.get("chord") or "").strip()
+    if interval_example:
+        concert_chord = str(interval_example.get("chord") or concert_chord)
     display_chord = ""
     sm = None
     try:
@@ -2298,69 +2307,84 @@ def render_mission_practice_lick_on_backing(
         session_state.get("display_key") or session_state.get("concert_key") or payload.get("key_center") or "C"
     ).strip() or "C"
     out = None
-    try:
-        from improvisation_missions import mission_example_for_display
-        from mission_projection_state import project_complete_mission_example
+    if interval_example:
+        motif_out = dict(motif)
+        motif_out["notes"] = list(interval_example.get("notes") or [])
+        motif_out["display"] = str(interval_example.get("display") or "")
+        motif_out["midi"] = list(interval_example.get("midi") or [])
+        motif_out["chord"] = str(interval_example.get("chord") or concert_chord)
+        if interval_example.get("rhythm"):
+            motif_out["rhythm"] = str(interval_example.get("rhythm") or "")
+        chord = str(interval_example.get("chord") or chord)
+        out = {
+            "motif": motif_out,
+            "abc": str(interval_example.get("abc") or payload.get("abc") or ""),
+            "tab": str(payload.get("tab") or ""),
+        }
+    if out is None:
+        try:
+            from improvisation_missions import mission_example_for_display
+            from mission_projection_state import project_complete_mission_example
 
-        example = MissionExample(
-            mission=str(payload.get("mission_title") or ""),
-            variant=str(payload.get("example_variant") or "normal"),
-            chord=concert_chord or str(payload.get("_concert_chord") or payload.get("chord") or ""),
-            section=section,
-            song_title=song,
-            display_key=key_center,
-            concert_key=concert_key,
-            instrument=inst,
-            level=level,
-            focus="",
-            motif=motif,
-            abc=str(payload.get("abc") or ""),
-            tab=str(payload.get("tab") or ""),
-            piano_html="",
-            why="",
-            practice_steps=[],
-            insight=chord_coach_insight(
-                concert_chord or chord,
-                key_center=concert_key,
+            example = MissionExample(
+                mission=str(payload.get("mission_title") or ""),
+                variant=str(payload.get("example_variant") or "normal"),
+                chord=concert_chord or str(payload.get("_concert_chord") or payload.get("chord") or ""),
+                section=section,
+                song_title=song,
+                display_key=key_center,
+                concert_key=concert_key,
                 instrument=inst,
                 level=level,
-            ),
-            show_tab=True,
-            show_piano=False,
-        )
-        projected = project_complete_mission_example(
-            session_state,
-            example,
-            instrument=inst,
-            bpm=int(applied_bpm),
-            section_map=sm if isinstance(sm, list) else None,
-        )
-        if projected is None:
-            projected = mission_example_for_display(
+                focus="",
+                motif=motif,
+                abc=str(payload.get("abc") or ""),
+                tab=str(payload.get("tab") or ""),
+                piano_html="",
+                why="",
+                practice_steps=[],
+                insight=chord_coach_insight(
+                    concert_chord or chord,
+                    key_center=concert_key,
+                    instrument=inst,
+                    level=level,
+                ),
+                show_tab=True,
+                show_piano=False,
+            )
+            projected = project_complete_mission_example(
+                session_state,
                 example,
                 instrument=inst,
                 bpm=int(applied_bpm),
-                song_concert_key=concert_key,
-                session_state=session_state,
-                authoritative_concert_key=concert_key,
-                authoritative_display_key=key_center,
+                section_map=sm if isinstance(sm, list) else None,
             )
-        if projected is not None:
-            motif_out = dict(projected.motif or {})
-            insight = getattr(projected, "insight", None)
-            chord = str(
-                motif_out.get("chord")
-                or getattr(insight, "chord", "")
-                or display_chord
-                or chord
-            )
-            out = {
-                "motif": motif_out,
-                "abc": projected.abc,
-                "tab": projected.tab,
-            }
-    except Exception:
-        out = None
+            if projected is None:
+                projected = mission_example_for_display(
+                    example,
+                    instrument=inst,
+                    bpm=int(applied_bpm),
+                    song_concert_key=concert_key,
+                    session_state=session_state,
+                    authoritative_concert_key=concert_key,
+                    authoritative_display_key=key_center,
+                )
+            if projected is not None:
+                motif_out = dict(projected.motif or {})
+                insight = getattr(projected, "insight", None)
+                chord = str(
+                    motif_out.get("chord")
+                    or getattr(insight, "chord", "")
+                    or display_chord
+                    or chord
+                )
+                out = {
+                    "motif": motif_out,
+                    "abc": projected.abc,
+                    "tab": projected.tab,
+                }
+        except Exception:
+            out = None
     if out is None:
         out = rebuild_mission_outputs(
             motif,

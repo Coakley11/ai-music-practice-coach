@@ -503,6 +503,13 @@ class TestDEMissionBackingInterval(unittest.TestCase):
         ctx = build_mission_context(session)
         self.assertIn(_pc((ctx.progression or [""])[0]), {_pc("G#m"), _pc("Abm")})
         self.assertNotIn("Am", " ".join(ctx.progression or []))
+        from mission_backing_transpose import mission_backing_interval_example
+
+        lick = mission_backing_interval_example(session)
+        self.assertIsNotNone(lick)
+        self.assertIn(_pc(str((lick or {}).get("chord") or "")), {_pc("G#m"), _pc("Abm")})
+        self.assertEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("B"))
+        self.assertNotEqual(_pc(str(((lick or {}).get("notes") or ["C"])[0])), _pc("C"))
 
     def test_return_keeps_transposed_chord_and_example_not_song_tonic(self) -> None:
         session = _shape_session(practice_key="Dm")
