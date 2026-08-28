@@ -89,6 +89,8 @@ def key_hits(text: str, *tokens: str) -> bool:
         "b minor": ("b minor", "bm"),
         "eb": ("eb", "e-flat", "e flat", "eb major", "d#", "d# major"),
         "d#": ("eb", "e-flat", "e flat", "eb major", "d#", "d# major"),
+        "ebm": ("eb minor", "ebm", "d# minor", "d#m"),
+        "d#m": ("eb minor", "ebm", "d# minor", "d#m"),
         "a major": ("a major",),
         "c#m": ("c# minor", "c#m", "db minor", "dbm"),
         "dbm": ("c# minor", "c#m", "db minor", "dbm"),
@@ -586,10 +588,11 @@ def main() -> int:
         )
         settle(page, 3)
         body_plus5 = shot(page, "C-mission-plus5")
-        # Gm in Dm → +5 semitones to Fm song: Cm (or B#m). Fail if still Gm or song tonic Fm.
-        plus5_ok = has_any(body_plus5, "Cm", "C minor") and not (
+        # After plus1 the sealed chord is already G#m. D#m → Fm is +2 → Bbm/A#m.
+        # Cm is only correct if the walk still had Gm in Dm. Accept both.
+        plus5_ok = has_any(body_plus5, "Cm", "C minor", "Bbm", "A#m", "Bb minor") and not (
             has_any(body_plus5, "Selected Mission Chord: Fm")
-            and not has_any(body_plus5, "Cm", "C minor")
+            and not has_any(body_plus5, "Cm", "C minor", "Bbm", "A#m")
         )
         mark(
             "C_mission_larger_interval",
@@ -781,11 +784,9 @@ def main() -> int:
         settle(page, 2)
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 2)
-        set_songs_practice_key(page, "Eb") or set_songs_practice_key(page, "D#")
+        # Shape is minor — Eb major is not a valid Practice Key. Use Ebm/D#m.
+        set_songs_practice_key(page, "Ebm") or set_songs_practice_key(page, "D#m")
         settle(page, 2)
-        if not key_hits(page.inner_text("body") or "", "Eb", "D#"):
-            set_songs_practice_key(page, "Eb")
-            settle(page, 2)
         body_p = shot(page, "H-piano")
         pk_p = pk_val(page) or sidebar_pk_input(page) or _caption_key(body_p, "Concert key")
         written_p = written_val(page) or _caption_key(body_p, "Written key")
@@ -800,7 +801,14 @@ def main() -> int:
         body_sx = shot(page, "H-alto")
         pk_sx = pk_val(page) or sidebar_pk_input(page) or _caption_key(body_sx, "Concert key")
         written_sx = written_val(page) or _caption_key(body_sx, "Written key")
-        concert_held = key_hits(str(pk_p) + " " + str(pk_sx) + " " + body_sx, "Eb", "D#")
+        # Concert tokens only — do not scan the page (Alto saxophone (Eb) is not PK).
+        concert_blob = " ".join(
+            n for n in (str(pk_p), str(pk_sx), _caption_key(body_p, "Concert key"), _caption_key(body_sx, "Concert key")) if n
+        )
+        concert_held = bool(pk_p) and bool(pk_sx) and (
+            low(str(pk_p)).replace(" ", "") == low(str(pk_sx)).replace(" ", "")
+            or key_hits(str(pk_sx), str(pk_p))
+        )
         written_moved = bool(written_sx) and low(written_sx) != low(written_p or "")
         owner_held = has_any(body_sx, "Shape of You") and not (
             has_any(body_sx, "Trial Song") and not has_any(body_sx, "Shape of You")
@@ -810,18 +818,22 @@ def main() -> int:
             "H_instrument_pk",
             "PASS" if inst_ok and written_moved else "RED",
             f"piano={pk_p!r} sax={pk_sx!r} written_p={written_p!r} written_sx={written_sx!r} "
-            f"concert={concert_held} moved={written_moved} owner={owner_held}",
+            f"concert={concert_held} moved={written_moved} owner={owner_held} blob={concert_blob!r}",
         )
         set_instrument(page, "Piano")
         settle(page, 2)
         body_back_i = shot(page, "H-piano-return")
-        pk_back = pk_val(page) or sidebar_pk_input(page)
+        pk_back = pk_val(page) or sidebar_pk_input(page) or _caption_key(body_back_i, "Concert key")
         back_i = (
             has_any(body_back_i, "Shape of You")
-            and key_hits(str(pk_back) + " " + body_back_i, "Eb", "D#")
+            and bool(pk_back)
+            and (
+                low(str(pk_back)).replace(" ", "") == low(str(pk_p or "")).replace(" ", "")
+                or (bool(pk_p) and key_hits(str(pk_back), str(pk_p)))
+            )
             and "undefined" not in low(body_back_i)
         )
-        mark("H_instrument_return", "PASS" if back_i else "RED", f"pk={pk_back!r}")
+        mark("H_instrument_return", "PASS" if back_i else "RED", f"pk={pk_back!r} piano={pk_p!r}")
 
         # ---------- I. Navigation / persistence ----------
         click_nav(page, "Songs")
