@@ -572,6 +572,13 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         pending = ""
     if pending:
         live = pending
+    # Songs (or last committed pick PK) can be Dm while leftover live display is
+    # still Fm from an earlier Creative visit. Live-over-store then rewrote store
+    # back to Fm and Missions kept an Fm map under a Dm caption. A this-rerun
+    # sidebar edit is already copied into live via pending.
+    if store and live and store != live and not pending:
+        if original and store != original:
+            live = store
     song_tok = resolve_song_practice_key_token(session)
 
     jam_tokens: set[str] = set()

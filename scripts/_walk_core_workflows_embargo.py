@@ -776,12 +776,18 @@ def main() -> int:
                     or str(pk_label).strip().lower() in {"em", "bm", "e", "b"}
                 )
             content_moved = bool(notes_before and notes_after and notes_before != notes_after)
+            # Dm caption + Fm-family map is a real split (Songs Dm, leftover Fm
+            # concert). content_moved alone must not certify that as PASS.
+            stale_dm_fm = str(pk_heading or "").lower() in {"dm", "d minor"} and str(
+                heading_chord or ""
+            ).replace(" ", "") in {"Fm", "Bbm", "Db", "Eb", "fm", "bbm", "db", "eb"}
             mission_ok = bool(
                 one_click
                 and heading_chord
                 and has_example
                 and example_matches
                 and (pk_changed or content_moved)
+                and not stale_dm_fm
             )
             mark(
                 "6_missions",

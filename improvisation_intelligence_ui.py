@@ -3538,7 +3538,12 @@ def _tab_missions(
         section_map = resolve_improv_sections(session_state, improv_ctx)
     if not section_map:
         section_map = resolve_improv_sections(session_state, improv_ctx)
-    dest_for_map = str(concert_key or blob_key or "").strip()
+    dest_for_map = str(
+        _authoritative_practice_chart_key(session_state, blob_key or concert_key)
+        or blob_key
+        or concert_key
+        or ""
+    ).strip()
     live_for_map = _catalog_live_key_or_empty(
         session_state,
         str(
@@ -3548,8 +3553,21 @@ def _tab_missions(
             or ""
         ).strip(),
     )
-    if live_for_map:
+    # Caption and map must share the catalog Practice Key. Leftover live Fm
+    # (or LAST_CUSTOM D, already filtered) must not replace Songs Dm.
+    if live_for_map and not dest_for_map:
         dest_for_map = live_for_map
+    elif live_for_map and dest_for_map:
+        try:
+            from music_theory import normalize_root, split_chord
+
+            live_root = normalize_root(split_chord(live_for_map)[0])
+            dest_root = normalize_root(split_chord(dest_for_map)[0])
+            if live_root and dest_root and live_root == dest_root:
+                dest_for_map = live_for_map
+        except ImportError:
+            if live_for_map == dest_for_map:
+                dest_for_map = live_for_map
     section_map = _align_mission_section_map_to_practice_key(
         session_state, section_map, dest_key=dest_for_map
     )

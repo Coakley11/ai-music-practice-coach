@@ -207,6 +207,73 @@ class TestMissionCaptionIgnoresLastCustomD(unittest.TestCase):
         self.assertEqual(_catalog_live_key_or_empty(session, "Fm"), "Fm")
 
 
+class TestStaleLiveFmDoesNotBeatSongsDm(unittest.TestCase):
+    def test_reconcile_prefers_committed_store_over_leftover_live_fm(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+        from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+        session = _shape_session(practice_key="Fm")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["display_key"] = "Fm"
+        session["concert_key"] = "Fm"
+        session["improv_song_concert_sections"] = copy.deepcopy(FM)
+        set_practice_concert_key(session, "Dm", pick_key=PK_SHAPE)
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+
+        chosen = reconcile_catalog_practice_key_owner(session, source="test_stale_fm_live")
+        self.assertEqual(chosen, "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+
+    def test_hydrate_rebuilds_fm_map_when_songs_store_is_dm(self) -> None:
+        from songs.practice_key_state import set_practice_concert_key
+
+        session = _shape_session(practice_key="Fm")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["display_key"] = "Fm"
+        session["concert_key"] = "Fm"
+        session["improv_song_concert_sections"] = copy.deepcopy(FM)
+        set_practice_concert_key(session, "Dm", pick_key=PK_SHAPE)
+        ensure_song_practice_blob_for_active_song(
+            session, practice_key="Fm", original_key="Bm"
+        )
+        from music_workflow_song_practice import song_practice_blob
+        from music_workflow_state_store import save_workflow_blob
+
+        blob = song_practice_blob(session)
+        assert blob is not None
+        blob.section_map = copy.deepcopy(FM)
+        save_workflow_blob(session, blob, source="test_stale_live_fm_hydrate")
+        session["improv_song_concert_sections"] = copy.deepcopy(FM)
+
+        with patch(
+            "songs.music_source.catalog_chart_sections_for_pick",
+            return_value=copy.deepcopy(BM),
+        ):
+            token = ensure_missions_parent_practice_key_hydrated(session)
+        self.assertEqual(token, "Dm")
+        raw = session.get("improv_song_concert_sections") or {}
+        first = ""
+        for chs in raw.values():
+            if isinstance(chs, list) and chs:
+                first = str(chs[0])
+                break
+        self.assertIn(first, {"Em", "Dm"})
+        self.assertNotEqual(first, "Fm")
+
+    def test_live_em_still_wins_when_store_is_still_original_bm(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+        from songs.practice_key_state import set_practice_concert_key
+
+        session = _shape_session(practice_key="Bm")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["display_key"] = "Em"
+        session["concert_key"] = "Em"
+        set_practice_concert_key(session, "Bm", pick_key=PK_SHAPE)
+        chosen = reconcile_catalog_practice_key_owner(session, source="test_live_em")
+        self.assertEqual(chosen, "Em")
+
+
 class TestMissionMapAlignsToPracticeKey(unittest.TestCase):
     def test_fm_map_rebuilds_to_dm_from_catalog_original(self) -> None:
         from improvisation_intelligence_ui import _align_mission_section_map_to_practice_key
