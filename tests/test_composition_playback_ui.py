@@ -227,7 +227,7 @@ class TestClickRunRemount(unittest.TestCase):
         self.assertNotIn("st.rerun()", transport)
         page = inspect.getsource(render_composition_studio_page)
         self.assertNotIn("flush_composer_preview_dock", page)
-        self.assertIn("_attach_local_preview", page)
+        self.assertIn("_attach_local_preview", transport)
 
     def test_streamlit_click_harness_arms_playable_wav(self) -> None:
         try:
@@ -266,7 +266,7 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("slot=transport_slot", transport)
         page = inspect.getsource(render_composition_studio_page)
         self.assertNotIn("flush_composer_preview_dock", page)
-        self.assertIn("_attach_local_preview", page)
+        self.assertIn("_attach_local_preview", inspect.getsource(_render_section_transport))
         card = inspect.getsource(_render_suggestion_card)
         self.assertIn("_attach_local_preview", card)
         self.assertIn("slot=card_slot", card)
