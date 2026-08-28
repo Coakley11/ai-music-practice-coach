@@ -183,7 +183,16 @@ def _render_backing_surface(session: dict[str, Any]) -> None:
         st.markdown("BLUE_CARD (none)")
     actions, _ = build_backing_nav_actions(session)
     for action in actions:
-        st.button(str(action.label), key=f"harness_{action.action_id}")
+        if st.button(str(action.label), key=f"harness_{action.action_id}"):
+            if str(getattr(action, "action_id", "") or "") in {
+                "return_custom_page",
+                "return_custom_songs",
+            }:
+                from custom_page_return_destination import consume_custom_page_return_destination
+
+                consume_custom_page_return_destination(session)
+                session["studio_page"] = "custom"
+                st.rerun()
     original, _identity = display_key_context(
         session,
         catalog_song_data=session.get("selected_song") or {},
@@ -199,6 +208,24 @@ def _render_backing_surface(session: dict[str, Any]) -> None:
     st.markdown(f"GA_OWNER {session.get('active_music_source')} {session.get('song')}")
 
 
+def _render_songs_surface(session: dict[str, Any]) -> None:
+    """First Songs render after leaving Custom — Shape must win before paint."""
+    from songs.music_source import restore_catalog_live_practice_key
+
+    restore_catalog_live_practice_key(session)
+    _stage_dump(session, "songs_after_restore")
+    original, _identity = display_key_context(
+        session,
+        catalog_song_data=session.get("selected_song") or {},
+        cpl_active_key=CPL_ACTIVE_KEY,
+    )
+    st.markdown(f"SONGS_TITLE {session.get('song') or session.get('active_song_title')}")
+    st.markdown(f"SONGS_SOURCE {session.get('active_music_source')}")
+    st.markdown(f"SONGS_PK {session.get('display_key')}")
+    st.markdown(f"SONGS_ORIGINAL {original}")
+    st.markdown(f"GA_OWNER {session.get('active_music_source')} {session.get('song')}")
+
+
 if not st.session_state.get(HARNESS_SEED_KEY):
     _seed_shape_ga_trial_custom(st.session_state)
     st.session_state[HARNESS_SEED_KEY] = True
@@ -208,6 +235,8 @@ page = str(st.session_state.get("studio_page") or "custom").strip().lower()
 if page == "backing":
     _stage_dump(st.session_state, "backing_entry_before_hydrate")
     _render_backing_surface(st.session_state)
+elif page in {"picker", "songs"}:
+    _render_songs_surface(st.session_state)
 else:
     render_custom_progression_lab_page()
     _stage_dump(st.session_state, "custom_page_render")

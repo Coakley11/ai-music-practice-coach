@@ -134,6 +134,73 @@ class TestCustomPageFinishBackingRender(unittest.TestCase):
         self.assertEqual(str(_ss_get(ss, "active_music_source") or ""), "catalog_song")
         self.assertEqual(str(_ss_get(ss, "song") or ""), "Shape of You")
 
+        from cbs_rendered_contracts import backing_must_be_trial_custom, mixed_state_failures
+
+        self.assertEqual(backing_must_be_trial_custom(visible), [])
+        self.assertEqual(
+            mixed_state_failures(body=visible, main=visible, surface="custom_backing"),
+            [],
+        )
+
+        ret = None
+        for btn in at.button:
+            if "Return to Custom Page" in str(getattr(btn, "label", "") or ""):
+                ret = btn
+                break
+        self.assertIsNotNone(ret, "Return to Custom Page must render")
+        ret.click().run(timeout=180)
+
+        visible = _all_text(at)
+        labels = _button_labels(at)
+        self.assertIn("Trial Song", visible)
+        self.assertIn("D major", visible)
+        self.assertNotIn("Practice / Concert Key B minor", visible)
+        self.assertEqual(str(_ss_get(at.session_state, "studio_page") or ""), "custom")
+        self.assertEqual(str(_ss_get(at.session_state, "song") or ""), "Shape of You")
+        self.assertEqual(str(_ss_get(at.session_state, "active_music_source") or ""), "catalog_song")
+        self.assertTrue(
+            any("Set as Active Song" in lab or "Finish Song" in lab for lab in labels),
+            labels,
+        )
+        self.assertEqual(
+            mixed_state_failures(body=visible, main=visible, surface="custom_return"),
+            [],
+        )
+
+    def test_finish_song_songs_exit_restores_shape_before_first_render(self) -> None:
+        from streamlit.testing.v1 import AppTest
+
+        from app_ui import nav_icon_button_label
+
+        root = Path(__file__).resolve().parents[1]
+        at = AppTest.from_file(str(root / HARNESS), default_timeout=120)
+        at.run(timeout=180)
+
+        at.button(key="cpl_finish").click().run(timeout=180)
+        labels = _button_labels(at)
+        self.assertIn(nav_icon_button_label("picker"), labels)
+        self.assertIn(nav_icon_button_label("practice"), labels)
+
+        songs = at.button(key="cpl_exit_picker_finish")
+        self.assertIsNotNone(songs)
+        songs.click().run(timeout=180)
+
+        visible = _all_text(at)
+        self.assertIn("SONGS_TITLE Shape of You", visible)
+        self.assertIn("SONGS_SOURCE catalog_song", visible)
+        self.assertIn("SONGS_PK Bm", visible)
+        self.assertNotIn("SONGS_TITLE Trial Song", visible)
+        self.assertNotIn("SONGS_PK D", visible)
+        self.assertEqual(str(_ss_get(at.session_state, "song") or ""), "Shape of You")
+        self.assertEqual(str(_ss_get(at.session_state, "active_music_source") or ""), "catalog_song")
+        self.assertEqual(str(_ss_get(at.session_state, "display_key") or ""), "Bm")
+        from cbs_rendered_contracts import mixed_state_failures
+
+        self.assertEqual(
+            mixed_state_failures(body=visible, main=visible, surface="songs"),
+            [],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
