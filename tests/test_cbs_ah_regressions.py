@@ -302,6 +302,11 @@ class TestBCustomBackingReturn(unittest.TestCase):
         self.assertEqual(str((session.get(CPL_ACTIVE_KEY) or {}).get("name") or ""), "Trial Song")
         self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
         self.assertEqual(session.get("song"), "Shape of You")
+        # Dest stays sealed until the Custom page hydrates (consume=True there).
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        self.assertTrue(apply_custom_page_return_destination(session, consume=True))
+        self.assertIsNone(peek_custom_page_return_destination(session))
 
     def test_restore_catalog_practice_key_is_widget_safe(self) -> None:
         session = _shape_session(practice_key="Bm")

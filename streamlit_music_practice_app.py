@@ -9149,9 +9149,9 @@ def _render_backing_return_source_action() -> None:
             elif action.action_id in {"return_custom_songs", "return_custom_page"}:
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
-                        from custom_page_return_destination import consume_custom_page_return_destination
+                        from custom_page_return_destination import apply_custom_page_return_destination
 
-                        consume_custom_page_return_destination(st.session_state)
+                        apply_custom_page_return_destination(st.session_state, consume=False)
                     except ImportError:
                         try:
                             from songs.music_source import LAST_CUSTOM_STATE_KEY
@@ -9194,11 +9194,11 @@ def _render_backing_return_source_action() -> None:
                 dest = None
             if src == "custom_progression" or dest is not None:
                 # Custom-page launch origin wins over backing owner.
-                # Consume the sealed Trial workspace dest — do not seize Global Active.
+                # Apply Trial workspace but keep the dest until Custom hydrates.
                 try:
-                    from custom_page_return_destination import consume_custom_page_return_destination
+                    from custom_page_return_destination import apply_custom_page_return_destination
 
-                    consume_custom_page_return_destination(st.session_state)
+                    apply_custom_page_return_destination(st.session_state, consume=False)
                 except ImportError:
                     pass
                 navigate_studio_page(st.session_state, "custom")

@@ -124,8 +124,17 @@ def peek_custom_page_return_destination(session: dict[str, Any]) -> dict[str, An
     return recovered
 
 
-def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
-    """Restore Trial Custom workspace. Does not change Global Active ownership."""
+def apply_custom_page_return_destination(
+    session: dict[str, Any],
+    *,
+    consume: bool = False,
+) -> bool:
+    """Restore Trial Custom workspace. Does not change Global Active ownership.
+
+    The Backing click must not pop the dest until the Custom page actually
+    hydrates. Persist/rerun can bounce the first paint back to Catalog Backing;
+    keeping the dest makes Return to Custom Page still work.
+    """
     dest = peek_custom_page_return_destination(session)
     if dest is None:
         return False
@@ -156,8 +165,13 @@ def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
                 source="custom_page_return",
             )
         except Exception:
-            session["display_key"] = practice_key
             session["concert_key"] = practice_key
+            try:
+                from session_widget_safe import safe_assign_display_key
+
+                safe_assign_display_key(session, practice_key, widget_safe=True)
+            except ImportError:
+                session["display_key"] = practice_key
     try:
         from songs.music_source import snapshot_last_custom_state
 
@@ -171,19 +185,30 @@ def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
     except ImportError:
         pass
     session["studio_page"] = "custom"
-    session.pop(CUSTOM_PAGE_RETURN_DESTINATION_KEY, None)
     try:
         from custom_progression_lab import CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY
 
         session.pop(CUSTOM_PAGE_LAUNCHED_CATALOG_BACKING_KEY, None)
     except ImportError:
         session.pop("_custom_page_launched_catalog_backing", None)
+    if consume and str(session.get("studio_page") or "").strip().lower() == "custom":
+        session.pop(CUSTOM_PAGE_RETURN_DESTINATION_KEY, None)
+        blob = _backing_context_blob(session)
+        if isinstance(blob, dict):
+            blob.pop(CUSTOM_PAGE_RETURN_DESTINATION_BLOB_KEY, None)
     return True
+
+
+def consume_custom_page_return_destination(session: dict[str, Any]) -> bool:
+    """Restore Trial Custom workspace and drop the dest after a Custom-page apply."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    return apply_custom_page_return_destination(session, consume=(page == "custom"))
 
 
 __all__ = [
     "CUSTOM_PAGE_RETURN_DESTINATION_BLOB_KEY",
     "CUSTOM_PAGE_RETURN_DESTINATION_KEY",
+    "apply_custom_page_return_destination",
     "build_custom_page_return_destination",
     "consume_custom_page_return_destination",
     "peek_custom_page_return_destination",

@@ -452,10 +452,26 @@ def main() -> int:
         )
         mark("refresh_custom_backing", "PASS" if refresh_bk else "RED")
 
-        ret = click_main_button(page, r"Return to Custom Page") or click_button_has(
-            page, r"Return to Custom Page"
-        )
+        ret = False
+        loc = page.locator("button", has_text="Return to Custom Page").first
+        try:
+            loc.scroll_into_view_if_needed(timeout=8000)
+            loc.click(timeout=8000)
+            ret = True
+        except Exception:
+            ret = click_main_button(page, r"Return to Custom Page") or click_button_has(
+                page, r"Return to Custom Page"
+            )
+        wait_for_body(page, "Trial Song", "Leave Custom page", "Finish Song", timeout_s=25)
         settle(page, 3)
+        if not has_any(page.inner_text("body") or "", "Leave Custom page", "Finish Song"):
+            try:
+                page.locator("button", has_text="Return to Custom Page").first.click(timeout=5000)
+                wait_for_body(page, "Trial Song", "Leave Custom page", timeout_s=20)
+                ret = True
+            except Exception:
+                pass
+            settle(page, 2)
         body_ret = shot(page, "05-return-custom")
         mixed_ret = fail_mixed(page, "custom_return")
         return_ok = (

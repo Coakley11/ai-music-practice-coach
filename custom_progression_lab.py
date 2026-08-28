@@ -784,6 +784,12 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         apply_custom_sbi_origin_on_custom_page(session)
     except ImportError:
         pass
+    try:
+        from custom_page_return_destination import apply_custom_page_return_destination
+
+        apply_custom_page_return_destination(session, consume=True)
+    except ImportError:
+        pass
 
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
     stored_home = cpl_draft_written_key(active)
