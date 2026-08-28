@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import io
 import math
 import struct
@@ -21,6 +22,9 @@ from composition_document import (
 COMPOSER_PREVIEW_NONCE_KEY = "composer_preview_nonce"
 COMPOSER_PREVIEW_AUTOPLAY_KEY = "composer_preview_autoplay"
 COMPOSER_PREVIEW_DOCK_STOP_KEY = "_composer_preview_dock_stop_key"
+COMPOSER_PREVIEW_SLOT_KEY = "composer_preview_slot"
+COMPOSER_PREVIEW_LABEL_KEY = "composer_preview_label"
+COMPOSER_PREVIEW_COUNT_IN_KEY = "composer_preview_count_in_bars"
 _MIN_PLAYABLE_PEAK = 0.02
 _MIN_PLAYABLE_SECONDS = 0.2
 
@@ -401,6 +405,8 @@ def play_composer_preview(
     arrangement_style: str | None = None,
     level: str = "Intermediate",
     count_in_bars: int = 0,
+    slot: str = "",
+    label: str = "",
 ) -> dict[str, Any]:
     """Button-path seam: generate, validate, arm a remounting autoplay payload."""
     pg = playback_globals(doc)
@@ -439,6 +445,8 @@ def play_composer_preview(
         "section_id": section_id or "",
         "loops": int(loops),
         "count_in_bars": int(count_in_bars or 0),
+        "slot": str(slot or ""),
+        "label": str(label or ""),
     }
     if not chords:
         invalidate_composer_preview(session_state)
@@ -465,6 +473,9 @@ def play_composer_preview(
     nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0) + 1
     session_state[COMPOSER_PREVIEW_NONCE_KEY] = nonce
     session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = True
+    session_state[COMPOSER_PREVIEW_SLOT_KEY] = str(slot or "")
+    session_state[COMPOSER_PREVIEW_LABEL_KEY] = str(label or "Now playing")
+    session_state[COMPOSER_PREVIEW_COUNT_IN_KEY] = int(count_in_bars or 0)
     set_composer_preview(session_state, wav, sig)
     html = build_composer_playback_html(bytes(wav), nonce=nonce, autoplay=True, stats=stats)
     result.update(
@@ -482,6 +493,18 @@ def play_composer_preview(
 def composer_playback_is_armed(session_state: dict) -> bool:
     wav = session_state.get("composer_preview_wav")
     return bool(inspect_preview_wav(wav if isinstance(wav, (bytes, bytearray)) else None).get("playable"))
+
+
+def composer_preview_slot(session_state: dict) -> str:
+    return str(session_state.get(COMPOSER_PREVIEW_SLOT_KEY) or "")
+
+
+def composer_preview_label(session_state: dict) -> str:
+    return str(session_state.get(COMPOSER_PREVIEW_LABEL_KEY) or "Now playing")
+
+
+def _safe_preview_key(slot: str) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in str(slot or "preview")) or "preview"
 
 
 def request_composer_preview_dock(session_state: dict, stop_key: str = "composer_preview_stop") -> None:
@@ -510,11 +533,41 @@ def composition_surface_label() -> str:
         return "Composition surface · unknown"
 
 
+def render_local_composer_playback(
+    st_mod: Any,
+    session_state: dict,
+    *,
+    slot: str,
+    stop_key: str | None = None,
+) -> bool:
+    """Mount the player only on the item that armed this slot (same click-run)."""
+    wanted = str(slot or "")
+    if not wanted or composer_preview_slot(session_state) != wanted:
+        return False
+    if not composer_playback_is_armed(session_state):
+        return False
+    label = composer_preview_label(session_state)
+    st_mod.markdown(
+        f'<div class="composer-local-player" data-preview-slot="{html.escape(wanted)}" '
+        f'data-playing-label="{html.escape(label)}">',
+        unsafe_allow_html=True,
+    )
+    mounted = render_composer_playback(
+        st_mod,
+        session_state,
+        stop_key=stop_key or f"composer_preview_stop_{_safe_preview_key(wanted)}",
+        label=label,
+    )
+    st_mod.markdown("</div>", unsafe_allow_html=True)
+    return mounted
+
+
 def render_composer_playback(
     st_mod: Any,
     session_state: dict,
     *,
     stop_key: str = "composer_preview_stop",
+    label: str | None = None,
 ) -> bool:
     """Render the armed payload. Returns True when a playable player was mounted."""
     wav = session_state.get("composer_preview_wav")
@@ -523,7 +576,8 @@ def render_composer_playback(
         return False
     nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 1)
     autoplay = bool(session_state.get(COMPOSER_PREVIEW_AUTOPLAY_KEY, True))
-    st_mod.markdown("**Now playing**")
+    heading = str(label or composer_preview_label(session_state) or "Now playing")
+    st_mod.markdown(f"**{heading}**")
     c1, c2 = st_mod.columns([4, 1])
     with c1:
         # Native st.audio lives in the main document so the click gesture can
@@ -569,4 +623,7 @@ def set_composer_preview(
 def invalidate_composer_preview(session_state: dict) -> None:
     session_state.pop("composer_preview_wav", None)
     session_state.pop("composer_preview_signature", None)
+    session_state.pop(COMPOSER_PREVIEW_SLOT_KEY, None)
+    session_state.pop(COMPOSER_PREVIEW_LABEL_KEY, None)
+    session_state.pop(COMPOSER_PREVIEW_COUNT_IN_KEY, None)
     session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = False

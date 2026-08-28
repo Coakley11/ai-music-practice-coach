@@ -110,11 +110,13 @@ from composition_document import (
     touch_composition,
 )
 from composition_preview import (
+    COMPOSER_PREVIEW_COUNT_IN_KEY,
+    composer_playback_is_armed,
+    composer_preview_slot,
     composition_surface_label,
-    flush_composer_preview_dock,
     invalidate_composer_preview,
     play_composer_preview,
-    request_composer_preview_dock,
+    render_local_composer_playback,
 )
 from composition_hum_transcription import (
     apply_record_origin,
@@ -130,6 +132,8 @@ from composition_hum_transcription import (
     transcribe_hum_audio,
 )
 from composition_melody_notation import (
+    beats_per_bar,
+    build_live_chord_follow_html,
     build_section_score_model,
     render_abc_html,
 )
@@ -421,15 +425,41 @@ body[data-studio-page="composer"] .block-container {
 }
 .composer-score-chords {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.15rem;
   margin: 0.15rem 0 0.45rem;
   padding: 0 0.35rem 0.15rem;
+  align-items: stretch;
 }
 .composer-score-chord {
   flex: 1 1 0;
   text-align: center;
   font-weight: 700;
   font-size: 0.95rem;
+  color: #0f172a;
+  background: #eef2ff;
+  border-radius: 6px;
+  padding: 0.2rem 0.15rem;
+}
+.composer-score-chords-timed .composer-score-chord {
+  min-width: 0;
+}
+.composer-local-player {
+  margin: 0.35rem 0 0.55rem;
+  padding: 0.45rem 0.55rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+}
+.composer-record-workspace {
+  background: #ffffff;
+  border: 1px solid rgba(49, 46, 129, 0.16);
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem 1rem;
+  margin: 0.65rem 0 1rem;
+}
+.composer-record-workspace h3 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1.15rem;
   color: #0f172a;
 }
 .composer-score-lyrics {
@@ -820,10 +850,16 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
                     loops=loops,
                     include_melody=True,
                     arrangement_style=arrangement or None,
+                    slot="review-full-song",
+                    label="Playing full song",
                 )
                 if not result.get("ok"):
                     st.warning(str(result.get("reason") or "Could not generate playback."))
-        _render_active_preview(session_state, stop_key="composer_review_preview_stop")
+        _attach_local_preview(
+            session_state,
+            slot="review-full-song",
+            stop_key="composer_review_preview_stop",
+        )
 
         st.markdown("---")
         st.markdown('<div class="composer-review-block"><h4>Readiness</h4></div>', unsafe_allow_html=True)
@@ -1008,9 +1044,14 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
                 st.rerun()
 
 
-def _render_active_preview(session_state: dict, *, stop_key: str = "composer_preview_stop") -> None:
-    """Queue the audition dock for end-of-page mount (same click-run as Play/Preview)."""
-    request_composer_preview_dock(session_state, stop_key=stop_key)
+def _attach_local_preview(
+    session_state: dict,
+    *,
+    slot: str,
+    stop_key: str | None = None,
+) -> bool:
+    """Mount the armed player under the item that requested it."""
+    return render_local_composer_playback(st, session_state, slot=slot, stop_key=stop_key)
 
 
 def _play_chord_idea(
@@ -1020,6 +1061,8 @@ def _play_chord_idea(
     chord_syms: list[str],
     *,
     loops: int = 2,
+    slot: str = "",
+    label: str = "",
 ) -> bool:
     """Generate transient chord preview. Returns True if a playable payload was armed."""
     result = play_composer_preview(
@@ -1029,6 +1072,8 @@ def _play_chord_idea(
         loops=loops,
         chord_override=chord_syms,
         include_melody=False,
+        slot=slot or f"chords:{section_id}",
+        label=label or "Playing chords",
     )
     return bool(result.get("ok"))
 
@@ -1061,10 +1106,23 @@ def _render_compare_tray(
         with c1:
             st.caption(f"{sug.get('name') or qid}: `{line}`")
         with c2:
+            cmp_slot = f"chords:{section_id}:compare:{qid}"
             if st.button("▶", key=f"composer_cmp_tray_prev_{section_id}_{qid}", help="Preview"):
                 chord_syms = expand_entries_to_chords(list(sug.get("chords") or []))
-                if not _play_chord_idea(session_state, doc, section_id, chord_syms):
+                if not _play_chord_idea(
+                    session_state,
+                    doc,
+                    section_id,
+                    chord_syms,
+                    slot=cmp_slot,
+                    label=f"Playing · {sug.get('name') or qid}",
+                ):
                     st.warning("Could not preview that progression.")
+            _attach_local_preview(
+                session_state,
+                slot=cmp_slot,
+                stop_key=f"composer_cmp_tray_stop_{section_id}_{qid}",
+            )
         with c3:
             if st.button("Use", key=f"composer_cmp_tray_use_{section_id}_{qid}", type="primary"):
                 apply_section_chords(doc, section_id, list(sug.get("chords") or []))
@@ -1869,10 +1927,10 @@ def _render_melody_staff(
     if score.get("chord_strip_html"):
         st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
         st.caption(
-            f"Full section harmony · {int(score.get('measures') or 0)} measures · "
+            f"Chords sit on the staff at their beats · {int(score.get('measures') or 0)} measures · "
             f"{html.escape(str(score.get('meter') or meter))}"
         )
-    if score["has_melody"]:
+    if score.get("abc"):
         try:
             import streamlit.components.v1 as components
 
@@ -1885,9 +1943,17 @@ def _render_melody_staff(
             st.code(str(score["abc"]), language="text")
     elif score["has_chords"]:
         st.markdown(
-            '<div class="composer-score-empty">Melody not written yet — full progression above.</div>',
+            '<div class="composer-score-empty">Melody not written yet — chords above mark each span.</div>',
             unsafe_allow_html=True,
         )
+    alignment = list(score.get("note_chord_alignment") or [])
+    pitched = [row for row in alignment if not row.get("is_rest") and str(row.get("pitch") or "")]
+    if pitched:
+        bits = [
+            f"{html.escape(str(row.get('chord') or '—'))}: {html.escape(str(row.get('pitch') or ''))}"
+            for row in pitched[:16]
+        ]
+        st.caption("Notes over chords: " + "  ·  ".join(bits))
     if score.get("lyrics_text"):
         st.markdown(
             f'<div class="composer-score-lyrics">{html.escape(str(score["lyrics_text"]))}</div>',
@@ -1957,7 +2023,7 @@ def _render_section_score_view(
         button_label="▶ Play section (chords + melody)" if has_melody else "▶ Play chords",
         loops_key=f"composer_score_loops_{sid}",
         include_melody=has_melody,
-        render_preview=False,
+        render_preview=True,
     )
 
 
@@ -2244,45 +2310,21 @@ def _render_hum_sing_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    st.markdown("**Play / Hum My Melody**")
-    st.caption("Hum, sing, or play one melodic line over the selected chords. We’ll write it as sheet music.")
-    if chords:
-        score = build_section_score_model(
+    section_label = str(section.get("label_variant") or section.get("label") or "This section")
+    record_slot = f"record-workspace:{active_id}"
+    score = (
+        build_section_score_model(
             events=[],
             chords=chords,
             key=key,
             meter=meter,
             bpm=bpm,
-            title=str(section.get("label_variant") or section.get("label") or "Section"),
+            title=section_label,
             section_bars=section_playback_bars(doc, section),
         )
-        if score.get("progression_line"):
-            st.markdown(
-                f'<div class="composer-score-progression">{html.escape(str(score["progression_line"]))}</div>',
-                unsafe_allow_html=True,
-            )
-        if score.get("chord_strip_html"):
-            st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
-        st.caption(
-            f"Recording uses this section timeline · {int(score.get('measures') or 0)} measures · "
-            f"{meter} · {bpm} BPM. Hear the chords change before you sing."
-        )
-        if st.button(
-            "▶ Hear the chords",
-            key=f"composer_hum_hear_chords_{active_id}",
-            use_container_width=True,
-        ):
-            heard = play_composer_preview(
-                session_state,
-                doc,
-                section_id=active_id,
-                include_melody=False,
-                loops=1,
-            )
-            if not heard.get("ok"):
-                st.warning(str(heard.get("reason") or "Add chords first."))
-    else:
-        st.caption("Add chords for this section so recording can follow the progression.")
+        if chords
+        else {}
+    )
     timeline = session_state.get(f"composer_record_timeline_{active_id}")
     if not isinstance(timeline, dict):
         capture = ((section.get("melody") or {}).get("intent") or {}).get("hum_capture") or {}
@@ -2290,103 +2332,58 @@ def _render_hum_sing_panel(
     origin_keys = _record_origin_keys(active_id)
     _init_record_origin_widgets(session_state, active_id, timeline if isinstance(timeline, dict) else None)
 
-    st.info(
-        "The Streamlit microphone cannot start with the backing from one click, so this is not a locked sync. "
-        "**1. Start recording first.** Optionally click **Mark I'm recording now**. "
-        "**2. Start the count-in + backing.** "
-        "A note on beat 1 of the section is at capture beat (mic lead + count-in). "
-        "Alignment is `section_beat = capture_beat − backing_origin_in_capture_beats`. "
-        "If the recorder started after the backing, switch to that mode instead of claiming a lock."
-    )
-
-    if not hum_analysis_available():
-        st.info(
-            "Pitch transcription needs librosa on this server. "
-            "Recording still works as a capture marker; explore melody ideas below."
+    st.markdown('<div class="composer-record-workspace">', unsafe_allow_html=True)
+    st.markdown("### Record your melody over these chords.")
+    st.caption("Hum, sing, or play one melodic line over the selected chords. We’ll write it as sheet music.")
+    st.markdown(f"**{html.escape(section_label)}** · {html.escape(meter)} · {bpm} BPM")
+    if score.get("progression_line"):
+        st.markdown(
+            f'<div class="composer-score-progression">{html.escape(str(score["progression_line"]))}</div>',
+            unsafe_allow_html=True,
         )
+    if score.get("chord_strip_html"):
+        st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
+    elif not chords:
+        st.caption("Add chords for this section so recording can follow the progression.")
 
-    st.markdown("**1. Arm the microphone**")
+    st.caption(
+        "Turn on the microphone, then press Start. After the count-in, sing or play "
+        "while the highlighted chord moves."
+    )
+    if not hum_analysis_available():
+        st.caption("Pitch transcription needs librosa on this server. You can still record a capture.")
+
     try:
         audio = st.audio_input(
-            "Start recording now (voice or instrument)",
+            "Microphone",
             key=f"composer_melody_record_{active_id}",
         )
     except Exception:
         audio = None
         st.caption("Audio recording will appear here when your browser supports it.")
 
-    st.radio(
-        "Recorder vs backing start",
-        options=[_ORIGIN_MIC_FIRST, _ORIGIN_RECORDER_LATE],
-        format_func=lambda v: (
-            "Microphone first (normal)"
-            if v == _ORIGIN_MIC_FIRST
-            else "Recorder started after backing"
-        ),
-        key=origin_keys["mode"],
-        help=(
-            "Primary flow: the mic is already running when count-in + backing begin. "
-            "Use the other option only if recording started after the backing."
-        ),
-    )
-    origin_mode = str(session_state.get(origin_keys["mode"]) or _ORIGIN_MIC_FIRST)
-    if origin_mode == _ORIGIN_RECORDER_LATE:
-        st.number_input(
-            "Recorder started after backing by (beats)",
-            min_value=0.0,
-            max_value=32.0,
-            step=0.5,
-            key=origin_keys["late"],
-            help="Mic started this many beats after backing/count-in. backing_origin = count-in − this value.",
+    start_col, hear_col = st.columns(2)
+    with start_col:
+        start_backing = st.button(
+            "Start",
+            key=f"composer_hum_play_backing_{active_id}",
+            type="primary",
+            use_container_width=True,
+            disabled=not bool(chords),
+            help="Count-in, then the chord backing. Sing or play after 1.",
         )
-    else:
-        mark_col, lead_col = st.columns([1, 1])
-        with mark_col:
-            if st.button(
-                "Mark I'm recording now",
-                key=f"composer_mark_mic_{active_id}",
-                use_container_width=True,
-                help="Store the moment you started the recorder so Start can measure mic lead.",
-            ):
-                session_state[origin_keys["armed_at"]] = time.time()
-                st.rerun()
-        with lead_col:
-            st.number_input(
-                "Backing began this many beats after I started recording",
-                min_value=0.0,
-                max_value=32.0,
-                step=0.5,
-                key=origin_keys["lead"],
-                help=(
-                    "Primary offset D: mic at capture beat 0, backing/count-in starts D beats later. "
-                    "A note on section beat 0 is at capture beat D + count-in. "
-                    "Leave 0 and use Mark I'm recording now to measure D."
-                ),
-            )
-        armed_at = session_state.get(origin_keys["armed_at"])
-        if armed_at:
-            try:
-                elapsed = max(0.0, time.time() - float(armed_at))
-                est = elapsed * float(max(40, bpm)) / 60.0
-                st.caption(
-                    f"Recorder marked running · about {est:g} beats at {bpm} BPM. "
-                    "Start count-in will use this as mic lead if the box is still 0."
-                )
-            except (TypeError, ValueError):
-                pass
+    with hear_col:
+        hear_chords = st.button(
+            "▶ Hear the chords",
+            key=f"composer_hum_hear_chords_{active_id}",
+            use_container_width=True,
+            disabled=not bool(chords),
+        )
 
     mic_lead_beats, recorder_late_beats = _armed_record_offsets_from_panel(
         session_state, active_id, bpm=bpm
     )
-
-    st.markdown("**2. Start count-in + backing**")
-    if st.button(
-        "Start count-in + backing",
-        key=f"composer_hum_play_backing_{active_id}",
-        type="primary",
-        use_container_width=True,
-        disabled=not bool(chords),
-    ):
+    if start_backing:
         timeline = prepare_armed_record_transport(
             doc,
             active_id,
@@ -2415,24 +2412,127 @@ def _render_hum_sing_panel(
             include_melody=False,
             loops=1,
             count_in_bars=1,
+            slot=record_slot,
+            label=f"Count-in + chords · {section_label}",
         )
         _save_doc(session_state, doc)
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add chords first so backing can play while you record."))
-    if isinstance(timeline, dict) and timeline.get("chord_changes"):
-        lead_beats = float(timeline.get("mic_lead_beats") or 0.0)
-        late_beats = float(timeline.get("recorder_late_beats") or 0.0)
-        cin = float(timeline.get("count_in_beats") or 0.0)
-        origin_in_capture = float(timeline.get("backing_origin_in_capture_beats") or 0.0)
-        st.caption(
-            f"Armed count-in transport · {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
-            f"{int(timeline.get('section_bars') or 0)} bars · count-in {cin:g} beats · "
-            f"mic lead {lead_beats:g} · recorder late {late_beats:g} · "
-            f"backing_origin_in_capture_beats {origin_in_capture:g}. "
-            "section_beat = capture_beat − backing_origin. Not a locked mic/speaker sync."
+    elif hear_chords:
+        heard = play_composer_preview(
+            session_state,
+            doc,
+            section_id=active_id,
+            include_melody=False,
+            loops=1,
+            slot=record_slot,
+            label=f"Playing chords · {section_label}",
         )
-    elif not chords:
-        st.caption("Add chords first — then arm the microphone and start the count-in.")
+        if not heard.get("ok"):
+            st.warning(str(heard.get("reason") or "Add chords first."))
+    _attach_local_preview(
+        session_state,
+        slot=record_slot,
+        stop_key=f"composer_hum_preview_stop_{active_id}",
+    )
+    spans = list(score.get("timed_spans") or [])
+    live_armed = composer_preview_slot(session_state) == record_slot and composer_playback_is_armed(session_state)
+    if live_armed and spans:
+        try:
+            cin_bars = int(session_state.get(COMPOSER_PREVIEW_COUNT_IN_KEY) or 0)
+        except (TypeError, ValueError):
+            cin_bars = 0
+        follow = build_live_chord_follow_html(
+            spans,
+            bpm=bpm,
+            count_in_beats=float(cin_bars) * beats_per_bar(meter),
+            section_label="Sing or play — the highlighted chord is sounding now",
+        )
+        if follow:
+            try:
+                import streamlit.components.v1 as components
+
+                components.html(follow, height=92, scrolling=False)
+            except Exception:
+                pass
+
+    with st.expander("Notes landed on the wrong chord?", expanded=False):
+        st.caption(
+            "The Streamlit microphone cannot start with the backing from one click, "
+            "so this is not a locked sync. Alignment is "
+            "`section_beat = capture_beat − backing_origin_in_capture_beats`."
+        )
+        st.radio(
+            "Recorder vs backing start",
+            options=[_ORIGIN_MIC_FIRST, _ORIGIN_RECORDER_LATE],
+            format_func=lambda v: (
+                "Microphone first (normal)"
+                if v == _ORIGIN_MIC_FIRST
+                else "Recorder started after backing"
+            ),
+            key=origin_keys["mode"],
+            help=(
+                "Primary flow: the mic is already running when count-in + backing begin. "
+                "Use the other option only if recording started after the backing."
+            ),
+        )
+        origin_mode = str(session_state.get(origin_keys["mode"]) or _ORIGIN_MIC_FIRST)
+        if origin_mode == _ORIGIN_RECORDER_LATE:
+            st.number_input(
+                "Recorder started after backing by (beats)",
+                min_value=0.0,
+                max_value=32.0,
+                step=0.5,
+                key=origin_keys["late"],
+                help="Mic started this many beats after backing/count-in. backing_origin = count-in − this value.",
+            )
+        else:
+            mark_col, lead_col = st.columns([1, 1])
+            with mark_col:
+                if st.button(
+                    "Mark I'm recording now",
+                    key=f"composer_mark_mic_{active_id}",
+                    use_container_width=True,
+                    help="Store the moment you started the recorder so Start can measure mic lead.",
+                ):
+                    session_state[origin_keys["armed_at"]] = time.time()
+                    st.rerun()
+            with lead_col:
+                st.number_input(
+                    "Backing began this many beats after I started recording",
+                    min_value=0.0,
+                    max_value=32.0,
+                    step=0.5,
+                    key=origin_keys["lead"],
+                    help=(
+                        "Primary offset D: mic at capture beat 0, backing/count-in starts D beats later. "
+                        "A note on section beat 0 is at capture beat D + count-in. "
+                        "Leave 0 and use Mark I'm recording now to measure D."
+                    ),
+                )
+            armed_at = session_state.get(origin_keys["armed_at"])
+            if armed_at:
+                try:
+                    elapsed = max(0.0, time.time() - float(armed_at))
+                    est = elapsed * float(max(40, bpm)) / 60.0
+                    st.caption(
+                        f"Recorder marked running · about {est:g} beats at {bpm} BPM. "
+                        "Start will use this as mic lead if the box is still 0."
+                    )
+                except (TypeError, ValueError):
+                    pass
+        if isinstance(timeline, dict) and timeline.get("chord_changes"):
+            lead_beats = float(timeline.get("mic_lead_beats") or 0.0)
+            late_beats = float(timeline.get("recorder_late_beats") or 0.0)
+            cin = float(timeline.get("count_in_beats") or 0.0)
+            origin_in_capture = float(timeline.get("backing_origin_in_capture_beats") or 0.0)
+            st.caption(
+                f"Armed count-in transport · {timeline.get('meter')} · {timeline.get('bpm')} BPM · "
+                f"{int(timeline.get('section_bars') or 0)} bars · count-in {cin:g} beats · "
+                f"mic lead {lead_beats:g} · recorder late {late_beats:g} · "
+                f"backing_origin_in_capture_beats {origin_in_capture:g}. "
+                "section_beat = capture_beat − backing_origin. Not a locked mic/speaker sync."
+            )
 
     if audio is not None:
         try:
@@ -2556,10 +2656,9 @@ def _render_hum_sing_panel(
                         f"{html.escape(str(ev.get('pitch') or ''))}"
                     )
                 st.caption("Aligned to the section: " + "  |  ".join(rows[:12]))
-            _render_active_preview(session_state, stop_key=f"composer_hum_preview_stop_{active_id}")
-
             p1, p2 = st.columns(2)
             with p1:
+                proposal_slot = f"record-proposal:{active_id}"
                 if st.button(
                     "▶ Preview with chords",
                     key=f"composer_hum_preview_{active_id}",
@@ -2572,9 +2671,16 @@ def _render_hum_sing_panel(
                         include_melody=True,
                         melody_override=events,
                         loops=1,
+                        slot=proposal_slot,
+                        label=f"Playing recorded melody · {section.get('label_variant') or section.get('label') or 'Section'}",
                     )
                     if not result.get("ok"):
                         st.warning(str(result.get("reason") or "Add chords to this section first."))
+                _attach_local_preview(
+                    session_state,
+                    slot=proposal_slot,
+                    stop_key=f"composer_hum_proposal_stop_{active_id}",
+                )
             with p2:
                 use_label = "Replace existing melody" if accepted else "Use this melody"
                 if st.button(
@@ -2617,6 +2723,7 @@ def _render_hum_sing_panel(
                     "This section already has an accepted melody. "
                     "Preview leaves it untouched; Replace updates it explicitly."
                 )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_melody_concept_card(
@@ -2659,6 +2766,7 @@ def _render_melody_concept_card(
         )
     p1, p2 = st.columns(2)
     with p1:
+        concept_slot = f"melody:{section_id}:{cid}"
         if st.button("▶ Preview with chords", key=f"{prefix}_preview_{cid}", use_container_width=True):
             result = play_composer_preview(
                 session_state,
@@ -2666,12 +2774,19 @@ def _render_melody_concept_card(
                 section_id=section_id,
                 include_melody=True,
                 melody_override=events or None,
+                slot=concept_slot,
+                label=f"Playing melody · {name}",
             )
             if not result.get("ok"):
                 if section_has_resolved_chords(doc, section_id):
                     st.warning(str(result.get("reason") or "Could not generate preview."))
                 else:
                     st.info("Add chords to this section first — then hear melody ideas in context.")
+        _attach_local_preview(
+            session_state,
+            slot=concept_slot,
+            stop_key=f"{prefix}_stop_{cid}",
+        )
     with p2:
         if st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
             if events:
@@ -2756,7 +2871,6 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
         _render_section_nav_strip(session_state, doc, button_prefix="composer_melody_nav")
         _render_section_lane_switcher(session_state, doc, active_lane="melody")
         _render_section_workspace_header(session_state, doc, section, lane="melody")
-        _render_active_preview(session_state, stop_key=f"composer_melody_preview_stop_{active_id}")
 
         has_harmony = section_has_resolved_chords(doc, active_id)
         if not has_harmony:
@@ -3223,6 +3337,7 @@ def _render_section_transport(
     with t2:
         play = st.button(button_label, type="primary", key=preview_key, use_container_width=True)
 
+    transport_slot = f"transport:{preview_key}"
     if play:
         result = play_composer_preview(
             session_state,
@@ -3233,12 +3348,14 @@ def _render_section_transport(
             chord_override=chord_override,
             include_melody=include_melody,
             melody_override=melody_override,
+            slot=transport_slot,
+            label=str(button_label or "Now playing").replace("▶ ", ""),
         )
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add chords to this section first — melody sits on your harmony."))
 
     if render_preview:
-        _render_active_preview(session_state, stop_key=stop_key)
+        _attach_local_preview(session_state, slot=transport_slot, stop_key=stop_key)
 
 
 def _render_workflow_section_strip(
@@ -3634,9 +3751,22 @@ def _render_suggestion_card(
     )
     p1, p2, p3 = st.columns(3)
     with p1:
+        card_slot = f"chords:{section_id}:{sid}"
         if st.button("▶ Preview", key=f"{prefix}_preview_{sid}", use_container_width=True):
-            if not _play_chord_idea(session_state, doc, section_id, chord_syms):
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                section_id,
+                chord_syms,
+                slot=card_slot,
+                label=f"Playing · {name}",
+            ):
                 st.warning("Could not generate preview for that progression.")
+        _attach_local_preview(
+            session_state,
+            slot=card_slot,
+            stop_key=f"{prefix}_stop_{sid}",
+        )
     with p2:
         if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
             apply_section_chords(doc, section_id, entries)
@@ -3703,9 +3833,22 @@ def _render_chord_refinement_panel(
     chord_syms = expand_entries_to_chords(list(proposal.get("chords") or []))
     a1, a2, a3, a4 = st.columns(4)
     with a1:
+        refine_slot = f"chords:{section_id}:refine"
         if st.button("▶ Preview", key=f"composer_refine_preview_{section_id}", use_container_width=True):
-            if not _play_chord_idea(session_state, doc, section_id, chord_syms):
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                section_id,
+                chord_syms,
+                slot=refine_slot,
+                label=f"Playing · {proposal.get('name') or 'Proposed change'}",
+            ):
                 st.warning("Could not preview that proposal.")
+        _attach_local_preview(
+            session_state,
+            slot=refine_slot,
+            stop_key=f"composer_refine_stop_{section_id}",
+        )
     with a2:
         if st.button("Use this", key=f"composer_refine_use_{section_id}", type="primary", use_container_width=True):
             apply_section_chords(doc, section_id, list(proposal.get("chords") or []))
@@ -3741,6 +3884,7 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
     with t3:
         play = st.button("▶ Play", type="primary", key="composer_play_btn", use_container_width=True)
 
+    transport_slot = f"transport:{scope}"
     if play:
         result = play_composer_preview(
             session_state,
@@ -3749,11 +3893,13 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
             section_id=section_id if scope == "section" else None,
             loops=loops,
             include_melody=True,
+            slot=transport_slot,
+            label="Playing section" if scope == "section" else "Playing song",
         )
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Add at least one chord before playing."))
 
-    _render_active_preview(session_state)
+    _attach_local_preview(session_state, slot=transport_slot, stop_key="composer_preview_stop")
 
 
 def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
@@ -3784,8 +3930,6 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
         _render_section_nav_strip(session_state, doc, button_prefix="composer_chords_nav")
         _render_section_lane_switcher(session_state, doc, active_lane="chords")
         _render_section_workspace_header(session_state, doc, section, lane="chords")
-        # Always show audition dock so Preview works even before chords are accepted.
-        _render_active_preview(session_state, stop_key=f"composer_chords_preview_stop_{active_id}")
 
         if is_linked and link.get("linked"):
             source = section_by_id(doc, edit_id)
@@ -3854,7 +3998,7 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
                     preview_key=f"composer_chords_play_{active_id}",
                     loops_key=f"composer_chords_loops_{active_id}",
                     include_melody=False,
-                    render_preview=False,
+                    render_preview=True,
                 )
                 st.info("Your chords are ready. Build or hum a melody over them — or keep refining harmony.")
                 if st.button("Build a melody over these chords →", key=f"composer_chords_to_melody_{active_id}"):
@@ -3955,4 +4099,3 @@ def render_composition_studio_page() -> None:
         _render_phase_review(session_state, doc)
     else:
         _render_phase_vision(session_state, doc)
-    flush_composer_preview_dock(st, session_state)

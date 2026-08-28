@@ -11,11 +11,7 @@ from composition_document import (
     ordered_sections,
     parse_chord_paste,
 )
-from composition_preview import (
-    flush_composer_preview_dock,
-    play_composer_preview,
-    request_composer_preview_dock,
-)
+from composition_preview import play_composer_preview, render_local_composer_playback
 
 
 def main() -> None:
@@ -28,7 +24,6 @@ def main() -> None:
         apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C Am F G"))
         st.session_state["harness_doc"] = doc
         st.session_state["harness_sid"] = str(verse["id"])
-    request_composer_preview_dock(st.session_state, "harness_stop")
     if st.button("▶ Preview", key="harness_preview"):
         result = play_composer_preview(
             st.session_state,
@@ -36,9 +31,12 @@ def main() -> None:
             section_id=st.session_state["harness_sid"],
             loops=1,
             include_melody=False,
+            slot="harness-preview",
+            label="Playing · Preview",
         )
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Could not preview."))
+    render_local_composer_playback(st, st.session_state, slot="harness-preview")
     if st.button("▶ Play chords", key="harness_play_chords"):
         result = play_composer_preview(
             st.session_state,
@@ -46,10 +44,12 @@ def main() -> None:
             section_id=st.session_state["harness_sid"],
             loops=1,
             include_melody=False,
+            slot="harness-play-chords",
+            label="Playing chords",
         )
         if not result.get("ok"):
             st.warning(str(result.get("reason") or "Could not play chords."))
-    flush_composer_preview_dock(st, st.session_state)
+    render_local_composer_playback(st, st.session_state, slot="harness-play-chords")
 
 
 main()

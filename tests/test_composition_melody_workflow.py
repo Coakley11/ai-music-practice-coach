@@ -342,9 +342,13 @@ class TestRecordOverBacking(unittest.TestCase):
         self.assertNotIn("Play backing and record", src)
         self.assertNotIn("Recorder started late by (beats)", src)
         self.assertIn("▶ Hear the chords", src)
+        self.assertIn("Record your melody over these chords.", src)
+        self.assertIn("Notes landed on the wrong chord?", src)
         self.assertIn("progression_line", src)
         self.assertIn("span_events_across_section_timeline", src)
         self.assertIn("over the chords", src)
+        self.assertNotIn("**1. Arm the microphone**", src)
+        self.assertNotIn("**2. Start count-in + backing**", src)
 
 
 class TestShapeAndRefineAcceptedMelody(unittest.TestCase):

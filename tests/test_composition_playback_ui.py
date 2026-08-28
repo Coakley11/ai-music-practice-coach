@@ -17,19 +17,18 @@ from composition_preview import (
     COMPOSER_PREVIEW_AUTOPLAY_KEY,
     COMPOSER_PREVIEW_NONCE_KEY,
     build_composer_playback_html,
-    flush_composer_preview_dock,
     inspect_preview_wav,
     play_composer_preview,
     render_composer_playback,
-    request_composer_preview_dock,
+    render_local_composer_playback,
 )
 from composition_session_state import COMPOSER_PREVIEW_WAV_KEY
 from composition_studio_page import (
     _play_chord_idea,
-    _render_active_preview,
     _render_hum_sing_panel,
     _render_phase_chords,
     _render_section_transport,
+    _render_suggestion_card,
     render_composition_studio_page,
 )
 
@@ -200,24 +199,35 @@ class TestPlayablePayloadSeam(unittest.TestCase):
 
 class TestClickRunRemount(unittest.TestCase):
     def test_click_run_mounts_audio_element_without_extra_rerun(self) -> None:
-        """Click-run: arm → flush dock in the same script run (keeps the gesture)."""
+        """Click-run: arm → local player in the same script run (keeps the gesture)."""
         doc, verse = _song_with_chords()
         ss: dict = {}
-        request_composer_preview_dock(ss, "t_stop")
-        result = play_composer_preview(ss, doc, section_id=str(verse["id"]), loops=1)
+        result = play_composer_preview(
+            ss,
+            doc,
+            section_id=str(verse["id"]),
+            loops=1,
+            slot="chords:local",
+            label="Playing chords",
+        )
         self.assertTrue(result["ok"], result.get("reason"))
         fake = FakeStreamlit()
-        mounted = flush_composer_preview_dock(fake, ss)
+        self.assertFalse(render_local_composer_playback(fake, ss, slot="other"))
+        self.assertFalse(fake.audio_calls)
+        mounted = render_local_composer_playback(fake, ss, slot="chords:local")
         self.assertTrue(mounted)
-        self.assertTrue(fake.audio_calls, "Same-run flush must mount native st.audio")
+        self.assertTrue(fake.audio_calls, "Same-run local mount must use native st.audio")
         data, kwargs = fake.audio_calls[0]
         self.assertTrue(data)
         self.assertTrue(kwargs.get("autoplay"), kwargs)
         self.assertIn("composer_preview_audio_", str(kwargs.get("key") or ""))
+        self.assertTrue(any('data-preview-slot="chords:local"' in m for m in fake.markdowns))
+        self.assertTrue(any("Playing chords" in m for m in fake.markdowns))
         transport = inspect.getsource(_render_section_transport)
         self.assertNotIn("st.rerun()", transport)
         page = inspect.getsource(render_composition_studio_page)
-        self.assertIn("flush_composer_preview_dock", page)
+        self.assertNotIn("flush_composer_preview_dock", page)
+        self.assertIn("_attach_local_preview", page)
 
     def test_streamlit_click_harness_arms_playable_wav(self) -> None:
         try:
@@ -252,10 +262,14 @@ class TestButtonPathWiring(unittest.TestCase):
         transport = inspect.getsource(_render_section_transport)
         self.assertIn("play_composer_preview", transport)
         self.assertNotIn("st.audio(", transport)
-        preview = inspect.getsource(_render_active_preview)
-        self.assertIn("request_composer_preview_dock", preview)
+        self.assertIn("_attach_local_preview", transport)
+        self.assertIn("slot=transport_slot", transport)
         page = inspect.getsource(render_composition_studio_page)
-        self.assertIn("flush_composer_preview_dock", page)
+        self.assertNotIn("flush_composer_preview_dock", page)
+        self.assertIn("_attach_local_preview", page)
+        card = inspect.getsource(_render_suggestion_card)
+        self.assertIn("_attach_local_preview", card)
+        self.assertIn("slot=card_slot", card)
         chords = inspect.getsource(_render_phase_chords)
         self.assertIn("_render_section_transport", chords)
         self.assertIn('button_label="▶ Play chords"', chords)
@@ -268,7 +282,7 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertNotIn("st_mod.components", render)
         hum = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("play_composer_preview", hum)
-        self.assertIn("Start count-in + backing", hum)
+        self.assertIn("Record your melody over these chords.", hum)
         self.assertIn("prepare_armed_record_transport", hum)
         self.assertIn("mic_lead_beats", hum)
         self.assertIn("backing_origin_in_capture_beats", hum)
@@ -277,6 +291,9 @@ class TestButtonPathWiring(unittest.TestCase):
         self.assertIn("progression_line", hum)
         self.assertIn("span_events_across_section_timeline", hum)
         self.assertIn("over the chords", hum)
+        self.assertIn("build_live_chord_follow_html", hum)
+        self.assertNotIn("**1. Arm the microphone**", hum)
+        self.assertNotIn("**2. Start count-in + backing**", hum)
 
 
 class TestCompositionStudioQaSmoke(unittest.TestCase):
