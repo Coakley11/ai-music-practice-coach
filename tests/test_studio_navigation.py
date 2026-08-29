@@ -277,3 +277,64 @@ def test_studio_history_nav_gutter_pin_script():
     assert "ResizeObserver" in src
     assert "MutationObserver" not in src
     assert "--studio-history-back-left" in src
+
+
+def test_songs_page_creative_button_uses_existing_nav_icon():
+    from app_ui import STUDIO_PAGE_META, nav_compact_button_label, nav_icon_button_label
+
+    assert STUDIO_PAGE_META["creative"]["icon"] == "🎨"
+    assert nav_compact_button_label("creative") == "Creative"
+    assert nav_icon_button_label("creative") == "🎨 Creative"
+
+
+def test_songs_page_creative_button_is_pure_picker_navigation():
+    from pathlib import Path
+
+    from studio_page_persistence import _NON_RESTORABLE_WIDGET_KEYS
+
+    src = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'key="picker_card_creative"' in src
+    assert 'nav_icon_button_label("creative")' in src
+    assert '_picker_navigate("creative")' in src
+    assert "picker_card_creative" in _NON_RESTORABLE_WIDGET_KEYS
+    assert '"creative":' not in src.split("_PICKER_NAV_ANCHORS", 1)[1].split("_CATALOG_RECENT_KEY", 1)[0]
+
+
+@patch("music_persistent_state.after_studio_page_change")
+def test_songs_to_creative_navigation_does_not_mutate_source_ownership(_mock_save):
+    state = {
+        "studio_page": "picker",
+        "active_music_source": "catalog",
+        "active_catalog_pick_key": "Pop\x1fShape of You",
+        "song": "Shape of You",
+        "display_key": "Bm",
+        "written_charts": True,
+        "guitar_shape": "CAGED",
+        "improv_song_source": "Active song",
+        "sbi_preview_source": "Active song",
+        "last_custom_source": {"title": "Trial Song", "key": "D"},
+        "_backing_explicit_handoff_source": "song_improv",
+    }
+    init_nav_history(state)
+    before = {
+        key: state[key]
+        for key in (
+            "active_music_source",
+            "active_catalog_pick_key",
+            "song",
+            "display_key",
+            "written_charts",
+            "guitar_shape",
+            "improv_song_source",
+            "sbi_preview_source",
+            "last_custom_source",
+            "_backing_explicit_handoff_source",
+        )
+    }
+    assert navigate_studio_page(state, "creative") is True
+    assert state["studio_page"] == "creative"
+    for key, value in before.items():
+        assert state[key] == value, key
+    assert state.get("_backing_open_intent") in (None, "")

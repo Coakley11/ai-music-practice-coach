@@ -7779,7 +7779,7 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     ):
         _open_chart_editor_on_picker()
     st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-    fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
+    fav_col, b1, b2, b3, b4, b5 = st.columns([0.55, 1, 1, 1, 1, 1])
     with fav_col:
         if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
             toggle_catalog_favorite(st.session_state, _active_pk)
@@ -7791,9 +7791,12 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         if st.button(nav_icon_button_label("backing"), key="picker_card_backing", use_container_width=True):
             _picker_navigate("backing")
     with b3:
+        if st.button(nav_icon_button_label("creative"), key="picker_card_creative", use_container_width=True):
+            _picker_navigate("creative")
+    with b4:
         if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
             _picker_navigate("backing")
-    with b4:
+    with b5:
         if st.button("🎸 Chord Coach", key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
     st.markdown("</div>", unsafe_allow_html=True)
