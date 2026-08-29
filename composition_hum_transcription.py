@@ -339,10 +339,9 @@ def apply_count_in_offset_to_events(
     if not valid:
         return []
     origin = min(float(e.get("beat") or 0.0) for e in valid)
-    # If the first note is already at/near 0, leave relative spacing; if it started
-    # later, keep absolute section beats (origin may be > 0 intentionally).
-    # When origin is slightly off zero due to quantization, snap first to 0.
-    shift = origin if abs(origin) < 0.51 else 0.0
+    # Snap near-downbeat entrances to beat 0 (pyin onset lag after count-in).
+    # Notes that clearly start later keep absolute section beats.
+    shift = origin if origin < 1.01 else 0.0
     out: list[dict[str, Any]] = []
     bpb = _beats_per_bar(meter)
     for e in valid:
