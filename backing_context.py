@@ -34,7 +34,7 @@ _SOURCE_LABELS: dict[BackingSource, str] = {
     "entry_jam": "Entry & Jam",
     "mission": "Mission",
     "custom_progression": "Custom progression",
-    "composition_song": "Composition",
+    "composition_song": "Composition song",
     "song_improv": "Song-Based Improvisation",
 }
 
@@ -1508,7 +1508,33 @@ def build_composition_song_context(
         pick = _current_pick_key(session)
         active_doc = find_composition_document(session, pick) if pick else None
     if not isinstance(active_doc, dict):
-        return build_regular_song_context(session)
+        try:
+            from composition_songs_bridge import ensure_generic_composition_document
+
+            active_doc = ensure_generic_composition_document(session)
+        except Exception:
+            active_doc = None
+    if not isinstance(active_doc, dict):
+        # Still Composition-owned: never silently rewrite to Catalog/Custom.
+        return BackingContext(
+            source="composition_song",
+            source_label="Composition song",
+            active_song_id="",
+            song_title="My Composition",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            bpm=_default_bpm(session),
+            style="",
+            groove=_default_groove(session),
+            scope=str(session.get("backing_track_scope") or "Full song"),
+            loops=int(session.get("backing_track_loops") or 2),
+            progression=["C", "Am", "F", "G"],
+            progression_label="My Composition",
+            loop=True,
+            custom_revision_id=None,
+            bound_pick_key="",
+        )
 
     projected = composition_as_chart_active(active_doc)
     name = composition_title(active_doc)
@@ -1567,7 +1593,7 @@ def build_composition_song_context(
 
     return BackingContext(
         source="composition_song",
-        source_label=_SOURCE_LABELS["composition_song"],
+        source_label="Composition song",
         active_song_id=pick_key,
         song_title=name,
         key=home_key,
@@ -1659,12 +1685,20 @@ def reset_backing_on_active_song_change(
         PENDING_DISPLAY_KEY = "_pending_display_key"  # type: ignore[misc,assignment]
 
     pending = str(session.get(PENDING_DISPLAY_KEY) or "").strip()
-    concert = str(
-        practice_concert_key
-        or pending
-        or _original_key_for_active_song(session)
-        or ""
-    ).strip()
+    live_display = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    concert = str(practice_concert_key or pending or "").strip()
+    if not concert:
+        # Composition-owned sessions keep the live Practice Key across Backing
+        # navigation/refresh; Catalog/Custom song *changes* still snap to original.
+        try:
+            from songs.music_source import composition_song_is_active
+
+            if composition_song_is_active(session) and live_display:
+                concert = live_display
+            else:
+                concert = str(_original_key_for_active_song(session) or "").strip()
+        except ImportError:
+            concert = str(_original_key_for_active_song(session) or live_display or "").strip()
     if concert:
         _apply_original_song_display_key(session, concert)
 

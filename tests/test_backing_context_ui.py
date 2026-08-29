@@ -75,6 +75,9 @@ class TestBackingContextUiCards(unittest.TestCase):
 
         self.assertIn(FEATURE_ICONS["custom"], html_out)
         self.assertNotIn("🎼<small>", html_out)
+        self.assertIn("#10b981", html_out)
+        self.assertIn("#059669", html_out)
+        self.assertNotIn("#0891b2", html_out)
 
 
 if __name__ == "__main__":

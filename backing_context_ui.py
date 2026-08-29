@@ -313,7 +313,7 @@ def render_backing_custom_progression_context_card(
     written_key: str = "",
     musical_state: Any | None = None,
 ) -> None:
-    """Blue card for CPL custom progression backing — not Creative."""
+    """Green Custom-page identity card for CPL custom progression backing — not Creative."""
     if ctx.source != "custom_progression":
         return
     from backing_musical_state import resolve_current_backing_musical_state
@@ -333,10 +333,15 @@ def render_backing_custom_progression_context_card(
     source_badge = html.escape(str(ctx.source_label or "Custom progression").strip() or "Custom progression")
     try:
         from music_feature_icons import FEATURE_ICONS
+        from app_ui import studio_page_accent
 
         source_art_icon = FEATURE_ICONS.get("custom", "✍️")
+        custom_accent = studio_page_accent("custom")  # #059669 — Custom page green
     except ImportError:
         source_art_icon = "✍️"
+        custom_accent = "#059669"
+    # Match Custom page emerald identity (not Catalog blue / SBI cyan).
+    gradient = f"linear-gradient(145deg,#10b981,{custom_accent})"
 
     concert_sections = state.concert_sections or {}
     if not concert_sections:
@@ -361,10 +366,10 @@ def render_backing_custom_progression_context_card(
             f"<strong>{html.escape(_format_progression_preview(chart_sections))}</strong></p>"
         )
 
-    gradient = "linear-gradient(145deg,#0891b2,#0e7490)"
     st.markdown(
-        f'<div class="ui-backing-active-song mode-custom-progression-backing">'
-        f'<div class="ui-backing-active-art" style="background:{gradient};">'
+        f'<div class="ui-backing-active-song mode-custom-progression-backing" '
+        f'style="background:{gradient};border-color:rgba(5,150,105,0.55);">'
+        f'<div class="ui-backing-active-art" style="background:rgba(255,255,255,0.12);">'
         f"{source_art_icon}<small>{source_badge}</small></div>"
         f'<div class="ui-backing-active-body">'
         f'<p class="ui-backing-active-kicker">Custom progression backing</p>'
@@ -375,6 +380,78 @@ def render_backing_custom_progression_context_card(
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
         f'<p class="ui-backing-active-key-line">Concert practice key progression: <strong>{concert_line}</strong></p>'
         f"{chart_line}"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_backing_composition_song_context_card(
+    st: Any,
+    ctx: BackingContext,
+    session: dict[str, Any],
+    *,
+    applied_bpm: int,
+    applied_groove: str,
+    applied_meter: str = "4/4",
+    practice_key: str = "",
+    written_key: str = "",
+    musical_state: Any | None = None,
+) -> None:
+    """Black Composition-page identity card for Composition-owned backing."""
+    if ctx.source != "composition_song":
+        return
+    from backing_musical_state import resolve_current_backing_musical_state
+
+    state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
+    title = html.escape(str(ctx.song_title or "My Composition").strip() or "My Composition")
+    concert_raw = str(state.practice_concert_key or practice_key or ctx.concert_key or ctx.key or "C").strip() or "C"
+    try:
+        from musical_context_authority import format_practice_concert_key_line
+
+        concert = html.escape(format_practice_concert_key_line(session, fallback=concert_raw))
+    except ImportError:
+        concert = html.escape(concert_raw)
+    original_key = html.escape(str(ctx.key or "C").strip() or "C")
+    bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 96)
+    groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
+    meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
+    source_badge = html.escape("Backing Track · Composition song")
+    try:
+        from music_feature_icons import FEATURE_ICONS
+        from app_ui import studio_page_accent
+
+        source_art_icon = FEATURE_ICONS.get("composition", "🪶")
+        comp_accent = studio_page_accent("composer")  # #0f172a — Composition page black
+    except ImportError:
+        source_art_icon = "🪶"
+        comp_accent = "#0f172a"
+    gradient = f"linear-gradient(145deg,#1e293b,{comp_accent})"
+
+    concert_sections = state.concert_sections or {}
+    if not concert_sections:
+        try:
+            concert_sections = sections_dict_from_backing_context(session, ctx)
+        except Exception:
+            pass
+    if not concert_sections and ctx.progression:
+        label = str(ctx.song_title or "Composition").strip() or "Composition"
+        concert_sections = {label: list(ctx.progression)}
+    concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
+
+    st.markdown(
+        f'<div class="ui-backing-active-song mode-composition-song-backing" '
+        f'style="background:{gradient};border-color:rgba(15,23,42,0.85);">'
+        f'<div class="ui-backing-active-art" style="background:rgba(255,255,255,0.08);">'
+        f"{source_art_icon}<small>Composition</small></div>"
+        f'<div class="ui-backing-active-body">'
+        f'<p class="ui-backing-active-kicker">Composition song backing</p>'
+        f'<p class="ui-backing-active-title">{title}'
+        f'<span class="ui-backing-active-dash"> · </span>'
+        f'<span class="ui-backing-active-source">{source_badge}</span></p>'
+        f'<p class="ui-backing-active-key-line">Original key: <strong>{original_key}</strong>'
+        f" · Practice concert key: <strong>{concert}</strong>"
+        f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
+        f'<p class="ui-backing-active-key-line">Concert practice key progression: <strong>{concert_line}</strong></p>'
         f"</div></div>",
         unsafe_allow_html=True,
     )

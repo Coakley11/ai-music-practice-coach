@@ -8466,7 +8466,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         render_active_song_hub_open(st, extra_class="source-composition")
         st.caption(
             f"{FEATURE_ICONS.get('composition', '🪶')} This is a **Composition** song — "
-            "Practice, Backing Track, and Karaoke follow this composition."
+            "Practice, Creative, Backing Track, and Karaoke follow this composition."
         )
         _render_composition_song_library_selector()
         if isinstance(doc, dict):
@@ -8526,7 +8526,8 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
     with st.container(key="picker_active_song_hub"):
         render_active_song_hub_open(st, extra_class="source-custom")
         st.caption(
-            "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
+            f"{FEATURE_ICONS.get('custom', '✍️')} This is **your** song — "
+            "Practice, Creative, Backing Track, and charts follow this custom progression."
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec)
@@ -13170,11 +13171,14 @@ elif _studio_page == "backing":
             _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
         )
     _backing_written_key = str(_backing_written_key or "").strip()
-    _backing_source_label = (
-        "Custom Progression"
-        if _early_backing_ctx is not None and _early_backing_ctx.source == "custom_progression"
-        else "Catalog song"
-    )
+    _backing_source_label = "Catalog song"
+    if _early_backing_ctx is not None and _early_backing_ctx.source == "custom_progression":
+        _backing_source_label = "Custom Progression"
+    elif (
+        (_early_backing_ctx is not None and _early_backing_ctx.source == "composition_song")
+        or composition_song_is_active(st.session_state)
+    ):
+        _backing_source_label = "Composition song"
     try:
         from backing_context import (
             active_creative_backing_context,
@@ -13183,6 +13187,7 @@ elif _studio_page == "backing":
             sections_dict_from_backing_context,
         )
         from backing_context_ui import (
+            render_backing_composition_song_context_card,
             render_backing_creative_context_card,
             render_backing_custom_progression_context_card,
         )
@@ -13271,6 +13276,62 @@ elif _studio_page == "backing":
                 written_key=_backing_written_key,
                 musical_state=_backing_musical,
             )
+        elif (
+            _backing_ctx_for_card is not None
+            and _backing_ctx_for_card.source == "composition_song"
+        ) or composition_song_is_active(st.session_state):
+            if _backing_ctx_for_card is None or _backing_ctx_for_card.source != "composition_song":
+                try:
+                    from backing_context import build_composition_song_context, set_backing_context
+                    from composition_songs_bridge import set_composition_source
+
+                    set_composition_source(st.session_state)
+                    _backing_ctx_for_card = build_composition_song_context(st.session_state)
+                    set_backing_context(st.session_state, _backing_ctx_for_card)
+                except Exception:
+                    pass
+            if _backing_musical is None:
+                try:
+                    from backing_musical_state import resolve_current_backing_musical_state
+
+                    _backing_musical = resolve_current_backing_musical_state(
+                        st.session_state,
+                        rec=_backing_card_record,
+                        applied_bpm=_synced_bpm,
+                        sync_id=_bpm_sync_id,
+                        song_sync_id=_song_bpm_sync_id,
+                    )
+                    _backing_practice_key = _backing_musical.practice_concert_key
+                except Exception:
+                    pass
+            if _backing_musical is not None and _backing_musical.concert_sections:
+                sections_for_backing = _backing_musical.concert_sections
+            if _backing_ctx_for_card is not None and _backing_ctx_for_card.source == "composition_song":
+                render_backing_composition_song_context_card(
+                    st,
+                    _backing_ctx_for_card,
+                    st.session_state,
+                    applied_bpm=_synced_bpm,
+                    applied_groove=default_groove_style,
+                    applied_meter=_applied_meter_pre,
+                    practice_key=_backing_practice_key,
+                    written_key=_backing_written_key,
+                    musical_state=_backing_musical,
+                )
+            else:
+                render_backing_active_song_card(
+                    st,
+                    _backing_card_record,
+                    level=level,
+                    applied_bpm=_synced_bpm,
+                    song_default_bpm=int(_default_bpm),
+                    applied_groove=default_groove_style,
+                    applied_meter=_applied_meter_pre,
+                    original_key=_backing_orig_key,
+                    practice_key=_backing_practice_key,
+                    source_label="Composition song",
+                    written_key=_backing_written_key,
+                )
         else:
             render_backing_active_song_card(
                 st,

@@ -32,6 +32,8 @@ from composition_session_state import (
 
 SOURCE_COMPOSITION = "composition_song"
 SONG_PICKER_SOURCE_COMPOSITION = "Composition"
+GENERIC_COMPOSITION_TITLE = "My Composition"
+GENERIC_COMPOSITION_KEY = "C"
 COMPOSITION_PICK_PREFIX = "composition::"
 COMPOSITION_RECENT_IDS_KEY = "composition_recent_active_ids"
 PENDING_COMPOSITION_ACTIVE_SONG_KEY = "_pending_composition_active_song_activation"
@@ -124,6 +126,46 @@ def find_composition_document(
 def composition_home_key(doc: dict[str, Any]) -> str:
     pg = playback_globals(doc)
     return str(pg.get("key_center") or "C").strip() or "C"
+
+
+def ensure_generic_composition_document(session_state: dict[str, Any]) -> dict[str, Any]:
+    """Stable first-pass Composition identity: ``My Composition`` in C.
+
+    Used when Composition is the active music source but no document is
+    resolvable — never fall back to Catalog/Custom by title matching.
+    """
+    from composition_document import apply_section_chords, new_composition_document, parse_chord_paste
+
+    ensure_composition_library_hydrated(session_state)
+    active = get_active_document(session_state)
+    if isinstance(active, dict) and str(active.get("title") or "").strip() == GENERIC_COMPOSITION_TITLE:
+        g = active.get("global") if isinstance(active.get("global"), dict) else {}
+        if str((g or {}).get("original_key_center") or "").strip() in ("", GENERIC_COMPOSITION_KEY):
+            return deep_copy_document(active)
+
+    lib = session_state.get(COMPOSER_LIBRARY_KEY) or {}
+    if isinstance(lib, dict):
+        for doc in lib.values():
+            if not isinstance(doc, dict):
+                continue
+            if str(doc.get("title") or "").strip() != GENERIC_COMPOSITION_TITLE:
+                continue
+            prepared = deep_copy_document(doc)
+            set_active_document(session_state, prepared)
+            return prepared
+
+    doc = new_composition_document(title=GENERIC_COMPOSITION_TITLE)
+    doc["global"]["original_key_center"] = GENERIC_COMPOSITION_KEY
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    if order:
+        try:
+            apply_section_chords(doc, order[0], parse_chord_paste("C Am F G"))
+        except Exception:
+            pass
+    prepared = touch_composition(doc)
+    save_document_to_library(session_state, prepared)
+    set_active_document(session_state, prepared)
+    return deep_copy_document(prepared)
 
 
 def composition_title(doc: dict[str, Any]) -> str:

@@ -21,6 +21,7 @@ data/workspaces/
 scripts/_karaoke_restore_smoke.png
 scripts/_karaoke_restore_smoke.py
 scripts/_probe_cloud_deploy.py
+scripts/_source_identity_smoke.py
 *.db
 *.sqlite
 *.sqlite3
