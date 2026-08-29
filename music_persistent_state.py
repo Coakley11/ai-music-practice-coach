@@ -590,6 +590,13 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_quick_section",
     "karaoke_countdown_enabled",
     "karaoke_auto_advance",
+    "karaoke_session_active",
+    "karaoke_session_index",
+    "_karaoke_active_entry_id",
+    "_karaoke_entry_plays_left",
+    "composer_saved_compositions",
+    "composer_active_document",
+    "composition_recent_active_ids",
     "active_music_source",
     "chart_edit_mode",
     "picker_editor_tab",
@@ -3740,6 +3747,18 @@ def prepare_canonical_music_page_state(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
             )
+            try:
+                from composition_songs_bridge import (
+                    apply_pending_composition_active_song_activation_before_widgets,
+                    ensure_composition_library_hydrated,
+                )
+
+                ensure_composition_library_hydrated(session)
+                apply_pending_composition_active_song_activation_before_widgets(
+                    _SessionProxy(),
+                )
+            except ImportError:
+                pass
             if song_picker_catalog:
                 apply_pending_previous_catalog_restore_before_widgets(
                     _SessionProxy(),

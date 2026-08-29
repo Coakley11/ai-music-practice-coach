@@ -21,7 +21,12 @@ BACKING_CTX_TRANSPORT_APPLIED_SIG = "_backing_ctx_transport_applied_sig"
 _CREATIVE_RETURN_ROUTE_ARG_UNSET: Any = object()
 
 BackingSource = Literal[
-    "regular_song", "entry_jam", "mission", "custom_progression", "song_improv"
+    "regular_song",
+    "entry_jam",
+    "mission",
+    "custom_progression",
+    "composition_song",
+    "song_improv",
 ]
 
 _SOURCE_LABELS: dict[BackingSource, str] = {
@@ -29,6 +34,7 @@ _SOURCE_LABELS: dict[BackingSource, str] = {
     "entry_jam": "Entry & Jam",
     "mission": "Mission",
     "custom_progression": "Custom progression",
+    "composition_song": "Composition",
     "song_improv": "Song-Based Improvisation",
 }
 
@@ -1474,6 +1480,112 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     )
 
 
+def build_composition_song_context(
+    session: dict[str, Any],
+    *,
+    doc: dict[str, Any] | None = None,
+) -> BackingContext:
+    """Backing context for an active Composition document (Songs / Karaoke)."""
+    try:
+        from composition_songs_bridge import (
+            composition_as_chart_active,
+            composition_home_key,
+            composition_pick_key_for,
+            composition_title,
+            find_composition_document,
+        )
+        from composition_session_state import get_active_document
+        from custom_progression_lab import (
+            all_chords_from_lab_sections,
+            display_sections_for_key,
+            sections_to_chord_lists,
+        )
+    except ImportError:
+        return build_regular_song_context(session)
+
+    active_doc = doc if isinstance(doc, dict) else get_active_document(session)
+    if not isinstance(active_doc, dict):
+        pick = _current_pick_key(session)
+        active_doc = find_composition_document(session, pick) if pick else None
+    if not isinstance(active_doc, dict):
+        return build_regular_song_context(session)
+
+    projected = composition_as_chart_active(active_doc)
+    name = composition_title(active_doc)
+    pick_key = composition_pick_key_for(active_doc)
+    revision = str(active_doc.get("id") or "").strip()
+    home_key = composition_home_key(active_doc)
+    has_live_concert_key = bool(
+        str(
+            session.get("display_key")
+            or session.get("concert_key")
+            or session.get("_pending_display_key")
+            or ""
+        ).strip()
+    )
+    _, display_key, concert_key = _live_backing_concert_keys(session)
+    if not has_live_concert_key:
+        concert_key = display_key = home_key
+    elif not concert_key:
+        concert_key = display_key = home_key
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+
+        if is_fixed_practice_key_mode(session):
+            concert_key = display_key = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=concert_key or display_key or home_key,
+            )
+    except ImportError:
+        pass
+
+    # Reuse CPL transpose helpers against the projected original_sections.
+    try:
+        from custom_progression_lab import ensure_original_structure
+
+        active_shaped = ensure_original_structure(projected)
+        transposed = display_sections_for_key(active_shaped, concert_key)
+        sections = sections_to_chord_lists(transposed)
+        progression = all_chords_from_lab_sections(transposed)
+    except Exception:
+        sections = sections_to_chord_lists(projected.get("original_sections") or {})
+        progression = all_chords_from_lab_sections(projected.get("original_sections") or {})
+
+    label = name
+    if progression:
+        label = f"{name} · {'–'.join(progression[:4])}"
+
+    default_bpm = int(projected.get("bpm") or _default_bpm(session))
+    try:
+        from songs.practice_key_state import resolve_source_bpm_for_pick
+
+        bpm = resolve_source_bpm_for_pick(session, pick_key, default_bpm=default_bpm)
+    except ImportError:
+        bpm = default_bpm
+
+    return BackingContext(
+        source="composition_song",
+        source_label=_SOURCE_LABELS["composition_song"],
+        active_song_id=pick_key,
+        song_title=name,
+        key=home_key,
+        display_key=display_key,
+        concert_key=concert_key,
+        bpm=bpm,
+        style=str(projected.get("progression_style") or "").strip(),
+        groove=str(projected.get("groove_style") or _default_groove(session)).strip(),
+        scope=str(session.get("backing_track_scope") or "Full song"),
+        loops=int(projected.get("loops") or session.get("backing_track_loops") or 2),
+        progression=progression,
+        progression_label=label,
+        loop=True,
+        custom_revision_id=revision or None,
+        bound_pick_key=pick_key,
+    )
+
+
 def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None = None) -> bool:
     ctx = ctx or get_backing_context(session)
     if ctx is None:
@@ -1491,6 +1603,21 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
                     return False
             except ImportError:
                 pass
+        return True
+    if ctx.source == "composition_song":
+        if ctx.custom_revision_id:
+            try:
+                from composition_session_state import get_active_document
+
+                active = get_active_document(session) or {}
+                revision = str(active.get("id") or "").strip()
+                if revision and revision != ctx.custom_revision_id:
+                    return False
+            except ImportError:
+                pass
+        current_pick = _current_pick_key(session)
+        if ctx.bound_pick_key and current_pick and ctx.bound_pick_key != current_pick:
+            return False
         return True
     if ctx.source in {"entry_jam", "mission", "song_improv"}:
         if ctx.source == "mission":
@@ -1552,6 +1679,7 @@ def reset_backing_on_active_song_change(
     try:
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
             cpl_session_is_active,
             is_custom_progression,
             set_catalog_source,
@@ -1559,10 +1687,33 @@ def reset_backing_on_active_song_change(
         )
 
         pick = str(new_pick_key or _current_pick_key(session) or "").strip()
-        catalog_pick = bool(pick and not pick.startswith("custom::"))
+        composition_pick = pick.startswith("composition::") or composition_song_is_active(session)
+        custom_pick = pick.startswith("custom::") or (
+            cpl_session_is_active(session) or is_custom_progression(session)
+        )
+        catalog_pick = bool(
+            pick
+            and not pick.startswith("custom::")
+            and not pick.startswith("composition::")
+        )
         user_chose_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
-        if catalog_pick or user_chose_catalog or (
-            not cpl_session_is_active(session) and not is_custom_progression(session)
+        if composition_pick and not user_chose_catalog:
+            try:
+                from composition_songs_bridge import set_composition_source
+
+                set_composition_source(session)
+            except ImportError:
+                pass
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+            ctx = build_composition_song_context(session)
+        elif custom_pick and not user_chose_catalog and not catalog_pick:
+            set_custom_source(session)
+            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+            ctx = build_custom_progression_context(session)
+        elif catalog_pick or user_chose_catalog or (
+            not cpl_session_is_active(session)
+            and not is_custom_progression(session)
+            and not composition_song_is_active(session)
         ):
             set_catalog_source(session)
             set_backing_source_preference(session, BACKING_PREF_CATALOG)
@@ -1625,6 +1776,16 @@ def format_backing_context_banner(
         if ctx.song_title:
             parts.append(ctx.song_title)
         concert = resolved_concert or str(ctx.display_key or "").strip()
+        if concert:
+            parts.append(concert)
+        if ctx.bpm:
+            parts.append(f"{ctx.bpm} BPM")
+        return " · ".join(parts)
+    if ctx.source == "composition_song":
+        parts = ["Backing source: Composition"]
+        if ctx.song_title:
+            parts.append(ctx.song_title)
+        concert = resolved_concert or str(ctx.concert_key or ctx.display_key or "").strip()
         if concert:
             parts.append(concert)
         if ctx.bpm:
@@ -2934,6 +3095,7 @@ __all__ = [
     "BackingContext",
     "BackingSource",
     "build_custom_progression_context",
+    "build_composition_song_context",
     "build_entry_jam_context",
     "build_mission_context",
     "build_song_improv_context",

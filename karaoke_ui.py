@@ -74,10 +74,22 @@ def lookup_pick_key_label(
             custom_display_title_for_pick_key(session_state, pick_key),
             custom_display_artist_for_pick_key(session_state, pick_key),
         )
+    if pick_key.startswith("composition::") and session_state is not None:
+        from composition_songs_bridge import (
+            composition_display_artist_for_pick_key,
+            composition_display_title_for_pick_key,
+        )
+
+        return (
+            composition_display_title_for_pick_key(session_state, pick_key),
+            composition_display_artist_for_pick_key(session_state, pick_key),
+        )
     # Best-effort fallback: pick_key is "genre\x1ftitle — artist"
     label = pick_key.split("\x1f", 1)[-1] if "\x1f" in pick_key else pick_key
     if label.startswith("custom::"):
         label = label.removeprefix("custom::").replace("_", " ")
+    if label.startswith("composition::"):
+        label = "Composition song"
     if " — " in label:
         title, artist = label.split(" — ", 1)
         return (title.strip(), artist.strip())
@@ -138,6 +150,22 @@ def render_add_to_queue_button(
                 fallback_title=display_title,
             )
             display_artist = custom_display_artist_for_pick_key(
+                st.session_state,
+                pick_key,
+                fallback_artist=display_artist,
+            )
+        elif pick_key.startswith("composition::"):
+            from composition_songs_bridge import (
+                composition_display_artist_for_pick_key,
+                composition_display_title_for_pick_key,
+            )
+
+            display_title = composition_display_title_for_pick_key(
+                st.session_state,
+                pick_key,
+                fallback_title=display_title,
+            )
+            display_artist = composition_display_artist_for_pick_key(
                 st.session_state,
                 pick_key,
                 fallback_artist=display_artist,

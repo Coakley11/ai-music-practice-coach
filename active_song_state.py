@@ -16,7 +16,7 @@ from instrument_transposition import (
     selected_transposing_type,
 )
 from songs.key_state import PENDING_DISPLAY_KEY
-from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, custom_progression_is_active, is_custom_progression, LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY
+from songs.music_source import SOURCE_CATALOG, SOURCE_CUSTOM, SOURCE_COMPOSITION, composition_song_is_active, custom_progression_is_active, is_custom_progression, LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -617,6 +617,58 @@ def _restore_display_key_owner_from_context(session: dict[str, Any], ctx: dict[s
 
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
+    if composition_song_is_active(session):
+        try:
+            from composition_songs_bridge import (
+                composition_home_key,
+                composition_pick_key_for,
+                composition_selected_song_record,
+                composition_title,
+                find_composition_document,
+            )
+            from composition_session_state import get_active_document
+        except ImportError:
+            pass
+        else:
+            doc = get_active_document(session)
+            if not isinstance(doc, dict):
+                doc = find_composition_document(
+                    session,
+                    str(session.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+                )
+            if isinstance(doc, dict):
+                selected = composition_selected_song_record(doc)
+                home_key = composition_home_key(doc)
+                pick_key = str(selected.get("pick_key") or composition_pick_key_for(doc)).strip()
+                instrument_name = str(session.get("instrument") or "").strip()
+                display_key = str(
+                    session.get("display_key")
+                    or session.get("practice_concert_key")
+                    or home_key
+                ).strip() or home_key
+                ctx = {
+                    "pick_key": pick_key,
+                    "display_key": display_key,
+                    "instrument": instrument_name,
+                    "level": str(session.get("level") or "").strip(),
+                    "focus": str(session.get("focus") or "").strip(),
+                    "selected_song": selected,
+                    "music_source": SOURCE_COMPOSITION,
+                    "composition_id": str(doc.get("id") or ""),
+                    "composition_title": composition_title(doc),
+                    "composition_home_key": home_key,
+                    CHART_IN_INSTRUMENT_KEY_KEY: _live_written_key_for_save(session),
+                }
+                anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+                if anchor:
+                    ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+                if is_transposing_instrument(instrument_name):
+                    subtype = _live_subtype_for_save(session, instrument_name)
+                    if subtype:
+                        ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+                ctx.update(_capo_fields_from_session(session))
+                return _attach_display_key_owner(session, ctx)
+
     if custom_progression_is_active(session):
         from custom_progression_lab import (
             default_active_progression,
@@ -1202,6 +1254,8 @@ def write_canonical_active_song_blob_only(
     music_source = str(ctx.get("music_source") or "").strip()
     if music_source == SOURCE_CUSTOM:
         session["active_music_source"] = SOURCE_CUSTOM
+    elif music_source == SOURCE_COMPOSITION:
+        session["active_music_source"] = SOURCE_COMPOSITION
     elif music_source == SOURCE_CATALOG:
         session["active_music_source"] = SOURCE_CATALOG
     if local_edit:

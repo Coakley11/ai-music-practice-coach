@@ -66,6 +66,12 @@ KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 
 KARAOKE_ACTIVE_ENTRY_ID_KEY = "_karaoke_active_entry_id"
 
+# After a cold reboot / refresh, an active karaoke session may restore its
+# queue index and entry identity, but audio always restarts from the start
+# of that entry (no mid-song resume). Prefer safe restart over fragile
+# playback-state restoration.
+KARAOKE_SESSION_RESUME_POLICY = "restart_entry_from_start"
+
 
 # ---------------------------------------------------------------------------
 # Entry model
@@ -154,7 +160,40 @@ def get_queue(session_state: Any) -> list[dict[str, Any]]:
         or any(not str((x or {}).get("entry_id") or "").strip() for x in raw if isinstance(x, dict))
     ):
         _write_queue(session_state, normalized)
+    reconcile_karaoke_session_after_restore(session_state)
     return [copy.deepcopy(e) for e in normalized]
+
+
+def reconcile_karaoke_session_after_restore(session_state: Any) -> None:
+    """Keep restored session index safe; never invent mid-song audio resume.
+
+    Queue + entry Practice Keys survive refresh. If a session was active,
+    we keep the entry index when valid so Start/Voice can continue the
+    setlist from that row — audio always restarts from the entry start
+    (``KARAOKE_SESSION_RESUME_POLICY``).
+    """
+    if not session_state:
+        return
+    queue = normalize_karaoke_queue(session_state.get(KARAOKE_QUEUE_KEY))
+    if not queue:
+        if session_state.get(KARAOKE_SESSION_ACTIVE_KEY):
+            stop_session(session_state)
+        return
+    if not session_state.get(KARAOKE_SESSION_ACTIVE_KEY):
+        return
+    idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    if idx < 0 or idx >= len(queue):
+        session_state[KARAOKE_SESSION_INDEX_KEY] = 0
+        idx = 0
+    entry = queue[idx]
+    session_state[KARAOKE_ACTIVE_ENTRY_ID_KEY] = str(entry.get("entry_id") or "")
+    session_state["_karaoke_active_pick_key"] = str(entry.get("pick_key") or "")
+    if KARAOKE_ENTRY_PLAYS_LEFT_KEY not in session_state:
+        try:
+            plays = max(1, int(entry.get("play_count") or 1))
+        except (TypeError, ValueError):
+            plays = 1
+        session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = plays
 
 
 def get_queue_pick_keys(session_state: Any) -> list[str]:

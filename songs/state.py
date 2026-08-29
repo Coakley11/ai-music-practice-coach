@@ -504,6 +504,23 @@ def apply_saved_music_context(
             saved_display_key=saved_display_key,
         )
 
+    if pick_key.startswith("composition::"):
+        try:
+            from composition_songs_bridge import (
+                activate_composition_by_pick_key,
+                ensure_composition_library_hydrated,
+            )
+
+            ensure_composition_library_hydrated(st.session_state)
+            ok = activate_composition_by_pick_key(st, pick_key)
+            if ok and saved_display_key:
+                from songs.key_state import PENDING_DISPLAY_KEY
+
+                st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+            return bool(ok)
+        except ImportError:
+            return False
+
     if skip_catalog_pick_key:
         return True
 
@@ -831,6 +848,141 @@ def ensure_master_song_initialized(
     pk = format_pick_key(r0["genre"], label0)
     apply_pick_key(st, pk, song_picker_catalog, persist=False, origin=origin)
     st.session_state["_music_default_song_ephemeral"] = True
+
+
+def activate_custom_by_pick_key(
+    st: Any,
+    pick_key: str,
+    *,
+    invalidate_backing=None,
+) -> dict[str, Any] | None:
+    """Load a saved Custom song by ``custom::`` pick_key and commit it as active."""
+    from custom_progression_lab import (
+        CPL_ACTIVE_KEY,
+        default_active_progression,
+        ensure_original_structure,
+    )
+    from songs.music_source import (
+        commit_custom_active_song,
+        custom_pick_key_for,
+    )
+
+    pk = str(pick_key or "").strip()
+    if not pk.startswith("custom::"):
+        return None
+    suffix = pk.removeprefix("custom::").strip()
+    if not suffix:
+        return None
+
+    active: dict[str, Any] | None = None
+    cpl_active = st.session_state.get(CPL_ACTIVE_KEY)
+    if isinstance(cpl_active, dict):
+        cand = ensure_original_structure(cpl_active)
+        if (
+            custom_pick_key_for(cand) == pk
+            or str(cand.get("id") or "").strip() == suffix
+            or str(cand.get("name") or "").strip() == suffix
+        ):
+            active = cand
+
+    if active is None:
+        saved_lib = st.session_state.get("cpl_saved_progressions") or {}
+        if isinstance(saved_lib, dict):
+            for name, prog in saved_lib.items():
+                if not isinstance(prog, dict):
+                    continue
+                cand = ensure_original_structure(prog)
+                if (
+                    custom_pick_key_for(cand) == pk
+                    or str(name).strip() == suffix
+                    or str(cand.get("id") or "").strip() == suffix
+                    or str(cand.get("name") or "").strip() == suffix
+                ):
+                    active = cand
+                    break
+
+    if active is None:
+        # Soft restore path may still sync identity without a full commit.
+        ok = apply_saved_custom_pick_key_context(
+            st,
+            pk,
+            {},
+            song_picker_catalog={},
+        )
+        if not ok:
+            return None
+        restored = st.session_state.get(CPL_ACTIVE_KEY)
+        return restored if isinstance(restored, dict) else None
+
+    if invalidate_backing is None:
+        try:
+            from songs.key_state import invalidate_backing_cache
+
+            invalidate_backing = invalidate_backing_cache
+        except ImportError:
+            invalidate_backing = lambda _st: None
+
+    return commit_custom_active_song(
+        st,
+        active,
+        invalidate_backing=invalidate_backing,
+    )
+
+
+def activate_active_song_by_pick_key(
+    st: Any,
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing=None,
+    origin: str = "user",
+) -> dict[str, Any]:
+    """Canonical active-song activation for Catalog, Custom, and Composition pick_keys.
+
+    Karaoke and setlist click handlers must use this instead of bare
+    ``apply_pick_key`` so ``custom::`` / ``composition::`` ownership is not
+    silently ignored (catalog-only lookup).
+    """
+    pk = str(pick_key or "").strip()
+    if not pk:
+        existing = st.session_state.get(SELECTED_SONG_STATE_KEY)
+        return existing if isinstance(existing, dict) else {}
+
+    if pk.startswith("custom::"):
+        activated = activate_custom_by_pick_key(
+            st,
+            pk,
+            invalidate_backing=invalidate_backing,
+        )
+        if isinstance(activated, dict):
+            sel = st.session_state.get(SELECTED_SONG_STATE_KEY)
+            return sel if isinstance(sel, dict) else {"pick_key": pk}
+        return {}
+
+    if pk.startswith("composition::"):
+        try:
+            from composition_songs_bridge import activate_composition_by_pick_key
+
+            ok = activate_composition_by_pick_key(
+                st,
+                pk,
+                invalidate_backing=invalidate_backing,
+            )
+        except ImportError:
+            ok = False
+        if ok:
+            sel = st.session_state.get(SELECTED_SONG_STATE_KEY)
+            return sel if isinstance(sel, dict) else {"pick_key": pk}
+        return {}
+
+    return apply_pick_key(
+        st,
+        pk,
+        song_picker_catalog,
+        song_library=song_library,
+        origin=origin,
+    )
 
 
 def apply_pick_key(

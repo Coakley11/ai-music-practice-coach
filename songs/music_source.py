@@ -7,12 +7,30 @@ from typing import Any, Callable
 ACTIVE_MUSIC_SOURCE_KEY = "active_music_source"
 SOURCE_CATALOG = "catalog_song"
 SOURCE_CUSTOM = "custom_progression"
+SOURCE_COMPOSITION = "composition_song"
 _LAST_SOURCE_KEY = "_last_active_music_source"
 _LAST_ACTIVE_PICK_KEY = "_last_active_pick_key_for_reset"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
+SONG_PICKER_SOURCE_COMPOSITION = "Composition"
+
+
+def song_picker_composition_option_label() -> str:
+    """Radio option text for Composition (must match widget value exactly)."""
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        return f"{FEATURE_ICONS.get('composition', '🪶')} Composition"
+    except ImportError:
+        return "🪶 Composition"
+
+
+def picker_choice_is_composition(choice: str) -> bool:
+    text = str(choice or "").strip()
+    return text == SONG_PICKER_SOURCE_COMPOSITION or "Composition" in text
+
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
@@ -35,11 +53,45 @@ def is_custom_progression(session_state: dict[str, Any]) -> bool:
     return session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM
 
 
+def is_composition_song(session_state: dict[str, Any]) -> bool:
+    return session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_COMPOSITION
+
+
+def _pick_looks_composition(pick_key: str) -> bool:
+    return str(pick_key or "").strip().startswith("composition::")
+
+
+def composition_song_is_active(session_state: dict[str, Any]) -> bool:
+    """True when a Composition document is the active song."""
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
+        return False
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
+        return False
+    if is_composition_song(session_state):
+        return True
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_looks_composition(pick_key):
+        return True
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict):
+        if str(meta.get("music_source") or "") == SOURCE_COMPOSITION:
+            return True
+        if _pick_looks_composition(str(meta.get("pick_key") or "")):
+            return True
+    return False
+
+
 def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
+        return False
+    if composition_song_is_active(session_state):
         return False
     if is_custom_progression(session_state):
         return True
@@ -48,8 +100,12 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key.startswith("custom::"):
         return True
+    if _pick_looks_composition(pick_key):
+        return False
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict):
+        if str(meta.get("music_source") or "") == SOURCE_COMPOSITION:
+            return False
         if str(meta.get("music_source") or "") == SOURCE_CUSTOM:
             return True
         if str(meta.get("pick_key") or "").strip().startswith("custom::"):
@@ -62,12 +118,22 @@ def picker_custom_progression_mode(session_state: dict[str, Any]) -> bool:
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if "Composition" in choice:
+        return False
     return choice == SONG_PICKER_SOURCE_CUSTOM or choice.startswith("Use Custom")
+
+
+def picker_composition_mode(session_state: dict[str, Any]) -> bool:
+    """True when the Songs page radio is on Composition."""
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    return picker_choice_is_composition(choice)
 
 
 def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    if composition_song_is_active(session_state) or picker_composition_mode(session_state):
         return False
     if is_custom_progression(session_state):
         return True
@@ -76,6 +142,8 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_looks_composition(pick_key):
+        return False
     if pick_key.startswith("custom::"):
         return True
     meta = session_state.get("active_song_state")
@@ -112,8 +180,14 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
         return changed
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    composition_active = composition_song_is_active(session_state)
     custom_active = custom_progression_is_active(session_state)
-    expected = SONG_PICKER_SOURCE_CUSTOM if custom_active else SONG_PICKER_SOURCE_CATALOG
+    if composition_active:
+        expected = song_picker_composition_option_label()
+    elif custom_active:
+        expected = SONG_PICKER_SOURCE_CUSTOM
+    else:
+        expected = SONG_PICKER_SOURCE_CATALOG
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     changed = False
 
@@ -121,11 +195,15 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
         session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
         return False
 
-    if custom_active:
+    if composition_active:
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
+            session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
+            changed = True
+    elif custom_active:
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
             session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
             changed = True
-    elif pick_key and not pick_key.startswith("custom::"):
+    elif pick_key and not pick_key.startswith("custom::") and not _pick_looks_composition(pick_key):
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
             set_catalog_source(session_state)
             changed = True
@@ -469,17 +547,36 @@ def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice == SONG_PICKER_SOURCE_CATALOG:
         return False
+    if picker_composition_mode(session_state):
+        return False
     if choice.startswith("Use Custom"):
         return True
     return custom_progression_is_active(session_state)
 
 
+def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
+    """True when Song Selection should show the Composition Songs library."""
+    if picker_composition_mode(session_state):
+        return True
+    return composition_song_is_active(session_state)
+
+
 def _expected_song_picker_source(session_state: dict[str, Any]) -> str:
-    return (
-        SONG_PICKER_SOURCE_CUSTOM
-        if is_custom_progression(session_state)
-        else SONG_PICKER_SOURCE_CATALOG
-    )
+    if composition_song_is_active(session_state) or is_composition_song(session_state):
+        return song_picker_composition_option_label()
+    if is_custom_progression(session_state):
+        return SONG_PICKER_SOURCE_CUSTOM
+    return SONG_PICKER_SOURCE_CATALOG
+
+
+def assign_song_picker_source_widget(
+    session_state: dict[str, Any],
+    value: str,
+    *,
+    widget_safe: bool = True,
+) -> None:
+    """Public wrapper for Songs source radio assignment."""
+    _assign_song_picker_source_widget(session_state, value, widget_safe=widget_safe)
 
 
 def _assign_song_picker_source_widget(
@@ -951,8 +1048,31 @@ def on_song_picker_source_change(
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
 ) -> None:
-    """Radio callback: switch catalog ↔ custom without post-render rerun loops."""
+    """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops."""
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if "Composition" in choice:
+        st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        try:
+            from composition_songs_bridge import (
+                ensure_composition_library_hydrated,
+                mark_composition_songs_source_ready,
+                set_composition_source,
+            )
+
+            ensure_composition_library_hydrated(st.session_state)
+            mark_composition_songs_source_ready(st.session_state)
+            set_composition_source(st.session_state)
+            _assign_song_picker_source_widget(
+                st.session_state,
+                song_picker_composition_option_label(),
+            )
+        except ImportError:
+            _assign_song_picker_source_widget(
+                st.session_state,
+                song_picker_composition_option_label(),
+            )
+        st.rerun()
+        return
     if choice.startswith("Use Custom"):
         st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if not is_custom_progression(st.session_state) and not custom_progression_is_active(st.session_state):
@@ -969,7 +1089,11 @@ def on_song_picker_source_change(
         st.rerun()
         return
     st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-    if is_custom_progression(st.session_state) or custom_progression_is_active(st.session_state):
+    if (
+        is_custom_progression(st.session_state)
+        or custom_progression_is_active(st.session_state)
+        or composition_song_is_active(st.session_state)
+    ):
         switch_to_catalog_from_custom(
             st,
             song_picker_catalog=song_picker_catalog,
@@ -977,7 +1101,6 @@ def on_song_picker_source_change(
             invalidate_backing=invalidate_backing,
         )
         st.rerun()
-
 
 def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     """Align active source with Songs page picker widget before widgets render."""
@@ -2071,6 +2194,80 @@ def build_active_chart_bundle(
     song_library: dict[str, dict[str, dict]] | None = None,
 ) -> dict[str, Any]:
     """Resolve genre, song, song_data, and chord sections for the active source."""
+    if composition_song_is_active(session_state):
+        from composition_songs_bridge import (
+            SOURCE_COMPOSITION as _SRC_COMP,
+            composition_as_chart_active,
+            composition_home_key,
+            find_composition_document,
+        )
+        from custom_progression_lab import sections_to_chord_lists
+
+        doc = None
+        try:
+            from composition_session_state import get_active_document as _get_active_doc
+
+            doc = _get_active_doc(session_state)
+        except ImportError:
+            doc = None
+        if not isinstance(doc, dict):
+            from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+            doc = find_composition_document(
+                session_state,
+                str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+            )
+        if not isinstance(doc, dict):
+            raise ValueError("Composition song is active but no document is loaded.")
+
+        projected = composition_as_chart_active(doc)
+        home_key = composition_home_key(doc)
+        if not str(home_key or "").strip():
+            from music_theory import MissingOriginalSongKeyError
+
+            raise MissingOriginalSongKeyError(
+                "Cannot transpose composition sections because the original key is not set."
+            )
+        home_sections = projected.get("original_sections") or {}
+        level_source_sections = sections_to_chord_lists(home_sections)
+        title = str(projected.get("name") or "Composition")
+        level_song_data = {
+            "key": home_key,
+            "sections": level_source_sections,
+            "title": title,
+        }
+        from music_theory import validate_chart_song_for_transpose
+
+        validate_chart_song_for_transpose(
+            level_song_data,
+            original_key=home_key,
+            provenance="composition_chart_bundle",
+        )
+        sections = transpose_sections(level_song_data, display_key)
+        return {
+            "source": _SRC_COMP,
+            "genre": "Composition",
+            "song": title,
+            "song_data": {
+                "title": title,
+                "artist": "Composition",
+                "genre": "Composition",
+                "key": home_key,
+                "sections": level_source_sections,
+                "chart_status": "composition",
+                "trusted_core": False,
+            },
+            "original_key": home_key,
+            "level_source_sections": level_source_sections,
+            "sections": sections,
+            "cpl_active": None,
+            "composition_document": doc,
+            "default_bpm": int(projected.get("bpm", 96) or 96),
+            "default_loops": int(projected.get("loops", 2) or 2),
+            "default_groove": str(projected.get("groove_style") or "Auto"),
+            "time_signature": projected.get("time_signature", "4/4") or "4/4",
+        }
+
     if custom_progression_is_active(session_state):
         from custom_progression_lab import (
             cpl_default_groove_for_active,
@@ -2180,7 +2377,7 @@ def build_active_chart_bundle(
 
 def _pick_key_is_catalog(pick_key: str) -> bool:
     pk = str(pick_key or "").strip()
-    return bool(pk) and not pk.startswith("custom::")
+    return bool(pk) and not pk.startswith("custom::") and not pk.startswith("composition::")
 
 
 def _catalog_picker_from_session(session_state: dict[str, Any]) -> dict[str, dict[str, dict]] | None:
