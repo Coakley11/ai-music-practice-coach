@@ -242,9 +242,10 @@ class TestNotationFirstMelody(unittest.TestCase):
         self.assertIn("Hum, sing, or play one melodic line", src)
         self.assertIn("Record a melody", src)
         self.assertNotIn("What instrument did you record", src)
-        # Primary result is staff, not a default note list dump.
+        # Primary result is staff; slight improvements replace the old note-by-note table.
         self.assertIn("You sang / played this", src)
-        self.assertIn("Edit melody (notes)", src)
+        self.assertIn("Slight improvements", src)
+        self.assertNotIn("Edit melody (notes)", src)
 
     def test_harmony_edit_updates_chords_not_melody(self) -> None:
         doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="G major", bpm=96, meter="4/4")

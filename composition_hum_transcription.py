@@ -255,25 +255,27 @@ def segments_to_melody_events(
     bpm: int,
     meter: str,
     key: str,
+    count_in_sec: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Quantize segments into Composition melody events (beats at Composition BPM)."""
+    """Quantize segments into Composition melody events (beats at Composition BPM).
+
+    ``count_in_sec`` shifts absolute segment times so beat 0 = first backing chord
+    (count-in is removed from the musical timeline). Notes that start during the
+    count-in are kept with negative/early beats then normalized by
+    ``apply_count_in_offset_to_events``.
+    """
     bpm_f = max(40.0, float(bpm or 96))
     sec_per_beat = 60.0 / bpm_f
+    cin = max(0.0, float(count_in_sec or 0.0))
     events: list[dict[str, Any]] = []
-    cursor_beat = 0.0
     for seg in segments:
         dur_sec = float(seg.get("duration_sec") or 0.0)
         dur_beats = quantize_beats(dur_sec / sec_per_beat, meter=meter)
         if dur_beats < 0.5 and seg.get("kind") == "rest":
-            # Tiny rests collapse into timing; keep note starts honest via beat cursor.
-            cursor_beat += dur_beats
             continue
-        start_beat = quantize_beats(
-            float(seg.get("start_sec") or 0.0) / sec_per_beat,
-            meter=meter,
-        ) if events else cursor_beat
-        # Prefer sequential packing for editable phrases.
-        start_beat = cursor_beat
+        raw_start = float(seg.get("start_sec") or 0.0) - cin
+        start_beat = quantize_beats(raw_start / sec_per_beat, meter=meter)
+        early = raw_start < -1e-6
         if seg.get("kind") == "rest":
             events.append(
                 {
@@ -281,10 +283,11 @@ def segments_to_melody_events(
                     "midi": None,
                     "duration_beats": dur_beats,
                     "beat": start_beat,
-                    "measure": int(start_beat // _beats_per_bar(meter)) + 1,
+                    "measure": max(1, int(max(0.0, start_beat) // _beats_per_bar(meter)) + 1),
                     "is_rest": True,
                     "confidence": float(seg.get("confidence") or 1.0),
                     "uncertain": False,
+                    "during_count_in": early,
                 }
             )
         else:
@@ -297,14 +300,62 @@ def segments_to_melody_events(
                     "midi": midi_i,
                     "duration_beats": dur_beats,
                     "beat": start_beat,
-                    "measure": int(start_beat // _beats_per_bar(meter)) + 1,
+                    "measure": max(1, int(max(0.0, start_beat) // _beats_per_bar(meter)) + 1),
                     "is_rest": False,
                     "confidence": conf,
                     "uncertain": conf < 0.45,
+                    "during_count_in": early,
                 }
             )
-        cursor_beat = start_beat + dur_beats
-    return events
+    return apply_count_in_offset_to_events(events, meter=meter)
+
+
+def apply_count_in_offset_to_events(
+    events: list[dict[str, Any]] | None,
+    *,
+    meter: str = "4/4",
+) -> list[dict[str, Any]]:
+    """
+    Finalize beats after count-in removal.
+
+    - Notes that began during count-in (beat < 0) are flagged and dropped from the
+      accepted phrase unless they are the only material (then clamped to beat 0).
+    - First valid post-count-in note is shifted so the earliest non-early note sits
+      on its relative section beat (typically 0 when entry is on the downbeat).
+    """
+    rows = [dict(e) for e in list(events or []) if isinstance(e, dict)]
+    if not rows:
+        return []
+    early = [e for e in rows if bool(e.get("during_count_in")) or float(e.get("beat") or 0.0) < -1e-9]
+    valid = [e for e in rows if not (bool(e.get("during_count_in")) or float(e.get("beat") or 0.0) < -1e-9)]
+    if not valid and early:
+        # Entire take was during count-in — keep as early material clamped to beat 0.
+        for e in early:
+            e["beat"] = 0.0
+            e["during_count_in"] = True
+            e["measure"] = 1
+        return early
+    # Drop early notes from the section phrase; musical body starts at first valid.
+    if not valid:
+        return []
+    origin = min(float(e.get("beat") or 0.0) for e in valid)
+    # If the first note is already at/near 0, leave relative spacing; if it started
+    # later, keep absolute section beats (origin may be > 0 intentionally).
+    # When origin is slightly off zero due to quantization, snap first to 0.
+    shift = origin if abs(origin) < 0.51 else 0.0
+    out: list[dict[str, Any]] = []
+    bpb = _beats_per_bar(meter)
+    for e in valid:
+        row = dict(e)
+        beat = float(row.get("beat") or 0.0) - shift
+        row["beat"] = max(0.0, beat)
+        row["measure"] = int(row["beat"] // bpb) + 1
+        row["during_count_in"] = False
+        out.append(row)
+    # Attach early notes as metadata on the first event for tests/UI if needed.
+    if early and out:
+        out[0]["early_count_in_notes"] = len(early)
+    return out
 
 
 def _beats_per_bar(meter: str) -> float:
@@ -320,6 +371,8 @@ def transcribe_hum_audio(
     meter: str,
     key: str,
     sr: int = 22050,
+    count_in_sec: float = 0.0,
+    count_in_bars: int = 0,
 ) -> dict[str, Any]:
     """Full hum → proposal events. Never mutates a Composition document."""
     result: dict[str, Any] = {
@@ -330,6 +383,7 @@ def transcribe_hum_audio(
         "voiced_ratio": 0.0,
         "available": hum_analysis_available(),
         "monophonic": True,
+        "count_in_sec": 0.0,
     }
     if not hum_analysis_available():
         result["status"] = "unavailable"
@@ -375,7 +429,23 @@ def transcribe_hum_audio(
         result["message"] = "No stable notes detected — try a clearer, more sustained hum."
         return result
 
-    events = segments_to_melody_events(segments, bpm=int(bpm), meter=str(meter), key=str(key))
+    cin = float(count_in_sec or 0.0)
+    if cin <= 0 and int(count_in_bars or 0) > 0:
+        try:
+            from composition_sync_transport import count_in_seconds
+
+            cin = count_in_seconds(bpm=int(bpm), meter=str(meter), bars=int(count_in_bars))
+        except Exception:
+            cin = float(int(count_in_bars)) * (60.0 / max(40.0, float(bpm))) * float(parse_meter(meter)[0])
+    result["count_in_sec"] = cin
+
+    events = segments_to_melody_events(
+        segments,
+        bpm=int(bpm),
+        meter=str(meter),
+        key=str(key),
+        count_in_sec=cin,
+    )
     pitched = [e for e in events if not e.get("is_rest")]
     if not pitched:
         result["message"] = "No pitched notes after quantization — try again with longer tones."

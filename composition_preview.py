@@ -130,6 +130,9 @@ def _mix_melody_onto_backing(
     bpm: int,
     time_signature: str = "4/4",
     loops: int = 1,
+    melody_gain: float = 0.45,
+    backing_gain: float = 0.85,
+    count_in_sec: float = 0.0,
 ) -> bytes:
     if not events or not wav_bytes:
         return wav_bytes
@@ -138,10 +141,14 @@ def _mix_melody_onto_backing(
         return wav_bytes
     seconds_per_beat = 60.0 / max(40.0, float(bpm))
     bpb = _beats_per_bar(time_signature)
+    count_in_offset_samples = int(max(0.0, float(count_in_sec)) * sr)
     # Melody may be shorter than looped backing — repeat softly to fill.
-    total_beats = len(mono) / float(sr) / seconds_per_beat
-    out = list(mono)
-    gain = 0.22
+    body_samples = max(0, len(mono) - count_in_offset_samples)
+    total_beats = body_samples / float(sr) / seconds_per_beat
+    bg = max(0.05, min(1.0, float(backing_gain)))
+    mg = max(0.05, min(1.2, float(melody_gain)))
+    out = [s * bg for s in mono]
+    gain = mg
     for loop_i in range(max(1, int(loops))):
         loop_offset = loop_i * max(bpb, sum(float(e.get("duration_beats") or 1.0) for e in events))
         if loop_offset > total_beats + 0.5:
@@ -156,7 +163,7 @@ def _mix_melody_onto_backing(
                 midi_i = _pitch_to_midi(str(ev.get("pitch") or ""))
             start_beat = float(ev.get("beat") or 0.0) + loop_offset
             dur_beats = float(ev.get("duration_beats") or 1.0)
-            start = int(start_beat * seconds_per_beat * sr)
+            start = count_in_offset_samples + int(start_beat * seconds_per_beat * sr)
             length = int(dur_beats * seconds_per_beat * sr)
             if start >= len(out) or length <= 0:
                 continue
@@ -193,6 +200,9 @@ def generate_preview_wav(
     chord_override: list[str] | None = None,
     include_melody: bool = False,
     melody_override: list[dict[str, Any]] | None = None,
+    melody_gain: float | None = None,
+    backing_gain: float | None = None,
+    count_in_bars: int = 0,
 ) -> bytes | None:
     if chord_override is not None:
         chords = [str(c) for c in chord_override if str(c).strip()]
@@ -202,6 +212,7 @@ def generate_preview_wav(
         return None
     pg = playback_globals(doc)
     from backing_audio import generate_backing_track
+    from composition_sync_transport import count_in_seconds, prepend_count_in_clicks
 
     wav = generate_backing_track(
         chords,
@@ -216,6 +227,10 @@ def generate_preview_wav(
     )
     if not wav:
         return None
+
+    bars = max(0, int(count_in_bars))
+    cin_sec = count_in_seconds(bpm=int(pg["bpm"]), meter=str(pg["time_signature"]), bars=bars)
+
     if include_melody:
         events = (
             list(melody_override)
@@ -223,13 +238,26 @@ def generate_preview_wav(
             else _resolve_melody_events(doc, section_id)
         )
         if events:
+            # Mix melody onto body first (beat 0 = first chord), then prepend clicks once.
             wav = _mix_melody_onto_backing(
                 wav,
                 events,
                 bpm=int(pg["bpm"]),
                 time_signature=str(pg["time_signature"]),
                 loops=max(1, int(loops)),
+                melody_gain=0.45 if melody_gain is None else float(melody_gain),
+                backing_gain=0.85 if backing_gain is None else float(backing_gain),
+                count_in_sec=0.0,
             )
+
+    if bars > 0:
+        wav = prepend_count_in_clicks(
+            wav,
+            bpm=int(pg["bpm"]),
+            meter=str(pg["time_signature"]),
+            bars=bars,
+        )
+        _ = cin_sec  # documented shared timeline offset for callers/tests
     return wav
 
 
