@@ -7809,11 +7809,21 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
+        from music_feature_icons import FEATURE_ICONS as _FEATURE_ICONS
 
         _orig_label = _format_key_label(_original_key)
         _practice_label = _format_key_label(_practice_concert_key)
-        if is_custom_progression(st.session_state):
+        if composition_song_is_active(st.session_state) or str(rec.get("source") or "").strip() in (
+            "Composition",
+            SOURCE_COMPOSITION,
+        ):
+            _source_label = "Composition"
+            details["visual_emoji"] = _FEATURE_ICONS.get("composition", "🪶")
+            details["visual_genre"] = "Composition"
+        elif is_custom_progression(st.session_state):
             _source_label = "Custom Progression"
+            details["visual_emoji"] = _FEATURE_ICONS.get("custom", "✍️")
+            details["visual_genre"] = "Custom"
             _cpl_style = ensure_original_structure(
                 st.session_state.get(CPL_ACTIVE_KEY) or {}
             ).get("progression_style")
@@ -8456,7 +8466,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         render_active_song_hub_open(st, extra_class="source-composition")
         st.caption(
             f"{FEATURE_ICONS.get('composition', '🪶')} This is a **Composition** song — "
-            "Practice, Backing Track, and Karaoke use its UUID identity (not Catalog/Custom)."
+            "Practice, Backing Track, and Karaoke follow this composition."
         )
         _render_composition_song_library_selector()
         if isinstance(doc, dict):

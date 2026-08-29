@@ -273,6 +273,7 @@ def render_karaoke_setlist_panel(
         # so the user always knows which row their edits will land on.
         session_active_entry = km.current_session_entry(st.session_state)
         session_active_id = str((session_active_entry or {}).get("entry_id") or "")
+        session_active_pk = str((session_active_entry or {}).get("pick_key") or "")
         selected_pk = ""
         try:
             selected_pk = str(
@@ -956,7 +957,7 @@ def render_karaoke_queue_preview(
         key_txt = str(entry.get("practice_key") or "").strip()
         title_bit = t
         if key_txt:
-            title_bit = f"{t} · Practice Key {key_txt}"
+            title_bit = f"{t} · {key_txt}"
         cls = "ui-karaoke-preview-row" + (" current" if current else "")
         return (
             f'<div class="{cls}">'

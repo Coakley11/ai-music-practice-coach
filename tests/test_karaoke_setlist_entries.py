@@ -137,7 +137,7 @@ class TestKaraokeEntryModel(unittest.TestCase):
                 "play_count": 3,
             }
         )
-        self.assertEqual(line, "All the Things You Are · Practice Key D · Play 3×")
+        self.assertEqual(line, "All the Things You Are · D · Play 3×")
 
     def test_duplicate_titles_distinct_practice_keys_in_managed_setlist(self) -> None:
         """ATTYA Ab / G / Ab must stay distinguishable while managing the queue."""
@@ -151,9 +151,9 @@ class TestKaraokeEntryModel(unittest.TestCase):
         self.assertEqual(
             [r["label"] for r in rows],
             [
-                "All the Things You Are · Practice Key Ab",
-                "All the Things You Are · Practice Key G",
-                "All the Things You Are · Practice Key Ab",
+                "All the Things You Are · Ab",
+                "All the Things You Are · G",
+                "All the Things You Are · Ab",
             ],
         )
         self.assertEqual(len({r["entry_id"] for r in rows}), 3)
@@ -186,8 +186,10 @@ class TestMusicSourceBadgeIcons(unittest.TestCase):
 
         custom_html = studio_song_meta_badges_html(source="Custom Progression")
         self.assertIn(FEATURE_ICONS["custom"], custom_html)
+        self.assertNotIn(FEATURE_ICONS["songs"], custom_html)
         comp_html = studio_song_meta_badges_html(source="Composition")
         self.assertIn(FEATURE_ICONS["composition"], comp_html)
+        self.assertNotIn(FEATURE_ICONS["songs"], comp_html)
 
 
 if __name__ == "__main__":

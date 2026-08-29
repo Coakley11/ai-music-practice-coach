@@ -331,6 +331,12 @@ def render_backing_custom_progression_context_card(
     groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
     source_badge = html.escape(str(ctx.source_label or "Custom progression").strip() or "Custom progression")
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        source_art_icon = FEATURE_ICONS.get("custom", "✍️")
+    except ImportError:
+        source_art_icon = "✍️"
 
     concert_sections = state.concert_sections or {}
     if not concert_sections:
@@ -359,7 +365,7 @@ def render_backing_custom_progression_context_card(
     st.markdown(
         f'<div class="ui-backing-active-song mode-custom-progression-backing">'
         f'<div class="ui-backing-active-art" style="background:{gradient};">'
-        f"🎼<small>{source_badge}</small></div>"
+        f"{source_art_icon}<small>{source_badge}</small></div>"
         f'<div class="ui-backing-active-body">'
         f'<p class="ui-backing-active-kicker">Custom progression backing</p>'
         f'<p class="ui-backing-active-title">{title}'

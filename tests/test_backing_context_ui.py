@@ -71,6 +71,10 @@ class TestBackingContextUiCards(unittest.TestCase):
         self.assertIn("Trial Song", html_out)
         self.assertNotIn("Creative backing session", html_out)
         self.assertNotIn("Style Jam", html_out)
+        from music_feature_icons import FEATURE_ICONS
+
+        self.assertIn(FEATURE_ICONS["custom"], html_out)
+        self.assertNotIn("🎼<small>", html_out)
 
 
 if __name__ == "__main__":

@@ -783,7 +783,7 @@ def set_vocal_focus_target(
 
 
 def entry_display_line(entry: dict[str, Any] | None, *, title_override: str | None = None) -> str:
-    """Compact managed-setlist label: Title · Practice Key K [· Play N×].
+    """Compact managed-setlist label: Title · Key [· Play N×].
 
     Uses the Practice Key **snapshot on the entry**, never the live sidebar key.
     """
@@ -804,7 +804,7 @@ def entry_display_line(entry: dict[str, Any] | None, *, title_override: str | No
         plays = max(1, int(entry.get("play_count") or 1))
     except (TypeError, ValueError):
         plays = 1
-    base = f"{title} · Practice Key {key}"
+    base = f"{title} · {key}"
     if plays > 1:
         base = f"{base} · Play {plays}×"
     return base
