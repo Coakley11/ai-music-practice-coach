@@ -13,6 +13,14 @@ data/user_song_content.json
 data/*_user_state.json
 data/*activity_fallback.json
 data/*_activity_fallback.json
+# Local machine / workspace runtime (do not commit)
+data/music_device_id.txt
+data/suite_active_workspace.json
+data/workspaces/
+# Agent/local smoke artifacts
+scripts/_karaoke_restore_smoke.png
+scripts/_karaoke_restore_smoke.py
+scripts/_probe_cloud_deploy.py
 *.db
 *.sqlite
 *.sqlite3
