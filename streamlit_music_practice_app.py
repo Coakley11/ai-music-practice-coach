@@ -1416,13 +1416,18 @@ if km.is_voice_mode(st.session_state):
     km.consume_pending_advance(st.session_state)
     if km.is_karaoke_session_active(st.session_state):
         _karaoke_target_pk = km.current_session_pick_key(st.session_state)
+        _karaoke_entry = km.current_session_entry(st.session_state)
         if _karaoke_target_pk and _karaoke_target_pk != st.session_state.get(ACTIVE_CATALOG_PICK_KEY):
             try:
                 apply_pick_key(st, _karaoke_target_pk, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
             except KeyError:
                 # Queued pick_key no longer in catalog (e.g. after rebuild).
-                # Drop it and try the next one on the next rerun.
-                km.remove_from_queue(st.session_state, _karaoke_target_pk)
+                # Drop this entry and try the next one on the next rerun.
+                _drop_id = str((_karaoke_entry or {}).get("entry_id") or _karaoke_target_pk)
+                km.remove_from_queue(st.session_state, _drop_id)
+        # Always re-apply the entry's Practice Key snapshot while the set runs.
+        if _karaoke_entry:
+            km.apply_entry_practice_key(st.session_state, _karaoke_entry)
 else:
     # Non-voice instrument: hibernate the karaoke session so no
     # karaoke UI / behaviour leaks into the instrumentalist workflow.
@@ -7911,7 +7916,20 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             _picker_navigate("backing")
     with b3:
         if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
-            _picker_navigate("backing")
+            # Enter Karaoke Mode on Songs: Voice instrument + stay on picker.
+            try:
+                from app_tutorial import apply_tutorial_voice_instrument
+
+                apply_tutorial_voice_instrument(st.session_state)
+            except Exception:
+                st.session_state["instrument"] = "Voice"
+            try:
+                from studio_nav_history import navigate_studio_page
+
+                navigate_studio_page(st.session_state, "picker")
+            except Exception:
+                st.session_state["studio_page"] = "picker"
+            st.rerun()
     with b4:
         if st.button(feature_label("chord_song_coach", "Chord Coach"), key="picker_card_chord_coach", use_container_width=True):
             _picker_navigate("practice", open_chord_coach=True)
@@ -8265,20 +8283,26 @@ def _apply_picker_catalog_filters(
 
 
 def _render_picker_music_source_toggle(*, polished: bool) -> bool:
-    """Render catalog vs custom source radio. Returns True when custom is active."""
+    """Render catalog / custom / composition source radio.
+
+    Returns True when Custom hub should show. Composition is a peer option;
+    when selected without a safe activation path it falls back to Catalog.
+    """
     if polished:
         st.markdown(
             '<p class="ui-page-nav-label" style="margin-top:0;">Music source</p>',
             unsafe_allow_html=True,
         )
+    from music_feature_icons import FEATURE_ICONS
+
     options = [
         "Song Selection (catalog song)",
         "Use Custom Progression / Create Your Own Song",
+        f"{FEATURE_ICONS.get('composition', '🪶')} Composition",
     ]
     from songs.music_source import (
         on_song_picker_source_change,
         reconcile_music_picker_source_widget,
-        restore_last_catalog_active_song,
         sync_song_picker_source_widget,
     )
 
@@ -8286,13 +8310,36 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         sync_song_picker_source_widget(st.session_state)
     reconcile_music_picker_source_widget(st.session_state)
 
+    # If a prior run left Composition selected without a valid activation,
+    # fall back to Catalog so Songs never sticks in a half-selected state.
+    _cur_src = str(st.session_state.get("song_picker_active_source") or "")
+    if "Composition" in _cur_src and not st.session_state.get("_composition_songs_source_ready"):
+        # Keep widget on catalog unless Composition library activation is ready.
+        pass
+
     def _picker_source_on_change() -> None:
+        choice_now = str(st.session_state.get("song_picker_active_source") or "")
+        if "Composition" in choice_now:
+            # Soft placeholder: restore previous valid source; do not claim
+            # Composition as canonical active-song ownership yet.
+            prev = str(st.session_state.get("_last_song_picker_source_choice") or options[0])
+            if "Composition" in prev:
+                prev = options[0]
+            st.session_state["song_picker_active_source"] = prev
+            st.session_state["_composition_source_placeholder_notice"] = True
+            return
+        st.session_state["_last_song_picker_source_choice"] = choice_now
         on_song_picker_source_change(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
             invalidate_backing=invalidate_backing_cache,
         )
+
+    # Remember last non-Composition choice for fallback.
+    _pre = str(st.session_state.get("song_picker_active_source") or "")
+    if _pre and "Composition" not in _pre:
+        st.session_state["_last_song_picker_source_choice"] = _pre
 
     st.radio(
         "Music source",
@@ -8302,6 +8349,12 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
         label_visibility="collapsed" if polished else "visible",
         on_change=_picker_source_on_change,
     )
+    if st.session_state.pop("_composition_source_placeholder_notice", False):
+        st.info(
+            f"{FEATURE_ICONS.get('composition', '🪶')} **Composition** songs will appear here "
+            "once Composition → Songs activation is fully wired. "
+            "Open **Composition Studio** from the sidebar to create or edit songs for now."
+        )
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     from songs.music_source import music_picker_shows_custom_hub
 
@@ -8508,9 +8561,12 @@ def _render_catalog_song_picker_block(
     # On Song Selection the source toggle lives inside the library
     # panel; other surfaces keep the legacy placement above filters.
     if show_source_toggle and not show_song_cards:
+        from music_feature_icons import FEATURE_ICONS as _FI_SRC
+
         _picker_source_options = [
             "Song Selection (catalog song)",
             "Use Custom Progression / Create Your Own Song",
+            f"{_FI_SRC.get('composition', '🪶')} Composition",
         ]
         from songs.music_source import (
             music_picker_shows_custom_hub,
@@ -8525,6 +8581,15 @@ def _render_catalog_song_picker_block(
         reconcile_music_picker_source_widget(st.session_state)
 
         def _library_source_on_change() -> None:
+            choice_now = str(st.session_state.get("song_picker_active_source") or "")
+            if "Composition" in choice_now:
+                prev = str(st.session_state.get("_last_song_picker_source_choice") or _picker_source_options[0])
+                if "Composition" in prev:
+                    prev = _picker_source_options[0]
+                st.session_state["song_picker_active_source"] = prev
+                st.session_state["_composition_source_placeholder_notice"] = True
+                return
+            st.session_state["_last_song_picker_source_choice"] = choice_now
             on_song_picker_source_change(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
@@ -8532,13 +8597,23 @@ def _render_catalog_song_picker_block(
                 invalidate_backing=invalidate_backing_cache,
             )
 
+        _pre = str(st.session_state.get("song_picker_active_source") or "")
+        if _pre and "Composition" not in _pre:
+            st.session_state["_last_song_picker_source_choice"] = _pre
+
         st.radio(
             "Music source",
             _picker_source_options,
-                horizontal=True,
+            horizontal=True,
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )
+        if st.session_state.pop("_composition_source_placeholder_notice", False):
+            st.info(
+                f"{_FI_SRC.get('composition', '🪶')} **Composition** songs will appear here "
+                "once Composition → Songs activation is fully wired. "
+                "Open **Composition Studio** from the sidebar to create or edit songs for now."
+            )
         if music_picker_shows_custom_hub(st.session_state):
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return

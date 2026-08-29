@@ -11,30 +11,25 @@ Design notes:
   keys defined here. **No** module in this package may import the main
   ``streamlit_music_practice_app`` module - this file is pure state +
   helpers so it can be imported by any page.
-* Queue ordering uses the existing catalog ``pick_key`` (see
-  ``song_catalog.catalog.format_pick_key``) so the queue survives catalog
-  rebuilds and identifies songs uniquely across genres.
+* Queue entries are structured dicts with a unique ``entry_id``. The same
+  song (``pick_key``) may appear multiple times; each row owns its own
+  Practice Key snapshot and optional play count.
+* Legacy persisted queues of bare ``pick_key`` strings are normalized on
+  read so older sessions still load.
 * The pending / advance pattern mirrors the other ``_pending_*`` keys in
-  the app (e.g. ``_pending_backing_single_section``). Anything that needs
-  to mutate a widget key is queued here and applied **before** widgets
-  rebuild on the next rerun.
-* Future-facing hooks (``record_vocal_score``, ``set_vocal_focus_target``
-  etc.) are intentional stubs so pitch tracking / scoring can be added
-  later without rewiring the queue or wording layer.
+  the app (e.g. ``_pending_backing_single_section``).
 """
 
 from __future__ import annotations
 
+import copy
+import uuid
 from typing import Any, Iterable
 
 # ---------------------------------------------------------------------------
 # Voice instrument aliases
 # ---------------------------------------------------------------------------
 
-#: Set of instrument values that should activate Vocal Performance Mode.
-#: ``"Voice"`` is the canonical value used by ``practice_setup_controls.py``;
-#: the others are accepted as aliases in case the instrument list is
-#: extended later.
 VOICE_INSTRUMENT_ALIASES: frozenset[str] = frozenset(
     {"voice", "vocals", "vocal", "singer", "vocalist", "karaoke"}
 )
@@ -53,89 +48,216 @@ def is_voice_mode(session_state: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 KARAOKE_QUEUE_KEY = "karaoke_queue"
-"""``list[str]`` of catalog ``pick_key`` values queued for the setlist."""
+"""``list[dict]`` of karaoke entries (legacy ``list[str]`` still accepted)."""
 
 KARAOKE_SESSION_ACTIVE_KEY = "karaoke_session_active"
-"""``bool`` - whether a karaoke performance is currently running."""
-
 KARAOKE_SESSION_INDEX_KEY = "karaoke_session_index"
-"""``int`` - 0-based index into ``KARAOKE_QUEUE_KEY`` of the currently
-performing song. Only meaningful when the session is active."""
-
 KARAOKE_AUTO_ADVANCE_KEY = "karaoke_auto_advance"
-"""``bool`` - user preference for automatic transitions after a song
-finishes (default ``True``)."""
-
 PENDING_KARAOKE_ADVANCE_KEY = "_pending_karaoke_advance"
-"""When set, the next rerun should advance the active song to the next
-queued entry **before** rebuilding any backing-track widgets."""
-
 KARAOKE_SONG_ENDED_KEY = "_karaoke_song_ended"
-"""Sticky flag set by the JS bridge when the backing audio finishes; the
-transition card consumes this to show the next-song prompt."""
-
 KARAOKE_TRANSITION_LABEL_KEY = "_karaoke_transition_label"
-"""Short status string ("Next: <title>", "Setlist complete", ...) the
-Backing Track page shows during a transition."""
-
 KARAOKE_COUNTDOWN_KEY = "karaoke_countdown_enabled"
-"""``bool`` user preference: show a 5-4-3-2-1 countdown before each
-backing track plays (default ``True``)."""
-
 KARAOKE_COUNTDOWN_SECONDS_KEY = "karaoke_countdown_seconds"
-"""``int`` countdown length in seconds (1-10, default 5)."""
-
 KARAOKE_SHOW_CHORDS_KEY = "karaoke_show_chords"
-"""``bool`` user preference: render the chord strip + live highlight
-underneath the karaoke lyrics (default ``True``). When ``False`` the
-karaoke screen shows lyrics only - a cleaner sing-along view for
-performers who don't read chord charts."""
-
 KARAOKE_LYRIC_COLOR_KEY = "karaoke_lyric_color"
-"""``str`` user preference: lyric color theme on the karaoke black
-screen. One of: ``"white"``, ``"gold"``, ``"cyan"``, ``"cream"``.
-Default is ``"white"`` (highest contrast). Stored as a small token
-so the same value can drive both the CSS class on the panel and the
-"Lyric color" picker in the karaoke settings."""
-
 PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
-"""Set to ``True`` when the Backing Track page should auto-trigger the
-Generate handler on the next rerun - used right after a karaoke
-transition so the next song's audio is ready without a manual click."""
+KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
+"""Remaining playthroughs for the current entry (includes the current play)."""
+
+KARAOKE_ACTIVE_ENTRY_ID_KEY = "_karaoke_active_entry_id"
 
 
 # ---------------------------------------------------------------------------
-# Queue operations
+# Entry model
 # ---------------------------------------------------------------------------
 
 
-def get_queue(session_state: Any) -> list[str]:
-    """Return a copy of the current karaoke queue."""
-    return list((session_state or {}).get(KARAOKE_QUEUE_KEY) or [])
+def _new_entry_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _infer_source(pick_key: str) -> str:
+    pk = str(pick_key or "")
+    if pk.startswith("custom::"):
+        return "custom_progression"
+    if pk.startswith("composition::"):
+        return "composition_song"
+    return "catalog_song"
+
+
+def normalize_karaoke_entry(
+    raw: Any,
+    *,
+    practice_key: str = "",
+    play_count: int = 1,
+    title: str = "",
+    artist: str = "",
+) -> dict[str, Any] | None:
+    """Normalize a legacy pick_key string or entry dict into a karaoke entry."""
+    if isinstance(raw, str):
+        pick_key = raw.strip()
+        if not pick_key:
+            return None
+        return {
+            "entry_id": _new_entry_id(),
+            "pick_key": pick_key,
+            "source": _infer_source(pick_key),
+            "practice_key": str(practice_key or "").strip(),
+            "play_count": max(1, int(play_count or 1)),
+            "title": str(title or "").strip(),
+            "artist": str(artist or "").strip(),
+        }
+    if not isinstance(raw, dict):
+        return None
+    pick_key = str(raw.get("pick_key") or "").strip()
+    if not pick_key:
+        return None
+    try:
+        plays = max(1, int(raw.get("play_count") or play_count or 1))
+    except (TypeError, ValueError):
+        plays = 1
+    entry_id = str(raw.get("entry_id") or "").strip() or _new_entry_id()
+    source = str(raw.get("source") or "").strip() or _infer_source(pick_key)
+    return {
+        "entry_id": entry_id,
+        "pick_key": pick_key,
+        "source": source,
+        "practice_key": str(raw.get("practice_key") or practice_key or "").strip(),
+        "play_count": plays,
+        "title": str(raw.get("title") or title or "").strip(),
+        "artist": str(raw.get("artist") or artist or "").strip(),
+    }
+
+
+def normalize_karaoke_queue(raw: Any) -> list[dict[str, Any]]:
+    """Upgrade legacy ``list[str]`` queues and drop invalid rows."""
+    out: list[dict[str, Any]] = []
+    for item in list(raw or []):
+        entry = normalize_karaoke_entry(item)
+        if entry:
+            out.append(entry)
+    return out
+
+
+def _write_queue(session_state: Any, queue: list[dict[str, Any]]) -> None:
+    session_state[KARAOKE_QUEUE_KEY] = [copy.deepcopy(e) for e in queue]
+
+
+def get_queue(session_state: Any) -> list[dict[str, Any]]:
+    """Return a normalized copy of the karaoke queue (structured entries)."""
+    raw = (session_state or {}).get(KARAOKE_QUEUE_KEY)
+    normalized = normalize_karaoke_queue(raw)
+    # Persist upgrade in-place so later code and disk see entry dicts.
+    if isinstance(raw, list) and (
+        len(raw) != len(normalized)
+        or any(not isinstance(x, dict) for x in raw)
+        or any(not str((x or {}).get("entry_id") or "").strip() for x in raw if isinstance(x, dict))
+    ):
+        _write_queue(session_state, normalized)
+    return [copy.deepcopy(e) for e in normalized]
+
+
+def get_queue_pick_keys(session_state: Any) -> list[str]:
+    return [str(e.get("pick_key") or "") for e in get_queue(session_state)]
 
 
 def queue_length(session_state: Any) -> int:
     return len(get_queue(session_state))
 
 
+def entry_by_id(session_state: Any, entry_id: str) -> dict[str, Any] | None:
+    eid = str(entry_id or "").strip()
+    if not eid:
+        return None
+    for entry in get_queue(session_state):
+        if str(entry.get("entry_id") or "") == eid:
+            return copy.deepcopy(entry)
+    return None
+
+
 def is_in_queue(session_state: Any, pick_key: str) -> bool:
-    return bool(pick_key) and pick_key in get_queue(session_state)
+    """True if *any* entry uses this pick_key (duplicates still count as in-queue)."""
+    return bool(pick_key) and pick_key in get_queue_pick_keys(session_state)
 
 
-def add_to_queue(session_state: Any, pick_key: str) -> bool:
-    """Append ``pick_key`` to the queue (no duplicates). Returns True if added."""
-    if not pick_key:
-        return False
+def count_pick_key_in_queue(session_state: Any, pick_key: str) -> int:
+    pk = str(pick_key or "")
+    return sum(1 for e in get_queue(session_state) if str(e.get("pick_key") or "") == pk)
+
+
+def _snapshot_practice_key(session_state: Any, pick_key: str) -> str:
+    """Capture the live Practice Concert Key for a new karaoke entry."""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        saved = get_practice_concert_key(session_state, pick_key, default="")
+        if saved:
+            return str(saved).strip()
+    except Exception:
+        pass
+    # Fallbacks: live sidebar / display key / original song key fields
+    for key in (
+        "practice_concert_key",
+        "display_key",
+        "practice_key",
+        "song_key",
+    ):
+        val = str((session_state or {}).get(key) or "").strip()
+        if val:
+            return val
+    sel = (session_state or {}).get("selected_song")
+    if isinstance(sel, dict):
+        for key in ("practice_key", "key", "original_key"):
+            val = str(sel.get(key) or "").strip()
+            if val:
+                return val
+    return ""
+
+
+def add_to_queue(
+    session_state: Any,
+    pick_key: str,
+    *,
+    practice_key: str | None = None,
+    play_count: int = 1,
+    title: str = "",
+    artist: str = "",
+    source: str = "",
+) -> dict[str, Any] | None:
+    """Append a new karaoke entry (duplicates allowed).
+
+    Snapshots ``practice_key`` at add time. Later global Practice Key
+    changes do not rewrite this entry.
+    """
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return None
+    snap = str(practice_key).strip() if practice_key is not None else _snapshot_practice_key(session_state, pk)
+    try:
+        plays = max(1, int(play_count or 1))
+    except (TypeError, ValueError):
+        plays = 1
+    entry = normalize_karaoke_entry(
+        {
+            "entry_id": _new_entry_id(),
+            "pick_key": pk,
+            "source": source or _infer_source(pk),
+            "practice_key": snap,
+            "play_count": plays,
+            "title": title,
+            "artist": artist,
+        }
+    )
+    if not entry:
+        return None
     queue = get_queue(session_state)
-    if pick_key in queue:
-        return False
-    queue.append(pick_key)
-    session_state[KARAOKE_QUEUE_KEY] = queue
-    return True
+    queue.append(entry)
+    _write_queue(session_state, queue)
+    return copy.deepcopy(entry)
 
 
 def add_many_to_queue(session_state: Any, pick_keys: Iterable[str]) -> int:
-    """Append a batch of pick_keys. Returns the count actually added."""
+    """Append a batch of pick_keys as separate entries. Returns count added."""
     added = 0
     for pk in pick_keys:
         if add_to_queue(session_state, pk):
@@ -143,46 +265,83 @@ def add_many_to_queue(session_state: Any, pick_keys: Iterable[str]) -> int:
     return added
 
 
-def remove_from_queue(session_state: Any, pick_key: str) -> bool:
-    """Remove ``pick_key`` from the queue. Returns True if removed."""
-    queue = get_queue(session_state)
-    if pick_key not in queue:
+def remove_from_queue(session_state: Any, pick_key_or_entry_id: str) -> bool:
+    """Remove by ``entry_id``, or the first matching ``pick_key`` (legacy)."""
+    token = str(pick_key_or_entry_id or "").strip()
+    if not token:
         return False
-    queue.remove(pick_key)
-    session_state[KARAOKE_QUEUE_KEY] = queue
-    # If we removed the currently performing song, clamp the index.
+    queue = get_queue(session_state)
+    remove_idx = -1
+    for i, entry in enumerate(queue):
+        if str(entry.get("entry_id") or "") == token or str(entry.get("pick_key") or "") == token:
+            remove_idx = i
+            break
+    if remove_idx < 0:
+        return False
+    removed = queue.pop(remove_idx)
+    _write_queue(session_state, queue)
     if session_state.get(KARAOKE_SESSION_ACTIVE_KEY):
         idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
-        idx = min(idx, max(0, len(queue) - 1))
-        session_state[KARAOKE_SESSION_INDEX_KEY] = idx
+        if remove_idx < idx:
+            session_state[KARAOKE_SESSION_INDEX_KEY] = max(0, idx - 1)
+        elif remove_idx == idx:
+            session_state[KARAOKE_SESSION_INDEX_KEY] = min(idx, max(0, len(queue) - 1))
+            if queue:
+                _activate_entry_at(session_state, int(session_state[KARAOKE_SESSION_INDEX_KEY]))
         if not queue:
             stop_session(session_state)
+        # If we removed the active entry id, refresh pointer
+        if str(session_state.get(KARAOKE_ACTIVE_ENTRY_ID_KEY) or "") == str(removed.get("entry_id") or ""):
+            if queue and is_karaoke_session_active(session_state):
+                _activate_entry_at(session_state, int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0))
     return True
 
 
-def move_in_queue(session_state: Any, pick_key: str, direction: int) -> bool:
-    """Swap ``pick_key`` with its neighbour in the queue.
+def remove_entry_at(session_state: Any, index: int) -> bool:
+    queue = get_queue(session_state)
+    if index < 0 or index >= len(queue):
+        return False
+    return remove_from_queue(session_state, str(queue[index].get("entry_id") or ""))
 
-    ``direction`` is ``-1`` (move up / earlier) or ``+1`` (move down /
-    later). Returns ``True`` if the queue actually changed.
-    """
+
+def move_in_queue(session_state: Any, pick_key_or_entry_id: str, direction: int) -> bool:
+    """Swap an entry with its neighbour. Prefers ``entry_id`` match."""
     if direction not in (-1, 1):
         return False
+    token = str(pick_key_or_entry_id or "").strip()
     queue = get_queue(session_state)
-    if pick_key not in queue:
+    idx = -1
+    for i, entry in enumerate(queue):
+        if str(entry.get("entry_id") or "") == token:
+            idx = i
+            break
+    if idx < 0:
+        for i, entry in enumerate(queue):
+            if str(entry.get("pick_key") or "") == token:
+                idx = i
+                break
+    if idx < 0:
         return False
-    idx = queue.index(pick_key)
     new_idx = idx + direction
     if new_idx < 0 or new_idx >= len(queue):
         return False
     queue[idx], queue[new_idx] = queue[new_idx], queue[idx]
-    session_state[KARAOKE_QUEUE_KEY] = queue
-    # Re-anchor the active index if we moved the currently performing song.
+    _write_queue(session_state, queue)
     if session_state.get(KARAOKE_SESSION_ACTIVE_KEY):
-        active_pk = session_state.get("_karaoke_active_pick_key")
-        if active_pk and active_pk in queue:
-            session_state[KARAOKE_SESSION_INDEX_KEY] = queue.index(active_pk)
+        active_id = str(session_state.get(KARAOKE_ACTIVE_ENTRY_ID_KEY) or "")
+        if active_id:
+            for i, entry in enumerate(queue):
+                if str(entry.get("entry_id") or "") == active_id:
+                    session_state[KARAOKE_SESSION_INDEX_KEY] = i
+                    break
     return True
+
+
+def move_entry_at(session_state: Any, index: int, direction: int) -> bool:
+    queue = get_queue(session_state)
+    if index < 0 or index >= len(queue):
+        return False
+    return move_in_queue(session_state, str(queue[index].get("entry_id") or ""), direction)
 
 
 def clear_queue(session_state: Any) -> None:
@@ -191,21 +350,31 @@ def clear_queue(session_state: Any) -> None:
     stop_session(session_state)
 
 
+def set_entry_play_count(session_state: Any, entry_id: str, play_count: int) -> bool:
+    queue = get_queue(session_state)
+    eid = str(entry_id or "").strip()
+    try:
+        plays = max(1, int(play_count))
+    except (TypeError, ValueError):
+        return False
+    for entry in queue:
+        if str(entry.get("entry_id") or "") == eid:
+            entry["play_count"] = plays
+            _write_queue(session_state, queue)
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Session lifecycle
 # ---------------------------------------------------------------------------
 
 
 def is_karaoke_session_active(session_state: Any) -> bool:
-    """``True`` when a karaoke performance is currently running."""
     return bool((session_state or {}).get(KARAOKE_SESSION_ACTIVE_KEY))
 
 
 def session_position(session_state: Any) -> tuple[int, int]:
-    """Return ``(current_position_1_indexed, total)``.
-
-    ``current_position`` is ``0`` when no session is active.
-    """
     total = queue_length(session_state)
     if not is_karaoke_session_active(session_state):
         return (0, total)
@@ -213,7 +382,7 @@ def session_position(session_state: Any) -> tuple[int, int]:
     return (max(0, min(idx, max(total - 1, 0))) + 1, total)
 
 
-def current_session_pick_key(session_state: Any) -> str | None:
+def current_session_entry(session_state: Any) -> dict[str, Any] | None:
     if not is_karaoke_session_active(session_state):
         return None
     queue = get_queue(session_state)
@@ -221,12 +390,26 @@ def current_session_pick_key(session_state: Any) -> str | None:
         return None
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
     if 0 <= idx < len(queue):
-        return queue[idx]
+        return copy.deepcopy(queue[idx])
     return None
 
 
-def next_session_pick_key(session_state: Any) -> str | None:
-    """The pick_key the session would advance to next, or ``None`` at end."""
+def current_session_pick_key(session_state: Any) -> str | None:
+    entry = current_session_entry(session_state)
+    if not entry:
+        return None
+    pk = str(entry.get("pick_key") or "").strip()
+    return pk or None
+
+
+def current_session_practice_key(session_state: Any) -> str:
+    entry = current_session_entry(session_state)
+    if not entry:
+        return ""
+    return str(entry.get("practice_key") or "").strip()
+
+
+def next_session_entry(session_state: Any) -> dict[str, Any] | None:
     if not is_karaoke_session_active(session_state):
         return None
     queue = get_queue(session_state)
@@ -235,78 +418,127 @@ def next_session_pick_key(session_state: Any) -> str | None:
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
     nxt = idx + 1
     if 0 <= nxt < len(queue):
-        return queue[nxt]
+        return copy.deepcopy(queue[nxt])
     return None
+
+
+def next_session_pick_key(session_state: Any) -> str | None:
+    entry = next_session_entry(session_state)
+    if not entry:
+        return None
+    pk = str(entry.get("pick_key") or "").strip()
+    return pk or None
+
+
+def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = None) -> str:
+    """Apply a karaoke entry's Practice Key snapshot to live practice state.
+
+    Writes the snapshot into ``practice_key_by_source`` for the entry's
+    pick_key so backing/charts resolve to that key for this playthrough.
+    Does not mutate other karaoke entries.
+    """
+    row = entry if isinstance(entry, dict) else current_session_entry(session_state)
+    if not row:
+        return ""
+    pick_key = str(row.get("pick_key") or "").strip()
+    key = str(row.get("practice_key") or "").strip()
+    if not pick_key or not key:
+        return key
+    try:
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(session_state, key, pick_key=pick_key)
+    except Exception:
+        session_state["practice_concert_key"] = key
+    session_state["practice_concert_key"] = key
+    return key
+
+
+def _activate_entry_at(session_state: Any, index: int) -> str | None:
+    queue = get_queue(session_state)
+    if not queue or index < 0 or index >= len(queue):
+        return None
+    entry = queue[index]
+    session_state[KARAOKE_SESSION_INDEX_KEY] = index
+    session_state["_karaoke_active_pick_key"] = str(entry.get("pick_key") or "")
+    session_state[KARAOKE_ACTIVE_ENTRY_ID_KEY] = str(entry.get("entry_id") or "")
+    try:
+        plays = max(1, int(entry.get("play_count") or 1))
+    except (TypeError, ValueError):
+        plays = 1
+    session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = plays
+    apply_entry_practice_key(session_state, entry)
+    return str(entry.get("pick_key") or "") or None
 
 
 def start_session(
     session_state: Any,
     *,
     starting_pick_key: str | None = None,
+    starting_entry_id: str | None = None,
 ) -> str | None:
-    """Begin a karaoke performance.
-
-    If ``starting_pick_key`` is provided and already in the queue, the
-    session starts at that song; otherwise it starts at the head of the
-    queue. Returns the pick_key that should now become the active song,
-    or ``None`` when the queue is empty.
-    """
+    """Begin a karaoke performance. Returns the active pick_key."""
     queue = get_queue(session_state)
     if not queue:
         return None
     start_idx = 0
-    if starting_pick_key and starting_pick_key in queue:
-        start_idx = queue.index(starting_pick_key)
+    if starting_entry_id:
+        for i, entry in enumerate(queue):
+            if str(entry.get("entry_id") or "") == str(starting_entry_id):
+                start_idx = i
+                break
+    elif starting_pick_key:
+        for i, entry in enumerate(queue):
+            if str(entry.get("pick_key") or "") == str(starting_pick_key):
+                start_idx = i
+                break
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = True
-    session_state[KARAOKE_SESSION_INDEX_KEY] = start_idx
-    session_state["_karaoke_active_pick_key"] = queue[start_idx]
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
-    return queue[start_idx]
+    return _activate_entry_at(session_state, start_idx)
 
 
 def stop_session(session_state: Any) -> None:
     """End the karaoke performance (queue is left intact)."""
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
     session_state.pop("_karaoke_active_pick_key", None)
+    session_state.pop(KARAOKE_ACTIVE_ENTRY_ID_KEY, None)
+    session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.pop(KARAOKE_TRANSITION_LABEL_KEY, None)
 
 
 def advance_session(session_state: Any) -> str | None:
-    """Advance the session to the next queued song.
-
-    Returns the new active ``pick_key``, or ``None`` if the setlist is
-    finished (in which case the session is automatically stopped).
-    """
+    """Advance within play_count, then to the next queued entry."""
     queue = get_queue(session_state)
     if not queue or not is_karaoke_session_active(session_state):
         return None
+    left = int(session_state.get(KARAOKE_ENTRY_PLAYS_LEFT_KEY) or 1)
+    if left > 1:
+        session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = left - 1
+        session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
+        session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
+        session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
+        # Re-apply the same entry's key for the next playthrough.
+        apply_entry_practice_key(session_state, current_session_entry(session_state))
+        return current_session_pick_key(session_state)
+
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
     nxt = idx + 1
     if nxt >= len(queue):
         session_state[KARAOKE_TRANSITION_LABEL_KEY] = "Setlist complete"
         stop_session(session_state)
         return None
-    session_state[KARAOKE_SESSION_INDEX_KEY] = nxt
-    session_state["_karaoke_active_pick_key"] = queue[nxt]
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
-    # Queue an auto-generate so the new song's backing audio is ready
-    # without a manual click - the Backing Track page consumes this on
-    # the next rerun.
     session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
-    return queue[nxt]
+    return _activate_entry_at(session_state, nxt)
 
 
 def regress_session(session_state: Any) -> str | None:
-    """Step back to the previous queued song.
-
-    Returns the new active ``pick_key``, or ``None`` when already at the
-    first song. The session stays active either way.
-    """
+    """Step back to the previous queued entry."""
     queue = get_queue(session_state)
     if not queue or not is_karaoke_session_active(session_state):
         return None
@@ -314,16 +546,13 @@ def regress_session(session_state: Any) -> str | None:
     prev_idx = idx - 1
     if prev_idx < 0:
         return None
-    session_state[KARAOKE_SESSION_INDEX_KEY] = prev_idx
-    session_state["_karaoke_active_pick_key"] = queue[prev_idx]
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
-    return queue[prev_idx]
+    return _activate_entry_at(session_state, prev_idx)
 
 
 def previous_session_pick_key(session_state: Any) -> str | None:
-    """Pick key of the previously played song (one position back)."""
     if not is_karaoke_session_active(session_state):
         return None
     queue = get_queue(session_state)
@@ -332,25 +561,31 @@ def previous_session_pick_key(session_state: Any) -> str | None:
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
     if idx - 1 < 0:
         return None
-    return queue[idx - 1]
+    return str(queue[idx - 1].get("pick_key") or "") or None
 
 
 def upcoming_session_pick_keys(session_state: Any, *, limit: int = 3) -> list[str]:
-    """Return up to ``limit`` upcoming queued songs *after* the current one."""
     if not is_karaoke_session_active(session_state):
         return []
     queue = get_queue(session_state)
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
-    return list(queue[idx + 1 : idx + 1 + max(0, int(limit))])
+    return [str(e.get("pick_key") or "") for e in queue[idx + 1 : idx + 1 + max(0, int(limit))]]
+
+
+def upcoming_session_entries(session_state: Any, *, limit: int = 3) -> list[dict[str, Any]]:
+    if not is_karaoke_session_active(session_state):
+        return []
+    queue = get_queue(session_state)
+    idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    return [copy.deepcopy(e) for e in queue[idx + 1 : idx + 1 + max(0, int(limit))]]
 
 
 # ---------------------------------------------------------------------------
-# Countdown preferences
+# Countdown / prefs
 # ---------------------------------------------------------------------------
 
 
 def countdown_enabled(session_state: Any) -> bool:
-    """User preference: show a 5-4-3-2-1 pre-roll before each karaoke song?"""
     raw = (session_state or {}).get(KARAOKE_COUNTDOWN_KEY)
     if raw is None:
         return True
@@ -358,7 +593,6 @@ def countdown_enabled(session_state: Any) -> bool:
 
 
 def countdown_seconds(session_state: Any) -> int:
-    """Length of the karaoke pre-roll countdown (clamped to 1..10, default 5)."""
     raw = (session_state or {}).get(KARAOKE_COUNTDOWN_SECONDS_KEY)
     try:
         if raw is None:
@@ -370,12 +604,10 @@ def countdown_seconds(session_state: Any) -> int:
 
 
 def consume_pending_auto_generate(session_state: Any) -> bool:
-    """Pop the pending-auto-generate flag (set on karaoke transitions)."""
     return bool(session_state.pop(PENDING_KARAOKE_AUTO_GENERATE_KEY, False))
 
 
 def auto_advance_enabled(session_state: Any) -> bool:
-    """User preference: auto-advance after each song? Defaults to ``True``."""
     raw = (session_state or {}).get(KARAOKE_AUTO_ADVANCE_KEY)
     if raw is None:
         return True
@@ -383,13 +615,6 @@ def auto_advance_enabled(session_state: Any) -> bool:
 
 
 def show_chords_enabled(session_state: Any) -> bool:
-    """User preference: show chord chips under karaoke lyrics? Default ``True``.
-
-    Mirrors the "[ Show chords while singing ]" toggle in the
-    karaoke setlist controls. When ``False`` the karaoke screen
-    suppresses the chord strip and the live chord-follow highlight,
-    leaving a lyrics-only sing-along view.
-    """
     raw = (session_state or {}).get(KARAOKE_SHOW_CHORDS_KEY)
     if raw is None:
         return True
@@ -400,12 +625,6 @@ _LYRIC_COLOR_OPTIONS = ("white", "gold", "cyan", "cream")
 
 
 def lyric_color(session_state: Any) -> str:
-    """User preference: lyric color token. One of white/gold/cyan/cream.
-
-    Defaults to ``"white"`` (highest contrast on the dark panel).
-    Unknown / legacy values fall through to the default so a stale
-    session_state never breaks rendering.
-    """
     raw = (session_state or {}).get(KARAOKE_LYRIC_COLOR_KEY)
     token = str(raw or "").strip().lower()
     if token in _LYRIC_COLOR_OPTIONS:
@@ -413,17 +632,7 @@ def lyric_color(session_state: Any) -> str:
     return "white"
 
 
-# ---------------------------------------------------------------------------
-# Pending-advance flag (consumed at the top of the Backing page)
-# ---------------------------------------------------------------------------
-
-
 def request_advance(session_state: Any, *, reason: str = "user") -> None:
-    """Queue a karaoke advance to be applied **before** the next rerun's widgets.
-
-    ``reason`` is recorded in ``KARAOKE_TRANSITION_LABEL_KEY`` for the UI
-    (e.g. ``"audio_ended"`` -> "Next song", ``"user"`` -> "Continue").
-    """
     if not is_karaoke_session_active(session_state):
         return
     session_state[PENDING_KARAOKE_ADVANCE_KEY] = True
@@ -436,20 +645,13 @@ def request_advance(session_state: Any, *, reason: str = "user") -> None:
 
 
 def consume_pending_advance(session_state: Any) -> str | None:
-    """Apply a queued advance if one is pending.
-
-    Returns the new active ``pick_key`` (or ``None`` if no advance was
-    pending or the setlist just finished). Callers should run this at the
-    very top of the Backing Track / page-entry block, before any widget
-    rebuilds.
-    """
     if not session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, False):
         return None
     return advance_session(session_state)
 
 
 def note_song_ended(session_state: Any) -> None:
-    """Mark the currently performing song as finished (audio ``ended``)."""
+    """JS bridge / player marks the current track finished."""
     if not is_karaoke_session_active(session_state):
         return
     session_state[KARAOKE_SONG_ENDED_KEY] = True
@@ -457,30 +659,37 @@ def note_song_ended(session_state: Any) -> None:
         request_advance(session_state, reason="audio_ended")
 
 
-# ---------------------------------------------------------------------------
-# Voice-mode wording
-# ---------------------------------------------------------------------------
-
 _VOICE_WORDING: dict[str, dict[str, str]] = {
-    # key -> {default, voice}
-    "backing_page_title":    {"default": "Backing Track",                     "voice": "Vocal Performance Mode"},
+    "backing_page_title": {"default": "Backing Track", "voice": "Vocal Performance Mode"},
     "backing_page_subtitle": {
         "default": "Generate accompaniment matched to your active song - then play along.",
-        "voice":   "Sing along to a backing track shaped for your voice - phrasing, breath, and emotional delivery first.",
+        "voice": (
+            "Sing along to a backing track shaped for your voice - "
+            "phrasing, breath, and emotional delivery first."
+        ),
     },
-    "backing_kicker":        {"default": "Active song · Backing Track",      "voice": "Now Singing · Vocal Performance"},
-    "active_song_kicker":    {"default": "Active Song",                       "voice": "Now Singing"},
-    "queue_section_title":   {"default": "Performance Setlist",               "voice": "Karaoke Performance Setlist"},
-    "queue_empty_caption":   {
+    "backing_kicker": {
+        "default": "Active song · Backing Track",
+        "voice": "Now Singing · Vocal Performance",
+    },
+    "active_song_kicker": {"default": "Active Song", "voice": "Now Singing"},
+    "queue_section_title": {
+        "default": "Performance Setlist",
+        "voice": "Karaoke Performance Setlist",
+    },
+    "queue_empty_caption": {
         "default": "Add songs from the catalog below to build your setlist.",
-        "voice":   "Build your karaoke setlist - add songs from the catalog and they'll play in order.",
+        "voice": (
+            "Build your karaoke setlist — each entry keeps the Practice Key "
+            "from the sidebar at the moment you add it."
+        ),
     },
-    "add_to_queue_button":   {"default": "Add to Setlist",                    "voice": "Add to Karaoke Queue"},
-    "remove_from_queue":     {"default": "Remove",                            "voice": "Remove from Setlist"},
-    "start_session_button":  {"default": "Start Performance",                 "voice": "Start Karaoke Set"},
-    "stop_session_button":   {"default": "End Performance",                   "voice": "End Karaoke Set"},
-    "continue_button":       {"default": "Continue to next song",             "voice": "Continue to next song"},
-    "next_up_label":         {"default": "Up next",                           "voice": "Next on the setlist"},
+    "add_to_queue_button": {"default": "Add to Setlist", "voice": "Add to Karaoke Queue"},
+    "remove_from_queue": {"default": "Remove", "voice": "Remove from Setlist"},
+    "start_session_button": {"default": "Start Performance", "voice": "Start Karaoke Set"},
+    "stop_session_button": {"default": "End Performance", "voice": "End Karaoke Set"},
+    "continue_button": {"default": "Continue to next song", "voice": "Continue to next song"},
+    "next_up_label": {"default": "Up next", "voice": "Next on the setlist"},
 }
 
 
@@ -497,12 +706,7 @@ def voice_mode_modifier_classes(
     *,
     base: str = "",
 ) -> str:
-    """Return CSS modifier classes to layer on top of the base class string.
-
-    Adds ``" inst-voice"`` (so the existing ``studio_card_modifier_classes``
-    cascade still applies) and, when a karaoke session is active, also
-    ``" mode-karaoke"``.
-    """
+    """Return CSS modifier classes to layer on top of the base class string."""
     bits: list[str] = []
     if is_voice_mode(session_state):
         bits.append("inst-voice")
@@ -516,85 +720,47 @@ def voice_mode_modifier_classes(
     return joined
 
 
-# ---------------------------------------------------------------------------
-# Extension hooks for future features (intentional stubs)
-# ---------------------------------------------------------------------------
-
-
 def record_vocal_score(
     session_state: Any,
-    pick_key: str,
+    pick_key: str = "",
     *,
-    accuracy: float,
+    accuracy: float = 0.0,
     breath_score: float | None = None,
     phrasing_score: float | None = None,
-) -> None:  # pragma: no cover - stub for future pitch-tracking feature
-    """Reserved hook for vocal scoring / pitch tracking.
-
-    Once a pitch-tracking front-end is wired in, this can persist scores
-    keyed by ``pick_key`` so the Practice Log can show per-song karaoke
-    history. Currently a no-op.
-    """
+    **kwargs: Any,
+) -> None:
+    """Reserved hook for vocal scoring / pitch tracking (no-op)."""
     return None
 
 
 def set_vocal_focus_target(
     session_state: Any,
     *,
-    target: str | None,
-) -> None:  # pragma: no cover - stub for future vocal-focus feature
-    """Reserved hook for setting a vocal practice focus (breath / phrasing / range).
-
-    Currently a no-op - the focus list already lives in
-    ``practice_setup_controls.py``.
-    """
+    target: str | None = None,
+    **kwargs: Any,
+) -> None:
+    """Reserved hook for vocal practice focus (no-op)."""
     return None
 
 
-__all__ = (
-    "VOICE_INSTRUMENT_ALIASES",
-    "KARAOKE_QUEUE_KEY",
-    "KARAOKE_SESSION_ACTIVE_KEY",
-    "KARAOKE_SESSION_INDEX_KEY",
-    "KARAOKE_AUTO_ADVANCE_KEY",
-    "KARAOKE_COUNTDOWN_KEY",
-    "KARAOKE_COUNTDOWN_SECONDS_KEY",
-    "KARAOKE_SHOW_CHORDS_KEY",
-    "KARAOKE_LYRIC_COLOR_KEY",
-    "PENDING_KARAOKE_ADVANCE_KEY",
-    "PENDING_KARAOKE_AUTO_GENERATE_KEY",
-    "KARAOKE_SONG_ENDED_KEY",
-    "KARAOKE_TRANSITION_LABEL_KEY",
-    "is_voice_mode",
-    "is_karaoke_session_active",
-    "auto_advance_enabled",
-    "countdown_enabled",
-    "countdown_seconds",
-    "show_chords_enabled",
-    "lyric_color",
-    "session_position",
-    "current_session_pick_key",
-    "next_session_pick_key",
-    "previous_session_pick_key",
-    "upcoming_session_pick_keys",
-    "get_queue",
-    "queue_length",
-    "is_in_queue",
-    "add_to_queue",
-    "add_many_to_queue",
-    "remove_from_queue",
-    "move_in_queue",
-    "clear_queue",
-    "start_session",
-    "stop_session",
-    "advance_session",
-    "regress_session",
-    "request_advance",
-    "consume_pending_advance",
-    "consume_pending_auto_generate",
-    "note_song_ended",
-    "voice_wording",
-    "voice_mode_modifier_classes",
-    "record_vocal_score",
-    "set_vocal_focus_target",
-)
+def entry_display_line(entry: dict[str, Any] | None) -> str:
+    """Compact setlist label: Title — Practice Key (×N)."""
+    if not isinstance(entry, dict):
+        return ""
+    title = str(entry.get("title") or "").strip()
+    if not title:
+        pk = str(entry.get("pick_key") or "")
+        title = pk.split("\x1f", 1)[-1] if "\x1f" in pk else pk
+        if title.startswith("custom::"):
+            title = title.removeprefix("custom::").replace("_", " ")
+        if " — " in title:
+            title = title.split(" — ", 1)[0].strip()
+    key = str(entry.get("practice_key") or "").strip() or "?"
+    try:
+        plays = max(1, int(entry.get("play_count") or 1))
+    except (TypeError, ValueError):
+        plays = 1
+    base = f"{title} — Practice Key: {key}"
+    if plays > 1:
+        base = f"{base} — Play {plays}×"
+    return base

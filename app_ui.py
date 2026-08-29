@@ -7266,7 +7266,17 @@ def studio_song_meta_badges_html(
     if style:
         badges.append(studio_meta_badge("Style", style, tone="style", icon="✨"))
     if source:
-        badges.append(studio_meta_badge("Source", source, tone="source", icon="📀"))
+        source_text = str(source or "").strip()
+        source_l = source_text.lower()
+        if "custom" in source_l:
+            source_icon = FEATURE_ICONS.get("custom", "✍️")
+        elif "composition" in source_l or "compos" in source_l:
+            source_icon = FEATURE_ICONS.get("composition", "🪶")
+        elif "catalog" in source_l or "song selection" in source_l:
+            source_icon = FEATURE_ICONS.get("songs", "🎼")
+        else:
+            source_icon = "📀"
+        badges.append(studio_meta_badge("Source", source_text, tone="source", icon=source_icon))
     if not badges:
         return ""
     return f'<div class="ui-studio-meta-badges">{"".join(badges)}</div>'

@@ -100,46 +100,60 @@ def render_add_to_queue_button(
 ) -> bool:
     """Render an "Add to Karaoke Queue" button. Returns ``True`` if clicked.
 
-    Karaoke UI is voice-only: the button is suppressed for Piano /
-    Guitar / Bass / Sax / Trumpet / Drums and every other non-Voice
-    instrument so instrumentalists see the standard musician workflow
-    without any karaoke clutter.
-
-    Idempotent: a song already in the queue shows a calmer "In Setlist"
-    state instead of allowing duplicate adds.
+    Karaoke UI is voice-only. Duplicate songs are allowed — each add creates
+    a new setlist entry that snapshots the current Practice Key.
     """
     if not km.is_voice_mode(st.session_state):
         return False
-    already = km.is_in_queue(st.session_state, pick_key)
-    if already:
-        label = feature_label("karaoke", "In Karaoke Setlist")
+    copies = km.count_pick_key_in_queue(st.session_state, pick_key)
+    if copies:
+        label = feature_label("karaoke", f"Add again ({copies} in set)")
     else:
         label = feature_label("karaoke", "Add to Karaoke Set")
     clicked = st.button(
         label,
         key=f"karaoke_add_{key_suffix}",
         use_container_width=use_container_width,
-        disabled=already,
-        type="primary" if not already else "secondary",
+        type="primary",
         help=(
-            "Already queued for this karaoke set."
-            if already
-            else f"Queue '{title}' for your karaoke performance setlist."
+            "Add another copy of this song. The current sidebar Practice Key "
+            "is saved with this setlist entry."
+            if copies
+            else f"Queue '{title}' for your karaoke setlist. "
+            "The current Practice Key is saved with this entry."
         ),
     )
-    if clicked and not already:
-        km.add_to_queue(st.session_state, pick_key)
+    if clicked:
         display_title = str(title or "").strip()
+        display_artist = str(artist or "").strip()
         if pick_key.startswith("custom::"):
-            from songs.music_source import custom_display_title_for_pick_key
+            from songs.music_source import (
+                custom_display_artist_for_pick_key,
+                custom_display_title_for_pick_key,
+            )
 
             display_title = custom_display_title_for_pick_key(
                 st.session_state,
                 pick_key,
                 fallback_title=display_title,
             )
-        if display_title:
-            st.toast(f"Added '{display_title}' to the karaoke setlist.", icon=FEATURE_ICONS["karaoke"])
+            display_artist = custom_display_artist_for_pick_key(
+                st.session_state,
+                pick_key,
+                fallback_artist=display_artist,
+            )
+        entry = km.add_to_queue(
+            st.session_state,
+            pick_key,
+            title=display_title,
+            artist=display_artist,
+        )
+        if entry and display_title:
+            key_txt = str(entry.get("practice_key") or "?").strip()
+            st.toast(
+                f"Added '{display_title}' (Practice Key: {key_txt}) to the karaoke setlist.",
+                icon=FEATURE_ICONS["karaoke"],
+            )
     return bool(clicked)
 
 
@@ -217,6 +231,10 @@ def render_karaoke_setlist_panel(
             return
 
         st.caption(
+            "**Practice Key:** Use the Practice Key control in the left sidebar before adding a song. "
+            "The current Practice Key is saved with that Karaoke entry."
+        )
+        st.caption(
             "Click a song to make it the active editing/viewing song "
             "(lyrics, song card, backing defaults switch to it). "
             "Queue order and karaoke state stay untouched."
@@ -225,7 +243,8 @@ def render_karaoke_setlist_panel(
         # The "active editing/viewing" song = the master selection. We
         # surface a visual indicator next to whichever queue row matches
         # so the user always knows which row their edits will land on.
-        session_active_pk = km.current_session_pick_key(st.session_state)
+        session_active_entry = km.current_session_entry(st.session_state)
+        session_active_id = str((session_active_entry or {}).get("entry_id") or "")
         selected_pk = ""
         try:
             selected_pk = str(
@@ -234,19 +253,27 @@ def render_karaoke_setlist_panel(
         except Exception:
             selected_pk = ""
 
-        for idx, pick_key in enumerate(queue):
+        for idx, entry in enumerate(queue):
+            pick_key = str(entry.get("pick_key") or "")
+            entry_id = str(entry.get("entry_id") or f"idx{idx}")
             t, a = lookup_pick_key_label(
                 pick_key,
                 record_for_pick_key=record_for_pick_key,
                 all_records=all_records,
                 session_state=st.session_state,
             )
-            is_now_singing = pick_key == session_active_pk
+            if entry.get("title"):
+                t = str(entry.get("title") or t)
+            if entry.get("artist"):
+                a = str(entry.get("artist") or a)
+            practice_key = str(entry.get("practice_key") or "").strip() or "?"
+            try:
+                play_count = max(1, int(entry.get("play_count") or 1))
+            except (TypeError, ValueError):
+                play_count = 1
+            is_now_singing = bool(session_active_id and entry_id == session_active_id)
             is_editing = bool(selected_pk and pick_key == selected_pk)
 
-            # Status markers: "Now Singing" (karaoke session) takes
-            # priority over "Editing" (master selection) because
-            # performing trumps previewing in the user's mental model.
             if is_now_singing:
                 marker_text = "Now Singing"
                 marker_cls = "marker-singing"
@@ -268,27 +295,18 @@ def render_karaoke_setlist_panel(
                 else ""
             )
 
-            # Layout: queue # + title (wide) | up | down | remove.
-            # Each column emits a tiny wrapper div *before* its button
-            # so the CSS can target each control class precisely
-            # (compact pick button vs. square icon controls) without
-            # bleeding onto the action row at the bottom of the panel.
-            c_pick, c_up, c_dn, c_rm = st.columns([8, 1, 1, 1])
+            c_pick, c_plays, c_up, c_dn, c_rm = st.columns([6.5, 1.5, 1, 1, 1])
             with c_pick:
-                # Always emit the wrap so every row aligns vertically,
-                # even when no marker pill is shown. The pill sits
-                # above the button so the title text stays clean.
                 st.markdown(
                     f'<div class="ui-karaoke-pick-wrap {wrap_state}" '
                     f'data-row="{idx}">{marker_html}</div>',
                     unsafe_allow_html=True,
                 )
-                # Queue index renders as a small monospaced badge so
-                # the title reads as the dominant element of the row.
-                pick_label = f"{idx + 1:>2}.  {t}  —  {a}"
+                artist_bit = f"  —  {a}" if a else ""
+                pick_label = f"{idx + 1:>2}.  {t}{artist_bit}"
                 if st.button(
                     pick_label,
-                    key=f"karaoke_pick_{idx}_{pick_key}",
+                    key=f"karaoke_pick_{idx}_{entry_id}",
                     use_container_width=True,
                     type="primary" if is_editing else "secondary",
                     help=(
@@ -302,15 +320,26 @@ def render_karaoke_setlist_panel(
                         try:
                             on_pick_song(pick_key)
                         except Exception:
-                            # Last-resort fallback: at minimum write
-                            # the pick_key into session_state so the
-                            # rest of the app sees the selection.
                             st.session_state["selected_song"] = {
                                 "pick_key": pick_key,
                                 "title": t,
                                 "artist": a,
                             }
                         st.rerun()
+                st.caption(f"Practice Key: **{practice_key}**" + (f" · Play {play_count}×" if play_count > 1 else ""))
+            with c_plays:
+                new_plays = st.number_input(
+                    "×",
+                    min_value=1,
+                    max_value=8,
+                    value=play_count,
+                    key=f"karaoke_plays_{idx}_{entry_id}",
+                    label_visibility="collapsed",
+                    help="How many times to play this entry before advancing",
+                )
+                if int(new_plays) != play_count:
+                    km.set_entry_play_count(st.session_state, entry_id, int(new_plays))
+                    st.rerun()
             with c_up:
                 st.markdown(
                     '<div class="ui-karaoke-ctrl-wrap" data-action="up"></div>',
@@ -318,12 +347,12 @@ def render_karaoke_setlist_panel(
                 )
                 if st.button(
                     "↑",
-                    key=f"karaoke_up_{idx}_{pick_key}",
+                    key=f"karaoke_up_{idx}_{entry_id}",
                     use_container_width=True,
                     disabled=idx == 0,
                     help="Move earlier in the setlist",
                 ):
-                    km.move_in_queue(st.session_state, pick_key, -1)
+                    km.move_entry_at(st.session_state, idx, -1)
                     st.rerun()
             with c_dn:
                 st.markdown(
@@ -332,12 +361,12 @@ def render_karaoke_setlist_panel(
                 )
                 if st.button(
                     "↓",
-                    key=f"karaoke_dn_{idx}_{pick_key}",
+                    key=f"karaoke_dn_{idx}_{entry_id}",
                     use_container_width=True,
                     disabled=idx == len(queue) - 1,
                     help="Move later in the setlist",
                 ):
-                    km.move_in_queue(st.session_state, pick_key, +1)
+                    km.move_entry_at(st.session_state, idx, +1)
                     st.rerun()
             with c_rm:
                 st.markdown(
@@ -346,11 +375,11 @@ def render_karaoke_setlist_panel(
                 )
                 if st.button(
                     "✕",
-                    key=f"karaoke_rm_{idx}_{pick_key}",
+                    key=f"karaoke_rm_{idx}_{entry_id}",
                     use_container_width=True,
-                    help="Remove from setlist",
+                    help="Remove this setlist entry",
                 ):
-                    km.remove_from_queue(st.session_state, pick_key)
+                    km.remove_entry_at(st.session_state, idx)
                     st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
