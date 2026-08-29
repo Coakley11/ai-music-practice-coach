@@ -1681,23 +1681,26 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     chords_flat = session.get("improv_mission_chord_options")
     idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
     target_chord = ""
-    if isinstance(chords_flat, list) and chords_flat:
-        idx = max(0, min(idx, len(chords_flat) - 1))
-        target_chord = str(chords_flat[idx] or "").strip()
-    if not target_chord:
-        target_chord = str(session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or "").strip()
-
-    # Keep canonical concert identity for theory; player-facing progression for
-    # Mission Backing display must follow the preserved Instrument/Shape context.
-    canonical_target = target_chord
+    canonical_target = ""
     try:
         from creative_chord_selection_authority import read_authoritative_mission_chord_selection
 
         auth_ch, _auth_sec, _auth_idx = read_authoritative_mission_chord_selection(session)
         if auth_ch:
-            canonical_target = str(auth_ch).strip() or canonical_target
+            canonical_target = str(auth_ch).strip()
     except ImportError:
         pass
+    if not canonical_target:
+        canonical_target = str(
+            session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or ""
+        ).strip()
+    if not canonical_target and isinstance(chords_flat, list) and chords_flat:
+        idx = max(0, min(idx, len(chords_flat) - 1))
+        canonical_target = str(chords_flat[idx] or "").strip()
+    target_chord = canonical_target
+
+    # Keep canonical concert identity for theory; player-facing progression for
+    # Mission Backing display must follow the preserved Instrument/Shape context.
     try:
         from effective_practice_context import musician_facing_chart_key, musician_facing_chord
 
@@ -1757,6 +1760,9 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         progression_label = target_chord
     else:
         progression_label = mission_id or "Mission"
+
+    if not str(session.get("_mission_backing_opened_pk") or "").strip():
+        session["_mission_backing_opened_pk"] = str(concert_key or display_key or key or "").strip()
 
     try:
         from musical_context_authority import resolve_authoritative_practice_key
@@ -2144,6 +2150,8 @@ def format_backing_context_banner(
     *,
     practice_concert_key: str = "",
     applied_bpm: int | None = None,
+    mission_chord: str = "",
+    header_from_key: str = "",
 ) -> str:
     if ctx is None:
         return ""
@@ -2180,10 +2188,23 @@ def format_backing_context_banner(
             parts.append(ctx.song_title)
         if ctx.section:
             parts.append(ctx.section)
-        if ctx.progression:
-            parts.append(ctx.progression[0])
-        elif ctx.progression_label:
-            parts.append(ctx.progression_label)
+        frozen = str(ctx.progression[0] if ctx.progression else ctx.progression_label or "").strip()
+        live_key = str(resolved_concert or "").strip()
+        from_key = str(header_from_key or ctx.key or ctx.concert_key or "").strip()
+        chord = str(mission_chord or "").strip()
+        if not chord:
+            chord = frozen
+            if frozen and from_key and live_key and from_key != live_key:
+                try:
+                    from music_theory import semitone_distance, transpose_chord
+
+                    steps = semitone_distance(from_key, live_key)
+                    if steps:
+                        chord = transpose_chord(frozen, steps, reference_key=live_key)
+                except Exception:
+                    pass
+        if chord:
+            parts.append(chord)
         concert = resolved_concert or str(ctx.concert_key or ctx.display_key or "").strip()
         if concert:
             parts.append(f"Concert {concert}")

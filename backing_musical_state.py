@@ -167,6 +167,9 @@ def _resolve_creative_practice_concert_key(
                 session["concert_key"] = chosen
                 return chosen
         if is_custom_sbi:
+            visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
+            if visit:
+                return visit
             custom_pick = str(resolve_settings_pick_for_write(session) or "").strip()
             if not custom_pick.startswith("custom::"):
                 custom_pick = str(getattr(creative, "active_song_id", "") or "").strip()

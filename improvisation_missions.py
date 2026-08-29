@@ -1015,6 +1015,9 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
     dest = str(to_key or "").strip()
     if not src or not dest or src == dest or not isinstance(raw, dict):
         return None
+    already = str(raw.get("concert_key") or raw.get("display_key") or "").strip()
+    if already == dest:
+        return None
     from music_theory import semitone_distance, transpose_chord
     from improvisation_motif import _midi_from_note, _note_from_midi
 

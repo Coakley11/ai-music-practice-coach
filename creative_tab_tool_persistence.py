@@ -607,7 +607,24 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
         if not val:
             continue
         widget = str(spec["widget"])
-        if overwrite or not str(session.get(widget) or "").strip():
+        live_widget = str(session.get(widget) or "").strip()
+        live_preview = str(session.get("sbi_preview_source") or "").strip()
+        keep_custom = (
+            canon_key == "improv_song_source"
+            and val != "Custom progression"
+            and (
+                live_widget == "Custom progression"
+                or live_preview == "Custom progression"
+                or bool(session.get("_restore_sbi_custom_source"))
+            )
+        )
+        if keep_custom:
+            if not session.get("_sbi_song_source_hydrated"):
+                session[widget] = "Custom progression"
+                for mirror in spec.get("mirrors", ()):
+                    session[mirror] = "Custom progression"
+            continue
+        if overwrite or not live_widget:
             session[widget] = val
         for mirror in spec.get("mirrors", ()):
             if overwrite or not str(session.get(mirror) or "").strip():

@@ -380,6 +380,11 @@ def apply_improv_song_source(
         except ImportError:
             pass
         session_state[PENDING_IMPROV_SONG_SOURCE] = src
+        if src == "Active song":
+            session_state.pop("_sbi_custom_visit_pk", None)
+            session_state.pop("_restore_sbi_custom_source", None)
+        elif src == "Custom progression":
+            session_state["_restore_sbi_custom_source"] = True
         return
     session_state["improv_song_source"] = src
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
@@ -389,6 +394,11 @@ def apply_improv_song_source(
         set_sbi_preview_source(session_state, src)
     except ImportError:
         pass
+    if src == "Active song":
+        session_state.pop("_sbi_custom_visit_pk", None)
+        session_state.pop("_restore_sbi_custom_source", None)
+    elif src == "Custom progression":
+        session_state["_restore_sbi_custom_source"] = True
     # Preview tab only — do not call set_custom_source / set_catalog_source.
 
 

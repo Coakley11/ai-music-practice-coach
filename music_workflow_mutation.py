@@ -899,6 +899,7 @@ def _reconcile_key_dependent_state(
                 if c_sym:
                     click = dict(click)
                     click["chord"] = transpose_chord(c_sym, steps, reference_key=new_key)
+                    click["practice_key"] = new_key
                     session["_mission_chord_click_authority"] = click
             label = str(session.get("ii_selected_chord_label") or "").strip()
             if " · " in label:

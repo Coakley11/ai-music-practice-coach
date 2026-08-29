@@ -1682,7 +1682,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     new,
                     default_mode=default_mode,
                 )
-                from_key = str(session.pop("_mission_pk_transpose_from", "") or "").strip()
+                from_key = str(session.get("_mission_pk_transpose_from") or "").strip()
                 if not from_key:
                     try:
                         from improvisation_missions import MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY
@@ -1710,6 +1710,18 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     )
                     mutated = bool(result.ok)
                     if mutated:
+                        try:
+                            raw_ctx = session.get("backing_context")
+                            live_ch = str(session.get("ii_selected_chord") or "").strip()
+                            if isinstance(raw_ctx, dict) and str(raw_ctx.get("source") or "") == "mission":
+                                prog = [str(c) for c in (raw_ctx.get("progression") or []) if str(c).strip()]
+                                if live_ch:
+                                    raw_ctx["progression"] = [live_ch] + prog[1:]
+                                raw_ctx["concert_key"] = new
+                                raw_ctx["display_key"] = new
+                                raw_ctx["key"] = new
+                        except Exception:
+                            pass
                         finalize_sidebar_song_practice_key_after_mutation(
                             session, new, st_like=st_like
                         )
@@ -1741,6 +1753,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                                 click["chord"] = transpose_chord(
                                     str(click.get("chord")), steps, reference_key=new
                                 )
+                                click["practice_key"] = new
                                 session["_mission_chord_click_authority"] = click
                     except Exception:
                         pass
@@ -1982,18 +1995,24 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             and str(session.get("studio_page") or "").strip().lower() in {"creative", "backing"}
         ):
             session["concert_key"] = new
+            session["_sbi_custom_visit_pk"] = new
+            session["_sbi_custom_last_visit_pk"] = new
             try:
-                from songs.practice_key_state import resolve_settings_pick_for_write, set_practice_concert_key
-
-                # Custom SBI preview: write LAST_CUSTOM sticky — never Shape/catalog GA.
-                set_practice_concert_key(
-                    session,
-                    new,
-                    pick_key=resolve_settings_pick_for_write(session),
+                from songs.music_source import custom_progression_is_active
+                from songs.practice_key_state import (
+                    resolve_settings_pick_for_write,
+                    set_practice_concert_key,
                 )
+
+                if custom_progression_is_active(session):
+                    set_practice_concert_key(
+                        session,
+                        new,
+                        pick_key=resolve_settings_pick_for_write(session),
+                    )
+                    session["cpl_last_display_key"] = new
             except ImportError:
                 pass
-            session["cpl_last_display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
             return

@@ -95,7 +95,7 @@ class TestGeneratorIsolation(unittest.TestCase):
         set_backing_context(session, ctx)
         actions, _ = build_backing_nav_actions(session)
         labels = [a.label for a in actions]
-        self.assertTrue(any("Return to Catalog Song Backing" in l for l in labels))
+        self.assertTrue(any("Return to Regular Catalog Song Backing" in l for l in labels))
         self.assertFalse(any(l.lower().startswith("use catalog song backing") for l in labels))
 
 

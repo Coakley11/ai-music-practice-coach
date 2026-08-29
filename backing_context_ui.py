@@ -144,10 +144,29 @@ def render_backing_context_banner(
             live_bpm = None
 
     state = resolve_current_backing_musical_state(session, applied_bpm=live_bpm)
+    mission_chord = ""
+    if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+        try:
+            from mission_projection_state import resolve_mission_projection_state
+
+            sm = session.get("_improv_mission_section_map")
+            if not isinstance(sm, list):
+                from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                sm = read_mission_section_map_from_session(session)
+            proj = resolve_mission_projection_state(
+                session,
+                section_map=sm if isinstance(sm, list) else None,
+                fallback_key=str(state.practice_concert_key or ctx.concert_key or "C"),
+            )
+            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
+        except Exception:
+            mission_chord = str(session.get("ii_selected_chord") or "").strip()
     label = format_backing_context_banner(
         ctx,
         practice_concert_key=state.practice_concert_key,
         applied_bpm=int(live_bpm or state.applied_bpm or 0) or None,
+        mission_chord=mission_chord,
     )
     if not label:
         return False
@@ -210,11 +229,11 @@ def render_backing_creative_context_card(
                 section_map=sm if isinstance(sm, list) else None,
                 fallback_key=str(practice_key or ctx.concert_key or "C"),
             )
-            mission_chord = str(proj.display_chord or "").strip()
+            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
         except ImportError:
             mission_chord = ""
         if not mission_chord:
-            # Prefer live selected display chord over sealed ctx progression (stale Gm).
+            # Prefer live selected concert identity over sealed ctx progression.
             mission_chord = str(
                 session.get("ii_selected_chord")
                 or (ctx.progression[0] if ctx.progression else "")

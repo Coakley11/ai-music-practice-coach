@@ -3297,7 +3297,7 @@ def merge_live_practice_into_creative_session(
 def return_to_catalog_song_backing_label(*, custom: bool = False) -> str:
     if custom:
         return "🎧 Return to Custom Song Backing"
-    return "🎧 Return to Catalog Song Backing"
+    return "🎧 Return to Regular Catalog Song Backing"
 
 
 def return_to_source_button_label(ctx: BackingContext | None) -> str:

@@ -536,33 +536,37 @@ def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> 
     if not home_sections:
         return {}
     original = str(custom_original_key(active) or "C").strip() or "C"
-    practice = ""
-    try:
-        from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
-
-        practice = str(overlay_destination_practice_key(session) or "").strip()
-    except ImportError:
-        practice = ""
+    practice = str(session.get("_sbi_custom_visit_pk") or "").strip()
     if not practice:
         try:
-            from music_workflow_song_practice import resolve_song_practice_key_token
+            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
 
-            practice = str(resolve_song_practice_key_token(session) or "").strip()
+            practice = str(overlay_destination_practice_key(session) or "").strip()
         except ImportError:
-            practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            practice = ""
+        if not practice:
+            try:
+                from music_workflow_song_practice import resolve_song_practice_key_token
+
+                practice = str(resolve_song_practice_key_token(session) or "").strip()
+            except ImportError:
+                practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if not practice:
+            practice = original
+        try:
+            from songs.music_source import custom_pick_key_for, custom_progression_is_active
+            from songs.practice_key_state import get_practice_concert_key
+
+            if custom_progression_is_active(session):
+                pick = str(custom_pick_key_for(active) or "").strip()
+                if pick.startswith("custom::"):
+                    sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+                    if sticky:
+                        practice = sticky
+        except ImportError:
+            pass
     if not practice:
         practice = original
-    try:
-        from songs.music_source import custom_pick_key_for
-        from songs.practice_key_state import get_practice_concert_key
-
-        pick = str(custom_pick_key_for(active) or "").strip()
-        if pick.startswith("custom::"):
-            sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
-            if sticky:
-                practice = sticky
-    except ImportError:
-        pass
     base = {str(k): [str(c) for c in v if str(c).strip()] for k, v in home_sections.items() if v}
     if not base:
         return {}

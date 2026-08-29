@@ -490,29 +490,30 @@ def render_custom_progression_lab_page() -> None:
             pass
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
         _save(_home_sections(), persist=False)
-        n1, n2, n3 = st.columns(3)
-        with n1:
-            st.button(
-                "Save to library",
-                key="cpl_save_prog",
-                use_container_width=True,
-                on_click=cpl_on_save_library_callback,
-            )
-        with n2:
-            st.button(
-                "New song",
-                key="cpl_start_new",
-                use_container_width=True,
-                on_click=cpl_on_new_song_callback,
-            )
-        with n3:
-            if st.button(
-                "Set as Active Song",
-                key="cpl_set_active",
-                type="primary",
-                use_container_width=True,
-            ):
-                _activate_custom_song()
+        if not finished:
+            n1, n2, n3 = st.columns(3)
+            with n1:
+                st.button(
+                    "Save to library",
+                    key="cpl_save_prog",
+                    use_container_width=True,
+                    on_click=cpl_on_save_library_callback,
+                )
+            with n2:
+                st.button(
+                    "New song",
+                    key="cpl_start_new",
+                    use_container_width=True,
+                    on_click=cpl_on_new_song_callback,
+                )
+            with n3:
+                if st.button(
+                    "Set as Active Song",
+                    key="cpl_set_active",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _activate_custom_song()
         _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
         if _save_flash:
             if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
@@ -618,7 +619,7 @@ def render_custom_progression_lab_page() -> None:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
             st.markdown("**Open**")
-            go_p, go_s = st.columns(2)
+            go_p, go_s, go_b = st.columns(3)
             with go_p:
                 if st.button(
                     nav_icon_button_label("practice"),
@@ -634,8 +635,16 @@ def render_custom_progression_lab_page() -> None:
                     use_container_width=True,
                 ):
                     _go_songs()
+            with go_b:
+                if st.button(
+                    nav_icon_button_label("backing"),
+                    key="cpl_to_backing_finish",
+                    use_container_width=True,
+                    disabled=not has_chords,
+                ):
+                    _open_backing()
 
-            launch = st.columns([1, 1, 1])
+            launch = st.columns(2)
             with launch[0]:
                 if st.button(
                     "Set as Active Song",
@@ -645,15 +654,7 @@ def render_custom_progression_lab_page() -> None:
                 ):
                     _activate_custom_song()
             with launch[1]:
-                if st.button(
-                    nav_icon_button_label("backing"),
-                    key="cpl_to_backing_finish",
-                    use_container_width=True,
-                    disabled=not has_chords,
-                ):
-                    _open_backing()
-            with launch[2]:
-                if st.button("Keep editing", key="cpl_unfinish", use_container_width=True):
+                if st.button("Keep Editing", key="cpl_unfinish", use_container_width=True):
                     st.session_state["cpl_finished"] = False
                     st.rerun()
 
@@ -929,7 +930,11 @@ def render_custom_progression_lab_page() -> None:
                 t = str(token or "").strip().lower()
                 return "minor" if t.endswith("m") and not t.endswith("emaj") else "major"
 
-        seed_cpl_presets_key_widget(st.session_state, practice_key)
+        seed_cpl_presets_key_widget(
+            st.session_state,
+            practice_key,
+            song_sig=str(active.get("id") or active.get("name") or ""),
+        )
         preset_opts = list(_preset_key_options(original_key) or [original_key])
         live_presets = str(st.session_state.get(CPL_PRESETS_KEY_WIDGET) or practice_key).strip()
         if live_presets not in preset_opts:
@@ -943,12 +948,6 @@ def render_custom_progression_lab_page() -> None:
             if not tok:
                 return
             st.session_state[CPL_PRESETS_SEEDED_FROM_KEY] = tok
-            sync_custom_workspace_practice_key(
-                st.session_state,
-                practice_key=tok,
-                active=cpl_active_from_session(st.session_state),
-                source="cpl_presets_key",
-            )
 
         st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
         st.markdown("**Presets**")
@@ -957,15 +956,15 @@ def render_custom_progression_lab_page() -> None:
             preset_opts,
             format_func=format_key_label,
             key=CPL_PRESETS_KEY_WIDGET,
-            help="Transpose preset previews in this Custom song's major/minor family. "
-            "Follows the Custom workspace — not the Catalog Global Active song.",
+            help="Local construction key for preset buttons only. "
+            "Does not change this song's Practice / Concert Key.",
             on_change=_on_presets_key_change,
         )
         presets_key = str(st.session_state.get(CPL_PRESETS_KEY_WIDGET) or practice_key).strip() or practice_key
         presets_label = format_key_label(presets_key)
         st.caption(
-            f"Preset buttons and preview chords use **{presets_label}** "
-            f"(Custom Practice Key family from Original {original_label})."
+            f"Preset buttons use **{presets_label}**. "
+            f"Song Practice Key stays **{preview_label}**."
         )
 
         if demo_presets:
@@ -989,7 +988,7 @@ def render_custom_progression_lab_page() -> None:
                 .replace("♭", "b")
                 .replace("♯", "s")
             )
-            st.markdown(f"**{style} presets** ({presets_label}) — fills {edit_section} only")
+            st.markdown(f"**{style} presets** ({presets_label}) — appends to {edit_section}")
             for preset_id, spec in style_presets.items():
                 label = preset_button_label(preset_id, presets_key, spec)
                 if st.button(
@@ -1000,9 +999,10 @@ def render_custom_progression_lab_page() -> None:
                     practice_entries = build_style_preset_entries(
                         style, preset_id, presets_key
                     )
-                    home_sections[edit_section] = practice_entries_to_original_key(
+                    appended = practice_entries_to_original_key(
                         practice_entries, presets_key, original_key
                     )
+                    home_sections[edit_section] = list(home_entries) + list(appended)
                     cpl_clear_pending_chord(st.session_state, edit_section)
                     if home_sections[edit_section]:
                         st.session_state[last_bars_key] = int(

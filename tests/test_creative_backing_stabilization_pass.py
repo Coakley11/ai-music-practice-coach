@@ -274,7 +274,21 @@ class TestPracticeKeyTransposesMissionExample(unittest.TestCase):
         raw = session[MISSION_EXAMPLE_KEY]
         self.assertEqual(raw["chord"], "Em")
         self.assertEqual(raw["motif"]["notes"][0][0], "E")
-        self.assertEqual(raw.get("abc"), "")
+
+    def test_second_bm_to_cm_call_does_not_double_transpose(self) -> None:
+        session = {
+            MISSION_EXAMPLE_KEY: {
+                "chord": "C#m",
+                "concert_key": "Bm",
+                "display_key": "Bm",
+                "motif": {"notes": ["C#", "E", "G#"], "chord": "C#m", "display": "C# – E – G#"},
+            }
+        }
+        self.assertTrue(transpose_stored_mission_example(session, from_key="Bm", to_key="Cm"))
+        self.assertEqual(session[MISSION_EXAMPLE_KEY]["chord"], "Dm")
+        again = transpose_stored_mission_example(session, from_key="Bm", to_key="Cm")
+        self.assertFalse(again)
+        self.assertEqual(session[MISSION_EXAMPLE_KEY]["chord"], "Dm")
 
     def test_transpose_also_updates_mission_practice_lick(self) -> None:
         from improvisation_missions import MISSION_PRACTICE_LICK_KEY
@@ -308,7 +322,8 @@ class TestPracticeKeyTransposesMissionExample(unittest.TestCase):
         self.assertEqual(lick["chord"], "Em")
         self.assertEqual(lick["key_center"], "Bm")
         self.assertEqual(lick["motif"]["notes"][0][0], "E")
-        self.assertEqual(lick.get("abc"), "")
+        self.assertNotEqual(lick.get("abc"), "legacy-lick")
+        self.assertIn("Em", str(lick.get("abc") or ""))
         self.assertEqual(lick["motif"]["midi"][0], 64)
 
 

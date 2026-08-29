@@ -685,18 +685,23 @@ def _token_is_catalog_bleed(
     return tok == cat
 
 
-def seed_cpl_presets_key_widget(session_state: dict, practice_key: str) -> str:
-    """Align the in-page Presets key dropdown with Custom Practice Key.
+def seed_cpl_presets_key_widget(session_state: dict, practice_key: str, *, song_sig: str = "") -> str:
+    """Seed the Presets construction key once per song. Never writes song Practice Key.
 
-    Does not overwrite a user click on this run: Streamlit already persisted the
-    new ``cpl_presets_key`` while ``practice_key`` still holds the prior sidebar
-    value until the next rerun.
+    Changing Presets key later must not follow (or overwrite) the song Practice Key.
     """
     pk = str(practice_key or "").strip() or "C"
-    seeded_from = str(session_state.get(CPL_PRESETS_SEEDED_FROM_KEY) or "").strip()
-    if seeded_from != pk:
+    sig = str(song_sig or "").strip()
+    last_sig = str(session_state.get("_cpl_presets_song_sig") or "").strip()
+    if sig and last_sig != sig:
         session_state[CPL_PRESETS_KEY_WIDGET] = pk
         session_state[CPL_PRESETS_SEEDED_FROM_KEY] = pk
+        session_state["_cpl_presets_song_sig"] = sig
+    elif CPL_PRESETS_KEY_WIDGET not in session_state:
+        session_state[CPL_PRESETS_KEY_WIDGET] = pk
+        session_state[CPL_PRESETS_SEEDED_FROM_KEY] = pk
+        if sig:
+            session_state["_cpl_presets_song_sig"] = sig
     return str(session_state.get(CPL_PRESETS_KEY_WIDGET) or pk).strip() or pk
 
 
@@ -893,17 +898,24 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         original_just_changed = False
 
     force_seed_widget = False
-    force_home = str(session.pop("_cpl_force_pk_to_home", None) or "").strip()
-    if pending_custom_s:
+    force_home = str(session.get("_cpl_force_pk_to_home") or "").strip()
+    visit_pk = str(
+        session.get("_sbi_custom_visit_pk") or session.get("_sbi_custom_last_visit_pk") or ""
+    ).strip()
+    if pending_custom_s and visit_pk and pending_custom_s == visit_pk:
+        pending_custom_s = ""
+    if force_home:
+        selected = force_home
+        force_seed_widget = True
+        session.pop("_cpl_force_pk_to_home", None)
+    elif pending_custom_s:
         # Mid-run Original Key / New song deferred commit (widget was already live).
         # User Practice Key clicks clear this pending in on_change so they are not wiped.
         selected = pending_custom_s
         force_seed_widget = True
+        session.pop("_cpl_force_pk_to_home", None)
     elif original_just_changed:
         selected = widget_home
-        force_seed_widget = True
-    elif force_home:
-        selected = force_home
         force_seed_widget = True
     elif identity_changed:
         # New Custom song/identity must not keep the prior song's live Practice Key
@@ -913,7 +925,10 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     elif live and live in options:
         # Prefer Custom sticky when global/live still holds the sealed catalog PK
         # (Shape Bm / Dm / F). A Custom transpose (D→E) must not snap back to home.
-        if sticky and live != sticky and (
+        if visit_pk and live == visit_pk:
+            selected = sticky or home
+            force_seed_widget = True
+        elif sticky and live != sticky and (
             (catalog_token and live == catalog_token)
             or _token_is_catalog_bleed(
                 live,
@@ -938,6 +953,20 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     else:
         selected = sticky or home or live
         force_seed_widget = True
+
+    if not custom_is_ga and visit_pk and selected:
+        try:
+            from music_theory import split_key_center
+
+            visit_tonic = str(split_key_center(visit_pk)[0] or "").strip().lower()
+            sel_tonic = str(split_key_center(selected)[0] or "").strip().lower()
+            if visit_tonic and sel_tonic == visit_tonic:
+                selected = sticky if sticky and str(split_key_center(sticky)[0] or "").strip().lower() != visit_tonic else home
+                force_seed_widget = True
+        except Exception:
+            if selected == visit_pk:
+                selected = home
+                force_seed_widget = True
 
     if not custom_is_ga and selected and selected not in {sticky, home, live_widget, pending_custom_s} and (
         bool(catalog_token)
@@ -1011,7 +1040,8 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
         session[PENDING_DISPLAY_KEY] = selected
-        _apply_display_key_before_widget(st, selected, source="custom_workspace_sidebar")
+        if custom_is_ga:
+            _apply_display_key_before_widget(st, selected, source="custom_workspace_sidebar")
     except Exception:
         pass
     return options

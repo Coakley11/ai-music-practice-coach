@@ -320,6 +320,35 @@ class TestCustomPracticeKeyProjection(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "C")
         self.assertEqual(cpl_draft_written_key(session["cpl_active_progression"]), "C")
 
+    def test_sbi_visit_c_does_not_seed_custom_workspace_as_c_minor(self) -> None:
+        from types import SimpleNamespace
+
+        from custom_progression_lab import (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            prepare_custom_workspace_sidebar_display_key,
+        )
+
+        session: dict = {
+            "studio_page": "custom",
+            "display_key": "C",
+            "concert_key": "C",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Pop::Shape of You — Ed Sheeran",
+            "practice_key_by_source": {"Pop::Shape of You — Ed Sheeran": "Bm"},
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET: "C",
+            "_sbi_custom_last_visit_pk": "C",
+        }
+        song = start_new_progression()
+        song["name"] = "Trial Song"
+        song["original_key_center"] = "D"
+        song["user_locked_home_key"] = True
+        apply_cpl_session_progression(session, song, reset_display_key=False)
+        st = SimpleNamespace(session_state=session)
+        prepare_custom_workspace_sidebar_display_key(st, session)
+        pk = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or session.get("display_key") or "")
+        self.assertTrue(pk.startswith("D"), pk)
+        self.assertNotIn("m", pk.lower().replace("major", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

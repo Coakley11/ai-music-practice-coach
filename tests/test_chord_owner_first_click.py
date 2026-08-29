@@ -5,6 +5,15 @@ from __future__ import annotations
 import unittest
 
 
+class TestPracticeKeyIdentityTranspose(unittest.TestCase):
+    def test_bm_to_cm_is_plus_one(self) -> None:
+        from creative_chord_selection_authority import transpose_chord_identity
+
+        self.assertEqual(transpose_chord_identity("C#m", "Bm", "Cm"), "Dm")
+        self.assertEqual(transpose_chord_identity("F#", "Bm", "Cm"), "G")
+        self.assertNotEqual(transpose_chord_identity("F#", "Bm", "Cm"), "Bb")
+
+
 class TestClickSymbolBeatsStaleIndex(unittest.TestCase):
     def test_resolve_prefers_clicked_bb_over_index_g(self) -> None:
         from creative_chord_selection_authority import resolve_authoritative_chord_selection
@@ -48,6 +57,86 @@ class TestClickSymbolBeatsStaleIndex(unittest.TestCase):
         self.assertEqual(proj.concert_chord, "Bb")
         self.assertEqual(session.get("ii_selected_chord"), "Bb")
         self.assertEqual(int(session.get("ii_selected_chord_index") or -1), 1)
+
+    def test_stale_csm_click_becomes_dm_after_key_transpose(self) -> None:
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+        section_map = [("Verse", ["Dm", "Gm", "Bb", "C"])]
+        session = {
+            "ii_selected_chord": "C#m",
+            "ii_selected_section": "Verse",
+            "ii_selected_chord_index": 0,
+            "_mission_chord_click_authority": {
+                "chord": "C#m",
+                "section": "Verse",
+                "chord_index": 0,
+            },
+        }
+        sym, sec, idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertEqual(sec, "Verse")
+        self.assertEqual(idx, 0)
+
+    def test_click_pk_mismatch_transposes_identity_not_index(self) -> None:
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+        section_map = [("Verse", ["Dm", "Gm", "Bb", "C"])]
+        session = {
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "ii_selected_chord": "C#m",
+            "ii_selected_section": "Verse",
+            "ii_selected_chord_index": 0,
+            "_mission_chord_click_authority": {
+                "chord": "C#m",
+                "section": "Verse",
+                "chord_index": 0,
+                "practice_key": "Bm",
+            },
+        }
+        sym, sec, idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertEqual(sec, "Verse")
+        self.assertEqual(idx, 0)
+
+    def test_click_pk_mismatch_fsharp_becomes_g_not_bb(self) -> None:
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+        # Regenerated Cm flattening: index 3 is Bb (was A at Bm). Selected F# must
+        # become G (+1), not the neighbor at the sticky index.
+        section_map = [("Verse 1", ["Cm", "Fm", "Ab", "Bb"])]
+        session = {
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "ii_selected_chord": "F#",
+            "ii_selected_section": "Verse 1",
+            "ii_selected_chord_index": 3,
+            "_mission_chord_click_authority": {
+                "chord": "F#",
+                "section": "Verse 1",
+                "chord_index": 3,
+                "practice_key": "Bm",
+            },
+        }
+        sym, sec, idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertEqual(sym, "G")
+        self.assertEqual(sec, "Verse 1")
+        self.assertNotEqual(sym, "Bb")
+
+    def test_write_keeps_identity_when_symbol_missing_from_map(self) -> None:
+        from creative_chord_selection_authority import write_authoritative_chord_selection
+
+        section_map = [("Verse 1", ["Cm", "Fm", "Ab", "Bb"])]
+        session = {"display_key": "Cm", "concert_key": "Cm"}
+        write_authoritative_chord_selection(
+            session,
+            section_map,
+            chord_symbol="G",
+            section_label="Verse 1",
+            chord_index=3,
+        )
+        self.assertEqual(session.get("ii_selected_chord"), "G")
+        self.assertEqual(session.get("_mission_chord_click_authority", {}).get("chord"), "G")
 
 
 class TestClickSurvivesStaleChordOptions(unittest.TestCase):

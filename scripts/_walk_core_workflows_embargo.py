@@ -261,8 +261,6 @@ def open_sbi_active(page: Page) -> bool:
                   || /active song/i.test(l.innerText||''));
                 if (!active) continue;
                 active.scrollIntoView({block:'center'});
-                const input = active.querySelector('input[type=radio]');
-                if (input) { input.click(); return 'input'; }
                 active.click();
                 return 'label';
               }

@@ -9138,19 +9138,18 @@ def _render_backing_return_source_action() -> None:
                     _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
-                    navigate_to_regular_backing(st.session_state, st_like=st)
                     try:
-                        from music_app_rerun import request_app_rerun, request_app_stop
-
-                        request_app_rerun(
-                            st,
-                            st.session_state,
-                            reason="return_regular_backing_click",
-                            stage="post_restore",
+                        from backing_source_navigation import (
+                            release_specialized_backing_for_generic_navigation,
                         )
-                        request_app_stop(st, st.session_state, reason="return_regular_backing_stop")
+
+                        release_specialized_backing_for_generic_navigation(
+                            st.session_state, st_like=st
+                        )
                     except ImportError:
-                        st.rerun()
+                        pass
+                    navigate_to_regular_backing(st.session_state, st_like=st)
+                    st.rerun()
             elif action.action_id == "return_song_catalog":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
@@ -10275,6 +10274,8 @@ try:
 except ImportError:
     pass
 
+_sbi_custom_sidebar = False
+_custom_ga_sidebar = False
 try:
     from backing_musical_state import should_skip_regular_song_defaults
     from creative_key_sync import (
@@ -10323,8 +10324,6 @@ try:
             pass
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
     else:
-        _sbi_custom_sidebar = False
-        _custom_ga_sidebar = False
         try:
             from songs.music_source import custom_progression_is_active
 
@@ -15728,6 +15727,53 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_go_custom_progression() -> None:
+        try:
+            from source_session_state import set_sbi_preview_source
+            from studio_page_state import PENDING_IMPROV_SONG_SOURCE
+
+            set_sbi_preview_source(st.session_state, "Custom progression")
+            st.session_state[PENDING_IMPROV_SONG_SOURCE] = "Custom progression"
+            st.session_state["_sbi_song_source_hydrated"] = False
+            st.session_state["improv_song_source"] = "Custom progression"
+            st.session_state["_restore_sbi_custom_source"] = True
+            visit_pk = str(st.session_state.get("_sbi_custom_visit_pk") or "").strip()
+            if visit_pk:
+                st.session_state["_sbi_custom_last_visit_pk"] = visit_pk
+            # Temporary SBI Custom visit PK must not become the Custom workspace key.
+            st.session_state.pop("_sbi_custom_visit_pk", None)
+            st.session_state.pop("display_key_sbi_custom", None)
+            try:
+                from custom_progression_lab import (
+                    cpl_active_from_session,
+                    cpl_draft_written_key,
+                    sync_custom_workspace_practice_key,
+                )
+
+                active = cpl_active_from_session(st.session_state)
+                home = str(cpl_draft_written_key(active) or "C").strip() or "C"
+                # Open Custom Lab restores the Custom song's original key — never
+                # the temporary SBI Custom visit PK (F's C) and never catalog Shape.
+                restore_pk = home
+                st.session_state["_cpl_force_pk_to_home"] = restore_pk
+                sync_custom_workspace_practice_key(
+                    st.session_state,
+                    practice_key=restore_pk,
+                    active=active,
+                    source="open_custom_lab_from_sbi",
+                )
+            except Exception:
+                pass
+            try:
+                from creative_tab_tool_persistence import handle_user_creative_selector_change
+
+                handle_user_creative_selector_change(
+                    st.session_state, "improv_song_source"
+                )
+            except Exception:
+                pass
+        except Exception:
+            st.session_state["sbi_preview_source"] = "Custom progression"
+            st.session_state["_pending_improv_song_source"] = "Custom progression"
         navigate_studio_page(st.session_state, "custom")
         st.rerun()
 

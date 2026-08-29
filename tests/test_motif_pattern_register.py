@@ -141,6 +141,25 @@ class TestM4PatternControls(unittest.TestCase):
         self.assertNotEqual(up["notes"], pitches)
 
 
+    def test_pattern_display_groups_cells(self) -> None:
+        from improvisation_intelligence_ui import _motif_display_text
+        from improvisation_motif import build_motif_pattern
+
+        motif = {
+            "chord": "Dm",
+            "notes": ["D", "E", "F", "A"],
+            "midi": [62, 64, 65, 69],
+        }
+        pattern = build_motif_pattern(
+            motif, key_center="Dm", pattern_type="auto", direction="ascending", length=8
+        )
+        text = _motif_display_text(pattern)
+        self.assertIn(" | ", text)
+        first_cell = "D – E – F – A"
+        self.assertTrue(text.startswith(first_cell), msg=text)
+        self.assertEqual(text.count(" | "), 7)
+
+
 class TestM5SheetMusicRegister(unittest.TestCase):
     def test_abc_uses_full_pattern_and_register(self) -> None:
         motif = {

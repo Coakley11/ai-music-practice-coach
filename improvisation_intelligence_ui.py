@@ -301,7 +301,18 @@ _MOTIF_PITCH_PRESERVING_TRANSFORMS = frozenset(
 
 
 def _motif_display_text(motif: dict[str, Any]) -> str:
-    """Prefer live notes[] — display string can lag after transforms."""
+    """Prefer live notes[] — display string can lag after transforms.
+
+    Pattern expansions group each motif cell with a visual divider; pitches stay
+    the same as ``notes[]``.
+    """
+    cells = motif.get("cells")
+    if isinstance(cells, list) and len(cells) > 1:
+        grouped = " | ".join(
+            " – ".join(str(n) for n in cell) for cell in cells if cell
+        )
+        if grouped:
+            return grouped
     notes = list(motif.get("notes") or [])
     if notes:
         return " – ".join(str(n) for n in notes)
@@ -854,10 +865,42 @@ def _tab_entry_modes(
         # commit improv_song_source without on_change, leaving sbi_preview_source
         # on Custom while Active is selected — Trial title + Shape chords.
         try:
-            from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed, set_sbi_preview_source
+            from source_session_state import (
+                clear_sbi_custom_sidebar_overlay_if_needed,
+                get_sbi_preview_source,
+                set_sbi_preview_source,
+            )
 
-            set_sbi_preview_source(session_state, str(source or "Active song"))
-            if str(source or "") == "Active song":
+            live_src = str(source or "Active song").strip() or "Active song"
+            preview_src = get_sbi_preview_source(session_state)
+            pending_custom = str(
+                session_state.get("PENDING_IMPROV_SONG_SOURCE")
+                or session_state.get("_pending_improv_song_source")
+                or ""
+            ).strip() == "Custom progression"
+            restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+            hydrated = bool(session_state.get("_sbi_song_source_hydrated"))
+            if (
+                live_src == "Active song"
+                and preview_src == "Custom progression"
+                and (pending_custom or (restore_custom and not hydrated))
+            ):
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        "Custom progression",
+                        widget_safe=True,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = "Custom progression"
+                source = "Custom progression"
+                live_src = "Custom progression"
+            set_sbi_preview_source(session_state, live_src)
+            if live_src == "Active song":
+                session_state.pop("_restore_sbi_custom_source", None)
                 clear_sbi_custom_sidebar_overlay_if_needed(session_state)
         except ImportError:
             session_state["sbi_preview_source"] = str(source or "Active song")
@@ -2340,9 +2383,9 @@ def render_mission_practice_lick_on_backing(
             motif_out = dict(projected.motif or {})
             insight = getattr(projected, "insight", None)
             chord = str(
-                motif_out.get("chord")
+                display_chord
+                or motif_out.get("chord")
                 or getattr(insight, "chord", "")
-                or display_chord
                 or chord
             )
             out = {

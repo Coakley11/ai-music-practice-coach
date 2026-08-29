@@ -537,10 +537,14 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
                 continue
-        if key == "sbi_preview_source":
-            live_preview = str(session_state.get("sbi_preview_source") or "").strip()
+        if key in {"sbi_preview_source", "improv_song_source"}:
+            live_preview = str(
+                session_state.get("sbi_preview_source")
+                or session_state.get("improv_song_source")
+                or ""
+            ).strip()
             snap_preview = str(val or "").strip()
-            # Do not let a stale Creative page snapshot reclaim catalog preview
+            # Do not let a stale Creative page snapshot reclaim Active Source
             # when the live/persisted SBI source is already Custom.
             if live_preview == "Custom progression" and snap_preview != live_preview:
                 continue

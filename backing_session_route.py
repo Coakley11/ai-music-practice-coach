@@ -126,6 +126,7 @@ def deactivate_mission_backing_ui_state(session: dict[str, Any]) -> None:
 
     session.pop(IMPROV_MISSION_PRACTICE_LICK_HANDOFF, None)
     session.pop("improv_mission_backing_handoff", None)
+    session.pop("_mission_backing_opened_pk", None)
     try:
         from mission_backing_handoff_persistence import MISSION_BACKING_HANDOFF_ACTIVE_KEY
 
@@ -226,6 +227,12 @@ def navigate_to_regular_backing(session: dict[str, Any], *, st_like: Any | None 
     route = get_backing_session_route(session)
     sst = route.song_source_type if route else _song_source_type(session)
     deactivate_mission_backing_ui_state(session)
+    try:
+        from backing_source_navigation import release_specialized_backing_for_generic_navigation
+
+        release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+    except ImportError:
+        session["_backing_released_specialized_context"] = True
     try:
         from backing_context import restore_custom_song_backing, restore_regular_song_backing
 

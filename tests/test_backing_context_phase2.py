@@ -244,6 +244,101 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertIn("Concert G", banner)
         self.assertIn("82 BPM", banner)
 
+    def test_mission_banner_transposes_frozen_chord_with_live_key(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Bm",
+            display_key="Bm",
+            concert_key="Bm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["G"],
+        )
+        banner = format_backing_context_banner(ctx, practice_concert_key="Cm")
+        self.assertIn("Concert Cm", banner)
+        self.assertRegex(banner, r"·\s*(Ab|G#)\s*·")
+        self.assertNotIn(" · G · ", banner)
+
+    def test_mission_banner_transposes_when_ctx_key_already_live(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["Em"],
+        )
+        banner = format_backing_context_banner(
+            ctx, practice_concert_key="Cm", header_from_key="Bm"
+        )
+        self.assertRegex(banner, r"·\s*Fm\s*·")
+        self.assertNotIn(" · Em · ", banner)
+
+    def test_mission_banner_live_identity_beats_frozen_index_chord(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["F#"],
+        )
+        banner = format_backing_context_banner(
+            ctx,
+            practice_concert_key="Cm",
+            mission_chord="Dm",
+            header_from_key="Bm",
+        )
+        self.assertRegex(banner, r"·\s*Dm\s*·")
+        self.assertNotRegex(banner, r"·\s*F#\s*·")
+        self.assertNotRegex(banner, r"·\s*Bb\s*·")
+
+    def test_mission_banner_live_g_not_transposed_from_frozen_fsharp(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["F#"],
+        )
+        banner = format_backing_context_banner(
+            ctx, practice_concert_key="Cm", mission_chord="G"
+        )
+        self.assertRegex(banner, r"·\s*G\s*·")
+        self.assertNotRegex(banner, r"·\s*Bb\s*·")
+
     def test_reconcile_does_not_queue_rerun(self) -> None:
         from backing_context import (
             BACKING_CONTEXT_KEY,

@@ -46,6 +46,24 @@ def section_chord_at_global_index(
         return "", ""
 
 
+def transpose_chord_identity(symbol: str, from_key: str, to_key: str) -> str:
+    """Transpose one chord symbol by the Practice Key interval (identity, not index)."""
+    src = str(symbol or "").strip()
+    a = str(from_key or "").strip()
+    b = str(to_key or "").strip()
+    if not src or not a or not b or a == b:
+        return src
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(a, b)
+        if not steps:
+            return src
+        return str(transpose_chord(src, steps, reference_key=b) or src).strip() or src
+    except Exception:
+        return src
+
+
 def authoritative_pair_matches_index(
     section_map: list[tuple[str, list[str]]] | None,
     *,
@@ -84,17 +102,31 @@ def resolve_authoritative_chord_selection(
         except (TypeError, ValueError):
             c_idx = -1
         if c_sym and c_sec and c_idx >= 0:
-            # Explicit click symbol always wins. Remap index to the clicked pair —
-            # never replace Bb with whatever tile currently sits at a stale index (G).
-            mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
-            if mapped is not None:
-                return c_sym, c_sec, mapped
+            click_pk = str(click.get("practice_key") or "").strip()
+            live_pk = str(
+                session.get("display_key") or session.get("concert_key") or ""
+            ).strip()
+            transposed_for_pk = False
+            if click_pk and live_pk and click_pk != live_pk:
+                # Bm → Cm is +1. C#m → Dm and F# → G. Never substitute the
+                # chord sitting at a regenerated flattening index (F# → Bb).
+                c_sym = transpose_chord_identity(c_sym, click_pk, live_pk)
+                transposed_for_pk = True
+            # Keep the clicked slot when this (section, symbol, index) still matches
+            # (duplicate C#m in Melody B must not collapse to the first occurrence).
             if authoritative_pair_matches_index(
                 section_map, section_label=c_sec, chord_symbol=c_sym, chord_index=c_idx
             ):
                 return c_sym, c_sec, c_idx
-            # Keep the clicked symbol even when the map row moved; index is best-effort.
-            return c_sym, c_sec, c_idx
+            mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
+            if mapped is not None:
+                return c_sym, c_sec, mapped
+            if c_sym and (transposed_for_pk or (click_pk and live_pk and click_pk == live_pk)):
+                return c_sym, c_sec, c_idx if c_idx >= 0 else 0
+            # Stale original-key symbol with no Practice Key on the click: use index.
+            at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
+            if at_ch:
+                return at_ch, at_sec or c_sec, c_idx
 
     sym = str(session.get(II_SELECTED_CHORD) or "").strip()
     sec = str(session.get(II_SELECTED_SECTION) or "").strip()
@@ -225,19 +257,12 @@ def write_authoritative_chord_selection(
         if mapped is not None:
             gidx = mapped
     if gidx is None:
-        gidx = 0
-    if sym and sec and not authoritative_pair_matches_index(
-        section_map, section_label=sec, chord_symbol=sym, chord_index=gidx
-    ):
-        rsym, rsec, ridx = resolve_authoritative_chord_selection(
-            {
-                II_SELECTED_CHORD: sym,
-                II_SELECTED_SECTION: sec,
-                II_SELECTED_CHORD_INDEX: gidx,
-            },
-            section_map,
-        )
-        sym, sec, gidx = rsym, rsec, ridx
+        try:
+            gidx = int(chord_index) if chord_index is not None else 0
+        except (TypeError, ValueError):
+            gidx = 0
+    # Keep the requested identity even when a regenerated section map no longer
+    # contains it (Practice Key +1 of F# is G, not the chord at the old index).
     label = f"{sec} · {sym}" if sec else sym
     session[II_SELECTED_CHORD] = sym
     session[II_SELECTED_SECTION] = sec
@@ -245,6 +270,13 @@ def write_authoritative_chord_selection(
     session[II_SELECTED_CHORD_LABEL] = label
     session["harmony_map_chord"] = sym
     session["harmony_map_section"] = sec
+    pk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    session["_mission_chord_click_authority"] = {
+        "chord": sym,
+        "section": sec,
+        "chord_index": int(gidx),
+        "practice_key": pk,
+    }
     return sym, sec, int(gidx)
 
 
@@ -337,5 +369,6 @@ __all__ = [
     "read_mission_section_map_from_session",
     "resolve_authoritative_chord_selection",
     "section_chord_at_global_index",
+    "transpose_chord_identity",
     "write_authoritative_chord_selection",
 ]

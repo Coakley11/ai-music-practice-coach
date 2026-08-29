@@ -259,6 +259,7 @@ class TestScreenshotSplitBrain(unittest.TestCase):
     def test_sbi_preview_projects_trial_to_practice_key_e(self) -> None:
         """SBI Custom must render PK-projected chords, not Original D Em Em D D."""
         session = _shape_contaminated_session()
+        session["_sbi_custom_visit_pk"] = "E"
         session["practice_key_by_source"]["custom::trial-1"] = "E"
         session["display_key"] = "E"
         session["concert_key"] = "E"
@@ -273,6 +274,7 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         """Overlay live==sticky E must not fall back to Original D on the Backing card."""
         session = _shape_contaminated_session()
         install_last_custom_into_live_cpl(session)
+        session["_sbi_custom_visit_pk"] = "E"
         session["practice_key_by_source"]["custom::trial-1"] = "E"
         session["display_key"] = "E"
         session["concert_key"] = "E"

@@ -359,11 +359,14 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     if source == "Custom progression":
         custom = get_custom_session(session)
         if custom:
+            visit_pk = str(session.get("_sbi_custom_visit_pk") or "").strip()
             return {
                 "source": source,
                 "title": str(custom.get("title") or "Custom progression"),
                 "artist": str(custom.get("artist") or "Custom progression"),
-                "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
+                "display_key": str(
+                    visit_pk or custom.get("original_key") or "C"
+                ),
                 "original_key": str(custom.get("original_key") or "C"),
                 "sections": _custom_preview_concert_sections(session, custom),
                 "pick_key": str(custom.get("pick_key") or ""),
@@ -566,7 +569,11 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
                 sticky = str(get_practice_concert_key(session, write_pick, default="") or "").strip()
     except ImportError:
         sticky = ""
-    selected = sticky or home
+    if session.get("_sbi_custom_sidebar_overlay"):
+        sbi_widget = str(session.get("display_key_sbi_custom") or "").strip()
+        if sbi_widget:
+            session["_sbi_custom_visit_pk"] = sbi_widget
+    selected = str(session.get("_sbi_custom_visit_pk") or "").strip() or home
     # Reject Shape/catalog sticky bleed onto Custom (Dm on Trial D major).
     # Same tonic with different mode, or exact equality with catalog sticky while
     # home differs, means contamination — fall back to Custom Original Key.
@@ -629,8 +636,16 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
         pass
     # Do not use custom_sbi_owns_sidebar_practice_key here — SBI preview can remain
     # "Custom progression" after leave, which would skip the heal forever.
-    if not sealed or not sealed_pick or page in {"creative", "backing", "custom"}:
+    # Heal on Songs/Practice/picker, and on Creative/Backing when SBI Active
+    # (not Custom overlay). Skipping Creative left Shape as Trial's C-minor.
+    if not sealed or not sealed_pick or page == "custom":
         return ""
+    if page in {"creative", "backing"}:
+        try:
+            if custom_sbi_owns_sidebar_practice_key(session):
+                return ""
+        except Exception:
+            pass
     # Songs/Practice after Set as Active: Custom *is* Global Active. Treating
     # its live PK as catalog-bleed (token in custom_tokens) slammed Perfect G
     # onto Embargo Trial (gate 14). Only heal while Catalog still owns GA.
@@ -653,6 +668,16 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     leftover = str(session.get("cpl_last_display_key") or "").strip()
     if leftover:
         custom_tokens.add(leftover)
+    last_visit = str(session.get("_sbi_custom_last_visit_pk") or "").strip()
+    if last_visit:
+        custom_tokens.add(last_visit)
+        try:
+            from music_theory import coerce_key_to_mode
+
+            custom_tokens.add(coerce_key_to_mode(last_visit, "minor"))
+            custom_tokens.add(coerce_key_to_mode(last_visit, "major"))
+        except Exception:
+            pass
     try:
         from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
         from songs.practice_key_state import get_practice_concert_key
@@ -711,6 +736,8 @@ def clear_sbi_custom_sidebar_overlay_if_needed(session: dict[str, Any]) -> None:
         if page in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(session):
             return
         session.pop("_sbi_custom_sidebar_overlay", None)
+        session.pop("_sbi_custom_visit_pk", None)
+        session.pop("display_key_sbi_custom", None)
     if session.get("_custom_page_sidebar_overlay"):
         if page == "custom":
             return
