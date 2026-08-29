@@ -1129,6 +1129,12 @@ def main() -> int:
                 ):
                     click_nav(page2, "Songs")
                 settle(page2, 4)
+                wait_for_body(
+                    page2,
+                    "NOW LOADED FOR PRACTICE",
+                    "Choose a song from your library",
+                    timeout_s=20.0,
+                )
                 body14 = shot(page2, "14-custom-to-songs")
                 badge14 = practice_badge(body14) or card_practice_label(body14)
                 d_ok = "d major" in low(badge14) and "minor" not in low(badge14)

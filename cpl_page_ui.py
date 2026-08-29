@@ -217,6 +217,9 @@ def render_custom_progression_lab_page() -> None:
         song_structure_overview_html,
         start_new_progression,
         sync_cpl_draft_widgets_to_active,
+        seed_cpl_presets_key_widget,
+        CPL_PRESETS_KEY_WIDGET,
+        CPL_PRESETS_SEEDED_FROM_KEY,
         sync_custom_workspace_practice_key,
         written_home_key,
     )
@@ -401,11 +404,29 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
+    def _snapshot_custom_workspace() -> None:
+        try:
+            from songs.music_source import snapshot_last_custom_state
+
+            snapshot_last_custom_state(st.session_state)
+        except Exception:
+            pass
+
     def _go_songs() -> None:
         _save(None)
+        _snapshot_custom_workspace()
         from studio_nav_history import navigate_studio_page
 
         navigate_studio_page(st.session_state, "picker")
+        st.rerun()
+
+    def _go_practice_keep_workspace() -> None:
+        """Open Practice without promoting Custom or touching Global Active."""
+        _save(None)
+        _snapshot_custom_workspace()
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
     with st.container(key="custom_song_builder_panel", border=False):
@@ -570,7 +591,7 @@ def render_custom_progression_lab_page() -> None:
                 title=prog_title,
                 artist=str(active.get("artist") or ""),
                 key_label=original_label,
-                display_key_label=display_label,
+                display_key_label=preview_label,
                 bpm=int(active.get("bpm", 100) or 100),
                 time_signature=str(active.get("time_signature") or "4/4"),
                 style=str(active.get("progression_style") or "Pop"),
@@ -592,9 +613,27 @@ def render_custom_progression_lab_page() -> None:
                 ),
                 unsafe_allow_html=True,
             )
-            map_html = song_structure_overview_html(active, display_key, only_filled=True)
+            map_html = song_structure_overview_html(active, practice_key, only_filled=True)
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
+
+            st.markdown("**Open**")
+            go_p, go_s = st.columns(2)
+            with go_p:
+                if st.button(
+                    nav_icon_button_label("practice"),
+                    key="cpl_to_practice_finish",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _go_practice_keep_workspace()
+            with go_s:
+                if st.button(
+                    nav_icon_button_label("picker"),
+                    key="cpl_to_songs_finish",
+                    use_container_width=True,
+                ):
+                    _go_songs()
 
             launch = st.columns([1, 1, 1])
             with launch[0]:
@@ -874,8 +913,62 @@ def render_custom_progression_lab_page() -> None:
                         st.rerun()
 
         demo_presets = demo_presets_for_style(style)
+        try:
+            from songs.key_state import display_key_options as _preset_key_options
+            from music_theory import coerce_key_to_mode, key_mode
+        except ImportError:
+            from custom_progression_lab import CPL_KEY_OPTIONS as _fallback_keys
+
+            def _preset_key_options(home: str) -> list[str]:
+                return list(_fallback_keys)
+
+            def coerce_key_to_mode(token: str, mode: str) -> str:
+                return str(token or "").strip()
+
+            def key_mode(token: str) -> str:
+                t = str(token or "").strip().lower()
+                return "minor" if t.endswith("m") and not t.endswith("emaj") else "major"
+
+        seed_cpl_presets_key_widget(st.session_state, practice_key)
+        preset_opts = list(_preset_key_options(original_key) or [original_key])
+        live_presets = str(st.session_state.get(CPL_PRESETS_KEY_WIDGET) or practice_key).strip()
+        if live_presets not in preset_opts:
+            coerced = coerce_key_to_mode(live_presets, key_mode(original_key)) or original_key
+            if coerced not in preset_opts:
+                preset_opts = [coerced] + [k for k in preset_opts if k != coerced]
+            st.session_state[CPL_PRESETS_KEY_WIDGET] = coerced
+
+        def _on_presets_key_change() -> None:
+            tok = str(st.session_state.get(CPL_PRESETS_KEY_WIDGET) or "").strip()
+            if not tok:
+                return
+            st.session_state[CPL_PRESETS_SEEDED_FROM_KEY] = tok
+            sync_custom_workspace_practice_key(
+                st.session_state,
+                practice_key=tok,
+                active=cpl_active_from_session(st.session_state),
+                source="cpl_presets_key",
+            )
+
+        st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
+        st.markdown("**Presets**")
+        st.selectbox(
+            "Presets key",
+            preset_opts,
+            format_func=format_key_label,
+            key=CPL_PRESETS_KEY_WIDGET,
+            help="Transpose preset previews in this Custom song's major/minor family. "
+            "Follows the Custom workspace — not the Catalog Global Active song.",
+            on_change=_on_presets_key_change,
+        )
+        presets_key = str(st.session_state.get(CPL_PRESETS_KEY_WIDGET) or practice_key).strip() or practice_key
+        presets_label = format_key_label(presets_key)
+        st.caption(
+            f"Preset buttons and preview chords use **{presets_label}** "
+            f"(Custom Practice Key family from Original {original_label})."
+        )
+
         if demo_presets:
-            st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
             st.markdown(f"**{style} chart demos** ({original_label})")
             for demo_label, demo_id in demo_presets.items():
                 if st.button(
@@ -888,23 +981,27 @@ def render_custom_progression_lab_page() -> None:
                         st.session_state, build_demo_progression(demo_id)
                     )
                     st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
 
         if style_presets:
-            st.markdown('<div class="cpl-preset-block">', unsafe_allow_html=True)
-            st.markdown(f"**{style} presets** ({preview_label}) — fills {edit_section} only")
+            preset_ns = (
+                presets_key.replace("#", "s")
+                .replace("b", "f")
+                .replace("♭", "b")
+                .replace("♯", "s")
+            )
+            st.markdown(f"**{style} presets** ({presets_label}) — fills {edit_section} only")
             for preset_id, spec in style_presets.items():
-                label = preset_button_label(preset_id, practice_key, spec)
+                label = preset_button_label(preset_id, presets_key, spec)
                 if st.button(
                     label,
-                    key=f"cpl_pre_{home_ns}_{style}_{edit_section}_{preset_id}",
+                    key=f"cpl_pre_{preset_ns}_{style}_{edit_section}_{preset_id}",
                     use_container_width=True,
                 ):
                     practice_entries = build_style_preset_entries(
-                        style, preset_id, practice_key
+                        style, preset_id, presets_key
                     )
                     home_sections[edit_section] = practice_entries_to_original_key(
-                        practice_entries, practice_key, original_key
+                        practice_entries, presets_key, original_key
                     )
                     cpl_clear_pending_chord(st.session_state, edit_section)
                     if home_sections[edit_section]:
@@ -913,7 +1010,7 @@ def render_custom_progression_lab_page() -> None:
                         )
                     _save(home_sections)
                     st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:
             with st.expander("Edit chords in this section", expanded=False):

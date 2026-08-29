@@ -1294,14 +1294,33 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     except ImportError:
         pass
     try:
-        from custom_progression_lab import CPL_LAST_DISPLAY_KEY
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            CPL_LAST_DISPLAY_KEY,
+            written_home_key,
+        )
+        from songs.practice_key_state import get_practice_concert_key
 
-        live = str(
-            session_state.get("display_key") or session_state.get("concert_key") or ""
-        ).strip()
-        if live:
-            session_state.setdefault(CPL_LAST_DISPLAY_KEY, live)
-    except ImportError:
+        active = session_state.get(CPL_ACTIVE_KEY) or {}
+        pick = str(custom_pick_key_for(active) or "").strip()
+        home = str(
+            written_home_key(active) or active.get("original_key_center") or "C"
+        ).strip() or "C"
+        sticky = ""
+        if pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
+        pk = sticky or home
+        if pk:
+            session_state["display_key"] = pk
+            session_state["concert_key"] = pk
+            session_state[CPL_LAST_DISPLAY_KEY] = pk
+            try:
+                from songs.key_state import PENDING_DISPLAY_KEY
+
+                session_state[PENDING_DISPLAY_KEY] = pk
+            except ImportError:
+                session_state["_pending_display_key"] = pk
+    except Exception:
         pass
     try:
         from workflow_musical_authority import refresh_custom_improv_concert_sections
@@ -1315,25 +1334,30 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
 
 
 def promote_last_custom_for_picker_entry(session_state: dict[str, Any]) -> bool:
-    """Custom→Songs nav: hydrate LAST_CUSTOM identity + Custom picker without radio click."""
+    """Custom→Songs: keep Custom picker only when Custom is already Global Active.
+
+    Must not steal Catalog Global Active (Shape of You) merely because the user
+    left the Custom page. LAST_CUSTOM stays snapshotted for return-to-Custom.
+    """
     try:
         from songs.music_source import (
             SONG_PICKER_SOURCE_CUSTOM,
             _queue_last_custom_restore_from_session,
+            custom_progression_is_active,
             install_last_custom_into_live_cpl,
+            is_custom_progression,
             set_custom_source,
         )
         from songs.state import ACTIVE_CATALOG_PICK_KEY
     except ImportError:
         return False
-    installed = install_last_custom_into_live_cpl(
+    install_last_custom_into_live_cpl(
         session_state, reset_practice_key_to_original=False
     )
-    if not installed:
-        snap = session_state.get(LAST_CUSTOM_STATE_KEY)
-        active = (snap or {}).get("active") if isinstance(snap, dict) else None
-        if not isinstance(active, dict):
-            return False
+    if not (
+        custom_progression_is_active(session_state) or is_custom_progression(session_state)
+    ):
+        return False
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state.pop("_catalog_owns_until_custom_click", None)
     set_custom_source(session_state)

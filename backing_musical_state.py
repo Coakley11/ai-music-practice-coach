@@ -180,35 +180,49 @@ def _resolve_creative_practice_concert_key(
             # the custom home is a different major/minor center.
             ctx_ck = str(getattr(creative, "concert_key", "") or "").strip()
             live = str(session.get("display_key") or "").strip()
+            sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+            catalog_sticky = ""
+            try:
+                from songs.practice_key_state import resolve_practice_source_pick
 
-            def _same_family(a: str, b: str) -> bool:
+                catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+                if catalog_pick and not catalog_pick.startswith("custom::"):
+                    catalog_sticky = str(
+                        get_practice_concert_key(session, catalog_pick) or ""
+                    ).strip()
+            except Exception:
+                catalog_sticky = ""
+            # Live equals catalog PK (Shape Bm) — not the Custom overlay (E on Trial).
+            catalog_live = bool(
+                live
+                and live != home
+                and (
+                    (sealed and live == sealed)
+                    or (catalog_sticky and live == catalog_sticky)
+                )
+            )
+
+            def _mode_bleed_vs_home(candidate: str) -> bool:
+                if not candidate or not home or candidate == home:
+                    return False
                 try:
                     from music_theory import split_key_center
 
-                    ta, _ = split_key_center(a)
-                    tb, _ = split_key_center(b)
-                    return bool(ta) and ta == tb
+                    ht, hm = split_key_center(home)
+                    ct, cm = split_key_center(candidate)
+                    return bool(ht) and ht == ct and hm != cm
                 except Exception:
-                    return str(a).rstrip("mM")[:1] == str(b).rstrip("mM")[:1]
+                    return False
 
-            for candidate in (sticky, ctx_ck, home):
+            for candidate in (sticky, ctx_ck, live, home):
                 if not candidate:
                     continue
-                # Prefer candidates that match creative home / ctx over live catalog PK.
-                if live and candidate == live and home and not _same_family(candidate, home):
+                if _mode_bleed_vs_home(candidate):
                     continue
-                # Reject catalog-mode bleed: Shape Dm onto Trial D major (same tonic,
-                # different mode) when the candidate equals live catalog display.
-                if live and candidate == live and home and candidate != home:
-                    try:
-                        from music_theory import split_key_center
-
-                        _ht, hm = split_key_center(home)
-                        _ct, cm = split_key_center(candidate)
-                        if _ht and _ht == _ct and hm != cm:
-                            continue
-                    except Exception:
-                        pass
+                # Skip Shape/catalog live tokens only — Custom overlay live==sticky (E)
+                # used to be skipped because E is a different tonic from Original D.
+                if catalog_live and candidate == live and candidate != home:
+                    continue
                 return candidate
             return home
     except ImportError:

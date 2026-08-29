@@ -426,10 +426,11 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
 
         preview = get_sbi_preview_source(session_state)
         live = str(session_state.get("improv_song_source") or "").strip()
-        if preview == "Custom progression" and live != preview:
-            # Prefer persisted nested Custom over a default Active widget.
-            # Do NOT treat live Active as a user leave signal on hydrate —
-            # that path previously wiped Custom on reboot.
+        hydrated = bool(session_state.get("_sbi_song_source_hydrated"))
+        if preview == "Custom progression" and live != preview and not hydrated:
+            # First Creative render after reboot: widget often defaults to Active
+            # while persisted preview is Custom. After that, trust the radio so a
+            # real Active click is not overwritten back to Custom.
             try:
                 from session_widget_safe import safe_session_assign
 
@@ -442,9 +443,11 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
             except ImportError:
                 if "improv_song_source" not in session_state or live == "Active song":
                     session_state["improv_song_source"] = preview
-        elif live in IMPROV_SONG_SOURCES and preview != live:
-            # Widget is authoritative when preview was Active/empty and live changed.
-            set_sbi_preview_source(session_state, live)
+            session_state["_sbi_song_source_hydrated"] = True
+        elif live in IMPROV_SONG_SOURCES:
+            if preview != live:
+                set_sbi_preview_source(session_state, live)
+            session_state["_sbi_song_source_hydrated"] = True
         session_state["_last_improv_song_source"] = str(
             session_state.get("improv_song_source") or preview or ""
         )

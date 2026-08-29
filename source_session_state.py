@@ -222,6 +222,18 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
     ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
     pick_active = bool(pick) and (not ctx_pick or ctx_pick == pick)
     if pick_active and live:
+        try:
+            from songs.practice_key_state import get_practice_concert_key, sbi_uses_custom_progression_preview
+
+            # SBI Active must not inherit Custom overlay live (Trial E on Shape Bm).
+            if not sbi_uses_custom_progression_preview(session):
+                sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+                saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+                catalog_pk = sealed or saved
+                if catalog_pk:
+                    return catalog_pk
+        except ImportError:
+            pass
         return live
     if pick:
         # SBI "Active song" preview can resolve a catalog bucket while global ownership
@@ -324,10 +336,21 @@ def _custom_preview_concert_sections(
 
         projected = resolve_custom_concert_sections_at_practice_key(session)
         if projected:
-            return projected
+            return {str(k): list(v) for k, v in projected.items()}
     except ImportError:
         pass
-    return dict(custom.get("sections") or {})
+    base = custom.get("sections") if isinstance(custom, dict) else {}
+    if not isinstance(base, dict):
+        base = {}
+    return {str(k): list(v) for k, v in base.items()}
+
+
+def _projected_custom_preview_sections(
+    session: dict[str, Any],
+    fallback: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    """Alias — SBI Custom chords in the current Custom Practice Key, not Original."""
+    return _custom_preview_concert_sections(session, {"sections": fallback or {}})
 
 
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
@@ -372,6 +395,28 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
             "sections": {},
             "pick_key": "",
         }
+
+    try:
+        from songs.music_source import SOURCE_CUSTOM, custom_progression_is_active
+
+        # True Custom Global Active: SBI Active is Trial, not leftover catalog Shape.
+        # Do not treat a stale custom:: pick while catalog_session is Shape as Custom GA.
+        if custom_progression_is_active(session) and str(
+            session.get("active_music_source") or ""
+        ) == SOURCE_CUSTOM:
+            custom = sync_custom_session(session)
+            if custom:
+                return {
+                    "source": source,
+                    "title": str(custom.get("title") or "Custom progression"),
+                    "artist": str(custom.get("artist") or "Custom progression"),
+                    "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
+                    "original_key": str(custom.get("original_key") or "C"),
+                    "sections": _projected_custom_preview_sections(session, custom.get("sections")),
+                    "pick_key": str(custom.get("pick_key") or ""),
+                }
+    except ImportError:
+        pass
 
     catalog = get_catalog_session(session)
     if not catalog:
@@ -450,7 +495,23 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         if src == "song_improv" and bound.startswith("custom::"):
             return True
         return False
-    # Creative: SBI tab on Custom progression preview.
+    # Creative: SBI tab on Custom progression preview — except Missions / Live Coach /
+    # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
+    # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
+    # embargo gate 6 could not set Em.
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab in {"Missions", "Live Coach", "Phrase / Motif", "Motif"}:
+        try:
+            from songs.music_source import custom_progression_is_active
+
+            if not custom_progression_is_active(session):
+                return False
+        except ImportError:
+            pass
     if get_sbi_preview_source(session) == "Custom progression":
         return True
     if src == "custom_progression":
@@ -588,6 +649,16 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     # "Custom progression" after leave, which would skip the heal forever.
     if not sealed or not sealed_pick or page in {"creative", "backing", "custom"}:
         return ""
+    # Songs/Practice after Set as Active: Custom *is* Global Active. Treating
+    # its live PK as catalog-bleed (token in custom_tokens) slammed Perfect G
+    # onto Embargo Trial (gate 14). Only heal while Catalog still owns GA.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            return ""
+    except ImportError:
+        pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
     custom_tokens: set[str] = set()
     store = session.get("practice_key_by_source")

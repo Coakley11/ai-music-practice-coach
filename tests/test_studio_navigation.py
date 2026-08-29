@@ -115,6 +115,14 @@ def test_quick_nav_css_restores_art_face_without_hidden_buttons():
     assert _studio_quick_nav_button_key("practice") == "studio_quick_nav_btn_practice"
     assert nav_compact_button_label("picker") == "Songs"
     assert _resolve_quick_nav_current_page({"studio_page": "backing"}, "practice") == "backing"
+    from app_ui import nav_icon_button_label
+
+    practice_btn = nav_icon_button_label("practice")
+    songs_btn = nav_icon_button_label("picker")
+    assert practice_btn.endswith("Practice")
+    assert "🎯" in practice_btn
+    assert songs_btn.endswith("Songs")
+    assert "🎼" in songs_btn
     face = _nav_art_face_html("practice", active=True)
     assert "Practice" in face
     assert "ui-nav-icon" in face

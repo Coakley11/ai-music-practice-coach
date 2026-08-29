@@ -152,6 +152,19 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                 default_mode = str(ident.practice_mode if ident else "minor").strip().lower()
                 if default_mode not in {"major", "minor"}:
                     default_mode = "minor"
+                try:
+                    from source_session_state import custom_sbi_owns_sidebar_practice_key, get_custom_session
+                    from music_theory import split_key_center
+
+                    if custom_sbi_owns_sidebar_practice_key(session_state):
+                        custom = get_custom_session(session_state) or {}
+                        home = str(custom.get("original_key") or "").strip()
+                        if home:
+                            _, home_mode = split_key_center(home)
+                            if home_mode in {"major", "minor"}:
+                                default_mode = home_mode
+                except ImportError:
+                    pass
                 _t, _m, token = normalize_user_practice_key_selection(token, default_mode=default_mode)
                 return token
     except ImportError:
@@ -837,6 +850,18 @@ def _tab_entry_modes(
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
+        # Keep persisted SBI preview aligned with the live radio. DOM clicks can
+        # commit improv_song_source without on_change, leaving sbi_preview_source
+        # on Custom while Active is selected — Trial title + Shape chords.
+        try:
+            from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed, set_sbi_preview_source
+
+            set_sbi_preview_source(session_state, str(source or "Active song"))
+            if str(source or "") == "Active song":
+                clear_sbi_custom_sidebar_overlay_if_needed(session_state)
+        except ImportError:
+            session_state["sbi_preview_source"] = str(source or "Active song")
+
         song_preview = resolve_improv_song_preview(session_state)
         preview_sections = dict(song_preview.get("sections") or {})
         if source == "Custom progression":
@@ -913,10 +938,15 @@ def _tab_entry_modes(
                     st.markdown("</div>", unsafe_allow_html=True)
 
         if preview_sections:
-            practice_key = _authoritative_practice_chart_key(
-                session_state,
-                str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
-            )
+            if source == "Custom progression":
+                practice_key = str(
+                    song_preview.get("display_key") or song_preview.get("original_key") or "C"
+                ).strip() or "C"
+            else:
+                practice_key = _authoritative_practice_chart_key(
+                    session_state,
+                    str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
+                )
             render_creative_progression_block(
                 st,
                 session_state,
@@ -3388,6 +3418,27 @@ def _tab_missions(
                     "Mission context was reconciled to your active catalog song (stale jam data removed)."
                 )
     except ImportError:
+        pass
+
+    # Same undeduped concert line as SBI — only when Custom is Global Active.
+    # Catalog Missions keep the collapsed tap-map (a 32-chord Shape dump
+    # made gate 6 click Gm while the example stayed on Bb).
+    try:
+        from songs.music_source import custom_progression_is_active
+        from improvisation_motif import concert_song_sections_from_session
+
+        if custom_progression_is_active(session_state):
+            _mission_secs = concert_song_sections_from_session(session_state)
+            if not _mission_secs and isinstance(getattr(improv_ctx, "sections", None), dict):
+                _mission_secs = dict(improv_ctx.sections)
+            if _mission_secs:
+                render_creative_progression_block(
+                    st,
+                    session_state,
+                    _mission_secs,
+                    concert_key=concert_key,
+                )
+    except Exception:
         pass
 
     _render_section_chord_map(

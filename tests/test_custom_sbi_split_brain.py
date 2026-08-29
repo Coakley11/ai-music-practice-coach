@@ -120,6 +120,133 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertIn("Em", joined)
         self.assertIn("D", joined)
 
+    def test_set_custom_source_does_not_keep_catalog_g_as_practice_key(self) -> None:
+        from songs.music_source import SOURCE_CUSTOM, set_custom_source
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session["practice_key_by_source"]["custom::trial-1"] = "D"
+        set_custom_source(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertTrue(str(session.get("display_key") or "").upper().startswith("D"), msg=session.get("display_key"))
+        self.assertNotEqual(str(session.get("display_key") or "").upper()[:1], "G")
+
+    def test_heal_sealed_does_not_overwrite_custom_ga_practice_key(self) -> None:
+        """Songs after Set as Active must not slam sealed Perfect G onto Custom GA."""
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+        from songs.music_source import SOURCE_CUSTOM
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["studio_page"] = "picker"
+        session["active_music_source"] = SOURCE_CUSTOM
+        session["active_catalog_pick_key"] = "custom::trial-1"
+        session["song"] = "Embargo Trial"
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["practice_key_by_source"]["custom::trial-1"] = "D"
+        session["_sbi_custom_sealed_catalog_pk"] = "G"
+        session["_sbi_custom_sealed_catalog_pick"] = "Pop\x1fPerfect"
+
+        class _St:
+            session_state = session
+
+        healed = heal_sealed_catalog_sidebar_if_needed(_St(), session)
+        self.assertEqual(healed, "")
+        self.assertTrue(str(session.get("display_key") or "").upper().startswith("D"))
+        self.assertNotEqual(str(session.get("display_key") or "").upper()[:1], "G")
+
+    def test_heal_sealed_still_restores_catalog_ga_from_custom_bleed(self) -> None:
+        """Catalog Songs must still snap sealed PK when Custom live leaked in."""
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+
+        session = _shape_contaminated_session()
+        session["studio_page"] = "picker"
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["practice_key_by_source"]["custom::trial-1"] = "D"
+        session["_sbi_custom_sealed_catalog_pk"] = "Bm"
+        session["_sbi_custom_sealed_catalog_pick"] = "Pop\x1fShape of You"
+
+        class _St:
+            session_state = session
+
+        healed = heal_sealed_catalog_sidebar_if_needed(_St(), session)
+        self.assertEqual(healed, "Bm")
+        self.assertEqual(session.get("display_key"), "Bm")
+
+    def test_custom_ga_concert_progression_line_keeps_em_em_d_d(self) -> None:
+        """Missions/SBI concert line must show the full Trial cycle, not collapsed Em · D."""
+        from creative_key_sync import creative_progression_display
+        from improvisation_motif import concert_song_sections_from_session
+        from songs.music_source import SOURCE_CUSTOM, set_custom_source
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["practice_key_by_source"]["custom::trial-1"] = "D"
+        set_custom_source(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        sections = concert_song_sections_from_session(session)
+        self.assertTrue(sections)
+        line = creative_progression_display(session, sections, concert_key="D")["concert_line"]
+        self.assertRegex(line, r"Em\s*[·•]\s*Em\s*[·•]\s*D\s*[·•]\s*D")
+        self.assertNotEqual(line.strip(), "Em · D")
+
+    def test_catalog_missions_does_not_use_sbi_custom_overlay_pk(self) -> None:
+        """Shape Missions must not keep Trial E in the sidebar after SBI Custom."""
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        session = _shape_contaminated_session()
+        session["studio_page"] = "creative"
+        session["improv_intelligence_tab"] = "Missions"
+        session["sbi_preview_source"] = "Custom progression"
+        session["_sbi_custom_sidebar_overlay"] = True
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        self.assertFalse(custom_sbi_owns_sidebar_practice_key(session))
+
+    def test_sbi_active_catalog_pk_not_custom_overlay_e(self) -> None:
+        from source_session_state import set_sbi_preview_source
+
+        session = _shape_contaminated_session()
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["_sbi_custom_sealed_catalog_pk"] = "Bm"
+        session["practice_key_by_source"]["Pop\x1fShape of You"] = "Bm"
+        session["catalog_session"] = {
+            "pick_key": "Pop\x1fShape of You",
+            "selected_song": {
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+                "pick_key": "Pop\x1fShape of You",
+            },
+            "original_key": "Bm",
+            "display_key": "Bm",
+        }
+        set_sbi_preview_source(session, "Active song")
+        session["improv_song_source"] = "Active song"
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview.get("title"), "Shape of You")
+        self.assertEqual(str(preview.get("display_key") or ""), "Bm")
+
+    def test_sbi_active_preview_not_trial_when_radio_is_active(self) -> None:
+        """Stale Custom preview key must not title Active SBI as Trial while GA is Shape."""
+        from source_session_state import set_sbi_preview_source
+
+        session = _shape_contaminated_session()
+        session["studio_page"] = "creative"
+        session["sbi_preview_source"] = "Custom progression"
+        session["improv_song_source"] = "Active song"
+        set_sbi_preview_source(session, "Active song")
+        preview = resolve_sbi_preview(session)
+        self.assertNotEqual(preview.get("title"), "Trial Song")
+        self.assertNotEqual(preview.get("source"), "Custom progression")
+
     def test_sbi_preview_resolves_trial_not_shell(self) -> None:
         session = _shape_contaminated_session()
         sync_custom_session(session)
@@ -128,6 +255,39 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertEqual(preview.get("title"), "Trial Song")
         self.assertTrue(str(preview.get("original_key") or "").startswith("D"))
         self.assertNotEqual(str(preview.get("display_key") or "").lower(), "dm")
+
+    def test_sbi_preview_projects_trial_to_practice_key_e(self) -> None:
+        """SBI Custom must render PK-projected chords, not Original D Em Em D D."""
+        session = _shape_contaminated_session()
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        sync_custom_session(session)
+        preview = resolve_sbi_preview(session)
+        flat = [c for chs in (preview.get("sections") or {}).values() for c in chs]
+        self.assertEqual(flat[:4], ["F#m", "F#m", "E", "E"])
+        self.assertTrue(str(preview.get("display_key") or "").upper().startswith("E"))
+        self.assertNotIn("Em", flat[:4])
+
+    def test_custom_sbi_backing_pk_e_not_original_d_when_overlay_live_is_e(self) -> None:
+        """Overlay live==sticky E must not fall back to Original D on the Backing card."""
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["_sbi_custom_sidebar_overlay"] = True
+        session["_sbi_custom_sealed_catalog_pk"] = "Bm"
+        session["_sbi_custom_sealed_catalog_pick"] = session["active_catalog_pick_key"]
+        ctx = build_song_improv_context(session)
+        practice = _resolve_creative_practice_concert_key(
+            session, creative=ctx, major_jam=False
+        )
+        self.assertTrue(str(practice or "").upper().startswith("E"), msg=practice)
+        self.assertFalse(str(practice or "").upper().startswith("D"), msg=practice)
+        sections = sections_dict_from_backing_context(session, ctx)
+        flat = [c for chs in sections.values() for c in chs]
+        self.assertEqual(flat[:4], ["F#m", "F#m", "E", "E"])
 
     def test_custom_page_seal_does_not_overwrite_catalog_sticky(self) -> None:
         """Entering Custom must not stamp Custom live E onto Shape sticky Dm."""
@@ -390,6 +550,105 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertIn("C", mission_flat)
         _section_map, owner = resolve_missions_section_map(session, _Ctx())
         self.assertEqual(owner, "custom_song_sections")
+
+
+class TestCustomPageCatalogBleed(unittest.TestCase):
+    def test_custom_page_pk_is_trial_d_not_shape_bm(self) -> None:
+        """Shape Global Active B minor must not seed Custom LAST_CUSTOM Trial D."""
+        from types import SimpleNamespace
+
+        from custom_progression_lab import (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            cpl_workspace_practice_key,
+            prepare_custom_workspace_sidebar_display_key,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = _shape_contaminated_session()
+        session["studio_page"] = "custom"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        session["_pending_display_key"] = "Bm"
+        session["practice_key_by_source"]["Pop\x1fShape of You"] = "Bm"
+        session.pop(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET, None)
+
+        class _St:
+            session_state = session
+
+        opts = prepare_custom_workspace_sidebar_display_key(_St(), session)
+        widget = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "")
+        live = str(session.get("display_key") or "")
+        active = session.get("cpl_active_progression") or {}
+        self.assertEqual(str(active.get("name") or ""), "Trial Song")
+        self.assertTrue(str(widget).upper().startswith("D"), msg=widget)
+        self.assertNotIn(widget.lower(), {"bm", "b minor", "dm"})
+        self.assertTrue(str(live).upper().startswith("D"), msg=live)
+        self.assertNotIn("bm", str(live).lower())
+        self.assertIn("D", opts)
+        self.assertNotIn("Bm", list(opts))
+        pk = cpl_workspace_practice_key(session, active)
+        self.assertTrue(str(pk).upper().startswith("D"), msg=pk)
+        self.assertFalse(str(pk).lower().endswith("m") and "b" in str(pk).lower())
+        shape_sticky = get_practice_concert_key(session, "Pop\x1fShape of You")
+        self.assertEqual(str(shape_sticky or "").lower(), "bm")
+
+    def test_custom_page_pk_ignores_shape_pending_when_trial_already_live(self) -> None:
+        from types import SimpleNamespace
+
+        from custom_progression_lab import (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            prepare_custom_workspace_sidebar_display_key,
+        )
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["studio_page"] = "custom"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        session["_pending_display_key"] = "Bm"
+        session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = "Bm"
+
+        class _St:
+            session_state = session
+
+        prepare_custom_workspace_sidebar_display_key(_St(), session)
+        widget = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "")
+        self.assertTrue(str(widget).upper().startswith("D"), msg=widget)
+        self.assertNotEqual(widget.lower(), "bm")
+
+    def test_presets_key_seed_follows_custom_pk_not_catalog(self) -> None:
+        from custom_progression_lab import (
+            CPL_PRESETS_KEY_WIDGET,
+            seed_cpl_presets_key_widget,
+        )
+
+        session: dict = {}
+        self.assertEqual(seed_cpl_presets_key_widget(session, "D"), "D")
+        self.assertEqual(session.get(CPL_PRESETS_KEY_WIDGET), "D")
+        # User click on this run: presets already E, sidebar still D.
+        session[CPL_PRESETS_KEY_WIDGET] = "E"
+        self.assertEqual(seed_cpl_presets_key_widget(session, "D"), "E")
+        # Sidebar moved to E on the next run.
+        self.assertEqual(seed_cpl_presets_key_widget(session, "E"), "E")
+        self.assertEqual(session.get(CPL_PRESETS_KEY_WIDGET), "E")
+
+    def test_custom_to_songs_does_not_steal_shape_global_active(self) -> None:
+        from songs.music_source import SOURCE_CATALOG, promote_last_custom_for_picker_entry
+        from studio_nav_history import navigate_studio_page
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        session["studio_page"] = "custom"
+        session["active_music_source"] = SOURCE_CATALOG
+        session["song"] = "Shape of You"
+        promote_last_custom_for_picker_entry(session)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        session["studio_page"] = "custom"
+        navigate_studio_page(session, "picker")
+        self.assertEqual(session.get("studio_page"), "picker")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
 
 
 if __name__ == "__main__":

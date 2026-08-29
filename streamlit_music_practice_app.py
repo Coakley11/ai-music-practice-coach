@@ -10302,8 +10302,25 @@ try:
     if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
     elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":
-        from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+        from custom_progression_lab import (
+            cpl_active_from_session,
+            cpl_draft_written_key,
+            prepare_custom_workspace_sidebar_display_key,
+        )
 
+        try:
+            from songs.music_source import install_last_custom_into_live_cpl
+
+            install_last_custom_into_live_cpl(
+                st.session_state, reset_practice_key_to_original=False
+            )
+        except ImportError:
+            pass
+        # Sidebar Original Key caption must follow Custom workspace, not Catalog GA.
+        try:
+            original_key = cpl_draft_written_key(cpl_active_from_session(st.session_state))
+        except Exception:
+            pass
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
     else:
         _sbi_custom_sidebar = False
@@ -10515,6 +10532,15 @@ else:
         )
     else:
         _pk_widget_key = "display_key"
+        if _sbi_custom_sidebar:
+            # Isolate Custom SBI PK from Catalog Shape's minor-family display_key widget
+            # (F → Fm / E → Em when the same selectbox reused Shape Bm options).
+            _pk_widget_key = "display_key_sbi_custom"
+            _live_sbi = str(
+                st.session_state.get("display_key") or st.session_state.get("concert_key") or ""
+            ).strip()
+            if _pk_widget_key not in st.session_state and _live_sbi:
+                st.session_state[_pk_widget_key] = _live_sbi
         try:
             from backing_context import get_backing_context
             from music_theory import key_mode, practice_keys_for_mode

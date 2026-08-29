@@ -559,12 +559,8 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
         return force_home
     # 1) Dedicated Custom-page Practice Key widget (authoritative while on Custom).
     dedicated = str(session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
-    if dedicated:
-        return dedicated
-    pending = str(session_state.get(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY) or "").strip()
-    if pending:
-        return pending
-    # 2) Per-source sticky for this Custom pick.
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    sticky = ""
     try:
         from songs.music_source import custom_pick_key_for
         from songs.practice_key_state import get_practice_concert_key
@@ -572,11 +568,31 @@ def cpl_workspace_practice_key(session_state: dict, active: dict | None = None) 
         if isinstance(active, dict):
             pick = custom_pick_key_for(active)
             sticky = str(get_practice_concert_key(session_state, pick) or "").strip()
-            if sticky:
-                return sticky
     except ImportError:
-        pass
+        sticky = ""
+    if dedicated and page == "custom":
+        _pick, catalog_token = _catalog_practice_key_token(session_state)
+        if _token_is_catalog_bleed(
+            dedicated,
+            catalog_token=catalog_token,
+            custom_home=home,
+            custom_sticky=sticky,
+        ):
+            dedicated = ""
+    if dedicated:
+        return dedicated
+    pending = str(session_state.get(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY) or "").strip()
+    if pending:
+        return pending
+    # 2) Per-source sticky for this Custom pick.
+    if sticky:
+        return sticky
     # 3) Original Key of the current Custom song (identity = no transpose).
+    # On the Custom page never fall through to Catalog Global Active display_key
+    # (Shape B minor must not become Trial Song's Practice Key).
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    if home and page == "custom":
+        return home
     if home:
         return home
     # 4) Last resort: shared display_key (Catalog/Custom may share this off Custom page).
@@ -622,6 +638,66 @@ def practice_entries_to_original_key(
 # when they assign session_state["display_key"], swallowing Custom PK clicks.
 CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET = "custom_workspace_practice_key"
 PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
+CPL_PRESETS_KEY_WIDGET = "cpl_presets_key"
+CPL_PRESETS_SEEDED_FROM_KEY = "_cpl_presets_seeded_from"
+
+
+def _catalog_practice_key_token(session: dict) -> tuple[str, str]:
+    """Catalog Global Active pick + its Practice Key (empty when Custom owns GA).
+
+    Do not treat live ``display_key`` as Catalog once the Custom page overlay is on —
+    that live token is the Custom workspace PK (e.g. Trial E).
+    """
+    pick = ""
+    token = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+        if pick.startswith("custom::"):
+            return "", ""
+        if pick:
+            token = str(get_practice_concert_key(session, pick) or "").strip()
+    except ImportError:
+        pick = ""
+        token = ""
+    if pick.startswith("custom::"):
+        return "", ""
+    if not token and pick and not session.get("_custom_page_sidebar_overlay"):
+        token = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    return pick, token
+
+
+def _token_is_catalog_bleed(
+    token: str,
+    *,
+    catalog_token: str,
+    custom_home: str,
+    custom_sticky: str,
+) -> bool:
+    """True when ``token`` is the Catalog PK and not this Custom song's home/sticky."""
+    tok = str(token or "").strip()
+    cat = str(catalog_token or "").strip()
+    if not tok or not cat:
+        return False
+    if tok == str(custom_sticky or "").strip() or tok == str(custom_home or "").strip():
+        return False
+    return tok == cat
+
+
+def seed_cpl_presets_key_widget(session_state: dict, practice_key: str) -> str:
+    """Align the in-page Presets key dropdown with Custom Practice Key.
+
+    Does not overwrite a user click on this run: Streamlit already persisted the
+    new ``cpl_presets_key`` while ``practice_key`` still holds the prior sidebar
+    value until the next rerun.
+    """
+    pk = str(practice_key or "").strip() or "C"
+    seeded_from = str(session_state.get(CPL_PRESETS_SEEDED_FROM_KEY) or "").strip()
+    if seeded_from != pk:
+        session_state[CPL_PRESETS_KEY_WIDGET] = pk
+        session_state[CPL_PRESETS_SEEDED_FROM_KEY] = pk
+    return str(session_state.get(CPL_PRESETS_KEY_WIDGET) or pk).strip() or pk
 
 
 def sync_custom_workspace_practice_key(
@@ -721,13 +797,23 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         display_key_options,
     )
 
+    # Custom page workspace owner is LAST/CURRENT Custom — hydrate before PK seed
+    # so Shape Global Active cannot fill an empty My Progression shell.
+    try:
+        from songs.music_source import install_last_custom_into_live_cpl
+
+        install_last_custom_into_live_cpl(
+            session, reset_practice_key_to_original=False
+        )
+    except ImportError:
+        pass
+
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
     stored_home = cpl_draft_written_key(active)
     widget_home_raw = str(session.get("cpl_original_key") or "").strip()
     widget_home = _normalize_cpl_key_token(widget_home_raw) or widget_home_raw
     stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
     home = widget_home or stored_home_n
-    options = list(display_key_options(home) or [home])
     pending_custom = session.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
     pending_custom_s = (
         str(pending_custom or "").strip() if pending_custom is not None else ""
@@ -761,34 +847,50 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         )
     except ImportError:
         custom_is_ga = False
+    _catalog_pick, catalog_token = _catalog_practice_key_token(session)
+    # Original Key widget must not inherit Catalog Shape (Bm) while LAST_CUSTOM is D.
+    if not custom_is_ga and _token_is_catalog_bleed(
+        widget_home,
+        catalog_token=catalog_token,
+        custom_home=stored_home_n,
+        custom_sticky=sticky,
+    ):
+        widget_home = stored_home_n
+        home = stored_home_n
+    home = widget_home or stored_home_n or home
+    options = list(display_key_options(home) or [home])
     live_widget = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
     live_global = str(
         session.get("display_key") or session.get("concert_key") or ""
     ).strip()
     # Reject catalog live bleed into the dedicated Custom widget when Custom is not GA.
-    if not custom_is_ga and live_widget:
-        try:
-            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
-
-            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-            catalog_sticky = (
-                str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if catalog_pick and not catalog_pick.startswith("custom::")
-                else ""
-            )
-            if catalog_sticky and live_widget == catalog_sticky and live_widget != sticky:
-                live_widget = ""
-                session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
-        except ImportError:
-            pass
+    if not custom_is_ga and live_widget and _token_is_catalog_bleed(
+        live_widget,
+        catalog_token=catalog_token,
+        custom_home=stored_home_n,
+        custom_sticky=sticky,
+    ):
+        live_widget = ""
+        session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
     live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
     if custom_is_ga and not live_widget:
         live = live_global
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
+    if not custom_is_ga:
+        # Global PENDING_DISPLAY_KEY is Catalog overlay, not Custom workspace PK.
+        if pending_s and pending_s not in {sticky, home, live_widget}:
+            pending_s = ""
     original_just_changed = bool(
         widget_home and stored_home_n and widget_home != stored_home_n
     )
+    if not custom_is_ga and _token_is_catalog_bleed(
+        widget_home,
+        catalog_token=catalog_token,
+        custom_home=stored_home_n,
+        custom_sticky=sticky,
+    ):
+        original_just_changed = False
 
     force_seed_widget = False
     force_home = str(session.pop("_cpl_force_pk_to_home", None) or "").strip()
@@ -810,34 +912,46 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         force_seed_widget = True
     elif live and live in options:
         # Prefer Custom sticky when global/live still holds the sealed catalog PK
-        # (Shape Dm / F) or another workflow's key leaked into display_key.
-        catalog_sticky = ""
-        try:
-            from songs.practice_key_state import (
-                get_practice_concert_key as _get_pk,
-                resolve_practice_source_pick as _res_pick,
-            )
-
-            _cp = str(_res_pick(session) or "").strip()
-            if _cp and not _cp.startswith("custom::"):
-                catalog_sticky = str(_get_pk(session, _cp) or "").strip()
-        except ImportError:
-            catalog_sticky = ""
+        # (Shape Bm / Dm / F). A Custom transpose (D→E) must not snap back to home.
         if sticky and live != sticky and (
-            (catalog_sticky and live == catalog_sticky) or (not custom_is_ga and live != home and sticky == home)
+            (catalog_token and live == catalog_token)
+            or _token_is_catalog_bleed(
+                live,
+                catalog_token=catalog_token,
+                custom_home=stored_home_n,
+                custom_sticky=sticky,
+            )
         ):
             selected = sticky
             force_seed_widget = True
         else:
             selected = live
-    elif pending_s:
+    elif pending_s and (
+        custom_is_ga
+        or pending_s in {sticky, home, live_widget}
+    ):
         selected = pending_s or home
         force_seed_widget = True
     elif sticky and sticky in options:
         selected = sticky
         force_seed_widget = True
     else:
-        selected = sticky or live or home
+        selected = sticky or home or live
+        force_seed_widget = True
+
+    if not custom_is_ga and selected and selected not in {sticky, home, live_widget, pending_custom_s} and (
+        bool(catalog_token)
+        and (
+            selected == catalog_token
+            or _token_is_catalog_bleed(
+                selected,
+                catalog_token=catalog_token,
+                custom_home=stored_home_n,
+                custom_sticky=sticky,
+            )
+        )
+    ):
+        selected = sticky or home
         force_seed_widget = True
 
     if selected not in options:

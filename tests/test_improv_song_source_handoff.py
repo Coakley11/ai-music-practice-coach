@@ -107,6 +107,21 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Custom progression")
         self.assertEqual(session.get("improv_song_source"), "Custom progression")
 
+    def test_flush_trusts_active_radio_after_hydrate(self) -> None:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_PREVIEW_SOURCE_KEY: "Custom progression",
+            "improv_song_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        session["improv_song_source"] = "Active song"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Active song")
+
     def test_resolve_prefers_preview_bucket_over_stale_handoff(self) -> None:
         from source_session_state import SBI_PREVIEW_SOURCE_KEY
 

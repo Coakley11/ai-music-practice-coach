@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from improvisation_motif import (
@@ -121,6 +122,18 @@ class TestM4PatternControls(unittest.TestCase):
         self.assertEqual(list(changed["notes"]), pitches)
         self.assertEqual(list(changed["midi"]), midis)
         self.assertNotEqual(changed.get("rhythm_key"), desc.get("rhythm_key"))
+
+        after_down = transform_motif(desc, "sequence_down", key_center="Fm")
+        down_notes = list(after_down["notes"])
+        down_midi = list(after_down["midi"])
+        after_rhythm = transform_motif(after_down, "change_rhythm", key_center="Fm")
+        self.assertEqual(list(after_rhythm["notes"]), down_notes)
+        self.assertEqual(list(after_rhythm["midi"]), down_midi)
+        self.assertNotEqual(after_rhythm.get("rhythm_key"), after_down.get("rhythm_key"))
+        abc_before = build_motif_abc(after_down, key_center="Fm", bpm=100)
+        abc_after = build_motif_abc(after_rhythm, key_center="Fm", bpm=100)
+        pitch_re = re.compile(r"[A-Ga-g][,']*")
+        self.assertEqual(pitch_re.findall(abc_before), pitch_re.findall(abc_after))
 
         up = transform_motif(desc, "sequence_up", key_center="Fm")
         self.assertEqual(len(up["notes"]), len(pitches))
