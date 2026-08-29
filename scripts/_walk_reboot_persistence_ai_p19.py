@@ -303,7 +303,8 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
               const groups = [...document.querySelectorAll('[role="radiogroup"]')];
               for (const g of groups) {
                 const gtxt = (g.innerText || '').toLowerCase();
-                if (!gtxt.includes('active song') || !gtxt.includes('custom progression')) continue;
+                if (!gtxt.includes('active source') && !gtxt.includes('active song')) continue;
+                if (!gtxt.includes('custom progression')) continue;
                 const labels = [...g.querySelectorAll('label')];
                 const custom = labels.find((l) => /custom progression/i.test(l.innerText || ''));
                 if (!custom) continue;
@@ -330,7 +331,7 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
 
     if not clicked:
         try:
-            active = page.get_by_role("radio", name=re.compile(r"^Active song$", re.I))
+            active = page.get_by_role("radio", name=re.compile(r"^Active (song|Source)$", re.I))
             if active.count():
                 active.last.focus()
                 page.keyboard.press("ArrowRight")
@@ -377,7 +378,7 @@ def open_sbi_custom_source(page: Page, notes: list[str]) -> bool:
           }
           for (const l of labels) {
             const t = (l.innerText || '').trim();
-            if (!/^active song$/i.test(t)) continue;
+            if (!/^(active song|active source)$/i.test(t)) continue;
             const input = l.querySelector('input[type=radio]');
             const role = l.closest('[role=radio]') || l;
             const checked = (input && input.checked)

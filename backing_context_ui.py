@@ -277,10 +277,17 @@ def render_backing_creative_context_card(
         subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
     elif ctx.source == "song_improv":
         source_title = "Song-Based Improvisation"
-        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
         style_label = str(ctx.song_title or state.style or applied_groove or "Active song").strip()
+        try:
+            from source_session_state import format_sbi_backing_blue_card_subtitle
+
+            subtitle = html.escape(
+                format_sbi_backing_blue_card_subtitle(session, ctx=ctx)
+            )
+        except ImportError:
+            mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
+            subtitle = html.escape(f"{source_title} · {mode_label or style_label}")
         title = html.escape(style_label)
-        subtitle = html.escape(f"{source_title} · {mode_label or style_label}")
     else:
         source_title = ctx.source_label
         mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from music_theory import ENHARMONIC_MAJOR_KEYS
+from source_session_state import IMPROV_SONG_SOURCES
 
 # Creative Lab — Improvisation Intelligence
 IMPROV_TAB_NAMES: tuple[str, ...] = (
@@ -17,10 +18,10 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
     "Metrics & AI",
 )
 
-IMPROV_SONG_SOURCES: tuple[str, ...] = ("Active song", "Custom progression")
-
 CREATIVE_SONG_SOURCE_DISPLAY_NAMES: dict[str, str] = {
+    "Active song": "Active Source",
     "Custom progression": "✏️ Custom Progression",
+    "Composition": "Composition",
 }
 
 
@@ -201,14 +202,16 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
             from songs.music_source import custom_progression_is_active
 
             if custom_progression_is_active(session_state):
-                set_sbi_preview_source(session_state, "Custom progression")
-                session_state["improv_song_source"] = "Custom progression"
-                try:
-                    from workflow_musical_authority import refresh_custom_improv_concert_sections
+                preview_now = get_sbi_preview_source(session_state)
+                if preview_now != "Composition":
+                    set_sbi_preview_source(session_state, "Custom progression")
+                    session_state["improv_song_source"] = "Custom progression"
+                    try:
+                        from workflow_musical_authority import refresh_custom_improv_concert_sections
 
-                    refresh_custom_improv_concert_sections(session_state)
-                except ImportError:
-                    pass
+                        refresh_custom_improv_concert_sections(session_state)
+                    except ImportError:
+                        pass
         except ImportError:
             pass
     except ImportError:
@@ -385,6 +388,8 @@ def apply_improv_song_source(
             session_state.pop("_restore_sbi_custom_source", None)
         elif src == "Custom progression":
             session_state["_restore_sbi_custom_source"] = True
+        elif src == "Composition":
+            session_state.pop("_restore_sbi_custom_source", None)
         return
     session_state["improv_song_source"] = src
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
@@ -399,6 +404,8 @@ def apply_improv_song_source(
         session_state.pop("_restore_sbi_custom_source", None)
     elif src == "Custom progression":
         session_state["_restore_sbi_custom_source"] = True
+    elif src == "Composition":
+        session_state.pop("_restore_sbi_custom_source", None)
     # Preview tab only — do not call set_custom_source / set_catalog_source.
 
 
@@ -437,10 +444,14 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         preview = get_sbi_preview_source(session_state)
         live = str(session_state.get("improv_song_source") or "").strip()
         hydrated = bool(session_state.get("_sbi_song_source_hydrated"))
-        if preview == "Custom progression" and live != preview and not hydrated:
+        if (
+            preview in {"Custom progression", "Composition"}
+            and live != preview
+            and not hydrated
+        ):
             # First Creative render after reboot: widget often defaults to Active
-            # while persisted preview is Custom. After that, trust the radio so a
-            # real Active click is not overwritten back to Custom.
+            # while persisted preview is Custom or Composition. After that, trust
+            # the radio so a real Active click is not overwritten.
             try:
                 from session_widget_safe import safe_session_assign
 

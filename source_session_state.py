@@ -12,7 +12,171 @@ SBI_PREVIEW_SOURCE_KEY = "sbi_preview_source"
 CATALOG_SESSION_KEY = "catalog_session"
 CUSTOM_SESSION_KEY = "custom_session"
 
-IMPROV_SONG_SOURCES = ("Active song", "Custom progression")
+SBI_SONG_SOURCE_ACTIVE = "Active song"
+SBI_SONG_SOURCE_CUSTOM = "Custom progression"
+SBI_SONG_SOURCE_COMPOSITION = "Composition"
+
+IMPROV_SONG_SOURCES = (
+    SBI_SONG_SOURCE_ACTIVE,
+    SBI_SONG_SOURCE_CUSTOM,
+    SBI_SONG_SOURCE_COMPOSITION,
+)
+
+SBI_MATERIAL_CATALOG = "catalog"
+SBI_MATERIAL_CUSTOM = "custom"
+SBI_MATERIAL_COMPOSITION = "composition"
+
+SBI_MATERIAL_TYPE_LABELS = {
+    SBI_MATERIAL_CATALOG: "Catalog song",
+    SBI_MATERIAL_CUSTOM: "Custom progression",
+    SBI_MATERIAL_COMPOSITION: "Composition",
+}
+
+SBI_WORKFLOW_LABEL = "Song-Based Improvisation"
+COMPOSITION_SBI_UNAVAILABLE_TITLE = "No composition source yet"
+COMPOSITION_SBI_UNAVAILABLE_MESSAGE = (
+    "Composition is not available as an SBI source yet. "
+    "No composition progression is loaded."
+)
+
+
+def global_active_is_custom(session: dict[str, Any]) -> bool:
+    """True when GLOBAL_ACTIVE_SOURCE currently resolves to Custom.
+
+    Must not infer Custom from LAST_CUSTOM / CPL memory while Global Active
+    remains Catalog (Shape + leftover Trial).
+    """
+    try:
+        from songs.music_source import SOURCE_CUSTOM, custom_progression_is_active
+
+        return bool(
+            custom_progression_is_active(session)
+            and str(session.get("active_music_source") or "") == SOURCE_CUSTOM
+        )
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return pick.startswith("custom::") or pick.startswith("custom\x1f")
+
+
+def composition_sbi_source_available(session: dict[str, Any]) -> bool:
+    """True when a distinct Composition progression exists for SBI.
+
+    Future source owner — never fall back to Catalog, Custom, or My Progression.
+    """
+    del session
+    return False
+
+
+def resolve_sbi_material_kind(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """Return catalog | custom | composition from SBI owner, never from title.
+
+    SBI Active Source → dereference GLOBAL_ACTIVE (catalog or custom).
+    SBI Custom Progression → LAST_CUSTOM (always custom).
+    SBI Composition → composition (future owner; currently unavailable).
+    """
+    sealed = ""
+    if ctx is not None:
+        sealed = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
+        if sealed in SBI_MATERIAL_TYPE_LABELS:
+            return sealed
+        sealed_owner = str(getattr(ctx, "sbi_source_owner", "") or "").strip()
+        if sealed_owner == SBI_SONG_SOURCE_COMPOSITION:
+            return SBI_MATERIAL_COMPOSITION
+        if sealed_owner == SBI_SONG_SOURCE_CUSTOM:
+            return SBI_MATERIAL_CUSTOM
+        if sealed_owner == SBI_SONG_SOURCE_ACTIVE:
+            bound = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+            if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+                return SBI_MATERIAL_CUSTOM
+            return SBI_MATERIAL_CATALOG
+    src = str(owner or "").strip()
+    if not src and session is not None:
+        src = get_sbi_preview_source(session)
+    if src == SBI_SONG_SOURCE_COMPOSITION:
+        return SBI_MATERIAL_COMPOSITION
+    if src == SBI_SONG_SOURCE_CUSTOM:
+        return SBI_MATERIAL_CUSTOM
+    if src == SBI_SONG_SOURCE_ACTIVE:
+        if session is not None and global_active_is_custom(session):
+            return SBI_MATERIAL_CUSTOM
+        bound = ""
+        if ctx is not None:
+            bound = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+            return SBI_MATERIAL_CUSTOM
+        return SBI_MATERIAL_CATALOG
+    if ctx is not None:
+        bound = str(
+            getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+        ).strip()
+        if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+            return SBI_MATERIAL_CUSTOM
+    return SBI_MATERIAL_CATALOG
+
+
+def sbi_source_type_label(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """Musician-facing third-segment label for the SBI Backing blue card."""
+    kind = resolve_sbi_material_kind(session, ctx=ctx, owner=owner)
+    return SBI_MATERIAL_TYPE_LABELS.get(kind, SBI_MATERIAL_TYPE_LABELS[SBI_MATERIAL_CATALOG])
+
+
+def format_sbi_backing_blue_card_subtitle(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """``Song-Based Improvisation · {source type}`` — never a repeated workflow name."""
+    return f"{SBI_WORKFLOW_LABEL} · {sbi_source_type_label(session, ctx=ctx, owner=owner)}"
+
+
+def sbi_composition_source_selected(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+) -> bool:
+    return resolve_sbi_material_kind(session, ctx=ctx) == SBI_MATERIAL_COMPOSITION
+
+
+def resolve_composition_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
+    """Isolated Composition preview — empty until a real composition source exists."""
+    available = composition_sbi_source_available(session)
+    if available:
+        return {
+            "source": SBI_SONG_SOURCE_COMPOSITION,
+            "title": "Composition",
+            "artist": "",
+            "display_key": "",
+            "original_key": "",
+            "sections": {},
+            "pick_key": "",
+            "available": True,
+        }
+    return {
+        "source": SBI_SONG_SOURCE_COMPOSITION,
+        "title": COMPOSITION_SBI_UNAVAILABLE_TITLE,
+        "artist": "",
+        "display_key": "",
+        "original_key": "",
+        "sections": {},
+        "pick_key": "",
+        "available": False,
+        "unavailable_reason": COMPOSITION_SBI_UNAVAILABLE_MESSAGE,
+    }
 
 
 def get_sbi_preview_source(session: dict[str, Any]) -> str:
@@ -356,6 +520,8 @@ def _projected_custom_preview_sections(
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
+    if source == SBI_SONG_SOURCE_COMPOSITION:
+        return resolve_composition_sbi_preview(session)
     if source == "Custom progression":
         custom = get_custom_session(session)
         if custom:
@@ -475,6 +641,8 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
     ).strip() if ctx is not None else ""
     if page == "backing":
+        if sbi_composition_source_selected(session, ctx=ctx):
+            return False
         if src == "custom_progression":
             return True
         if src == "song_improv" and bound.startswith("custom::"):
@@ -484,6 +652,8 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
     # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
     # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
     # embargo gate 6 could not set Em.
+    if get_sbi_preview_source(session) == SBI_SONG_SOURCE_COMPOSITION:
+        return False
     tab = str(
         session.get("improv_intelligence_tab")
         or session.get("creative_improv_intelligence_tab")
@@ -790,18 +960,32 @@ def clear_sbi_custom_sidebar_overlay_if_needed(session: dict[str, Any]) -> None:
 
 __all__ = [
     "CATALOG_SESSION_KEY",
+    "COMPOSITION_SBI_UNAVAILABLE_MESSAGE",
+    "COMPOSITION_SBI_UNAVAILABLE_TITLE",
     "CUSTOM_SESSION_KEY",
     "IMPROV_SONG_SOURCES",
+    "SBI_MATERIAL_TYPE_LABELS",
     "SBI_PREVIEW_SOURCE_KEY",
+    "SBI_SONG_SOURCE_ACTIVE",
+    "SBI_SONG_SOURCE_COMPOSITION",
+    "SBI_SONG_SOURCE_CUSTOM",
+    "SBI_WORKFLOW_LABEL",
     "clear_sbi_custom_sidebar_overlay_if_needed",
+    "composition_sbi_source_available",
     "custom_sbi_owns_sidebar_practice_key",
+    "format_sbi_backing_blue_card_subtitle",
     "get_catalog_session",
     "get_custom_session",
     "get_sbi_preview_source",
+    "global_active_is_custom",
     "heal_sealed_catalog_sidebar_if_needed",
     "prepare_sbi_custom_sidebar_display_key",
+    "resolve_composition_sbi_preview",
     "resolve_improv_song_source_for_handoff",
+    "resolve_sbi_material_kind",
     "resolve_sbi_preview",
+    "sbi_composition_source_selected",
+    "sbi_source_type_label",
     "set_sbi_preview_source",
     "sync_catalog_session",
     "sync_custom_session",

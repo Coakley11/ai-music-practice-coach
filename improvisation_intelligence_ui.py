@@ -898,10 +898,26 @@ def _tab_entry_modes(
                     session_state["improv_song_source"] = "Custom progression"
                 source = "Custom progression"
                 live_src = "Custom progression"
+            elif live_src != "Composition" and preview_src == "Composition" and not hydrated:
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        "Composition",
+                        widget_safe=True,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = "Composition"
+                source = "Composition"
+                live_src = "Composition"
             set_sbi_preview_source(session_state, live_src)
             if live_src == "Active song":
                 session_state.pop("_restore_sbi_custom_source", None)
                 clear_sbi_custom_sidebar_overlay_if_needed(session_state)
+            elif live_src == "Composition":
+                session_state.pop("_restore_sbi_custom_source", None)
         except ImportError:
             session_state["sbi_preview_source"] = str(source or "Active song")
 
@@ -909,6 +925,8 @@ def _tab_entry_modes(
         preview_sections = dict(song_preview.get("sections") or {})
         if source == "Custom progression":
             pass  # preview_sections already from custom_session bucket
+        elif source == "Composition":
+            preview_sections = {}
         elif source == "Active song":
             preview_sections = _authoritative_concert_sections(
                 session_state,
@@ -947,6 +965,25 @@ def _tab_entry_modes(
                     if st.button("🎼 Songs", key="improv_go_picker", type="secondary"):
                         on_go_song_selection()
                     st.markdown("</div>", unsafe_allow_html=True)
+        elif source == "Composition":
+            try:
+                from source_session_state import COMPOSITION_SBI_UNAVAILABLE_MESSAGE
+
+                unavailable_msg = str(
+                    song_preview.get("unavailable_reason") or COMPOSITION_SBI_UNAVAILABLE_MESSAGE
+                )
+            except ImportError:
+                unavailable_msg = "Composition is not available as an SBI source yet."
+            if render_creative_song_context_card:
+                render_creative_song_context_card(
+                    st,
+                    title=str(song_preview.get("title") or "No composition source yet"),
+                    artist="",
+                    display_key="",
+                    chord_count=0,
+                    source_label="Composition",
+                )
+            st.info(unavailable_msg)
         else:
             custom_sections = song_preview.get("sections") or {}
             flat_custom = [c for chs in custom_sections.values() for c in chs if str(c).strip()]
@@ -980,7 +1017,7 @@ def _tab_entry_modes(
                         on_go_custom_progression()
                     st.markdown("</div>", unsafe_allow_html=True)
 
-        if preview_sections:
+        if preview_sections and source != "Composition":
             if source == "Custom progression":
                 practice_key = str(
                     song_preview.get("display_key") or song_preview.get("original_key") or "C"
@@ -997,12 +1034,20 @@ def _tab_entry_modes(
                 concert_key=practice_key,
             )
 
-        _render_open_practice_backing_row(
-            st,
-            on_open_backing=on_open_backing,
-            on_open_practice=on_open_practice,
-            workflow="song",
-        )
+        if source == "Composition":
+            _render_open_practice_backing_row(
+                st,
+                on_open_backing=on_open_backing,
+                on_open_practice=None,
+                workflow="song",
+            )
+        else:
+            _render_open_practice_backing_row(
+                st,
+                on_open_backing=on_open_backing,
+                on_open_practice=on_open_practice,
+                workflow="song",
+            )
 
     elif entry == "Style Jam Mode":
         try:

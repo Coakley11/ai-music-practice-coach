@@ -255,9 +255,12 @@ def open_sbi_active(page: Page) -> bool:
               const groups = [...document.querySelectorAll('[role="radiogroup"]')];
               for (const g of groups) {
                 const gtxt = (g.innerText || '').toLowerCase();
-                if (!gtxt.includes('active song') || !gtxt.includes('custom progression')) continue;
+                if (!gtxt.includes('active source') && !gtxt.includes('active song')) continue;
+                if (!gtxt.includes('custom progression')) continue;
                 const labels = [...g.querySelectorAll('label')];
-                const active = labels.find((l) => /^\\s*active song\\s*$/i.test((l.innerText||'').trim())
+                const active = labels.find((l) => /^\\s*active source\\s*$/i.test((l.innerText||'').trim())
+                  || /^\\s*active song\\s*$/i.test((l.innerText||'').trim())
+                  || /active source/i.test(l.innerText||'')
                   || /active song/i.test(l.innerText||''));
                 if (!active) continue;
                 active.scrollIntoView({block:'center'});
@@ -275,7 +278,7 @@ def open_sbi_active(page: Page) -> bool:
         log(f"sbi_active js err {exc!r}")
     from walk_creative_backing_matrix import click_radio as cr
 
-    ok = cr(page, "Active song")
+    ok = cr(page, "Active Source") or cr(page, "Active song")
     settle(page, 3)
     return bool(ok)
 
@@ -522,7 +525,7 @@ def main() -> int:
             and "my progression" not in low(body)
         )
         # Prefer Active song source label
-        if has_any(body, "Custom progression") and not has_any(body, "Active song"):
+        if has_any(body, "Custom progression") and not has_any(body, "Active Source", "Active song"):
             # May still show both radios — check selected context
             if "trial song" in low(body) and "shape of you" not in low(body):
                 active_ok = False

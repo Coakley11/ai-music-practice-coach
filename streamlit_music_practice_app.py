@@ -15410,6 +15410,17 @@ elif _studio_page == "creative":
                     stamp_explicit_backing_handoff(st.session_state, "song_improv")
                 except ImportError:
                     st.session_state["_backing_explicit_handoff_source"] = "song_improv"
+            elif source == "Composition":
+                # Future SBI owner — never copy Catalog/Custom sections into the handoff.
+                creative_source = "song_improv"
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "song_improv")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "song_improv"
+                st.session_state["improv_song_concert_sections"] = {}
+                st.session_state["improv_song_chart_sections"] = {}
             else:
                 creative_source = "song_improv"
                 st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)

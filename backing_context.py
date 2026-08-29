@@ -123,6 +123,8 @@ class BackingContext:
     updated_at: str = ""
     source_signature: str = ""
     bound_pick_key: str = ""
+    sbi_source_owner: str = ""
+    sbi_material_kind: str = ""
 
     def __post_init__(self) -> None:
         if not self.source_label:
@@ -178,6 +180,8 @@ class BackingContext:
             updated_at=str(raw.get("updated_at") or ""),
             source_signature=str(raw.get("source_signature") or ""),
             bound_pick_key=str(raw.get("bound_pick_key") or ""),
+            sbi_source_owner=str(raw.get("sbi_source_owner") or ""),
+            sbi_material_kind=str(raw.get("sbi_material_kind") or "").strip().lower(),
         )
 
 
@@ -1144,6 +1148,58 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
         resolve_improv_song_source = lambda s: str(s.get("improv_song_source") or "Active song")  # type: ignore
 
     song_source = str(resolve_improv_song_source(session) or "Active song").strip()
+    try:
+        from source_session_state import resolve_sbi_material_kind
+
+        sbi_kind = resolve_sbi_material_kind(session, owner=song_source)
+    except ImportError:
+        if song_source == "Composition":
+            sbi_kind = "composition"
+        elif song_source == "Custom progression":
+            sbi_kind = "custom"
+        else:
+            sbi_kind = (
+                "custom"
+                if str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+                else "catalog"
+            )
+    if song_source == "Composition":
+        try:
+            from source_session_state import (
+                COMPOSITION_SBI_UNAVAILABLE_TITLE,
+                composition_sbi_source_available,
+            )
+
+            available = composition_sbi_source_available(session)
+        except ImportError:
+            available = False
+            COMPOSITION_SBI_UNAVAILABLE_TITLE = "No composition source yet"  # type: ignore[misc]
+        title = "Composition" if available else COMPOSITION_SBI_UNAVAILABLE_TITLE
+        return BackingContext(
+            source="song_improv",
+            source_label=_SOURCE_LABELS["song_improv"],
+            active_song_id="",
+            song_title=title,
+            key="",
+            display_key="",
+            concert_key="",
+            bpm=_default_bpm(session) or 100,
+            style="",
+            groove="",
+            section=None,
+            sections=[],
+            scope="Full song",
+            loops=int(session.get("backing_track_loops") or 2),
+            progression=[],
+            progression_label=title,
+            section_labels=[],
+            loop=True,
+            entry_mode="Song-Based Improvisation",
+            mode_label="Song-Based Improvisation",
+            bound_pick_key="",
+            sbi_source_owner="Composition",
+            sbi_material_kind="composition",
+        )
     if song_source == "Custom progression":
         try:
             from songs.music_source import ensure_custom_progression_for_backing
@@ -1216,6 +1272,8 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
                 mode_label="Song-Based Improvisation",
                 bound_pick_key=pick_key,
                 custom_revision_id=revision or None,
+                sbi_source_owner="Custom progression",
+                sbi_material_kind="custom",
             )
         except ImportError:
             pass
@@ -1267,6 +1325,8 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
         entry_mode="Song-Based Improvisation",
         mode_label="Song-Based Improvisation",
         bound_pick_key=pick_key,
+        sbi_source_owner=song_source or "Active song",
+        sbi_material_kind=sbi_kind,
     )
 
 
@@ -1956,6 +2016,11 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
             if ctx.mission_id and current_mission and ctx.mission_id != current_mission:
                 return False
         bound = str(ctx.bound_pick_key or "").strip()
+        composition_overlay = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() == "composition" or str(
+            getattr(ctx, "sbi_source_owner", "") or ""
+        ).strip() == "Composition"
+        if composition_overlay:
+            return True
         # Custom SBI (and custom-bound specialized overlays) may temporarily bind to
         # custom:: while Global Active Catalog remains a different song. That is not
         # invalid — validate against CPL revision, not catalog pick identity.
@@ -1990,6 +2055,8 @@ def invalidate_if_song_changed(session: dict[str, Any], new_pick_key: str | None
     """Clear stale Creative backing when active song changes. Returns True if reset."""
     ctx = get_backing_context(session)
     if ctx is None or ctx.source == "regular_song":
+        return False
+    if str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() == "composition":
         return False
     current = str(new_pick_key or _current_pick_key(session)).strip()
     if not current or not ctx.bound_pick_key:
@@ -2219,6 +2286,22 @@ def format_backing_context_banner(
             prog = "–".join(ctx.progression[:4])
             return f"Backing source: Custom progression · {prog}"
         return "Backing source: Custom progression · Custom"
+    if ctx.source == "song_improv":
+        try:
+            from source_session_state import format_sbi_backing_blue_card_subtitle
+
+            type_line = format_sbi_backing_blue_card_subtitle(None, ctx=ctx)
+            parts = [f"Backing source: {type_line}"]
+            if ctx.song_title:
+                parts.insert(1, ctx.song_title)
+            concert = resolved_concert or str(ctx.concert_key or ctx.display_key or "").strip()
+            if concert:
+                parts.append(f"Concert {concert}")
+            if bpm_display:
+                parts.append(f"{bpm_display} BPM")
+            return " · ".join(parts)
+        except ImportError:
+            pass
     return f"Backing source: {ctx.source_label}"
 
 
@@ -2678,6 +2761,14 @@ def sections_dict_from_backing_context(
             ).strip() or "C"
     practice_key = _fixed_practice_key_for_context(session, ctx, practice_key)
     if ctx.source == "song_improv":
+        try:
+            from source_session_state import sbi_composition_source_selected
+
+            if sbi_composition_source_selected(session, ctx=ctx):
+                return _filter_sections_dict({}, section=ctx.section, selected=list(ctx.sections or []))
+        except ImportError:
+            if str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() == "composition":
+                return _filter_sections_dict({}, section=ctx.section, selected=list(ctx.sections or []))
         # Custom SBI must use CPL / LAST_CUSTOM sections — never catalog Shape charts
         # via sync_song_improv_sections_to_practice_key (screenshot My Progression / Shape bleed).
         use_custom_sbi = False
@@ -3016,7 +3107,17 @@ def open_backing_from_creative(
         session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
     except ImportError:
         pass
-    sync_creative_handoff_keys(session, st_like=st_like)
+    _skip_sbi_composition_key_sync = False
+    try:
+        from source_session_state import sbi_composition_source_selected
+
+        _skip_sbi_composition_key_sync = bool(
+            str(source) == "song_improv" and sbi_composition_source_selected(session)
+        )
+    except ImportError:
+        _skip_sbi_composition_key_sync = False
+    if not _skip_sbi_composition_key_sync:
+        sync_creative_handoff_keys(session, st_like=st_like)
     if str(source) == "entry_jam":
         try:
             from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
