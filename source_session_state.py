@@ -356,24 +356,6 @@ def _projected_custom_preview_sections(
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
-    # Global Active Custom: both Active song and Custom tabs must use Trial/CPL material.
-    try:
-        from songs.music_source import custom_progression_is_active
-
-        if custom_progression_is_active(session):
-            custom = sync_custom_session(session)
-            if custom:
-                return {
-                    "source": source,
-                    "title": str(custom.get("title") or "Custom progression"),
-                    "artist": str(custom.get("artist") or "Custom progression"),
-                    "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
-                    "original_key": str(custom.get("original_key") or "C"),
-                    "sections": _custom_preview_concert_sections(session, custom),
-                    "pick_key": str(custom.get("pick_key") or ""),
-                }
-    except ImportError:
-        pass
     if source == "Custom progression":
         custom = get_custom_session(session)
         if custom:
