@@ -330,14 +330,17 @@ def render_karaoke_setlist_panel(
                     f'data-row="{idx}">{marker_html}</div>',
                     unsafe_allow_html=True,
                 )
-                artist_bit = f"  —  {a}" if a else ""
-                pick_label = f"{idx + 1:>2}.  {t}{artist_bit}"
+                # Primary row label includes the entry's saved Practice Key so
+                # duplicate titles (same song, different keys) are distinguishable
+                # while managing / reordering / removing.
+                pick_label = f"{idx + 1:>2}.  {km.entry_display_line(entry, title_override=t)}"
                 if st.button(
                     pick_label,
                     key=f"karaoke_pick_{idx}_{entry_id}",
                     use_container_width=True,
                     type="primary" if is_editing else "secondary",
                     help=(
+                        f"Saved Practice Key: {practice_key}. "
                         "Make this the active editing/viewing song "
                         "(lyrics, song card, backing defaults switch to it). "
                         "Queue position stays unchanged."
@@ -354,7 +357,6 @@ def render_karaoke_setlist_panel(
                                 "artist": a,
                             }
                         st.rerun()
-                st.caption(f"Practice Key: **{practice_key}**" + (f" · Play {play_count}×" if play_count > 1 else ""))
             with c_plays:
                 new_plays = st.number_input(
                     "×",
@@ -931,37 +933,44 @@ def render_karaoke_queue_preview(
     if not km.is_karaoke_session_active(st.session_state):
         return
 
-    cur_pk = km.current_session_pick_key(st.session_state)
-    upcoming = km.upcoming_session_pick_keys(st.session_state, limit=max_upcoming)
+    cur_entry = km.current_session_entry(st.session_state)
+    upcoming = km.upcoming_session_entries(st.session_state, limit=max_upcoming)
     pos, total = km.session_position(st.session_state)
-    if not cur_pk and not upcoming:
+    if not cur_entry and not upcoming:
         return
 
     ordinals = ("Next", "3rd", "4th", "5th", "6th")
 
     rows_html: list[str] = []
 
-    def _row(label: str, pk: str, *, current: bool = False) -> str:
+    def _row(label: str, entry: dict, *, current: bool = False) -> str:
+        pk = str(entry.get("pick_key") or "")
         t, a = lookup_pick_key_label(
             pk,
             record_for_pick_key=record_for_pick_key,
             all_records=all_records,
             session_state=st.session_state,
         )
+        if entry.get("title"):
+            t = str(entry.get("title") or t)
+        key_txt = str(entry.get("practice_key") or "").strip()
+        title_bit = t
+        if key_txt:
+            title_bit = f"{t} · Practice Key {key_txt}"
         cls = "ui-karaoke-preview-row" + (" current" if current else "")
         return (
             f'<div class="{cls}">'
             f'<span class="ui-karaoke-preview-label">{html.escape(label)}</span>'
-            f'<span class="ui-karaoke-preview-title">{html.escape(t)}</span>'
+            f'<span class="ui-karaoke-preview-title">{html.escape(title_bit)}</span>'
             f'<span class="ui-karaoke-preview-artist">{html.escape(a)}</span>'
             "</div>"
         )
 
-    if cur_pk:
-        rows_html.append(_row("Now Singing", cur_pk, current=True))
-    for i, pk in enumerate(upcoming):
+    if cur_entry:
+        rows_html.append(_row("Now Singing", cur_entry, current=True))
+    for i, entry in enumerate(upcoming):
         label = ordinals[i] if i < len(ordinals) else f"#{pos + i + 1}"
-        rows_html.append(_row(label, pk))
+        rows_html.append(_row(label, entry))
 
     header = feature_label("karaoke", f"Karaoke Setlist · {pos} of {total}")
     st.markdown(

@@ -355,7 +355,6 @@ def apply_saved_custom_pick_key_context(
         pass
 
     display_key = saved_display_key or str(saved.get("display_key") or "").strip()
-    from songs.key_state import PENDING_DISPLAY_KEY
 
     try:
         from custom_progression_lab import cpl_draft_written_key
@@ -514,8 +513,6 @@ def apply_saved_music_context(
             ensure_composition_library_hydrated(st.session_state)
             ok = activate_composition_by_pick_key(st, pick_key)
             if ok and saved_display_key:
-                from songs.key_state import PENDING_DISPLAY_KEY
-
                 st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
             return bool(ok)
         except ImportError:
@@ -1104,7 +1101,7 @@ def apply_pick_key(
             song_artist=data.get("artist", ""),
         )
         _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=False)
-        from songs.key_state import PENDING_DISPLAY_KEY, resolve_restore_display_key
+        from songs.key_state import resolve_restore_display_key
         from songs.music_source import on_active_song_identity_changed
 
         restore_display_key = ""

@@ -137,8 +137,46 @@ class TestKaraokeEntryModel(unittest.TestCase):
                 "play_count": 3,
             }
         )
-        self.assertIn("Practice Key: D", line)
-        self.assertIn("Play 3×", line)
+        self.assertEqual(line, "All the Things You Are · Practice Key D · Play 3×")
+
+    def test_duplicate_titles_distinct_practice_keys_in_managed_setlist(self) -> None:
+        """ATTYA Ab / G / Ab must stay distinguishable while managing the queue."""
+        ss = _ss()
+        pick = "Jazz\x1fAll the Things You Are — Jerome Kern"
+        for k in ("Ab", "G", "Ab"):
+            set_practice_concert_key(ss, k, pick_key=pick)
+            km.add_to_queue(ss, pick, title="All the Things You Are", artist="Jerome Kern")
+        rows = km.managed_setlist_display_rows(ss)
+        self.assertEqual([r["practice_key"] for r in rows], ["Ab", "G", "Ab"])
+        self.assertEqual(
+            [r["label"] for r in rows],
+            [
+                "All the Things You Are · Practice Key Ab",
+                "All the Things You Are · Practice Key G",
+                "All the Things You Are · Practice Key Ab",
+            ],
+        )
+        self.assertEqual(len({r["entry_id"] for r in rows}), 3)
+
+        # Sidebar Practice Key must not rewrite saved entry labels.
+        set_practice_concert_key(ss, "C", pick_key=pick)
+        rows_after = km.managed_setlist_display_rows(ss)
+        self.assertEqual([r["practice_key"] for r in rows_after], ["Ab", "G", "Ab"])
+        self.assertEqual([r["label"] for r in rows_after], [r["label"] for r in rows])
+
+        # Reorder moves the exact entry (key + id).
+        mid_id = rows[1]["entry_id"]
+        km.move_in_queue(ss, mid_id, -1)
+        reordered = km.managed_setlist_display_rows(ss)
+        self.assertEqual([r["practice_key"] for r in reordered], ["G", "Ab", "Ab"])
+        self.assertEqual(reordered[0]["entry_id"], mid_id)
+
+        # Remove only the targeted entry_id (first Ab after reorder = original first Ab).
+        remove_id = reordered[1]["entry_id"]
+        km.remove_from_queue(ss, remove_id)
+        left = km.managed_setlist_display_rows(ss)
+        self.assertEqual([r["practice_key"] for r in left], ["G", "Ab"])
+        self.assertNotIn(remove_id, {r["entry_id"] for r in left})
 
 
 class TestMusicSourceBadgeIcons(unittest.TestCase):

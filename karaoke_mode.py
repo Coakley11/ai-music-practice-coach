@@ -782,16 +782,21 @@ def set_vocal_focus_target(
     return None
 
 
-def entry_display_line(entry: dict[str, Any] | None) -> str:
-    """Compact setlist label: Title — Practice Key (×N)."""
+def entry_display_line(entry: dict[str, Any] | None, *, title_override: str | None = None) -> str:
+    """Compact managed-setlist label: Title · Practice Key K [· Play N×].
+
+    Uses the Practice Key **snapshot on the entry**, never the live sidebar key.
+    """
     if not isinstance(entry, dict):
         return ""
-    title = str(entry.get("title") or "").strip()
+    title = str(title_override if title_override is not None else entry.get("title") or "").strip()
     if not title:
         pk = str(entry.get("pick_key") or "")
         title = pk.split("\x1f", 1)[-1] if "\x1f" in pk else pk
         if title.startswith("custom::"):
             title = title.removeprefix("custom::").replace("_", " ")
+        if title.startswith("composition::"):
+            title = title.removeprefix("composition::").replace("_", " ")
         if " — " in title:
             title = title.split(" — ", 1)[0].strip()
     key = str(entry.get("practice_key") or "").strip() or "?"
@@ -799,7 +804,30 @@ def entry_display_line(entry: dict[str, Any] | None) -> str:
         plays = max(1, int(entry.get("play_count") or 1))
     except (TypeError, ValueError):
         plays = 1
-    base = f"{title} — Practice Key: {key}"
+    base = f"{title} · Practice Key {key}"
     if plays > 1:
-        base = f"{base} — Play {plays}×"
+        base = f"{base} · Play {plays}×"
     return base
+
+
+def managed_setlist_display_rows(session_state: Any) -> list[dict[str, Any]]:
+    """Stable view of queue rows for manage UI / tests (order, keys, labels)."""
+    rows: list[dict[str, Any]] = []
+    for idx, entry in enumerate(get_queue(session_state)):
+        if not isinstance(entry, dict):
+            continue
+        try:
+            plays = max(1, int(entry.get("play_count") or 1))
+        except (TypeError, ValueError):
+            plays = 1
+        rows.append(
+            {
+                "index": idx,
+                "entry_id": str(entry.get("entry_id") or ""),
+                "pick_key": str(entry.get("pick_key") or ""),
+                "practice_key": str(entry.get("practice_key") or "").strip(),
+                "play_count": plays,
+                "label": entry_display_line(entry),
+            }
+        )
+    return rows
