@@ -1471,6 +1471,29 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-transform: uppercase;
   opacity: 0.9;
 }
+/* Source identity color: left art only — never recolor the whole Backing card. */
+.ui-backing-active-song.mode-custom-progression-backing,
+.ui-backing-active-song.mode-composition-song-backing {
+  /* Keep the standard blue Backing card shell from .ui-backing-active-song */
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 38%, #1e40af 72%, #172554 100%);
+  border-color: rgba(30, 64, 175, 0.45);
+  color: #f8fafc;
+}
+.ui-backing-active-art.ui-source-identity-art.source-custom,
+.ui-active-song-art.source-custom {
+  background: linear-gradient(145deg, #10b981, #059669) !important;
+  color: #ecfdf5;
+}
+.ui-backing-active-art.ui-source-identity-art.source-composition,
+.ui-active-song-art.source-composition {
+  background: linear-gradient(145deg, #1e293b, #0f172a) !important;
+  color: #f8fafc;
+}
+.ui-active-song-card.source-custom,
+.ui-active-song-card.source-composition {
+  /* Songs page: keep white/blue card body; only left art is tinted. */
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 48%, #eff6ff 100%);
+}
 .ui-backing-active-kicker {
   font-size: 0.65rem;
   font-weight: 800;
@@ -7268,11 +7291,9 @@ def studio_song_meta_badges_html(
     if source:
         source_text = str(source or "").strip()
         source_l = source_text.lower()
-        if "custom" in source_l:
-            source_icon = FEATURE_ICONS.get("custom", "✍️")
-        elif "composition" in source_l or "compos" in source_l:
-            source_icon = FEATURE_ICONS.get("composition", "🪶")
-        elif "catalog" in source_l or "song selection" in source_l:
+        # Canonical Source badge chrome for every owner — feature icons (✍️/🪶)
+        # belong on the left identity art, not as a replacement Source badge.
+        if "catalog" in source_l or "song selection" in source_l:
             source_icon = FEATURE_ICONS.get("songs", "🎼")
         else:
             source_icon = "📀"

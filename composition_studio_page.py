@@ -1776,11 +1776,19 @@ def _render_section_transport(
     button_label: str = "▶ Preview section",
     loops_key: str = "composer_play_loops",
 ) -> None:
-    loops = int(session_state.get(loops_key) or session_state.get("composer_play_loops") or 2)
+    # Normalize widget-owned keys BEFORE construction. Never assign a
+    # widget key after st.slider creates it in the same run.
+    if loops_key not in session_state:
+        session_state[loops_key] = int(session_state.get("composer_play_loops") or 2)
+    if (
+        loops_key != "composer_play_loops"
+        and "composer_play_loops" not in session_state
+    ):
+        session_state["composer_play_loops"] = int(session_state.get(loops_key) or 2)
+    loops = int(session_state.get(loops_key) or 2)
     t1, t2 = st.columns([2, 3])
     with t1:
         loops = st.slider("Loops", 1, 4, loops, key=loops_key)
-        session_state["composer_play_loops"] = loops
     with t2:
         play = st.button(button_label, type="primary", key=preview_key, use_container_width=True)
 

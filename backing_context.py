@@ -1554,16 +1554,17 @@ def build_composition_song_context(
         concert_key = display_key = home_key
     elif not concert_key:
         concert_key = display_key = home_key
+    # Always honor the saved Practice Key for this Composition pick.
+    # Hydration must not overwrite a user-chosen E with original C.
     try:
-        from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from practice_key_mode import resolve_practice_concert_key_for_song
 
-        if is_fixed_practice_key_mode(session):
-            concert_key = display_key = resolve_practice_concert_key_for_song(
-                session,
-                home_key,
-                pick_key=pick_key,
-                fallback=concert_key or display_key or home_key,
-            )
+        concert_key = display_key = resolve_practice_concert_key_for_song(
+            session,
+            home_key,
+            pick_key=pick_key,
+            fallback=concert_key or display_key or home_key,
+        )
     except ImportError:
         pass
 

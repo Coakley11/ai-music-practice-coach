@@ -240,6 +240,20 @@ def resolve_current_backing_musical_state(
             practice = str(
                 session.get("display_key") or session.get("concert_key") or custom_ctx.concert_key or ""
             ).strip()
+    elif ctx is not None and ctx.source == "composition_song":
+        practice = str(ctx.concert_key or "").strip()
+        if not practice:
+            try:
+                from practice_key_mode import resolve_practice_concert_key_for_song
+
+                practice = resolve_practice_concert_key_for_song(
+                    session,
+                    str(ctx.key or "C"),
+                    pick_key=str(ctx.bound_pick_key or ""),
+                    fallback=str(session.get("display_key") or session.get("concert_key") or "C"),
+                )
+            except ImportError:
+                practice = str(session.get("display_key") or session.get("concert_key") or ctx.key or "").strip()
     else:
         practice = ""
     if not practice:

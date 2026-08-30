@@ -7844,6 +7844,8 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
     _charts_badge = ""
     _style_label = str(details.get("style_label") or rec.get("genre") or "Song")
     _source_label = "Catalog Song"
+    _art_source_cls = ""
+    _card_source_cls = ""
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
@@ -7856,12 +7858,20 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             SOURCE_COMPOSITION,
         ):
             _source_label = "Composition"
+            # Composition is the source, not a musical style.
+            _style_label = "Auto"
             details["visual_emoji"] = _FEATURE_ICONS.get("composition", "🪶")
             details["visual_genre"] = "Composition"
+            details["visual_gradient"] = "linear-gradient(145deg,#1e293b,#0f172a)"
+            _art_source_cls = " source-composition"
+            _card_source_cls = " source-composition"
         elif is_custom_progression(st.session_state):
-            _source_label = "Custom Progression"
+            _source_label = "Custom progression"
             details["visual_emoji"] = _FEATURE_ICONS.get("custom", "✍️")
-            details["visual_genre"] = "Custom"
+            details["visual_genre"] = "Custom progression"
+            details["visual_gradient"] = "linear-gradient(145deg,#10b981,#059669)"
+            _art_source_cls = " source-custom"
+            _card_source_cls = " source-custom"
             _cpl_style = ensure_original_structure(
                 st.session_state.get(CPL_ACTIVE_KEY) or {}
             ).get("progression_style")
@@ -7910,8 +7920,9 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
         else ""
     )
     card_html = (
-        f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}">'
-        f'<div class="ui-active-song-art" style="background:{html.escape(details["visual_gradient"])};">'
+        f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}{_card_source_cls}">'
+        f'<div class="ui-active-song-art{_art_source_cls}" '
+        f'style="background:{html.escape(details["visual_gradient"])};">'
         f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
         f'<div class="ui-active-song-body">'
         f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
@@ -8584,7 +8595,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "title": composition_title(doc),
                 "artist": "Composition",
                 "key": composition_home_key(doc),
-                "genre": "Composition",
+                "genre": "Auto",
                 "source": "Composition",
                 "pick_key": f"composition::{doc.get('id')}",
             }

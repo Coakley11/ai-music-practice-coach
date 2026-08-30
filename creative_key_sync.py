@@ -1100,6 +1100,54 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
             return
+        # Composition songs must persist Practice Key per pick the same way Custom does.
+        # Without this, sidebar E snaps back to original C on refresh/rebuild.
+        if ctx is not None and ctx.source == "composition_song":
+            session["concert_key"] = new
+            session["display_key"] = new
+            try:
+                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=resolve_practice_source_pick(session) or str(ctx.bound_pick_key or ""),
+                )
+            except ImportError:
+                pass
+            try:
+                from backing_context import (
+                    apply_backing_context_to_session,
+                    build_composition_song_context,
+                    set_backing_context,
+                )
+
+                rebuilt = build_composition_song_context(session)
+                set_backing_context(session, rebuilt)
+                apply_backing_context_to_session(session, rebuilt, st_like=st_like)
+            except ImportError:
+                pass
+            invalidate_creative_backing_context(session)
+            _apply_pending_backing_context_on_page(session, st_like=st_like)
+            return
+        # Composition active on Songs (no Backing card yet) — still persist Practice Key.
+        try:
+            from songs.music_source import composition_song_is_active
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+            if composition_song_is_active(session):
+                session["concert_key"] = new
+                session["display_key"] = new
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=resolve_practice_source_pick(session),
+                )
+                invalidate_creative_backing_context(session)
+                _apply_pending_backing_context_on_page(session, st_like=st_like)
+                return
+        except ImportError:
+            pass
     except ImportError:
         pass
     entry = _resolve_creative_entry_mode(session)

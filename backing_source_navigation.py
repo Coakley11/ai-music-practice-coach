@@ -351,9 +351,23 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         pick_looks_composition = pick_now.startswith("composition::") or meta_pick.startswith(
             "composition::"
         )
+        # Explicit Catalog/Custom choice outranks a stale composition pick.
+        try:
+            from songs.music_source import (
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                picker_custom_progression_mode,
+            )
+
+            explicit_leave_composition = bool(
+                session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+            ) or picker_custom_progression_mode(session)
+        except ImportError:
+            explicit_leave_composition = False
+        if explicit_leave_composition and not force_composition:
+            pick_looks_composition = False
         if (
             force_composition
-            or pick_looks_composition
+            or (pick_looks_composition and not explicit_leave_composition)
             or composition_song_is_active(session)
             or picker_composition_mode(session)
         ):

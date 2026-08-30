@@ -525,9 +525,35 @@ def apply_saved_music_context(
             )
 
             ensure_composition_library_hydrated(st.session_state)
+            # Seed Practice Key store BEFORE activate/commit so force_reset
+            # resolves E (not original C) for this composition pick.
+            if saved_display_key:
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(
+                        st.session_state,
+                        saved_display_key,
+                        pick_key=pick_key,
+                    )
+                except ImportError:
+                    pass
+                st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
             ok = activate_composition_by_pick_key(st, pick_key)
             if ok and saved_display_key:
                 st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(
+                        st.session_state,
+                        saved_display_key,
+                        widget_safe=True,
+                        st_like=st,
+                    )
+                except ImportError:
+                    st.session_state["display_key"] = saved_display_key
+                    st.session_state["concert_key"] = saved_display_key
             return bool(ok)
         except ImportError:
             return False

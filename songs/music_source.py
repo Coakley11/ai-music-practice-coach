@@ -61,12 +61,37 @@ def _pick_looks_composition(pick_key: str) -> bool:
     return str(pick_key or "").strip().startswith("composition::")
 
 
+
+def clear_composition_one_shot_nav_flags(session_state: dict[str, Any]) -> None:
+    """Drop Composition hub/backing one-shots after an explicit non-Composition choice."""
+    for key in (
+        "_force_composition_backing_open",
+        "_composition_hub_backing_clicked",
+        "_composition_hub_promote_token",
+        "_composition_hub_promote_error",
+        "_composition_hub_outer_error",
+        "_composition_radio_ensure_error",
+        "_composition_ensure_ok",
+        "_composition_ensure_commit_error",
+    ):
+        session_state.pop(key, None)
+
+
 def composition_song_is_active(session_state: dict[str, Any]) -> bool:
     """True when a Composition document is the active song."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
+    # Explicit Songs radio / Custom source must outrank a stale composition
+    # pick after Composition → Custom (otherwise the user cannot leave).
+    if picker_custom_progression_mode(session_state):
+        return False
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
+        if not picker_composition_mode(session_state):
+            return False
+    if picker_composition_mode(session_state):
+        return True
     # Composition pick/meta must win even when ACTIVE_MUSIC_SOURCE still lags on
     # Custom after Songs → Composition (sidebar/Backing otherwise stay Custom).
     if is_composition_song(session_state):
@@ -564,6 +589,12 @@ def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
 
 
 def _expected_song_picker_source(session_state: dict[str, Any]) -> str:
+    if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return SONG_PICKER_SOURCE_CATALOG
+    if picker_custom_progression_mode(session_state):
+        return SONG_PICKER_SOURCE_CUSTOM
+    if picker_composition_mode(session_state):
+        return song_picker_composition_option_label()
     if composition_song_is_active(session_state) or is_composition_song(session_state):
         return song_picker_composition_option_label()
     if is_custom_progression(session_state):
@@ -1134,6 +1165,7 @@ def on_song_picker_source_change(
         return
     if choice.startswith("Use Custom"):
         st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        clear_composition_one_shot_nav_flags(st.session_state)
         try:
             from custom_progression_lab import cpl_active_from_session
 
@@ -1177,12 +1209,15 @@ def on_song_picker_source_change(
                     pass
         st.rerun()
         return
-    st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-    if (
+    clear_composition_one_shot_nav_flags(st.session_state)
+    leaving_non_catalog = (
         is_custom_progression(st.session_state)
         or custom_progression_is_active(st.session_state)
         or composition_song_is_active(st.session_state)
-    ):
+        or is_composition_song(st.session_state)
+    )
+    st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    if leaving_non_catalog:
         switch_to_catalog_from_custom(
             st,
             song_picker_catalog=song_picker_catalog,
