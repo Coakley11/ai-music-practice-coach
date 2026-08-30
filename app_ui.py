@@ -4093,6 +4093,7 @@ body[data-custom-builder-ui] .cpl-finish-panel {
 }
 body[data-custom-builder-ui] .cpl-steps-strip {
   margin-bottom: 0.45rem !important;
+  gap: 0.35rem;
 }
 body[data-custom-builder-ui] [data-testid="stVerticalBlock"] {
   gap: 0.45rem !important;

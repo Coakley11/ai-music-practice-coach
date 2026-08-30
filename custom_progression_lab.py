@@ -1395,8 +1395,47 @@ def song_structure_overview_html(
     return "".join(blocks)
 
 
-def cpl_steps_strip_html(*, style: bool, key_set: bool, has_section_chords: bool, finished: bool) -> str:
-    """Visual 5-step guide for the builder."""
+CPL_LIBRARY_SAVED_SONG_ID_KEY = "_cpl_library_saved_song_id"
+
+
+def cpl_working_song_id(active: dict | None) -> str:
+    """Stable identity for the current Custom working song."""
+    return str((active or {}).get("id") or "").strip()
+
+
+def mark_cpl_library_saved(session_state: dict, song_id: str) -> None:
+    """Record that Save to Library succeeded for this working song only."""
+    sid = str(song_id or "").strip()
+    if sid:
+        session_state[CPL_LIBRARY_SAVED_SONG_ID_KEY] = sid
+    else:
+        session_state.pop(CPL_LIBRARY_SAVED_SONG_ID_KEY, None)
+
+
+def clear_cpl_library_saved_state(session_state: dict) -> None:
+    """Drop saved-library reveal state (New Song / load / workspace reset)."""
+    session_state.pop(CPL_LIBRARY_SAVED_SONG_ID_KEY, None)
+
+
+def cpl_library_saved_for_current_song(session_state: dict, active: dict | None = None) -> bool:
+    """True only when Save to Library succeeded for the current working song id."""
+    if active is None:
+        active = session_state.get(CPL_ACTIVE_KEY) or {}
+    current = cpl_working_song_id(active)
+    if not current:
+        return False
+    return str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip() == current
+
+
+def cpl_steps_strip_html(
+    *,
+    style: bool,
+    key_set: bool,
+    has_section_chords: bool,
+    finished: bool,
+    saved: bool = False,
+) -> str:
+    """Visual 6-step guide for the Custom builder."""
     def _step(n: int, label: str, done: bool, active: bool) -> str:
         cls = "cpl-step-pill"
         if done:
@@ -1411,7 +1450,8 @@ def cpl_steps_strip_html(*, style: bool, key_set: bool, has_section_chords: bool
         + _step(2, "Key", key_set, style and not key_set)
         + _step(3, "Chords", has_section_chords, key_set and not has_section_chords)
         + _step(4, "Finish", finished, has_section_chords and not finished)
-        + _step(5, "Backing track", False, finished)
+        + _step(5, "Save to Library", saved, finished and not saved)
+        + _step(6, "Backing Track", False, saved)
         + "</div>"
     )
 
@@ -1593,6 +1633,7 @@ def is_cpl_ephemeral_widget_key(key: str) -> bool:
 
 CPL_WIDGET_PERSIST_SCALAR_KEYS = (
     "cpl_finished",
+    CPL_LIBRARY_SAVED_SONG_ID_KEY,
     "_cpl_editing_display_key",
     CPL_LAST_DISPLAY_KEY,
     "cpl_edit_section",
@@ -1670,8 +1711,16 @@ def apply_cpl_session_progression(
     reset_display_key: bool = False,
 ) -> None:
     """Install progression as active and reset CPL UI widget cache."""
-    session_state[CPL_ACTIVE_KEY] = ensure_original_structure(active)
+    incoming = ensure_original_structure(active)
+    incoming_id = cpl_working_song_id(incoming)
+    previous_saved = str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip()
+    keep_library_saved = bool(incoming_id and incoming_id == previous_saved)
+    session_state[CPL_ACTIVE_KEY] = incoming
     session_state.pop("cpl_finished", None)
+    if keep_library_saved:
+        mark_cpl_library_saved(session_state, incoming_id)
+    else:
+        clear_cpl_library_saved_state(session_state)
     from custom_progression_lab import cpl_draft_written_key
 
     home_key = cpl_draft_written_key(session_state[CPL_ACTIVE_KEY])
@@ -3426,6 +3475,14 @@ def cpl_on_save_library_callback() -> None:
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
         name = str(active.get("name") or "My Progression").strip() or "My Progression"
         save_progression(saved, name, active)
+        stored = saved.get(name) if isinstance(saved.get(name), dict) else {}
+        song_id = str((stored or {}).get("id") or "").strip()
+        if not song_id:
+            raise RuntimeError("Save to library did not produce a song id")
+        live = cpl_active_from_session(st.session_state)
+        live["id"] = song_id
+        st.session_state[CPL_ACTIVE_KEY] = live
+        mark_cpl_library_saved(st.session_state, song_id)
         st.session_state["_cpl_save_library_flash"] = True
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"

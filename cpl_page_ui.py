@@ -180,6 +180,7 @@ def render_custom_progression_lab_page() -> None:
         cpl_on_pick_chord_callback,
         cpl_on_save_library_callback,
         cpl_on_undo_last_chord_callback,
+        cpl_library_saved_for_current_song,
         cpl_set_pending_chord,
         cpl_save_draft,
         cpl_section_progression_view,
@@ -342,6 +343,7 @@ def render_custom_progression_lab_page() -> None:
         .replace("♯", "s")
     )
     finished = bool(st.session_state.get("cpl_finished"))
+    library_saved = cpl_library_saved_for_current_song(st.session_state, active)
     saved = st.session_state[CPL_SAVED_KEY]
     prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
 
@@ -428,6 +430,60 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
+    def _render_launch_in_studio(*, has_chords: bool, include_workspace_nav: bool) -> None:
+        """Launch actions. Practice/Backing appear only after Save to Library succeeds."""
+        st.markdown("#### Launch in the studio")
+        saved_now = cpl_library_saved_for_current_song(
+            st.session_state, cpl_active_from_session(st.session_state)
+        )
+        cells = ["save"]
+        if include_workspace_nav:
+            cells.extend(["active", "songs"])
+        if saved_now:
+            cells.extend(["backing", "practice"])
+        cols = st.columns(max(1, len(cells)))
+        for col, kind in zip(cols, cells):
+            with col:
+                if kind == "save":
+                    st.button(
+                        "Save to library",
+                        key="cpl_save_prog_launch",
+                        type="primary",
+                        use_container_width=True,
+                        on_click=cpl_on_save_library_callback,
+                    )
+                elif kind == "active":
+                    if st.button(
+                        "Set as Active Song",
+                        key="cpl_set_active_bottom",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        _activate_custom_song()
+                elif kind == "songs":
+                    if st.button(
+                        nav_icon_button_label("picker"),
+                        key="cpl_go_songs_bottom",
+                        use_container_width=True,
+                    ):
+                        _go_songs()
+                elif kind == "backing":
+                    if st.button(
+                        nav_icon_button_label("backing"),
+                        key="cpl_open_backing_bottom",
+                        use_container_width=True,
+                        disabled=not has_chords,
+                    ):
+                        _open_backing()
+                elif kind == "practice":
+                    if st.button(
+                        nav_icon_button_label("practice"),
+                        key="cpl_open_practice_bottom",
+                        use_container_width=True,
+                        disabled=not has_chords,
+                    ):
+                        _open_practice()
+
     with st.container(key="custom_song_builder_panel", border=False):
         render_custom_builder_panel_header(st, working_title=prog_title)
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
@@ -489,30 +545,29 @@ def render_custom_progression_lab_page() -> None:
             pass
         prog_title = str(active.get("name") or "My Progression").strip() or "My Progression"
         _save(_home_sections(), persist=False)
-        if not finished:
-            n1, n2, n3 = st.columns(3)
-            with n1:
-                st.button(
-                    "Save to library",
-                    key="cpl_save_prog",
-                    use_container_width=True,
-                    on_click=cpl_on_save_library_callback,
-                )
-            with n2:
-                st.button(
-                    "New song",
-                    key="cpl_start_new",
-                    use_container_width=True,
-                    on_click=cpl_on_new_song_callback,
-                )
-            with n3:
-                if st.button(
-                    "Set as Active Song",
-                    key="cpl_set_active",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    _activate_custom_song()
+        n1, n2, n3 = st.columns(3)
+        with n1:
+            st.button(
+                "Save to library",
+                key="cpl_save_prog",
+                use_container_width=True,
+                on_click=cpl_on_save_library_callback,
+            )
+        with n2:
+            st.button(
+                "New song",
+                key="cpl_start_new",
+                use_container_width=True,
+                on_click=cpl_on_new_song_callback,
+            )
+        with n3:
+            if st.button(
+                "Set as Active Song",
+                key="cpl_set_active",
+                type="primary",
+                use_container_width=True,
+            ):
+                _activate_custom_song()
         _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
         if _save_flash:
             if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
@@ -610,6 +665,7 @@ def render_custom_progression_lab_page() -> None:
                     key_set=True,
                     has_section_chords=True,
                     finished=True,
+                    saved=library_saved,
                 ),
                 unsafe_allow_html=True,
             )
@@ -618,30 +674,38 @@ def render_custom_progression_lab_page() -> None:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
             st.markdown("**Open**")
-            go_p, go_s, go_b = st.columns(3)
-            with go_p:
-                if st.button(
-                    nav_icon_button_label("practice"),
-                    key="cpl_to_practice_finish",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    _go_practice_keep_workspace()
-            with go_s:
+            if library_saved:
+                go_p, go_s, go_b = st.columns(3)
+                with go_p:
+                    if st.button(
+                        nav_icon_button_label("practice"),
+                        key="cpl_to_practice_finish",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        _go_practice_keep_workspace()
+                with go_s:
+                    if st.button(
+                        nav_icon_button_label("picker"),
+                        key="cpl_to_songs_finish",
+                        use_container_width=True,
+                    ):
+                        _go_songs()
+                with go_b:
+                    if st.button(
+                        nav_icon_button_label("backing"),
+                        key="cpl_to_backing_finish",
+                        use_container_width=True,
+                        disabled=not has_chords,
+                    ):
+                        _open_backing()
+            else:
                 if st.button(
                     nav_icon_button_label("picker"),
                     key="cpl_to_songs_finish",
                     use_container_width=True,
                 ):
                     _go_songs()
-            with go_b:
-                if st.button(
-                    nav_icon_button_label("backing"),
-                    key="cpl_to_backing_finish",
-                    use_container_width=True,
-                    disabled=not has_chords,
-                ):
-                    _open_backing()
 
             launch = st.columns(2)
             with launch[0]:
@@ -657,6 +721,7 @@ def render_custom_progression_lab_page() -> None:
                     st.session_state["cpl_finished"] = False
                     st.rerun()
 
+            _render_launch_in_studio(has_chords=has_chords, include_workspace_nav=False)
             _save(None)
             return
 
@@ -700,6 +765,7 @@ def render_custom_progression_lab_page() -> None:
                 key_set=True,
                 has_section_chords=not progression_is_empty(home_sections),
                 finished=False,
+                saved=library_saved,
             ),
             unsafe_allow_html=True,
         )
@@ -1080,39 +1146,7 @@ def render_custom_progression_lab_page() -> None:
             st.markdown("**Song structure**")
             st.markdown(map_html, unsafe_allow_html=True)
 
-        st.markdown("#### Launch in the studio")
-        setup = st.columns(4)
-        with setup[0]:
-            if st.button(
-                "Set as Active Song",
-                key="cpl_set_active_bottom",
-                type="primary",
-                use_container_width=True,
-            ):
-                _activate_custom_song()
-        with setup[1]:
-            if st.button(
-                nav_icon_button_label("picker"),
-                key="cpl_go_songs_bottom",
-                use_container_width=True,
-            ):
-                _go_songs()
-        with setup[2]:
-            if st.button(
-                nav_icon_button_label("backing"),
-                key="cpl_open_backing_bottom",
-                use_container_width=True,
-                disabled=not has_chords,
-            ):
-                _open_backing()
-        with setup[3]:
-            if st.button(
-                nav_icon_button_label("practice"),
-                key="cpl_open_practice_bottom",
-                use_container_width=True,
-                disabled=not has_chords,
-            ):
-                _open_practice()
+        _render_launch_in_studio(has_chords=has_chords, include_workspace_nav=True)
 
         with st.expander("More options", expanded=False):
             if saved_names := list_saved_progression_names(saved):

@@ -10,25 +10,32 @@ from unittest.mock import patch
 from custom_progression_lab import (
     CPL_ACTIVE_KEY,
     CPL_BUILDER_VERSION,
+    apply_cpl_session_progression,
     cpl_active_from_session,
     cpl_apply_chord_with_bars_to_session,
     cpl_apply_pending_chord_to_section,
-    cpl_apply_chord_with_bars_to_session,
     cpl_draft_chord_count,
     cpl_draft_written_key,
+    cpl_library_saved_for_current_song,
     cpl_page_end_save_should_preserve_sections,
     cpl_save_draft,
     cpl_section_progression_view,
     cpl_set_pending_chord,
+    cpl_steps_strip_html,
     cpl_whole_song_progression_view,
     default_active_progression,
     ensure_all_cpl_sections,
     ensure_cpl_widget_keys_initialized,
+    export_cpl_widget_state,
     filled_section_names,
+    import_cpl_widget_state,
+    mark_cpl_library_saved,
     migrate_cpl_builder_version,
     persist_cpl_draft_state,
     reset_cpl_widget_initialization,
+    save_progression,
     seed_cpl_draft_widgets_from_active,
+    start_new_progression,
     sync_cpl_draft_widgets_to_active,
 )
 
@@ -383,6 +390,85 @@ class TestCplPageFlow(unittest.TestCase):
         self.assertTrue(whole["has_any"])
         self.assertEqual(whole["sections"][0]["name"], "Verse")
         self.assertIn("C", whole["sections"][0]["line"])
+
+
+class TestCplFinishSaveWorkflow(unittest.TestCase):
+    def test_steps_strip_shows_six_workflow_labels(self) -> None:
+        html = cpl_steps_strip_html(
+            style=True,
+            key_set=True,
+            has_section_chords=True,
+            finished=False,
+            saved=False,
+        )
+        for n, label in (
+            (1, "Style"),
+            (2, "Key"),
+            (3, "Chords"),
+            (4, "Finish"),
+            (5, "Save to Library"),
+            (6, "Backing Track"),
+        ):
+            self.assertIn(f">{n}</span>{label}", html)
+        self.assertNotIn("Backing track", html)
+
+    def test_finish_does_not_imply_library_saved(self) -> None:
+        active = default_active_progression()
+        active["id"] = "draft-unsaved"
+        session = {CPL_ACTIVE_KEY: active, "cpl_finished": True}
+        self.assertFalse(cpl_library_saved_for_current_song(session, active))
+
+    def test_library_saved_is_scoped_to_working_song_id(self) -> None:
+        song_a = default_active_progression()
+        song_a["id"] = "song-a"
+        song_b = default_active_progression()
+        song_b["id"] = "song-b"
+        session = {CPL_ACTIVE_KEY: song_a}
+        mark_cpl_library_saved(session, "song-a")
+        self.assertTrue(cpl_library_saved_for_current_song(session, song_a))
+        self.assertFalse(cpl_library_saved_for_current_song(session, song_b))
+
+    def test_save_progression_success_stamps_id_for_reveal(self) -> None:
+        active = default_active_progression()
+        active["name"] = "Walk Song"
+        store: dict = {}
+        save_progression(store, "Walk Song", active)
+        song_id = str(store["Walk Song"]["id"])
+        self.assertTrue(song_id)
+        active["id"] = song_id
+        session = {CPL_ACTIVE_KEY: active}
+        mark_cpl_library_saved(session, song_id)
+        self.assertTrue(cpl_library_saved_for_current_song(session, active))
+
+    def test_new_song_does_not_inherit_previous_saved_reveal(self) -> None:
+        old = default_active_progression()
+        old["id"] = "saved-old"
+        session = {CPL_ACTIVE_KEY: old}
+        mark_cpl_library_saved(session, "saved-old")
+        apply_cpl_session_progression(session, start_new_progression(), reset_display_key=True)
+        self.assertFalse(
+            cpl_library_saved_for_current_song(session, session[CPL_ACTIVE_KEY])
+        )
+        self.assertNotEqual(str(session[CPL_ACTIVE_KEY].get("id") or ""), "saved-old")
+
+    def test_same_song_reinstall_keeps_saved_reveal(self) -> None:
+        song = default_active_progression()
+        song["id"] = "keep-saved"
+        session = {CPL_ACTIVE_KEY: dict(song)}
+        mark_cpl_library_saved(session, "keep-saved")
+        apply_cpl_session_progression(session, dict(song), reset_display_key=False)
+        self.assertTrue(cpl_library_saved_for_current_song(session, session[CPL_ACTIVE_KEY]))
+
+    def test_widget_export_roundtrip_restores_saved_for_same_song_only(self) -> None:
+        session = {CPL_ACTIVE_KEY: {"id": "keep-me"}, "cpl_finished": True}
+        mark_cpl_library_saved(session, "keep-me")
+        blob = export_cpl_widget_state(session)
+        same = {CPL_ACTIVE_KEY: {"id": "keep-me"}}
+        import_cpl_widget_state(same, blob)
+        self.assertTrue(cpl_library_saved_for_current_song(same, same[CPL_ACTIVE_KEY]))
+        other = {CPL_ACTIVE_KEY: {"id": "other-song"}}
+        import_cpl_widget_state(other, blob)
+        self.assertFalse(cpl_library_saved_for_current_song(other, other[CPL_ACTIVE_KEY]))
 
 
 if __name__ == "__main__":

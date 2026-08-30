@@ -100,6 +100,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "cpl_edit_section",
             "cpl_builder_version",
             "cpl_finished",
+            "_cpl_library_saved_song_id",
         }
     ),
     "composer": frozenset(
