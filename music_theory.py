@@ -143,6 +143,18 @@ def split_key_center(key: str) -> tuple[str, str]:
     return root, mode
 
 
+def practice_key_inherits_source_mode(practice: str, original: str) -> bool:
+    """True when Practice Key stays in the song's major/minor family.
+
+    Shape of You is minor: ``G`` (major) must not win over ``Bm``. ``Dm`` may.
+    """
+    p_mode = str(split_key_center(practice)[1] or "").strip().lower()
+    o_mode = str(split_key_center(original)[1] or "").strip().lower()
+    if not p_mode or not o_mode:
+        return True
+    return p_mode == o_mode
+
+
 def key_center_token(tonic: str, mode: str) -> str:
     """Structured tonic + mode → sidebar token (Dm, D, etc.)."""
     t = str(tonic or "C").strip() or "C"

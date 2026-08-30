@@ -548,6 +548,11 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             # when the live/persisted SBI source is already Custom.
             if live_preview == "Custom progression" and snap_preview != live_preview:
                 continue
+            if session_state.get("_sbi_follow_active_after_explicit_catalog"):
+                if snap_preview != "Active song":
+                    continue
+                session_state[key] = "Active song"
+                continue
         if key == "song_picker_active_source":
             # Global music-source ownership — never reclaim from page snapshots.
             continue

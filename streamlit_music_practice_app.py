@@ -7539,6 +7539,14 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             _pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
             _sticky = str(get_practice_concert_key(st.session_state, _pk) or "").strip() if _pk else ""
             if _sticky:
+                try:
+                    from source_session_state import practice_key_inherits_source_mode
+
+                    if not practice_key_inherits_source_mode(_sticky, _original_key):
+                        _sticky = ""
+                except ImportError:
+                    pass
+            if _sticky:
                 _practice_concert_key = _sticky
     except ImportError:
         pass
@@ -7674,9 +7682,14 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             # Shape Key control is tonic-only; mode is inherited from Practice/Concert.
             # Never run bare "E" through format_key_label (that invents "E major").
             try:
-                from guitar_capo import shape_tonic_only as _shape_tonic_only
+                from guitar_capo import shape_chart_label_for_concert, shape_tonic_only as _shape_tonic_only
 
                 _written_label = _shape_tonic_only(_song_key_ctx.shape_key)
+                if _practice_concert_key:
+                    _charts_badge = shape_chart_label_for_concert(
+                        _practice_concert_key,
+                        _song_key_ctx.shape_key,
+                    )
             except ImportError:
                 _written_label = str(_song_key_ctx.shape_key or "").strip()
             _written_badge_label = "Shape Key"
@@ -7686,7 +7699,11 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             and _song_key_ctx.written_key != _practice_concert_key
         ):
             _written_label = _format_key_label(_song_key_ctx.written_key)
-        if _chart_key and _chart_key != _practice_concert_key:
+        if (
+            _chart_key
+            and _chart_key != _practice_concert_key
+            and not _song_key_ctx.shape_key
+        ):
             _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
             original_key=_orig_label if show_key_row else "",
@@ -10303,6 +10320,14 @@ try:
         _generated_backing_sidebar = bool(_gen_backing_owns(st.session_state))
     except ImportError:
         _generated_backing_sidebar = False
+    try:
+        _page_for_jam_release = str(st.session_state.get("studio_page") or "").strip().lower()
+        if _page_for_jam_release in {"picker", "practice", "songs"}:
+            from generated_jam_key_context import release_generated_jam_key_for_catalog_surface
+
+            release_generated_jam_key_for_catalog_surface(st.session_state)
+    except ImportError:
+        pass
     if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
     elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":

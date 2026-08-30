@@ -25,7 +25,7 @@ class TestSbiSongSourceSelector(unittest.TestCase):
         )
         self.assertEqual(creative_song_source_display_label("Active song"), "Active Source")
         self.assertIn("Custom Progression", creative_song_source_display_label("Custom progression"))
-        self.assertEqual(creative_song_source_display_label("Composition"), "Composition")
+        self.assertEqual(creative_song_source_display_label("Composition"), "🎹 Composition")
 
 
 class TestSbiBlueCardSourceType(unittest.TestCase):

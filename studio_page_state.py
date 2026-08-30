@@ -21,7 +21,7 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
 CREATIVE_SONG_SOURCE_DISPLAY_NAMES: dict[str, str] = {
     "Active song": "Active Source",
     "Custom progression": "✏️ Custom Progression",
-    "Composition": "Composition",
+    "Composition": "🎹 Composition",
 }
 
 
@@ -178,11 +178,16 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
         from source_session_state import (
             SBI_PREVIEW_SOURCE_KEY,
             get_sbi_preview_source,
+            sbi_must_follow_global_active,
             set_sbi_preview_source,
         )
 
+        follow_active = sbi_must_follow_global_active(session_state)
         preview = str(session_state.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
-        if preview in IMPROV_SONG_SOURCES:
+        if follow_active:
+            session_state["improv_song_source"] = "Active song"
+            set_sbi_preview_source(session_state, "Active song")
+        elif preview in IMPROV_SONG_SOURCES:
             if "improv_song_source" not in session_state:
                 session_state["improv_song_source"] = preview
         elif "improv_song_source" not in session_state:
@@ -196,12 +201,12 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
             )
         preview = get_sbi_preview_source(session_state)
         live = str(session_state.get("improv_song_source") or "").strip()
-        if preview == "Custom progression" and live != preview:
+        if not follow_active and preview == "Custom progression" and live != preview:
             session_state["improv_song_source"] = preview
         try:
             from songs.music_source import custom_progression_is_active
 
-            if custom_progression_is_active(session_state):
+            if custom_progression_is_active(session_state) and not follow_active:
                 preview_now = get_sbi_preview_source(session_state)
                 if preview_now != "Composition":
                     set_sbi_preview_source(session_state, "Custom progression")
@@ -375,6 +380,13 @@ def apply_improv_song_source(
 ) -> None:
     """Update SBI preview song source only — never activate Global Active Source."""
     src = str(source or "Active song").strip() or "Active song"
+    if src != "Active song":
+        try:
+            from source_session_state import clear_sbi_follow_active_after_explicit_catalog
+
+            clear_sbi_follow_active_after_explicit_catalog(session_state)
+        except ImportError:
+            session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
     if widget_safe:
         try:
             from source_session_state import set_sbi_preview_source
@@ -416,7 +428,25 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
     default/stale ``Active song`` widget value clobber a persisted Custom
     ``sbi_preview_source`` on hydrate. Trust the live widget only when it was
     explicitly changed this run (pending handoff) or when preview is unset.
+    Explicit catalog pick outranks leftover Custom until the user clicks Custom.
     """
+    try:
+        from source_session_state import sbi_must_follow_global_active
+
+        if sbi_must_follow_global_active(session_state):
+            session_state.pop(PENDING_IMPROV_SONG_SOURCE, None)
+            session_state["improv_song_source"] = "Active song"
+            try:
+                from source_session_state import set_sbi_preview_source
+
+                set_sbi_preview_source(session_state, "Active song")
+            except ImportError:
+                session_state["sbi_preview_source"] = "Active song"
+            session_state["_last_improv_song_source"] = "Active song"
+            session_state["_sbi_song_source_hydrated"] = True
+            return
+    except ImportError:
+        pass
     pending = str(session_state.pop(PENDING_IMPROV_SONG_SOURCE, None) or "").strip()
     if pending:
         try:

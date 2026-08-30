@@ -213,6 +213,176 @@ class TestSbiCustomPracticeKeyOwner(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "D")
         self.assertEqual(get_practice_concert_key(session, shape), "Dm")
 
+    def test_case_a_active_custom_sbi_custom_uses_active_practice_key(self) -> None:
+        """Trial Global Active at C → SBI Custom must show C, not Original D."""
+        from songs.music_source import SOURCE_CUSTOM
+        from source_session_state import (
+            prepare_sbi_custom_sidebar_display_key,
+            resolve_sbi_preview,
+            sbi_custom_identity_is_global_active,
+        )
+
+        custom = "custom::trial-1"
+
+        class _St:
+            session_state: dict = {}
+
+        st = _St()
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": custom,
+            "display_key": "C",
+            "concert_key": "C",
+            "practice_key_by_source": {custom: "C"},
+            "cpl_active_progression": {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [
+                        {"chord": "Em", "bars": 1},
+                        {"chord": "Em", "bars": 1},
+                        {"chord": "D", "bars": 1},
+                        {"chord": "D", "bars": 1},
+                    ]
+                },
+            },
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                    "original_sections": {
+                        "Verse": [
+                            {"chord": "Em", "bars": 1},
+                            {"chord": "Em", "bars": 1},
+                            {"chord": "D", "bars": 1},
+                            {"chord": "D", "bars": 1},
+                        ]
+                    },
+                },
+            },
+        }
+        st.session_state = session
+        self.assertTrue(sbi_custom_identity_is_global_active(session))
+        prepare_sbi_custom_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "C")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview.get("display_key"), "C")
+        joined = " ".join(
+            " ".join(chords) for chords in (preview.get("sections") or {}).values()
+        )
+        self.assertIn("Dm", joined)
+        self.assertIn("C", joined)
+        self.assertNotIn("Em", joined)
+
+    def test_case_b_non_active_custom_sbi_uses_original_lifecycle(self) -> None:
+        """Shape Global Active + LAST_CUSTOM Trial → SBI Custom starts at Original D."""
+        from songs.music_source import SOURCE_CATALOG
+        from source_session_state import (
+            prepare_sbi_custom_sidebar_display_key,
+            resolve_sbi_preview,
+            sbi_custom_identity_is_global_active,
+        )
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+
+        class _St:
+            session_state: dict = {}
+
+        st = _St()
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": shape,
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "practice_key_by_source": {shape: "Bm", custom: "D"},
+            "cpl_active_progression": {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {"A": ["Em", "Em", "D", "D"]},
+            },
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                    "original_sections": {"A": ["Em", "Em", "D", "D"]},
+                },
+            },
+        }
+        st.session_state = session
+        self.assertFalse(sbi_custom_identity_is_global_active(session))
+        prepare_sbi_custom_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "D")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(preview.get("display_key"), "D")
+        self.assertEqual(get_practice_concert_key(session, shape), "Bm")
+
+    def test_case_b_ignores_prior_active_custom_sticky_c(self) -> None:
+        """After Shape is Global Active, leftover Trial sticky C must not win over Original D."""
+        from songs.music_source import SOURCE_CATALOG
+        from source_session_state import prepare_sbi_custom_sidebar_display_key, resolve_sbi_preview
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+
+        class _St:
+            session_state: dict = {}
+
+        st = _St()
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": shape,
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "practice_key_by_source": {shape: "Bm", custom: "C"},
+            "cpl_active_progression": {
+                "id": "trial-1",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [
+                        {"chord": "Em", "bars": 1},
+                        {"chord": "Em", "bars": 1},
+                        {"chord": "D", "bars": 1},
+                        {"chord": "D", "bars": 1},
+                    ]
+                },
+            },
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        st.session_state = session
+        prepare_sbi_custom_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(resolve_sbi_preview(session).get("display_key"), "D")
+
 
 if __name__ == "__main__":
     unittest.main()

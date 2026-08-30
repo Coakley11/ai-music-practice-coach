@@ -193,6 +193,10 @@ def activate_generated_jam_key_ownership(
             session["improv_jam_key"] = token
         else:
             session["improv_style_key"] = token
+    # Live concert follows the generated session while jam owns Creative/Backing.
+    # Do not clobber ``display_key`` here — generation can keep a catalog leftover
+    # until the jam sidebar/backing owner writes. Songs must still release jam tokens.
+    session["concert_key"] = token
 
 
 def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widget: bool = False) -> bool:
@@ -256,12 +260,24 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widge
                 except Exception:
                     jam_tokens = set()
                 if heal not in jam_tokens:
-                    store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
-                    if not isinstance(store, dict):
-                        store = {}
-                    store = dict(store)
-                    store[pick] = heal
-                    session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+                    try:
+                        from music_theory import split_key_center
+                        from songs.music_source import _catalog_original_key_for_session
+
+                        original = str(_catalog_original_key_for_session(session) or "").strip()
+                        _ot, orig_mode = split_key_center(original) if original else ("", "")
+                        _ht, heal_mode = split_key_center(heal)
+                        if orig_mode and heal_mode and orig_mode != heal_mode:
+                            heal = ""
+                    except Exception:
+                        pass
+                    if heal:
+                        store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
+                        if not isinstance(store, dict):
+                            store = {}
+                        store = dict(store)
+                        store[pick] = heal
+                        session[PRACTICE_KEY_BY_SOURCE_KEY] = store
         except ImportError:
             pass
     try:
@@ -271,6 +287,135 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widge
     except ImportError:
         pass
     return True
+
+
+PENDING_CATALOG_FRESH_AFTER_SPECIALIZED = "_pending_catalog_fresh_activation_after_specialized"
+
+
+def live_practice_key_is_generated_jam_token(session: dict[str, Any], token: str = "") -> bool:
+    tok = str(token or session.get("display_key") or session.get("concert_key") or "").strip()
+    if not tok:
+        return False
+    return tok in generated_jam_practice_key_tokens(session)
+
+
+def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bool:
+    """Songs/Practice/explicit catalog pick: Style Jam must not own live Practice Key.
+
+    Keeps ``improv_style_key`` / jam session for Return-to-Jam. Releases live
+    display/pending/catalog-sticky jam tokens and specialized backing handoff.
+    """
+    tokens = generated_jam_practice_key_tokens(session)
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    jam_ctx = bool(session.get("_generated_jam_key_owner_active") or session.get(GENERATED_JAM_KEY_CONTEXT_KEY))
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    specialized = handoff in {"mission", "song_improv", "entry_jam"}
+    leaked = bool(tokens and live in tokens)
+    if not jam_ctx and not leaked and not specialized:
+        return False
+
+    released_jam = bool(jam_ctx or leaked)
+    released = False
+    if jam_ctx or leaked:
+        if deactivate_generated_jam_key_ownership(session, pre_widget=True):
+            released = True
+    if specialized:
+        session.pop("_backing_explicit_handoff_source", None)
+        session["_backing_released_specialized_context"] = True
+        released = True
+
+    tokens = generated_jam_practice_key_tokens(session)
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::") or pick.startswith("custom\x1f"):
+        if released:
+            session[PENDING_CATALOG_FRESH_AFTER_SPECIALIZED] = True
+        return released
+
+    saved = ""
+    original = ""
+    try:
+        from songs.music_source import _catalog_original_key_for_session
+
+        original = str(_catalog_original_key_for_session(session) or "").strip()
+    except Exception:
+        sel = session.get("selected_song")
+        if isinstance(sel, dict):
+            original = str(sel.get("key") or "").strip()
+    try:
+        from songs.practice_key_state import clear_practice_concert_key, get_practice_concert_key
+
+        if pick:
+            saved = str(get_practice_concert_key(session, pick, default="") or "").strip()
+            if saved and saved in tokens:
+                clear_practice_concert_key(session, pick)
+                saved = ""
+            if saved and original:
+                try:
+                    from music_theory import split_key_center
+
+                    _ot, orig_mode = split_key_center(original)
+                    _st, saved_mode = split_key_center(saved)
+                    # Trial D snapshot must not become Shape sticky (D → Dm).
+                    if orig_mode and saved_mode and orig_mode != saved_mode:
+                        clear_practice_concert_key(session, pick)
+                        saved = ""
+                except Exception:
+                    pass
+    except ImportError:
+        pass
+
+    restore = ""
+    if saved and saved not in tokens:
+        restore = saved
+    elif original and original not in tokens:
+        restore = original
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    # Jam snapshot can restore a leftover Trial D onto Shape. Always re-apply
+    # catalog original/sticky after releasing jam, even when live is not a jam token.
+    if restore and (
+        released_jam
+        or not live
+        or live in tokens
+        or live != restore
+    ):
+        session["concert_key"] = restore
+        session["display_key"] = restore
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session[PENDING_DISPLAY_KEY] = restore
+        except ImportError:
+            session["_pending_display_key"] = restore
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            if pick:
+                set_practice_concert_key(
+                    session,
+                    restore,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
+        except Exception:
+            pass
+        released = True
+    if released:
+        session[PENDING_CATALOG_FRESH_AFTER_SPECIALIZED] = True
+        try:
+            from songs.music_source import custom_progression_is_active
+
+            custom_ga = custom_progression_is_active(session)
+        except ImportError:
+            custom_ga = str(pick).startswith("custom::")
+        if not custom_ga:
+            try:
+                from source_session_state import bind_sbi_preview_to_active_after_explicit_catalog
+
+                bind_sbi_preview_to_active_after_explicit_catalog(session)
+            except ImportError:
+                session["improv_song_source"] = "Active song"
+                session["sbi_preview_source"] = "Active song"
+    return released
 
 
 def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
@@ -301,11 +446,14 @@ def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
 
 __all__ = [
     "GENERATED_JAM_KEY_CONTEXT_KEY",
+    "PENDING_CATALOG_FRESH_AFTER_SPECIALIZED",
     "SONG_PRACTICE_KEY_SNAPSHOT_KEY",
     "activate_generated_jam_key_ownership",
     "deactivate_generated_jam_key_ownership",
     "generated_jam_owns_practice_key",
     "generated_jam_practice_key_tokens",
+    "live_practice_key_is_generated_jam_token",
     "refresh_generated_jam_key_context_from_blob",
+    "release_generated_jam_key_for_catalog_surface",
     "snapshot_song_practice_key_if_needed",
 ]

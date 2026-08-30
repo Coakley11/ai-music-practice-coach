@@ -13,7 +13,7 @@ def test_custom_progression_song_source_label_uses_pencil() -> None:
     assert "Composition" in IMPROV_SONG_SOURCES
     assert creative_song_source_display_label("Custom progression") == "✏️ Custom Progression"
     assert creative_song_source_display_label("Active song") == "Active Source"
-    assert creative_song_source_display_label("Composition") == "Composition"
+    assert creative_song_source_display_label("Composition") == "🎹 Composition"
 
 
 def test_entry_jam_song_source_radio_uses_display_label() -> None:

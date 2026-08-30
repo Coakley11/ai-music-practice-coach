@@ -536,7 +536,22 @@ def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> 
     if not home_sections:
         return {}
     original = str(custom_original_key(active) or "C").strip() or "C"
-    practice = str(session.get("_sbi_custom_visit_pk") or "").strip()
+    practice = ""
+    try:
+        from source_session_state import (
+            get_sbi_preview_source,
+            resolve_sbi_custom_practice_key,
+            sbi_custom_identity_is_global_active,
+        )
+
+        if get_sbi_preview_source(session) == "Custom progression" or sbi_custom_identity_is_global_active(
+            session
+        ):
+            practice = str(resolve_sbi_custom_practice_key(session) or "").strip()
+    except ImportError:
+        practice = ""
+    if not practice:
+        practice = str(session.get("_sbi_custom_visit_pk") or "").strip()
     if not practice:
         try:
             from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key

@@ -53,6 +53,7 @@ from _walk_core_key_coherence import set_songs_practice_key  # noqa: E402
 from _walk_core_workflows_embargo import (  # noqa: E402
     click_available_mission_chord,
     click_generate_example,
+    mission_selected_chord,
     open_sbi_active,
     practice_badge,
 )
@@ -139,6 +140,187 @@ def enable_alto_written(page: Page) -> None:
         click_button_has(page, r"Written Charts") or click_radio(page, "Written Charts on")
     )
     settle(page, 2)
+
+
+def list_chord_tiles(page: Page) -> list[str]:
+    """Visible + off-screen chord-like button labels in the main pane."""
+    try:
+        labels = page.evaluate(
+            """() => {
+              const main = document.querySelector('[data-testid="stMain"]') || document.body;
+              return [...main.querySelectorAll('button')]
+                .map((b) => (b.innerText || '').trim().replace(/\\s+/g, ''))
+                .filter((t) => /^[A-G][#b♯♭]?(m|maj7|m7|sus4|7)?$/.test(t))
+                .slice(0, 32);
+            }"""
+        )
+        return [_norm_ch(str(x)) for x in (labels or [])]
+    except Exception:
+        return []
+
+
+def set_main_instrument_piano(page: Page) -> None:
+    """Missions has its own Instrument widget; sidebar Piano is not enough."""
+    try:
+        main = page.locator('[data-testid="stMain"]')
+        boxes = main.locator('[data-testid="stSelectbox"]').filter(
+            has_text=re.compile(r"Instrument", re.I)
+        )
+        for i in range(min(boxes.count(), 3)):
+            el = boxes.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+                text = (el.inner_text() or "").strip()
+                if "Shape" in text:
+                    continue
+                clickable = el.locator('[data-baseweb="select"], [role="combobox"], input').first
+                if clickable.count() == 0:
+                    continue
+                clickable.click(timeout=3000)
+                page.wait_for_timeout(250)
+                page.keyboard.press("Control+A")
+                page.keyboard.press("Backspace")
+                page.keyboard.type("Piano", delay=30)
+                page.wait_for_timeout(400)
+                opt = page.locator('[role="option"]').filter(
+                    has_text=re.compile(r"^Piano$", re.I)
+                )
+                if opt.count():
+                    opt.first.click(timeout=2500)
+                else:
+                    page.keyboard.press("Enter")
+                settle(page, 2)
+            except Exception:
+                try:
+                    page.keyboard.press("Escape")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def click_catalog_shape_tile(page: Page, label: str) -> bool:
+    """Playwright pointer click — JS el.click() does not fire Streamlit buttons."""
+    try:
+        page.get_by_text("Chord map by section", exact=False).first.scroll_into_view_if_needed(
+            timeout=3000
+        )
+    except Exception:
+        pass
+    if click_chord(page, label):
+        return True
+    loc = page.locator('[data-testid="stMain"] button').filter(
+        has_text=re.compile(rf"^{re.escape(label)}$")
+    )
+    for i in range(min(loc.count(), 12)):
+        el = loc.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            el.scroll_into_view_if_needed(timeout=3000)
+            el.hover(timeout=2000)
+            el.click(timeout=4000, force=False)
+            settle(page, 2)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def force_pk_token(page: Page, token: str) -> bool:
+    """Commit sidebar Practice Key with a real option click (typeahead often no-ops)."""
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    expand_sidebar(page)
+    aliases = [token]
+    if token == "Bm":
+        aliases += ["B minor"]
+    elif token == "Cm":
+        aliases += ["C minor"]
+    for alias in aliases:
+        try:
+            combo = page.get_by_role("combobox", name="Practice / Concert Key")
+            if combo.count() == 0:
+                continue
+            combo.first.click(timeout=4000)
+            page.wait_for_timeout(400)
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.keyboard.type(str(alias), delay=35)
+            page.wait_for_timeout(500)
+            opt = page.locator('[role="option"]').filter(
+                has_text=re.compile(rf"^{re.escape(alias)}$", re.I)
+            )
+            if opt.count() == 0:
+                page.keyboard.press("Escape")
+                continue
+            el = opt.first
+            el.scroll_into_view_if_needed()
+            el.hover(timeout=2000)
+            el.click(timeout=4000, force=False)
+            settle(page, 3)
+            landed = low(pk_val(page)).replace(" ", "")
+            want = token.lower().replace(" ", "")
+            if token == "Bm" and landed in {"cm", "cminor"}:
+                continue
+            if want in landed or alias.lower().replace(" ", "") in landed:
+                return True
+            page.keyboard.press("Escape")
+        except Exception:
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+    try:
+        from _walk_pass8_live import set_practice_key as _set_pk
+
+        return bool(_set_pk(page, token))
+    except Exception:
+        return False
+
+
+def force_piano_concert_shape_tiles(page: Page) -> bool:
+    """Keep piano + concert spelling so Shape tiles are Bm · Em · G · A."""
+    for _ in range(4):
+        expand_sidebar(page)
+        set_instrument(page, "Piano")
+        settle(page, 1)
+        set_main_instrument_piano(page)
+        click_radio(page, "Written Charts off")
+        ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
+        force_pk_token(page, "Bm")
+        settle(page, 2)
+        try:
+            page.get_by_text("Chord map by section", exact=False).first.scroll_into_view_if_needed(
+                timeout=2500
+            )
+        except Exception:
+            pass
+        tiles = list_chord_tiles(page)
+        if "Em" in tiles and "Bm" in tiles:
+            return True
+        log(f"K wait concert Bm tiles={tiles} pk={pk_val(page)!r}")
+    return False
+
+
+def select_shape_em(page: Page) -> bool:
+    """Click catalog Em and wait until Selected Mission Chord is Em (concert)."""
+    for attempt in range(6):
+        have_tiles = force_piano_concert_shape_tiles(page)
+        tiles = list_chord_tiles(page)
+        log(f"K tiles attempt={attempt} have={have_tiles} pk={pk_val(page)!r} {tiles}")
+        if "Em" not in tiles:
+            continue
+        clicked = click_catalog_shape_tile(page, "Em")
+        settle(page, 2)
+        sel = _norm_ch(mission_selected_chord(page.inner_text("body") or ""))
+        log(f"K selected={sel!r} clicked={clicked}")
+        if sel == "Em":
+            return True
+    return False
 
 
 def set_style_jam_concert_key(page: Page, option: str) -> bool:
@@ -471,7 +653,8 @@ def main() -> int:
         )
         mark("J_fresh_custom_d", j_ok, f"open={ok_j} pk={pk_j!r}")
 
-        # K. Mission Backing Bm → Cm must be +1 identity (C#m → Dm), not any header change.
+        # K. Mission Backing Bm → Cm must be +1 identity on a real Shape tile.
+        # Catalog Verse at Bm is Bm · Em · G · A — there is no concert C#m tile.
         click_nav(page, "Songs")
         settle(page, 2)
         click_button_has(page, r"Use catalog song instead")
@@ -481,60 +664,54 @@ def main() -> int:
         set_songs_practice_key(page, "Bm")
         settle(page, 2)
         if goto_improv(page, NOTES):
+            # J left SBI Custom owning Creative; Active Source lets Shape/Bm own PK.
+            open_sbi_active(page)
+            settle(page, 3)
             ensure_missions_workspace(page, NOTES)
             settle(page, 2)
             set_instrument(page, "Piano")
             settle(page, 1)
-            set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_songs_practice_key(
-                page, "Bm"
-            )
+            force_pk_token(page, "Bm")
             settle(page, 2)
-            clicked_csm = click_chord(page, "C#m") or click_chord(page, "C♯m")
-            if not clicked_csm:
-                enable_alto_written(page)
-                set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_songs_practice_key(
-                    page, "Bm"
-                )
-                settle(page, 2)
-                clicked_csm = click_chord(page, "C#m") or click_chord(page, "C♯m")
-            settle(page, 2)
+            clicked_em = select_shape_em(page)
+            settle(page, 1)
+            shot(page, "K-mission-selected-em")
             click_generate_example(page)
             settle(page, 2)
             opened_mb = bool(open_mission_backing(page, NOTES))
             settle(page, 4)
-            set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_baseweb_select(
-                page, "Practice / Concert Key", "B minor"
-            )
+            force_pk_token(page, "Bm")
             settle(page, 3)
-            click_chord(page, "C#m") or click_chord(page, "C♯m")
-            settle(page, 2)
             side_k0, body_k0 = shot(page, "K-mission-bm")
             chord_bm = mission_header_chord(body_k0)
             card_bm = mission_card_chord(body_k0)
             ex_bm = mission_example_chord(body_k0)
-            set_baseweb_select(page, "Practice / Concert Key", "Cm") or set_baseweb_select(
-                page, "Practice / Concert Key", "C minor"
-            )
+            owners_bm = {chord_bm, card_bm, ex_bm} - {""}
+            force_pk_token(page, "Cm")
             settle(page, 4)
             side_k, body_k = shot(page, "K-mission-cm")
             chord_cm = mission_header_chord(body_k)
             card_cm = mission_card_chord(body_k)
             ex_cm = mission_example_chord(body_k)
             concert_cm = has_any(body_k, "Concert Cm", "C minor")
-            owners_dm = {chord_cm, card_cm, ex_cm}
+            owners_cm = {chord_cm, card_cm, ex_cm} - {""}
             k_ok = (
                 opened_mb
+                and clicked_em
                 and concert_cm
-                and chord_bm in {"C#m", "C♯m"}
-                and chord_cm == "Dm"
-                and card_cm == "Dm"
-                and (not ex_cm or ex_cm == "Dm")
-                and "Bb" not in owners_dm
+                and chord_bm == "Em"
+                and card_bm == "Em"
+                and (not ex_bm or ex_bm == "Em")
+                and owners_bm <= {"Em"}
+                and chord_cm == "Fm"
+                and card_cm == "Fm"
+                and (not ex_cm or ex_cm == "Fm")
+                and owners_cm <= {"Fm"}
             )
             mark(
                 "K_mission_header_dm",
                 k_ok,
-                f"open={opened_mb} click={clicked_csm} "
+                f"open={opened_mb} click={clicked_em} "
                 f"bm_hdr={chord_bm!r} bm_card={card_bm!r} bm_ex={ex_bm!r} "
                 f"cm_hdr={chord_cm!r} cm_card={card_cm!r} cm_ex={ex_cm!r} "
                 f"pk={pk_val(page)!r}",

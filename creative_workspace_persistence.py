@@ -32,6 +32,7 @@ CREATIVE_WORKSPACE_EXTRA_KEYS: tuple[str, ...] = (
     # Nested SBI source tab (Active vs Custom) — must not be confused with top-level Custom page.
     "improv_song_source",
     "sbi_preview_source",
+    "_sbi_follow_active_after_explicit_catalog",
     "improv_motif",
     "improv_motif_output_mode",
     "improv_motif_abc",

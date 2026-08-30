@@ -1183,7 +1183,15 @@ def apply_pick_key(
     is_restore = origin in ("recovery", "restore")
     pick_changed = prev is not None and prev != pick_key
     catalog_owner_switch = bool(catalog_pick and raw_custom_owns)
-    apply_catalog_identity = bool(prev != pick_key or catalog_owner_switch)
+    fresh_catalog = bool(
+        not is_restore
+        and not str(pick_key).startswith("custom::")
+        and (
+            st.session_state.get("_explicit_catalog_fresh_activation")
+            or st.session_state.get("_pending_catalog_fresh_activation_after_specialized")
+        )
+    )
+    apply_catalog_identity = bool(prev != pick_key or catalog_owner_switch or fresh_catalog)
     if apply_catalog_identity:
         try:
             from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
@@ -1263,7 +1271,7 @@ def apply_pick_key(
         effective_display_key = (
             restore_display_key if (is_restore and restore_display_key) else original_key
         )
-        user_song_change = bool((pick_changed or catalog_owner_switch) and not is_restore)
+        user_song_change = bool((pick_changed or catalog_owner_switch or fresh_catalog) and not is_restore)
         if user_song_change:
             try:
                 from songs.practice_key_state import clear_practice_concert_key
@@ -1274,6 +1282,8 @@ def apply_pick_key(
             except ImportError:
                 pass
             effective_display_key = original_key
+        st.session_state.pop("_explicit_catalog_fresh_activation", None)
+        st.session_state.pop("_pending_catalog_fresh_activation_after_specialized", None)
         try:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 

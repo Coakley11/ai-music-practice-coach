@@ -92,6 +92,32 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
     session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     session_state.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
     session_state.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
+    try:
+        from generated_jam_key_context import release_generated_jam_key_for_catalog_surface
+
+        if release_generated_jam_key_for_catalog_surface(session_state):
+            session_state["_explicit_catalog_fresh_activation"] = True
+            session_state["_pending_catalog_fresh_activation_after_specialized"] = True
+    except ImportError:
+        pass
+    handoff = str(session_state.get("_backing_explicit_handoff_source") or "").strip()
+    if handoff in {"mission", "song_improv", "entry_jam"}:
+        session_state.pop("_backing_explicit_handoff_source", None)
+        session_state["_backing_released_specialized_context"] = True
+        session_state["_explicit_catalog_fresh_activation"] = True
+        session_state["_pending_catalog_fresh_activation_after_specialized"] = True
+    if session_state.get("_pending_catalog_fresh_activation_after_specialized"):
+        session_state["_explicit_catalog_fresh_activation"] = True
+    session_state["improv_song_source"] = "Active song"
+    session_state["sbi_preview_source"] = "Active song"
+    session_state.pop("guitar_capo_sounding_key", None)
+    try:
+        from source_session_state import bind_sbi_preview_to_active_after_explicit_catalog
+
+        bind_sbi_preview_to_active_after_explicit_catalog(session_state)
+    except Exception:
+        session_state["improv_song_source"] = "Active song"
+        session_state["sbi_preview_source"] = "Active song"
 
 
 def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
@@ -2818,6 +2844,12 @@ def on_active_song_identity_changed(
             )
         except ImportError:
             pass
+        try:
+            from guitar_capo import sync_capo_from_practice_display_key
+
+            sync_capo_from_practice_display_key(session, target_display)
+        except ImportError:
+            session.pop("guitar_capo_sounding_key", None)
         song_identity = song_display_identity(title, artist, original_key, pick_key=pick_key)
         apply_display_key_for_active_song(
             st,

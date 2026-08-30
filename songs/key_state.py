@@ -72,6 +72,14 @@ def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> st
 
         saved = get_practice_concert_key(session, pk)
         if saved:
+            try:
+                from generated_jam_key_context import generated_jam_practice_key_tokens
+
+                if str(saved).strip() in generated_jam_practice_key_tokens(session):
+                    saved = ""
+            except ImportError:
+                pass
+        if saved:
             return saved
     except ImportError:
         pass
@@ -597,6 +605,19 @@ def apply_display_key_for_active_song(
         # Stale remount pending (Dm) must not beat sticky SSOT (Bm) after a user commit.
         if saved and pending_tok and saved != pending_tok:
             pending_tok = saved
+        try:
+            from generated_jam_key_context import (
+                generated_jam_owns_practice_key,
+                generated_jam_practice_key_tokens,
+            )
+
+            if (
+                pending_tok in generated_jam_practice_key_tokens(st.session_state)
+                and not generated_jam_owns_practice_key(st.session_state)
+            ):
+                pending_tok = saved or original_key
+        except ImportError:
+            pass
         _apply_display_key_before_widget(st, pending_tok, source="pending_display_key")
     else:
         saved = canonical_display_key_for_pick(st.session_state, identity_pk)
@@ -613,6 +634,25 @@ def apply_display_key_for_active_song(
                 pass
             _apply_display_key_before_widget(st, target_saved, source="practice_key_restore")
             st.session_state[LAST_DISPLAY_KEY] = target_saved
+        elif live_now:
+            try:
+                from generated_jam_key_context import (
+                    generated_jam_owns_practice_key,
+                    generated_jam_practice_key_tokens,
+                )
+
+                if (
+                    live_now in generated_jam_practice_key_tokens(st.session_state)
+                    and not generated_jam_owns_practice_key(st.session_state)
+                ):
+                    _apply_display_key_before_widget(
+                        st,
+                        original_key,
+                        source="reject_generated_jam_live",
+                    )
+                    st.session_state[LAST_DISPLAY_KEY] = original_key
+            except ImportError:
+                pass
         elif "display_key" not in st.session_state:
             target_initial = original_key
             try:
@@ -870,6 +910,22 @@ def get_authoritative_display_key(
         try:
             from active_song_state import _display_key_override_valid_for_identity
 
+            if sticky:
+                try:
+                    from music_theory import practice_key_inherits_source_mode
+
+                    if home and not practice_key_inherits_source_mode(sticky, home):
+                        sticky = ""
+                except ImportError:
+                    pass
+            if live and home:
+                try:
+                    from music_theory import practice_key_inherits_source_mode
+
+                    if not practice_key_inherits_source_mode(live, home):
+                        live = ""
+                except ImportError:
+                    pass
             # Per-source sticky is the catalog Practice Key SSOT. When sticky and
             # live disagree (e.g. Bm sticky after restore, stale live Dm), sticky
             # wins so the song card cannot show the wrong mode/key.

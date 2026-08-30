@@ -609,8 +609,10 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
         widget = str(spec["widget"])
         live_widget = str(session.get(widget) or "").strip()
         live_preview = str(session.get("sbi_preview_source") or "").strip()
+        follow_active = bool(session.get("_sbi_follow_active_after_explicit_catalog"))
         keep_custom = (
-            canon_key == "improv_song_source"
+            not follow_active
+            and canon_key == "improv_song_source"
             and val != "Custom progression"
             and (
                 live_widget == "Custom progression"
@@ -618,6 +620,8 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
                 or bool(session.get("_restore_sbi_custom_source"))
             )
         )
+        if follow_active and canon_key == "improv_song_source":
+            val = "Active song"
         if keep_custom:
             if not session.get("_sbi_song_source_hydrated"):
                 session[widget] = "Custom progression"

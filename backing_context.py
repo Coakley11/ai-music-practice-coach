@@ -3703,7 +3703,6 @@ def _release_creative_backing_ownership(session: dict[str, Any]) -> None:
         "improv_difficulty",
         "improv_groove",
         "improv_jam_mood",
-        "improv_song_source",
         "improv_style_bpm",
         "improv_jam_bpm",
         "improv_style_key",
