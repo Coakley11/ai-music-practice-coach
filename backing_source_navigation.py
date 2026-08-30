@@ -336,11 +336,16 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
         from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
             composition_song_is_active,
+            explicit_music_source_choice,
             picker_composition_mode,
         )
 
         force_composition = bool(session.pop("_force_composition_backing_open", None))
+        explicit = explicit_music_source_choice(session)
         pick_now = str(session.get("active_catalog_pick_key") or "").strip()
         meta = session.get("active_song_state")
         meta_pick = (
@@ -358,15 +363,18 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 picker_custom_progression_mode,
             )
 
-            explicit_leave_composition = bool(
-                session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
-            ) or picker_custom_progression_mode(session)
+            explicit_leave_composition = (
+                explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
+                or bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+                or picker_custom_progression_mode(session)
+            )
         except ImportError:
-            explicit_leave_composition = False
+            explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
         if explicit_leave_composition and not force_composition:
             pick_looks_composition = False
         if (
             force_composition
+            or explicit == SOURCE_COMPOSITION
             or (pick_looks_composition and not explicit_leave_composition)
             or composition_song_is_active(session)
             or picker_composition_mode(session)
@@ -618,6 +626,24 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         _saved_section = session.get(PENDING_BACKING_SINGLE_SECTION)
         _saved_multi = session.get(PENDING_BACKING_MULTI_SECTIONS)
         _saved_loops = session.get(PENDING_BACKING_LOOPS)
+        # Songs→Backing with Composition radio must not revive a stale Custom
+        # preference even when the force one-shot was lost mid-remount.
+        try:
+            from songs.music_source import (
+                SOURCE_COMPOSITION,
+                commit_explicit_music_source_choice,
+                picker_composition_mode,
+            )
+
+            if picker_composition_mode(session):
+                session["_force_composition_backing_open"] = True
+                commit_explicit_music_source_choice(
+                    session,
+                    SOURCE_COMPOSITION,
+                    clear_composition_oneshots=False,
+                )
+        except ImportError:
+            pass
         set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
         open_backing_for_practice_source(session, st_like=st_like)
         if _saved_scope:

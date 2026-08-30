@@ -598,6 +598,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "composer_active_document",
     "composition_recent_active_ids",
     "active_music_source",
+    "explicit_music_source_choice",
     "chart_edit_mode",
     "picker_editor_tab",
     "picker_song_editor_open",
@@ -3724,6 +3725,7 @@ def prepare_canonical_music_page_state(
                 apply_pending_custom_active_song_activation_before_widgets,
                 apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
+                hydrate_explicit_music_source_from_active,
                 reconcile_picker_music_source,
             )
             from songs.state import apply_pending_catalog_pick_before_widgets
@@ -3731,6 +3733,7 @@ def prepare_canonical_music_page_state(
             class _SessionProxy:
                 session_state = session
 
+            hydrate_explicit_music_source_from_active(session)
             reconcile_picker_music_source(session)
             if song_picker_catalog:
                 apply_pending_catalog_from_picker_before_widgets(
@@ -4771,6 +4774,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "karaoke_countdown_enabled",
         "karaoke_auto_advance",
         "active_music_source",
+        "explicit_music_source_choice",
         "picker_editor_tab",
         "picker_song_editor_open",
         "last_practice_mode",

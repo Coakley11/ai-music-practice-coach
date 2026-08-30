@@ -203,19 +203,28 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
         from songs.music_source import (
             SOURCE_CATALOG,
             SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
             USER_CATALOG_SOURCE_CHOICE_KEY,
             composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
+            explicit_music_source_choice,
             is_custom_progression,
         )
 
+        explicit = explicit_music_source_choice(session)
+        if explicit == SOURCE_COMPOSITION or composition_song_is_active(session):
+            return None
+        # Stale composition:: pick must not block Custom/Catalog after an
+        # explicit non-Composition choice (Composition → Custom race).
+        if explicit == SOURCE_CUSTOM:
+            return "custom"
+        if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return "catalog"
         pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if (
-            composition_song_is_active(session)
-            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
-            or pick.startswith("composition::")
-        ):
+        if str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION:
+            return None
+        if pick.startswith("composition::"):
             return None
         if (
             cpl_session_is_active(session)
@@ -223,8 +232,6 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             or custom_progression_is_active(session)
         ):
             return "custom"
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-            return "catalog"
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return "catalog"
         if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
@@ -970,19 +977,26 @@ def _raw_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
         from songs.music_source import (
             SOURCE_CATALOG,
             SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
             USER_CATALOG_SOURCE_CHOICE_KEY,
             composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
+            explicit_music_source_choice,
             is_custom_progression,
         )
 
+        explicit = explicit_music_source_choice(session)
+        if explicit == SOURCE_COMPOSITION or composition_song_is_active(session):
+            return None
+        if explicit == SOURCE_CUSTOM:
+            return "custom"
+        if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return "catalog"
         pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if (
-            composition_song_is_active(session)
-            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
-            or pick.startswith("composition::")
-        ):
+        if str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION:
+            return None
+        if pick.startswith("composition::"):
             return None
         if (
             cpl_session_is_active(session)
@@ -990,8 +1004,6 @@ def _raw_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             or custom_progression_is_active(session)
         ):
             return "custom"
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-            return "catalog"
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return "catalog"
         if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):

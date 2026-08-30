@@ -7583,6 +7583,10 @@ def _picker_navigate(
                 composition_song_is_active(st.session_state)
                 or picker_composition_mode(st.session_state)
             ):
+                # Always force Composition on Songs→Backing while the radio is
+                # Composition — survives Custom→Composition mid-flight where the
+                # pick may still be custom:: for one rerun.
+                st.session_state["_force_composition_backing_open"] = True
                 if not composition_song_is_active(st.session_state):
                     try:
                         from songs.music_source import ensure_composition_owns_active_song
@@ -7597,6 +7601,19 @@ def _picker_navigate(
                     from composition_songs_bridge import set_composition_source
 
                     set_composition_source(st.session_state)
+                except Exception:
+                    pass
+                try:
+                    from songs.music_source import (
+                        SOURCE_COMPOSITION,
+                        commit_explicit_music_source_choice,
+                    )
+
+                    commit_explicit_music_source_choice(
+                        st.session_state,
+                        SOURCE_COMPOSITION,
+                        clear_composition_oneshots=False,
+                    )
                 except Exception:
                     pass
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
@@ -8424,11 +8441,28 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
     )
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     try:
-        from songs.music_source import composition_song_is_active
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            composition_song_is_active,
+            explicit_music_source_choice,
+            picker_composition_mode,
+            picker_custom_progression_mode,
+        )
 
-        # Global Composition ownership wins over a stale Custom radio/DOM hub.
-        if composition_song_is_active(st.session_state):
+        # Live radio / picker mode must outrank a stale explicit stamp from the
+        # previous source (Custom stamp surviving into a Composition click).
+        if picker_composition_mode(st.session_state) or "Composition" in choice:
             return "composition"
+        if picker_custom_progression_mode(st.session_state) or choice.startswith(
+            "Use Custom"
+        ):
+            return "custom"
+        explicit = explicit_music_source_choice(st.session_state)
+        if explicit == SOURCE_COMPOSITION or composition_song_is_active(st.session_state):
+            return "composition"
+        if explicit == SOURCE_CUSTOM:
+            return "custom"
     except Exception:
         pass
     if music_picker_shows_composition_hub(st.session_state) or "Composition" in choice:
@@ -9012,11 +9046,13 @@ def _render_catalog_song_picker_block(
 
     if _library_polished and show_source_toggle:
         _src_hub = _render_picker_music_source_toggle(polished=True)
-        if _src_hub == "custom":
-            _render_custom_active_song_hub(wrap_section=wrap_section)
-            return
+        # Composition before Custom — never let a stale Custom hub swallow a
+        # live Composition radio / explicit stamp.
         if _src_hub == "composition":
             _render_composition_active_song_hub(wrap_section=wrap_section)
+            return
+        if _src_hub == "custom":
+            _render_custom_active_song_hub(wrap_section=wrap_section)
             return
 
     filtered, pick_options, active_pick_key = _apply_picker_catalog_filters(

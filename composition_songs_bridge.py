@@ -267,10 +267,18 @@ def _push_recent_composition_id(session_state: dict[str, Any], doc_id: str) -> N
 
 
 def set_composition_source(session_state: dict[str, Any]) -> None:
-    from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY, USER_CATALOG_SOURCE_CHOICE_KEY
+    from songs.music_source import (
+        ACTIVE_MUSIC_SOURCE_KEY,
+        EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+        SOURCE_COMPOSITION as _SRC_COMPOSITION,
+        USER_CATALOG_SOURCE_CHOICE_KEY,
+        explicit_music_source_choice,
+    )
 
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
+    if explicit_music_source_choice(session_state) != _SRC_COMPOSITION:
+        session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = _SRC_COMPOSITION
     mark_composition_songs_source_ready(session_state)
     # Drop stale Custom Backing preference so Songs→Backing cannot revive Custom.
     try:
