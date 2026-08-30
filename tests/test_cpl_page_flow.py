@@ -107,19 +107,27 @@ class TestCplPageFlow(unittest.TestCase):
         self.assertEqual(view["native_rows"], [("C", 2)])
 
     def test_clear_section_flow(self) -> None:
+        from custom_progression_lab import cpl_clear_current_section
+
         session = self._session_with_draft()
-        active = cpl_apply_chord_with_bars_to_session(
+        session["cpl_edit_section"] = "Verse"
+        cpl_apply_chord_with_bars_to_session(
             session,
             section_name="Verse",
             chord="C",
             bars=4,
         )
-        home = ensure_all_cpl_sections(active["original_sections"])
-        home["Verse"] = []
-        active = cpl_save_draft(session, active, home, persist=False)
+        cpl_apply_chord_with_bars_to_session(
+            session,
+            section_name="Chorus",
+            chord="G",
+            bars=4,
+        )
+        active = cpl_clear_current_section(session, section_name="Verse")
         view = cpl_section_progression_view(active, section_name="Verse", preview_key="C")
         self.assertFalse(view["has_chords"])
-        self.assertFalse(filled_section_names(home))
+        chorus = cpl_section_progression_view(active, section_name="Chorus", preview_key="C")
+        self.assertEqual(chorus["native_rows"], [("G", 4)])
 
     def test_finish_enabled_only_when_progression_exists(self) -> None:
         session = self._session_with_draft()

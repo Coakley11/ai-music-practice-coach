@@ -165,7 +165,6 @@ def render_custom_progression_lab_page() -> None:
         CPL_UI_SECTION_ORDER,
         apply_cpl_session_progression,
         apply_quick_chord_edit,
-        build_style_preset_entries,
         clear_all_cpl_sections,
         build_cpl_developer_diagnostics,
         cpl_active_from_session,
@@ -175,6 +174,7 @@ def render_custom_progression_lab_page() -> None:
         cpl_draft_written_key,
         cpl_get_pending_chord,
         cpl_on_apply_bars_callback,
+        cpl_on_append_preset_callback,
         cpl_on_clear_section_callback,
         cpl_on_new_song_callback,
         cpl_on_pick_chord_callback,
@@ -205,7 +205,6 @@ def render_custom_progression_lab_page() -> None:
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
-        practice_entries_to_original_key,
         preset_button_label,
         prepare_cpl_backing_handoff,
         presets_for_style,
@@ -710,7 +709,8 @@ def render_custom_progression_lab_page() -> None:
         st.markdown(
             f'<p class="cpl-key-line">Original key <strong>{original_label}</strong> · '
             f"Practice key <strong>{preview_label}</strong> "
-            f"(builder, presets, and progression project from Practice Key)</p>",
+            f"(builder and progression project from Practice Key; "
+            f"preset buttons use Presets key)</p>",
             unsafe_allow_html=True,
         )
 
@@ -991,25 +991,13 @@ def render_custom_progression_lab_page() -> None:
             st.markdown(f"**{style} presets** ({presets_label}) — appends to {edit_section}")
             for preset_id, spec in style_presets.items():
                 label = preset_button_label(preset_id, presets_key, spec)
-                if st.button(
+                st.button(
                     label,
                     key=f"cpl_pre_{preset_ns}_{style}_{edit_section}_{preset_id}",
                     use_container_width=True,
-                ):
-                    practice_entries = build_style_preset_entries(
-                        style, preset_id, presets_key
-                    )
-                    appended = practice_entries_to_original_key(
-                        practice_entries, presets_key, original_key
-                    )
-                    home_sections[edit_section] = list(home_entries) + list(appended)
-                    cpl_clear_pending_chord(st.session_state, edit_section)
-                    if home_sections[edit_section]:
-                        st.session_state[last_bars_key] = int(
-                            home_sections[edit_section][-1].get("bars", 1) or 1
-                        )
-                    _save(home_sections)
-                    st.rerun()
+                    on_click=cpl_on_append_preset_callback,
+                    args=(style, preset_id),
+                )
         st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:

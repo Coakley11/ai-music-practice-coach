@@ -3087,6 +3087,15 @@ def apply_music_disk_state(
                         and cpl_draft_chord_count(local) > cpl_draft_chord_count(val)
                     ):
                         continue
+                    # Clear Section shrinks the draft. Disk may still hold the
+                    # previous longer blob; do not resurrect those chords.
+                    if (
+                        not authoritative_restore
+                        and isinstance(local, dict)
+                        and ss.get("_cpl_allow_section_shrink")
+                        and cpl_draft_chord_count(local) < cpl_draft_chord_count(val)
+                    ):
+                        continue
                 except Exception:
                     pass
             if key == "last_analysis_result":

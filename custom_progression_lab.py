@@ -1910,6 +1910,7 @@ def persist_cpl_draft_state(st) -> bool:
         )
         if ok:
             clear_cpl_draft_local_dirty(ss)
+            ss.pop("_cpl_allow_section_shrink", None)
     except Exception as exc:
         ss["_cpl_last_persist_ok"] = False
         ss["_cpl_last_cloud_save_ok"] = False
@@ -3430,16 +3431,89 @@ def cpl_on_save_library_callback() -> None:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
 
 
+def cpl_append_style_preset_to_section(
+    session_state: dict,
+    *,
+    style: str,
+    preset_id: str,
+    section_name: str | None = None,
+    persist: bool = False,
+    st: Any | None = None,
+) -> dict:
+    """Append a style preset generated in Presets key; store via song Practice Key.
+
+    Product rule: Presets key owns the harmonic sequence that is appended.
+    Song Practice Key is only the transpose frame for Original-Key storage.
+    Displayed preset chords must equal the chords that land in the section at
+    the current song Practice Key.
+    """
+    section = str(section_name or session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    active = cpl_active_from_session(session_state)
+    original_key = cpl_draft_written_key(active)
+    practice_key = cpl_workspace_practice_key(session_state, active)
+    presets_key = (
+        str(session_state.get(CPL_PRESETS_KEY_WIDGET) or practice_key).strip() or practice_key
+    )
+    display_entries = build_style_preset_entries(style, preset_id, presets_key)
+    stored = practice_entries_to_original_key(display_entries, practice_key, original_key)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    home[section] = list(home.get(section) or []) + list(stored)
+    cpl_clear_pending_chord(session_state, section)
+    if stored:
+        session_state[f"cpl_last_bars_{section}"] = int(stored[-1].get("bars", 1) or 1)
+    return cpl_save_draft(session_state, active, home, persist=persist, st=st)
+
+
+def cpl_on_append_preset_callback(style: str, preset_id: str) -> None:
+    """Streamlit on_click — append the visible Presets-key sequence to the current section."""
+    import streamlit as st
+
+    cpl_append_style_preset_to_section(
+        st.session_state,
+        style=style,
+        preset_id=preset_id,
+        persist=True,
+        st=st,
+    )
+
+
+def cpl_clear_current_section(
+    session_state: dict,
+    *,
+    section_name: str | None = None,
+    persist: bool = False,
+    st: Any | None = None,
+) -> dict:
+    """Empty one canonical Custom section. Other sections stay intact."""
+    section = str(section_name or session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    home[section] = []
+    cpl_clear_pending_chord(session_state, section)
+    session_state["_cpl_allow_section_shrink"] = True
+    active = cpl_save_draft(session_state, active, home, persist=persist, st=st)
+    try:
+        from songs.music_source import snapshot_last_custom_state
+
+        snapshot_last_custom_state(session_state, allow_empty_same_identity=True)
+    except Exception:
+        pass
+    return active
+
+
 def cpl_on_clear_section_callback() -> None:
     """Streamlit on_click — empty the active edit section."""
     import streamlit as st
 
-    section = str(st.session_state.get("cpl_edit_section") or "Verse").strip() or "Verse"
-    active = cpl_active_from_session(st.session_state)
-    home = ensure_all_cpl_sections(active.get("original_sections"))
-    home[section] = []
-    cpl_clear_pending_chord(st.session_state, section)
-    cpl_save_draft(st.session_state, active, home, persist=True, st=st)
+    try:
+        from music_persistent_state import clear_music_workspace_autosave_block
+
+        clear_music_workspace_autosave_block(st)
+    except Exception:
+        pass
+    # persist=False: keep the draft dirty so hydrate cannot resurrect a
+    # disk blob that still has more chords than the just-cleared section.
+    cpl_clear_current_section(st.session_state, persist=False, st=None)
 
 
 def cpl_on_undo_last_chord_callback() -> None:

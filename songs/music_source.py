@@ -981,17 +981,42 @@ def install_last_custom_into_live_cpl(
     return True
 
 
-def snapshot_last_custom_state(session_state: dict[str, Any]) -> None:
+def snapshot_last_custom_state(
+    session_state: dict[str, Any],
+    *,
+    allow_empty_same_identity: bool = False,
+) -> None:
     """Remember the Custom draft last worked on (Custom page / SBI Custom).
 
     LAST_CUSTOM is identity memory for the Custom workspace — not Global Active.
     Snapshot whenever the live CPL draft is substantive, even if Catalog still owns
     Global Active (user edited Custom then left via Songs without Set-as-Active).
+
+    ``allow_empty_same_identity`` updates LAST_CUSTOM after Clear Section so a
+    chordless same-title draft is not healed back from the previous snapshot.
     """
     snap = _custom_snapshot_from_session(session_state)
     if not isinstance(snap, dict) or not isinstance(snap.get("active"), dict):
         return
     if cpl_active_is_substantive(snap["active"]):
+        session_state[LAST_CUSTOM_STATE_KEY] = snap
+        return
+    if not allow_empty_same_identity:
+        return
+    existing = session_state.get(LAST_CUSTOM_STATE_KEY)
+    if not isinstance(existing, dict):
+        session_state[LAST_CUSTOM_STATE_KEY] = snap
+        return
+    existing_active = existing.get("active") if isinstance(existing.get("active"), dict) else {}
+    live_name = str(snap["active"].get("name") or "").strip()
+    exist_name = str(existing_active.get("name") or "").strip()
+    live_id = str(snap["active"].get("id") or "").strip()
+    exist_id = str(existing_active.get("id") or "").strip()
+    same_identity = bool(
+        (live_id and exist_id and live_id == exist_id)
+        or (live_name and exist_name and live_name == exist_name)
+    )
+    if same_identity:
         session_state[LAST_CUSTOM_STATE_KEY] = snap
 
 

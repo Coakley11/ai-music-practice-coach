@@ -349,6 +349,231 @@ class TestCustomPracticeKeyProjection(unittest.TestCase):
         self.assertTrue(pk.startswith("D"), pk)
         self.assertNotIn("m", pk.lower().replace("major", ""))
 
+    def _d_major_custom_session(self, *, presets_key: str = "C") -> dict:
+        from custom_progression_lab import CPL_PRESETS_KEY_WIDGET
+
+        session: dict = {}
+        apply_cpl_session_progression(
+            session, start_new_progression(), reset_display_key=True
+        )
+        session["cpl_original_key"] = "D"
+        session["cpl_title_input"] = "Preset Trial"
+        active = sync_cpl_draft_widgets_to_active(session, session["cpl_active_progression"])
+        session["cpl_active_progression"] = active
+        sync_custom_workspace_practice_key(session, practice_key="D", active=active)
+        session[CPL_PRESETS_KEY_WIDGET] = presets_key
+        session["cpl_edit_section"] = "Verse"
+        return session
+
+    def test_preset_append_uses_presets_key_not_song_practice_key(self) -> None:
+        from custom_progression_lab import cpl_append_style_preset_to_section
+
+        session = self._d_major_custom_session(presets_key="C")
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        active = session["cpl_active_progression"]
+        displayed = _chord_symbols(display_sections_for_key(active, "D")["Verse"])
+        self.assertEqual(displayed, ["C", "G", "Am", "F"])
+        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
+        self.assertEqual(cpl_draft_written_key(active), "D")
+
+    def test_preset_append_e_major_while_song_stays_d(self) -> None:
+        from custom_progression_lab import cpl_append_style_preset_to_section
+
+        session = self._d_major_custom_session(presets_key="E")
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        active = session["cpl_active_progression"]
+        displayed = _chord_symbols(display_sections_for_key(active, "D")["Verse"])
+        self.assertEqual(displayed, ["E", "B", "C#m", "A"])
+        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
+
+    def test_preset_append_f_family_while_song_stays_d(self) -> None:
+        from custom_progression_lab import cpl_append_style_preset_to_section
+
+        session = self._d_major_custom_session(presets_key="F")
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        active = session["cpl_active_progression"]
+        displayed = _chord_symbols(display_sections_for_key(active, "D")["Verse"])
+        self.assertEqual(displayed, ["F", "C", "Dm", "Bb"])
+        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
+
+    def test_existing_chords_then_preset_then_manual(self) -> None:
+        from custom_progression_lab import (
+            cpl_append_style_preset_to_section,
+            cpl_apply_chord_with_bars_to_session,
+        )
+
+        session = self._d_major_custom_session(presets_key="C")
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="Em", bars=1
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="A", bars=1
+        )
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="Dm", bars=1
+        )
+        active = session["cpl_active_progression"]
+        displayed = _chord_symbols(display_sections_for_key(active, "D")["Verse"])
+        self.assertEqual(displayed, ["Em", "A", "C", "G", "Am", "F", "Dm"])
+        self.assertEqual(cpl_workspace_practice_key(session, active), "D")
+
+    def test_clear_section_only_current_then_preset_and_manual(self) -> None:
+        from custom_progression_lab import (
+            cpl_append_style_preset_to_section,
+            cpl_apply_chord_with_bars_to_session,
+            cpl_clear_current_section,
+        )
+
+        session = self._d_major_custom_session(presets_key="C")
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="D", bars=1
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="A", bars=1
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="Bm", bars=1
+        )
+        session["cpl_edit_section"] = "Chorus"
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Chorus", chord="D", bars=1
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Chorus", chord="G", bars=1
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Chorus", chord="A", bars=1
+        )
+        session["cpl_edit_section"] = "Verse"
+        cpl_clear_current_section(session)
+        active = session["cpl_active_progression"]
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Verse"]),
+            [],
+        )
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Chorus"]),
+            ["D", "G", "A"],
+        )
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="Dm", bars=1
+        )
+        active = session["cpl_active_progression"]
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Verse"]),
+            ["C", "G", "Am", "F", "Dm"],
+        )
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Chorus"]),
+            ["D", "G", "A"],
+        )
+
+    def test_preset_append_to_chorus_not_verse(self) -> None:
+        from custom_progression_lab import (
+            cpl_append_style_preset_to_section,
+            cpl_apply_chord_with_bars_to_session,
+            cpl_clear_current_section,
+        )
+
+        session = self._d_major_custom_session(presets_key="C")
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="Em", bars=1
+        )
+        session["cpl_edit_section"] = "Chorus"
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Chorus", chord="D", bars=1
+        )
+        session["cpl_edit_section"] = "Verse"
+        cpl_clear_current_section(session)
+        session["cpl_edit_section"] = "Chorus"
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        active = session["cpl_active_progression"]
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Verse"]),
+            [],
+        )
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Chorus"]),
+            ["D", "C", "G", "Am", "F"],
+        )
+
+    def test_clear_does_not_restore_last_custom_chords(self) -> None:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            cpl_apply_chord_with_bars_to_session,
+            cpl_clear_current_section,
+        )
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, install_last_custom_into_live_cpl
+
+        session = self._d_major_custom_session(presets_key="C")
+        cpl_apply_chord_with_bars_to_session(
+            session, section_name="Verse", chord="D", bars=1
+        )
+        from songs.music_source import snapshot_last_custom_state
+
+        snapshot_last_custom_state(session)
+        self.assertTrue(
+            _chord_symbols(
+                display_sections_for_key(session[CPL_ACTIVE_KEY], "D")["Verse"]
+            )
+        )
+        cpl_clear_current_section(session)
+        install_last_custom_into_live_cpl(session)
+        active = session[CPL_ACTIVE_KEY]
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(active, "D")["Verse"]),
+            [],
+        )
+        last = (session.get(LAST_CUSTOM_STATE_KEY) or {}).get("active") or {}
+        self.assertEqual(
+            _chord_symbols(display_sections_for_key(last, "D")["Verse"]),
+            [],
+        )
+
+    def test_minor_presets_key_on_minor_custom_song(self) -> None:
+        from custom_progression_lab import (
+            CPL_PRESETS_KEY_WIDGET,
+            cpl_append_style_preset_to_section,
+        )
+
+        session: dict = {}
+        apply_cpl_session_progression(
+            session, start_new_progression(), reset_display_key=True
+        )
+        session["cpl_original_key"] = "Dm"
+        active = sync_cpl_draft_widgets_to_active(session, session["cpl_active_progression"])
+        session["cpl_active_progression"] = active
+        sync_custom_workspace_practice_key(session, practice_key="Dm", active=active)
+        session[CPL_PRESETS_KEY_WIDGET] = "Am"
+        session["cpl_edit_section"] = "Verse"
+        cpl_append_style_preset_to_section(
+            session, style="Pop", preset_id="I–V–vi–IV"
+        )
+        displayed = _chord_symbols(
+            display_sections_for_key(session["cpl_active_progression"], "Dm")["Verse"]
+        )
+        expected = _chord_symbols(build_style_preset_entries("Pop", "I–V–vi–IV", "Am"))
+        self.assertEqual(displayed, expected)
+        self.assertEqual(displayed, ["A", "E", "F#m", "D"])
+        self.assertEqual(
+            cpl_workspace_practice_key(session, session["cpl_active_progression"]),
+            "Dm",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
