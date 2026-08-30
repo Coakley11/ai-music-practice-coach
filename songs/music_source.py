@@ -75,7 +75,14 @@ def _pick_looks_composition(pick_key: str) -> bool:
 
 
 def clear_composition_one_shot_nav_flags(session_state: dict[str, Any]) -> None:
-    """Drop Composition hub/backing one-shots after an explicit non-Composition choice."""
+    """Drop Composition hub/backing one-shots after an explicit non-Composition choice.
+
+    Must not run after a Composition hub Backing ``on_click`` in the same script
+    run — reconcile / ``set_custom_source`` otherwise pops ``composition_hub_backing``
+    and ``_composition_hub_backing_clicked`` before ``st.button`` body can navigate.
+    """
+    if session_state.get("_composition_hub_backing_clicked"):
+        return
     for key in (
         "_force_composition_backing_open",
         "_composition_hub_backing_clicked",
@@ -119,6 +126,12 @@ def commit_explicit_music_source_choice(
     if clear_composition_oneshots is None:
         clear_composition_oneshots = src != SOURCE_COMPOSITION
     if clear_composition_oneshots:
+        # Explicit Catalog/Custom selection must always drop Composition force-open
+        # stamps — including a leftover hub-click flag from a prior Songs→Backing
+        # navigation. The in-flight preserve in ``clear_composition_one_shot_nav_flags``
+        # only protects the *same* script run as the hub ``on_click`` (reconcile /
+        # set_custom mid-click); a newer radio choice is an intentional leave.
+        session_state.pop("_composition_hub_backing_clicked", None)
         clear_composition_one_shot_nav_flags(session_state)
 
 
@@ -1124,14 +1137,29 @@ def switch_to_catalog_from_custom(
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
 ) -> bool:
-    """Leave Custom Progression for the last catalog song (or current catalog pick)."""
+    """Leave Custom/Composition for the last catalog song (or current catalog pick)."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key, first_valid_pick_key
 
     session = st.session_state
-    if not is_custom_progression(session) and not custom_progression_is_active(session):
+    leaving_creative = (
+        is_custom_progression(session)
+        or custom_progression_is_active(session)
+        or composition_song_is_active(session)
+        or is_composition_song(session)
+        or str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+        in {SOURCE_CUSTOM, SOURCE_COMPOSITION}
+        or str(session.get(ACTIVE_CATALOG_PICK_KEY) or "")
+        .strip()
+        .startswith(("custom::", "composition::"))
+    )
+    if not leaving_creative:
         return False
-    snapshot_last_custom_state(session)
+    if is_custom_progression(session) or custom_progression_is_active(session):
+        snapshot_last_custom_state(session)
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    # Drop Composition force-open so Songs→Backing cannot rebuild Composition.
+    session.pop("_composition_hub_backing_clicked", None)
+    clear_composition_one_shot_nav_flags(session)
 
     def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
         pick_key = str(snap.get("pick_key") or "").strip()

@@ -7617,6 +7617,12 @@ def _picker_navigate(
                 except Exception:
                     pass
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
+                _composition_hub_trace_append(
+                    "picker_navigate",
+                    target="backing",
+                    page="backing",
+                    composition=True,
+                )
             elif custom_progression_is_active(st.session_state):
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             else:
@@ -7625,6 +7631,13 @@ def _picker_navigate(
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
         except ImportError:
             pass
+    if page == "backing":
+        _composition_hub_trace_append(
+            "navigate_studio_page",
+            target=page,
+            page=page,
+            force=bool(st.session_state.get("_force_composition_backing_open")),
+        )
     navigate_studio_page(st.session_state, page)
     if open_chord_coach:
         st.session_state["picker_open_chord_coach"] = True
@@ -8535,6 +8548,80 @@ def _render_composition_song_library_selector() -> None:
                 navigate_studio_page(st.session_state, "composer")
                 st.rerun()
 
+def _composition_hub_trace_append(event: str, **fields: Any) -> None:
+    """Record Composition hub Backing lifecycle for harness / ?dev=1 probes."""
+    import time as _time
+
+    entry = {"t": _time.time(), "event": str(event), **fields}
+    trace = st.session_state.setdefault("_composition_hub_nav_trace", [])
+    if not isinstance(trace, list):
+        trace = []
+        st.session_state["_composition_hub_nav_trace"] = trace
+    trace.append(entry)
+    del trace[:-40]
+    st.session_state["_composition_hub_last_event"] = entry
+
+
+def _emit_composition_hub_ready_marker() -> None:
+    """DOM ready signal: ownership + explicit stamp agree before hub clicks.
+
+    Harness waits for ``data-composition-hub-ready="1"`` (live, not stale) —
+    not merely for the Backing button to appear mid-rerun.
+    """
+    import html as _html
+    import json as _json
+
+    from songs.music_source import (
+        SOURCE_COMPOSITION,
+        composition_song_is_active,
+        explicit_music_source_choice,
+        source_ownership_snapshot,
+    )
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    snap = source_ownership_snapshot(st.session_state)
+    explicit = explicit_music_source_choice(st.session_state)
+    owned = bool(composition_song_is_active(st.session_state))
+    pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    # Ready when pick + explicit + ownership agree. Do not require meta_source —
+    # active_song_state can lag one rerun after Composition promote while the
+    # hub is already safe to click (pick + explicit are the commit stamps).
+    ready = (
+        owned
+        and explicit == SOURCE_COMPOSITION
+        and pick.startswith("composition::")
+        and str(snap.get("active_music_source") or "") == SOURCE_COMPOSITION
+    )
+    page = str(st.session_state.get("studio_page") or "")
+    last = st.session_state.get("_composition_hub_last_event")
+    last = last if isinstance(last, dict) else {}
+    last_event = str(last.get("event") or "")
+    click_events = {
+        "hub_callback",
+        "hub_button_body",
+        "picker_navigate",
+        "hub_orphan_recover",
+        "navigate_studio_page",
+    }
+    click = "1" if last_event in click_events else "0"
+    target = str(last.get("target") or "")
+    attrs = (
+        f'data-composition-hub-ready="{"1" if ready else "0"}" '
+        f'data-explicit="{_html.escape(explicit)}" '
+        f'data-pick="{_html.escape(pick)}" '
+        f'data-owner="{_html.escape(str(snap.get("active_music_source") or ""))}" '
+        f'data-page="{_html.escape(page)}" '
+        f'data-hub-click="{click}" '
+        f'data-last-event="{_html.escape(last_event)}" '
+        f'data-nav-target="{_html.escape(target)}" '
+        f'data-snap="{_html.escape(_json.dumps(snap, separators=(",", ":")))}"'
+    )
+    st.markdown(
+        f'<div {attrs} aria-hidden="true" style="display:none"></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
     """Active Song hub for Composition Songs source."""
     from composition_songs_bridge import (
@@ -8548,14 +8635,49 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
 
     apply_pending_composition_active_song_activation_before_widgets(st)
 
+    # If on_click set the hub-backing flags but this run never executes the
+    # button body (widget remount / late hub instantiate), finish navigation
+    # here so one user click always opens Composition Backing.
+    if (
+        st.session_state.get("_force_composition_backing_open")
+        and st.session_state.get("_composition_hub_backing_clicked")
+        and str(st.session_state.get("studio_page") or "picker")
+        in {"", "picker", "songs"}
+    ):
+        st.session_state.pop("_composition_hub_backing_clicked", None)
+        try:
+            from songs.music_source import ensure_composition_owns_active_song
+
+            ensure_composition_owns_active_song(
+                st,
+                invalidate_backing=invalidate_backing_cache,
+            )
+        except Exception:
+            pass
+        try:
+            from composition_songs_bridge import set_composition_source
+
+            set_composition_source(st.session_state)
+        except Exception:
+            pass
+        _composition_hub_trace_append(
+            "hub_orphan_recover",
+            target="backing",
+            page=str(st.session_state.get("studio_page") or ""),
+        )
+        _picker_navigate("backing")
+
     # Radio can show the Composition hub before global ownership catches up.
     # Promote once per radio selection; never loop st.rerun forever.
     try:
         from songs.music_source import (
+            SOURCE_COMPOSITION,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
             composition_song_is_active,
             ensure_composition_owns_active_song,
+            explicit_music_source_choice,
         )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY as _HUB_PICK_KEY
 
         choice_now = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "")
         promote_token = f"composition::{choice_now}"
@@ -8566,42 +8688,48 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
             or st.session_state.get("composition_hub_edit")
             or st.session_state.get("_composition_hub_backing_clicked")
         )
-        if composition_song_is_active(st.session_state):
+        # Radio-only composition_song_is_active can be true while pick is still
+        # custom:: — keep promoting until pick + explicit agree.
+        pick_now = str(st.session_state.get(_HUB_PICK_KEY) or "")
+        ownership_ready = (
+            composition_song_is_active(st.session_state)
+            and pick_now.startswith("composition::")
+            and explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
+        )
+        if ownership_ready:
             st.session_state["_composition_hub_promote_token"] = promote_token
-        elif hub_action_pending:
-            # Ownership may still be Custom while the Composition hub Backing
-            # button was clicked — promote in-place (no rerun) so the button
-            # handler can navigate with Composition ownership.
-            try:
-                ensure_composition_owns_active_song(
-                    st,
-                    invalidate_backing=invalidate_backing_cache,
-                )
-            except Exception as exc:
-                st.session_state["_composition_hub_promote_error"] = (
-                    f"{type(exc).__name__}: {exc}"
-                )
-            if composition_song_is_active(st.session_state):
-                st.session_state.pop("_composition_hub_promote_error", None)
-                st.session_state["_composition_hub_promote_token"] = promote_token
-        elif st.session_state.get("_composition_hub_promote_token") != promote_token:
-            # Only stamp the token after ownership sticks. Otherwise a suppressed
-            # persist leaves Custom on disk and we never retry the promote.
-            try:
-                ensure_composition_owns_active_song(
-                    st,
-                    invalidate_backing=invalidate_backing_cache,
-                )
-            except Exception as exc:
-                st.session_state["_composition_hub_promote_error"] = (
-                    f"{type(exc).__name__}: {exc}"
-                )
-            if composition_song_is_active(st.session_state):
-                st.session_state.pop("_composition_hub_promote_error", None)
-                st.session_state["_composition_hub_promote_token"] = promote_token
-                # Do NOT st.rerun() here. Promote runs before hub buttons are
-                # instantiated; a rerun swallows composition_hub_backing clicks
-                # (Streamlit only applies button state when st.button runs).
+        else:
+            # Clear a premature token stamped when only the radio had flipped.
+            if (
+                st.session_state.get("_composition_hub_promote_token") == promote_token
+                and not pick_now.startswith("composition::")
+            ):
+                st.session_state.pop("_composition_hub_promote_token", None)
+            if hub_action_pending or (
+                st.session_state.get("_composition_hub_promote_token") != promote_token
+            ):
+                try:
+                    ensure_composition_owns_active_song(
+                        st,
+                        invalidate_backing=invalidate_backing_cache,
+                    )
+                except Exception as exc:
+                    st.session_state["_composition_hub_promote_error"] = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                pick_now = str(st.session_state.get(_HUB_PICK_KEY) or "")
+                if (
+                    composition_song_is_active(st.session_state)
+                    and pick_now.startswith("composition::")
+                    and explicit_music_source_choice(st.session_state)
+                    == SOURCE_COMPOSITION
+                ):
+                    st.session_state.pop("_composition_hub_promote_error", None)
+                    st.session_state["_composition_hub_promote_token"] = promote_token
+                    # Do NOT st.rerun() here. Promote runs before hub buttons are
+                    # instantiated; a rerun swallows composition_hub_backing clicks
+                    # (Streamlit only applies button state when st.button runs).
+
     except Exception as exc:
         st.session_state["_composition_hub_outer_error"] = f"{type(exc).__name__}: {exc}"
 
@@ -8623,6 +8751,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
             f"{FEATURE_ICONS.get('composition', '🪶')} This is a **Composition** song — "
             "Practice, Creative, Backing Track, and Karaoke follow this composition."
         )
+        _emit_composition_hub_ready_marker()
         _render_composition_song_library_selector()
         if isinstance(doc, dict):
             rec = {
@@ -8644,6 +8773,11 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                     # on_click runs before script body — survives promote races.
                     st.session_state["_force_composition_backing_open"] = True
                     st.session_state["_composition_hub_backing_clicked"] = True
+                    _composition_hub_trace_append(
+                        "hub_callback",
+                        target="backing",
+                        page=str(st.session_state.get("studio_page") or ""),
+                    )
 
                 if st.button(
                     nav_icon_button_label("backing"),
@@ -8654,6 +8788,11 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                     # Survive disk restore of a prior Custom owner on the Backing
                     # rerun — hydrate must not revive Custom after this click.
                     st.session_state["_force_composition_backing_open"] = True
+                    _composition_hub_trace_append(
+                        "hub_button_body",
+                        target="backing",
+                        page=str(st.session_state.get("studio_page") or ""),
+                    )
                     try:
                         from songs.music_source import ensure_composition_owns_active_song
 

@@ -150,5 +150,37 @@ class ExplicitMusicSourceChoiceTests(unittest.TestCase):
         self.assertIsNone(intended_practice_owner(ss))
 
 
+
+    def test_clear_flags_preserves_in_flight_hub_click(self) -> None:
+        from songs.music_source import clear_composition_one_shot_nav_flags
+
+        ss = {
+            "_composition_hub_backing_clicked": True,
+            "_force_composition_backing_open": True,
+            "composition_hub_backing": True,
+        }
+        clear_composition_one_shot_nav_flags(ss)
+        self.assertTrue(ss.get("_composition_hub_backing_clicked"))
+        self.assertTrue(ss.get("_force_composition_backing_open"))
+        self.assertTrue(ss.get("composition_hub_backing"))
+
+    def test_catalog_commit_clears_leftover_hub_click_force(self) -> None:
+        """Catalog radio must drop Composition force even if hub-click lingered."""
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::doc1",
+            "_composition_hub_backing_clicked": True,
+            "_force_composition_backing_open": True,
+            "composition_hub_backing": True,
+        }
+        commit_explicit_music_source_choice(ss, SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        self.assertNotIn("_composition_hub_backing_clicked", ss)
+        self.assertNotIn("_force_composition_backing_open", ss)
+        self.assertNotIn("composition_hub_backing", ss)
+        self.assertFalse(composition_song_is_active(ss))
+
+
 if __name__ == "__main__":
     unittest.main()
