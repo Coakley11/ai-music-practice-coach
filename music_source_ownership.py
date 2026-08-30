@@ -193,18 +193,30 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     Returns None when an intentional Creative backing workflow owns the session
     (Entry Jam / SBI / Mission opened from Creative) so practice catalog pick
     does not clobber active creative backing.
+
+    Composition songs are also None here — they are not catalog/custom practice
+    owners for this reconciler (Backing uses composition_song context instead).
     """
     if intentional_creative_backing_active(session):
         return None
     try:
         from songs.music_source import (
             SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
             USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
             is_custom_progression,
         )
 
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if (
+            composition_song_is_active(session)
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+            or pick.startswith("composition::")
+        ):
+            return None
         if (
             cpl_session_is_active(session)
             or is_custom_progression(session)
@@ -215,8 +227,7 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             return "catalog"
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return "catalog"
-        pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if pick and not pick.startswith("custom::"):
+        if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
             return "catalog"
     except ImportError:
         pass
@@ -237,6 +248,10 @@ def current_backing_owner(session: dict[str, Any]) -> BackingOwner | None:
         return "catalog"
     if src == "custom_progression":
         return "custom"
+    if src == "composition_song":
+        # Composition is not a catalog/custom PracticeOwner; treat like creative
+        # ownership for alignment checks (do not force catalog rebuild).
+        return None
     if src in {"entry_jam", "song_improv", "mission"}:
         return src  # type: ignore[return-value]
     return None
@@ -954,12 +969,21 @@ def _raw_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
     try:
         from songs.music_source import (
             SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
             USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
             is_custom_progression,
         )
 
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if (
+            composition_song_is_active(session)
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+            or pick.startswith("composition::")
+        ):
+            return None
         if (
             cpl_session_is_active(session)
             or is_custom_progression(session)
@@ -970,8 +994,7 @@ def _raw_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
             return "catalog"
         if str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return "catalog"
-        pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if pick and not pick.startswith("custom::"):
+        if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
             return "catalog"
     except ImportError:
         pass

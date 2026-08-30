@@ -67,8 +67,8 @@ def composition_song_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
-    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
-        return False
+    # Composition pick/meta must win even when ACTIVE_MUSIC_SOURCE still lags on
+    # Custom after Songs → Composition (sidebar/Backing otherwise stay Custom).
     if is_composition_song(session_state):
         return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -82,6 +82,8 @@ def composition_song_is_active(session_state: dict[str, Any]) -> bool:
             return True
         if _pick_looks_composition(str(meta.get("pick_key") or "")):
             return True
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
+        return False
     return False
 
 
@@ -885,7 +887,17 @@ def commit_catalog_active_song(
     try:
         from songs.state import persist_music_local_state
 
-        persist_music_local_state(st)
+        persist_music_local_state(st, save_reason="music_source_switch")
+    except TypeError:
+        try:
+            from songs.state import persist_music_local_state
+
+            # Older persist_music_local_state(**extra) signature — stash reason
+            # on session for flush paths that read it.
+            st.session_state["_music_persist_save_reason"] = "music_source_switch"
+            persist_music_local_state(st)
+        except ImportError:
+            pass
     except ImportError:
         pass
     push_catalog_recent_pick_key(session, pick_key)
@@ -1041,6 +1053,53 @@ def apply_pending_catalog_from_picker_before_widgets(
     )
 
 
+def ensure_composition_owns_active_song(
+    st: Any,
+    *,
+    invalidate_backing=None,
+) -> dict[str, Any] | None:
+    """Make Composition the global active owner with generic ``My Composition`` / C.
+
+    Safe to call from the Songs radio callback or Composition hub when the
+    radio is on Composition but Catalog/Custom still owns the active song.
+    """
+    from composition_songs_bridge import (
+        commit_composition_active_song,
+        ensure_composition_library_hydrated,
+        ensure_generic_composition_document,
+        mark_composition_songs_source_ready,
+        set_composition_source,
+    )
+
+    session = st.session_state
+    session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    ensure_composition_library_hydrated(session)
+    mark_composition_songs_source_ready(session)
+    set_composition_source(session)
+    doc = ensure_generic_composition_document(session)
+    try:
+        commit_composition_active_song(
+            st,
+            doc,
+            invalidate_backing=invalidate_backing,
+        )
+    except Exception as exc:
+        # Keep source flag + doc even if identity commit fails mid-flight.
+        session["_composition_ensure_commit_error"] = f"{type(exc).__name__}: {exc}"
+        raise
+    _assign_song_picker_source_widget(
+        session,
+        song_picker_composition_option_label(),
+    )
+    session.pop("_composition_ensure_commit_error", None)
+    session["_composition_ensure_ok"] = {
+        "pick": str(session.get("active_catalog_pick_key") or ""),
+        "source": str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or ""),
+        "active": bool(composition_song_is_active(session)),
+    }
+    return doc
+
+
 def on_song_picker_source_change(
     st: Any,
     *,
@@ -1053,39 +1112,69 @@ def on_song_picker_source_change(
     if "Composition" in choice:
         st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         try:
-            from composition_songs_bridge import (
-                ensure_composition_library_hydrated,
-                mark_composition_songs_source_ready,
-                set_composition_source,
+            ensure_composition_owns_active_song(
+                st,
+                invalidate_backing=invalidate_backing,
             )
-
-            ensure_composition_library_hydrated(st.session_state)
-            mark_composition_songs_source_ready(st.session_state)
-            set_composition_source(st.session_state)
-            _assign_song_picker_source_widget(
-                st.session_state,
-                song_picker_composition_option_label(),
+        except Exception as exc:
+            # Still force the widget label; hub promote retries ownership.
+            st.session_state["_composition_radio_ensure_error"] = (
+                f"{type(exc).__name__}: {exc}"
             )
-        except ImportError:
-            _assign_song_picker_source_widget(
-                st.session_state,
-                song_picker_composition_option_label(),
-            )
+            try:
+                _assign_song_picker_source_widget(
+                    st.session_state,
+                    song_picker_composition_option_label(),
+                )
+            except Exception:
+                pass
+        else:
+            st.session_state.pop("_composition_radio_ensure_error", None)
         st.rerun()
         return
     if choice.startswith("Use Custom"):
         st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-        if not is_custom_progression(st.session_state) and not custom_progression_is_active(st.session_state):
+        try:
+            from custom_progression_lab import cpl_active_from_session
+
             set_custom_source(st.session_state)
-        if not restore_last_custom_active_song(st, invalidate_backing=invalidate_backing):
+            # Always commit so refresh restores Custom (never leave a stale
+            # Composition/Catalog disk snapshot while the radio says Custom).
+            if not restore_last_custom_active_song(st, invalidate_backing=invalidate_backing):
+                commit_custom_active_song(
+                    st,
+                    cpl_active_from_session(st.session_state),
+                    invalidate_backing=invalidate_backing,
+                )
+            else:
+                # restore already committed; force a second persist if pick
+                # still looks non-custom (defensive against partial restores).
+                pick = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+                if not pick.startswith("custom::"):
+                    commit_custom_active_song(
+                        st,
+                        cpl_active_from_session(st.session_state),
+                        invalidate_backing=invalidate_backing,
+                    )
+        except Exception:
             try:
                 from custom_progression_lab import cpl_active_from_session
 
-                queue_custom_active_song_activation(st, cpl_active_from_session(st.session_state))
+                set_custom_source(st.session_state)
+                commit_custom_active_song(
+                    st,
+                    cpl_active_from_session(st.session_state),
+                    invalidate_backing=invalidate_backing,
+                )
             except Exception:
-                pass
-        else:
-            note_active_source_change(st, invalidate_backing=invalidate_backing)
+                try:
+                    from custom_progression_lab import cpl_active_from_session
+
+                    queue_custom_active_song_activation(
+                        st, cpl_active_from_session(st.session_state)
+                    )
+                except Exception:
+                    pass
         st.rerun()
         return
     st.session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
@@ -1487,7 +1576,10 @@ def active_source_labels(
     custom_name: str,
 ) -> tuple[str, str]:
     """Return ``(source_kind, source_detail)`` for the sidebar active-source banner."""
-    if is_custom_progression(session_state):
+    if composition_song_is_active(session_state) or is_composition_song(session_state):
+        title = str(catalog_title or "").strip() or "My Composition"
+        return "Composition", title
+    if is_custom_progression(session_state) or custom_progression_is_active(session_state):
         return "Custom Progression", str(custom_name or "Custom Progression")
     title = str(catalog_title or "").strip()
     artist = str(catalog_artist or "").strip()
@@ -2142,7 +2234,17 @@ def commit_custom_active_song(
     try:
         from songs.state import persist_music_local_state
 
-        persist_music_local_state(st)
+        persist_music_local_state(st, save_reason="music_source_switch")
+    except TypeError:
+        try:
+            from songs.state import persist_music_local_state
+
+            # Older persist_music_local_state(**extra) signature — stash reason
+            # on session for flush paths that read it.
+            st.session_state["_music_persist_save_reason"] = "music_source_switch"
+            persist_music_local_state(st)
+        except ImportError:
+            pass
     except ImportError:
         pass
 
@@ -3048,6 +3150,25 @@ def activate_catalog_pick_for_backing(
 
 def ensure_custom_progression_for_backing(session_state: dict[str, Any]) -> str:
     """Ensure CPL active progression exists for Use Custom Progression Backing. Returns original key."""
+    # Refuse to clobber Composition ownership (Songs→Backing after Composition).
+    if composition_song_is_active(session_state) or picker_composition_mode(session_state):
+        try:
+            from composition_session_state import get_active_document
+            from composition_songs_bridge import composition_home_key, find_composition_document
+
+            doc = get_active_document(session_state)
+            if not isinstance(doc, dict):
+                from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+                doc = find_composition_document(
+                    session_state,
+                    str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+                )
+            if isinstance(doc, dict):
+                return str(composition_home_key(doc) or "C").strip() or "C"
+        except ImportError:
+            pass
+        return str(session_state.get("display_key") or "C").strip() or "C"
     try:
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,

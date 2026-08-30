@@ -1738,7 +1738,12 @@ def reset_backing_on_active_song_change(
                 set_composition_source(session)
             except ImportError:
                 pass
-            set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+            # Do not stamp BACKING_PREF_CUSTOM for Composition — that preference
+            # later reactivates Custom ownership on Songs→Backing navigation.
+            try:
+                session.pop("backing_source_preference", None)
+            except Exception:
+                pass
             ctx = build_composition_song_context(session)
         elif custom_pick and not user_chose_catalog and not catalog_pick:
             set_custom_source(session)

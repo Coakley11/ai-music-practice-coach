@@ -53,6 +53,9 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
         "startup_migration",
         "canonical_repair",
         "creative_schema_migration",
+        # Catalog ↔ Custom ↔ Composition ownership changes must always land on
+        # disk even while startup song_edit suppression is still armed.
+        "music_source_switch",
     }
 )
 

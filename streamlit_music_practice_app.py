@@ -343,6 +343,7 @@ from songs.music_source import (
     is_custom_progression,
     custom_progression_is_active,
     note_active_source_change,
+    picker_composition_mode,
     set_catalog_source,
     set_custom_source,
     unpack_active_source_banner,
@@ -7565,9 +7566,46 @@ def _picker_navigate(
         set_pending_anchor(st.session_state, _PICKER_NAV_ANCHORS.get(page))
     if page == "backing":
         try:
-            from backing_source_navigation import BACKING_INTENT_FROM_PRACTICE, set_backing_open_intent
+            from backing_source_navigation import (
+                BACKING_INTENT_FROM_SONG_TO_BACKING,
+                set_backing_open_intent,
+            )
+            from songs.music_source import (
+                composition_song_is_active,
+                custom_progression_is_active,
+                picker_composition_mode,
+            )
 
-            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+            # Songs hub Backing must follow the active owner (Composition/Custom/
+            # Catalog), not force a Practice-intent catalog rebuild.
+            # Radio Composition counts even when ownership promote is still mid-flight.
+            if (
+                composition_song_is_active(st.session_state)
+                or picker_composition_mode(st.session_state)
+            ):
+                if not composition_song_is_active(st.session_state):
+                    try:
+                        from songs.music_source import ensure_composition_owns_active_song
+
+                        ensure_composition_owns_active_song(
+                            st,
+                            invalidate_backing=invalidate_backing_cache,
+                        )
+                    except Exception:
+                        pass
+                try:
+                    from composition_songs_bridge import set_composition_source
+
+                    set_composition_source(st.session_state)
+                except Exception:
+                    pass
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            elif custom_progression_is_active(st.session_state):
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            else:
+                from backing_source_navigation import BACKING_INTENT_FROM_PRACTICE
+
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
         except ImportError:
             pass
     navigate_studio_page(st.session_state, page)
@@ -8374,6 +8412,14 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         on_change=_picker_source_on_change,
     )
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
+    try:
+        from songs.music_source import composition_song_is_active
+
+        # Global Composition ownership wins over a stale Custom radio/DOM hub.
+        if composition_song_is_active(st.session_state):
+            return "composition"
+    except Exception:
+        pass
     if music_picker_shows_composition_hub(st.session_state) or "Composition" in choice:
         return "composition"
     if music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom"):
@@ -8457,10 +8503,74 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
 
     apply_pending_composition_active_song_activation_before_widgets(st)
 
+    # Radio can show the Composition hub before global ownership catches up.
+    # Promote once per radio selection; never loop st.rerun forever.
+    try:
+        from songs.music_source import (
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            composition_song_is_active,
+            ensure_composition_owns_active_song,
+        )
+
+        choice_now = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "")
+        promote_token = f"composition::{choice_now}"
+        # Never swallow hub action clicks with a promote st.rerun().
+        hub_action_pending = bool(
+            st.session_state.get("composition_hub_backing")
+            or st.session_state.get("composition_hub_practice")
+            or st.session_state.get("composition_hub_edit")
+            or st.session_state.get("_composition_hub_backing_clicked")
+        )
+        if composition_song_is_active(st.session_state):
+            st.session_state["_composition_hub_promote_token"] = promote_token
+        elif hub_action_pending:
+            # Ownership may still be Custom while the Composition hub Backing
+            # button was clicked — promote in-place (no rerun) so the button
+            # handler can navigate with Composition ownership.
+            try:
+                ensure_composition_owns_active_song(
+                    st,
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            except Exception as exc:
+                st.session_state["_composition_hub_promote_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+            if composition_song_is_active(st.session_state):
+                st.session_state.pop("_composition_hub_promote_error", None)
+                st.session_state["_composition_hub_promote_token"] = promote_token
+        elif st.session_state.get("_composition_hub_promote_token") != promote_token:
+            # Only stamp the token after ownership sticks. Otherwise a suppressed
+            # persist leaves Custom on disk and we never retry the promote.
+            try:
+                ensure_composition_owns_active_song(
+                    st,
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            except Exception as exc:
+                st.session_state["_composition_hub_promote_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+            if composition_song_is_active(st.session_state):
+                st.session_state.pop("_composition_hub_promote_error", None)
+                st.session_state["_composition_hub_promote_token"] = promote_token
+                # Do NOT st.rerun() here. Promote runs before hub buttons are
+                # instantiated; a rerun swallows composition_hub_backing clicks
+                # (Streamlit only applies button state when st.button runs).
+    except Exception as exc:
+        st.session_state["_composition_hub_outer_error"] = f"{type(exc).__name__}: {exc}"
+
     doc = get_active_document(st.session_state)
     if not isinstance(doc, dict):
         pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
         doc = find_composition_document(st.session_state, pk)
+    if not isinstance(doc, dict):
+        try:
+            from composition_songs_bridge import ensure_generic_composition_document
+
+            doc = ensure_generic_composition_document(st.session_state)
+        except Exception:
+            doc = None
 
     with st.container(key="picker_active_song_hub"):
         render_active_song_hub_open(st, extra_class="source-composition")
@@ -8485,7 +8595,36 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 if st.button(nav_icon_button_label("practice"), key="composition_hub_practice", use_container_width=True):
                     _picker_navigate("practice")
             with b2:
-                if st.button(nav_icon_button_label("backing"), key="composition_hub_backing", use_container_width=True):
+                def _on_composition_hub_backing() -> None:
+                    # on_click runs before script body — survives promote races.
+                    st.session_state["_force_composition_backing_open"] = True
+                    st.session_state["_composition_hub_backing_clicked"] = True
+
+                if st.button(
+                    nav_icon_button_label("backing"),
+                    key="composition_hub_backing",
+                    use_container_width=True,
+                    on_click=_on_composition_hub_backing,
+                ):
+                    # Survive disk restore of a prior Custom owner on the Backing
+                    # rerun — hydrate must not revive Custom after this click.
+                    st.session_state["_force_composition_backing_open"] = True
+                    try:
+                        from songs.music_source import ensure_composition_owns_active_song
+
+                        ensure_composition_owns_active_song(
+                            st,
+                            invalidate_backing=invalidate_backing_cache,
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        from composition_songs_bridge import set_composition_source
+
+                        set_composition_source(st.session_state)
+                    except Exception:
+                        pass
+                    st.session_state.pop("_composition_hub_backing_clicked", None)
                     _picker_navigate("backing")
             with b3:
                 if st.button(
@@ -8506,6 +8645,54 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
 
 def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
     """Active Song hub for Custom Progression / Create Your Own Song."""
+    try:
+        from songs.music_source import (
+            commit_custom_active_song,
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+            restore_last_custom_active_song,
+            set_custom_source,
+        )
+        from custom_progression_lab import cpl_active_from_session
+
+        # Never steal Composition ownership via the Custom hub one-shot.
+        if composition_song_is_active(st.session_state) or picker_composition_mode(
+            st.session_state
+        ):
+            st.session_state.pop("_custom_hub_ownership_promoted", None)
+        # One-shot ownership promote — never loop st.rerun on every render.
+        elif (
+            not custom_progression_is_active(st.session_state)
+            and not st.session_state.get("_custom_hub_ownership_promoted")
+        ):
+            st.session_state["_custom_hub_ownership_promoted"] = True
+            set_custom_source(st.session_state)
+            if not restore_last_custom_active_song(
+                st, invalidate_backing=invalidate_backing_cache
+            ):
+                commit_custom_active_song(
+                    st,
+                    cpl_active_from_session(st.session_state),
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            st.rerun()
+        elif custom_progression_is_active(st.session_state):
+            st.session_state.pop("_custom_hub_ownership_promoted", None)
+            # Ensure disk identity matches live Custom owner (pick_key custom::…).
+            pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+            if not pick.startswith("custom::") and not st.session_state.get(
+                "_custom_hub_disk_synced"
+            ):
+                st.session_state["_custom_hub_disk_synced"] = True
+                commit_custom_active_song(
+                    st,
+                    cpl_active_from_session(st.session_state),
+                    invalidate_backing=invalidate_backing_cache,
+                )
+    except Exception:
+        pass
+
     active = ensure_original_structure(
         st.session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
     )
@@ -8755,6 +8942,14 @@ def _render_catalog_song_picker_block(
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )
+        try:
+            from songs.music_source import composition_song_is_active as _comp_owns
+
+            if _comp_owns(st.session_state):
+                _render_composition_active_song_hub(wrap_section=wrap_section)
+                return
+        except Exception:
+            pass
         if music_picker_shows_composition_hub(st.session_state):
             _render_composition_active_song_hub(wrap_section=wrap_section)
             return
@@ -13246,9 +13441,32 @@ elif _studio_page == "backing":
                 musical_state=_backing_musical,
             )
         elif (
-            _backing_ctx_for_card is not None
-            and _backing_ctx_for_card.source == "custom_progression"
+            (
+                _backing_ctx_for_card is not None
+                and _backing_ctx_for_card.source == "custom_progression"
+                and not composition_song_is_active(st.session_state)
+                and not picker_composition_mode(st.session_state)
+            )
+            or (
+                custom_progression_is_active(st.session_state)
+                and not composition_song_is_active(st.session_state)
+                and not picker_composition_mode(st.session_state)
+            )
         ):
+            if (
+                _backing_ctx_for_card is None
+                or _backing_ctx_for_card.source != "custom_progression"
+            ):
+                try:
+                    from backing_context import (
+                        build_custom_progression_context,
+                        set_backing_context,
+                    )
+
+                    _backing_ctx_for_card = build_custom_progression_context(st.session_state)
+                    set_backing_context(st.session_state, _backing_ctx_for_card)
+                except Exception:
+                    pass
             if _backing_musical is None:
                 try:
                     from backing_musical_state import resolve_current_backing_musical_state
@@ -13265,27 +13483,41 @@ elif _studio_page == "backing":
                     pass
             if _backing_musical is not None and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
-            render_backing_custom_progression_context_card(
-                st,
-                _backing_ctx_for_card,
-                st.session_state,
-                applied_bpm=_synced_bpm,
-                applied_groove=default_groove_style,
-                applied_meter=_applied_meter_pre,
-                practice_key=_backing_practice_key,
-                written_key=_backing_written_key,
-                musical_state=_backing_musical,
-            )
+            if (
+                _backing_ctx_for_card is not None
+                and _backing_ctx_for_card.source == "custom_progression"
+            ):
+                render_backing_custom_progression_context_card(
+                    st,
+                    _backing_ctx_for_card,
+                    st.session_state,
+                    applied_bpm=_synced_bpm,
+                    applied_groove=default_groove_style,
+                    applied_meter=_applied_meter_pre,
+                    practice_key=_backing_practice_key,
+                    written_key=_backing_written_key,
+                    musical_state=_backing_musical,
+                )
         elif (
-            _backing_ctx_for_card is not None
-            and _backing_ctx_for_card.source == "composition_song"
-        ) or composition_song_is_active(st.session_state):
+            (
+                _backing_ctx_for_card is not None
+                and _backing_ctx_for_card.source == "composition_song"
+            )
+            or composition_song_is_active(st.session_state)
+            or picker_composition_mode(st.session_state)
+        ):
             if _backing_ctx_for_card is None or _backing_ctx_for_card.source != "composition_song":
                 try:
                     from backing_context import build_composition_song_context, set_backing_context
                     from composition_songs_bridge import set_composition_source
+                    from songs.music_source import ensure_composition_owns_active_song
 
                     set_composition_source(st.session_state)
+                    if not composition_song_is_active(st.session_state):
+                        ensure_composition_owns_active_song(
+                            st,
+                            invalidate_backing=invalidate_backing_cache,
+                        )
                     _backing_ctx_for_card = build_composition_song_context(st.session_state)
                     set_backing_context(st.session_state, _backing_ctx_for_card)
                 except Exception:

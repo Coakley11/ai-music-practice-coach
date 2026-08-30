@@ -239,10 +239,16 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
+    save_reason = str(
+        extra.pop("save_reason", None)
+        or st.session_state.get("_music_persist_save_reason")
+        or "song_edit"
+    ).strip() or "song_edit"
+    st.session_state.pop("_music_persist_save_reason", None)
     try:
         from music_startup_save_suppression import should_suppress_music_workspace_save, record_startup_save_suppressed
 
-        suppress, why = should_suppress_music_workspace_save(st.session_state, "song_edit")
+        suppress, why = should_suppress_music_workspace_save(st.session_state, save_reason)
         if suppress:
             record_startup_save_suppressed(st.session_state, why)
             return
@@ -255,8 +261,16 @@ def persist_music_local_state(st: Any, **extra: Any) -> None:
     try:
         from music_persistent_state import flush_active_song_edits_and_save
 
-        flush_active_song_edits_and_save(st, reason="song_edit")
+        flush_active_song_edits_and_save(st, reason=save_reason)
         return
+    except TypeError:
+        try:
+            from music_persistent_state import flush_active_song_edits_and_save
+
+            flush_active_song_edits_and_save(st, reason="song_edit")
+            return
+        except ImportError:
+            pass
     except ImportError:
         pass
     try:

@@ -617,6 +617,47 @@ def _restore_display_key_owner_from_context(session: dict[str, Any], ctx: dict[s
 
 def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
     """Read active song context from live session keys."""
+    # Custom must win over a leftover Composition document when the live
+    # source flag is Custom — otherwise persist rewrites Composition to disk
+    # after set_custom_source() and Custom refresh restores the wrong owner.
+    if custom_progression_is_active(session) or is_custom_progression(session):
+        from custom_progression_lab import (
+            default_active_progression,
+            ensure_original_structure,
+            cpl_draft_written_key,
+        )
+        from songs.music_source import custom_pick_key_for, custom_selected_song_record
+
+        active = ensure_original_structure(
+            session.get("cpl_active_progression") or default_active_progression()
+        )
+        selected = custom_selected_song_record(active)
+        home_key = cpl_draft_written_key(active)
+        pick_key = str(selected.get("pick_key") or custom_pick_key_for(active)).strip()
+        instrument_name = str(session.get("instrument") or "").strip()
+        display_key = _resolve_custom_display_key_for_session(session, home_key)
+        ctx = {
+            "pick_key": pick_key,
+            "display_key": display_key,
+            "instrument": instrument_name,
+            "level": str(session.get("level") or "").strip(),
+            "focus": str(session.get("focus") or "").strip(),
+            "selected_song": selected,
+            "music_source": SOURCE_CUSTOM,
+            "custom_progression_name": str(selected.get("title") or "").strip(),
+            "custom_home_key": home_key,
+            CHART_IN_INSTRUMENT_KEY_KEY: _live_written_key_for_save(session),
+        }
+        anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
+        if anchor:
+            ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        if is_transposing_instrument(instrument_name):
+            subtype = _live_subtype_for_save(session, instrument_name)
+            if subtype:
+                ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
+        ctx.update(_capo_fields_from_session(session))
+        return _attach_display_key_owner(session, ctx)
+
     if composition_song_is_active(session):
         try:
             from composition_songs_bridge import (
@@ -668,44 +709,6 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                         ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
                 ctx.update(_capo_fields_from_session(session))
                 return _attach_display_key_owner(session, ctx)
-
-    if custom_progression_is_active(session):
-        from custom_progression_lab import (
-            default_active_progression,
-            ensure_original_structure,
-            cpl_draft_written_key,
-        )
-        from songs.music_source import custom_pick_key_for, custom_selected_song_record
-
-        active = ensure_original_structure(
-            session.get("cpl_active_progression") or default_active_progression()
-        )
-        selected = custom_selected_song_record(active)
-        home_key = cpl_draft_written_key(active)
-        pick_key = str(selected.get("pick_key") or custom_pick_key_for(active)).strip()
-        instrument_name = str(session.get("instrument") or "").strip()
-        display_key = _resolve_custom_display_key_for_session(session, home_key)
-        ctx = {
-            "pick_key": pick_key,
-            "display_key": display_key,
-            "instrument": instrument_name,
-            "level": str(session.get("level") or "").strip(),
-            "focus": str(session.get("focus") or "").strip(),
-            "selected_song": selected,
-            "music_source": SOURCE_CUSTOM,
-            "custom_progression_name": str(selected.get("title") or "").strip(),
-            "custom_home_key": home_key,
-            CHART_IN_INSTRUMENT_KEY_KEY: _live_written_key_for_save(session),
-        }
-        anchor = str(session.get(WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY) or "").strip()
-        if anchor:
-            ctx[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
-        if is_transposing_instrument(instrument_name):
-            subtype = _live_subtype_for_save(session, instrument_name)
-            if subtype:
-                ctx[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype
-        ctx.update(_capo_fields_from_session(session))
-        return _attach_display_key_owner(session, ctx)
 
     sel = session.get(SELECTED_SONG_STATE_KEY)
     selected = _normalize_selected_song(sel)

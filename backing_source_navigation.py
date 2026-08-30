@@ -328,10 +328,60 @@ def hydrate_picker_source_for_page(
 
 
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
-    """Open Backing Studio for the current Practice catalog/custom source (Case C)."""
+    """Open Backing Studio for the current Practice catalog/custom/composition source (Case C)."""
     snapshot_practice_source_display_key(session)
     transition = peek_key_transition_intent(session)
     preserve_key = _backing_intent_preserves_practice_key(transition) if transition else True
+    # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
+    # after Custom→Composition steals ownership back to Custom/Catalog.
+    try:
+        from songs.music_source import (
+            composition_song_is_active,
+            picker_composition_mode,
+        )
+
+        force_composition = bool(session.pop("_force_composition_backing_open", None))
+        pick_now = str(session.get("active_catalog_pick_key") or "").strip()
+        meta = session.get("active_song_state")
+        meta_pick = (
+            str((meta or {}).get("pick_key") or "").strip()
+            if isinstance(meta, dict)
+            else ""
+        )
+        pick_looks_composition = pick_now.startswith("composition::") or meta_pick.startswith(
+            "composition::"
+        )
+        if (
+            force_composition
+            or pick_looks_composition
+            or composition_song_is_active(session)
+            or picker_composition_mode(session)
+        ):
+            from backing_context import (
+                apply_backing_context_to_session,
+                build_composition_song_context,
+                set_backing_context,
+            )
+            from composition_songs_bridge import set_composition_source
+
+            set_composition_source(session)
+            if not composition_song_is_active(session):
+                try:
+                    from songs.music_source import ensure_composition_owns_active_song
+                    from types import SimpleNamespace
+
+                    st_proxy = st_like if st_like is not None else SimpleNamespace(session_state=session)
+                    if not hasattr(st_proxy, "session_state"):
+                        st_proxy = SimpleNamespace(session_state=session)
+                    ensure_composition_owns_active_song(st_proxy, invalidate_backing=None)
+                except Exception:
+                    pass
+            ctx = build_composition_song_context(session)
+            set_backing_context(session, ctx)
+            apply_backing_context_to_session(session, ctx, st_like=st_like)
+            return ctx
+    except ImportError:
+        pass
     try:
         from music_source_ownership import (
             activate_catalog_ownership,
@@ -371,11 +421,22 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             set_backing_source_preference,
         )
         from songs.music_source import (
+            composition_song_is_active,
             cpl_session_is_active,
             ensure_custom_active_song_identity,
             is_custom_progression,
+            picker_composition_mode,
         )
 
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            from backing_context import build_composition_song_context
+            from composition_songs_bridge import set_composition_source
+
+            set_composition_source(session)
+            ctx = build_composition_song_context(session)
+            set_backing_context(session, ctx)
+            apply_backing_context_to_session(session, ctx, st_like=st_like)
+            return ctx
         if cpl_session_is_active(session) or is_custom_progression(session):
             ensure_custom_active_song_identity(session)
             set_backing_source_preference(session, BACKING_PREF_CUSTOM)

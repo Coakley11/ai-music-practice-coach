@@ -515,11 +515,22 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
 
 def _custom_progression_available(session: dict[str, Any]) -> bool:
     try:
-        from songs.music_source import cpl_session_is_active, is_custom_progression
+        from songs.music_source import (
+            composition_song_is_active,
+            cpl_session_is_active,
+            is_custom_progression,
+            picker_composition_mode,
+        )
 
-        return bool(cpl_session_is_active(session) or is_custom_progression(session))
+        # Never offer Custom backing takeover while Composition owns the song.
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            return False
+        if cpl_session_is_active(session) or is_custom_progression(session):
+            return True
     except ImportError:
-        return False
+        pass
+    # CPL draft may exist without the Custom source flag (offer switcher).
+    return bool(session.get("cpl_active_progression"))
 
 
 def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, skipped_song_defaults: bool = False) -> None:

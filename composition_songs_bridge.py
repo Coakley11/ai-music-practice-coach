@@ -272,6 +272,20 @@ def set_composition_source(session_state: dict[str, Any]) -> None:
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
     mark_composition_songs_source_ready(session_state)
+    # Drop stale Custom Backing preference so Songs→Backing cannot revive Custom.
+    try:
+        from backing_context import (
+            BACKING_PREF_CUSTOM,
+            clear_backing_source_preference,
+            get_backing_source_preference,
+        )
+
+        pref = str(get_backing_source_preference(session_state) or "").strip()
+        if pref == BACKING_PREF_CUSTOM or pref == "custom":
+            clear_backing_source_preference(session_state)
+    except Exception:
+        session_state.pop("_backing_source_preference", None)
+        session_state.pop("backing_source_preference", None)
 
 def is_composition_source(session_state: dict[str, Any]) -> bool:
     from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY
@@ -458,7 +472,17 @@ def commit_composition_active_song(
     try:
         from songs.state import persist_music_local_state
 
-        persist_music_local_state(st)
+        # Must bypass startup song_edit suppression so Custom→Composition
+        # ownership survives refresh / next-run disk restore.
+        persist_music_local_state(st, save_reason="music_source_switch")
+    except TypeError:
+        try:
+            from songs.state import persist_music_local_state
+
+            st.session_state["_music_persist_save_reason"] = "music_source_switch"
+            persist_music_local_state(st)
+        except ImportError:
+            pass
     except ImportError:
         pass
 

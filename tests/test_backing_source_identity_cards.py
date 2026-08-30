@@ -178,5 +178,133 @@ class TestCompositionBackingCard(unittest.TestCase):
         self.assertNotEqual(cat_ctx.source, "composition_song")
 
 
+class TestCompositionSourceOwnership(unittest.TestCase):
+    def test_ensure_composition_owns_active_song_promotes_my_composition(self) -> None:
+        from unittest.mock import MagicMock
+
+        from composition_songs_bridge import GENERIC_COMPOSITION_KEY, GENERIC_COMPOSITION_TITLE
+        from songs.music_source import (
+            composition_song_is_active,
+            ensure_composition_owns_active_song,
+        )
+
+        st = MagicMock()
+        ss: dict = {
+            "active_catalog_pick_key": "Pop\x1fSay — John Mayer",
+            "selected_song": {
+                "pick_key": "Pop\x1fSay — John Mayer",
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            "active_music_source": "catalog_song",
+            "_user_chose_catalog_music_source": True,
+        }
+        st.session_state = ss
+
+        doc = ensure_composition_owns_active_song(st, invalidate_backing=lambda _st: None)
+        self.assertIsInstance(doc, dict)
+        self.assertEqual(str(doc.get("title") or ""), GENERIC_COMPOSITION_TITLE)
+        self.assertEqual(
+            str((doc.get("global") or {}).get("original_key_center") or ""),
+            GENERIC_COMPOSITION_KEY,
+        )
+        self.assertTrue(composition_song_is_active(ss))
+        self.assertTrue(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+        self.assertEqual((ss.get("selected_song") or {}).get("title"), GENERIC_COMPOSITION_TITLE)
+
+    def test_composition_pick_is_not_catalog_practice_owner(self) -> None:
+        from music_source_ownership import intended_practice_owner
+
+        ss = {
+            "active_catalog_pick_key": "composition::abc",
+            "active_music_source": "composition_song",
+            "selected_song": {
+                "pick_key": "composition::abc",
+                "title": "My Composition",
+                "artist": "Composition",
+                "key": "C",
+                "is_composition": True,
+            },
+        }
+        self.assertIsNone(intended_practice_owner(ss))
+
+    def test_commit_composition_persists_with_music_source_switch(self) -> None:
+        """Composition ownership must use music_source_switch (not suppressed song_edit)."""
+        from unittest.mock import MagicMock, patch
+
+        from composition_songs_bridge import (
+            SOURCE_COMPOSITION,
+            commit_composition_active_song,
+            ensure_generic_composition_document,
+        )
+
+        st = MagicMock()
+        ss: dict = {
+            "active_catalog_pick_key": "custom::My Progression",
+            "active_music_source": "custom_progression",
+            "selected_song": {
+                "pick_key": "custom::My Progression",
+                "title": "My Progression",
+                "artist": "Custom",
+                "key": "C",
+            },
+        }
+        st.session_state = ss
+        doc = ensure_generic_composition_document(ss)
+        seen: list[str] = []
+
+        def _persist(_st, **extra):
+            seen.append(str(extra.get("save_reason") or ""))
+
+        with patch(
+            "songs.state.persist_music_local_state",
+            side_effect=_persist,
+        ):
+            commit_composition_active_song(st, doc, invalidate_backing=lambda _st: None)
+        self.assertIn("music_source_switch", seen)
+        self.assertEqual(ss.get("active_music_source"), SOURCE_COMPOSITION)
+        self.assertTrue(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+
+    def test_open_backing_forces_composition_when_pick_is_composition(self) -> None:
+        """Custom active_music_source must not win when pick_key is composition::."""
+        from types import SimpleNamespace
+
+        from backing_source_navigation import open_backing_for_practice_source
+        from composition_songs_bridge import ensure_generic_composition_document
+
+        ss: dict = {
+            "active_catalog_pick_key": "composition::force-test",
+            "active_music_source": "custom_progression",
+            "active_song_state": {
+                "pick_key": "composition::force-test",
+                "music_source": "composition_song",
+            },
+            "selected_song": {
+                "pick_key": "composition::force-test",
+                "title": "My Composition",
+                "artist": "Composition",
+                "key": "C",
+                "is_composition": True,
+            },
+            "_backing_source_preference": "custom",
+            "_force_composition_backing_open": True,
+        }
+        ensure_generic_composition_document(ss)
+        # Force pick onto the generic doc id after ensure.
+        pick = str(ss.get("active_catalog_pick_key") or "")
+        if not pick.startswith("composition::"):
+            ss["active_catalog_pick_key"] = "composition::force-test"
+        ss["active_music_source"] = "custom_progression"
+        ss["_backing_source_preference"] = "custom"
+        ss["_force_composition_backing_open"] = True
+
+        ctx = open_backing_for_practice_source(
+            ss, st_like=SimpleNamespace(session_state=ss)
+        )
+        self.assertIsNotNone(ctx)
+        self.assertEqual(getattr(ctx, "source", None), "composition_song")
+
+
 if __name__ == "__main__":
     unittest.main()
