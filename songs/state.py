@@ -85,9 +85,17 @@ def apply_explicit_catalog_dropdown_pick(
         session.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
     except ImportError:
         pass
+    live_before = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if live_before.startswith("custom::"):
+        try:
+            from songs.music_source import mark_catalog_switch_applied_this_run
+
+            # Lagging Songs "Use Custom" radio must not reclaim Trial after this pick.
+            mark_catalog_switch_applied_this_run(session)
+        except ImportError:
+            pass
     if requested and not requested.startswith("custom::"):
         session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = requested
-    live_before = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if requested != live_before:
         session["_explicit_catalog_fresh_activation"] = True
         # Master may already equal Shape from a prior no-op while Global Active
@@ -164,6 +172,16 @@ def consume_uncommitted_catalog_dropdown(
         return live
     committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
     fallback = first_valid_pick_key(song_picker_catalog)
+    if live.startswith("custom::") and resolved == fallback:
+        # Custom still owns. Streamlit inits the catalog dropdown to first_valid
+        # (Say). That is not an explicit catalog pick.
+        _trace_explicit_pick(
+            st.session_state,
+            event="consume_skip_first_valid_while_custom",
+            widget=resolved,
+            live=live,
+        )
+        return live
     if committed and committed == live and resolved != live and resolved == fallback:
         # Widget lagged to first_valid (Say). Keep the committed catalog pick.
         st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
@@ -850,10 +868,18 @@ def sync_matching_song_dropdown_before_widget(
     """Align the dropdown widget with ``ACTIVE_CATALOG_PICK_KEY`` before it is drawn.
 
     Never assign ``matching_song_dropdown`` after the selectbox exists — use pending
-    values applied on the next run only.
+    values applied on the next run only. Never store ``custom::`` in the catalog
+    selectbox — Streamlit ignores option clicks when the session value is not in
+    ``pick_options``.
     """
     if not pick_options:
         return fallback_pk
+
+    def _visual_catalog_option(candidate: str) -> str:
+        visual = str(candidate or "").strip()
+        if visual.startswith("custom::") or visual not in pick_options:
+            visual = fallback_pk if fallback_pk in pick_options else pick_options[0]
+        return visual
 
     live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     dropdown = str(st.session_state.get("matching_song_dropdown") or "").strip()
@@ -867,8 +893,9 @@ def sync_matching_song_dropdown_before_widget(
                 and resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog)
             ):
                 pick_options.insert(0, live_pk)
-            st.session_state["matching_song_dropdown"] = live_pk
-            return live_pk if live_pk in pick_options else live_pk
+            if not str(live_pk).startswith("custom::"):
+                st.session_state["matching_song_dropdown"] = live_pk
+                return live_pk if live_pk in pick_options else live_pk
     except ImportError:
         pass
     if (
@@ -876,6 +903,7 @@ def sync_matching_song_dropdown_before_widget(
         and dropdown
         and dropdown in pick_options
         and dropdown != live_pk
+        and not str(live_pk).startswith("custom::")
         and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
     ):
         try:
@@ -1017,7 +1045,7 @@ def sync_matching_song_dropdown_before_widget(
         else:
             st.session_state["matching_song_dropdown"] = pending
     elif st.session_state.get("matching_song_dropdown") not in pick_options:
-        st.session_state["matching_song_dropdown"] = active
+        st.session_state["matching_song_dropdown"] = _visual_catalog_option(active)
 
     return active
 
@@ -1224,6 +1252,7 @@ def apply_pick_key(
             PENDING_CATALOG_FROM_PICKER_KEY,
             SOURCE_CUSTOM,
             USER_CATALOG_SOURCE_CHOICE_KEY,
+            CATALOG_PICKER_PENDING_EXPLICIT_KEY,
             explicit_catalog_selection_is_authoritative,
             explicit_custom_activation_is_authoritative,
         )
@@ -1267,6 +1296,7 @@ def apply_pick_key(
         explicit_catalog_switch = bool(
             restoring_locked_catalog
             or st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY)
+            or st.session_state.get(CATALOG_PICKER_PENDING_EXPLICIT_KEY)
             or (
                 st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
                 and explicit_catalog_selection_is_authoritative(st.session_state)

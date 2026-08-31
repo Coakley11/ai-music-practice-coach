@@ -8287,11 +8287,13 @@ def _render_picker_music_source_toggle(*, polished: bool) -> bool:
     note_song_picker_source_presented(st.session_state, choice)
     # Explicit Catalog choice must not keep rendering Custom hub because the
     # Streamlit radio widget lagged on "Use Custom…" for one paint.
+    # Do not OR lagged "Use Custom" radio after pending-catalog-picker: that
+    # hid the catalog dropdown and dropped the first Shape click.
     if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
         st.session_state
     ):
         return False
-    return music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom")
+    return music_picker_shows_custom_hub(st.session_state)
 
 
 def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
@@ -8335,6 +8337,74 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                 force=True,
             )
             st.rerun()
+        visible_records = _picker_visible_records()
+        catalog_pick_options = [
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+            for r in visible_records
+            if r.get("genre") and r.get("title")
+        ]
+        if catalog_pick_options:
+            from songs.state import consume_uncommitted_catalog_dropdown
+
+            widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
+            if widget not in catalog_pick_options:
+                # custom:: / empty is not a valid catalog option. Visual default
+                # only — consume will not apply first_valid while Custom owns.
+                st.session_state["matching_song_dropdown"] = catalog_pick_options[0]
+            consume_uncommitted_catalog_dropdown(
+                st,
+                catalog_pick_options,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
+            if not (
+                is_custom_progression(st.session_state)
+                or custom_progression_is_active(st.session_state)
+            ):
+                st.rerun()
+        if catalog_pick_options:
+            st.markdown(
+                '<p class="ui-active-song-picker-label">Switch to a catalog song</p>',
+                unsafe_allow_html=True,
+            )
+            _hub_favs = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
+
+            def _on_custom_hub_catalog_pick() -> None:
+                from songs.key_state import invalidate_backing_cache
+                from songs.state import apply_explicit_catalog_dropdown_pick
+
+                raw_pick = st.session_state.get("matching_song_dropdown", "")
+                resolved_pick = resolve_pick_key(
+                    raw_pick,
+                    song_picker_catalog=SONG_PICKER_CATALOG,
+                    records=visible_records,
+                )
+                if not resolved_pick or str(resolved_pick).startswith("custom::"):
+                    return
+                apply_explicit_catalog_dropdown_pick(
+                    st,
+                    resolved_pick,
+                    SONG_PICKER_CATALOG,
+                    song_library=SONG_LIBRARY,
+                )
+                note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+                try:
+                    st.toast(
+                        "Song updated — chart and backing track follow this selection.",
+                        icon="🎵",
+                    )
+                except Exception:
+                    pass
+
+            st.selectbox(
+                "Active song",
+                catalog_pick_options,
+                format_func=lambda opt: _picker_song_dropdown_label(opt, favorites=_hub_favs),
+                key="matching_song_dropdown",
+                on_change=_on_custom_hub_catalog_pick,
+                label_visibility="collapsed",
+                help="Pick a catalog song. This leaves Custom and makes that song Global Active.",
+            )
         _render_custom_song_library_selector()
         _render_active_song_card(rec)
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)

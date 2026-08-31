@@ -11,11 +11,13 @@ from unittest.mock import patch
 
 from song_catalog.catalog import format_pick_key
 from songs.music_source import (
+    CATALOG_PICKER_PENDING_EXPLICIT_KEY,
     CATALOG_RESTORE_PIN_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
     begin_explicit_catalog_selection,
     pin_catalog_restore_identity,
+    switch_to_catalog_from_custom,
 )
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
@@ -279,6 +281,153 @@ class TestExplicitCatalogFirstClick(unittest.TestCase):
         self.assertEqual(session.get("song"), "Shape of You")
         self.assertEqual(str(session.get("display_key") or ""), "Bm")
         self.assertEqual(session.get("matching_song_dropdown") or session.get(PENDING_MATCHING_SONG_DROPDOWN), PK_SHAPE)
+
+    def _trial_row(self) -> dict:
+        return {
+            "id": "trial-owner-switch",
+            "name": "Trial Song",
+            "original_key_center": "D",
+            "original_sections": {
+                "Verse": [
+                    {"chord": "Em", "bars": 1},
+                    {"chord": "Em", "bars": 1},
+                    {"chord": "D", "bars": 1},
+                    {"chord": "D", "bars": 1},
+                ],
+            },
+            "bpm": 100,
+            "progression_style": "Pop",
+        }
+
+    def test_pending_picker_hides_custom_hub_when_radio_still_custom(self) -> None:
+        from songs.music_source import music_picker_shows_custom_hub
+
+        session = {
+            CATALOG_PICKER_PENDING_EXPLICIT_KEY: True,
+            "song_picker_active_source": "Use Custom Progression / Create Your Own Song",
+            "active_music_source": SOURCE_CUSTOM,
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial-1",
+        }
+        self.assertFalse(music_picker_shows_custom_hub(session))
+
+    def test_sync_does_not_put_custom_pick_in_catalog_dropdown(self) -> None:
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial-1",
+            "matching_song_dropdown": "custom::trial-1",
+            "active_music_source": SOURCE_CUSTOM,
+            "song": "Trial Song",
+            "active_song_title": "Trial Song",
+        }
+        st = _st(session)
+        options = [PK_SAY, PK_SHAPE, PK_PERFECT]
+        sync_matching_song_dropdown_before_widget(
+            st, options, PK_SAY, song_picker_catalog=CATALOG
+        )
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), "custom::trial-1")
+        self.assertEqual(session.get("matching_song_dropdown"), PK_SAY)
+        self.assertIn("Trial", str(session.get("song") or ""))
+        self.assertNotEqual(str(session.get("song") or ""), "Say")
+
+    def test_explicit_shape_from_custom_blocks_lagging_custom_radio(self) -> None:
+        from songs.music_source import (
+            CATALOG_SWITCH_APPLIED_THIS_RUN_KEY,
+            commit_custom_active_song,
+        )
+
+        session = {
+            "studio_page": "picker",
+            "_script_run_seq": 10,
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+            _LAST_PICK_KEY: PK_SAY,
+            "song": "Say",
+            "display_key": "G",
+            "_reconcile_song_picker_catalog": CATALOG,
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"), patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(st, self._trial_row(), invalidate_backing=lambda *_a, **_k: None)
+            self.assertTrue(str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("custom::"))
+            apply_explicit_catalog_dropdown_pick(st, PK_SHAPE, CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertIsNotNone(session.get(CATALOG_SWITCH_APPLIED_THIS_RUN_KEY))
+
+    def test_use_catalog_without_last_song_does_not_canonicalize_say(self) -> None:
+        from songs.music_source import commit_custom_active_song
+
+        session = {
+            "studio_page": "picker",
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+            _LAST_PICK_KEY: PK_SAY,
+            "song": "Say",
+            "active_song_title": "Say",
+            "display_key": "G",
+            "_reconcile_song_picker_catalog": CATALOG,
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"), patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(st, self._trial_row(), invalidate_backing=lambda *_a, **_k: None)
+            self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+            self.assertIn("Trial", str(session.get("song") or ""))
+            ok = switch_to_catalog_from_custom(
+                st,
+                song_picker_catalog=CATALOG,
+                invalidate_backing=lambda *_a, **_k: None,
+                force=True,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertIn("Trial", str(session.get("song") or ""))
+        self.assertTrue(session.get(CATALOG_PICKER_PENDING_EXPLICIT_KEY))
+        self.assertNotEqual(str(session.get("song") or ""), "Say")
+        session["matching_song_dropdown"] = PK_SHAPE
+        with patch("songs.state.persist_music_local_state"):
+            apply_explicit_catalog_dropdown_pick(st, PK_SHAPE, CATALOG)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        self.assertFalse(session.get(CATALOG_PICKER_PENDING_EXPLICIT_KEY))
+
+    def test_consume_first_valid_while_custom_does_not_apply_say(self) -> None:
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial-1",
+            "matching_song_dropdown": PK_SAY,
+            "active_music_source": SOURCE_CUSTOM,
+            "song": "Trial Song",
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"):
+            live = consume_uncommitted_catalog_dropdown(
+                st, [PK_SAY, PK_SHAPE, PK_PERFECT], CATALOG
+            )
+        self.assertEqual(live, "custom::trial-1")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertIn("Trial", str(session.get("song") or ""))
+
+    def test_consume_shape_while_custom_commits_catalog_shape(self) -> None:
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::trial-1",
+            "matching_song_dropdown": PK_SHAPE,
+            _LAST_PICK_KEY: PK_SAY,
+            "active_music_source": SOURCE_CUSTOM,
+            "song": "Trial Song",
+            "display_key": "D",
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"):
+            live = consume_uncommitted_catalog_dropdown(
+                st, [PK_SAY, PK_SHAPE, PK_PERFECT], CATALOG
+            )
+        self.assertEqual(live, PK_SHAPE)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
 
     def test_accidental_say_still_blocked_while_custom_owns(self) -> None:
         session = {
