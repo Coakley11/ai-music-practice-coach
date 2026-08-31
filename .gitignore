@@ -22,8 +22,6 @@ scripts/_karaoke_restore_smoke.png
 scripts/_karaoke_restore_smoke.py
 scripts/_probe_cloud_deploy.py
 scripts/_source_identity_smoke.py
-scripts/_source_identity_browser_verify.py
-scripts/_source_identity_browser_evidence/
 scripts/_source_identity_browser_evidence/
 *.db
 *.sqlite
