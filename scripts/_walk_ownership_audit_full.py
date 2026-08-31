@@ -394,9 +394,12 @@ def build_trial_song(page: Page, notes: list[str]) -> bool:
         f"save_clicked={saved} msg_ok={msg_ok} orig_saved_d={orig_saved_d} pk={pk_val(page)!r}"
     )
     shot(page, "custom-trial-saved")
+    visible_trial = "trial song" in low(body)
     # Stay on Custom for callers that scrape progression immediately after build.
-    return bool(saved) and msg_ok and orig_ok and (orig_saved_d or progression_em_d(body))
-
+    # Save-toast wording can vary; visible Trial + progression is the product tuple.
+    return bool(saved) and orig_ok and (msg_ok or visible_trial) and (
+        orig_saved_d or progression_em_d(body)
+    )
 
 
 def assert_tuple(

@@ -30,7 +30,20 @@ PENDING_MATCHING_SONG_DROPDOWN = "_pending_matching_song_dropdown"
 PENDING_CATALOG_PICK_KEY = "_pending_catalog_pick_key"
 PICK_KEY_RECOVERY_NOTICE_KEY = "_pick_key_recovery_notice"
 _LAST_PICK_KEY = "_master_song_pick_key"
+EXPLICIT_CATALOG_PICK_COMMITTED_KEY = "_explicit_catalog_pick_committed"
 SUITE_LOCAL_STATE_RESTORED_KEY = "_suite_local_state_restored"
+
+
+def _trace_explicit_pick(session: dict[str, Any], **fields: Any) -> None:
+    """Record one Songs explicit-pick event for first-click diagnosis."""
+    buf = session.setdefault("_explicit_pick_trace", [])
+    if not isinstance(buf, list):
+        buf = []
+        session["_explicit_pick_trace"] = buf
+    entry = {str(k): str(v)[:160] if v is not None else "" for k, v in fields.items()}
+    buf.append(entry)
+    if len(buf) > 32:
+        del buf[: len(buf) - 32]
 
 
 def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
@@ -38,6 +51,144 @@ def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
     pk = str(pick_key or "").strip()
     if pk:
         st.session_state[PENDING_CATALOG_PICK_KEY] = pk
+
+
+def apply_explicit_catalog_dropdown_pick(
+    st: Any,
+    pick_key: str,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> dict[str, Any]:
+    """Atomic Songs picker commit: explicit catalog pick outranks owner / pin / pending."""
+    from songs.music_source import begin_explicit_catalog_selection
+
+    session = st.session_state
+    requested = str(pick_key or "").strip()
+    widget = str(session.get("matching_song_dropdown") or "").strip()
+    _trace_explicit_pick(
+        session,
+        event="apply_explicit_begin",
+        requested=requested,
+        widget=widget,
+        master=session.get(_LAST_PICK_KEY),
+        live=session.get(ACTIVE_CATALOG_PICK_KEY),
+        pending=session.get(PENDING_MATCHING_SONG_DROPDOWN),
+        pin=session.get("_catalog_restore_pin_pick"),
+        pk=session.get("display_key") or session.get("concert_key"),
+    )
+    begin_explicit_catalog_selection(session)
+    session.pop(PENDING_CATALOG_PICK_KEY, None)
+    try:
+        from songs.music_source import PENDING_CATALOG_FROM_PICKER_KEY
+
+        session.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
+    except ImportError:
+        pass
+    if requested and not requested.startswith("custom::"):
+        session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = requested
+    live_before = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if requested != live_before:
+        session["_explicit_catalog_fresh_activation"] = True
+        # Master may already equal Shape from a prior no-op while Global Active
+        # is still Say — force pick_changed so identity/keys apply this click.
+        if session.get(_LAST_PICK_KEY) == requested:
+            session[_LAST_PICK_KEY] = live_before or ""
+    data = apply_pick_key(
+        st,
+        requested,
+        song_picker_catalog,
+        song_library=song_library,
+        origin="user",
+    )
+    live = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if requested and live != requested:
+        session["_explicit_catalog_fresh_activation"] = True
+        session[_LAST_PICK_KEY] = live or ""
+        data = apply_pick_key(
+            st,
+            requested,
+            song_picker_catalog,
+            song_library=song_library,
+            origin="user",
+        )
+        live = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if requested and live != requested and not requested.startswith("custom::"):
+        sync_catalog_pick_identity(session, requested, song_picker_catalog)
+        live = str(session.get(ACTIVE_CATALOG_PICK_KEY) or requested).strip()
+    if live and not live.startswith("custom::"):
+        session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = requested if live == requested else live
+        try:
+            from songs.music_source import pin_catalog_restore_identity
+
+            sel = session.get(SELECTED_SONG_STATE_KEY)
+            pin_catalog_restore_identity(
+                session,
+                live,
+                sel if isinstance(sel, dict) else None,
+                writer="apply_explicit_catalog_dropdown_pick",
+            )
+        except ImportError:
+            pass
+        session[PENDING_MATCHING_SONG_DROPDOWN] = live
+    _trace_explicit_pick(
+        session,
+        event="apply_explicit_after",
+        requested=pick_key,
+        live=live,
+        title=(data or {}).get("title") if isinstance(data, dict) else "",
+        committed=session.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY),
+        pk=session.get("display_key") or session.get("concert_key"),
+    )
+    return data if isinstance(data, dict) else {}
+
+
+def consume_uncommitted_catalog_dropdown(
+    st: Any,
+    pick_options: list[str],
+    song_picker_catalog: dict[str, dict[str, dict]],
+    *,
+    song_library: dict[str, dict[str, dict]] | None = None,
+) -> str:
+    """Commit a Songs picker value that Streamlit did not fire on_change for.
+
+    When the widget already shows Shape but Global Active is still Say, the
+    dropdown on_change is skipped (same widget key) and the first click is lost.
+    """
+    widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
+    live = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if not widget or widget not in pick_options:
+        return live
+    resolved = resolve_pick_key(widget, song_picker_catalog=song_picker_catalog) or widget
+    if not resolved or resolved == live:
+        return live
+    committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
+    fallback = first_valid_pick_key(song_picker_catalog)
+    if committed and committed == live and resolved != live and resolved == fallback:
+        # Widget lagged to first_valid (Say). Keep the committed catalog pick.
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
+        _trace_explicit_pick(
+            st.session_state,
+            event="consume_stale_widget",
+            widget=resolved,
+            live=live,
+            committed=committed,
+        )
+        return live
+    _trace_explicit_pick(
+        st.session_state,
+        event="consume_uncommitted",
+        widget=resolved,
+        live=live,
+        committed=committed,
+    )
+    apply_explicit_catalog_dropdown_pick(
+        st,
+        resolved,
+        song_picker_catalog,
+        song_library=song_library,
+    )
+    return str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or resolved)
 
 
 def sync_catalog_pick_identity(
@@ -114,6 +265,32 @@ def reconcile_active_song_identity(
 
         restore_pin = peek_catalog_restore_pin(session)
         if restore_pin and resolve_pick_key(restore_pin, song_picker_catalog=song_picker_catalog):
+            committed = str(session.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
+            if committed and resolve_pick_key(committed, song_picker_catalog=song_picker_catalog):
+                if restore_pin != committed:
+                    _trace_explicit_pick(
+                        session,
+                        event="reconcile_pin_blocked",
+                        pin=restore_pin,
+                        live=active,
+                        committed=committed,
+                    )
+                    if active != committed or sel_pk != committed:
+                        sync_catalog_pick_identity(session, committed, song_picker_catalog)
+                    if dropdown and dropdown != committed:
+                        session[PENDING_MATCHING_SONG_DROPDOWN] = committed
+                    return committed
+            if committed and committed == active and restore_pin != active:
+                _trace_explicit_pick(
+                    session,
+                    event="reconcile_pin_blocked",
+                    pin=restore_pin,
+                    live=active,
+                    committed=committed,
+                )
+                if dropdown and dropdown != active:
+                    session[PENDING_MATCHING_SONG_DROPDOWN] = active
+                return active
             if restore_pin != active or restore_pin != sel_pk:
                 sync_catalog_pick_identity(session, restore_pin, song_picker_catalog)
             elif dropdown and dropdown != restore_pin:
@@ -181,6 +358,10 @@ def apply_pending_catalog_pick_before_widgets(
     if st.session_state.get(PENDING_CUSTOM_ACTIVE_SONG_KEY):
         return False
     if st.session_state.get(PENDING_CUSTOM_LIBRARY_ACTION_KEY):
+        return False
+    committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
+    if committed:
+        st.session_state.pop(PENDING_CATALOG_PICK_KEY, None)
         return False
     if is_custom_progression(st.session_state) or st.session_state.get(
         "_custom_active_song_applied_this_run"
@@ -818,8 +999,23 @@ def sync_matching_song_dropdown_before_widget(
                 st.session_state[ACTIVE_CATALOG_PICK_KEY] = active
 
     pending = st.session_state.pop(PENDING_MATCHING_SONG_DROPDOWN, None)
+    widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
+    committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
     if pending in pick_options:
-        st.session_state["matching_song_dropdown"] = pending
+        if pending == active or pending == committed:
+            st.session_state["matching_song_dropdown"] = pending
+        elif widget in pick_options and widget != pending:
+            # Keep the visible picker value. Stale pending is often first_valid
+            # Say and must not overwrite an explicit Shape click.
+            _trace_explicit_pick(
+                st.session_state,
+                event="sync_keep_widget",
+                widget=widget,
+                pending=pending,
+                active=active,
+            )
+        else:
+            st.session_state["matching_song_dropdown"] = pending
     elif st.session_state.get("matching_song_dropdown") not in pick_options:
         st.session_state["matching_song_dropdown"] = active
 
@@ -1183,6 +1379,7 @@ def apply_pick_key(
     is_restore = origin in ("recovery", "restore")
     pick_changed = prev is not None and prev != pick_key
     catalog_owner_switch = bool(catalog_pick and raw_custom_owns)
+    live_now = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     fresh_catalog = bool(
         not is_restore
         and not str(pick_key).startswith("custom::")
@@ -1191,7 +1388,9 @@ def apply_pick_key(
             or st.session_state.get("_pending_catalog_fresh_activation_after_specialized")
         )
     )
-    apply_catalog_identity = bool(prev != pick_key or catalog_owner_switch or fresh_catalog)
+    apply_catalog_identity = bool(
+        prev != pick_key or catalog_owner_switch or fresh_catalog or live_now != pick_key
+    )
     if apply_catalog_identity:
         try:
             from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY

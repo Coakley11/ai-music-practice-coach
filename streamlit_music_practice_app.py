@@ -7136,11 +7136,9 @@ def _on_global_genre_change() -> None:
 
 
 def _on_global_song_change() -> None:
-    from songs.music_source import begin_explicit_catalog_selection
+    from songs.state import apply_explicit_catalog_dropdown_pick
 
-    begin_explicit_catalog_selection(st.session_state)
-    set_catalog_source(st.session_state)
-    apply_pick_key(
+    apply_explicit_catalog_dropdown_pick(
         st,
         st.session_state["global_quick_song"],
         SONG_PICKER_CATALOG,
@@ -8148,8 +8146,22 @@ def _apply_picker_catalog_filters(
     if not pick_options:
         return filtered, [], ""
 
+    from songs.state import consume_uncommitted_catalog_dropdown
+
+    consume_uncommitted_catalog_dropdown(
+        st,
+        pick_options,
+        SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
+    live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
+        pick_options.insert(0, live_pk)
+
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-    default_pk = master_pk if master_pk in pick_options else pick_options[0]
+    default_pk = master_pk if master_pk in pick_options else (
+        live_pk if live_pk in pick_options else pick_options[0]
+    )
     if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
         if is_custom_progression(st.session_state):
             active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
@@ -8566,10 +8578,8 @@ def _render_catalog_song_picker_block(
     _library_shell = st.container(key="song_library_panel") if _library_polished else None
 
     def _on_song_dropdown_change():
-        from songs.music_source import begin_explicit_catalog_selection
+        from songs.state import apply_explicit_catalog_dropdown_pick
 
-        begin_explicit_catalog_selection(st.session_state)
-        set_catalog_source(st.session_state)
         raw_pick = st.session_state.get("matching_song_dropdown", "")
         resolved_pick = resolve_pick_key(
             raw_pick,
@@ -8578,9 +8588,7 @@ def _render_catalog_song_picker_block(
         )
         if not resolved_pick:
             return
-        if resolved_pick != raw_pick:
-            st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
-        apply_pick_key(
+        apply_explicit_catalog_dropdown_pick(
             st,
             resolved_pick,
             SONG_PICKER_CATALOG,
@@ -8735,16 +8743,27 @@ def _render_catalog_song_picker_block(
                 close_control_section()
             return
 
-        master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-        default_pk = master_pk if master_pk in pick_options else pick_options[0]
-        if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
-            from songs.state import queue_pending_catalog_pick
+        from songs.state import consume_uncommitted_catalog_dropdown, queue_pending_catalog_pick
 
-            live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        consume_uncommitted_catalog_dropdown(
+            st,
+            pick_options,
+            SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
+        master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
+        live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
+            pick_options.insert(0, live_pk)
+        default_pk = master_pk if master_pk in pick_options else (
+            live_pk if live_pk in pick_options else pick_options[0]
+        )
+        if st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
             target_pk = live_pk if live_pk else default_pk
-            set_catalog_source(st.session_state)
-            queue_pending_catalog_pick(st, target_pk)
-            st.rerun()
+            if target_pk and not str(target_pk).startswith("custom::"):
+                set_catalog_source(st.session_state)
+                queue_pending_catalog_pick(st, target_pk)
+                st.rerun()
 
         active_pick_key = sync_matching_song_dropdown_before_widget(
             st,

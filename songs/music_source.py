@@ -1971,7 +1971,7 @@ def switch_to_catalog_from_custom(
             return False
         return True
 
-    def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
+    def _try_restore_from_snap(snap: dict[str, Any], *, origin: str = "user") -> bool:
         pick_key = str(snap.get("pick_key") or "").strip()
         if not _pick_key_is_catalog(pick_key):
             return False
@@ -1982,6 +1982,7 @@ def switch_to_catalog_from_custom(
             song_picker_catalog,
             song_library=song_library,
             skip_activity_log=True,
+            origin=origin,
         )
         if not data or not _data_matches_pick(data, pick_key):
             return False
@@ -3672,6 +3673,12 @@ def commit_custom_active_song(
     # Explicit Set-as-Active / Use Custom outranks post-Use-Catalog guard.
     session.pop("_catalog_owns_until_custom_click", None)
     retire_catalog_transition_intents(session)
+    try:
+        from songs.state import EXPLICIT_CATALOG_PICK_COMMITTED_KEY
+
+        session.pop(EXPLICIT_CATALOG_PICK_COMMITTED_KEY, None)
+    except ImportError:
+        pass
     # Explicit Custom activation epoch — outranks stale catalog restore/recovery.
     try:
         import time as _time

@@ -513,39 +513,37 @@ def main() -> int:
             f"appended={appended} still_edit={still_editable}",
         )
 
-        # D. Finish Song layout
+        # D. Finish Song layout (accepted Finish/Save — not the old Practice/Songs/Backing row)
         click_main_button(page, r"^Finish Song$") or click_button_has(page, r"Finish Song")
         settle(page, 3)
         side_d, body_d = shot(page, "D-finish")
-        p_box = [b for b in main_button_boxes(page, r"🎯\s*Practice") if "practice" in low(b["text"])]
-        s_box = [b for b in main_button_boxes(page, r"🎼\s*Songs") if "song" in low(b["text"])]
-        b_box = [b for b in main_button_boxes(page, r"🎧\s*Backing") if "backing" in low(b["text"])]
-        a_box = main_button_boxes(page, r"^Set as Active Song$")
-        k_box = main_button_boxes(page, r"^Keep Editing$")
-        # Finished view is the last cluster (header Set as Active is hidden when finished).
-        p_last = p_box[-1] if p_box else None
-        s_last = s_box[-1] if s_box else None
-        b_last = b_box[-1] if b_box else None
-        row1 = bool(p_last and s_last and b_last)
-        row1_aligned = bool(p_last and s_last and b_last) and same_row(p_last, s_last) and same_row(
-            s_last, b_last
+        from _walk_cpl_finish_save import (  # noqa: WPS433
+            count_main_buttons,
+            label_has_backing,
+            label_has_practice,
+            launch_has,
+            launch_labels,
         )
-        row2 = bool(a_box and k_box)
-        row2_below = bool(row1 and row2 and a_box[0]["y"] > p_last["y"] + 8)
+
+        launch_d = launch_labels(page)
         d_ok = (
-            has_any(body_d, "🎯 Practice")
-            and has_any(body_d, "🎼 Songs")
-            and has_any(body_d, "🎧 Backing")
+            has_any(body_d, "Keep Editing")
             and has_any(body_d, "Set as Active Song")
-            and has_any(body_d, "Keep Editing")
-            and row1
-            and row2
+            and has_any(body_d, "Save to Library")
+            and has_any(body_d, "New Song")
+            and (
+                launch_has(body_d, r"Save to library")
+                or any("save to library" in (t or "").lower() for t in launch_d)
+            )
+            and count_main_buttons(page, r"Save to library") >= 1
+            and not label_has_practice(launch_d)
+            and not label_has_backing(launch_d)
         )
         mark(
             "D_finish_layout",
-            d_ok and row1_aligned and row2_below,
-            f"row1={row1} aligned={row1_aligned} row2={row2} below={row2_below} "
-            f"p={bool(p_box)} s={bool(s_box)} b={bool(b_box)}",
+            d_ok,
+            f"launch={launch_d!r} save={count_main_buttons(page, r'Save to library')} "
+            f"keep={has_any(body_d, 'Keep Editing')} active={has_any(body_d, 'Set as Active Song')}",
         )
 
         # E. Creative → SBI Custom Trial D
