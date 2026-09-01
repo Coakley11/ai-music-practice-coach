@@ -413,7 +413,10 @@ def select_music_source(page: Page, needle: str) -> None:
         # Composition↔Custom after a prior Custom session can desync the Streamlit
         # widget value from the visible radio (UI shows Composition, session still
         # Custom). Bouncing through Catalog forces a real on_change.
-        if needle == "Custom Progression" and assert_radio_selected(page, "Composition"):
+        if needle == "Custom Progression" and (
+            assert_radio_selected(page, "Composition")
+            or _count_live_hub_buttons(page, "composition_hub_backing") > 0
+        ):
             try:
                 # Temporarily select Catalog via JS, then continue to Custom.
                 page.evaluate(
@@ -523,15 +526,16 @@ def select_music_source(page: Page, needle: str) -> None:
             return
         raise RuntimeError("Custom hub never became live after radio select")
     elif needle == "Catalog":
-        deadline = time.time() + 15
-        while time.time() < deadline:
-            if assert_radio_selected(page, "Catalog") or assert_radio_selected(
-                page, "Song Selection"
+        try:
+            wait_catalog_hub_ready(page, timeout_ms=35000)
+        except RuntimeError:
+            if not (
+                assert_radio_selected(page, "Catalog")
+                or assert_radio_selected(page, "Song Selection")
             ):
-                wait_streamlit_idle(page)
-                return
-            wait_streamlit_idle(page, timeout_ms=2000)
-            page.wait_for_timeout(200)
+                raise
+            wait_streamlit_idle(page, timeout_ms=5000)
+            wait_catalog_hub_ready(page, timeout_ms=35000)
 
 def assert_radio_selected(page: Page, needle: str) -> bool:
     radios = page.locator("[data-testid='stRadio']")
@@ -577,6 +581,249 @@ def _live_mode_card(page: Page, mode_class: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def read_live_backing_card_owner(page: Page) -> str:
+    """Authoritative live backing card owner from ``data-backing-card-owner``."""
+    loc = page.locator("[data-backing-card-owner]")
+    try:
+        n = loc.count()
+    except Exception:
+        n = 0
+    for i in range(n - 1, -1, -1):
+        el = loc.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            handle = el.element_handle()
+            if handle is None:
+                continue
+            if handle.evaluate("(el) => !!el.closest('[data-stale=\"true\"]')"):
+                continue
+            owner = str(el.get_attribute("data-backing-card-owner") or "").strip().lower()
+            if owner:
+                return owner
+        except Exception:
+            continue
+    if _live_mode_card(page, "mode-composition-song-backing"):
+        return "composition"
+    if _live_mode_card(page, "mode-custom-progression-backing"):
+        return "custom"
+    if _on_backing_studio(page):
+        return "catalog"
+    return ""
+
+
+def wait_catalog_hub_ready(page: Page, timeout_ms: int = 35000) -> None:
+    """Wait until Catalog owns the hub and a catalog Backing button is live."""
+    deadline = time.time() + timeout_ms / 1000.0
+    last_picker = 0
+    last_catalog_hub = 0
+    while time.time() < deadline:
+        wait_streamlit_idle(page, timeout_ms=3000)
+        last_picker = _count_live_hub_buttons(page, "picker_card_backing")
+        last_catalog_hub = _count_live_hub_buttons(page, "catalog_hub_backing")
+        comp_hub = _count_live_hub_buttons(page, "composition_hub_backing")
+        custom_hub = _count_live_hub_buttons(page, "custom_hub_backing")
+        if (
+            assert_radio_selected(page, "Catalog")
+            and (last_picker >= 1 or last_catalog_hub >= 1)
+            and comp_hub == 0
+            and custom_hub == 0
+        ):
+            wait_streamlit_idle(page, timeout_ms=2000)
+            return
+        page.wait_for_timeout(200)
+    raise RuntimeError(
+        "Catalog hub not application-ready "
+        f"(picker_card_backing={last_picker} catalog_hub_backing={last_catalog_hub} "
+        f"page={_studio_page_id(page)!r})"
+    )
+
+
+def _count_live_hub_buttons(page: Page, key: str) -> int:
+    loc = page.locator(f".st-key-{key} button")
+    count = 0
+    try:
+        n = loc.count()
+    except Exception:
+        return 0
+    for i in range(n):
+        try:
+            btn = loc.nth(i)
+            if btn.is_visible() and _marker_is_live(btn):
+                count += 1
+        except Exception:
+            continue
+    return count
+
+
+def capture_switch_telemetry(page: Page, label: str) -> dict:
+    """Before/after snapshot for Catalog → Custom → Composition switch diagnostics."""
+    comp = read_composition_hub_marker(page)
+    custom = read_custom_hub_marker(page)
+    row = {
+        "label": label,
+        "page": _studio_page_id(page),
+        "radio_catalog": assert_radio_selected(page, "Catalog"),
+        "radio_custom": assert_radio_selected(page, "Custom Progression"),
+        "radio_comp": assert_radio_selected(page, "Composition"),
+        "explicit": comp.get("explicit") or custom.get("explicit") or "",
+        "pick": comp.get("pick") or custom.get("pick") or "",
+        "owner": comp.get("owner") or custom.get("owner") or "",
+        "comp_hub_ready": comp.get("ready") or "",
+        "comp_hub_backing_btns": _count_live_hub_buttons(page, "composition_hub_backing"),
+        "custom_hub_backing_btns": _count_live_hub_buttons(page, "custom_hub_backing"),
+        "picker_card_backing_btns": _count_live_hub_buttons(page, "picker_card_backing"),
+        "catalog_hub_backing_btns": _count_live_hub_buttons(page, "catalog_hub_backing"),
+        "backing_card_owner": read_live_backing_card_owner(page),
+        "on_backing": _on_backing_studio(page),
+    }
+    print(
+        f"[telemetry] {label} page={row['page']} owner={row['backing_card_owner']!r} "
+        f"comp_ready={row['comp_hub_ready']} comp_btn={row['comp_hub_backing_btns']} "
+        f"cat_btn={row['catalog_hub_backing_btns']} pick_btn={row['picker_card_backing_btns']} "
+        f"pick={row['pick']!r}",
+        flush=True,
+    )
+    return row
+
+
+def require_picker_page(page: Page) -> None:
+    """Songs hub must be mounted before source-specific hub Backing clicks."""
+    ensure_songs(page)
+    page_id = _studio_page_id(page)
+    if page_id != "picker":
+        raise RuntimeError(
+            f"Expected picker page before hub Backing click, got {page_id!r}"
+        )
+
+
+def await_backing_card_owner(
+    page: Page,
+    owner: str,
+    *,
+    timeout_ms: int = 30000,
+) -> bool:
+    """Poll until the live backing card reports the expected owner."""
+    expected = str(owner or "").strip().lower()
+    deadline = time.time() + timeout_ms / 1000.0
+    while time.time() < deadline:
+        if _on_backing_studio(page):
+            live = read_live_backing_card_owner(page)
+            if live == expected:
+                wait_streamlit_idle(page)
+                return True
+        page.wait_for_timeout(250)
+    return read_live_backing_card_owner(page) == expected
+
+
+def open_composition_backing_from_hub(page: Page) -> None:
+    """One first-click open after application-ready Composition hub (matches comp_open_backing)."""
+    require_picker_page(page)
+    marker = wait_composition_hub_ready(page, timeout_ms=25000)
+    capture_switch_telemetry(page, "open_comp_backing:pre_click")
+    loc = page.locator(".st-key-composition_hub_backing button")
+    clicked = False
+    for i in range(loc.count()):
+        btn = loc.nth(i)
+        try:
+            if not btn.is_visible():
+                continue
+            if not _marker_is_live(btn):
+                continue
+            btn.scroll_into_view_if_needed(timeout=3000)
+            btn.click(timeout=8000)
+            clicked = True
+            break
+        except Exception:
+            continue
+    if not clicked:
+        raise RuntimeError(
+            "No live composition_hub_backing button after ready "
+            f"(marker={marker!r} page={_studio_page_id(page)!r})"
+        )
+    if not _await_backing_studio(page, timeout_ms=30000, prefer="composition"):
+        capture_switch_telemetry(page, "open_comp_backing:await_failed")
+        raise RuntimeError(
+            "Composition Backing did not open after one hub click "
+            f"(page={_studio_page_id(page)!r} card_owner={read_live_backing_card_owner(page)!r})"
+        )
+    if not await_backing_card_owner(page, "composition", timeout_ms=15000):
+        capture_switch_telemetry(page, "open_comp_backing:owner_mismatch")
+        raise RuntimeError(
+            "Composition Backing card owner mismatch after hub click "
+            f"(owner={read_live_backing_card_owner(page)!r})"
+        )
+
+
+def open_custom_backing_from_hub(page: Page) -> None:
+    """One first-click Custom hub Backing after application-ready Custom hub."""
+    require_picker_page(page)
+    wait_custom_hub_ready(page, timeout_ms=25000)
+    capture_switch_telemetry(page, "open_custom_backing:pre_click")
+    loc = page.locator(".st-key-custom_hub_backing button")
+    clicked = False
+    for i in range(loc.count()):
+        btn = loc.nth(i)
+        try:
+            if not btn.is_visible() or not _marker_is_live(btn):
+                continue
+            btn.scroll_into_view_if_needed(timeout=3000)
+            btn.click(timeout=8000)
+            clicked = True
+            break
+        except Exception:
+            continue
+    if not clicked:
+        raise RuntimeError("No live custom_hub_backing button after ready")
+    if not _await_backing_studio(page, timeout_ms=30000, prefer="custom"):
+        raise RuntimeError("Custom Backing did not open after one hub click")
+    if not await_backing_card_owner(page, "custom", timeout_ms=35000):
+        raise RuntimeError(
+            f"Custom Backing card owner mismatch (owner={read_live_backing_card_owner(page)!r})"
+        )
+
+
+def open_catalog_backing_from_hub(page: Page) -> None:
+    """One first-click Catalog hub Backing after catalog radio + hub button are live."""
+    require_picker_page(page)
+    if not assert_radio_selected(page, "Catalog"):
+        raise RuntimeError("Catalog radio not selected before catalog Backing open")
+    wait_catalog_hub_ready(page, timeout_ms=35000)
+    capture_switch_telemetry(page, "open_catalog_backing:pre_click")
+    hub_keys = ("catalog_hub_backing", "picker_card_backing", "active_song_hub_backing")
+    clicked = False
+    for key in hub_keys:
+        loc = page.locator(f".st-key-{key} button")
+        for i in range(loc.count()):
+            btn = loc.nth(i)
+            try:
+                if not btn.is_visible() or not _marker_is_live(btn):
+                    continue
+                btn.scroll_into_view_if_needed(timeout=3000)
+                btn.click(timeout=8000)
+                clicked = True
+                break
+            except Exception:
+                continue
+        if clicked:
+            break
+    if not clicked:
+        raise RuntimeError(
+            "No live catalog hub Backing button "
+            f"(keys={hub_keys} page={_studio_page_id(page)!r})"
+        )
+    if not _await_backing_studio(page, timeout_ms=30000, prefer="catalog"):
+        raise RuntimeError("Catalog Backing page did not open after one hub click")
+    if not await_backing_card_owner(page, "catalog", timeout_ms=35000):
+        capture_switch_telemetry(page, "open_catalog_backing:owner_mismatch")
+        raise RuntimeError(
+            "Catalog Backing card owner mismatch "
+            f"(owner={read_live_backing_card_owner(page)!r} "
+            f"comp_mode={_live_mode_card(page, 'mode-composition-song-backing')} "
+            f"custom_mode={_live_mode_card(page, 'mode-custom-progression-backing')})"
+        )
 
 
 def _studio_page_id(page: Page) -> str:
@@ -1010,13 +1257,75 @@ def ensure_songs(page: Page) -> None:
 
 
 
+def _run_switch_source_cycle(page: Page, label: str) -> tuple[bool, str]:
+    """One Catalog → Custom → Composition Backing cycle (first-attempt only)."""
+    ensure_songs(page)
+    capture_switch_telemetry(page, f"{label}:catalog_start")
+    try:
+        select_music_source(page, "Catalog")
+        open_catalog_backing_from_hub(page)
+        if read_live_backing_card_owner(page) != "catalog":
+            return False, "catalog owner mismatch"
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:catalog_failed")
+        return False, f"catalog: {exc}"
+
+    ensure_songs(page)
+    capture_switch_telemetry(page, f"{label}:custom_start")
+    try:
+        select_music_source(page, "Custom Progression")
+        open_custom_backing_from_hub(page)
+        if read_live_backing_card_owner(page) != "custom":
+            return False, "custom owner mismatch"
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:custom_failed")
+        return False, f"custom: {exc}"
+
+    ensure_songs(page)
+    capture_switch_telemetry(page, f"{label}:comp_start")
+    try:
+        select_music_source(page, "Composition")
+        for _ in range(4):
+            text = body_text(page)
+            if (
+                assert_radio_selected(page, "Composition")
+                and "My Composition" in text
+                and "This is a" in text
+            ):
+                wait_streamlit(page, 2500)
+                break
+            wait_streamlit(page, 2000)
+        open_composition_backing_from_hub(page)
+        html = body_html(page)
+        text = body_text(page)
+        comp_ok = (
+            read_live_backing_card_owner(page) == "composition"
+            and _live_mode_card(page, "mode-composition-song-backing")
+            and "🪶" in html
+            and title_line_ok(text, html)
+        )
+        if not comp_ok:
+            return False, f"composition owner={read_live_backing_card_owner(page)!r}"
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:comp_failed")
+        return False, f"composition: {exc}"
+    return True, "ok"
+
+
 def main() -> int:
     failures = 0
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(URL, wait_until="domcontentloaded", timeout=180_000)
-        page.wait_for_timeout(10000)
+        boot_deadline = time.time() + 120
+        while time.time() < boot_deadline:
+            page.wait_for_timeout(2000)
+            wait_streamlit_idle(page, timeout_ms=5000)
+            if _studio_page_id(page):
+                break
+        if not _studio_page_id(page):
+            raise RuntimeError("Studio page marker never appeared during cold boot")
 
         # -------- 1. Custom Progression --------
         ensure_songs(page)
@@ -1322,67 +1631,57 @@ def main() -> int:
         # -------- 4. Switch Catalog / Custom / Composition --------
         # Catalog
         ensure_songs(page)
+        capture_switch_telemetry(page, "switch:catalog_start")
         try:
             select_music_source(page, "Catalog")
-            wait_streamlit_idle(page)
-            # Wait for the catalog active-song hub Backing key (not Creative hubs).
-            deadline = time.time() + 20
-            while time.time() < deadline:
-                loc = page.locator(".st-key-picker_card_backing button")
-                live = False
-                for i in range(loc.count()):
-                    try:
-                        btn = loc.nth(i)
-                        if btn.is_visible() and _marker_is_live(btn):
-                            live = True
-                            break
-                    except Exception:
-                        continue
-                if live and assert_radio_selected(page, "Catalog"):
-                    break
-                wait_streamlit_idle(page, timeout_ms=2000)
-                page.wait_for_timeout(200)
-            open_backing(page, prefer="catalog")
-            html = body_html(page)
-            catalog_ok = (
-                not _live_mode_card(page, "mode-composition-song-backing")
-                and not _live_mode_card(page, "mode-custom-progression-backing")
+            capture_switch_telemetry(page, "switch:catalog_after_select")
+            open_catalog_backing_from_hub(page)
+            capture_switch_telemetry(page, "switch:catalog_after_backing")
+            catalog_ok = read_live_backing_card_owner(page) == "catalog"
+            log(
+                "switch_catalog_backing",
+                catalog_ok,
+                f"card_owner={read_live_backing_card_owner(page)!r}",
             )
-            log("switch_catalog_backing", catalog_ok, "Catalog card (not Custom/Composition modes)")
             if not catalog_ok:
                 failures += 1
                 dump_debug(page, "switch_catalog")
             shot(page, "09_catalog_backing")
         except Exception as exc:
+            capture_switch_telemetry(page, "switch:catalog_failed")
             log("switch_catalog_backing", False, str(exc))
             failures += 1
             dump_debug(page, "switch_catalog")
 
         # Custom again
         ensure_songs(page)
+        capture_switch_telemetry(page, "switch:custom_start")
         try:
             select_music_source(page, "Custom Progression")
-            wait_streamlit(page, 2000)
-            open_backing(page, prefer="custom")
-            html = body_html(page)
-            custom_ok = (
-                "mode-custom-progression-backing" in html
-                and ("✍️" in html or "✍" in html)
-                and ("#10b981" in html or "#059669" in html)
+            capture_switch_telemetry(page, "switch:custom_after_select")
+            open_custom_backing_from_hub(page)
+            capture_switch_telemetry(page, "switch:custom_after_backing")
+            custom_ok = read_live_backing_card_owner(page) == "custom"
+            log(
+                "switch_custom_backing",
+                custom_ok,
+                f"card_owner={read_live_backing_card_owner(page)!r}",
             )
-            log("switch_custom_backing", custom_ok, "Custom green card after switch")
             if not custom_ok:
                 failures += 1
                 dump_debug(page, "switch_custom")
             shot(page, "10_switch_custom_backing")
         except Exception as exc:
+            capture_switch_telemetry(page, "switch:custom_failed")
             log("switch_custom_backing", False, str(exc))
             failures += 1
 
         # Composition again
         ensure_songs(page)
+        capture_switch_telemetry(page, "switch:comp_start")
         try:
             select_music_source(page, "Composition")
+            capture_switch_telemetry(page, "switch:comp_after_select")
             for _ in range(4):
                 text = body_text(page)
                 if (
@@ -1393,14 +1692,16 @@ def main() -> int:
                     wait_streamlit(page, 2500)
                     break
                 wait_streamlit(page, 2000)
-            open_backing(page, prefer="composition")
+            capture_switch_telemetry(page, "switch:comp_after_text_loop")
+            open_composition_backing_from_hub(page)
+            capture_switch_telemetry(page, "switch:comp_after_backing")
             html = body_html(page)
             text = body_text(page)
             comp_ok = (
-                _live_mode_card(page, "mode-composition-song-backing")
+                read_live_backing_card_owner(page) == "composition"
+                and _live_mode_card(page, "mode-composition-song-backing")
                 and "🪶" in html
                 and title_line_ok(text, html)
-                and not _live_mode_card(page, "mode-custom-progression-backing")
             )
             # Prefer live Composition card HTML so stale Custom CSS/copy cannot
             # fail Source/Style badge checks.
@@ -1441,8 +1742,19 @@ def main() -> int:
                 dump_debug(page, "switch_comp")
             shot(page, "11_switch_comp_backing")
         except Exception as exc:
+            capture_switch_telemetry(page, "switch:comp_failed")
             log("switch_comp_backing", False, str(exc))
             failures += 1
+
+        extra_cycles = int(os.environ.get("VERIFY_STRESS_CYCLES", "0"))
+        for cycle in range(1, extra_cycles + 1):
+            ok, detail = _run_switch_source_cycle(page, f"stress{cycle}")
+            log(f"stress_switch_cycle_{cycle}", ok, detail)
+            if not ok:
+                failures += 1
+                dump_debug(page, f"stress_switch_{cycle}")
+                break
+            page.wait_for_timeout(800)
 
         browser.close()
 

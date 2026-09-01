@@ -3146,6 +3146,12 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     except ImportError:
         pass
     try:
+        from backing_source_navigation import restore_practice_backing_if_stale
+
+        restore_practice_backing_if_stale(session, st_like=st_like)
+    except ImportError:
+        pass
+    try:
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
         if not intentional_creative_backing_active(session):

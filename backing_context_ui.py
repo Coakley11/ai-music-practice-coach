@@ -408,7 +408,7 @@ def render_backing_custom_progression_context_card(
         )
 
     st.markdown(
-        f'<div class="ui-backing-active-song mode-custom-progression-backing">'
+        f'<div class="ui-backing-active-song mode-custom-progression-backing" data-backing-card-owner="custom">'
         f'<div class="ui-backing-active-art ui-source-identity-art source-custom" '
         f'style="background:linear-gradient(145deg,#10b981,#059669);">'
         f"{source_art_icon}<small>Custom progression</small></div>"
@@ -554,7 +554,7 @@ def render_backing_composition_song_context_card(
     groove_badge = f'<span class="ui-backing-badge groove">{groove}</span>'
 
     st.markdown(
-        f'<div class="ui-backing-active-song mode-composition-song-backing">'
+        f'<div class="ui-backing-active-song mode-composition-song-backing" data-backing-card-owner="composition">'
         f'<div class="ui-backing-active-art ui-source-identity-art source-composition" '
         f'style="background:linear-gradient(145deg,#1e293b,#0f172a);">'
         f"{source_art_icon}<small>Composition</small></div>"

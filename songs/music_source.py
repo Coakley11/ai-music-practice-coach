@@ -1559,6 +1559,31 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     ).strip()
     if page != "picker":
         return reconcile_music_picker_source_widget(session_state)
+
+    explicit = explicit_music_source_choice(session_state)
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if explicit == SOURCE_CATALOG or user_catalog:
+        # Catalog Backing → Songs can leave a stale composition:: pick or
+        # Composition radio while explicit stamp is still Catalog.
+        if (
+            pick.startswith(("composition::", "custom::"))
+            or composition_song_is_active(session_state)
+            or is_composition_song(session_state)
+            or custom_progression_is_active(session_state)
+        ):
+            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
+            set_catalog_source(session_state)
+            sync_song_picker_source_widget(session_state, force=True)
+            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
+            return True
+        choice_now = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        if picker_choice_is_composition(choice_now) or choice_now.startswith("Use Custom"):
+            sync_song_picker_source_widget(session_state, force=True)
+            if pick.startswith(("composition::", "custom::")):
+                session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
+            return True
+
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if choice.startswith("Use Custom") and not is_custom_progression(session_state):
         commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)

@@ -7656,9 +7656,7 @@ def _picker_navigate(
             elif custom_progression_is_active(st.session_state):
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             else:
-                from backing_source_navigation import BACKING_INTENT_FROM_PRACTICE
-
-                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
         except ImportError:
             pass
     if page == "backing":
@@ -9176,7 +9174,9 @@ def _render_catalog_active_song_hub(
         }
         st.markdown('<div class="ui-active-song-recent">', unsafe_allow_html=True)
         if active_rec:
-            _render_active_song_card(active_rec)
+            # Hub-level nav row uses ``catalog_hub_*`` keys (same pattern as
+            # Composition/Custom) so Backing stays mounted during catalog restore.
+            _render_active_song_card(active_rec, show_nav_actions=False)
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -9195,6 +9195,7 @@ def _render_catalog_active_song_hub(
                 active_pick_key,
             )
         _render_last_catalog_song_shortcut(key_prefix="catalog_hub")
+        _render_songs_hub_nav_actions(key_prefix="catalog_hub", include_favorite=False)
         st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
 

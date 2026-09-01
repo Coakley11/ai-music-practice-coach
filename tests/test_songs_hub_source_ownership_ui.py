@@ -13,6 +13,7 @@ class TestSongsHubCanonicalActions(unittest.TestCase):
 
         comp_src = inspect.getsource(app._render_composition_active_song_hub)
         custom_src = inspect.getsource(app._render_custom_active_song_hub)
+        catalog_src = inspect.getsource(app._render_catalog_active_song_hub)
         card_src = inspect.getsource(app._render_active_song_card)
         nav_src = inspect.getsource(app._render_songs_hub_nav_actions)
         label_src = inspect.getsource(app._active_source_edit_button_label)
@@ -30,8 +31,11 @@ class TestSongsHubCanonicalActions(unittest.TestCase):
         # Shared five-action row (exactly once per hub via key_prefix).
         self.assertIn("_render_songs_hub_nav_actions", comp_src)
         self.assertIn("_render_songs_hub_nav_actions", custom_src)
+        self.assertIn("_render_songs_hub_nav_actions", catalog_src)
         self.assertIn('key_prefix="composition_hub"', comp_src)
         self.assertIn('key_prefix="custom_hub"', custom_src)
+        self.assertIn('key_prefix="catalog_hub"', catalog_src)
+        self.assertIn("show_nav_actions=False", catalog_src)
         for suffix in ("_practice", "_backing", "_creative", "_karaoke", "_chord_coach"):
             self.assertIn(f"{{key_prefix}}{suffix}", nav_src)
         self.assertIn('nav_icon_button_label("creative")', nav_src)

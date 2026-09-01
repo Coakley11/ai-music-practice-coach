@@ -143,7 +143,7 @@ def render_backing_active_song_card(
     )
 
     st.markdown(
-        f'<div class="ui-backing-active-song{modifier_cls}">'
+        f'<div class="ui-backing-active-song{modifier_cls}" data-backing-card-owner="catalog">'
         f'<div class="ui-backing-active-art" style="background:{html.escape(gradient)};">'
         f"{emoji}<small>{genre}</small></div>"
         f'<div class="ui-backing-active-body">'
