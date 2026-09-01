@@ -8706,6 +8706,53 @@ def _composition_hub_trace_append(event: str, **fields: Any) -> None:
     st.session_state["_composition_hub_last_event"] = entry
 
 
+def _emit_custom_hub_ready_marker() -> None:
+    """DOM ready signal for Custom hub: pick + title + ownership for harness evidence."""
+    import html as _html
+    import json as _json
+
+    from custom_progression_lab import cpl_active_from_session, ensure_original_structure
+    from songs.music_source import (
+        SOURCE_CUSTOM,
+        custom_progression_is_active,
+        explicit_music_source_choice,
+        source_ownership_snapshot,
+    )
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    snap = source_ownership_snapshot(st.session_state)
+    explicit = explicit_music_source_choice(st.session_state)
+    owned = bool(custom_progression_is_active(st.session_state))
+    pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    active = ensure_original_structure(
+        cpl_active_from_session(st.session_state) or {}
+    )
+    title = str(active.get("name") or active.get("title") or "").strip()
+    orig = str(active.get("original_key_center") or "").strip()
+    ready = (
+        owned
+        and explicit == SOURCE_CUSTOM
+        and pick.startswith("custom::")
+        and str(snap.get("active_music_source") or "") == SOURCE_CUSTOM
+        and bool(title)
+    )
+    page = str(st.session_state.get("studio_page") or "")
+    attrs = (
+        f'data-custom-hub-ready="{"1" if ready else "0"}" '
+        f'data-explicit="{_html.escape(str(explicit or ""))}" '
+        f'data-pick="{_html.escape(pick)}" '
+        f'data-owner="{_html.escape(str(snap.get("active_music_source") or ""))}" '
+        f'data-title="{_html.escape(title)}" '
+        f'data-original-key="{_html.escape(orig)}" '
+        f'data-page="{_html.escape(page)}" '
+        f'data-snap="{_html.escape(_json.dumps(snap, separators=(",", ":")))}"'
+    )
+    st.markdown(
+        f'<div {attrs} aria-hidden="true" style="display:none"></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _emit_composition_hub_ready_marker() -> None:
     """DOM ready signal: ownership + explicit stamp agree before hub clicks.
 
@@ -9002,6 +9049,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
     ext = rec.get("extensions") or {}
 
     with st.container(key="picker_active_song_hub"):
+        _emit_custom_hub_ready_marker()
         render_active_song_hub_open(st, extra_class="source-custom")
         st.caption(
             f"{FEATURE_ICONS.get('custom', '✍️')} This is **your** song — "

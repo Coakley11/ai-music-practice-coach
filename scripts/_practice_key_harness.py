@@ -153,6 +153,53 @@ def read_practice_key_widget_value(page: Any) -> str:
     return ""
 
 
+def read_sidebar_displayed_practice_key(page: Any) -> str:
+    """Sidebar-scoped Practice/Concert Key display (separate query path from widget).
+
+    The live control lives in the left sidebar; this reads only within
+    ``[data-testid="stSidebar"]`` so harness reports can prove widget vs sidebar
+    observations independently even when both resolve to the same control.
+    """
+    js = """
+    () => {
+      const sb = document.querySelector('[data-testid="stSidebar"]');
+      if (!sb) return '';
+      const re = /Practice\\s*\\/\\s*Concert Key/i;
+      const keyed = sb.querySelector('.st-key-display_key input[role="combobox"]');
+      if (keyed && keyed.value && keyed.value !== 'Choose an option'
+          && !keyed.closest('[data-stale="true"]')) {
+        return keyed.value;
+      }
+      for (const inp of sb.querySelectorAll('input[role="combobox"]')) {
+        if (inp.closest('[data-stale="true"]')) continue;
+        if (re.test(inp.getAttribute('aria-label') || '') && inp.value
+            && inp.value !== 'Choose an option') {
+          return inp.value;
+        }
+      }
+      for (const box of sb.querySelectorAll('[data-testid="stSelectbox"]')) {
+        if (box.closest('[data-stale="true"]')) continue;
+        const labelText = box.innerText || '';
+        if (!re.test(labelText)) continue;
+        const sel = box.querySelector('[data-baseweb="select"]');
+        if (!sel) continue;
+        const parts = (sel.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean);
+        for (const p of parts) {
+          if (!re.test(p) && !/^🗝️/.test(p)) return p;
+        }
+      }
+      return '';
+    }
+    """
+    try:
+        val = str(page.evaluate(js) or "").strip()
+        if val:
+            return val
+    except Exception:
+        pass
+    return ""
+
+
 def wait_practice_key_widget(page: Any, timeout_ms: int = 15000) -> str:
     deadline = time.time() + timeout_ms / 1000.0
     last = ""
@@ -286,19 +333,33 @@ def practice_key_authority_agrees(
     card: str = "",
     body: str = "",
     needle: str,
+    require_exact_spelling: bool = True,
 ) -> tuple[bool, str]:
-    """Widget is authoritative; sidebar should match widget; card/body should contain needle."""
+    """Widget is authoritative; sidebar/card must agree.
+
+    When ``require_exact_spelling`` is True (default), D# and Eb are NOT treated
+    as identical — the app preserves user enharmonic spelling, so surfaces should
+    show the same canonical token.
+    """
     side = sidebar if sidebar is not None else widget
     w_tok = normalize_key_token(widget)
     s_tok = normalize_key_token(side)
     if not w_tok:
         return False, "empty_widget_value"
-    if s_tok and w_tok != s_tok and not key_token_in_text(side, needle):
-        return False, f"sidebar_ne_widget:{side!r}!={widget!r}"
+    if s_tok:
+        if require_exact_spelling:
+            if s_tok != w_tok:
+                return False, f"sidebar_spelling_ne_widget:{side!r}!={widget!r}"
+        elif s_tok != w_tok and not key_token_in_text(side, needle):
+            return False, f"sidebar_ne_widget:{side!r}!={widget!r}"
     if card:
         c_tok = normalize_key_token(card)
-        if c_tok and w_tok != c_tok and not key_token_in_text(card, needle):
-            return False, f"card_ne_widget:{card!r}!={widget!r}"
+        if c_tok:
+            if require_exact_spelling:
+                if c_tok != w_tok:
+                    return False, f"card_spelling_ne_widget:{card!r}!={widget!r}"
+            elif c_tok != w_tok and not key_token_in_text(card, needle):
+                return False, f"card_ne_widget:{card!r}!={widget!r}"
     if body and not key_token_in_text(body, needle):
         if key_token_in_text(widget, needle):
             pass

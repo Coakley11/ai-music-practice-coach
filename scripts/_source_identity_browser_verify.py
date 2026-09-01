@@ -182,6 +182,56 @@ def read_composition_hub_marker(page: Page) -> dict:
     return {}
 
 
+_CUSTOM_OWNER = "custom_progression"
+_CUSTOM_PICK_PREFIX = "custom::"
+
+
+def read_custom_hub_marker(page: Page) -> dict:
+    """Read the live Custom hub ready marker (pick/title/original for evidence)."""
+    loc = page.locator("[data-custom-hub-ready]")
+    try:
+        n = loc.count()
+    except Exception:
+        n = 0
+    for i in range(n - 1, -1, -1):
+        el = loc.nth(i)
+        if not _marker_is_live(el):
+            continue
+        try:
+            return {
+                "ready": (el.get_attribute("data-custom-hub-ready") or "").strip(),
+                "explicit": (el.get_attribute("data-explicit") or "").strip(),
+                "pick": (el.get_attribute("data-pick") or "").strip(),
+                "owner": (el.get_attribute("data-owner") or "").strip(),
+                "title": (el.get_attribute("data-title") or "").strip(),
+                "original_key": (el.get_attribute("data-original-key") or "").strip(),
+                "page": (el.get_attribute("data-page") or "").strip(),
+                "snap": (el.get_attribute("data-snap") or "").strip(),
+            }
+        except Exception:
+            continue
+    return {}
+
+
+def wait_custom_hub_ready(page: Page, timeout_ms: int = 20000) -> dict:
+    """Wait until Custom ownership + pick + non-blank title agree."""
+    deadline = time.time() + timeout_ms / 1000.0
+    last: dict = {}
+    while time.time() < deadline:
+        wait_streamlit_idle(page, timeout_ms=3000)
+        last = read_custom_hub_marker(page)
+        if (
+            last.get("ready") == "1"
+            and last.get("explicit") == _CUSTOM_OWNER
+            and last.get("owner") == _CUSTOM_OWNER
+            and str(last.get("pick") or "").startswith(_CUSTOM_PICK_PREFIX)
+            and bool(str(last.get("title") or "").strip())
+        ):
+            return last
+        page.wait_for_timeout(200)
+    raise RuntimeError(f"Custom hub not application-ready (marker={last!r})")
+
+
 def wait_composition_hub_ready(page: Page, timeout_ms: int = 20000) -> dict:
     """Wait until Composition ownership + explicit stamp agree (not mere hub DOM).
 
@@ -892,9 +942,17 @@ def ensure_songs(page: Page) -> None:
     ENSURE_SONGS_STATS["calls"] += 1
 
     def _on_songs_picker() -> bool:
-        if _studio_page_id(page) == "picker":
+        # Prefer the studio page marker — sidebar Music Source radios remain
+        # visible on Backing/Practice and must not count as "already on Songs".
+        page_id = _studio_page_id(page)
+        if page_id == "picker":
             return True
+        if page_id in {"backing", "practice", "karaoke", "creative", "upload"}:
+            return False
         try:
+            # Only use radio fallback when the marker is missing/unknown.
+            if page_id:
+                return False
             for label in ("Custom Progression", "Composition", "Catalog"):
                 loc = page.locator("[data-testid='stRadio'] label").filter(
                     has_text=re.compile(re.escape(label), re.I)
