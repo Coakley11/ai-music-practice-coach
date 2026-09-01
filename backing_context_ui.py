@@ -330,7 +330,14 @@ def render_backing_custom_progression_context_card(
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
     groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
-    source_badge = html.escape(str(ctx.source_label or "Custom progression").strip() or "Custom progression")
+    style_value = str(ctx.style or session.get("progression_style") or "Auto").strip() or "Auto"
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+        active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+        style_value = str(active.get("progression_style") or style_value or "Auto").strip() or "Auto"
+    except ImportError:
+        pass
     try:
         from music_feature_icons import FEATURE_ICONS
 
@@ -348,12 +355,20 @@ def render_backing_custom_progression_context_card(
             tone="source",
             icon="📀",
         )
+        style_meta = studio_meta_badge("Style", style_value, tone="style", icon="✨")
     except ImportError:
         source_meta = (
             '<span class="ui-studio-meta-badge tone-source">'
             '<span class="ui-studio-meta-badge-ico" aria-hidden="true">📀</span>'
             '<span class="ui-studio-meta-badge-label">Source</span>'
             '<span class="ui-studio-meta-badge-value">Custom progression</span>'
+            "</span>"
+        )
+        style_meta = (
+            '<span class="ui-studio-meta-badge tone-style">'
+            '<span class="ui-studio-meta-badge-ico" aria-hidden="true">✨</span>'
+            '<span class="ui-studio-meta-badge-label">Style</span>'
+            f'<span class="ui-studio-meta-badge-value">{html.escape(style_value)}</span>'
             "</span>"
         )
 
@@ -369,15 +384,27 @@ def render_backing_custom_progression_context_card(
         label = str(ctx.song_title or ctx.progression_label or "Progression").strip() or "Progression"
         concert_sections = {label: list(ctx.progression)}
 
-    concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
     chart_sections = state.chart_sections or {}
     chart_key_raw = str(state.chart_badge_value or written_key or "").strip() if state.show_chart_badge else ""
-    chart_line = ""
-    if chart_sections and chart_key_raw and state.chart_mode != "concert":
-        chart_label = "Shape key" if state.chart_mode == "shape" else "Written key"
-        chart_line = (
-            f'<p class="ui-backing-active-key-line">{html.escape(chart_label)} progression: '
-            f"<strong>{html.escape(_format_progression_preview(chart_sections))}</strong></p>"
+    # Musician-facing projection: Written/Shape when active, else concert.
+    if state.chart_mode in {"written", "shape"} and chart_sections:
+        proj_label = "Shape key" if state.chart_mode == "shape" else "Written key"
+        proj_line = html.escape(_format_progression_preview(chart_sections) or "Full form")
+        progression_block = (
+            f'<p class="ui-backing-active-key-line">{html.escape(proj_label)} progression: '
+            f"<strong>{proj_line}</strong></p>"
+        )
+        if chart_key_raw:
+            progression_block = (
+                f'<p class="ui-backing-active-key-line">{html.escape(proj_label)}: '
+                f"<strong>{html.escape(chart_key_raw)}</strong></p>"
+                + progression_block
+            )
+    else:
+        concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
+        progression_block = (
+            f'<p class="ui-backing-active-key-line">Concert practice key progression: '
+            f"<strong>{concert_line}</strong></p>"
         )
 
     st.markdown(
@@ -388,11 +415,10 @@ def render_backing_custom_progression_context_card(
         f'<div class="ui-backing-active-body">'
         f'<p class="ui-backing-active-kicker">Custom progression backing</p>'
         f'<p class="ui-backing-active-title">{title}</p>'
-        f'<div class="ui-backing-active-badges">{source_meta}</div>'
+        f'<div class="ui-backing-active-badges">{source_meta}{style_meta}</div>'
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
-        f'<p class="ui-backing-active-key-line">Concert practice key progression: <strong>{concert_line}</strong></p>'
-        f"{chart_line}"
+        f"{progression_block}"
         f"</div></div>",
         unsafe_allow_html=True,
     )
@@ -417,10 +443,9 @@ def render_backing_composition_song_context_card(
 
     state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
     title = html.escape(str(ctx.song_title or "My Composition").strip() or "My Composition")
-    # Prefer the Composition context Practice Key (ctx.concert_key). Authoritative
-    # session helpers can still report original C while the transposed chart is E.
+    # Same authoritative Practice Key as sidebar / playback (per-pick store + home key).
     concert_raw = str(
-        ctx.concert_key or practice_key or state.practice_concert_key or ctx.key or "C"
+        state.practice_concert_key or ctx.concert_key or practice_key or ctx.key or "C"
     ).strip() or "C"
     try:
         from custom_progression_lab import format_key_label
@@ -439,6 +464,13 @@ def render_backing_composition_song_context_card(
     bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 96)
     groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
+    style_value = str(ctx.style or "Auto").strip() or "Auto"
+    if not style_value or style_value.lower() in {"", "none", "null"}:
+        style_value = "Auto"
+    # Generic My Composition has no authored style — keep Style Auto (never inherit
+    # a leftover Custom progression_style into the Composition badge).
+    if str(ctx.song_title or "").strip() in {"", "My Composition"} and not str(ctx.style or "").strip():
+        style_value = "Auto"
     try:
         from music_feature_icons import FEATURE_ICONS
 
@@ -456,7 +488,7 @@ def render_backing_composition_song_context_card(
             tone="source",
             icon="📀",
         )
-        style_meta = studio_meta_badge("Style", "Auto", tone="style", icon="✨")
+        style_meta = studio_meta_badge("Style", style_value, tone="style", icon="✨")
     except ImportError:
         source_meta = (
             '<span class="ui-studio-meta-badge tone-source">'
@@ -469,7 +501,7 @@ def render_backing_composition_song_context_card(
             '<span class="ui-studio-meta-badge tone-style">'
             '<span class="ui-studio-meta-badge-ico" aria-hidden="true">✨</span>'
             '<span class="ui-studio-meta-badge-label">Style</span>'
-            '<span class="ui-studio-meta-badge-value">Auto</span>'
+            f'<span class="ui-studio-meta-badge-value">{html.escape(style_value)}</span>'
             "</span>"
         )
 
@@ -482,7 +514,28 @@ def render_backing_composition_song_context_card(
     if not concert_sections and ctx.progression:
         label = str(ctx.song_title or "Composition").strip() or "Composition"
         concert_sections = {label: list(ctx.progression)}
-    concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
+
+    chart_sections = state.chart_sections or {}
+    chart_key_raw = str(state.chart_badge_value or written_key or "").strip() if state.show_chart_badge else ""
+    if state.chart_mode in {"written", "shape"} and chart_sections:
+        proj_label = "Shape key" if state.chart_mode == "shape" else "Written key"
+        proj_line = html.escape(_format_progression_preview(chart_sections) or "Full form")
+        progression_block = (
+            f'<p class="ui-backing-active-key-line">{html.escape(proj_label)} progression: '
+            f"<strong>{proj_line}</strong></p>"
+        )
+        if chart_key_raw:
+            progression_block = (
+                f'<p class="ui-backing-active-key-line">{html.escape(proj_label)}: '
+                f"<strong>{html.escape(chart_key_raw)}</strong></p>"
+                + progression_block
+            )
+    else:
+        concert_line = html.escape(_format_progression_preview(concert_sections) or "Full form")
+        progression_block = (
+            f'<p class="ui-backing-active-key-line">Concert practice key progression: '
+            f"<strong>{concert_line}</strong></p>"
+        )
 
     st.markdown(
         f'<div class="ui-backing-active-song mode-composition-song-backing">'
@@ -498,7 +551,7 @@ def render_backing_composition_song_context_card(
         f'<p class="ui-backing-active-key-line">Original key: <strong>{original_key}</strong>'
         f" · Practice concert key: <strong>{concert}</strong>"
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
-        f'<p class="ui-backing-active-key-line">Concert practice key progression: <strong>{concert_line}</strong></p>'
+        f"{progression_block}"
         f"</div></div>",
         unsafe_allow_html=True,
     )

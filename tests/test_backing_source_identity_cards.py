@@ -123,6 +123,8 @@ class TestCompositionBackingCard(unittest.TestCase):
             set_composition_source,
         )
         from songs.state import ACTIVE_CATALOG_PICK_KEY
+        from songs.practice_key_state import set_practice_concert_key
+        from composition_songs_bridge import composition_pick_key_for
 
         ss: dict = {
             "instrument": "Piano",
@@ -135,12 +137,14 @@ class TestCompositionBackingCard(unittest.TestCase):
         set_composition_source(ss)
         doc = ensure_generic_composition_document(ss)
         commit_composition_active_song(st, doc, invalidate_backing=lambda _st: None)
-        # User Practice Key G must survive handoff.
+        # User Practice Key G must be persisted per Composition pick (not live leak).
+        set_practice_concert_key(ss, "G", pick_key=composition_pick_key_for(doc))
         ss["display_key"] = "G"
         ctx = reset_backing_on_active_song_change(ss)
         self.assertEqual(ctx.source, "composition_song")
         self.assertEqual(ss.get("active_music_source"), SOURCE_COMPOSITION)
         self.assertTrue(str(ss.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("composition::"))
+        self.assertEqual(ctx.concert_key, "G")
 
         blob = copy.deepcopy(ss)
         restored = copy.deepcopy(blob)
@@ -148,7 +152,8 @@ class TestCompositionBackingCard(unittest.TestCase):
         self.assertEqual(ctx2.source, "composition_song")
         self.assertEqual(ctx2.song_title, "My Composition")
         self.assertEqual(restored.get("active_music_source"), SOURCE_COMPOSITION)
-        # Practice Key preserved on restore snapshot
+        # Practice Key preserved via per-pick store on restore snapshot
+        self.assertEqual(ctx2.concert_key, "G")
         self.assertEqual(restored.get("display_key"), "G")
 
         # Source isolation: custom / catalog builders must not claim Composition session

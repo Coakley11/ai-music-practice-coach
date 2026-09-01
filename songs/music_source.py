@@ -132,6 +132,7 @@ def commit_explicit_music_source_choice(
         # only protects the *same* script run as the hub ``on_click`` (reconcile /
         # set_custom mid-click); a newer radio choice is an intentional leave.
         session_state.pop("_composition_hub_backing_clicked", None)
+        session_state.pop("_force_composition_backing_open", None)
         clear_composition_one_shot_nav_flags(session_state)
 
 
@@ -828,7 +829,23 @@ def sync_song_picker_source_widget(
     widget_safe: bool = True,
 ) -> None:
     """Align Song Selection source radio with active_music_source (init or forced promotion only)."""
-    expected = _expected_song_picker_source(session_state)
+    if force:
+        # Forced realign must follow ownership stamps, not the stale live radio
+        # (Custom radio + catalog active_music_source after Catalog restore).
+        active = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+        if (
+            active in {SOURCE_CATALOG, "catalog", "regular_song"}
+            or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+        ):
+            expected = SONG_PICKER_SOURCE_CATALOG
+        elif active == SOURCE_CUSTOM:
+            expected = SONG_PICKER_SOURCE_CUSTOM
+        elif active == SOURCE_COMPOSITION:
+            expected = song_picker_composition_option_label()
+        else:
+            expected = _expected_song_picker_source(session_state)
+    else:
+        expected = _expected_song_picker_source(session_state)
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if not force:
         if current:
@@ -1327,11 +1344,49 @@ def ensure_composition_owns_active_song(
     except Exception as exc:
         # Keep source flag + doc even if identity commit fails mid-flight.
         session["_composition_ensure_commit_error"] = f"{type(exc).__name__}: {exc}"
-        raise
+        # Still stamp composition:: ownership so hub ready cannot stall on custom::.
+        try:
+            from composition_songs_bridge import (
+                composition_pick_key_for,
+                composition_selected_song_record,
+            )
+            from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+            selected = composition_selected_song_record(doc)
+            pick_key = str(
+                selected.get("pick_key") or composition_pick_key_for(doc) or ""
+            ).strip()
+            if pick_key:
+                session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+                session[SELECTED_SONG_STATE_KEY] = selected
+        except Exception:
+            pass
+        # Do not re-raise: ownership stamp above is enough for hub readiness;
+        # key hydration retries on the next pre-widget rerun.
     _assign_song_picker_source_widget(
         session,
         song_picker_composition_option_label(),
     )
+    # Final ownership guard — Custom refresh leftovers must never stick.
+    try:
+        from composition_songs_bridge import (
+            composition_pick_key_for,
+            composition_selected_song_record,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if not live_pick.startswith("composition::"):
+            selected = composition_selected_song_record(doc)
+            pick_key = str(
+                selected.get("pick_key") or composition_pick_key_for(doc) or ""
+            ).strip()
+            if pick_key:
+                session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+                session[SELECTED_SONG_STATE_KEY] = selected
+                session["_composition_ensure_forced_pick"] = pick_key
+    except Exception:
+        pass
     session.pop("_composition_ensure_commit_error", None)
     session["_composition_ensure_ok"] = {
         "pick": str(session.get("active_catalog_pick_key") or ""),

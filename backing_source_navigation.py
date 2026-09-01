@@ -11,9 +11,14 @@ from backing_context import (
 )
 from music_feature_icons import FEATURE_ICONS, feature_label
 
-CreativeReturnPage = Literal["creative", "custom", "picker", "practice"]
+CreativeReturnPage = Literal["creative", "custom", "picker", "practice", "composer"]
 
 BACKING_OPEN_INTENT_KEY = "_backing_open_intent"
+BACKING_OPEN_PROVENANCE_KEY = "_backing_open_provenance"
+BACKING_PROVENANCE_CREATIVE = "creative"
+BACKING_PROVENANCE_SONGS = "songs"
+BACKING_PROVENANCE_COMPOSER = "composer"
+BACKING_PROVENANCE_DIRECT = "direct"
 BACKING_INTENT_RESTORE_LAST = "restore_last"
 BACKING_INTENT_FROM_PRACTICE = "from_practice"
 BACKING_INTENT_FROM_SONG_TO_BACKING = "from_song_or_practice_to_backing"
@@ -48,6 +53,38 @@ CREATIVE_BACKING_RETURN_WIDGET_KEYS: frozenset[str] = frozenset(
 
 def set_backing_open_intent(session: dict[str, Any], intent: str) -> None:
     session[BACKING_OPEN_INTENT_KEY] = str(intent or BACKING_INTENT_RESTORE_LAST).strip()
+
+
+def set_backing_open_provenance(session: dict[str, Any], origin: str) -> None:
+    """Stamp where Backing was opened from (one-shot; superseded on next open)."""
+    origin_n = str(origin or "").strip().lower()
+    if origin_n not in {
+        BACKING_PROVENANCE_CREATIVE,
+        BACKING_PROVENANCE_SONGS,
+        BACKING_PROVENANCE_COMPOSER,
+        BACKING_PROVENANCE_DIRECT,
+    }:
+        origin_n = BACKING_PROVENANCE_DIRECT
+    session[BACKING_OPEN_PROVENANCE_KEY] = origin_n
+
+
+def peek_backing_open_provenance(session: dict[str, Any]) -> str:
+    return str(session.get(BACKING_OPEN_PROVENANCE_KEY) or "").strip().lower()
+
+
+def clear_backing_open_provenance(session: dict[str, Any]) -> None:
+    session.pop(BACKING_OPEN_PROVENANCE_KEY, None)
+
+
+def consume_backing_open_provenance(session: dict[str, Any]) -> str:
+    """Read and clear provenance (e.g. after Return-to-Creative is used)."""
+    value = peek_backing_open_provenance(session)
+    clear_backing_open_provenance(session)
+    return value
+
+
+def backing_opened_from_creative(session: dict[str, Any]) -> bool:
+    return peek_backing_open_provenance(session) == BACKING_PROVENANCE_CREATIVE
 
 
 def consume_backing_open_intent(session: dict[str, Any]) -> str:
@@ -1422,6 +1459,8 @@ def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeRetur
         return "custom"
     if ctx.source == "regular_song":
         return "picker"
+    if ctx.source == "composition_song":
+        return "composer"
     return "creative"
 
 
@@ -1880,6 +1919,8 @@ def return_to_source_button_label(ctx: BackingContext | None) -> str:
         return feature_label("custom", "Return to Custom Page")
     if ctx.source == "regular_song":
         return "🎵 Return to Catalog Song"
+    if ctx.source == "composition_song":
+        return feature_label("composition", "Return to Composition")
     return feature_label("creative", "Return to Creative Page")
 
 
@@ -1897,12 +1938,20 @@ __all__ = [
     "BACKING_INTENT_SWITCH_CATALOG",
     "BACKING_INTENT_SWITCH_CUSTOM",
     "BACKING_OPEN_INTENT_KEY",
+    "BACKING_OPEN_PROVENANCE_KEY",
+    "BACKING_PROVENANCE_COMPOSER",
+    "BACKING_PROVENANCE_CREATIVE",
+    "BACKING_PROVENANCE_DIRECT",
+    "BACKING_PROVENANCE_SONGS",
     "KEY_TRANSITION_INTENT_KEY",
     "CreativeReturnPage",
     "PRACTICE_SOURCE_DISPLAY_KEY",
     "CREATIVE_RESTORE_FROM_BACKING_KEY",
     "apply_creative_return_identity_to_session",
+    "backing_opened_from_creative",
+    "clear_backing_open_provenance",
     "consume_backing_open_intent",
+    "consume_backing_open_provenance",
     "consume_key_transition_intent",
     "creative_return_identity_from_backing_context",
     "edit_in_creative_button_label",
@@ -1911,6 +1960,7 @@ __all__ = [
     "hydrate_practice_source_for_page",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
+    "peek_backing_open_provenance",
     "queue_backing_scope_from_practice_focus",
     "prepare_return_to_backing_source",
     "prepare_return_to_mission_detail",
@@ -1925,6 +1975,7 @@ __all__ = [
     "return_to_source_button_label",
     "seal_creative_return_context_from_backing",
     "set_backing_open_intent",
+    "set_backing_open_provenance",
     "set_key_transition_intent",
     "peek_key_transition_intent",
     "snapshot_practice_source_display_key",

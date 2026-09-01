@@ -7535,6 +7535,31 @@ def _open_chart_editor_on_picker() -> None:
     st.rerun()
 
 
+def _open_active_source_chart_editor(edit_mode: str) -> None:
+    """Route the single Songs edit CTA by active music source."""
+    mode = str(edit_mode or "catalog").strip().lower()
+    if mode == "custom":
+        from songs.music_source import queue_custom_library_action
+
+        queue_custom_library_action(st, action="edit_active")
+        st.rerun()
+        return
+    if mode == "composition":
+        navigate_studio_page(st.session_state, "composer")
+        st.rerun()
+        return
+    _open_chart_editor_on_picker()
+
+
+def _active_source_edit_button_label(edit_mode: str) -> str:
+    mode = str(edit_mode or "catalog").strip().lower()
+    if mode == "custom":
+        return f"{FEATURE_ICONS.get('custom', '✍️')} Edit custom chart"
+    if mode == "composition":
+        return f"{FEATURE_ICONS.get('composition', '🪶')} Edit composition chart"
+    return feature_label("charts_lyrics", "Edit Song Chart")
+
+
 def _open_lyrics_editor_on_picker() -> None:
     """Jump to Song Selection lyrics & cues editor."""
     open_picker_editor(st.session_state, "Lyrics & Cues")
@@ -7568,13 +7593,17 @@ def _picker_navigate(
         try:
             from backing_source_navigation import (
                 BACKING_INTENT_FROM_SONG_TO_BACKING,
+                BACKING_PROVENANCE_SONGS,
                 set_backing_open_intent,
+                set_backing_open_provenance,
             )
             from songs.music_source import (
                 composition_song_is_active,
                 custom_progression_is_active,
                 picker_composition_mode,
             )
+
+            set_backing_open_provenance(st.session_state, BACKING_PROVENANCE_SONGS)
 
             # Songs hub Backing must follow the active owner (Composition/Custom/
             # Catalog), not force a Practice-intent catalog rebuild.
@@ -7748,13 +7777,23 @@ def _active_song_key_pair(rec: dict | None = None) -> tuple[str, str]:
     return ctx.original_key, ctx.practice_concert_key
 
 
-def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
+def _render_active_song_card(
+    rec: dict,
+    *,
+    show_key_row: bool = True,
+    show_nav_actions: bool = True,
+    edit_mode: str = "catalog",
+) -> None:
     """Rich active-song summary with navigation shortcuts.
 
     Designed to **never render blank fields** on the active-song card.
     Every value reaches the markdown layer with a sensible fallback so
     a missing extension, partial chart, or upstream exception cannot
     blank out Levels / Sections / Instruments / Practice Focus.
+
+    When Custom/Composition hubs own Practice/Backing, pass
+    ``show_nav_actions=False`` so the card does not duplicate those buttons.
+    ``edit_mode`` selects the single red chart-edit CTA (catalog/custom/composition).
     """
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
@@ -7992,55 +8031,76 @@ def _render_active_song_card(rec: dict, *, show_key_row: bool = True) -> None:
             "issue is logged here so we don't render blank rows silently."
         )
     _render_v2_chart_debug_pill(rec)
+    _edit_mode = str(edit_mode or "catalog").strip().lower() or "catalog"
+    _edit_label = _active_source_edit_button_label(_edit_mode)
+    if _edit_mode == "custom":
+        _edit_hint = (
+            "Open the Custom page chord editor for this active custom progression — "
+            "source, title, progression, and Practice Key are preserved."
+        )
+        _cta_icon = FEATURE_ICONS.get("custom", "✍️")
+        _cta_title = "Custom chart"
+    elif _edit_mode == "composition":
+        _edit_hint = (
+            "Open Composition Studio’s chord editor for this active composition — "
+            "source/document and key state are preserved."
+        )
+        _cta_icon = FEATURE_ICONS.get("composition", "🪶")
+        _cta_title = "Composition chart"
+    else:
+        _edit_hint = (
+            "Edit Verse, Chorus, Bridge, and other sections bar-by-bar — "
+            "saved permanently for this song."
+        )
+        _cta_icon = FEATURE_ICONS["charts_lyrics"]
+        _cta_title = "Chord chart"
     st.markdown(
         '<div class="ui-chart-edit-cta">'
-        f'<p class="ui-chart-edit-cta-label">{FEATURE_ICONS["charts_lyrics"]} Chord chart</p>'
-        '<p class="ui-chart-edit-cta-hint">'
-        "Edit Verse, Chorus, Bridge, and other sections bar-by-bar — "
-        "saved permanently for this song."
-        "</p></div>",
+        f'<p class="ui-chart-edit-cta-label">{_cta_icon} {_cta_title}</p>'
+        f'<p class="ui-chart-edit-cta-hint">{_edit_hint}</p></div>',
         unsafe_allow_html=True,
     )
     if st.button(
-        feature_label("charts_lyrics", "Edit Song Chart"),
+        _edit_label,
         key="picker_card_edit_chart",
         type="primary",
         use_container_width=True,
-        help="Jump to the chord chart editor below (enable editing, change bars, then Save corrected chart).",
+        help=_edit_hint,
     ):
-        _open_chart_editor_on_picker()
-    st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-    fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
-    with fav_col:
-        if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
-            toggle_catalog_favorite(st.session_state, _active_pk)
-            st.rerun()
-    with b1:
-        if st.button(nav_icon_button_label("practice"), key="picker_card_practice", use_container_width=True):
-            _picker_navigate("practice")
-    with b2:
-        if st.button(nav_icon_button_label("backing"), key="picker_card_backing", use_container_width=True):
-            _picker_navigate("backing")
-    with b3:
-        if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
-            # Enter Karaoke Mode on Songs: Voice instrument + stay on picker.
-            try:
-                from app_tutorial import apply_tutorial_voice_instrument
+        _open_active_source_chart_editor(_edit_mode)
+    if show_nav_actions:
+        st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
+        fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
+        with fav_col:
+            if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
+                toggle_catalog_favorite(st.session_state, _active_pk)
+                st.rerun()
+        with b1:
+            if st.button(nav_icon_button_label("practice"), key="picker_card_practice", use_container_width=True):
+                _picker_navigate("practice")
+        with b2:
+            if st.button(nav_icon_button_label("backing"), key="picker_card_backing", use_container_width=True):
+                _picker_navigate("backing")
+        with b3:
+            if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
+                # Enter Karaoke Mode on Songs: Voice instrument + stay on picker.
+                try:
+                    from app_tutorial import apply_tutorial_voice_instrument
 
-                apply_tutorial_voice_instrument(st.session_state)
-            except Exception:
-                st.session_state["instrument"] = "Voice"
-            try:
-                from studio_nav_history import navigate_studio_page
+                    apply_tutorial_voice_instrument(st.session_state)
+                except Exception:
+                    st.session_state["instrument"] = "Voice"
+                try:
+                    from studio_nav_history import navigate_studio_page
 
-                navigate_studio_page(st.session_state, "picker")
-            except Exception:
-                st.session_state["studio_page"] = "picker"
-            st.rerun()
-    with b4:
-        if st.button(feature_label("chord_song_coach", "Chord Coach"), key="picker_card_chord_coach", use_container_width=True):
-            _picker_navigate("practice", open_chord_coach=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+                    navigate_studio_page(st.session_state, "picker")
+                except Exception:
+                    st.session_state["studio_page"] = "picker"
+                st.rerun()
+        with b4:
+            if st.button(feature_label("chord_song_coach", "Chord Coach"), key="picker_card_chord_coach", use_container_width=True):
+                _picker_navigate("practice", open_chord_coach=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     # Karaoke "Add to Setlist" CTA - only visible when the active
     # instrument is Voice / Vocals / Singer. Instrumentalists never see
     # this button. (The button itself also self-gates as a safety net.)
@@ -8605,6 +8665,7 @@ def _emit_composition_hub_ready_marker() -> None:
     }
     click = "1" if last_event in click_events else "0"
     target = str(last.get("target") or "")
+    promote_err = str(st.session_state.get("_composition_hub_promote_error") or "")[:120]
     attrs = (
         f'data-composition-hub-ready="{"1" if ready else "0"}" '
         f'data-explicit="{_html.escape(explicit)}" '
@@ -8612,6 +8673,7 @@ def _emit_composition_hub_ready_marker() -> None:
         f'data-owner="{_html.escape(str(snap.get("active_music_source") or ""))}" '
         f'data-page="{_html.escape(page)}" '
         f'data-hub-click="{click}" '
+        f'data-promote-err="{_html.escape(promote_err)}" '
         f'data-last-event="{_html.escape(last_event)}" '
         f'data-nav-target="{_html.escape(target)}" '
         f'data-snap="{_html.escape(_json.dumps(snap, separators=(",", ":")))}"'
@@ -8645,27 +8707,44 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         in {"", "picker", "songs"}
     ):
         st.session_state.pop("_composition_hub_backing_clicked", None)
+        promote_ok = False
         try:
             from songs.music_source import ensure_composition_owns_active_song
+            from songs.state import ACTIVE_CATALOG_PICK_KEY as _ORPHAN_PICK
 
             ensure_composition_owns_active_song(
                 st,
                 invalidate_backing=invalidate_backing_cache,
             )
+            promote_ok = str(st.session_state.get(_ORPHAN_PICK) or "").startswith(
+                "composition::"
+            )
         except Exception:
-            pass
+            promote_ok = False
         try:
             from composition_songs_bridge import set_composition_source
 
             set_composition_source(st.session_state)
         except Exception:
             pass
-        _composition_hub_trace_append(
-            "hub_orphan_recover",
-            target="backing",
-            page=str(st.session_state.get("studio_page") or ""),
-        )
-        _picker_navigate("backing")
+        if not promote_ok:
+            # Stale force flags after Custom (or failed promote) must not yank
+            # navigation to Backing while pick is still custom::.
+            st.session_state.pop("_force_composition_backing_open", None)
+            _composition_hub_trace_append(
+                "hub_orphan_recover_aborted",
+                target="backing",
+                page=str(st.session_state.get("studio_page") or ""),
+                pick=str(st.session_state.get("active_catalog_pick_key") or ""),
+            )
+        else:
+            _composition_hub_trace_append(
+                "hub_orphan_recover",
+                target="backing",
+                page=str(st.session_state.get("studio_page") or ""),
+            )
+            _picker_navigate("backing")
+            return
 
     # Radio can show the Composition hub before global ownership catches up.
     # Promote once per radio selection; never loop st.rerun forever.
@@ -8681,13 +8760,6 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
 
         choice_now = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "")
         promote_token = f"composition::{choice_now}"
-        # Never swallow hub action clicks with a promote st.rerun().
-        hub_action_pending = bool(
-            st.session_state.get("composition_hub_backing")
-            or st.session_state.get("composition_hub_practice")
-            or st.session_state.get("composition_hub_edit")
-            or st.session_state.get("_composition_hub_backing_clicked")
-        )
         # Radio-only composition_song_is_active can be true while pick is still
         # custom:: — keep promoting until pick + explicit agree.
         pick_now = str(st.session_state.get(_HUB_PICK_KEY) or "")
@@ -8699,36 +8771,30 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         if ownership_ready:
             st.session_state["_composition_hub_promote_token"] = promote_token
         else:
-            # Clear a premature token stamped when only the radio had flipped.
+            # Always promote when pick is not composition:: — a premature token must
+            # never skip ensure (Custom→Composition mid-flight leaves custom:: pick).
+            st.session_state.pop("_composition_hub_promote_token", None)
+            try:
+                ensure_composition_owns_active_song(
+                    st,
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            except Exception as exc:
+                st.session_state["_composition_hub_promote_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+            pick_now = str(st.session_state.get(_HUB_PICK_KEY) or "")
             if (
-                st.session_state.get("_composition_hub_promote_token") == promote_token
-                and not pick_now.startswith("composition::")
+                composition_song_is_active(st.session_state)
+                and pick_now.startswith("composition::")
+                and explicit_music_source_choice(st.session_state)
+                == SOURCE_COMPOSITION
             ):
-                st.session_state.pop("_composition_hub_promote_token", None)
-            if hub_action_pending or (
-                st.session_state.get("_composition_hub_promote_token") != promote_token
-            ):
-                try:
-                    ensure_composition_owns_active_song(
-                        st,
-                        invalidate_backing=invalidate_backing_cache,
-                    )
-                except Exception as exc:
-                    st.session_state["_composition_hub_promote_error"] = (
-                        f"{type(exc).__name__}: {exc}"
-                    )
-                pick_now = str(st.session_state.get(_HUB_PICK_KEY) or "")
-                if (
-                    composition_song_is_active(st.session_state)
-                    and pick_now.startswith("composition::")
-                    and explicit_music_source_choice(st.session_state)
-                    == SOURCE_COMPOSITION
-                ):
-                    st.session_state.pop("_composition_hub_promote_error", None)
-                    st.session_state["_composition_hub_promote_token"] = promote_token
-                    # Do NOT st.rerun() here. Promote runs before hub buttons are
-                    # instantiated; a rerun swallows composition_hub_backing clicks
-                    # (Streamlit only applies button state when st.button runs).
+                st.session_state.pop("_composition_hub_promote_error", None)
+                st.session_state["_composition_hub_promote_token"] = promote_token
+                # Do NOT st.rerun() here. Promote runs before hub buttons are
+                # instantiated; a rerun swallows composition_hub_backing clicks
+                # (Streamlit only applies button state when st.button runs).
 
     except Exception as exc:
         st.session_state["_composition_hub_outer_error"] = f"{type(exc).__name__}: {exc}"
@@ -8762,9 +8828,9 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "source": "Composition",
                 "pick_key": f"composition::{doc.get('id')}",
             }
-            _render_active_song_card(rec)
+            _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
             st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-            b1, b2, b3 = st.columns(3)
+            b1, b2 = st.columns(2)
             with b1:
                 if st.button(nav_icon_button_label("practice"), key="composition_hub_practice", use_container_width=True):
                     _picker_navigate("practice")
@@ -8810,16 +8876,6 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                         pass
                     st.session_state.pop("_composition_hub_backing_clicked", None)
                     _picker_navigate("backing")
-            with b3:
-                if st.button(
-                    nav_icon_button_label("composer") + " Edit",
-                    key="composition_hub_edit",
-                    use_container_width=True,
-                ):
-                    from studio_nav_history import navigate_studio_page
-
-                    navigate_studio_page(st.session_state, "composer")
-                    st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
 
@@ -8901,21 +8957,15 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
             "Practice, Creative, Backing Track, and charts follow this custom progression."
         )
         _render_custom_song_library_selector()
-        _render_active_song_card(rec)
+        _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-        b1, b2, b3 = st.columns(3)
+        b1, b2 = st.columns(2)
         with b1:
             if st.button(nav_icon_button_label("practice"), key="custom_hub_practice", use_container_width=True):
                 _picker_navigate("practice")
         with b2:
             if st.button(nav_icon_button_label("backing"), key="custom_hub_backing", use_container_width=True):
                 _picker_navigate("backing")
-        with b3:
-            if st.button(nav_icon_button_label("custom") + " Edit", key="custom_hub_edit", use_container_width=True):
-                from songs.music_source import queue_custom_library_action
-
-                queue_custom_library_action(st, action="edit_active")
-                st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         render_active_song_hub_close(st)
 
@@ -9770,10 +9820,73 @@ def _render_backing_return_source_action() -> None:
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
             return
 
+        # Composition Backing must not invent a Creative return unless provenance
+        # is genuinely Creative. Songs / Studio / restore open Composition Backing
+        # without a Creative return CTA.
+        src = str(getattr(ctx, "source", "") or "")
+        try:
+            from backing_source_navigation import backing_opened_from_creative
+
+            from_creative = backing_opened_from_creative(st.session_state)
+        except ImportError:
+            from_creative = False
+        if src == "composition_song" and not from_creative:
+            # Optional return to Composition Studio (not Creative).
+            def _go_composer() -> None:
+                save_page_snapshot(st.session_state, "backing")
+                try:
+                    from backing_source_navigation import consume_backing_open_provenance
+
+                    consume_backing_open_provenance(st.session_state)
+                except ImportError:
+                    pass
+                navigate_studio_page(st.session_state, "composer")
+                st.rerun()
+
+            if st.button(
+                feature_label("composition", "Return to Composition"),
+                key="backing_edit_source_btn",
+                use_container_width=False,
+            ):
+                _go_composer()
+            return
+
+        if src == "composition_song" and from_creative:
+            def _go_creative_from_composition() -> None:
+                save_page_snapshot(st.session_state, "backing")
+                save_page_snapshot(st.session_state, "creative")
+                try:
+                    from backing_source_navigation import consume_backing_open_provenance
+
+                    consume_backing_open_provenance(st.session_state)
+                except ImportError:
+                    pass
+                try:
+                    from music_workflow_pending_creative_return import handle_return_to_creative_click
+
+                    handle_return_to_creative_click(st, st.session_state)
+                except ImportError:
+                    navigate_studio_page(st.session_state, "creative")
+                    st.rerun()
+
+            if st.button(
+                feature_label("creative", "Return to Creative Page"),
+                key="backing_edit_source_btn",
+                use_container_width=False,
+            ):
+                _go_creative_from_composition()
+            return
+
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
             if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
                 save_page_snapshot(st.session_state, "creative")
+            try:
+                from backing_source_navigation import consume_backing_open_provenance
+
+                consume_backing_open_provenance(st.session_state)
+            except ImportError:
+                pass
             target = prepare_return_to_backing_source(st.session_state)
             navigate_studio_page(st.session_state, target)
             st.rerun()

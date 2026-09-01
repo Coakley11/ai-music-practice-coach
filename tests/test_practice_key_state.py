@@ -67,7 +67,7 @@ class TestPracticeKeyBySource(unittest.TestCase):
         pick = "Pop::Shape of You"
         session = {
             "active_catalog_pick_key": pick,
-            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": pick},
+            "selected_song": {"title": "Shape of You", "key": "A", "pick_key": pick},
             "display_key": "F#",
         }
         st = SimpleNamespace(session_state=session)

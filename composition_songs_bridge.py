@@ -294,6 +294,14 @@ def set_composition_source(session_state: dict[str, Any]) -> None:
     except Exception:
         session_state.pop("_backing_source_preference", None)
         session_state.pop("backing_source_preference", None)
+    # Hydrate Composition Practice Key authority immediately so Custom's live
+    # display_key (e.g. E♭) cannot leak into the sidebar before Backing rebuild.
+    try:
+        from backing_context import build_composition_song_context
+
+        build_composition_song_context(session_state)
+    except Exception:
+        pass
 
 def is_composition_source(session_state: dict[str, Any]) -> bool:
     from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY
@@ -386,6 +394,14 @@ def commit_composition_active_song(
     except ImportError:
         pass
 
+    # Stamp ownership BEFORE widget/key hydration. Mid-render Streamlit locks on
+    # display_key / radio must never leave a lingering custom:: pick while the
+    # Composition radio is already selected (Custom → Composition after refresh).
+    session[SELECTED_SONG_STATE_KEY] = selected
+    if pick_key:
+        session[ACTIVE_CATALOG_PICK_KEY] = pick_key
+    _push_recent_composition_id(session, str(prepared.get("id") or ""))
+
     set_composition_source(session)
     try:
         from songs.music_source import (
@@ -395,7 +411,17 @@ def commit_composition_active_song(
 
         assign_song_picker_source_widget(session, song_picker_composition_option_label())
     except Exception:
-        session["song_picker_active_source"] = "🪶 Composition"
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(
+                session,
+                "song_picker_active_source",
+                "🪶 Composition",
+                widget_safe=True,
+            )
+        except Exception:
+            pass
 
     try:
         sync_song_picker_source_widget(session, force=True)
@@ -425,29 +451,31 @@ def commit_composition_active_song(
             except ImportError:
                 pass
 
-    on_active_song_identity_changed(
-        st,
-        pick_key=pick_key,
-        title=str(selected.get("title") or ""),
-        artist=str(selected.get("artist") or ""),
-        original_key=home_key,
-        is_custom=False,
-        sync_id=sync_id,
-        default_bpm=default_bpm,
-        default_groove=default_groove,
-        default_meter=default_meter,
-        display_key=practice_key,
-        custom_revision=str(prepared.get("id") or ""),
-        song_data=composition_as_chart_active(prepared),
-        invalidate_backing=_invalidate,
-        force_reset=True,
-    )
-    note_active_source_change(st, invalidate_backing=_invalidate)
-
-    session[SELECTED_SONG_STATE_KEY] = selected
+    try:
+        on_active_song_identity_changed(
+            st,
+            pick_key=pick_key,
+            title=str(selected.get("title") or ""),
+            artist=str(selected.get("artist") or ""),
+            original_key=home_key,
+            is_custom=False,
+            sync_id=sync_id,
+            default_bpm=default_bpm,
+            default_groove=default_groove,
+            default_meter=default_meter,
+            display_key=practice_key,
+            custom_revision=str(prepared.get("id") or ""),
+            song_data=composition_as_chart_active(prepared),
+            invalidate_backing=_invalidate,
+            force_reset=True,
+        )
+        note_active_source_change(st, invalidate_backing=_invalidate)
+    except Exception as exc:
+        # Ownership stamps above must survive key/widget hydration failures.
+        session["_composition_commit_identity_error"] = f"{type(exc).__name__}: {exc}"
     if pick_key:
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
-    _push_recent_composition_id(session, str(prepared.get("id") or ""))
+        session[SELECTED_SONG_STATE_KEY] = selected
 
     prepare_composition_backing_handoff(session, prepared)
 

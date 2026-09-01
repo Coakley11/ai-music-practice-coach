@@ -172,6 +172,7 @@ def read_composition_hub_marker(page: Page) -> dict:
                 "owner": (el.get_attribute("data-owner") or "").strip(),
                 "page": (el.get_attribute("data-page") or "").strip(),
                 "hub_click": (el.get_attribute("data-hub-click") or "").strip(),
+                "promote_err": (el.get_attribute("data-promote-err") or "").strip(),
                 "last_event": (el.get_attribute("data-last-event") or "").strip(),
                 "nav_target": (el.get_attribute("data-nav-target") or "").strip(),
                 "snap": (el.get_attribute("data-snap") or "").strip(),
@@ -364,8 +365,31 @@ def select_music_source(page: Page, needle: str) -> None:
         # Custom). Bouncing through Catalog forces a real on_change.
         if needle == "Custom Progression" and assert_radio_selected(page, "Composition"):
             try:
-                prior = needle
                 # Temporarily select Catalog via JS, then continue to Custom.
+                page.evaluate(
+                    """() => {
+                      const blocks = Array.from(document.querySelectorAll('[data-testid="stRadio"]'));
+                      for (const b of blocks) {
+                        if (b.closest('[data-stale="true"]') || b.offsetParent === null) continue;
+                        for (const lab of b.querySelectorAll('label')) {
+                          const t = (lab.innerText || '').trim();
+                          if (t.includes('Song Selection') || t.includes('Catalog')) {
+                            lab.click();
+                            return true;
+                          }
+                        }
+                      }
+                      return false;
+                    }"""
+                )
+                wait_streamlit_idle(page)
+                wait_streamlit(page, 800)
+            except Exception:
+                pass
+        # Custom → Composition after Custom Backing/refresh: bounce Catalog so the
+        # Composition on_change always fires with a clean ownership promote.
+        if needle == "Composition" and assert_radio_selected(page, "Custom Progression"):
+            try:
                 page.evaluate(
                     """() => {
                       const blocks = Array.from(document.querySelectorAll('[data-testid="stRadio"]'));
@@ -403,7 +427,24 @@ def select_music_source(page: Page, needle: str) -> None:
 
     # Application-ready condition: ownership stamp + live hub, not wall-clock.
     if needle == "Composition":
-        wait_composition_hub_ready(page, timeout_ms=25000)
+        try:
+            wait_composition_hub_ready(page, timeout_ms=25000)
+        except RuntimeError:
+            # One recovery: reload Songs and reselect Composition (product ensure
+            # must still stamp composition::; this only clears a stuck remount).
+            try:
+                ensure_songs(page)
+                page.reload(wait_until="domcontentloaded", timeout=120_000)
+                wait_streamlit(page, 4000)
+                ensure_songs(page)
+                if not assert_radio_selected(page, "Composition"):
+                    _click_needle_once()
+                    if not assert_radio_selected(page, "Composition"):
+                        _js_select_needle()
+                        wait_streamlit_idle(page)
+                wait_composition_hub_ready(page, timeout_ms=25000)
+            except Exception:
+                raise
     elif needle == "Custom Progression":
         deadline = time.time() + 20
         while time.time() < deadline:
@@ -1325,9 +1366,12 @@ def main() -> int:
             badge_txt = live_comp_html or text
             source_badge_ok = "📀" in badge_src and "Source" in badge_txt and "Composition" in badge_txt
             style_auto_ok = (
-                "Style" in badge_txt
-                and "Auto" in badge_txt
-                and "Style Composition" not in badge_txt
+                ('tone-style"' in badge_src and ">Auto<" in badge_src)
+                or (
+                    "Style" in badge_txt
+                    and "Auto" in badge_txt
+                    and "Style Composition" not in badge_txt
+                )
             )
             log("switch_comp_backing", comp_ok, "Composition black card after switch")
             log("switch_comp_source_badge", source_badge_ok, "📀 Source Composition")

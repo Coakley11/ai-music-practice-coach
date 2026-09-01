@@ -680,6 +680,15 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         pass
     if ctx_source == "custom_progression" or sbi_custom_preview:
         ctx_source = "custom_progression"
+    # Composition Songs/Backing must use Composition pick authority — never ride
+    # leftover Custom live display_key after an explicit source switch.
+    try:
+        from songs.music_source import composition_song_is_active, picker_composition_mode
+
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            ctx_source = "composition_song"
+    except ImportError:
+        pass
     if ctx_source == "regular_song":
         try:
             from backing_musical_state import resolve_current_backing_musical_state
@@ -739,6 +748,43 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 saved = ""
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
             selected = str(pending or saved or live or resolver_key or home_key or "C").strip() or "C"
+    elif ctx_source == "composition_song":
+        home_key = ""
+        pick_key = ""
+        if ctx is not None:
+            home_key = str(getattr(ctx, "key", "") or "").strip()
+            pick_key = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+        try:
+            from composition_session_state import get_active_document
+            from composition_songs_bridge import (
+                composition_home_key,
+                composition_pick_key_for,
+                ensure_generic_composition_document,
+            )
+
+            doc = get_active_document(session)
+            if not isinstance(doc, dict):
+                doc = ensure_generic_composition_document(session)
+            if isinstance(doc, dict):
+                home_key = composition_home_key(doc) or home_key or "C"
+                pick_key = composition_pick_key_for(doc) or pick_key
+        except ImportError:
+            pass
+        home_key = home_key or "C"
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+
+            selected = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=home_key,
+            )
+        except ImportError:
+            selected = home_key
+        selected = str(pending or selected or home_key).strip() or home_key
+        session["display_key"] = selected
+        session["concert_key"] = selected
     elif creative and resolve_current_backing_musical_state is not None:
         resolver_key = str(
             resolve_current_backing_musical_state(session).practice_concert_key or ""
@@ -750,7 +796,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         and not (ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "custom_progression")
     ):
         resolver_key = str(creative_sess.concert_key or creative_sess.display_key or "").strip()
-    if ctx_source != "custom_progression":
+    if ctx_source not in {"custom_progression", "composition_song"}:
         selected = str(
             pending
             or resolver_key
@@ -763,7 +809,10 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
-        if is_fixed_practice_key_mode(session) and ctx_source != "custom_progression":
+        if is_fixed_practice_key_mode(session) and ctx_source not in {
+            "custom_progression",
+            "composition_song",
+        }:
             selected = resolve_practice_concert_key_for_song(session, selected, fallback=selected)
     except ImportError:
         pass

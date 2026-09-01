@@ -185,10 +185,13 @@ class TestMusicSourceBadgeIcons(unittest.TestCase):
         from music_feature_icons import FEATURE_ICONS
 
         custom_html = studio_song_meta_badges_html(source="Custom Progression")
-        self.assertIn(FEATURE_ICONS["custom"], custom_html)
+        # Source badge uses shared 📀 chrome; feature icons stay on left art.
+        self.assertIn("📀", custom_html)
+        self.assertIn("Custom Progression", custom_html)
         self.assertNotIn(FEATURE_ICONS["songs"], custom_html)
         comp_html = studio_song_meta_badges_html(source="Composition")
-        self.assertIn(FEATURE_ICONS["composition"], comp_html)
+        self.assertIn("📀", comp_html)
+        self.assertIn("Composition", comp_html)
         self.assertNotIn(FEATURE_ICONS["songs"], comp_html)
 
 

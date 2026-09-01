@@ -1049,6 +1049,42 @@ def _apply_context_to_session_keys(
     pick_key = str(ctx.get("pick_key") or "").strip()
     master_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick_key or "").strip()
     ctx_pick = str(ctx.get("pick_key") or "").strip()
+    # Never reclaim Custom ownership from a stale blob while Composition is the
+    # explicit Songs source (Custom refresh → Composition promote race).
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            explicit_music_source_choice,
+            picker_composition_mode,
+        )
+
+        if (
+            pick_key.startswith("custom::")
+            and (
+                explicit_music_source_choice(session) == SOURCE_COMPOSITION
+                or picker_composition_mode(session)
+            )
+        ):
+            record_state_write_trace = None
+            try:
+                from music_state_writes import record_state_write_trace as _rst
+
+                record_state_write_trace = _rst
+            except ImportError:
+                pass
+            if record_state_write_trace is not None:
+                record_state_write_trace(
+                    session,
+                    key=ACTIVE_CATALOG_PICK_KEY,
+                    origin="canonical",
+                    writer="refuse_custom_while_composition",
+                    value=pick_key,
+                    blocked=True,
+                )
+            pick_key = ""
+            ctx_pick = ""
+    except ImportError:
+        pass
     stale_ctx = bool(ctx_pick and master_pick and ctx_pick != master_pick)
     if pick_key:
         try:

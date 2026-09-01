@@ -1541,21 +1541,8 @@ def build_composition_song_context(
     pick_key = composition_pick_key_for(active_doc)
     revision = str(active_doc.get("id") or "").strip()
     home_key = composition_home_key(active_doc)
-    has_live_concert_key = bool(
-        str(
-            session.get("display_key")
-            or session.get("concert_key")
-            or session.get("_pending_display_key")
-            or ""
-        ).strip()
-    )
-    _, display_key, concert_key = _live_backing_concert_keys(session)
-    if not has_live_concert_key:
-        concert_key = display_key = home_key
-    elif not concert_key:
-        concert_key = display_key = home_key
-    # Always honor the saved Practice Key for this Composition pick.
-    # Hydration must not overwrite a user-chosen E with original C.
+    # Composition Practice Key is per-pick only. Never inherit live Custom/Catalog
+    # display_key (e.g. Custom E♭) merely because that source was active before.
     try:
         from practice_key_mode import resolve_practice_concert_key_for_song
 
@@ -1563,10 +1550,24 @@ def build_composition_song_context(
             session,
             home_key,
             pick_key=pick_key,
-            fallback=concert_key or display_key or home_key,
+            fallback=home_key,
         )
     except ImportError:
-        pass
+        concert_key = display_key = home_key
+    # Keep global live keys aligned with this Composition authority so sidebar,
+    # card badge, and playback cannot diverge after a Custom→Composition switch.
+    # Never assign display_key directly after sidebar widgets exist.
+    try:
+        from session_widget_safe import reconcile_practice_key_fields
+
+        reconcile_practice_key_fields(session, authoritative=display_key)
+    except ImportError:
+        session["concert_key"] = concert_key
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = display_key
+            session.pop("_pending_display_key", None)
+        else:
+            session["_pending_display_key"] = display_key
 
     # Reuse CPL transpose helpers against the projected original_sections.
     try:
@@ -1592,6 +1593,11 @@ def build_composition_song_context(
     except ImportError:
         bpm = default_bpm
 
+    style = str(projected.get("progression_style") or "").strip()
+    if not style or name.strip() == "My Composition":
+        # Generic My Composition must not inherit Custom style leftovers.
+        style = "Auto" if name.strip() == "My Composition" else (style or "Auto")
+
     return BackingContext(
         source="composition_song",
         source_label="Composition song",
@@ -1601,7 +1607,7 @@ def build_composition_song_context(
         display_key=display_key,
         concert_key=concert_key,
         bpm=bpm,
-        style=str(projected.get("progression_style") or "").strip(),
+        style=style,
         groove=str(projected.get("groove_style") or _default_groove(session)).strip(),
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(projected.get("loops") or session.get("backing_track_loops") or 2),
@@ -2346,6 +2352,15 @@ def open_backing_from_creative(
     from backing_musical_state import clear_stale_chart_session_keys
     from songs.playback_defaults import _CANONICAL_BACKING_ID_KEY
 
+    try:
+        from backing_source_navigation import (
+            BACKING_PROVENANCE_CREATIVE,
+            set_backing_open_provenance,
+        )
+
+        set_backing_open_provenance(session, BACKING_PROVENANCE_CREATIVE)
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import snapshot_practice_source_display_key
 
