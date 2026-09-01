@@ -340,6 +340,7 @@ from songs.music_source import (
     cpl_session_is_active,
     display_key_context,
     ensure_active_music_source,
+    is_composition_song,
     is_custom_progression,
     custom_progression_is_active,
     note_active_source_change,
@@ -8289,7 +8290,23 @@ def _render_custom_song_library_selector() -> None:
         st.rerun()
 
     if not ordered:
-        st.caption("No saved custom songs yet. Build one in Custom Progression Lab, then Save to library.")
+        active_live = ""
+        if custom_progression_is_active(st.session_state):
+            active_live = str(
+                ensure_original_structure(
+                    st.session_state.get(CPL_ACTIVE_KEY) or default_active_progression()
+                ).get("name")
+                or ""
+            ).strip()
+        if active_live:
+            st.caption(
+                f"Current unsaved Custom progression: **{active_live}**. "
+                "Save to library to list it here. No other saved custom songs yet."
+            )
+        else:
+            st.caption(
+                "No saved custom songs yet. Build one in Custom Progression Lab, then Save to library."
+            )
         return
 
     for name in ordered:
@@ -8573,20 +8590,23 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         from songs.music_source import (
             SOURCE_COMPOSITION,
             SOURCE_CUSTOM,
+            SONG_PICKER_SOURCE_CATALOG,
             composition_song_is_active,
             explicit_music_source_choice,
             picker_composition_mode,
             picker_custom_progression_mode,
         )
 
-        # Live radio / picker mode must outrank a stale explicit stamp from the
-        # previous source (Custom stamp surviving into a Composition click).
+        # Live radio is the highest authority for which hub to render.
         if picker_composition_mode(st.session_state) or "Composition" in choice:
             return "composition"
         if picker_custom_progression_mode(st.session_state) or choice.startswith(
             "Use Custom"
         ):
             return "custom"
+        if choice == SONG_PICKER_SOURCE_CATALOG:
+            # Catalog radio must never fall through to a stale Custom/Composition stamp.
+            return ""
         explicit = explicit_music_source_choice(st.session_state)
         if explicit == SOURCE_COMPOSITION or composition_song_is_active(st.session_state):
             return "composition"
@@ -10676,7 +10696,31 @@ def _sidebar_open_song_selection() -> None:
 
 
 sidebar_goto_song_selection(on_navigate=_sidebar_open_song_selection)
-if is_custom_progression(st.session_state):
+# Source-aware caption — never show Custom Lab copy or Custom genre under Composition.
+# Live Composition radio / explicit stamp must win even while ACTIVE_MUSIC_SOURCE lags.
+_comp_caption = False
+try:
+    from songs.music_source import (
+        SOURCE_COMPOSITION,
+        explicit_music_source_choice,
+        picker_composition_mode,
+    )
+
+    _comp_caption = (
+        composition_song_is_active(st.session_state)
+        or is_composition_song(st.session_state)
+        or picker_composition_mode(st.session_state)
+        or explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
+    )
+except Exception:
+    _comp_caption = composition_song_is_active(st.session_state) or is_composition_song(
+        st.session_state
+    )
+if _comp_caption:
+    st.sidebar.caption(f"**{_src_detail or 'My Composition'}** · Composition")
+elif custom_progression_is_active(st.session_state) or (
+    is_custom_progression(st.session_state) and not _comp_caption
+):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
     st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")

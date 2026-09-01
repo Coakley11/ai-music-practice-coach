@@ -1481,13 +1481,38 @@ def get_song_context(
     then the first catalog song, and stores a one-run recovery notice.
     """
     try:
-        from songs.music_source import custom_song_context_from_session, is_custom_progression
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            composition_song_context_from_session,
+            composition_song_is_active,
+            custom_song_context_from_session,
+            explicit_music_source_choice,
+            is_composition_song,
+            is_custom_progression,
+            picker_composition_mode,
+        )
     except ImportError:
         is_custom_progression = lambda _s: False  # type: ignore[assignment,misc]
         custom_song_context_from_session = None  # type: ignore[assignment,misc]
+        composition_song_context_from_session = None  # type: ignore[assignment,misc]
+        composition_song_is_active = lambda _s: False  # type: ignore[assignment,misc]
+        is_composition_song = lambda _s: False  # type: ignore[assignment,misc]
+        picker_composition_mode = lambda _s: False  # type: ignore[assignment,misc]
+        explicit_music_source_choice = lambda _s: ""  # type: ignore[assignment,misc]
+        SOURCE_COMPOSITION = "composition_song"  # type: ignore[misc,assignment]
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk_early = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
+    # Composition ownership outranks a lingering custom:: pick / CPL blob.
+    if (
+        composition_song_is_active(st.session_state)
+        or is_composition_song(st.session_state)
+        or picker_composition_mode(st.session_state)
+        or explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
+        or pk_early.startswith("composition::")
+    ):
+        if composition_song_context_from_session is not None:
+            return composition_song_context_from_session(st.session_state)
     if is_custom_progression(st.session_state) or pk_early.startswith("custom::"):
         if custom_song_context_from_session is not None:
             return custom_song_context_from_session(st.session_state)

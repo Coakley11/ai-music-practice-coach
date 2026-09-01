@@ -374,9 +374,19 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     changed = False
 
-    if custom_active and current == SONG_PICKER_SOURCE_CATALOG:
-        session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-        return False
+    # Live Catalog radio commits Catalog ownership immediately. Defer only the
+    # catalog *song* restore when pick still looks custom/composition — never
+    # leave a full rerun with Catalog radio + Custom/Composition hub.
+    if current == SONG_PICKER_SOURCE_CATALOG:
+        if explicit_music_source_choice(session_state) != SOURCE_CATALOG:
+            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
+            changed = True
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+            set_catalog_source(session_state)
+            changed = True
+        if pick_key.startswith("custom::") or _pick_looks_composition(pick_key):
+            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
+        return changed
 
     if composition_active:
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
@@ -769,11 +779,22 @@ def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
         return False
     if choice.startswith("Use Custom"):
         return True
+    # Live Catalog radio already handled; never show Custom hub from a stale pick
+    # while the user has stamped Catalog.
+    if explicit_music_source_choice(session_state) == SOURCE_CATALOG:
+        return False
     return custom_progression_is_active(session_state)
 
 
 def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
     """True when Song Selection should show the Composition Songs library."""
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if choice == SONG_PICKER_SOURCE_CATALOG:
+        return False
+    if picker_custom_progression_mode(session_state) or choice.startswith("Use Custom"):
+        return False
+    if explicit_music_source_choice(session_state) == SOURCE_CATALOG:
+        return False
     if picker_composition_mode(session_state):
         return True
     return composition_song_is_active(session_state)
@@ -1926,10 +1947,35 @@ def active_source_labels(
     catalog_artist: str,
     custom_name: str,
 ) -> tuple[str, str]:
-    """Return ``(source_kind, source_detail)`` for the sidebar active-source banner."""
+    """Return ``(source_kind, source_detail)`` for the sidebar active-source banner.
+
+    Composition detail comes from the Composition document — never a leftover
+    Custom/Catalog title such as ``My Progression``.
+    """
     if composition_song_is_active(session_state) or is_composition_song(session_state):
-        title = str(catalog_title or "").strip() or "My Composition"
-        return "Composition", title
+        title = ""
+        try:
+            from composition_session_state import get_active_document
+            from composition_songs_bridge import (
+                composition_title,
+                ensure_generic_composition_document,
+                find_composition_document,
+            )
+
+            doc = get_active_document(session_state)
+            if not isinstance(doc, dict):
+                pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+                doc = find_composition_document(session_state, pick) if pick else None
+            if not isinstance(doc, dict):
+                doc = ensure_generic_composition_document(session_state)
+            title = composition_title(doc) if isinstance(doc, dict) else ""
+        except Exception:
+            title = ""
+        if not title:
+            sel = session_state.get("selected_song")
+            if isinstance(sel, dict) and sel.get("is_composition"):
+                title = str(sel.get("title") or "").strip()
+        return "Composition", title or "My Composition"
     if is_custom_progression(session_state) or custom_progression_is_active(session_state):
         return "Custom Progression", str(custom_name or "Custom Progression")
     title = str(catalog_title or "").strip()
@@ -1991,6 +2037,50 @@ def display_key_context(
 ) -> tuple[str, tuple]:
     """Original/home key and identity tuple for the global display-key widget."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+    # Composition must resolve before Custom/CPL leftovers — a lingering
+    # custom:: pick or CPL blob must not own the Practice Key identity.
+    if (
+        composition_song_is_active(session_state)
+        or is_composition_song(session_state)
+        or picker_composition_mode(session_state)
+        or explicit_music_source_choice(session_state) == SOURCE_COMPOSITION
+    ):
+        from songs.key_state import song_display_identity
+
+        home = "C"
+        title = "My Composition"
+        pick_key = str(
+            session_state.get(ACTIVE_CATALOG_PICK_KEY)
+            or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
+            or ""
+        ).strip()
+        try:
+            from composition_session_state import get_active_document
+            from composition_songs_bridge import (
+                composition_home_key,
+                composition_pick_key_for,
+                composition_title,
+                ensure_generic_composition_document,
+                find_composition_document,
+            )
+
+            doc = get_active_document(session_state)
+            if not isinstance(doc, dict) and pick_key.startswith("composition::"):
+                doc = find_composition_document(session_state, pick_key)
+            if not isinstance(doc, dict):
+                doc = ensure_generic_composition_document(session_state)
+            home = composition_home_key(doc)
+            title = composition_title(doc)
+            pick_key = composition_pick_key_for(doc) or pick_key
+        except Exception:
+            pass
+        return home, song_display_identity(
+            str(title),
+            "Composition",
+            home,
+            pick_key=pick_key,
+        )
 
     if custom_progression_is_active(session_state) or cpl_session_is_active(session_state):
         from custom_progression_lab import (
@@ -2214,6 +2304,53 @@ def custom_song_context_from_session(
     )
     song_data = custom_song_data_from_active(active)
     return "Custom", str(song_data.get("title") or "My Progression"), song_data
+
+
+def composition_song_context_from_session(
+    session_state: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
+    """Return (genre, title, song_data) for the active Composition document.
+
+    Never returns Custom/Catalog leftovers by title matching.
+    """
+    from composition_session_state import get_active_document
+    from composition_songs_bridge import (
+        composition_as_chart_active,
+        composition_home_key,
+        composition_title,
+        ensure_generic_composition_document,
+        find_composition_document,
+    )
+
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    doc = get_active_document(session_state)
+    if not isinstance(doc, dict) and pick.startswith("composition::"):
+        doc = find_composition_document(session_state, pick)
+    if not isinstance(doc, dict):
+        doc = ensure_generic_composition_document(session_state)
+    title = composition_title(doc)
+    try:
+        song_data = composition_as_chart_active(doc)
+    except Exception:
+        song_data = {
+            "title": title,
+            "artist": "Composition",
+            "key": composition_home_key(doc),
+            "source": SOURCE_COMPOSITION,
+            "is_composition": True,
+        }
+    if not isinstance(song_data, dict):
+        song_data = {}
+    song_data = dict(song_data)
+    if "title" not in song_data and song_data.get("name"):
+        song_data["title"] = song_data["name"]
+    song_data.setdefault("title", title)
+    song_data.setdefault("artist", "Composition")
+    song_data.setdefault("key", composition_home_key(doc))
+    song_data["source"] = SOURCE_COMPOSITION
+    song_data["is_composition"] = True
+    song_data["is_custom"] = False
+    return "Composition", title, song_data
 
 
 def custom_selected_song_record(active: dict[str, Any]) -> dict[str, Any]:

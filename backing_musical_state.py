@@ -292,14 +292,39 @@ def resolve_current_backing_musical_state(
     except ImportError:
         pass
 
-    sidebar = str(session.get("display_key") or practice).strip() or practice
+    # Card + sidebar projection must share one Practice Key for Custom / Composition.
+    # A stale display_key (pre-switch leftover) must not diverge from resolved practice.
     try:
-        from practice_key_mode import is_fixed_practice_key_mode
+        from songs.music_source import (
+            composition_song_is_active,
+            custom_progression_is_active,
+            is_composition_song,
+            is_custom_progression,
+        )
 
-        if is_fixed_practice_key_mode(session):
-            sidebar = practice
+        owned_song_source = (
+            custom_ctx is not None
+            or (ctx is not None and ctx.source == "composition_song")
+            or custom_progression_is_active(session)
+            or composition_song_is_active(session)
+            or is_custom_progression(session)
+            or is_composition_song(session)
+        )
     except ImportError:
-        pass
+        owned_song_source = custom_ctx is not None or (
+            ctx is not None and ctx.source in {"custom_progression", "composition_song"}
+        )
+    if owned_song_source and practice:
+        sidebar = practice
+    else:
+        sidebar = str(session.get("display_key") or practice).strip() or practice
+        try:
+            from practice_key_mode import is_fixed_practice_key_mode
+
+            if is_fixed_practice_key_mode(session):
+                sidebar = practice
+        except ImportError:
+            pass
     if major_jam and sidebar:
         sidebar = to_major_key_preserve_spelling(sidebar)
 
