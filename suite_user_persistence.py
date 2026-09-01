@@ -199,6 +199,7 @@ def clear_workspace_autosave_block(st: Any, app_id: str) -> None:
     """Call at end of script run to allow autosave on the next rerun."""
     st.session_state.pop(_autosave_block_key(app_id), None)
     st.session_state.pop("_cloud_workspace_restored_this_run", None)
+    st.session_state.pop("_music_disk_restore_this_run", None)
     st.session_state.pop("_suite_user_nav_sync_skipped", None)
 
 
@@ -972,6 +973,7 @@ def sync_workspace_protocol(
     st.session_state["_suite_autosave_block_reason"] = "post-restore cooldown"
     st.session_state["_cloud_workspace_restored"] = picked.source == "cloud"
     st.session_state["_cloud_workspace_restored_this_run"] = picked.source == "cloud"
+    st.session_state["_music_disk_restore_this_run"] = picked.source == "disk"
     st.session_state["_suite_persist_restore_applied"] = True
     st.session_state["_suite_persist_last_restore_at"] = _utc_now_iso()
     st.session_state["_suite_persist_last_restore_source"] = picked.source
