@@ -1157,13 +1157,27 @@ def apply_pick_key(
         try:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
-            if is_fixed_practice_key_mode(st.session_state) or user_song_change:
+            if is_fixed_practice_key_mode(st.session_state):
                 effective_display_key = resolve_practice_concert_key_for_song(
                     st.session_state,
                     original_key,
                     pick_key=pick_key,
                     fallback=effective_display_key,
                 )
+            elif user_song_change:
+                # Explicit Catalog song switch → that song's original key only.
+                try:
+                    from songs.practice_key_state import (
+                        reset_practice_key_to_original_on_source_switch,
+                    )
+
+                    effective_display_key = reset_practice_key_to_original_on_source_switch(
+                        st.session_state,
+                        pick_key=pick_key,
+                        original_key=original_key,
+                    )
+                except ImportError:
+                    effective_display_key = original_key
         except ImportError:
             pass
         on_active_song_identity_changed(

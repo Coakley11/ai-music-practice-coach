@@ -241,19 +241,32 @@ def resolve_current_backing_musical_state(
                 session.get("display_key") or session.get("concert_key") or custom_ctx.concert_key or ""
             ).strip()
     elif ctx is not None and ctx.source == "composition_song":
-        practice = str(ctx.concert_key or "").strip()
-        if not practice:
-            try:
-                from practice_key_mode import resolve_practice_concert_key_for_song
+        # Prefer per-pick Practice Key (same-source persistence). Do not let a
+        # stale BackingContext.concert_key win; do not let a restored live
+        # display_key override a deliberately saved Practice Key.
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
 
-                practice = resolve_practice_concert_key_for_song(
-                    session,
-                    str(ctx.key or "C"),
-                    pick_key=str(ctx.bound_pick_key or ""),
-                    fallback=str(session.get("display_key") or session.get("concert_key") or "C"),
-                )
-            except ImportError:
-                practice = str(session.get("display_key") or session.get("concert_key") or ctx.key or "").strip()
+            practice = resolve_practice_concert_key_for_song(
+                session,
+                str(ctx.key or "C"),
+                pick_key=str(ctx.bound_pick_key or ctx.active_song_id or ""),
+                fallback=str(
+                    session.get("display_key")
+                    or session.get("concert_key")
+                    or ctx.concert_key
+                    or ctx.key
+                    or "C"
+                ),
+            )
+        except ImportError:
+            practice = str(
+                session.get("display_key")
+                or session.get("concert_key")
+                or ctx.concert_key
+                or ctx.key
+                or ""
+            ).strip()
     else:
         practice = ""
     if not practice:
@@ -396,6 +409,14 @@ def resolve_current_backing_musical_state(
             )
     elif custom_ctx is not None:
         concert_sections = sections_dict_from_backing_context(session, custom_ctx)
+        if concert_sections:
+            chart_sections = sections_dict_for_chart_display(
+                session,
+                concert_sections,
+                concert_key=practice,
+            )
+    elif ctx is not None and ctx.source == "composition_song":
+        concert_sections = sections_dict_from_backing_context(session, ctx)
         if concert_sections:
             chart_sections = sections_dict_for_chart_display(
                 session,

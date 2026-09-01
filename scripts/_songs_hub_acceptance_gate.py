@@ -129,15 +129,27 @@ def main() -> int:
         v.select_music_source(page, "Custom Progression")
         prac = _count_live_buttons(page, "custom_hub_practice")
         back = _count_live_buttons(page, "custom_hub_backing")
+        creative = _count_live_buttons(page, "custom_hub_creative")
+        karaoke = _count_live_buttons(page, "custom_hub_karaoke")
+        coach = _count_live_buttons(page, "custom_hub_chord_coach")
         card_prac = _count_live_buttons(page, "picker_card_practice")
         card_back = _count_live_buttons(page, "picker_card_backing")
         edit_custom = page.get_by_role("button", name=re.compile(r"Edit custom chart", re.I))
         old_custom_edit = page.locator(".st-key-custom_hub_edit button")
-        ok = prac == 1 and back == 1 and card_prac == 0 and card_back == 0
+        ok = (
+            prac == 1
+            and back == 1
+            and creative == 1
+            and karaoke == 1
+            and coach == 1
+            and card_prac == 0
+            and card_back == 0
+        )
         log(
-            "custom_one_practice_backing",
+            "custom_five_nav_actions",
             ok,
-            f"hub_p={prac} hub_b={back} card_p={card_prac} card_b={card_back}",
+            f"p={prac} b={back} cr={creative} k={karaoke} cc={coach} "
+            f"card_p={card_prac} card_b={card_back}",
         )
         if not ok:
             fails += 1
@@ -194,13 +206,25 @@ def main() -> int:
 
         prac = _count_live_buttons(page, "composition_hub_practice")
         back = _count_live_buttons(page, "composition_hub_backing")
+        creative = _count_live_buttons(page, "composition_hub_creative")
+        karaoke = _count_live_buttons(page, "composition_hub_karaoke")
+        coach = _count_live_buttons(page, "composition_hub_chord_coach")
         card_prac = _count_live_buttons(page, "picker_card_practice")
         card_back = _count_live_buttons(page, "picker_card_backing")
-        ok = prac == 1 and back == 1 and card_prac == 0 and card_back == 0
+        ok = (
+            prac == 1
+            and back == 1
+            and creative == 1
+            and karaoke == 1
+            and coach == 1
+            and card_prac == 0
+            and card_back == 0
+        )
         log(
-            "composition_one_practice_backing",
+            "composition_five_nav_actions",
             ok,
-            f"hub_p={prac} hub_b={back} card_p={card_prac} card_b={card_back}",
+            f"p={prac} b={back} cr={creative} k={karaoke} cc={coach} "
+            f"card_p={card_prac} card_b={card_back}",
         )
         if not ok:
             fails += 1
@@ -270,17 +294,33 @@ def main() -> int:
 
         # Refresh persistence
         page.reload(wait_until="domcontentloaded", timeout=180_000)
-        v.wait_streamlit(page, 4000)
-        try:
-            if not v._live_mode_card(page, "mode-composition-song-backing"):
+        v.wait_streamlit(page, 5000)
+        kept = False
+        for _ in range(8):
+            try:
+                if v._live_mode_card(page, "mode-composition-song-backing"):
+                    kept = True
+                    break
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
+        if not kept:
+            try:
                 pke._reopen_composition_backing(page)
-        except Exception as exc:
-            log("composition_reopen_after_refresh", False, str(exc)[:160])
-            fails += 1
+            except Exception as exc:
+                log("composition_reopen_after_refresh", False, str(exc)[:160])
+                fails += 1
+        # Give Streamlit a beat after card appears so Practice Key hydrates.
+        v.wait_streamlit(page, 2500)
         text2 = v.body_text(page)
         html2 = v.body_html(page)
-        still_e = pke._has_practice_e(text2) or bool(
-            re.search(r"Practice\s+concert\s+key:\s*E(\s+major)?\b", text2, re.I)
+        side2 = _sidebar_practice_key_value(page)
+        pk_line = pke._practice_key_line(text2)
+        still_e = (
+            pke._has_practice_e(text2)
+            or bool(re.search(r"Practice\s+concert\s+key:\s*E(\s+major)?\b", text2, re.I))
+            or bool(re.search(r"Practice\s+E(\s+major)?\b", text2, re.I))
+            or bool(re.search(r"\bE\b", side2))
         )
         # Progression should still reflect E when original was C (E–C#m–A–B)
         still_prog = pke._has_e_progression(text2, html2) or still_e
@@ -288,7 +328,8 @@ def main() -> int:
         log(
             "composition_e_after_refresh",
             still_e and still_prog,
-            f"e={still_e} prog={still_prog}",
+            f"e={still_e} prog={still_prog} kept_card={kept} "
+            f"side={side2[:60]!r} pk_line={pk_line[:80]!r}",
         )
         log("composition_no_creative_after_refresh", no_creative2, "")
         if not (still_e and still_prog):

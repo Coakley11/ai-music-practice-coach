@@ -344,8 +344,13 @@ def commit_composition_active_song(
     doc: dict[str, Any],
     *,
     invalidate_backing: Callable[[Any], None] | None = None,
+    reset_practice_to_original: bool = False,
 ) -> dict[str, Any]:
-    """Promote a saved Composition document to the global active song."""
+    """Promote a saved Composition document to the global active song.
+
+    ``reset_practice_to_original``: True on explicit source/song switch — clears
+    saved Practice Key and uses the Composition document original key.
+    """
     from songs.music_source import (
         note_active_source_change,
         on_active_song_identity_changed,
@@ -382,17 +387,29 @@ def commit_composition_active_song(
     pick_key = str(selected.get("pick_key") or "")
     home_key = composition_home_key(prepared)
     practice_key = home_key
-    try:
-        from practice_key_mode import resolve_practice_concert_key_for_song
+    if reset_practice_to_original:
+        try:
+            from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
 
-        practice_key = resolve_practice_concert_key_for_song(
-            session,
-            home_key,
-            pick_key=pick_key,
-            fallback=home_key,
-        )
-    except ImportError:
-        pass
+            practice_key = reset_practice_key_to_original_on_source_switch(
+                session,
+                pick_key=pick_key,
+                original_key=home_key,
+            )
+        except ImportError:
+            practice_key = home_key
+    else:
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+
+            practice_key = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=home_key,
+            )
+        except ImportError:
+            pass
 
     # Stamp ownership BEFORE widget/key hydration. Mid-render Streamlit locks on
     # display_key / radio must never leave a lingering custom:: pick while the
@@ -541,7 +558,18 @@ def activate_composition_by_pick_key(
     doc = find_composition_document(st.session_state, pick_key)
     if not doc:
         return False
-    commit_composition_active_song(st, doc, invalidate_backing=invalidate_backing)
+    prior = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+    target = str(pick_key or "").strip()
+    # Explicit switch only: non-empty prior that differs from target.
+    # Empty prior (disk restore / first activate) must preserve a seeded
+    # practice_key_by_source value — never treat restore as a source switch.
+    reset = bool(prior) and prior != target
+    commit_composition_active_song(
+        st,
+        doc,
+        invalidate_backing=invalidate_backing,
+        reset_practice_to_original=reset,
+    )
     return True
 
 

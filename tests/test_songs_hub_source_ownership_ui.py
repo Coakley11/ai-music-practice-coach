@@ -14,6 +14,7 @@ class TestSongsHubCanonicalActions(unittest.TestCase):
         comp_src = inspect.getsource(app._render_composition_active_song_hub)
         custom_src = inspect.getsource(app._render_custom_active_song_hub)
         card_src = inspect.getsource(app._render_active_song_card)
+        nav_src = inspect.getsource(app._render_songs_hub_nav_actions)
         label_src = inspect.getsource(app._active_source_edit_button_label)
 
         self.assertIn('show_nav_actions=False', comp_src)
@@ -25,6 +26,16 @@ class TestSongsHubCanonicalActions(unittest.TestCase):
         self.assertIn("Edit custom chart", label_src)
         self.assertIn("Edit composition chart", label_src)
         self.assertIn("show_nav_actions", card_src)
+        # Shared five-action row (exactly once per hub via key_prefix).
+        self.assertIn("_render_songs_hub_nav_actions", comp_src)
+        self.assertIn("_render_songs_hub_nav_actions", custom_src)
+        self.assertIn('key_prefix="composition_hub"', comp_src)
+        self.assertIn('key_prefix="custom_hub"', custom_src)
+        for suffix in ("_practice", "_backing", "_creative", "_karaoke", "_chord_coach"):
+            self.assertIn(f"{{key_prefix}}{suffix}", nav_src)
+        self.assertIn('nav_icon_button_label("creative")', nav_src)
+        self.assertIn('feature_label("karaoke"', nav_src)
+        self.assertIn('feature_label("chord_song_coach"', nav_src)
 
 
 class TestCustomEbDoesNotLeakIntoComposition(unittest.TestCase):
@@ -254,6 +265,114 @@ class TestBackingCardBadgesAndProjection(unittest.TestCase):
         self.assertIn("tone-source", html_out)
         self.assertIn("tone-style", html_out)
         self.assertIn("Composition", html_out)
+        self.assertIn("ui-backing-badge practice-key", html_out)
+        self.assertIn("ui-backing-badge bpm", html_out)
+        self.assertIn("ui-backing-badge meter", html_out)
+
+
+class TestExplicitSourceSwitchResetsPracticeKey(unittest.TestCase):
+    """Same-source persistence vs explicit switch → original key."""
+
+    def test_composition_same_source_keeps_e_then_switch_to_custom_resets(self) -> None:
+        from composition_songs_bridge import (
+            commit_composition_active_song,
+            composition_home_key,
+            composition_pick_key_for,
+            ensure_generic_composition_document,
+            set_composition_source,
+        )
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import commit_custom_active_song, ensure_composition_owns_active_song
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            set_practice_concert_key,
+        )
+
+        ss: dict = {
+            "instrument": "Piano",
+            "composer_saved_compositions": {},
+            "display_key": "C",
+            CPL_ACTIVE_KEY: {
+                "name": "Trial Song",
+                "id": "trial-d",
+                "original_key_center": "D",
+                "original_sections": {"Verse": [{"chord": "D", "bars": 1}]},
+            },
+        }
+        st = MagicMock()
+        st.session_state = ss
+        set_composition_source(ss)
+        doc = ensure_generic_composition_document(ss)
+        commit_composition_active_song(st, doc, invalidate_backing=lambda _s: None)
+        pick = composition_pick_key_for(doc)
+        home = composition_home_key(doc)
+        self.assertEqual(home, "C")
+        set_practice_concert_key(ss, "E", pick_key=pick)
+        ss["display_key"] = "E"
+        ss["concert_key"] = "E"
+        # Same-source re-ensure must preserve E.
+        ensure_composition_owns_active_song(st, invalidate_backing=lambda _s: None)
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
+        self.assertEqual(str(ss.get("display_key") or "")[:1], "E")
+
+        # Explicit switch to Custom → Trial Song original D (not prior F).
+        from songs.music_source import custom_pick_key_for
+
+        custom_pick = custom_pick_key_for(ss[CPL_ACTIVE_KEY])
+        set_practice_concert_key(ss, "F", pick_key=custom_pick)
+        commit_custom_active_song(
+            st,
+            ss[CPL_ACTIVE_KEY],
+            invalidate_backing=lambda _s: None,
+            reset_practice_to_original=True,
+        )
+        self.assertEqual(str(ss.get("display_key") or "")[:1], "D")
+        self.assertEqual(get_practice_concert_key(ss, custom_pick), "")
+
+        # Explicit switch back to Composition → original C, not E.
+        ss["active_catalog_pick_key"] = custom_pick
+        ss["_composition_reset_practice_on_ensure"] = True
+        ensure_composition_owns_active_song(st, invalidate_backing=lambda _s: None)
+        self.assertEqual(str(ss.get("display_key") or "")[:1], "C")
+        self.assertEqual(get_practice_concert_key(ss, pick), "")
+
+    def test_activate_empty_prior_preserves_seeded_practice_key(self) -> None:
+        """Disk restore seeds E then activate with empty prior — must not wipe."""
+        from composition_songs_bridge import (
+            activate_composition_by_pick_key,
+            composition_home_key,
+            composition_pick_key_for,
+            ensure_generic_composition_document,
+            set_composition_source,
+        )
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            set_practice_concert_key,
+        )
+
+        ss: dict = {
+            "instrument": "Piano",
+            "composer_saved_compositions": {},
+            "display_key": "C",
+        }
+        st = MagicMock()
+        st.session_state = ss
+        set_composition_source(ss)
+        doc = ensure_generic_composition_document(ss)
+        pick = composition_pick_key_for(doc)
+        self.assertEqual(composition_home_key(doc), "C")
+        # Simulate restore: seed store before activate; pick not yet stamped.
+        ss.pop("active_catalog_pick_key", None)
+        set_practice_concert_key(ss, "E", pick_key=pick)
+        ok = activate_composition_by_pick_key(st, pick, invalidate_backing=lambda _s: None)
+        self.assertTrue(ok)
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
+        self.assertEqual(str(ss.get("display_key") or "")[:1], "E")
+
+        # Same-pick re-activate must also preserve E.
+        ok2 = activate_composition_by_pick_key(st, pick, invalidate_backing=lambda _s: None)
+        self.assertTrue(ok2)
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
 
 
 if __name__ == "__main__":

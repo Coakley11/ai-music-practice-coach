@@ -211,6 +211,36 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
 
 
+def reset_practice_key_to_original_on_source_switch(
+    session: dict[str, Any],
+    *,
+    pick_key: str,
+    original_key: str,
+) -> str:
+    """Explicit Catalog/Custom/Composition (or song) switch → original key only.
+
+    Clears any previously saved Practice Key for ``pick_key`` so hydration cannot
+    restore a modified key after leaving and returning to this source/song.
+    Same-source refresh/navigation must NOT call this.
+    """
+    pk = str(pick_key or "").strip()
+    original = str(original_key or "C").strip() or "C"
+    if pk:
+        clear_practice_concert_key(session, pk)
+    try:
+        from session_widget_safe import reconcile_practice_key_fields
+
+        reconcile_practice_key_fields(session, authoritative=original)
+    except ImportError:
+        session["concert_key"] = original
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = original
+            session.pop("_pending_display_key", None)
+        else:
+            session["_pending_display_key"] = original
+    return original
+
+
 def mark_force_bpm_sync(session: dict[str, Any], sync_id: str) -> None:
     sid = str(sync_id or "").strip()
     if sid:

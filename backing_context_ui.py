@@ -537,6 +537,22 @@ def render_backing_composition_song_context_card(
             f"<strong>{concert_line}</strong></p>"
         )
 
+    # Composition-only badge density (Catalog-compatible chips). Custom Backing
+    # badge redesign stays on feature/creative-backing-stabilization.
+    practice_badge = (
+        f'<span class="ui-backing-badge practice-key">Practice {concert}</span>'
+    )
+    written_badge = ""
+    if state.show_chart_badge and chart_key_raw:
+        shape_lbl = "Shape" if state.chart_mode == "shape" else "Written"
+        written_badge = (
+            f'<span class="ui-backing-badge written-key">{html.escape(shape_lbl)} '
+            f"{html.escape(chart_key_raw)}</span>"
+        )
+    bpm_badge = f'<span class="ui-backing-badge bpm">{int(bpm)} BPM</span>'
+    meter_badge = f'<span class="ui-backing-badge meter">{meter}</span>'
+    groove_badge = f'<span class="ui-backing-badge groove">{groove}</span>'
+
     st.markdown(
         f'<div class="ui-backing-active-song mode-composition-song-backing">'
         f'<div class="ui-backing-active-art ui-source-identity-art source-composition" '
@@ -547,10 +563,12 @@ def render_backing_composition_song_context_card(
         f'<p class="ui-backing-active-title">{title}'
         f'<span class="ui-backing-active-dash"> · </span>'
         f"<span>Backing Track · Composition song</span></p>"
-        f'<div class="ui-backing-active-badges">{source_meta}{style_meta}</div>'
+        f'<div class="ui-backing-active-badges">'
+        f"{source_meta}{style_meta}{practice_badge}{written_badge}"
+        f"{bpm_badge}{meter_badge}{groove_badge}"
+        f"</div>"
         f'<p class="ui-backing-active-key-line">Original key: <strong>{original_key}</strong>'
-        f" · Practice concert key: <strong>{concert}</strong>"
-        f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
+        f" · Practice concert key: <strong>{concert}</strong></p>"
         f"{progression_block}"
         f"</div></div>",
         unsafe_allow_html=True,

@@ -7777,6 +7777,87 @@ def _active_song_key_pair(rec: dict | None = None) -> tuple[str, str]:
     return ctx.original_key, ctx.practice_concert_key
 
 
+def _render_songs_hub_nav_actions(
+    *,
+    key_prefix: str,
+    include_favorite: bool = False,
+    favorite_pick_key: str = "",
+    favorite_icon: str = "☆",
+    favorite_title: str = "Add to favorites",
+    backing_on_click: Any | None = None,
+) -> None:
+    """Canonical Songs hub action row: Practice, Backing, Creative, Karaoke, Chord Coach.
+
+    Exactly one of each action. ``key_prefix`` keeps Catalog / Custom / Composition
+    widget keys unique while sharing one render path.
+    """
+    st.markdown(
+        '<div class="ui-song-card-actions ui-active-song-hub-actions">',
+        unsafe_allow_html=True,
+    )
+    cols = st.columns([0.55, 1, 1, 1, 1, 1] if include_favorite else 5)
+    col_i = 0
+    if include_favorite:
+        with cols[col_i]:
+            if favorite_pick_key and st.button(
+                favorite_icon,
+                key=f"{key_prefix}_favorite",
+                help=favorite_title,
+            ):
+                toggle_catalog_favorite(st.session_state, favorite_pick_key)
+                st.rerun()
+        col_i += 1
+    with cols[col_i]:
+        if st.button(
+            nav_icon_button_label("practice"),
+            key=f"{key_prefix}_practice",
+            use_container_width=True,
+        ):
+            _picker_navigate("practice")
+    with cols[col_i + 1]:
+        if st.button(
+            nav_icon_button_label("backing"),
+            key=f"{key_prefix}_backing",
+            use_container_width=True,
+            on_click=backing_on_click,
+        ):
+            _picker_navigate("backing")
+    with cols[col_i + 2]:
+        if st.button(
+            nav_icon_button_label("creative"),
+            key=f"{key_prefix}_creative",
+            use_container_width=True,
+        ):
+            _picker_navigate("creative")
+    with cols[col_i + 3]:
+        if st.button(
+            feature_label("karaoke", "Karaoke"),
+            key=f"{key_prefix}_karaoke",
+            use_container_width=True,
+        ):
+            try:
+                from app_tutorial import apply_tutorial_voice_instrument
+
+                apply_tutorial_voice_instrument(st.session_state)
+            except Exception:
+                st.session_state["instrument"] = "Voice"
+            try:
+                from studio_nav_history import navigate_studio_page
+
+                navigate_studio_page(st.session_state, "picker")
+            except Exception:
+                st.session_state["studio_page"] = "picker"
+            st.rerun()
+    with cols[col_i + 4]:
+        if st.button(
+            feature_label("chord_song_coach", "Chord Coach"),
+            key=f"{key_prefix}_chord_coach",
+            use_container_width=True,
+        ):
+            _picker_navigate("practice", open_chord_coach=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -7791,7 +7872,7 @@ def _render_active_song_card(
     a missing extension, partial chart, or upstream exception cannot
     blank out Levels / Sections / Instruments / Practice Focus.
 
-    When Custom/Composition hubs own Practice/Backing, pass
+    When Custom/Composition hubs own the shared nav row, pass
     ``show_nav_actions=False`` so the card does not duplicate those buttons.
     ``edit_mode`` selects the single red chart-edit CTA (catalog/custom/composition).
     """
@@ -8069,38 +8150,13 @@ def _render_active_song_card(
     ):
         _open_active_source_chart_editor(_edit_mode)
     if show_nav_actions:
-        st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-        fav_col, b1, b2, b3, b4 = st.columns([0.55, 1, 1, 1, 1])
-        with fav_col:
-            if _active_pk and st.button(_fav_icon, key="picker_card_favorite", help=_fav_title):
-                toggle_catalog_favorite(st.session_state, _active_pk)
-                st.rerun()
-        with b1:
-            if st.button(nav_icon_button_label("practice"), key="picker_card_practice", use_container_width=True):
-                _picker_navigate("practice")
-        with b2:
-            if st.button(nav_icon_button_label("backing"), key="picker_card_backing", use_container_width=True):
-                _picker_navigate("backing")
-        with b3:
-            if st.button("🎤 Karaoke", key="picker_card_karaoke", use_container_width=True):
-                # Enter Karaoke Mode on Songs: Voice instrument + stay on picker.
-                try:
-                    from app_tutorial import apply_tutorial_voice_instrument
-
-                    apply_tutorial_voice_instrument(st.session_state)
-                except Exception:
-                    st.session_state["instrument"] = "Voice"
-                try:
-                    from studio_nav_history import navigate_studio_page
-
-                    navigate_studio_page(st.session_state, "picker")
-                except Exception:
-                    st.session_state["studio_page"] = "picker"
-                st.rerun()
-        with b4:
-            if st.button(feature_label("chord_song_coach", "Chord Coach"), key="picker_card_chord_coach", use_container_width=True):
-                _picker_navigate("practice", open_chord_coach=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        _render_songs_hub_nav_actions(
+            key_prefix="picker_card",
+            include_favorite=True,
+            favorite_pick_key=str(_active_pk or ""),
+            favorite_icon=_fav_icon,
+            favorite_title=_fav_title,
+        )
     # Karaoke "Add to Setlist" CTA - only visible when the active
     # instrument is Voice / Vocals / Singer. Instrumentalists never see
     # this button. (The button itself also self-gates as a safety net.)
@@ -8829,54 +8885,21 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "pick_key": f"composition::{doc.get('id')}",
             }
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
-            st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button(nav_icon_button_label("practice"), key="composition_hub_practice", use_container_width=True):
-                    _picker_navigate("practice")
-            with b2:
-                def _on_composition_hub_backing() -> None:
-                    # on_click runs before script body — survives promote races.
-                    st.session_state["_force_composition_backing_open"] = True
-                    st.session_state["_composition_hub_backing_clicked"] = True
-                    _composition_hub_trace_append(
-                        "hub_callback",
-                        target="backing",
-                        page=str(st.session_state.get("studio_page") or ""),
-                    )
 
-                if st.button(
-                    nav_icon_button_label("backing"),
-                    key="composition_hub_backing",
-                    use_container_width=True,
-                    on_click=_on_composition_hub_backing,
-                ):
-                    # Survive disk restore of a prior Custom owner on the Backing
-                    # rerun — hydrate must not revive Custom after this click.
-                    st.session_state["_force_composition_backing_open"] = True
-                    _composition_hub_trace_append(
-                        "hub_button_body",
-                        target="backing",
-                        page=str(st.session_state.get("studio_page") or ""),
-                    )
-                    try:
-                        from songs.music_source import ensure_composition_owns_active_song
+            def _on_composition_hub_backing() -> None:
+                # on_click runs before script body — survives promote races.
+                st.session_state["_force_composition_backing_open"] = True
+                st.session_state["_composition_hub_backing_clicked"] = True
+                _composition_hub_trace_append(
+                    "hub_callback",
+                    target="backing",
+                    page=str(st.session_state.get("studio_page") or ""),
+                )
 
-                        ensure_composition_owns_active_song(
-                            st,
-                            invalidate_backing=invalidate_backing_cache,
-                        )
-                    except Exception:
-                        pass
-                    try:
-                        from composition_songs_bridge import set_composition_source
-
-                        set_composition_source(st.session_state)
-                    except Exception:
-                        pass
-                    st.session_state.pop("_composition_hub_backing_clicked", None)
-                    _picker_navigate("backing")
-            st.markdown("</div>", unsafe_allow_html=True)
+            _render_songs_hub_nav_actions(
+                key_prefix="composition_hub",
+                backing_on_click=_on_composition_hub_backing,
+            )
         render_active_song_hub_close(st)
 
     if wrap_section:
@@ -8958,15 +8981,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
-        st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button(nav_icon_button_label("practice"), key="custom_hub_practice", use_container_width=True):
-                _picker_navigate("practice")
-        with b2:
-            if st.button(nav_icon_button_label("backing"), key="custom_hub_backing", use_container_width=True):
-                _picker_navigate("backing")
-        st.markdown("</div>", unsafe_allow_html=True)
+        _render_songs_hub_nav_actions(key_prefix="custom_hub")
         render_active_song_hub_close(st)
 
     render_cpl_lyrics_editor_panel(

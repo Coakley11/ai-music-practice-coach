@@ -1058,16 +1058,19 @@ def commit_catalog_active_song(
         "switch_to_catalog_backing",
         "last_catalog_restore",
         "previous_catalog_restore",
+        "song_pick",
+        "catalog_pick",
     )
     if reason in _reset_reasons:
+        # Explicit Catalog source/song selection → original key (never restore
+        # a previously modified Practice Key for this pick).
         try:
-            from practice_key_mode import resolve_practice_concert_key_for_song
+            from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
 
-            display_key = resolve_practice_concert_key_for_song(
+            display_key = reset_practice_key_to_original_on_source_switch(
                 session,
-                original_key,
                 pick_key=pick_key,
-                fallback=original_key,
+                original_key=original_key,
             )
         except ImportError:
             display_key = original_key
@@ -1102,6 +1105,8 @@ def commit_catalog_active_song(
             "switch_to_catalog_backing",
             "last_catalog_restore",
             "previous_catalog_restore",
+            "song_pick",
+            "catalog_pick",
         ),
     )
     sync_song_picker_source_widget(session, force=True)
@@ -1265,6 +1270,7 @@ def restore_last_custom_active_song(
     st: Any,
     *,
     invalidate_backing,
+    reset_practice_to_original: bool = False,
 ) -> bool:
     """Restore the last custom progression when returning from catalog."""
     session = st.session_state
@@ -1274,6 +1280,7 @@ def restore_last_custom_active_song(
             st,
             dict(snap["active"]),
             invalidate_backing=invalidate_backing,
+            reset_practice_to_original=reset_practice_to_original,
         )
         return True
     try:
@@ -1281,7 +1288,12 @@ def restore_last_custom_active_song(
 
         active = cpl_active_from_session(session)
         if str(active.get("name") or "").strip():
-            commit_custom_active_song(st, active, invalidate_backing=invalidate_backing)
+            commit_custom_active_song(
+                st,
+                active,
+                invalidate_backing=invalidate_backing,
+                reset_practice_to_original=reset_practice_to_original,
+            )
             return True
     except Exception:
         pass
@@ -1325,6 +1337,9 @@ def ensure_composition_owns_active_song(
     )
 
     session = st.session_state
+    # Explicit Songs radio switch sets this oneshot. Refresh / hub promote must
+    # preserve a saved Composition Practice Key (same-source persistence).
+    reset_pk = bool(session.pop("_composition_reset_practice_on_ensure", False))
     commit_explicit_music_source_choice(
         session,
         SOURCE_COMPOSITION,
@@ -1340,6 +1355,7 @@ def ensure_composition_owns_active_song(
             st,
             doc,
             invalidate_backing=invalidate_backing,
+            reset_practice_to_original=reset_pk,
         )
     except Exception as exc:
         # Keep source flag + doc even if identity commit fails mid-flight.
@@ -1413,6 +1429,11 @@ def on_song_picker_source_change(
             SOURCE_COMPOSITION,
             clear_composition_oneshots=False,
         )
+        # Mark explicit radio switch so ensure resets Practice Key to original.
+        # Hub promote / refresh must not set this flag (same-source preserve).
+        prior_pick = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+        if prior_pick and not prior_pick.startswith("composition::"):
+            st.session_state["_composition_reset_practice_on_ensure"] = True
         try:
             ensure_composition_owns_active_song(
                 st,
@@ -1440,13 +1461,17 @@ def on_song_picker_source_change(
             from custom_progression_lab import cpl_active_from_session
 
             set_custom_source(st.session_state)
-            # Always commit so refresh restores Custom (never leave a stale
-            # Composition/Catalog disk snapshot while the radio says Custom).
-            if not restore_last_custom_active_song(st, invalidate_backing=invalidate_backing):
+            # Explicit radio → Custom: reset Practice Key to this progression's original.
+            if not restore_last_custom_active_song(
+                st,
+                invalidate_backing=invalidate_backing,
+                reset_practice_to_original=True,
+            ):
                 commit_custom_active_song(
                     st,
                     cpl_active_from_session(st.session_state),
                     invalidate_backing=invalidate_backing,
+                    reset_practice_to_original=True,
                 )
             else:
                 # restore already committed; force a second persist if pick
@@ -1457,6 +1482,7 @@ def on_song_picker_source_change(
                         st,
                         cpl_active_from_session(st.session_state),
                         invalidate_backing=invalidate_backing,
+                        reset_practice_to_original=True,
                     )
         except Exception:
             try:
@@ -1467,6 +1493,7 @@ def on_song_picker_source_change(
                     st,
                     cpl_active_from_session(st.session_state),
                     invalidate_backing=invalidate_backing,
+                    reset_practice_to_original=True,
                 )
             except Exception:
                 try:
@@ -2437,12 +2464,17 @@ def commit_custom_active_song(
     *,
     cpl_active_key: str = "cpl_active_progression",
     invalidate_backing,
+    reset_practice_to_original: bool = False,
 ) -> dict[str, Any]:
     """Promote CPL draft to the global active song (source, title, key, playback, cloud).
 
     Must run before sidebar/global widgets render. Use ``queue_custom_active_song_activation``
     from page callbacks, then ``apply_pending_custom_active_song_activation_before_widgets``
     at app startup.
+
+    ``reset_practice_to_original``: True on explicit Catalog/Custom/Composition or
+    song switch — clears saved Practice Key and uses the progression's original key.
+    False for same-source refresh / hub disk sync (preserve current Practice Key).
     """
     from custom_progression_lab import (
         ensure_all_cpl_sections,
@@ -2472,24 +2504,36 @@ def commit_custom_active_song(
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
     practice_key = home_key
-    try:
-        from practice_key_mode import resolve_practice_concert_key_for_song
-
-        practice_key = resolve_practice_concert_key_for_song(
-            session,
-            home_key,
-            pick_key=pick_key,
-            fallback=home_key,
-        )
-    except ImportError:
+    if reset_practice_to_original:
         try:
-            from songs.key_state import canonical_display_key_for_pick
+            from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
 
-            saved = canonical_display_key_for_pick(session, pick_key)
-            if saved:
-                practice_key = saved
+            practice_key = reset_practice_key_to_original_on_source_switch(
+                session,
+                pick_key=pick_key,
+                original_key=home_key,
+            )
         except ImportError:
-            pass
+            practice_key = home_key
+    else:
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+
+            practice_key = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=home_key,
+            )
+        except ImportError:
+            try:
+                from songs.key_state import canonical_display_key_for_pick
+
+                saved = canonical_display_key_for_pick(session, pick_key)
+                if saved:
+                    practice_key = saved
+            except ImportError:
+                pass
 
     set_custom_source(session)
     sync_song_picker_source_widget(session, force=True)
