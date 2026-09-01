@@ -75,6 +75,18 @@ def click_songs_creative_button(page: Page) -> bool:
             page.wait_for_timeout(200)
             loc.first.click(timeout=5000)
             settle(page, 3)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /Entry & Jam/i.test(t) || /Improvisation Intelligence/i.test(t)
+                        || /Song-Based/i.test(t);
+                    }""",
+                    timeout=20_000,
+                )
+            except Exception:
+                pass
+            settle(page, 2)
             return True
         except Exception as exc:
             log(f"picker_card_creative click err {exc!r}")
