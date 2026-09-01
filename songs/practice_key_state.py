@@ -149,6 +149,19 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
         SELECTED_SONG_STATE_KEY = "selected_song"  # type: ignore[misc,assignment]
 
     pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if pick.startswith("custom::"):
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY
+            from songs.music_source import custom_pick_key_for, ensure_custom_active_song_identity
+
+            ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+            active = session.get(CPL_ACTIVE_KEY)
+            if isinstance(active, dict):
+                canonical = str(custom_pick_key_for(active) or "").strip()
+                if canonical:
+                    return canonical
+        except ImportError:
+            pass
     if pick:
         return pick
     sel = session.get(SELECTED_SONG_STATE_KEY)

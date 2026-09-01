@@ -107,7 +107,122 @@ def _backing_intent_preserves_practice_key(intent: str) -> bool:
     return intent in {
         BACKING_INTENT_FROM_PRACTICE,
         BACKING_INTENT_FROM_SONG_TO_BACKING,
+        BACKING_INTENT_RESTORE_LAST,
     }
+
+
+def _handoff_preserves_practice_key(session: dict[str, Any]) -> bool:
+    """Page navigation and same-source refresh preserve Practice Key; only explicit source/song switches reset."""
+    transition = peek_key_transition_intent(session)
+    if transition:
+        if _key_transition_resets_to_original(transition):
+            return False
+        return _backing_intent_preserves_practice_key(transition)
+    open_intent = str(session.get(BACKING_OPEN_INTENT_KEY) or "").strip()
+    if open_intent:
+        return _backing_intent_preserves_practice_key(open_intent)
+    return True
+
+
+def _backing_owner_stale_for_active_source(session: dict[str, Any]) -> bool:
+    """True when persisted backing_context disagrees with the active music source."""
+    try:
+        from music_source_ownership import intentional_creative_backing_active
+
+        if intentional_creative_backing_active(session):
+            return False
+    except ImportError:
+        pass
+    ctx = get_backing_context(session)
+    ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if ctx_source in {"entry_jam", "song_improv", "mission"}:
+        return False
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            explicit_music_source_choice,
+            is_custom_progression,
+            picker_composition_mode,
+        )
+    except ImportError:
+        return False
+
+    explicit = explicit_music_source_choice(session)
+    if (
+        composition_song_is_active(session)
+        or picker_composition_mode(session)
+        or explicit == SOURCE_COMPOSITION
+    ):
+        return ctx_source != "composition_song"
+    if (
+        custom_progression_is_active(session)
+        or cpl_session_is_active(session)
+        or is_custom_progression(session)
+        or explicit == SOURCE_CUSTOM
+    ):
+        return ctx_source != "custom_progression"
+    if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return ctx_source != "regular_song"
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return ctx_source != "composition_song"
+    if pick.startswith("custom::"):
+        return ctx_source != "custom_progression"
+    if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
+        return ctx_source != "regular_song"
+    return False
+
+
+def restore_practice_backing_if_stale(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> bool:
+    """Rebuild backing_context from the active source when a stale Catalog owner survives."""
+    if not _backing_owner_stale_for_active_source(session):
+        return False
+    set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
+    open_backing_for_practice_source(session, st_like=st_like)
+    consume_key_transition_intent(session)
+    return True
+
+
+def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str = "") -> None:
+    """Stamp source-qualified Backing handoff before top-bar navigation."""
+    if session.get(BACKING_OPEN_INTENT_KEY):
+        return
+    page = str(from_page or session.get("studio_page") or "").strip()
+    try:
+        from songs.music_source import (
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+        )
+
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            session["_force_composition_backing_open"] = True
+            set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
+            return
+        if custom_progression_is_active(session):
+            set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
+            return
+    except ImportError:
+        pass
+    if page == "practice":
+        set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)
+    elif page == "picker":
+        set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
+        set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
+    else:
+        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
 
 
 def _key_transition_resets_to_original(intent: str) -> bool:
@@ -367,8 +482,7 @@ def hydrate_picker_source_for_page(
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Open Backing Studio for the current Practice catalog/custom/composition source (Case C)."""
     snapshot_practice_source_display_key(session)
-    transition = peek_key_transition_intent(session)
-    preserve_key = _backing_intent_preserves_practice_key(transition) if transition else True
+    preserve_key = _handoff_preserves_practice_key(session)
     # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
@@ -634,8 +748,14 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         return None
 
 
+_BACKING_PAGE_HYDRATED_KEY = "_backing_page_source_hydrated"
+
+
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    if session.get(_BACKING_PAGE_HYDRATED_KEY):
+        return
+    session[_BACKING_PAGE_HYDRATED_KEY] = True
     intent = consume_backing_open_intent(session)
     if intent == BACKING_INTENT_FROM_CREATIVE:
         open_backing_for_creative_source(session, st_like=st_like)
@@ -714,6 +834,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 return
     except ImportError:
         pass
+    restore_practice_backing_if_stale(session, st_like=st_like)
     try:
         from music_source_ownership import intentional_creative_backing_active, reconcile_source_ownership
 
@@ -747,11 +868,23 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             except ImportError:
                 pass
             ctx = get_backing_context(session)
-            if ctx is None or str(getattr(ctx, "source", "") or "") in {
+            ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if ctx is None or ctx_source in {
                 "entry_jam",
                 "song_improv",
                 "mission",
-            }:
+            } or ctx_source == "regular_song":
+                open_backing_for_practice_source(session, st_like=st_like)
+                return
+    except ImportError:
+        pass
+    try:
+        from songs.music_source import composition_song_is_active, picker_composition_mode
+
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            ctx = get_backing_context(session)
+            ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if ctx is None or ctx_source != "composition_song":
                 open_backing_for_practice_source(session, st_like=st_like)
                 return
     except ImportError:
@@ -1960,7 +2093,9 @@ __all__ = [
     "hydrate_practice_source_for_page",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
+    "prepare_global_backing_navigation",
     "peek_backing_open_provenance",
+    "restore_practice_backing_if_stale",
     "queue_backing_scope_from_practice_focus",
     "prepare_return_to_backing_source",
     "prepare_return_to_mission_detail",

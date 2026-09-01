@@ -899,7 +899,11 @@ def activate_custom_ownership(
         _release_creative_transport_authority(session)
     from backing_context import restore_custom_song_backing
 
-    return restore_custom_song_backing(session, st_like=st_like)
+    return restore_custom_song_backing(
+        session,
+        st_like=st_like,
+        preserve_practice_key=preserve_practice_key,
+    )
 
 
 def activate_entry_jam_ownership(session: dict[str, Any], *, st_like: Any | None = None) -> Any:

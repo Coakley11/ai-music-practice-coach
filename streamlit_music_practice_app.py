@@ -7557,7 +7557,7 @@ def _active_source_edit_button_label(edit_mode: str) -> str:
     if mode == "custom":
         return f"{FEATURE_ICONS.get('custom', '✍️')} Edit custom chart"
     if mode == "composition":
-        return f"{FEATURE_ICONS.get('composition', '🪶')} Edit composition chart"
+        return f"{FEATURE_ICONS.get('composition', '🪶')} Edit composition"
     return feature_label("charts_lyrics", "Edit Song Chart")
 
 
@@ -11016,7 +11016,21 @@ from songs.music_source import cpl_session_is_active as _cpl_session_is_active
 try:
     from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
-    prime_sidebar_practice_key_from_identity(st.session_state, st=st)
+    _skip_prime_sidebar_identity = False
+    try:
+        from backing_context import get_backing_context
+
+        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+            _prime_ctx = get_backing_context(st.session_state)
+            if _prime_ctx is not None and str(getattr(_prime_ctx, "source", "") or "") in {
+                "custom_progression",
+                "composition_song",
+            }:
+                _skip_prime_sidebar_identity = True
+    except ImportError:
+        pass
+    if not _skip_prime_sidebar_identity:
+        prime_sidebar_practice_key_from_identity(st.session_state, st=st)
 except ImportError:
     pass
 

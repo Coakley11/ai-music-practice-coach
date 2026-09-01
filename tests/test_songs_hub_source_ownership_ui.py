@@ -24,7 +24,8 @@ class TestSongsHubCanonicalActions(unittest.TestCase):
         self.assertNotIn('key="composition_hub_edit"', comp_src)
         self.assertNotIn('key="custom_hub_edit"', custom_src)
         self.assertIn("Edit custom chart", label_src)
-        self.assertIn("Edit composition chart", label_src)
+        self.assertIn("Edit composition", label_src)
+        self.assertNotIn("Edit composition chart", label_src)
         self.assertIn("show_nav_actions", card_src)
         # Shared five-action row (exactly once per hub via key_prefix).
         self.assertIn("_render_songs_hub_nav_actions", comp_src)

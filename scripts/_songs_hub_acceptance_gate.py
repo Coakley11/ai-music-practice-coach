@@ -184,7 +184,7 @@ def main() -> int:
         )
         if not ok:
             fails += 1
-        edit_comp = page.get_by_role("button", name=re.compile(r"Edit composition chart", re.I))
+        edit_comp = page.get_by_role("button", name=re.compile(r"Edit composition(?! chart)", re.I))
         old_comp_edit = page.locator(".st-key-composition_hub_edit button")
         ok_edit = edit_comp.count() >= 1 and old_comp_edit.count() == 0
         log(

@@ -85,6 +85,49 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
     except ImportError:
         pass
 
+    try:
+        from songs.music_source import (
+            cpl_session_is_active,
+            custom_progression_is_active,
+            is_custom_progression,
+        )
+
+        if (
+            cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or custom_progression_is_active(session)
+        ):
+            home = "C"
+            pick = ""
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure, written_home_key
+                from songs.music_source import custom_pick_key_for
+                from songs.practice_key_state import get_practice_concert_key
+
+                active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+                pick = custom_pick_key_for(active)
+                saved = get_practice_concert_key(session, pick, default=home) if pick else home
+                pt, pm = split_key_center(str(saved or home))
+            except ImportError:
+                live = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
+                pt, pm = split_key_center(live)
+            token = key_center_token(pt, pm)
+            label = format_key_label_from_parts(pt, pm)
+            return SidebarKeyIdentity(
+                owner="custom_progression",
+                concert_tonic=pt,
+                concert_mode=pm,
+                practice_tonic=pt,
+                practice_mode=pm,
+                written_tonic="",
+                written_mode="",
+                selector_token=token,
+                label=label,
+            )
+    except ImportError:
+        pass
+
     owner = ""
     pt, pm = "C", "major"
     wt = ""

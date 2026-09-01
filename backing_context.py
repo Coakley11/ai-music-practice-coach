@@ -1430,6 +1430,14 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     elif not concert_key:
         concert_key = display_key = home_key
     try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        saved = get_practice_concert_key(session, pick_key, default="")
+        if saved:
+            concert_key = display_key = saved
+    except ImportError:
+        pass
+    try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(session):
@@ -1695,12 +1703,32 @@ def reset_backing_on_active_song_change(
     live_display = str(session.get("display_key") or session.get("concert_key") or "").strip()
     concert = str(practice_concert_key or pending or "").strip()
     if not concert:
+        try:
+            from songs.practice_key_state import (
+                resolve_practice_concert_key_for_pick,
+                resolve_practice_source_pick,
+            )
+
+            pick_for_key = str(new_pick_key or _current_pick_key(session) or resolve_practice_source_pick(session) or "").strip()
+            if pick_for_key:
+                concert = resolve_practice_concert_key_for_pick(
+                    session,
+                    pick_for_key,
+                    original_key=str(_original_key_for_active_song(session) or live_display or ""),
+                ).strip()
+        except ImportError:
+            pass
+    if not concert:
         # Composition-owned sessions keep the live Practice Key across Backing
         # navigation/refresh; Catalog/Custom song *changes* still snap to original.
         try:
-            from songs.music_source import composition_song_is_active
+            from songs.music_source import composition_song_is_active, cpl_session_is_active, is_custom_progression
 
-            if composition_song_is_active(session) and live_display:
+            if (
+                composition_song_is_active(session)
+                or cpl_session_is_active(session)
+                or is_custom_progression(session)
+            ) and live_display:
                 concert = live_display
             else:
                 concert = str(_original_key_for_active_song(session) or "").strip()
@@ -2598,9 +2626,43 @@ def catalog_or_custom_backing_is_authoritative(session: dict[str, Any]) -> bool:
 
 
 def ctx_is_stale_creative_for_practice(session: dict[str, Any], ctx: BackingContext | None) -> bool:
-    """True when live catalog/custom practice should replace a Creative backing_context."""
-    if ctx is not None and ctx.source in {"regular_song", "custom_progression"}:
-        return False
+    """True when live catalog/custom/composition practice should replace a Creative backing_context."""
+    ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            explicit_music_source_choice,
+            is_custom_progression,
+            picker_composition_mode,
+        )
+
+        explicit = explicit_music_source_choice(session)
+        if composition_song_is_active(session) or picker_composition_mode(session) or explicit == SOURCE_COMPOSITION:
+            return ctx_source != "composition_song"
+        if (
+            custom_progression_is_active(session)
+            or cpl_session_is_active(session)
+            or is_custom_progression(session)
+            or explicit == SOURCE_CUSTOM
+        ):
+            return ctx_source != "custom_progression"
+        if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return ctx_source != "regular_song"
+    except ImportError:
+        pass
+    if ctx is not None and ctx_source in {"regular_song", "custom_progression", "composition_song"}:
+        try:
+            from backing_source_navigation import _backing_owner_stale_for_active_source
+
+            return _backing_owner_stale_for_active_source(session)
+        except ImportError:
+            return False
     try:
         from music_source_ownership import intended_practice_owner
 
@@ -2862,16 +2924,36 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     return ctx
 
 
-def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
+def restore_custom_song_backing(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+    preserve_practice_key: bool = False,
+) -> BackingContext:
     """Clear Creative/catalog override and restore active custom progression backing."""
-    clear_backing_context(session)
-    _release_creative_backing_ownership(session)
-    try:
-        from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+    resolved_key = ""
+    if preserve_practice_key:
+        resolved_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        try:
+            from songs.practice_key_state import resolve_practice_concert_key_for_pick, resolve_practice_source_pick
 
-        session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
-    except ImportError:
-        session.pop("_creative_concert_key_source", None)
+            pick = resolve_practice_source_pick(session)
+            resolved_key = resolve_practice_concert_key_for_pick(
+                session,
+                pick,
+                original_key=resolved_key,
+            ).strip() or resolved_key
+        except ImportError:
+            pass
+    clear_backing_context(session)
+    if not preserve_practice_key:
+        _release_creative_backing_ownership(session)
+        try:
+            from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE
+
+            session.pop(CREATIVE_CONCERT_KEY_SOURCE, None)
+        except ImportError:
+            session.pop("_creative_concert_key_source", None)
     try:
         from songs.music_source import ensure_custom_progression_for_backing
 
@@ -2896,7 +2978,9 @@ def restore_custom_song_backing(session: dict[str, Any], *, st_like: Any | None 
             original_key=str(original or ctx.concert_key or ctx.key or ""),
         )
     except ImportError:
-        concert = str(original or ctx.concert_key or ctx.display_key or ctx.key or "").strip()
+        concert = str(original or ctx.concert_key or ctx.display_key or ctx.key or resolved_key or "").strip()
+    if not concert and resolved_key:
+        concert = resolved_key
     if concert:
         _apply_practice_display_key(session, concert, st_like=st_like)
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
@@ -2984,16 +3068,36 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
 
 
 def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
-    """Re-apply persisted Creative/custom backing_context after cloud or disk restore."""
+    """Re-apply persisted Creative/custom/composition backing_context after cloud or disk restore."""
     try:
         from creative_session_state import hydrate_creative_session_after_restore
 
         hydrate_creative_session_after_restore(session)
     except ImportError:
         pass
+    try:
+        from backing_source_navigation import restore_practice_backing_if_stale
+
+        if restore_practice_backing_if_stale(session):
+            session[PENDING_BACKING_CONTEXT_APPLY] = True
+            return
+    except ImportError:
+        pass
     ensure_backing_context_from_creative_session(session)
     ctx = get_backing_context(session)
-    if ctx is None or ctx.source == "regular_song":
+    if ctx is None:
+        return
+    if ctx.source == "regular_song":
+        try:
+            from backing_source_navigation import _backing_owner_stale_for_active_source
+
+            if _backing_owner_stale_for_active_source(session):
+                from backing_source_navigation import restore_practice_backing_if_stale
+
+                restore_practice_backing_if_stale(session)
+                session[PENDING_BACKING_CONTEXT_APPLY] = True
+        except ImportError:
+            pass
         return
     if not is_backing_context_valid(session, ctx):
         clear_backing_context(session)
@@ -3079,6 +3183,13 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
 
     if ctx is not None and ctx.source == "regular_song":
         try:
+            from backing_source_navigation import restore_practice_backing_if_stale
+
+            if restore_practice_backing_if_stale(session, st_like=st_like):
+                ctx = get_backing_context(session)
+        except ImportError:
+            pass
+        try:
             from music_source_ownership import catalog_identity_aligns, rebuild_catalog_backing_from_canonical_pick
 
             if not catalog_identity_aligns(session):
@@ -3097,6 +3208,17 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:custom_progression_refresh")
+        _sync_sidebar_to_ctx(get_backing_context(session))
+        flush_pending_backing_handoff_keys(
+            session,
+            sync_id=str(session.get("_backing_trace_sync_id") or ""),
+        )
+        return
+    if ctx is not None and ctx.source == "composition_song":
+        refreshed = refresh_backing_context_from_session(session)
+        if refreshed is not None:
+            set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:composition_song_refresh")
+        _sync_sidebar_to_ctx(get_backing_context(session))
         flush_pending_backing_handoff_keys(
             session,
             sync_id=str(session.get("_backing_trace_sync_id") or ""),
