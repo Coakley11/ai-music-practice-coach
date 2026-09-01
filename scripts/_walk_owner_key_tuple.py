@@ -119,6 +119,127 @@ def is_d_minor(label: str) -> bool:
     return "d minor" in t or bool(re.search(r"\bdm\b", t))
 
 
+def charts_in_label(text: str) -> str:
+    m = re.search(r"Charts in\s+([^\n]+)", text or "", re.I)
+    return (m.group(1) if m else "").strip()
+
+
+def shape_key_widget_value(page: Page) -> str:
+    try:
+        return str(
+            page.evaluate(
+                """() => {
+                  const boxes = [...document.querySelectorAll('[data-testid="stSelectbox"]')];
+                  for (const b of boxes) {
+                    const t = (b.innerText || '');
+                    if (!/Shape Key/i.test(t)) continue;
+                    const input = b.querySelector('input');
+                    if (input && input.value) return input.value;
+                    return t.replace(/Shape Key/ig, '').trim().split('\\n')[0];
+                  }
+                  return '';
+                }"""
+            )
+            or ""
+        )
+    except Exception:
+        return ""
+
+
+def enable_guitar_shape_mode(page: Page, notes: list[str]) -> bool:
+    """Guitar + Capo Shape Mode only. Do not claim Shape tonic until commit_shape_tonic."""
+    from walk_creative_backing_matrix import (
+        ensure_checkbox,
+        expand_sidebar,
+        set_instrument,
+        wait_idle,
+    )
+
+    expand_sidebar(page)
+    inst_ok = set_instrument(page, "Guitar")
+    notes.append(f"instrument Guitar={inst_ok}")
+    wait_idle(page, 2500)
+    expand_sidebar(page)
+    capo_ok = ensure_checkbox(page, "Capo Shape Mode", checked=True)
+    notes.append(f"capo enabled={capo_ok}")
+    wait_idle(page, 2500)
+    return bool(inst_ok and capo_ok)
+
+
+def commit_shape_tonic(page: Page, tonic: str) -> bool:
+    """Click the Shape Key option exactly (not C# when asking for C) and wait for charts."""
+    from walk_creative_backing_matrix import expand_sidebar, wait_idle
+
+    expand_sidebar(page)
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+    except Exception:
+        pass
+    box = page.locator('section[data-testid="stSidebar"] [data-testid="stSelectbox"]').filter(
+        has_text=re.compile(r"Shape Key", re.I)
+    )
+    if box.count() == 0:
+        box = page.locator('[data-testid="stSelectbox"]').filter(has_text=re.compile(r"Shape Key", re.I))
+    if box.count() == 0:
+        return False
+    target = box.first
+    try:
+        target.scroll_into_view_if_needed()
+        clickable = target.locator('[data-baseweb="select"], [role="combobox"], input').first
+        (clickable if clickable.count() else target).click(timeout=4000)
+        page.wait_for_timeout(400)
+        page.keyboard.press("Control+A")
+        page.wait_for_timeout(80)
+        page.keyboard.press("Backspace")
+        page.keyboard.type(tonic, delay=40)
+        page.wait_for_timeout(500)
+    except Exception:
+        return False
+    chosen = False
+    try:
+        exact = page.get_by_role("option", name=tonic, exact=True)
+        if exact.count():
+            exact.first.scroll_into_view_if_needed()
+            exact.first.click(timeout=4000)
+            chosen = True
+    except Exception:
+        pass
+    if not chosen:
+        opts = page.locator('[role="listbox"] [role="option"], [role="option"]')
+        for i in range(min(opts.count(), 48)):
+            el = opts.nth(i)
+            try:
+                if (el.inner_text() or "").strip() != tonic:
+                    continue
+                el.scroll_into_view_if_needed()
+                el.click(timeout=4000)
+                chosen = True
+                break
+            except Exception:
+                continue
+    if not chosen:
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return False
+    wait_idle(page, 2500)
+    try:
+        page.wait_for_function(
+            """(tonic) => {
+              const t = document.body ? (document.body.innerText || '') : '';
+              return new RegExp('Charts in\\\\s+' + tonic + '\\\\s*minor', 'i').test(t);
+            }""",
+            arg=tonic,
+            timeout=15_000,
+        )
+    except Exception:
+        pass
+    val = low(shape_key_widget_value(page))
+    return val.strip() == low(tonic) or val.startswith(low(tonic) + " ")
+
+
 def click_sbi_song_source(page: Page, which: str) -> bool:
     """Click SBI Song Source Active vs Custom via native radio input."""
     needle = "custom" if which == "custom" else "active"
@@ -173,7 +294,7 @@ def main() -> int:
         set_instrument,
         wait_idle,
     )
-    from walk_guitar_shape_key import enable_guitar_capo, pick_song
+    from walk_guitar_shape_key import pick_song
     from _walk_acceptance_an import force_pk_token, set_style_jam_concert_key
     from _walk_core_key_coherence import set_songs_practice_key
     from _walk_core_workflows_embargo import open_sbi_active
@@ -360,20 +481,27 @@ def main() -> int:
 
         # 8. SBI Active coherent tuple — Active Source after explicit Shape.
         ok_sbi = open_sbi_active(page)
-        click_sbi_song_source(page, "active")
-        settle(page, 2)
-        try:
-            page.wait_for_function(
-                """() => {
-                  const t = document.body ? (document.body.innerText || '') : '';
-                  return /Shape of You/i.test(t)
-                    && (/B minor/i.test(t) || /practice concert key:\\s*bm/i.test(t));
-                }""",
-                timeout=20_000,
-            )
-        except Exception:
+        landed_active = False
+        for attempt in range(4):
             click_sbi_song_source(page, "active")
-            settle(page, 3)
+            settle(page, 2)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      const low = t.toLowerCase();
+                      const shape = /Shape of You/i.test(t);
+                      const bm = /B minor/i.test(t) || /practice concert key:\\s*bm/i.test(low);
+                      const custom_trial = /trial song/i.test(t)
+                        && /practice concert key:\\s*d\\b/.test(low);
+                      return shape && bm && !custom_trial;
+                    }""",
+                    timeout=10_000,
+                )
+                landed_active = True
+                break
+            except Exception:
+                log(f"sbi active wait attempt={attempt}")
         side, body = shot(page, "08-sbi-active-shape")
         combined = body + side
         card_shape = has_any(body, "Shape of You") and (
@@ -404,30 +532,43 @@ def main() -> int:
             "8_sbi_active_tuple",
             "PASS" if sbi_ok else "RED",
             f"card_shape={card_shape} custom_card={custom_card} bm={sbi_bm} "
-            f"open={ok_sbi} pk={pk_label(combined)!r} card={pk_val(page)!r}",
+            f"open={ok_sbi} landed={landed_active} pk={pk_label(combined)!r} card={pk_val(page)!r}",
         )
 
         click_nav(page, "Songs")
         settle(page, 2)
-        set_instrument(page, "Guitar")
-        settle(page, 2)
-        try:
-            enable_guitar_capo(page, NOTES, "C")
-        except Exception as exc:
-            log(f"enable_guitar_capo failed: {exc}")
+        pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 3)
+        force_pk_token(page, "Bm")
+        settle(page, 2)
+        mode_ok = enable_guitar_shape_mode(page, NOTES)
+        committed = False
+        for attempt in range(3):
+            committed = commit_shape_tonic(page, "C")
+            log(f"shape_tonic_commit attempt={attempt} ok={committed} widget={shape_key_widget_value(page)!r}")
+            if committed:
+                break
+            settle(page, 2)
+        settle(page, 2)
         side, body = shot(page, "08b-songs-guitar-c")
         combined = body + side
-        c_minor_ctx = (
-            has_any(combined, "Charts in C minor")
-            or has_any(combined, "C minor")
-        )
+        charts = charts_in_label(combined)
+        c_minor_ctx = bool(re.search(r"charts in\s+c\s*minor", low(combined)))
+        c_major_ctx = bool(re.search(r"charts in\s+c\s*major", low(combined)))
         still_bm = is_b_minor(pk_val(page) or "") or is_b_minor(pk_label(combined) or "")
-        mark(
-            "10_guitar_shape_c_minor",
-            "PASS" if c_minor_ctx and still_bm else "PARTIAL",
-            f"c_minor={c_minor_ctx} bm={still_bm} charts_b={'charts in b minor' in low(combined)}",
-        )
+        if c_major_ctx:
+            mark(
+                "10_guitar_shape_c_minor",
+                "RED",
+                f"PRODUCT? charts={charts!r} widget={shape_key_widget_value(page)!r} bm={still_bm}",
+            )
+        else:
+            mark(
+                "10_guitar_shape_c_minor",
+                "PASS" if c_minor_ctx and still_bm and not c_major_ctx else "PARTIAL",
+                f"c_minor={c_minor_ctx} bm={still_bm} charts={charts!r} "
+                f"widget={shape_key_widget_value(page)!r} commit={committed} mode={mode_ok}",
+            )
 
         # 11. Bm → Dm on Songs, then confirm it persists
         click_nav(page, "Songs")

@@ -2,7 +2,7 @@
 
 Usage:
   python scripts/_walk_remaining_reds.py http://127.0.0.1:PORT G12
-  GATE: G12 G13 G14 G15 AN_EFH AN_N OWNER8 SONGS3 FINISH_GH
+  GATE: G12 G13 G14 G15 AN_EFH AN_N OWNER8 OWNER10 SONGS3 FINISH_GH
 """
 from __future__ import annotations
 
@@ -49,7 +49,16 @@ from _walk_ownership_audit_full import (  # noqa: E402
 )
 from _walk_pass8_validate import ensure_missions_workspace  # noqa: E402
 from _walk_reboot_persistence_ai_p19 import open_sbi_custom_source  # noqa: E402
-from _walk_owner_key_tuple import click_sbi_song_source, is_b_minor, is_c_major, is_d_major  # noqa: E402
+from _walk_owner_key_tuple import (  # noqa: E402
+    charts_in_label,
+    click_sbi_song_source,
+    commit_shape_tonic,
+    enable_guitar_shape_mode,
+    is_b_minor,
+    is_c_major,
+    is_d_major,
+    shape_key_widget_value,
+)
 from _walk_cpl_finish_save import (  # noqa: E402
     launch_labels,
     label_has,
@@ -435,6 +444,93 @@ def proof_owner8(page: Page) -> int:
     )
 
 
+def selectbox_value(page: Page, label: str) -> str:
+    try:
+        return str(
+            page.evaluate(
+                """(label) => {
+                  const boxes = [...document.querySelectorAll('[data-testid="stSelectbox"]')];
+                  const want = String(label).toLowerCase();
+                  for (const b of boxes) {
+                    const t = (b.innerText || '').toLowerCase();
+                    if (!t.includes(want)) continue;
+                    const input = b.querySelector('input');
+                    if (input && input.value) return input.value;
+                    const p = b.querySelector('p, [data-baseweb="select"]');
+                    return ((p && p.innerText) || b.innerText || '').trim();
+                  }
+                  return '';
+                }""",
+                label,
+            )
+            or ""
+        )
+    except Exception:
+        return ""
+
+
+def charts_in_label(text: str) -> str:
+    m = re.search(r"Charts in\s+([^\n]+)", text or "", re.I)
+    return (m.group(1) if m else "").strip()
+
+
+def proof_owner10(page: Page) -> int:
+    """Shape of You Bm + Guitar Shape tonic C → Charts in C minor, concert still Bm."""
+    from walk_creative_backing_matrix import expand_sidebar
+
+    click_nav(page, "Songs")
+    settle(page, 2)
+    click_button_has(page, r"Use catalog song instead")
+    settle(page, 1)
+    pick_song(page, NOTES, "Shape of You", "Pop")
+    settle(page, 3)
+    force_pk_token(page, "Bm")
+    settle(page, 2)
+    expand_sidebar(page)
+    mode_ok = enable_guitar_shape_mode(page, NOTES)
+    committed = commit_shape_tonic(page, "C")
+    log(f"shape_mode={mode_ok} shape_commit={committed} widget={shape_key_widget_value(page)!r}")
+    expand_sidebar(page)
+    settle(page, 1)
+    body = shot(page, "guitar-shape-c")
+    side = ""
+    try:
+        side = page.inner_text('[data-testid="stSidebar"]') or ""
+    except Exception:
+        side = ""
+    combined = body + "\n" + side
+    shape_widget = shape_key_widget_value(page)
+    inst_widget = selectbox_value(page, "Instrument")
+    pk_widget = pk_val(page) or ""
+    badge = practice_badge(combined) or card_practice_label(combined)
+    charts = charts_in_label(combined)
+    concert_bm = is_b_minor(pk_widget) or is_b_minor(badge or "") or has_any(
+        combined, "Sounding Key: Bm", "Practice / Concert Key"
+    )
+    charts_c_minor = bool(re.search(r"charts in\s+c\s*minor", low(combined)))
+    charts_c_major = bool(re.search(r"charts in\s+c\s*major", low(combined)))
+    charts_b_minor = bool(re.search(r"charts in\s+b\s*minor", low(combined)))
+    shape_is_c = bool(re.search(r"^c$", low(shape_widget).split()[0] if shape_widget else "")) or (
+        low(shape_widget).strip() in {"c", "c\nshape key"} or re.search(r"\bc\b", low(shape_widget))
+        and "c#" not in low(shape_widget)
+        and "c♯" not in low(shape_widget)
+    )
+    log(
+        f"shape_widget={shape_widget!r} inst={inst_widget!r} pk={pk_widget!r} "
+        f"badge={badge!r} charts={charts!r} mode={mode_ok} commit={committed}"
+    )
+    # Product-correct tuple: concert Bm + Shape C + Charts in C minor, not C major.
+    product_ok = charts_c_minor and not charts_c_major and (
+        is_b_minor(pk_widget) or is_b_minor(badge or "")
+    )
+    return finish(
+        product_ok,
+        f"shape={shape_widget!r} charts={charts!r} pk={pk_widget!r} badge={badge!r} "
+        f"c_minor={charts_c_minor} c_major={charts_c_major} b_minor_charts={charts_b_minor} "
+        f"concert_bm={concert_bm} shape_c={shape_is_c}",
+    )
+
+
 def click_songs_creative(page: Page) -> bool:
     loc = page.locator('[class*="st-key-picker_card_creative"] button')
     if loc.count():
@@ -565,6 +661,7 @@ def main() -> int:
             "AN_EFH": lambda: proof_an_efh(page),
             "AN_N": lambda: proof_an_n(page),
             "OWNER8": lambda: proof_owner8(page),
+            "OWNER10": lambda: proof_owner10(page),
             "SONGS3": lambda: proof_songs3(page),
             "FINISH_GH": lambda: proof_finish_gh(page),
         }.get(GATE)

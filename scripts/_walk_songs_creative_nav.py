@@ -118,6 +118,11 @@ def on_songs(body: str) -> bool:
     return has_any(body, "Song Selection", "Choose a song from your library", "Now loaded for practice")
 
 
+def pk_is_b_minor(pk: str, body: str = "") -> bool:
+    t = low(f"{pk or ''} {body or ''}")
+    return "b minor" in t or bool(re.search(r"\bbm\b", t))
+
+
 def main() -> int:
     log(f"url={URL}")
     notes: list[str] = NOTES
@@ -133,7 +138,17 @@ def main() -> int:
         settle(page, 2)
         click_button_has(page, r"Use catalog song instead")
         settle(page, 2)
-        pick_song(page, notes, "Shape of You", "Pop")
+        landed_shape = False
+        for attempt in range(4):
+            landed_shape = pick_song(page, notes, "Shape of You", "Pop")
+            settle(page, 2)
+            body_pick = page.inner_text("body") or ""
+            if landed_shape or has_any(body_pick, "NOW LOADED FOR PRACTICE") and has_any(
+                body_pick, "Shape of You"
+            ):
+                landed_shape = True
+                break
+            log(f"pick Shape retry={attempt}")
         settle(page, 3)
         set_songs_practice_key(page, "Bm")
         settle(page, 3)
@@ -145,7 +160,7 @@ def main() -> int:
         body1b = shot(page, "1-creative-shape")
         pk1b = practice_badge(body1b) or pk_val(page)
         still_shape = has_any(body1b, "Shape of You") and not has_any(body1b, "Trial Song")
-        pk_same = "b minor" in low(pk1b or body1b)
+        pk_same = pk_is_b_minor(pk1b, body1b)
         mark(
             "1_shape_to_creative",
             bool(shape_on_songs and btn_visible and clicked and on_creative(body1b) and still_shape and pk_same),
@@ -164,7 +179,7 @@ def main() -> int:
         pk2 = practice_badge(body2b) or pk_val(page)
         mark(
             "2_creative_songs_creative",
-            bool(on_songs(body2) and clicked2 and on_creative(body2b) and still_shape2 and "b minor" in low(pk2 or body2b)),
+            bool(on_songs(body2) and clicked2 and on_creative(body2b) and still_shape2 and pk_is_b_minor(pk2, body2b)),
             f"songs={on_songs(body2)} click={clicked2} creative={on_creative(body2b)} "
             f"shape={still_shape2} sbi_was_active={sbi_before} pk={pk2!r}",
         )
@@ -207,7 +222,21 @@ def main() -> int:
 
         # 4. Refresh after using the new button
         page.reload(wait_until="domcontentloaded", timeout=180000)
-        settle(page, 6)
+        settle(page, 4)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  if (t.length < 800) return false;
+                  const creative = /Entry & Jam/i.test(t) || /Improvisation Intelligence/i.test(t)
+                    || /Song-Based/i.test(t);
+                  return creative && /Trial Song/i.test(t);
+                }""",
+                timeout=45_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         body4 = shot(page, "4-refresh")
         still_creative = on_creative(body4)
         still_trial4 = has_any(body4, "Trial Song")
