@@ -200,17 +200,18 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
     page = str(from_page or session.get("studio_page") or "").strip()
     try:
         from songs.music_source import (
-            composition_song_is_active,
-            custom_progression_is_active,
-            picker_composition_mode,
+            songs_hub_composition_backing_selected,
+            songs_hub_custom_backing_selected,
         )
 
-        if composition_song_is_active(session) or picker_composition_mode(session):
-            session["_force_composition_backing_open"] = True
+        if songs_hub_custom_backing_selected(session):
+            session.pop("_force_composition_backing_open", None)
+            session.pop("_composition_hub_backing_clicked", None)
             set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
-        if custom_progression_is_active(session):
+        if songs_hub_composition_backing_selected(session):
+            session["_force_composition_backing_open"] = True
             set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
@@ -521,14 +522,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             )
         except ImportError:
             explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
-        if explicit_leave_composition and not force_composition:
+        if explicit_leave_composition:
             pick_looks_composition = False
+            force_composition = False
         if (
             force_composition
             or explicit == SOURCE_COMPOSITION
             or (pick_looks_composition and not explicit_leave_composition)
-            or composition_song_is_active(session)
-            or picker_composition_mode(session)
+            or (
+                (composition_song_is_active(session) or picker_composition_mode(session))
+                and not explicit_leave_composition
+            )
         ):
             from backing_context import (
                 apply_backing_context_to_session,

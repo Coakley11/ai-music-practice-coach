@@ -669,7 +669,9 @@ def capture_switch_telemetry(page: Page, label: str) -> dict:
         "radio_custom": assert_radio_selected(page, "Custom Progression"),
         "radio_comp": assert_radio_selected(page, "Composition"),
         "explicit": comp.get("explicit") or custom.get("explicit") or "",
+        "explicit_seq": comp.get("explicit_seq") or "",
         "pick": comp.get("pick") or custom.get("pick") or "",
+        "title": comp.get("title") or custom.get("title") or "",
         "owner": comp.get("owner") or custom.get("owner") or "",
         "comp_hub_ready": comp.get("ready") or "",
         "comp_hub_backing_btns": _count_live_hub_buttons(page, "composition_hub_backing"),
@@ -678,12 +680,13 @@ def capture_switch_telemetry(page: Page, label: str) -> dict:
         "catalog_hub_backing_btns": _count_live_hub_buttons(page, "catalog_hub_backing"),
         "backing_card_owner": read_live_backing_card_owner(page),
         "on_backing": _on_backing_studio(page),
+        "comp_snap": comp.get("snap") or "",
     }
     print(
         f"[telemetry] {label} page={row['page']} owner={row['backing_card_owner']!r} "
-        f"comp_ready={row['comp_hub_ready']} comp_btn={row['comp_hub_backing_btns']} "
-        f"cat_btn={row['catalog_hub_backing_btns']} pick_btn={row['picker_card_backing_btns']} "
-        f"pick={row['pick']!r}",
+        f"explicit={row['explicit']!r} comp_ready={row['comp_hub_ready']} "
+        f"comp_btn={row['comp_hub_backing_btns']} custom_btn={row['custom_hub_backing_btns']} "
+        f"cat_btn={row['catalog_hub_backing_btns']} pick={row['pick']!r} title={row['title']!r}",
         flush=True,
     )
     return row

@@ -7600,19 +7600,19 @@ def _picker_navigate(
             )
             from songs.music_source import (
                 composition_song_is_active,
-                custom_progression_is_active,
-                picker_composition_mode,
+                songs_hub_composition_backing_selected,
+                songs_hub_custom_backing_selected,
             )
 
             set_backing_open_provenance(st.session_state, BACKING_PROVENANCE_SONGS)
 
-            # Songs hub Backing must follow the active owner (Composition/Custom/
-            # Catalog), not force a Practice-intent catalog rebuild.
-            # Radio Composition counts even when ownership promote is still mid-flight.
-            if (
-                composition_song_is_active(st.session_state)
-                or picker_composition_mode(st.session_state)
-            ):
+            # Songs hub Backing must follow the live hub owner (Custom before
+            # Composition) — stale composition:: picks must not steal Custom.
+            if songs_hub_custom_backing_selected(st.session_state):
+                st.session_state.pop("_force_composition_backing_open", None)
+                st.session_state.pop("_composition_hub_backing_clicked", None)
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            elif songs_hub_composition_backing_selected(st.session_state):
                 # Always force Composition on Songs→Backing while the radio is
                 # Composition — survives Custom→Composition mid-flight where the
                 # pick may still be custom:: for one rerun.
@@ -7653,8 +7653,6 @@ def _picker_navigate(
                     page="backing",
                     composition=True,
                 )
-            elif custom_progression_is_active(st.session_state):
-                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             else:
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
         except ImportError:

@@ -287,6 +287,41 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertIsNotNone(ctx)
         self.assertNotEqual(getattr(ctx, "source", None), "composition_song")
 
+    def test_open_backing_ignores_stale_force_when_explicit_custom(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_CUSTOM,
+        )
+
+        ss = {
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::trial-d",
+            "active_song_state": {
+                "pick_key": "composition::stale-doc",
+                "music_source": "composition_song",
+            },
+            "_force_composition_backing_open": True,
+            "cpl_active_progression": {
+                "name": "Trial Song",
+                "id": "trial-d",
+                "original_key_center": "D",
+                "bpm": 100,
+                "original_sections": {"A": [{"chord": "D", "bars": 2}]},
+            },
+        }
+        ctx = open_backing_for_practice_source(
+            ss, st_like=SimpleNamespace(session_state=ss)
+        )
+        self.assertIsNotNone(ctx)
+        self.assertEqual(getattr(ctx, "source", None), "custom_progression")
+        self.assertNotIn("_force_composition_backing_open", ss)
+
 
 
 

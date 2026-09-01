@@ -268,6 +268,27 @@ def picker_composition_mode(session_state: dict[str, Any]) -> bool:
     return picker_choice_is_composition(choice)
 
 
+def songs_hub_custom_backing_selected(session_state: dict[str, Any]) -> bool:
+    """Live Songs hub: Custom owns the next hub Backing navigation."""
+    explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_CUSTOM:
+        return True
+    if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return False
+    if explicit == SOURCE_COMPOSITION:
+        return False
+    if picker_custom_progression_mode(session_state):
+        return True
+    return custom_progression_is_active(session_state)
+
+
+def songs_hub_composition_backing_selected(session_state: dict[str, Any]) -> bool:
+    """Live Songs hub: Composition owns the next hub Backing navigation."""
+    if songs_hub_custom_backing_selected(session_state):
+        return False
+    return composition_song_is_active(session_state) or picker_composition_mode(session_state)
+
+
 def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
