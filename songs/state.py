@@ -96,12 +96,17 @@ def apply_explicit_catalog_dropdown_pick(
             pass
     if requested and not requested.startswith("custom::"):
         session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = requested
-    if requested != live_before:
+    specialized_fresh = bool(
+        session.get("_explicit_catalog_fresh_activation")
+        or session.get("_pending_catalog_fresh_activation_after_specialized")
+        or session.get("_backing_released_specialized_context")
+    )
+    if requested != live_before or specialized_fresh:
         session["_explicit_catalog_fresh_activation"] = True
-        # Master may already equal Shape from a prior no-op while Global Active
-        # is still Say — force pick_changed so identity/keys apply this click.
+        # Same-pick after Jam/Custom/other owner must still look like a new
+        # activation so Original Key applies instead of leftover sticky Dm.
         if session.get(_LAST_PICK_KEY) == requested:
-            session[_LAST_PICK_KEY] = live_before or ""
+            session[_LAST_PICK_KEY] = live_before if requested != live_before else ""
     data = apply_pick_key(
         st,
         requested,
@@ -1553,8 +1558,9 @@ def apply_pick_key(
             except ImportError:
                 pass
             effective_display_key = original_key
-        st.session_state.pop("_explicit_catalog_fresh_activation", None)
-        st.session_state.pop("_pending_catalog_fresh_activation_after_specialized", None)
+            st.session_state.pop("_explicit_catalog_fresh_activation", None)
+            st.session_state.pop("_pending_catalog_fresh_activation_after_specialized", None)
+            st.session_state.pop("_backing_released_specialized_context", None)
         try:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 

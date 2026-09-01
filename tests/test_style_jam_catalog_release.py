@@ -15,7 +15,7 @@ from guitar_capo import shape_chart_key_for_concert, shape_chart_label_for_conce
 from song_catalog.catalog import format_pick_key
 from songs.music_source import begin_explicit_catalog_selection
 from songs.practice_key_state import get_practice_concert_key
-from songs.state import apply_pick_key
+from songs.state import apply_explicit_catalog_dropdown_pick, apply_pick_key
 from source_session_state import _catalog_display_key
 
 
@@ -29,8 +29,15 @@ CATALOG = {
             "key": "Bm",
             "sections": {"Verse": ["Bm", "Em", "G", "A"]},
         },
+        "Perfect — Ed Sheeran": {
+            "title": "Perfect",
+            "artist": "Ed Sheeran",
+            "key": "G",
+            "sections": {"Verse": ["G", "Em", "C", "D"]},
+        },
     }
 }
+PK_PERFECT = format_pick_key("Pop", "Perfect — Ed Sheeran")
 
 
 class TestStyleJamCatalogRelease(unittest.TestCase):
@@ -491,6 +498,146 @@ class TestStyleJamCatalogRelease(unittest.TestCase):
             get_authoritative_display_key(session, original_key="Bm", surface="test"),
             "Bm",
         )
+
+    def test_jam_release_clears_same_mode_sticky_dm(self) -> None:
+        """Shape sticky Dm must not survive Style Jam release (same minor family)."""
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PK_SHAPE,
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "key": "Bm",
+            },
+            "display_key": "C#",
+            "concert_key": "C#",
+            "improv_style_key": "C#",
+            "improv_entry_mode": "Style Jam Mode",
+            "_generated_jam_key_owner_active": True,
+            "_backing_explicit_handoff_source": "entry_jam",
+            GENERATED_JAM_KEY_CONTEXT_KEY: {
+                "key_owner": "entry_jam",
+                "practice_key_token": "C#",
+                "entry_mode": "Style Jam Mode",
+            },
+            "practice_key_by_source": {PK_SHAPE: "Dm"},
+        }
+        self.assertTrue(release_generated_jam_key_for_catalog_surface(session))
+        live = str(session.get("display_key") or session.get("concert_key") or "")
+        self.assertEqual(live, "Bm")
+        self.assertEqual(str(get_practice_concert_key(session, PK_SHAPE) or ""), "Bm")
+        self.assertTrue(session.get("_pending_catalog_fresh_activation_after_specialized"))
+
+    def test_restore_apply_pick_does_not_consume_specialized_fresh_flag(self) -> None:
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PK_SHAPE,
+            "_last_pick_key": PK_SHAPE,
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "_pending_catalog_fresh_activation_after_specialized": True,
+            "_explicit_catalog_fresh_activation": True,
+            "practice_key_by_source": {PK_SHAPE: "Bm"},
+        }
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SHAPE, CATALOG, persist=False, origin="restore")
+        self.assertTrue(session.get("_pending_catalog_fresh_activation_after_specialized"))
+        self.assertTrue(session.get("_explicit_catalog_fresh_activation"))
+
+    def test_explicit_same_pick_after_jam_uses_original_not_sticky_dm(self) -> None:
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PK_SHAPE,
+            "_last_pick_key": PK_SHAPE,
+            "active_music_source": "catalog_song",
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "improv_entry_mode": "Style Jam Mode",
+            "_generated_jam_key_owner_active": True,
+            "_backing_explicit_handoff_source": "entry_jam",
+            GENERATED_JAM_KEY_CONTEXT_KEY: {
+                "key_owner": "entry_jam",
+                "practice_key_token": "C#",
+                "entry_mode": "Style Jam Mode",
+            },
+            "practice_key_by_source": {PK_SHAPE: "Dm"},
+            "_master_song_pick_key": PK_SHAPE,
+        }
+        activate_generated_jam_key_ownership(
+            session, entry_mode="Style Jam Mode", practice_key="C#"
+        )
+        session["display_key"] = "C#"
+        begin_explicit_catalog_selection(session)
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        with patch("songs.state.persist_music_local_state"):
+            apply_explicit_catalog_dropdown_pick(st, PK_SHAPE, CATALOG)
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        self.assertNotEqual(str(session.get("display_key") or ""), "Dm")
+        saved = str(get_practice_concert_key(session, PK_SHAPE) or "")
+        self.assertNotEqual(saved, "Dm")
+        self.assertFalse(session.get("_backing_released_specialized_context"))
+
+    def test_perfect_then_explicit_shape_is_original_b_minor(self) -> None:
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PK_SHAPE,
+            "_last_pick_key": PK_SHAPE,
+            "active_music_source": "catalog_song",
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "practice_key_by_source": {PK_SHAPE: "Dm"},
+            "_master_song_pick_key": PK_SHAPE,
+        }
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        with patch("songs.state.persist_music_local_state"):
+            apply_explicit_catalog_dropdown_pick(st, PK_PERFECT, CATALOG)
+            self.assertEqual(str(session.get("display_key") or ""), "G")
+            apply_explicit_catalog_dropdown_pick(st, PK_SHAPE, CATALOG)
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        self.assertNotEqual(str(session.get("display_key") or ""), "Dm")
+
+    def test_same_source_shape_dm_sticky_without_other_owner(self) -> None:
+        """While Shape stays Global Active, user Dm must remain sticky."""
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PK_SHAPE,
+            "_last_pick_key": PK_SHAPE,
+            "active_music_source": "catalog_song",
+            "selected_song": {
+                "pick_key": PK_SHAPE,
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+            },
+            "display_key": "Dm",
+            "concert_key": "Dm",
+            "practice_key_by_source": {PK_SHAPE: "Dm"},
+            "_master_song_pick_key": PK_SHAPE,
+        }
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SHAPE, CATALOG, persist=False, origin="user")
+        self.assertEqual(str(session.get("display_key") or ""), "Dm")
+        self.assertEqual(str(get_practice_concert_key(session, PK_SHAPE) or ""), "Dm")
 
     def test_guitar_shape_c_inherits_shape_of_you_minor(self) -> None:
         self.assertEqual(shape_chart_key_for_concert("Bm", "C"), "Cm")

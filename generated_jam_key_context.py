@@ -6,6 +6,7 @@ from typing import Any
 
 GENERATED_JAM_KEY_CONTEXT_KEY = "_generated_jam_key_context"
 SONG_PRACTICE_KEY_SNAPSHOT_KEY = "_song_practice_key_snapshot"
+PENDING_CATALOG_FRESH_AFTER_SPECIALIZED = "_pending_catalog_fresh_activation_after_specialized"
 
 
 def _jam_session_id(session: dict[str, Any]) -> str:
@@ -184,6 +185,7 @@ def activate_generated_jam_key_ownership(
         "entry_mode": entry,
     }
     session["_generated_jam_key_owner_active"] = True
+    session[PENDING_CATALOG_FRESH_AFTER_SPECIALIZED] = True
     try:
         from creative_key_sync import apply_creative_concert_key
 
@@ -269,6 +271,10 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widge
                         _ht, heal_mode = split_key_center(heal)
                         if orig_mode and heal_mode and orig_mode != heal_mode:
                             heal = ""
+                        # Specialized jam must not restamp a leftover Trial/Custom
+                        # tonic (D → Dm) onto the catalog song as sticky Practice Key.
+                        if original and heal and heal != original:
+                            heal = ""
                     except Exception:
                         pass
                     if heal:
@@ -287,9 +293,6 @@ def deactivate_generated_jam_key_ownership(session: dict[str, Any], *, pre_widge
     except ImportError:
         pass
     return True
-
-
-PENDING_CATALOG_FRESH_AFTER_SPECIALIZED = "_pending_catalog_fresh_activation_after_specialized"
 
 
 def live_practice_key_is_generated_jam_token(session: dict[str, Any], token: str = "") -> bool:
@@ -361,6 +364,11 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
                         saved = ""
                 except Exception:
                     pass
+            # After Style Jam / specialized ownership, leftover same-mode sticky
+            # (Shape Dm) must not outrank Original Bm on the catalog surface.
+            if saved and original and saved != original:
+                clear_practice_concert_key(session, pick)
+                saved = ""
     except ImportError:
         pass
 

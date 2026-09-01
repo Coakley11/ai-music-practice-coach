@@ -112,6 +112,9 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
         session_state["_pending_catalog_fresh_activation_after_specialized"] = True
     if session_state.get("_pending_catalog_fresh_activation_after_specialized"):
         session_state["_explicit_catalog_fresh_activation"] = True
+    if session_state.get("_backing_released_specialized_context"):
+        session_state["_explicit_catalog_fresh_activation"] = True
+        session_state["_pending_catalog_fresh_activation_after_specialized"] = True
     session_state["improv_song_source"] = "Active song"
     session_state["sbi_preview_source"] = "Active song"
     session_state.pop("guitar_capo_sounding_key", None)
