@@ -7600,15 +7600,20 @@ def _picker_navigate(
             )
             from songs.music_source import (
                 composition_song_is_active,
+                songs_hub_catalog_backing_selected,
                 songs_hub_composition_backing_selected,
                 songs_hub_custom_backing_selected,
             )
 
             set_backing_open_provenance(st.session_state, BACKING_PROVENANCE_SONGS)
 
-            # Songs hub Backing must follow the live hub owner (Custom before
-            # Composition) — stale composition:: picks must not steal Custom.
+            # Songs hub Backing must follow the live hub owner (Custom → Catalog →
+            # Composition) — stale composition:: picks must not steal Catalog/Custom.
             if songs_hub_custom_backing_selected(st.session_state):
+                st.session_state.pop("_force_composition_backing_open", None)
+                st.session_state.pop("_composition_hub_backing_clicked", None)
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
+            elif songs_hub_catalog_backing_selected(st.session_state):
                 st.session_state.pop("_force_composition_backing_open", None)
                 st.session_state.pop("_composition_hub_backing_clicked", None)
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)

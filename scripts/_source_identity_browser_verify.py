@@ -1617,15 +1617,19 @@ def main() -> int:
         text = body_text(page)
         songs_still_comp = "Composition" in text and "Creative" in text
         log("comp_roundtrip_songs", songs_still_comp, "Songs still Composition")
-        open_backing(page, prefer="composition")
-        html = body_html(page)
-        text = body_text(page)
-        coherent = (
-            "mode-composition-song-backing" in html
-            and "🪶" in html
-            and title_line_ok(text, html)
-        )
-        log("comp_roundtrip_backing", coherent, "Composition card coherent after Songs↔Backing")
+        try:
+            wait_composition_hub_ready(page, timeout_ms=25000)
+            open_composition_backing_from_hub(page)
+            coherent = read_live_backing_card_owner(page) == "composition"
+            log(
+                "comp_roundtrip_backing",
+                coherent,
+                "Composition card coherent after Songs↔Backing",
+            )
+        except Exception as exc:
+            capture_switch_telemetry(page, "comp_roundtrip_backing_failed")
+            log("comp_roundtrip_backing", False, str(exc))
+            coherent = False
         if not songs_still_comp or not coherent:
             failures += 1
             dump_debug(page, "comp_roundtrip")

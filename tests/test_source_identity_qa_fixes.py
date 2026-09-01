@@ -322,6 +322,24 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(getattr(ctx, "source", None), "custom_progression")
         self.assertNotIn("_force_composition_backing_open", ss)
 
+    def test_catalog_radio_outranks_stale_composition_pick_for_hub_nav(self) -> None:
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            songs_hub_catalog_backing_selected,
+            songs_hub_composition_backing_selected,
+        )
+
+        ss = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::stale-doc",
+        }
+        self.assertTrue(songs_hub_catalog_backing_selected(ss))
+        self.assertFalse(songs_hub_composition_backing_selected(ss))
+
 
 
 

@@ -282,9 +282,22 @@ def songs_hub_custom_backing_selected(session_state: dict[str, Any]) -> bool:
     return custom_progression_is_active(session_state)
 
 
+def songs_hub_catalog_backing_selected(session_state: dict[str, Any]) -> bool:
+    """Live Songs hub: Catalog owns the next hub Backing navigation."""
+    if songs_hub_custom_backing_selected(session_state):
+        return False
+    explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        return True
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    return choice == SONG_PICKER_SOURCE_CATALOG
+
+
 def songs_hub_composition_backing_selected(session_state: dict[str, Any]) -> bool:
     """Live Songs hub: Composition owns the next hub Backing navigation."""
     if songs_hub_custom_backing_selected(session_state):
+        return False
+    if songs_hub_catalog_backing_selected(session_state):
         return False
     return composition_song_is_active(session_state) or picker_composition_mode(session_state)
 
@@ -1585,6 +1598,12 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
     pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if explicit == SOURCE_CATALOG or user_catalog:
+        # Live Composition/Custom radio outranks a stale catalog stamp from disk
+        # restore (reload after Composition refresh must not mount the catalog hub).
+        if picker_composition_mode(session_state) or picker_custom_progression_mode(
+            session_state
+        ):
+            return reconcile_music_picker_source_widget(session_state)
         # Catalog Backing → Songs can leave a stale composition:: pick or
         # Composition radio while explicit stamp is still Catalog.
         if (
