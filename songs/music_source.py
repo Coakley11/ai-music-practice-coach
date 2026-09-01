@@ -1210,7 +1210,8 @@ def switch_to_catalog_from_custom(
             return False
         selected = dict(snap.get("selected_song") or {})
         original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
-        display_key = str(snap.get("display_key") or original_key).strip() or original_key
+        # Stale snap display_key (e.g. prior Custom E) must not win on catalog restore.
+        display_key = original_key
         data = apply_pick_key(
             st,
             pick_key,

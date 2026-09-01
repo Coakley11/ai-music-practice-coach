@@ -991,6 +991,13 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
 def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
     """Use session practice concert key instead of catalog original-key defaults."""
     try:
+        from songs.music_source import composition_song_is_active, picker_composition_mode
+
+        if composition_song_is_active(session) or picker_composition_mode(session):
+            return True
+    except ImportError:
+        pass
+    try:
         from songs.music_source import cpl_session_is_active, custom_progression_is_active, is_custom_progression
 
         if is_custom_progression(session) or custom_progression_is_active(session) or cpl_session_is_active(session):

@@ -34,6 +34,57 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
     """Canonical tonic/mode for sidebar — not legacy display_key authority."""
     from music_theory import format_key_label_from_parts, key_center_token, split_key_center
 
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            composition_song_is_active,
+            explicit_music_source_choice,
+            picker_composition_mode,
+        )
+
+        if (
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or explicit_music_source_choice(session) == SOURCE_COMPOSITION
+        ):
+            home = "C"
+            try:
+                from composition_session_state import get_active_document
+                from composition_songs_bridge import (
+                    composition_home_key,
+                    composition_pick_key_for,
+                    ensure_generic_composition_document,
+                )
+                from songs.practice_key_state import get_practice_concert_key
+
+                doc = get_active_document(session)
+                if not isinstance(doc, dict):
+                    doc = ensure_generic_composition_document(session)
+                if isinstance(doc, dict):
+                    home = composition_home_key(doc) or home
+                    pick = composition_pick_key_for(doc)
+                    saved = get_practice_concert_key(session, pick, default=home) if pick else home
+                    pt, pm = split_key_center(str(saved or home))
+                else:
+                    pt, pm = split_key_center(home)
+            except ImportError:
+                pt, pm = split_key_center("C")
+            token = key_center_token(pt, pm)
+            label = format_key_label_from_parts(pt, pm)
+            return SidebarKeyIdentity(
+                owner="composition_song",
+                concert_tonic=pt,
+                concert_mode=pm,
+                practice_tonic=pt,
+                practice_mode=pm,
+                written_tonic="",
+                written_mode="",
+                selector_token=token,
+                label=label,
+            )
+    except ImportError:
+        pass
+
     owner = ""
     pt, pm = "C", "major"
     wt = ""

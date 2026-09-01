@@ -21,8 +21,10 @@ v = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(v)
 import _practice_key_e_gate as pke  # noqa: E402
+import _practice_key_harness as pkh  # noqa: E402
 
 RESULTS: list[dict] = []
+FIRST_ATTEMPT_RECOVERIES: list[str] = []
 
 
 def log(step: str, ok: bool, detail: str = "") -> None:
@@ -44,76 +46,30 @@ def _count_live_buttons(page, key: str) -> int:
 
 
 def _set_practice_key_option(page, needle: str) -> bool:
-    """Select Practice/Concert Key option containing needle (handles virtualized lists)."""
-    box = page.locator('[data-testid="stSelectbox"]').filter(
-        has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
-    )
-    if box.count() == 0:
-        return False
-    ctrl = box.first.locator('[data-baseweb="select"], div[role="button"], input')
-    if ctrl.count():
-        ctrl.first.click(timeout=5000)
-    else:
-        box.first.click(timeout=5000)
-    v.wait_streamlit(page, 500)
-    try:
-        page.wait_for_selector('[role="option"]', timeout=5000)
-    except Exception:
-        return False
-    needles = {
-        needle,
-        needle.replace("b", "♭"),
-        needle.replace("♭", "b"),
-        f"{needle} major",
-        f"{needle} Major",
-        f"{needle}m",
-        f"{needle} minor",
-    }
-    listbox = page.locator('[role="listbox"]')
-    # Scroll virtualized menu and click a matching option.
-    for direction in (-1, 1):
-        for _ in range(40):
-            opts = page.locator('[role="option"]')
-            for i in range(opts.count()):
-                t = (opts.nth(i).inner_text(timeout=300) or "").strip()
-                if not t or t == "No results":
-                    continue
-                if t in needles or any(n == t or t.startswith(n + " ") for n in needles):
-                    opts.nth(i).click(timeout=5000)
-                    v.wait_streamlit_idle(page)
-                    v.wait_streamlit(page, 2000)
-                    return True
-                # Loose contains for Eb / E♭ / Ebm
-                if any(n in t for n in needles if len(n) >= 2):
-                    opts.nth(i).click(timeout=5000)
-                    v.wait_streamlit_idle(page)
-                    v.wait_streamlit(page, 2000)
-                    return True
-            if listbox.count():
-                listbox.first.evaluate(f"e => e.scrollTop += {direction * 140}")
-                page.wait_for_timeout(60)
-            else:
-                break
-    page.keyboard.press("Escape")
-    return False
+    ok, _before, _after = pkh.select_practice_key_option(page, needle, v.wait_streamlit_idle)
+    if ok:
+        v.wait_streamlit(page, 1500)
+    return ok
 
 
 def _sidebar_practice_key_value(page) -> str:
-    box = page.locator('[data-testid="stSelectbox"]').filter(
-        has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
-    )
-    if not box.count():
-        return ""
-    # Prefer the visible selected value node inside the control.
-    try:
-        val = box.first.locator('[data-baseweb="select"] span, div[role="button"] span').first
-        if val.count():
-            t = (val.inner_text(timeout=1000) or "").strip()
-            if t and "Practice" not in t:
-                return t
-    except Exception:
-        pass
-    return (box.first.inner_text(timeout=2000) or "").replace("\n", " ")[:160]
+    return pkh.read_practice_key_widget_value(page)
+
+
+def _wait_composition_backing_card_hydrated(page, *, timeout_ms: int = 20000) -> tuple[bool, str]:
+    """Wait for live Composition backing card + Practice Key line (not stale DOM)."""
+    deadline = time.time() + timeout_ms / 1000.0
+    last_side = ""
+    while time.time() < deadline:
+        if v._live_mode_card(page, "mode-composition-song-backing"):
+            v.wait_streamlit_idle(page)
+            text = v.body_text(page)
+            card_pk = pkh.read_card_practice_key(text)
+            last_side = _sidebar_practice_key_value(page)
+            if card_pk and last_side:
+                return True, f"card={card_pk!r} widget={last_side!r}"
+        page.wait_for_timeout(250)
+    return False, f"timeout side={last_side!r}"
 
 
 def main() -> int:
@@ -270,76 +226,96 @@ def main() -> int:
             if not ok_open:
                 fails += 1
 
-        html = v.body_html(page)
+        hydrated, hydrate_detail = _wait_composition_backing_card_hydrated(page)
+        log("composition_backing_hydrated", hydrated, hydrate_detail)
+        if not hydrated:
+            fails += 1
+
         text = v.body_text(page)
-        card_e = bool(
-            re.search(r"Practice\s+concert\s+key:\s*E(\s+major)?\b", text, re.I)
-        )
+        html = v.body_html(page)
+        side_on_backing = _sidebar_practice_key_value(page)
+        card_pk = pkh.read_card_practice_key(text)
+        card_e = pkh.key_token_in_text(card_pk or text, "E")
         no_creative = "Return to Creative" not in text
         has_source_badge = "Source" in html and "Composition" in html
         has_style_badge = "Style" in html and "Auto" in html
-        side_on_backing = _sidebar_practice_key_value(page)
-        agree = card_e and (
-            bool(re.search(r"\bE\b", side_on_backing)) or "E major" in text
+        agree = (
+            card_e
+            and pkh.key_token_in_text(side_on_backing, "E")
+            and (not card_pk or pkh.key_token_in_text(card_pk, "E"))
         )
-        log("composition_backing_no_creative_return", no_creative, text[text.find("Return"):text.find("Return")+80] if "Return" in text else "no Return*")
-        log("composition_card_sidebar_agree_e", agree, f"side={side_on_backing[:80]} card_has_e={card_e}")
+        log("composition_backing_no_creative_return", no_creative, "")
+        log(
+            "composition_card_sidebar_agree_e",
+            agree,
+            f"first_attempt side={side_on_backing[:80]!r} card_pk={card_pk!r}",
+        )
         log("composition_badges", has_source_badge and has_style_badge, "source+style")
         if not no_creative:
             fails += 1
         if not agree:
             fails += 1
+            FIRST_ATTEMPT_RECOVERIES.append("composition_card_sidebar_agree_e")
         if not (has_source_badge and has_style_badge):
             fails += 1
 
-        # Refresh persistence
+        # Refresh persistence — report recovery separately from first-attempt pass.
         page.reload(wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
         kept = False
-        for _ in range(8):
-            try:
-                if v._live_mode_card(page, "mode-composition-song-backing"):
-                    kept = True
-                    break
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
+        for _ in range(12):
+            if v._live_mode_card(page, "mode-composition-song-backing"):
+                v.wait_streamlit_idle(page)
+                kept = True
+                break
+            page.wait_for_timeout(400)
+        recovery_used = False
         if not kept:
+            recovery_used = True
+            FIRST_ATTEMPT_RECOVERIES.append("composition_reopen_after_refresh")
             try:
                 pke._reopen_composition_backing(page)
+                kept = v._live_mode_card(page, "mode-composition-song-backing")
             except Exception as exc:
                 log("composition_reopen_after_refresh", False, str(exc)[:160])
                 fails += 1
-        # Give Streamlit a beat after card appears so Practice Key hydrates.
-        v.wait_streamlit(page, 2500)
+        log(
+            "composition_refresh_card_first_attempt",
+            kept and not recovery_used,
+            f"kept={kept} recovery={recovery_used}",
+        )
+        if recovery_used:
+            log("composition_reopen_after_refresh", kept, "reload-assisted recovery")
+        hydrated2, detail2 = _wait_composition_backing_card_hydrated(page)
+        log("composition_refresh_hydrated", hydrated2, detail2)
         text2 = v.body_text(page)
         html2 = v.body_html(page)
         side2 = _sidebar_practice_key_value(page)
-        pk_line = pke._practice_key_line(text2)
-        still_e = (
-            pke._has_practice_e(text2)
-            or bool(re.search(r"Practice\s+concert\s+key:\s*E(\s+major)?\b", text2, re.I))
-            or bool(re.search(r"Practice\s+E(\s+major)?\b", text2, re.I))
-            or bool(re.search(r"\bE\b", side2))
+        card_pk2 = pkh.read_card_practice_key(text2)
+        still_e = pkh.key_token_in_text(side2, "E") and (
+            pkh.key_token_in_text(card_pk2 or text2, "E")
         )
-        # Progression should still reflect E when original was C (E–C#m–A–B)
         still_prog = pke._has_e_progression(text2, html2) or still_e
         no_creative2 = "Return to Creative" not in text2
+        refresh_ok = still_e and still_prog and hydrated2
         log(
             "composition_e_after_refresh",
-            still_e and still_prog,
-            f"e={still_e} prog={still_prog} kept_card={kept} "
-            f"side={side2[:60]!r} pk_line={pk_line[:80]!r}",
+            refresh_ok,
+            f"e={still_e} prog={still_prog} side={side2[:60]!r} card={card_pk2!r} "
+            f"recovery={recovery_used}",
         )
         log("composition_no_creative_after_refresh", no_creative2, "")
-        if not (still_e and still_prog):
+        if not refresh_ok:
             fails += 1
         if not no_creative2:
             fails += 1
 
         browser.close()
 
-    (OUT / "songs_hub_acceptance.json").write_text(json.dumps(RESULTS, indent=2), encoding="utf-8")
+    (OUT / "songs_hub_acceptance.json").write_text(
+        json.dumps({"results": RESULTS, "first_attempt_recoveries": FIRST_ATTEMPT_RECOVERIES}, indent=2),
+        encoding="utf-8",
+    )
     print(f"Failures: {fails}", flush=True)
     return 1 if fails else 0
 

@@ -8291,7 +8291,15 @@ def _render_custom_song_library_selector() -> None:
 
     if not ordered:
         active_live = ""
-        if custom_progression_is_active(st.session_state):
+        try:
+            from songs.music_source import composition_song_is_active, is_composition_song
+
+            _composition_owns = composition_song_is_active(st.session_state) or is_composition_song(
+                st.session_state
+            )
+        except ImportError:
+            _composition_owns = False
+        if custom_progression_is_active(st.session_state) and not _composition_owns:
             active_live = str(
                 ensure_original_structure(
                     st.session_state.get(CPL_ACTIVE_KEY) or default_active_progression()

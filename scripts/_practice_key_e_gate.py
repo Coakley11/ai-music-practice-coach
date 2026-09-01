@@ -18,6 +18,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _practice_key_harness as pkh  # noqa: E402
 import _source_identity_browser_verify as v  # noqa: E402
 
 OUT = v.OUT
@@ -84,47 +85,11 @@ def _reopen_composition_backing(page) -> None:
 
 
 def set_practice_key_e(page) -> bool:
-    """Open the Practice / Concert Key selectbox and choose E."""
-    box = page.locator('[data-testid="stSelectbox"]').filter(
-        has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
-    )
-    if box.count() == 0:
-        # Sidebar / global bar may use a different container.
-        labels = page.locator("label").filter(
-            has_text=re.compile(r"Practice\s*/\s*Concert Key", re.I)
-        )
-        if not labels.count():
-            return False
-        labels.first.click(timeout=5000)
-    else:
-        # Click the visible control (input or value area).
-        ctrl = box.first.locator('[data-baseweb="select"], [data-testid="stSelectboxVirtualDropdown"], div[role="button"], input')
-        if ctrl.count():
-            ctrl.first.click(timeout=5000)
-        else:
-            box.first.click(timeout=5000)
-    v.wait_streamlit(page, 600)
-    opts = page.locator('[role="option"]')
-    # Wait briefly for listbox.
-    try:
-        page.wait_for_selector('[role="option"]', timeout=5000)
-    except Exception:
-        pass
-    for i in range(opts.count()):
-        t = (opts.nth(i).inner_text(timeout=800) or "").strip()
-        if t in {"E", "E major", "E Major"}:
-            opts.nth(i).click(timeout=5000)
-            v.wait_streamlit_idle(page)
-            v.wait_streamlit(page, 2000)
-            return True
-    # Fallback: listbox via keyboard / get_by_text
-    choice = page.get_by_role("option", name=re.compile(r"^E(\s+major)?$", re.I))
-    if choice.count():
-        choice.first.click(timeout=5000)
-        v.wait_streamlit_idle(page)
-        v.wait_streamlit(page, 2000)
-        return True
-    return False
+    """Open the Practice / Concert Key selectbox and choose E; verify live value."""
+    ok, _before, _after = pkh.select_practice_key_option(page, "E", v.wait_streamlit_idle)
+    if ok:
+        v.wait_streamlit(page, 1500)
+    return ok
 
 
 def main() -> int:

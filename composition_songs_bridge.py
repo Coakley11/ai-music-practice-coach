@@ -398,6 +398,9 @@ def commit_composition_active_song(
             )
         except ImportError:
             practice_key = home_key
+        session["display_key"] = practice_key
+        session["concert_key"] = practice_key
+        session.pop("_pending_display_key", None)
     else:
         try:
             from practice_key_mode import resolve_practice_concert_key_for_song
