@@ -609,7 +609,34 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
         widget = str(spec["widget"])
         live_widget = str(session.get(widget) or "").strip()
         live_preview = str(session.get("sbi_preview_source") or "").strip()
-        follow_active = bool(session.get("_sbi_follow_active_after_explicit_catalog"))
+        follow_active = False
+        try:
+            from source_session_state import sbi_must_follow_global_active
+
+            follow_active = sbi_must_follow_global_active(session)
+        except ImportError:
+            follow_active = bool(session.get("_sbi_follow_active_after_explicit_catalog"))
+        if canon_key == "improv_song_source" and follow_active:
+            val = "Active song"
+        elif canon_key == "improv_song_source" and not follow_active:
+            last = str(session.get("_last_improv_song_source") or "").strip()
+            explicit = str(session.get("_explicit_sbi_source_click") or "").strip()
+            pending = str(session.get("_pending_improv_song_source") or "").strip()
+            hydrated = bool(session.get("_sbi_song_source_hydrated"))
+            live_is_click = live_widget in {
+                "Active song",
+                "Custom progression",
+                "Composition",
+            } and (
+                explicit in {"Active song", "Custom progression", "Composition"}
+                or pending in {"Active song", "Custom progression", "Composition"}
+                or (hydrated and last and last != live_widget)
+            )
+            if live_is_click:
+                for mirror in spec.get("mirrors", ()):
+                    if overwrite or not str(session.get(mirror) or "").strip():
+                        session[mirror] = live_widget
+                continue
         keep_custom = (
             not follow_active
             and canon_key == "improv_song_source"
@@ -620,8 +647,6 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
                 or bool(session.get("_restore_sbi_custom_source"))
             )
         )
-        if follow_active and canon_key == "improv_song_source":
-            val = "Active song"
         if keep_custom:
             if not session.get("_sbi_song_source_hydrated"):
                 session[widget] = "Custom progression"

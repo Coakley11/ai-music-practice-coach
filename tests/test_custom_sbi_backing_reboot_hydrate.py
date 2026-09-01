@@ -117,6 +117,108 @@ class CustomSbiBackingRebootHydrateTests(unittest.TestCase):
         self.assertEqual(int(getattr(ctx, "bpm", 0) or 0), 113)
         self.assertEqual(str(getattr(ctx, "style", "") or ""), "Blues")
 
+    def test_custom_sbi_valid_when_cpl_empty_but_last_custom_exists(self) -> None:
+        from backing_context import get_backing_context, is_backing_context_valid
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        session = self._custom_sbi_session()
+        last = session.pop(CPL_ACTIVE_KEY)
+        session[LAST_CUSTOM_STATE_KEY] = {"active": last}
+        ctx = get_backing_context(session)
+        self.assertTrue(is_backing_context_valid(session, ctx))
+
+    def test_hydrate_heals_empty_custom_sbi_title_from_last_custom(self) -> None:
+        from backing_context import get_backing_context, hydrate_backing_context_after_restore
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        session = self._custom_sbi_session()
+        session["backing_context"]["song_title"] = ""
+        session["backing_context"]["sbi_source_owner"] = "Custom progression"
+        last = session.pop(CPL_ACTIVE_KEY)
+        session[LAST_CUSTOM_STATE_KEY] = {"active": last}
+        hydrate_backing_context_after_restore(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertIn("Trial", str(getattr(ctx, "song_title", "") or ""))
+
+    def test_hydrate_custom_sbi_outranks_follow_active_catalog_rebuild(self) -> None:
+        from backing_context import get_backing_context, hydrate_backing_context_after_restore
+        from source_session_state import SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY
+
+        session = self._custom_sbi_session()
+        session["backing_context"]["sbi_source_owner"] = "Custom progression"
+        session["backing_context"]["sbi_material_kind"] = "custom"
+        session[SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY] = True
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        hydrate_backing_context_after_restore(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "song_improv")
+        self.assertIn("Trial", str(getattr(ctx, "song_title", "") or ""))
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+
+    def test_hydrate_rebuilds_custom_sbi_when_blob_rewritten_as_shape(self) -> None:
+        from backing_context import get_backing_context, hydrate_backing_context_after_restore
+        from source_session_state import SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY
+
+        session = self._custom_sbi_session()
+        shape = session["active_catalog_pick_key"]
+        session["backing_context"] = {
+            "source": "song_improv",
+            "source_label": "Song-Based Improvisation",
+            "song_title": "Shape of You",
+            "active_song_id": shape,
+            "bound_pick_key": shape,
+            "sbi_source_owner": "Active song",
+            "sbi_material_kind": "catalog",
+            "key": "Bm",
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "bpm": 100,
+            "style": "Pop",
+            "progression": ["Bm", "Em", "G", "A"],
+        }
+        session[SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY] = True
+        session["improv_song_source"] = "Custom progression"
+        session["sbi_preview_source"] = "Custom progression"
+        hydrate_backing_context_after_restore(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertIn("Trial", str(getattr(ctx, "song_title", "") or ""))
+        self.assertEqual(str(getattr(ctx, "sbi_source_owner", "") or ""), "Custom progression")
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+
+    def test_hydrate_does_not_force_custom_over_active_sbi_blob(self) -> None:
+        from backing_context import get_backing_context, hydrate_backing_context_after_restore
+
+        session = self._custom_sbi_session()
+        shape = session["active_catalog_pick_key"]
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        session["creative_workspace_state"]["improv_song_source"] = "Active song"
+        session["creative_workspace_state"]["sbi_preview_source"] = "Active song"
+        session["backing_context"] = {
+            "source": "song_improv",
+            "song_title": "Shape of You",
+            "active_song_id": shape,
+            "bound_pick_key": shape,
+            "sbi_source_owner": "Active song",
+            "key": "Bm",
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "bpm": 100,
+            "progression": ["Bm", "Em", "G", "A"],
+        }
+        hydrate_backing_context_after_restore(session)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertIn("Shape", str(getattr(ctx, "song_title", "") or ""))
+        self.assertNotIn("Trial", str(getattr(ctx, "song_title", "") or ""))
+
     def test_mission_backing_not_stale_under_catalog_global_active(self) -> None:
         from backing_context import (
             ctx_is_stale_creative_for_practice,
@@ -150,6 +252,33 @@ class CustomSbiBackingRebootHydrateTests(unittest.TestCase):
         ctx = get_backing_context(session)
         self.assertTrue(is_backing_context_valid(session, ctx))
         self.assertFalse(ctx_is_stale_creative_for_practice(session, ctx))
+
+    def test_backing_snapshot_custom_preview_outranks_follow_active(self) -> None:
+        from source_session_state import SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY
+        from studio_page_persistence import apply_page_snapshot
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "studio_page": "backing",
+        }
+        snap = {
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "_nested_custom_sbi_backing": True,
+            "backing_context": {
+                "source": "song_improv",
+                "song_title": "Trial Song",
+                "sbi_source_owner": "Custom progression",
+                "bound_pick_key": "custom::trial",
+                "custom_revision_id": "trial-rev-1",
+            },
+        }
+        apply_page_snapshot(session, snap)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(session.get("sbi_preview_source"), "Custom progression")
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
 
 
 if __name__ == "__main__":

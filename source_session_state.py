@@ -35,6 +35,13 @@ SBI_MATERIAL_TYPE_LABELS = {
 SBI_WORKFLOW_LABEL = "Song-Based Improvisation"
 # Explicit Songs catalog pick outranks a leftover nested SBI Custom radio.
 SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY = "_sbi_follow_active_after_explicit_catalog"
+# Set after Creative SBI radio has rendered under the follow-Active bind.
+# Distinguishes leftover persisted Custom from a later explicit Custom click.
+SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY = "_sbi_follow_active_widget_seen"
+# One-run marker: a genuine Custom/Composition radio click this interaction.
+EXPLICIT_SBI_SOURCE_CLICK_KEY = "_explicit_sbi_source_click"
+_PENDING_IMPROV_SONG_SOURCE_KEY = "_pending_improv_song_source"
+_LAST_IMPROV_SONG_SOURCE_KEY = "_last_improv_song_source"
 COMPOSITION_SBI_UNAVAILABLE_TITLE = "No composition source yet"
 COMPOSITION_SBI_UNAVAILABLE_MESSAGE = (
     "Composition is not available as an SBI source yet. "
@@ -65,15 +72,14 @@ def sbi_custom_identity_is_global_active(session: dict[str, Any]) -> bool:
 
     CASE A: Trial is Global Active → SBI Custom must use the active Custom Practice Key.
     CASE B: Catalog is Global Active → SBI Custom uses LAST_CUSTOM original lifecycle.
+
+    A live ``custom::`` Global Active pick is enough even if ``active_music_source``
+    lagged. LAST_CUSTOM / preview pick alone must not impersonate CASE A.
     """
-    if not global_active_is_custom(session):
-        return False
+    if global_active_is_custom(session):
+        return True
     ga_pick = str(session.get("active_catalog_pick_key") or "").strip()
-    custom = get_custom_session(session) or {}
-    custom_pick = str(custom.get("pick_key") or "").strip()
-    if ga_pick.startswith("custom::") and custom_pick.startswith("custom::"):
-        return ga_pick == custom_pick
-    return bool(ga_pick.startswith("custom::") or custom_pick.startswith("custom::"))
+    return ga_pick.startswith("custom::") or ga_pick.startswith("custom\x1f")
 
 
 def resolve_sbi_custom_practice_key(
@@ -234,9 +240,56 @@ def resolve_composition_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> None:
+    """Stamp a genuine Custom/Composition click so Follow Active cannot heal it."""
+    src = str(source or "").strip()
+    if src not in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        session.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
+        return
+    session[EXPLICIT_SBI_SOURCE_CLICK_KEY] = src
+    session[_PENDING_IMPROV_SONG_SOURCE_KEY] = src
+    session["_improv_song_source_user_touched"] = True
+    if src == SBI_SONG_SOURCE_CUSTOM:
+        session["_restore_sbi_custom_source"] = True
+    else:
+        session.pop("_restore_sbi_custom_source", None)
+    clear_sbi_follow_active_after_explicit_catalog(session)
+
+
+def _explicit_sbi_source_outranks_follow(session: dict[str, Any]) -> bool:
+    """True when this run has a new Custom/Composition click, not leftover persist."""
+    pending = str(
+        session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+        or session.get("PENDING_IMPROV_SONG_SOURCE")
+        or ""
+    ).strip()
+    if pending in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return True
+    explicit = str(session.get(EXPLICIT_SBI_SOURCE_CLICK_KEY) or "").strip()
+    if explicit in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return True
+    live = str(session.get("improv_song_source") or "").strip()
+    if live not in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return False
+    last = str(session.get(_LAST_IMPROV_SONG_SOURCE_KEY) or "").strip()
+    # After Follow Active rendered Active, a live Custom/Composition radio is a click.
+    if session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY) or last == SBI_SONG_SOURCE_ACTIVE:
+        return True
+    return False
+
+
 def sbi_must_follow_global_active(session: dict[str, Any]) -> bool:
-    """True after an explicit catalog pick until the user chooses Custom/Composition."""
-    return bool(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+    """True after an explicit catalog pick until the user chooses Custom/Composition.
+
+    Leftover persisted Custom is forced back to Active. An explicit later click
+    (pending Custom/Composition, one-run marker, or live radio after the Active
+    bind already rendered) outranks the follow flag.
+    """
+    if not session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY):
+        return False
+    if _explicit_sbi_source_outranks_follow(session):
+        return False
+    return True
 
 
 def bind_sbi_preview_to_active_after_explicit_catalog(session: dict[str, Any]) -> None:
@@ -246,6 +299,8 @@ def bind_sbi_preview_to_active_after_explicit_catalog(session: dict[str, Any]) -
     preview after an explicit Songs pick. CASE B is a later explicit Custom click.
     """
     session[SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY] = True
+    session.pop(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, None)
+    session.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
     session.pop("_restore_sbi_custom_source", None)
     session.pop("_pending_improv_song_source", None)
     session["_improv_song_source_user_touched"] = True
@@ -262,6 +317,71 @@ def bind_sbi_preview_to_active_after_explicit_catalog(session: dict[str, Any]) -
 
 def clear_sbi_follow_active_after_explicit_catalog(session: dict[str, Any]) -> None:
     session.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+    session.pop(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, None)
+
+
+def _sbi_source_click_trace(session: dict[str, Any], stage: str, **extra: Any) -> None:
+    """Append one SBI source snapshot when SBI_SOURCE_CLICK_TRACE=1."""
+    import json
+    import os
+    import time
+
+    if str(os.environ.get("SBI_SOURCE_CLICK_TRACE") or "").strip() not in {"1", "true", "True"}:
+        return
+    root = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if not root:
+        return
+    ga_title = ""
+    last_custom_title = ""
+    last_custom_key = ""
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            last_custom_title = str(snap.get("name") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict):
+                last_custom_title = last_custom_title or str(
+                    active.get("title") or active.get("name") or ""
+                ).strip()
+                last_custom_key = str(active.get("key") or active.get("original_key") or "").strip()
+    except Exception:
+        pass
+    try:
+        sel = session.get("selected_song")
+        if isinstance(sel, dict):
+            ga_title = str(sel.get("title") or "").strip()
+        ga_title = ga_title or str(session.get("song") or "").strip()
+    except Exception:
+        pass
+    row = {
+        "ts": time.time(),
+        "stage": stage,
+        "follow_active": bool(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY)),
+        "widget_seen": bool(session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY)),
+        "explicit_click": str(session.get(EXPLICIT_SBI_SOURCE_CLICK_KEY) or ""),
+        "pending": str(
+            session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+            or session.get("PENDING_IMPROV_SONG_SOURCE")
+            or ""
+        ),
+        "live": str(session.get("improv_song_source") or ""),
+        "preview": str(session.get(SBI_PREVIEW_SOURCE_KEY) or ""),
+        "last": str(session.get(_LAST_IMPROV_SONG_SOURCE_KEY) or ""),
+        "must_follow": sbi_must_follow_global_active(session),
+        "ga_title": ga_title,
+        "ga_source": str(session.get("active_music_source") or ""),
+        "last_custom_title": last_custom_title,
+        "last_custom_key": last_custom_key,
+    }
+    row.update(extra)
+    try:
+        path = os.path.join(root, "_sbi_source_click.jsonl")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
 
 
 def get_sbi_preview_source(session: dict[str, Any]) -> str:
@@ -1101,8 +1221,12 @@ __all__ = [
     "format_sbi_backing_blue_card_subtitle",
     "get_catalog_session",
     "get_custom_session",
+    "EXPLICIT_SBI_SOURCE_CLICK_KEY",
+    "SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY",
+    "SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY",
     "bind_sbi_preview_to_active_after_explicit_catalog",
     "clear_sbi_follow_active_after_explicit_catalog",
+    "note_explicit_sbi_source_selection",
     "get_sbi_preview_source",
     "global_active_is_custom",
     "sbi_must_follow_global_active",

@@ -9240,7 +9240,15 @@ def _render_backing_return_source_action() -> None:
 
         for idx, action in enumerate(actions):
             if action.action_id == "return_creative":
-                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                # Honor both on_click and the button's returned True (Playwright).
+                # handle_return_to_creative_click is one-shot per script run.
+                clicked = st.button(
+                    action.label,
+                    key=f"backing_nav_{action.action_id}_{idx}",
+                    use_container_width=False,
+                    on_click=_go_creative,
+                )
+                if clicked:
                     _go_creative()
             elif action.action_id == "return_mission":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
@@ -10452,6 +10460,15 @@ try:
                     st, st.session_state
                 )
                 _custom_ga_sidebar = True
+            elif page_now in {"picker", "songs", "practice"} and custom_progression_is_active(
+                st.session_state
+            ):
+                from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+
+                _display_key_options = prepare_custom_workspace_sidebar_display_key(
+                    st, st.session_state
+                )
+                _custom_ga_sidebar = True
         except ImportError:
             _custom_ga_sidebar = False
         if not _custom_ga_sidebar:
@@ -10556,7 +10573,15 @@ else:
     _custom_page_pk = (
         str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
     )
-    if _custom_page_pk:
+    try:
+        from custom_progression_lab import custom_active_owns_sidebar_practice_key
+
+        _use_custom_workspace_pk = bool(
+            _custom_page_pk or custom_active_owns_sidebar_practice_key(st.session_state)
+        )
+    except ImportError:
+        _use_custom_workspace_pk = bool(_custom_page_pk or _custom_ga_sidebar)
+    if _use_custom_workspace_pk:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
 
         def _on_custom_workspace_practice_key_change() -> None:
@@ -15482,19 +15507,16 @@ elif _studio_page == "creative":
         tab = str(st.session_state.get("improv_intelligence_tab") or "").strip()
         entry = str(st.session_state.get("improv_entry_mode") or "").strip()
         try:
-            from backing_source_navigation import _creative_handoff_entry_mode
+            from backing_source_navigation import resolve_open_backing_entry_mode
 
-            entry = _creative_handoff_entry_mode(st.session_state)
+            entry = resolve_open_backing_entry_mode(st.session_state) or entry
         except ImportError:
-            pass
-        try:
-            from music_workflow_state_store import get_active_workflow_pointer
+            try:
+                from backing_source_navigation import _creative_handoff_entry_mode
 
-            ptr = get_active_workflow_pointer(st.session_state)
-            if ptr and ptr.workflow_owner == "song_based_improvisation":
-                entry = "Song-Based Improvisation"
-        except ImportError:
-            pass
+                entry = _creative_handoff_entry_mode(st.session_state) or entry
+            except ImportError:
+                pass
         if st.session_state.pop("improv_mission_backing_handoff", False) and entry not in (
             "Song-Based Improvisation",
             "Style Jam Mode",
@@ -15864,6 +15886,13 @@ elif _studio_page == "creative":
             st.session_state["_sbi_song_source_hydrated"] = False
             st.session_state["improv_song_source"] = "Custom progression"
             st.session_state["_restore_sbi_custom_source"] = True
+            try:
+                from source_session_state import clear_sbi_follow_active_after_explicit_catalog
+
+                clear_sbi_follow_active_after_explicit_catalog(st.session_state)
+            except ImportError:
+                st.session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                st.session_state.pop("_sbi_follow_active_widget_seen", None)
             visit_pk = str(st.session_state.get("_sbi_custom_visit_pk") or "").strip()
             if visit_pk:
                 st.session_state["_sbi_custom_last_visit_pk"] = visit_pk

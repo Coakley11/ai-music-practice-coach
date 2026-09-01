@@ -68,20 +68,38 @@ def clear_stale_backing_handoff_for_mission_example_generate(session: dict[str, 
     session.pop(MISSION_PENDING_BACKING_ALIGNMENT_KEY, None)
     session.pop("improv_mission_backing_handoff", None)
     session.pop("_mission_backing_click_must_defer", None)
-    if str(session.get("studio_page") or "").strip().lower() == "backing":
+    left_backing = str(session.get("studio_page") or "").strip().lower() == "backing"
+    if left_backing:
         try:
             from studio_nav_history import navigate_studio_page
 
             navigate_studio_page(session, "creative")
         except ImportError:
             session["studio_page"] = "creative"
+    # Never assign the already-instantiated widget key `improv_intelligence_tab`.
+    # Generate runs after the Missions radio exists; the user is already on Missions.
+    # Persist the non-widget mirror only. If we just left Backing, queue Missions
+    # for the next pre-radio restore.
     try:
-        from creative_tab_tool_persistence import persist_improv_intelligence_tab
+        from studio_page_state import persist_improv_intelligence_tab
 
-        session["improv_intelligence_tab"] = "Missions"
         persist_improv_intelligence_tab(session)
     except ImportError:
-        session["improv_intelligence_tab"] = "Missions"
+        tab = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if tab:
+            session["creative_improv_intelligence_tab"] = tab
+    if left_backing:
+        try:
+            from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY
+
+            session[PENDING_IMPROV_INTELLIGENCE_TAB_KEY] = "Missions"
+        except ImportError:
+            session["_pending_improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
     if had:
         try:
             from music_workflow_state_store import record_compat_fallback
@@ -338,6 +356,24 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
         except ImportError:
             pass
         return "skipped"
+    try:
+        from music_workflow_pending_creative_return import creative_return_owns_destination_page
+
+        if creative_return_owns_destination_page(session):
+            clear_pending_backing_workflow_handoff(session)
+            try:
+                from music_mission_backing_handoff_trace import log_consume
+
+                log_consume(session, phase="skipped", detail={"reason": "creative_return_owns_page"})
+            except ImportError:
+                pass
+            return "skipped"
+    except ImportError:
+        if session.get("_music_pending_creative_return_handoff") or session.get(
+            "_creative_restore_from_backing"
+        ):
+            clear_pending_backing_workflow_handoff(session)
+            return "skipped"
     token = str(pending.get("consume_token") or _consume_token(pending))
     seq = pending.get("request_seq")
     if session.get(PENDING_BACKING_WORKFLOW_CONSUMED_TOKEN_KEY) == token or (

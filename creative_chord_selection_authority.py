@@ -121,6 +121,21 @@ def resolve_authoritative_chord_selection(
             mapped = global_chord_index_for_section_chord(section_map, c_sec, c_sym)
             if mapped is not None:
                 return c_sym, c_sec, mapped
+            # Click symbol is still on the map under another section label.
+            # Never replace Em with the chord sitting at a leftover index (G).
+            try:
+                from improvisation_motif import global_chord_index
+            except ImportError:
+                global_chord_index = None  # type: ignore[assignment]
+            if global_chord_index is not None:
+                for si, (label, chords) in enumerate(section_map):
+                    for ci, ch in enumerate(chords):
+                        if str(ch or "").strip() == c_sym:
+                            return (
+                                c_sym,
+                                str(label or "").strip() or c_sec,
+                                int(global_chord_index(section_map, si, ci)),
+                            )
             if c_sym and (transposed_for_pk or (click_pk and live_pk and click_pk == live_pk)):
                 return c_sym, c_sec, c_idx if c_idx >= 0 else 0
             # Stale original-key symbol with no Practice Key on the click: use index.

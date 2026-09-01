@@ -229,6 +229,7 @@ class TestStyleJamCatalogRelease(unittest.TestCase):
         session["improv_song_source"] = "Custom progression"
         flush_pending_improv_song_source(session)
         self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertTrue(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
         init_improvisation_state(session, is_custom_active=False)
         self.assertEqual(session.get("improv_song_source"), "Active song")
 
@@ -239,6 +240,230 @@ class TestStyleJamCatalogRelease(unittest.TestCase):
             set_custom_source=lambda *_a, **_k: None,
         )
         self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+    def test_explicit_custom_radio_after_follow_bind_is_honored(self) -> None:
+        """After Creative rendered Active, a Custom radio click must stick."""
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY: True,
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+    def test_explicit_custom_click_without_widget_seen_when_last_was_active(self) -> None:
+        """Widget already committed Custom after Follow Active had bound Active."""
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+    def test_leftover_custom_without_widget_seen_still_healed(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "_last_improv_song_source": "Custom progression",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+        self.assertTrue(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+
+    def test_project_does_not_overwrite_explicit_custom_click(self) -> None:
+        from creative_tab_tool_persistence import project_creative_selectors_from_canonical
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+        )
+
+        session = {
+            "creative_workspace_state": {"improv_song_source": "Active song"},
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY: True,
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Active song",
+        }
+        project_creative_selectors_from_canonical(session, overwrite=True)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+
+    def test_explicit_composition_click_after_follow_bind(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY: True,
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+
+    def test_active_custom_cycle_each_explicit_click_wins(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import apply_improv_song_source, flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY: True,
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+        session["improv_song_source"] = "Custom progression"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+        apply_improv_song_source(
+            session,
+            "Active song",
+            set_catalog_source=lambda *_a, **_k: None,
+            set_custom_source=lambda *_a, **_k: None,
+        )
+        session["improv_song_source"] = "Active song"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+        session["improv_song_source"] = "Custom progression"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+    def test_stale_pending_custom_does_not_clobber_active_click(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Custom progression",
+            PENDING_IMPROV_SONG_SOURCE: "Custom progression",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "_restore_sbi_custom_source": True,
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+    def test_project_does_not_overwrite_explicit_active_click(self) -> None:
+        from creative_tab_tool_persistence import project_creative_selectors_from_canonical
+
+        session = {
+            "creative_workspace_state": {"improv_song_source": "Custom progression"},
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Custom progression",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "_restore_sbi_custom_source": True,
+        }
+        project_creative_selectors_from_canonical(session, overwrite=True)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
+    def test_pending_active_restores_after_snapshot_custom(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Active song",
+            PENDING_IMPROV_SONG_SOURCE: "Active song",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+    def test_snapshot_does_not_restore_custom_over_active_click(self) -> None:
+        from studio_page_persistence import apply_page_snapshot
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "_improv_song_source_user_touched": True,
+        }
+        apply_page_snapshot(
+            session,
+            {
+                "improv_song_source": "Custom progression",
+                "sbi_preview_source": "Custom progression",
+            },
+        )
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
+    def test_open_custom_lab_pending_outranks_follow_active(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            PENDING_IMPROV_SONG_SOURCE: "Custom progression",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Custom progression",
+            "_sbi_song_source_hydrated": False,
+        }
+        flush_pending_improv_song_source(session)
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
         self.assertEqual(get_sbi_preview_source(session), "Custom progression")
 
     def test_shape_rejects_major_g_sticky_from_perfect(self) -> None:

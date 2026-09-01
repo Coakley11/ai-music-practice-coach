@@ -756,6 +756,26 @@ def _creative_handoff_entry_mode(session: dict[str, Any]) -> str:
     return str(session.get("improv_entry_mode") or "").strip()
 
 
+def resolve_open_backing_entry_mode(session: dict[str, Any]) -> str:
+    """Entry mode for Open in Backing Studio.
+
+    Live Style Jam / Jam Generator outranks a leftover SBI workflow pointer so
+    Open Backing after CASE B SBI Custom cannot reopen Trial at D.
+    """
+    entry = _creative_handoff_entry_mode(session)
+    if entry in ("Style Jam Mode", "Jam Session Generator"):
+        return entry
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") == "song_based_improvisation":
+            return "Song-Based Improvisation"
+    except ImportError:
+        pass
+    return entry
+
+
 def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Re-apply Creative backing when explicitly opening Backing Studio from Creative Lab."""
     try:
@@ -1444,6 +1464,29 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         reconcile_source_ownership(session, st_like=st_like, reason="generic_backing_entry")
     except ImportError:
         pass
+
+
+def release_specialized_backing_owner_for_creative_return(session: dict[str, Any]) -> None:
+    """Release temporary specialized Backing *page* ownership after Return.
+
+    Keeps the Style Jam / SBI / Mission *session* (generated sections, keys,
+    ``backing_context`` snapshot used to restore Creative). Only drops the
+    in-flight Backing handoff that would reclaim ``studio_page=backing``.
+    """
+    session.pop("_backing_explicit_handoff_source", None)
+    if str(session.get(BACKING_ENTRY_CLASS_KEY) or "").strip() == BACKING_ENTRY_SPECIALIZED_HANDOFF:
+        session.pop(BACKING_ENTRY_CLASS_KEY, None)
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_music_pending_backing_workflow_handoff", None)
+        session.pop("_music_pending_backing_workflow_consume_armed_seq", None)
+    # FROM_CREATIVE is a one-shot open. Restore-last remains so an explicit later
+    # Backing visit can reopen the same Style Jam session; it must not force the page.
+    if str(session.get(BACKING_OPEN_INTENT_KEY) or "").strip() == BACKING_INTENT_FROM_CREATIVE:
+        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
 
 
 def release_mission_creative_page_ownership(
@@ -3359,7 +3402,9 @@ __all__ = [
     "project_return_destination_to_canonical_creative_selectors",
     "rehydrate_creative_from_backing_context",
     "release_mission_creative_page_ownership",
+    "release_specialized_backing_owner_for_creative_return",
     "resolve_entry_jam_entry_mode",
+    "resolve_open_backing_entry_mode",
     "render_source_context_debug",
     "render_source_ownership_dev_table",
     "source_ownership_diagnostics_enabled",

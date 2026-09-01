@@ -383,6 +383,51 @@ class TestSbiCustomPracticeKeyOwner(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "D")
         self.assertEqual(resolve_sbi_preview(session).get("display_key"), "D")
 
+    def test_case_a_mismatched_last_custom_pick_does_not_reset_active_pk(self) -> None:
+        """Active Custom PK C must not be reset to Original D by a LAST_CUSTOM pick mismatch."""
+        from songs.music_source import SOURCE_CUSTOM
+        from source_session_state import (
+            prepare_sbi_custom_sidebar_display_key,
+            sbi_custom_identity_is_global_active,
+        )
+
+        custom_ga = "custom::trial-live"
+        last_custom = "custom::trial-stale"
+
+        class _St:
+            session_state: dict = {}
+
+        st = _St()
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": custom_ga,
+            "display_key": "C",
+            "concert_key": "C",
+            "practice_key_by_source": {custom_ga: "C", last_custom: "D"},
+            "cpl_active_progression": {
+                "id": "trial-live",
+                "name": "Trial Song",
+                "original_key_center": "D",
+            },
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": last_custom,
+                "active": {
+                    "id": "trial-stale",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        st.session_state = session
+        self.assertTrue(sbi_custom_identity_is_global_active(session))
+        prepare_sbi_custom_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "C")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,28 @@ class TestClickSymbolBeatsStaleIndex(unittest.TestCase):
         self.assertEqual(sec, "Verse")
         self.assertEqual(idx, 1)
 
+    def test_resolve_prefers_clicked_em_over_index_g(self) -> None:
+        from creative_chord_selection_authority import resolve_authoritative_chord_selection
+
+        section_map = [("Verse 1", ["Bm", "Em", "G", "A"])]
+        session = {
+            "ii_selected_chord": "Em",
+            "ii_selected_section": "Verse 1",
+            "ii_selected_chord_index": 2,
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "_mission_chord_click_authority": {
+                "chord": "Em",
+                "section": "Verse 1",
+                "chord_index": 2,
+            },
+        }
+        sym, sec, idx = resolve_authoritative_chord_selection(session, section_map)
+        self.assertEqual(sym, "Em")
+        self.assertEqual(sec, "Verse 1")
+        self.assertEqual(idx, 1)
+        self.assertNotEqual(sym, "G")
+
     def test_mission_projection_does_not_overwrite_bb_with_index_g(self) -> None:
         from mission_projection_state import resolve_mission_projection_state
 

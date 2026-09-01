@@ -429,6 +429,29 @@ class TestExplicitCatalogFirstClick(unittest.TestCase):
         self.assertEqual(session.get("song"), "Shape of You")
         self.assertEqual(str(session.get("display_key") or ""), "Bm")
 
+    def test_consume_leftover_perfect_while_custom_does_not_apply(self) -> None:
+        """Set-as-Active must not treat leftover Perfect in the shared dropdown as a pick."""
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: "custom::embargo-trial",
+            "matching_song_dropdown": PK_PERFECT,
+            "active_music_source": SOURCE_CUSTOM,
+            "song": "Embargo Trial",
+            "display_key": "D",
+            "_catalog_before_custom_state": {
+                "pick_key": PK_PERFECT,
+                "title": "Perfect",
+            },
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"):
+            live = consume_uncommitted_catalog_dropdown(
+                st, [PK_SAY, PK_SHAPE, PK_PERFECT], CATALOG
+            )
+        self.assertEqual(live, "custom::embargo-trial")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertEqual(session.get("song"), "Embargo Trial")
+        self.assertEqual(str(session.get("display_key") or ""), "D")
+
     def test_accidental_say_still_blocked_while_custom_owns(self) -> None:
         session = {
             ACTIVE_CATALOG_PICK_KEY: "custom::trial-1",

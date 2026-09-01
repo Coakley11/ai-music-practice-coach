@@ -7,7 +7,7 @@ from typing import Any
 
 from backing_context import BackingContext, build_entry_jam_context, open_backing_from_creative, set_backing_context
 from backing_nav_actions import build_backing_nav_actions, catalog_return_action_visible
-from backing_source_navigation import _creative_handoff_entry_mode
+from backing_source_navigation import _creative_handoff_entry_mode, resolve_open_backing_entry_mode
 from backing_workflow_context import get_backing_workflow_envelope, sync_backing_workflow_envelope
 from generated_jam_key_context import (
     activate_generated_jam_key_ownership,
@@ -115,6 +115,27 @@ class TestGeneratorOpenBackingRoute(unittest.TestCase):
             "creative_session": {"tool_type": "song_based_improvisation", "entry_mode": "Song-Based Improvisation"},
         }
         self.assertEqual(_creative_handoff_entry_mode(session), "Jam Session Generator")
+
+    def test_style_jam_open_backing_outranks_leftover_sbi_pointer(self) -> None:
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_intelligence_tab": "Entry & Jam",
+            "creative_session": {
+                "tool_type": "song_based_improvisation",
+                "entry_mode": "Song-Based Improvisation",
+            },
+        }
+
+        class _Ptr:
+            workflow_owner = "song_based_improvisation"
+
+        from unittest.mock import patch
+
+        with patch(
+            "music_workflow_state_store.get_active_workflow_pointer",
+            return_value=_Ptr(),
+        ):
+            self.assertEqual(resolve_open_backing_entry_mode(session), "Style Jam Mode")
 
     def test_open_backing_from_creative_entry_jam_workflow(self) -> None:
         session: dict[str, Any] = {

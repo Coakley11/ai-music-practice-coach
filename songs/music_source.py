@@ -1321,6 +1321,15 @@ def _ignore_stale_custom_radio_after_catalog_switch(session_state: dict[str, Any
 
 
 def set_custom_source(session_state: dict[str, Any]) -> None:
+    # Custom Global Active invalidates leftover "SBI follow catalog Active" from
+    # a prior Songs pick. CASE A SBI Custom must be selectable.
+    try:
+        from source_session_state import clear_sbi_follow_active_after_explicit_catalog
+
+        clear_sbi_follow_active_after_explicit_catalog(session_state)
+    except ImportError:
+        session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+        session_state.pop("_sbi_follow_active_widget_seen", None)
     # Heal Catalog pick from Global Active title *before* sync — otherwise a stale
     # Say pick makes sync_catalog_session wipe a good Shape catalog_session, and
     # capture then stamps Say into _catalog_before_custom_state (H1/H9).

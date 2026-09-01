@@ -642,6 +642,26 @@ CPL_PRESETS_KEY_WIDGET = "cpl_presets_key"
 CPL_PRESETS_SEEDED_FROM_KEY = "_cpl_presets_seeded_from"
 
 
+def custom_active_owns_sidebar_practice_key(session: dict) -> bool:
+    """True when Custom Global Active owns the left-panel Practice Key widget.
+
+    Custom page always uses the dedicated Custom widget. Songs / Practice /
+    Creative must too while Custom is Global Active — sharing ``display_key``
+    lets catalog hydrate swallow Custom PK clicks (Trial C reset to D).
+    """
+    page = str((session or {}).get("studio_page") or "").strip().lower()
+    if page == "custom":
+        return True
+    if page not in {"creative", "picker", "songs", "practice"}:
+        return False
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        return bool(custom_progression_is_active(session) or is_custom_progression(session))
+    except ImportError:
+        return False
+
+
 def _catalog_practice_key_token(session: dict) -> tuple[str, str]:
     """Catalog Global Active pick + its Practice Key (empty when Custom owns GA).
 

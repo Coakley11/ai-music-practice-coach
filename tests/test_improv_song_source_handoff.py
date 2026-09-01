@@ -231,6 +231,80 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["song"], "Trial Song")
 
 
+class TestCompositionRadioNotSwallowed(unittest.TestCase):
+    def test_live_composition_survives_init_after_custom_preview(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import flush_pending_improv_song_source, init_improvisation_state
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Pop\x1fShape of You — Ed Sheeran",
+        }
+        init_improvisation_state(session, is_custom_active=False)
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+
+    def test_pending_composition_survives_init_when_custom_is_ga(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import (
+            PENDING_IMPROV_SONG_SOURCE,
+            flush_pending_improv_song_source,
+            init_improvisation_state,
+        )
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Custom progression",
+            PENDING_IMPROV_SONG_SOURCE: "Composition",
+            "active_music_source": "custom",
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+        }
+        init_improvisation_state(session, is_custom_active=True)
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+
+    def test_flush_follow_active_forces_over_leftover_composition_widget(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+    def test_flush_pending_composition_outranks_follow_active(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            PENDING_IMPROV_SONG_SOURCE: "Composition",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+
+
 class TestImprovTabSnapshot(unittest.TestCase):
     def test_creative_snapshot_includes_saved_sub_tab(self) -> None:
         from studio_page_persistence import capture_page_snapshot

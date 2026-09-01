@@ -1167,6 +1167,7 @@ def handle_user_mission_target_selection(
         "section": sec,
         "chord_index": gidx,
         "run_seq": _run_seq(session),
+        "practice_key": str(session.get("display_key") or session.get("concert_key") or "").strip(),
     }
     # Projection already applied to session — avoid a later stale-focus block wiping it.
     session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, None)

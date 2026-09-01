@@ -151,6 +151,35 @@ def apply_explicit_catalog_dropdown_pick(
     return data if isinstance(data, dict) else {}
 
 
+def _leftover_catalog_pick_while_custom(session: dict[str, Any]) -> str:
+    """Catalog identity left behind when Custom became Global Active.
+
+    Shared ``matching_song_dropdown`` still shows this pick after Set-as-Active.
+    That leftover is not a new catalog click (gate 14 / Perfect G leak).
+    """
+    lock = str(session.get("_catalog_before_custom_lock_pick") or "").strip()
+    if lock and not lock.startswith("custom::"):
+        return lock
+    for snap_key in (
+        "_catalog_before_custom_state",
+        "_last_catalog_song_state",
+        "catalog_session",
+    ):
+        raw = session.get(snap_key)
+        if not isinstance(raw, dict):
+            continue
+        pk = str(raw.get("pick_key") or "").strip()
+        if pk and not pk.startswith("custom::"):
+            return pk
+    committed = str(session.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
+    if committed and not committed.startswith("custom::"):
+        return committed
+    last = str(session.get(_LAST_PICK_KEY) or "").strip()
+    if last and not last.startswith("custom::"):
+        return last
+    return ""
+
+
 def consume_uncommitted_catalog_dropdown(
     st: Any,
     pick_options: list[str],
@@ -182,6 +211,19 @@ def consume_uncommitted_catalog_dropdown(
             live=live,
         )
         return live
+    if live.startswith("custom::"):
+        leftover = _leftover_catalog_pick_while_custom(st.session_state)
+        if leftover and resolved == leftover:
+            # Leftover Perfect/Shape widget after Set-as-Active is not a new pick.
+            # A genuine first catalog click is a *different* song (owner-switch Shape).
+            _trace_explicit_pick(
+                st.session_state,
+                event="consume_skip_leftover_catalog_while_custom",
+                widget=resolved,
+                live=live,
+                leftover=leftover,
+            )
+            return live
     if committed and committed == live and resolved != live and resolved == fallback:
         # Widget lagged to first_valid (Say). Keep the committed catalog pick.
         st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live

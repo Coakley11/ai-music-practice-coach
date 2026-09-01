@@ -250,6 +250,19 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
         pass
 
     try:
+        from music_workflow_pending_creative_return import creative_return_owns_destination_page
+
+        if creative_return_owns_destination_page(session):
+            return _finish(
+                "creative_return_from_backing",
+                "creative",
+                reason="creative_return_from_backing",
+                local_edit=True,
+            )
+    except ImportError:
+        pass
+
+    try:
         from music_persistent_state import current_run_user_navigated_page
 
         user_run = _normalize_page(current_run_user_navigated_page(session))
@@ -491,6 +504,16 @@ def resolve_studio_page_for_restore(
             return pending
     except ImportError:
         pass
+    try:
+        from music_workflow_pending_creative_return import creative_return_owns_destination_page
+
+        if creative_return_owns_destination_page(session):
+            return "creative", "creative_return_from_backing"
+    except ImportError:
+        if session.get("_creative_restore_from_backing") or session.get(
+            "_music_pending_creative_return_handoff"
+        ):
+            return "creative", "creative_return_from_backing"
     blob_page = _studio_page_from_blob(blob)
     pre = _normalize_page(pre_restore_page)
     if session.get("_studio_nav_from_history") and pre:

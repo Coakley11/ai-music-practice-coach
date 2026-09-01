@@ -454,6 +454,23 @@ def _normalize_improv_tab_for_render(radio_value: Any) -> str:
     return IMPROV_TAB_NAMES[0]
 
 
+def _consume_generated_progression_after_click(
+    session_state: dict[str, Any],
+    *,
+    owner: str,
+    st: Any | None = None,
+) -> None:
+    from music_workflow_pending_generated_progression import (
+        consume_pending_generated_progression,
+        peek_pending_generated_progression,
+        queue_generated_progression_intent,
+    )
+
+    if peek_pending_generated_progression(session_state) is None:
+        queue_generated_progression_intent(session_state, owner=owner)  # type: ignore[arg-type]
+    consume_pending_generated_progression(session_state, st=st)
+
+
 def _queue_style_jam_generation_intent(session_state: dict[str, Any]) -> None:
     from music_workflow_pending_generated_progression import queue_generated_progression_intent
 
@@ -841,11 +858,40 @@ def _tab_entry_modes(
         except ImportError:
             pass
         def _sync_song_source() -> None:
-            if on_song_source_change:
-                on_song_source_change(
-                    str(session_state.get("improv_song_source") or "Active song").strip()
-                    or "Active song"
+            live = str(session_state.get("improv_song_source") or "Active song").strip() or "Active song"
+            leftover_lag = False
+            try:
+                from source_session_state import (
+                    SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+                    SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+                    note_explicit_sbi_source_selection,
+                    _sbi_source_click_trace,
                 )
+
+                last = str(session_state.get("_last_improv_song_source") or "").strip()
+                leftover_lag = (
+                    bool(session_state.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+                    and live in {"Custom progression", "Composition"}
+                    and not session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY)
+                    and last != "Active song"
+                )
+                if live in {"Custom progression", "Composition"} and not leftover_lag:
+                    note_explicit_sbi_source_selection(session_state, live)
+                _sbi_source_click_trace(
+                    session_state,
+                    "radio_on_change",
+                    clicked=live,
+                    leftover_lag=leftover_lag,
+                )
+            except ImportError:
+                leftover_lag = False
+                if live in {"Custom progression", "Composition"}:
+                    session_state["_pending_improv_song_source"] = live
+                    session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+            if leftover_lag:
+                return
+            if on_song_source_change:
+                on_song_source_change(live)
 
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
@@ -867,8 +913,10 @@ def _tab_entry_modes(
         try:
             from source_session_state import (
                 clear_sbi_custom_sidebar_overlay_if_needed,
+                clear_sbi_follow_active_after_explicit_catalog,
                 get_sbi_preview_source,
                 set_sbi_preview_source,
+                _sbi_source_click_trace,
             )
 
             live_src = str(source or "Active song").strip() or "Active song"
@@ -912,6 +960,11 @@ def _tab_entry_modes(
                     session_state["improv_song_source"] = "Composition"
                 source = "Composition"
                 live_src = "Composition"
+            if live_src in {"Custom progression", "Composition"}:
+                clear_sbi_follow_active_after_explicit_catalog(session_state)
+            elif live_src == "Active song":
+                session_state.pop("_explicit_sbi_source_click", None)
+            _sbi_source_click_trace(session_state, "after_sbi_source_radio", live_src=live_src)
             set_sbi_preview_source(session_state, live_src)
             if live_src == "Active song":
                 session_state.pop("_restore_sbi_custom_source", None)
@@ -1127,14 +1180,18 @@ def _tab_entry_modes(
             placeholder="e.g. medium jazz-funk progression in D minor",
             key="improv_style_prompt",
         )
-        if st.button(
+        _style_jam_gen_clicked = st.button(
             "Generate progression",
             type="primary",
             key="improv_gen_style",
             on_click=_queue_style_jam_generation_intent,
             args=(session_state,),
-        ):
-            pass
+        )
+        if _style_jam_gen_clicked:
+            _consume_generated_progression_after_click(
+                session_state, owner="style_jam", st=st
+            )
+            st.rerun()
 
         gen = session_state.get("improv_generated_sections")
         if gen:
@@ -1233,14 +1290,18 @@ def _tab_entry_modes(
                 on_change=on_improv_jam_setting_change,
             )
 
-        if st.button(
+        _jam_gen_clicked = st.button(
             "Generate jam session",
             type="primary",
             key="improv_gen_jam",
             on_click=_queue_jam_session_generation_intent,
             args=(session_state,),
-        ):
-            pass
+        )
+        if _jam_gen_clicked:
+            _consume_generated_progression_after_click(
+                session_state, owner="jam_session_generator", st=st
+            )
+            st.rerun()
 
         jam = session_state.get("improv_jam_session")
         if jam:
@@ -1268,33 +1329,36 @@ def _render_open_practice_backing_row(
     st.markdown("---")
     if workflow == "jam":
         if on_open_backing:
-            st.button(
+            if st.button(
                 "🎧 Open in Backing Studio",
                 key="improv_to_backing_jam",
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            )
+            ):
+                on_open_backing()
         return
 
     c1, c2 = st.columns([2, 1])
     with c1:
         if on_open_backing:
-            st.button(
+            if st.button(
                 "🎧 Open in Backing Studio",
                 key="improv_to_backing",
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            )
+            ):
+                on_open_backing()
     with c2:
         if on_open_practice:
-            st.button(
+            if st.button(
                 "🎯 Send to Practice Page",
                 key="improv_to_practice",
                 use_container_width=True,
                 on_click=on_open_practice,
-            )
+            ):
+                on_open_practice()
 
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
@@ -1614,11 +1678,21 @@ def _tab_motif(
     motif = session_state.get("improv_motif") or motif
     motif_chord_label = gen_chord
     title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
+    display_text = _motif_display_text(motif)
+    notes_linear = " – ".join(
+        str(n) for n in list(motif.get("notes") or []) if str(n).strip()
+    )
+    notes_html = ""
+    if notes_linear and " | " in display_text:
+        notes_html = (
+            f'<p class="ui-card-sub">Notes: {html.escape(notes_linear)}</p>'
+        )
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
         f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
         f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
-        f'{html.escape(_motif_display_text(motif))}</p>'
+        f'{html.escape(display_text)}</p>'
+        f'{notes_html}'
         f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
         unsafe_allow_html=True,
     )
@@ -2601,6 +2675,73 @@ def _canonical_mission_example_fingerprint(session_state: dict) -> str:
         return ""
 
 
+def _h1_pipeline_trace(session_state: dict, stage: str, **extra: Any) -> None:
+    """Append one Generate-pipeline snapshot when H1_GENERATE_PIPELINE_TRACE=1."""
+    import json
+    import os
+    import time
+
+    if str(os.environ.get("H1_GENERATE_PIPELINE_TRACE") or "").strip() not in {"1", "true", "True"}:
+        return
+    root = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if not root:
+        return
+    click = session_state.get("_mission_chord_click_authority")
+    click_d = click if isinstance(click, dict) else {}
+    blob_sym = ""
+    blob_idx: Any = None
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session_state)
+        blob = (
+            get_workflow_blob(session_state, ptr.workflow_owner, ptr.workflow_session_id)
+            if ptr
+            else None
+        )
+        if blob is not None:
+            blob_sym = str(blob.selected_chord_symbol or "")
+            blob_idx = blob.selected_chord_index
+    except Exception:
+        pass
+    stored = session_state.get(MISSION_EXAMPLE_KEY)
+    stored_chord = ""
+    if isinstance(stored, dict):
+        stored_chord = str(stored.get("chord") or "")
+    snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+    snap_chord = ""
+    snap_idx: Any = None
+    if isinstance(snap, dict):
+        snap_chord = str(snap.get("cur_chord") or "")
+        snap_idx = snap.get("chord_idx")
+    rec = {
+        "t": time.time(),
+        "stage": stage,
+        "ii_selected_chord": session_state.get(II_SELECTED_CHORD),
+        "ii_selected_section": session_state.get(II_SELECTED_SECTION),
+        "ii_selected_chord_index": session_state.get(II_SELECTED_CHORD_INDEX),
+        "click_chord": click_d.get("chord"),
+        "click_section": click_d.get("section"),
+        "click_index": click_d.get("chord_index"),
+        "click_practice_key": click_d.get("practice_key"),
+        "practice_key": str(
+            session_state.get("display_key") or session_state.get("concert_key") or ""
+        ),
+        "blob_chord": blob_sym,
+        "blob_index": blob_idx,
+        "snap_chord": snap_chord,
+        "snap_idx": snap_idx,
+        "stored_example_chord": stored_chord,
+        **{k: v for k, v in extra.items() if v is not None},
+    }
+    try:
+        path = os.path.join(root, "_h1_generate_pipeline.jsonl")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def _record_mission_example_gen_diag(
     session_state: dict,
     *,
@@ -2723,6 +2864,13 @@ def _stash_missions_generate_context(
             "sections": _normalize_section_map_for_generate(section_map),
         },
     }
+    _h1_pipeline_trace(
+        session_state,
+        "stash_generate_context",
+        cur_chord=cur_chord,
+        chord_idx=int(chord_idx),
+        section_label=section_label,
+    )
 
 
 def _improv_ctx_from_generate_context(session_state: dict) -> ImprovSessionContext | None:
@@ -2816,6 +2964,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
     )
 
     snap = session_state.get(MISSIONS_GENERATE_CONTEXT_KEY)
+    _h1_pipeline_trace(session_state, "A_generate_enter")
     improv_ctx = _improv_ctx_from_generate_context(session_state)
     if improv_ctx is None:
         improv_ctx = _mission_improv_ctx_from_session(session_state)
@@ -2859,6 +3008,13 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         section_map_raw = snap.get("improv_ctx", {}).get("sections")
         section_map_norm = _normalize_section_map_for_generate(section_map_raw)
         chords = flatten_section_map(section_map_norm) if section_map_norm else list(improv_ctx.progression_flat or [])
+        _h1_pipeline_trace(
+            session_state,
+            "B_snap_loaded",
+            cur_chord=cur_chord,
+            chord_idx=chord_idx,
+            section_label=section_label,
+        )
     else:
         section_map = resolve_improv_sections(session_state, improv_ctx)
         chords = flatten_section_map(section_map) if section_map else []
@@ -2900,47 +3056,59 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
                 cur_chord, chord_idx = _selected_chord(session_state, auth_chords, auth_section_map)
                 section_label = str(session_state.get(II_SELECTED_SECTION) or section_label)
             chords = auth_chords
-            # Index on the concert map is authoritative when symbol drifted to a Shape projection.
-            try:
-                from creative_chord_selection_authority import section_chord_at_global_index
+            # Keep the committed click/live symbol. Replacing it with the chord at a
+            # sticky index was wiping Em clicks with a leftover G slot.
+            if not cur_chord:
+                try:
+                    from creative_chord_selection_authority import section_chord_at_global_index
 
-                at_sec, at_ch = section_chord_at_global_index(auth_section_map, int(chord_idx))
-                if at_ch:
-                    cur_chord = at_ch
-                    if at_sec:
-                        section_label = at_sec
-            except ImportError:
-                pass
+                    at_sec, at_ch = section_chord_at_global_index(auth_section_map, int(chord_idx))
+                    if at_ch:
+                        cur_chord = at_ch
+                        if at_sec:
+                            section_label = at_sec
+                except ImportError:
+                    pass
+            _h1_pipeline_trace(
+                session_state,
+                "C_after_resolve_authoritative",
+                cur_chord=cur_chord,
+                chord_idx=chord_idx,
+                section_label=section_label,
+            )
 
+    auth_ch = ""
     try:
         from creative_chord_selection_authority import read_authoritative_mission_chord_selection
 
         auth_ch, auth_sec, auth_idx = read_authoritative_mission_chord_selection(
             session_state, auth_section_map if auth_section_map else None
         )
-        if auth_section_map and auth_ch:
-            try:
-                from creative_chord_selection_authority import section_chord_at_global_index
-
-                at_sec, at_ch = section_chord_at_global_index(auth_section_map, int(auth_idx))
-                if at_ch:
-                    cur_chord = at_ch
-                    section_label = at_sec or auth_sec or section_label
-                    chord_idx = int(auth_idx)
-                else:
-                    cur_chord = auth_ch
-                    section_label = auth_sec or section_label
-                    chord_idx = int(auth_idx)
-            except ImportError:
-                cur_chord = auth_ch
-                section_label = auth_sec or section_label
-                chord_idx = int(auth_idx)
-        elif auth_ch:
+        if auth_ch:
             cur_chord = auth_ch
             section_label = auth_sec or section_label
             chord_idx = int(auth_idx)
+            if auth_section_map:
+                try:
+                    from creative_chord_selection_authority import global_chord_index_for_section_chord
+
+                    mapped = global_chord_index_for_section_chord(
+                        auth_section_map, section_label, auth_ch
+                    )
+                    if mapped is not None:
+                        chord_idx = int(mapped)
+                except ImportError:
+                    pass
     except ImportError:
         pass
+    _h1_pipeline_trace(
+        session_state,
+        "D_after_read_authoritative",
+        cur_chord=cur_chord,
+        chord_idx=chord_idx,
+        section_label=section_label,
+        auth_ch=auth_ch or None,
+    )
 
     try:
         from mission_projection_state import resolve_mission_projection_state
@@ -2953,13 +3121,21 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             fallback_key=str(improv_ctx.key_center or concert or "C"),
         )
         if proj.concert_chord:
-            cur_chord = proj.concert_chord
-            section_label = proj.section_label or section_label
-            chord_idx = int(proj.chord_index)
+            if not cur_chord or proj.concert_chord == cur_chord:
+                cur_chord = proj.concert_chord
+                section_label = proj.section_label or section_label
+                chord_idx = int(proj.chord_index)
         improv_ctx.key_center = proj.concert_key or improv_ctx.key_center
         improv_ctx.display_key = proj.chart_key or improv_ctx.display_key
     except ImportError:
         pass
+    _h1_pipeline_trace(
+        session_state,
+        "E_after_projection",
+        cur_chord=cur_chord,
+        chord_idx=chord_idx,
+        section_label=section_label,
+    )
 
     if not chords:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
@@ -2996,6 +3172,15 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
 
     retries = 0
     retried = False
+    _h1_pipeline_trace(
+        session_state,
+        "F_generate_input",
+        cur_chord=cur_chord,
+        chord_idx=chord_idx,
+        section_label=section_label,
+        variant=variant,
+        prior_example_chord=str(getattr(prior, "chord", "") or ""),
+    )
     if variant == "new":
         nonce_override = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
         example, retries, retried = generate_mission_example_distinct(
@@ -3026,6 +3211,13 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             bpm=bpm,
             session_state=session_state,
         )
+    _h1_pipeline_trace(
+        session_state,
+        "H_generated_example",
+        cur_chord=cur_chord,
+        example_chord=str(getattr(example, "chord", "") or ""),
+        example_section=str(getattr(example, "section", "") or ""),
+    )
 
     session_state["_mission_example_artifact_id"] = mission_example_artifact_id(
         session_state,
@@ -3040,6 +3232,12 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         example,
         persist_artifact=True,
         interaction=f"mission_example_generate_{variant}",
+    )
+    _h1_pipeline_trace(
+        session_state,
+        "I_after_store",
+        cur_chord=cur_chord,
+        example_chord=str(getattr(example, "chord", "") or ""),
     )
     gen_fp = mission_example_fingerprint(example)
     session_state["_mission_example_output_fp"] = gen_fp
@@ -3085,6 +3283,12 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         save_page_snapshot(session_state, "creative")
     except ImportError:
         pass
+    _h1_pipeline_trace(
+        session_state,
+        "K_after_save_snapshot",
+        cur_chord=cur_chord,
+        example_chord=str(getattr(example, "chord", "") or ""),
+    )
 
 
 def _finalize_mission_gen_callback(session_state: dict, variant: str) -> None:
@@ -3635,6 +3839,15 @@ def _tab_missions(
         except ImportError:
             chart_label = chart_key
         chart_note = f" · Charts in **{html.escape(chart_label)}**"
+    _h1_pipeline_trace(
+        session_state,
+        "M_heading_render",
+        cur_chord=cur_chord,
+        shown_chord=shown_chord,
+        section_label=section_label,
+        chord_idx=chord_idx,
+        practice_key=practice_key,
+    )
     st.caption(
         f"Practice Key: **{html.escape(practice_key)}** · "
         f"Selected Mission Chord: **{html.escape(shown_chord)}** · "
@@ -3695,34 +3908,36 @@ def _tab_missions(
 
     g1, g2, g3, g4 = st.columns(4)
     with g1:
-        st.button(
+        # Prefer button return over on_click — Playwright clicks the return-True
+        # path; on_click alone often misses (same as chord tiles).
+        if st.button(
             "Generate example",
             key="improv_mission_gen",
             type="primary",
             use_container_width=True,
-            on_click=_on_mission_gen_normal,
-        )
+        ):
+            _on_mission_gen_normal()
     with g2:
-        st.button(
+        if st.button(
             "Easier example",
             key="improv_mission_easier",
             use_container_width=True,
-            on_click=_on_mission_gen_easier,
-        )
+        ):
+            _on_mission_gen_easier()
     with g3:
-        st.button(
+        if st.button(
             "Harder example",
             key="improv_mission_harder",
             use_container_width=True,
-            on_click=_on_mission_gen_harder,
-        )
+        ):
+            _on_mission_gen_harder()
     with g4:
-        st.button(
+        if st.button(
             "New idea",
             key="improv_mission_new",
             use_container_width=True,
-            on_click=_on_mission_gen_new_idea,
-        )
+        ):
+            _on_mission_gen_new_idea()
 
     if _improv_dev_mode(session_state, st):
         _render_mission_example_buttons_dev_panel(st, session_state, improv_ctx)

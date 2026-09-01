@@ -627,6 +627,9 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "latest_practice_analysis_full_report",
     "latest_practice_analysis_handoff_status",
     "backing_context",
+    "_backing_explicit_handoff_source",
+    "_backing_entry_class",
+    "_nested_custom_sbi_backing",
     "_music_mission_canonical_return_destination",
     "creative_session",
     "improv_entry_mode",
@@ -3281,6 +3284,23 @@ def apply_music_disk_state(
         if user_nav_page and active_studio and active_studio != user_nav_page:
             active_studio = user_nav_page
             overwrite_source = "user_nav_this_run"
+        try:
+            from music_workflow_pending_creative_return import creative_return_owns_destination_page
+
+            if creative_return_owns_destination_page(ss):
+                if str(active_studio or "").strip().lower() != "creative":
+                    active_studio = "creative"
+                    overwrite_source = "creative_return_from_backing"
+                try:
+                    from backing_source_navigation import (
+                        release_specialized_backing_owner_for_creative_return,
+                    )
+
+                    release_specialized_backing_owner_for_creative_return(ss)
+                except ImportError:
+                    ss.pop("_backing_explicit_handoff_source", None)
+        except ImportError:
+            pass
         try:
             from music_phase1_write_journal import record_phase1_page_write
 

@@ -574,6 +574,22 @@ class TestCustomPracticeKeyProjection(unittest.TestCase):
             "Dm",
         )
 
+    def test_custom_active_owns_songs_practice_key_widget(self) -> None:
+        from custom_progression_lab import custom_active_owns_sidebar_practice_key
+        from songs.music_source import SOURCE_CUSTOM
+
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "picker",
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": custom,
+        }
+        self.assertTrue(custom_active_owns_sidebar_practice_key(session))
+        session["studio_page"] = "creative"
+        session["active_music_source"] = "catalog_song"
+        session["active_catalog_pick_key"] = "Pop\x1fShape of You — Ed Sheeran"
+        self.assertFalse(custom_active_owns_sidebar_practice_key(session))
+
 
 if __name__ == "__main__":
     unittest.main()

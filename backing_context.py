@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 BACKING_CONTEXT_KEY = "backing_context"
+NESTED_CUSTOM_SBI_BACKING_KEY = "_nested_custom_sbi_backing"
 BACKING_SESSION_LAUNCH_ID_BLOB_KEY = "backing_session_launch_id"
 PENDING_BACKING_CONTEXT_APPLY = "_pending_backing_context_apply"
 BACKING_CTX_TRANSPORT_APPLIED_SIG = "_backing_ctx_transport_applied_sig"
@@ -347,6 +348,20 @@ def set_backing_context(
         ):
             payload["mission_return_destination"] = copy.deepcopy(prev_mission_dest)
     session[BACKING_CONTEXT_KEY] = payload
+    if (
+        str(getattr(ctx, "source", "") or "") == "song_improv"
+        and (
+            str(getattr(ctx, "sbi_source_owner", "") or "") == "Custom progression"
+            or str(getattr(ctx, "sbi_material_kind", "") or "").lower() == "custom"
+            or str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "")
+            .lower()
+            .startswith("custom")
+            or bool(getattr(ctx, "custom_revision_id", None))
+        )
+    ):
+        session[NESTED_CUSTOM_SBI_BACKING_KEY] = True
+    else:
+        session.pop(NESTED_CUSTOM_SBI_BACKING_KEY, None)
     try:
         src = str(getattr(ctx, "source", "") or payload.get("source") or "").strip()
         if src:
@@ -2029,13 +2044,30 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
             if ctx.custom_revision_id:
                 try:
                     from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY, cpl_active_is_substantive
 
                     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                    if not cpl_active_is_substantive(active):
+                        snap = session.get(LAST_CUSTOM_STATE_KEY)
+                        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                            active = ensure_original_structure(snap["active"])
                     revision = str(active.get("id") or active.get("revision") or "").strip()
-                    if revision and revision != ctx.custom_revision_id:
+                    if (
+                        revision
+                        and revision != ctx.custom_revision_id
+                        and cpl_active_is_substantive(active)
+                    ):
                         return False
                 except ImportError:
-                    pass
+                    try:
+                        from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+                        active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                        revision = str(active.get("id") or active.get("revision") or "").strip()
+                        if revision and revision != ctx.custom_revision_id:
+                            return False
+                    except ImportError:
+                        pass
             return True
         current_pick = _current_pick_key(session)
         if bound and current_pick:
@@ -3554,17 +3586,21 @@ def creative_nested_backing_should_override_catalog(
     ):
         return True
     try:
-        from creative_session_state import creative_session_is_active, get_creative_session
+        from creative_session_state import get_creative_session
 
-        if creative_session_is_active(session):
-            sess = get_creative_session(session)
-            tool = str(getattr(sess, "tool_type", "") or "") if sess is not None else ""
+        # Do not call creative_session_is_active here — it asks
+        # catalog_or_custom_backing_is_authoritative, which calls this function.
+        sess = get_creative_session(session)
+        if sess is not None:
+            tool = str(getattr(sess, "tool_type", "") or "")
             if tool in {
                 "song_based_improvisation",
                 "mission",
                 "entry_jam",
                 "jam_generator",
                 "style_jam",
+                "entry_style_jam",
+                "jam_session_generator",
             }:
                 return True
     except ImportError:
@@ -4190,16 +4226,149 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
         return existing
 
 
+def _ctx_blob_is_custom_sbi(raw: Any) -> bool:
+    if isinstance(raw, BackingContext):
+        src = str(raw.source or "")
+        bound = str(raw.bound_pick_key or raw.active_song_id or "")
+        owner = str(raw.sbi_source_owner or "")
+        kind = str(raw.sbi_material_kind or "")
+        rev = str(raw.custom_revision_id or "")
+    elif isinstance(raw, dict):
+        src = str(raw.get("source") or "")
+        bound = str(raw.get("bound_pick_key") or raw.get("active_song_id") or "")
+        owner = str(raw.get("sbi_source_owner") or "")
+        kind = str(raw.get("sbi_material_kind") or "")
+        rev = str(raw.get("custom_revision_id") or "")
+    else:
+        return False
+    if src != "song_improv":
+        return False
+    return (
+        owner == "Custom progression"
+        or kind.lower() == "custom"
+        or bool(rev.strip())
+        or bound.lower().startswith("custom")
+    )
+
+
+def _restore_should_rebind_custom_sbi(session: dict[str, Any]) -> bool:
+    """Custom SBI visit must restore even if follow-active rewrote the blob as Shape."""
+    if session.get("_backing_released_specialized_context"):
+        return False
+    if session.get(NESTED_CUSTOM_SBI_BACKING_KEY):
+        return True
+    try:
+        from creative_workspace_state_persistence import CREATIVE_WORKSPACE_STATE_KEY
+
+        cw = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+        cw = cw if isinstance(cw, dict) else {}
+    except ImportError:
+        cw = {}
+    preview = str(
+        session.get("sbi_preview_source")
+        or session.get("improv_song_source")
+        or cw.get("sbi_preview_source")
+        or cw.get("improv_song_source")
+        or ""
+    ).strip()
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    page = str(session.get("studio_page") or "").strip()
+    if preview == "Custom progression" and (
+        handoff == "song_improv" or page == "backing"
+    ):
+        return True
+    return False
+
+
+def _persisted_backing_is_custom_sbi(session: dict[str, Any]) -> bool:
+    """True when the restored backing blob is nested SBI Custom (not Catalog Active)."""
+    raw = session.get(BACKING_CONTEXT_KEY) or session.get("backing_context")
+    if _ctx_blob_is_custom_sbi(raw):
+        return True
+    return _restore_should_rebind_custom_sbi(session)
+
+
+def _rebind_sbi_preview_to_custom_for_restore(session: dict[str, Any]) -> None:
+    try:
+        from source_session_state import (
+            clear_sbi_follow_active_after_explicit_catalog,
+            set_sbi_preview_source,
+        )
+
+        clear_sbi_follow_active_after_explicit_catalog(session)
+        set_sbi_preview_source(session, "Custom progression")
+    except ImportError:
+        session.pop("_sbi_follow_active_after_explicit_catalog", None)
+        session["sbi_preview_source"] = "Custom progression"
+    session["improv_song_source"] = "Custom progression"
+
+
 def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     """Re-apply persisted Creative/custom backing_context after cloud or disk restore."""
+    if _persisted_backing_is_custom_sbi(session):
+        # Follow-Active leftover from the catalog pick must not rebuild this
+        # visit as Shape/Catalog before LAST_CUSTOM / sealed ctx can restore.
+        _rebind_sbi_preview_to_custom_for_restore(session)
+        session[NESTED_CUSTOM_SBI_BACKING_KEY] = True
+        existing = get_backing_context(session)
+        if existing is None or not _ctx_blob_is_custom_sbi(existing):
+            if existing is not None:
+                clear_backing_context(session)
+            rebuilt = build_song_improv_context(session)
+            set_backing_context(
+                session,
+                rebuilt,
+                trace_caller="hydrate_backing_context_after_restore:rebuild_custom_sbi",
+            )
     try:
         from creative_session_state import hydrate_creative_session_after_restore
 
         hydrate_creative_session_after_restore(session)
     except ImportError:
         pass
+    if _persisted_backing_is_custom_sbi(session):
+        _rebind_sbi_preview_to_custom_for_restore(session)
+        session[NESTED_CUSTOM_SBI_BACKING_KEY] = True
     ensure_backing_context_from_creative_session(session)
     ctx = get_backing_context(session)
+    if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+        owner = str(getattr(ctx, "sbi_source_owner", "") or "").strip()
+        if owner == "Custom progression":
+            try:
+                from source_session_state import (
+                    clear_sbi_follow_active_after_explicit_catalog,
+                    set_sbi_preview_source,
+                )
+
+                clear_sbi_follow_active_after_explicit_catalog(session)
+                set_sbi_preview_source(session, owner)
+                session["improv_song_source"] = owner
+            except ImportError:
+                session["sbi_preview_source"] = owner
+                session["improv_song_source"] = owner
+            if not str(ctx.song_title or "").strip():
+                try:
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY, ensure_custom_progression_for_backing
+
+                    ensure_custom_progression_for_backing(
+                        session, promote_to_global_active=False
+                    )
+                    snap = session.get(LAST_CUSTOM_STATE_KEY)
+                    active = snap.get("active") if isinstance(snap, dict) else None
+                    if not isinstance(active, dict):
+                        active = session.get("cpl_active_progression")
+                    name = str((active or {}).get("name") or "").strip()
+                    if name:
+                        ctx.song_title = name
+                        if not str(ctx.progression_label or "").strip():
+                            ctx.progression_label = name
+                        set_backing_context(
+                            session,
+                            ctx,
+                            trace_caller="hydrate_backing_context_after_restore:heal_custom_sbi_title",
+                        )
+                except Exception:
+                    pass
     if ctx is not None and ctx.source == "regular_song":
         if creative_nested_backing_should_override_catalog(session):
             clear_backing_context(session)
