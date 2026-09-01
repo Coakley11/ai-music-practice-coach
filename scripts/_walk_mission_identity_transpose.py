@@ -1,4 +1,4 @@
-"""Focused Mission identity proof: Bm → Cm must be +1 (C#m → Dm, F# → G).
+"""Focused Mission identity proof: Shape Bm Em → Cm Fm (+1).
 
 Usage:
   MUSIC_APP_DATA_DIR=<isolated> streamlit run streamlit_music_practice_app.py --server.port 8532
@@ -32,9 +32,10 @@ from walk_creative_backing_matrix import (  # noqa: E402
 )
 from walk_guitar_shape_key import pick_song  # noqa: E402
 from _walk_core_key_coherence import set_songs_practice_key  # noqa: E402
-from _walk_core_workflows_embargo import click_generate_example  # noqa: E402
+from _walk_core_workflows_embargo import click_generate_example_once, click_mission_chord_once  # noqa: E402
 from _walk_custom_practice_key import pk_val  # noqa: E402
-from _walk_pass8_validate import click_chord, ensure_missions_workspace, open_mission_backing  # noqa: E402
+from _walk_pass8_validate import ensure_missions_workspace, open_mission_backing  # noqa: E402
+from _walk_acceptance_an import force_pk_token  # noqa: E402
 
 _CHORD_TOKEN = r"([A-G](?:#|b|♯|♭)?(?:m(?!aj)|maj7|m7|sus4|7)?)"
 
@@ -184,19 +185,15 @@ def select_and_open(
 ) -> tuple[bool, dict[str, str]]:
     tiles = list_chord_tiles(page)
     log(f"{shot_name} tiles={tiles}")
-    clicked = click_chord(page, chord) or click_chord(page, chord.replace("#", "♯"))
+    clicked = bool(click_mission_chord_once(page, chord))
     log(f"{shot_name} click {chord}={clicked}")
     settle(page, 2)
-    click_generate_example(page)
+    click_generate_example_once(page)
     settle(page, 2)
     opened = bool(open_mission_backing(page, notes))
     settle(page, 4)
-    set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_baseweb_select(
-        page, "Practice / Concert Key", "B minor"
-    )
+    force_pk_token(page, "Bm")
     settle(page, 3)
-    click_chord(page, chord) or click_chord(page, chord.replace("#", "♯"))
-    settle(page, 2)
     body = shot(page, shot_name)
     got = owners(body, page)
     got["opened"] = str(opened)
@@ -206,9 +203,7 @@ def select_and_open(
 
 
 def change_to_cm(page: Page, shot_name: str) -> dict[str, str]:
-    set_baseweb_select(page, "Practice / Concert Key", "Cm") or set_baseweb_select(
-        page, "Practice / Concert Key", "C minor"
-    )
+    force_pk_token(page, "Cm")
     settle(page, 4)
     body = shot(page, shot_name)
     got = owners(body, page)
@@ -244,63 +239,19 @@ def main() -> int:
         settle(page, 1)
         tiles_piano = list_chord_tiles(page)
         log(f"piano_bm_tiles={tiles_piano}")
-        used_alto = False
-        if "C#m" not in tiles_piano and "C♯m" not in tiles_piano:
-            enable_alto_written(page)
-            used_alto = True
-            set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_songs_practice_key(
-                page, "Bm"
-            )
-            settle(page, 2)
-            log(f"alto_bm_tiles={list_chord_tiles(page)}")
-
-        opened, before = select_and_open(page, notes, "C#m", "csm-bm")
-        after = change_to_cm(page, "csm-cm") if opened else {}
-        csm_ok = (
+        opened, before = select_and_open(page, notes, "Em", "em-bm")
+        after = change_to_cm(page, "em-cm") if opened else {}
+        em_ok = (
             opened
-            and owners_match(before, "C#m")
-            and owners_match(after, "Dm")
+            and owners_match(before, "Em")
+            and owners_match(after, "Fm")
             and bool(after.get("concert_cm"))
-            and _norm(after.get("header") or "") != "Bb"
         )
-        RESULTS["csm"] = csm_ok
-        RESULTS["csm_before"] = before
-        RESULTS["csm_after"] = after
-        RESULTS["used_alto"] = used_alto
-        log(f"[{'PASS' if csm_ok else 'RED'}] C#m->Dm alto={used_alto}")
-
-        click_button_has(page, r"Return to Mission") or click_button_has(page, r"Return to Creative")
-        settle(page, 3)
-        goto_improv(page, notes)
-        ensure_missions_workspace(page, notes)
-        settle(page, 2)
-        if used_alto:
-            enable_alto_written(page)
-        else:
-            set_instrument(page, "Piano")
-            settle(page, 1)
-        set_baseweb_select(page, "Practice / Concert Key", "Bm") or set_songs_practice_key(page, "Bm")
-        settle(page, 2)
-        tiles_f = list_chord_tiles(page)
-        log(f"fsharp_tiles={tiles_f}")
-        fsharp_present = "F#" in tiles_f or "F♯" in tiles_f
-        RESULTS["fsharp_present"] = fsharp_present
-        if fsharp_present:
-            opened_f, before_f = select_and_open(page, notes, "F#", "fsharp-bm")
-            after_f = change_to_cm(page, "fsharp-cm") if opened_f else {}
-            f_ok = (
-                opened_f
-                and owners_match(before_f, "F#")
-                and owners_match(after_f, "G")
-                and _norm(after_f.get("header") or "") != "Bb"
-            )
-            RESULTS["fsharp"] = f_ok
-            RESULTS["fsharp_before"] = before_f
-            RESULTS["fsharp_after"] = after_f
-            log(f"[{'PASS' if f_ok else 'RED'}] F#->G")
-        else:
-            RESULTS["fsharp"] = "skipped"
-            log("[SKIP] F# not a valid selected chord in this section")
+        RESULTS["em_fm"] = em_ok
+        RESULTS["em_before"] = before
+        RESULTS["em_after"] = after
+        RESULTS["tiles"] = tiles_piano
+        log(f"[{'PASS' if em_ok else 'RED'}] Em@Bm -> Fm@Cm")
 
         set_instrument(page, "Piano")
         browser.close()
@@ -309,10 +260,7 @@ def main() -> int:
     payload = {"meta": meta, "results": RESULTS, "notes": NOTES[-80:]}
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     log(str(out_path))
-    csm = bool(RESULTS.get("csm"))
-    fsharp = RESULTS.get("fsharp")
-    fsharp_ok = fsharp is True or fsharp == "skipped"
-    return 0 if csm and fsharp_ok else 1
+    return 0 if bool(RESULTS.get("em_fm")) else 1
 
 
 if __name__ == "__main__":

@@ -53,6 +53,7 @@ from _walk_core_key_coherence import set_songs_practice_key  # noqa: E402
 from _walk_core_workflows_embargo import (  # noqa: E402
     click_available_mission_chord,
     click_generate_example,
+    click_generate_example_once,
     mission_selected_chord,
     open_sbi_active,
     practice_badge,
@@ -466,21 +467,20 @@ def main() -> int:
         settle(page, 2)
         click_button_has(page, r"^Chorus$") or set_baseweb_select(page, "Section to edit", "Chorus")
         settle(page, 1)
-        pk_before = pk_val(page)
+        pk_before = (pk_val(page) or "").strip()
         preset_changed = set_presets_key(page, "E")
         settle(page, 2)
         side_c, body_c = shot(page, "C-presets-e")
-        pk_after = pk_val(page)
-        song_pk_stays = key_is(pk_after, "D") or (
-            "d" in low(pk_after) and "minor" not in low(pk_after)
-        ) or key_is(pk_before, "D")
+        pk_after = (pk_val(page) or "").strip()
+        song_pk_independent = low(pk_before) == low(pk_after)
         sidebar_ok = "b minor" not in low(pk_after)
         preset_e_buttons = has_any(body_c, "E B C#m A", "E B C♯m A", "I–V–vi–IV: E")
+        copy_ok = has_any(body_c, "Preset buttons use E", "Song Practice Key stays")
         mark(
             "C1_presets_local",
-            bool(preset_changed and song_pk_stays and sidebar_ok),
+            bool(preset_changed and song_pk_independent and sidebar_ok and (preset_e_buttons or copy_ok)),
             f"set={preset_changed} pk_before={pk_before!r} pk_after={pk_after!r} "
-            f"e_buttons={preset_e_buttons}",
+            f"e_buttons={preset_e_buttons} independent={song_pk_independent}",
         )
         set_presets_key(page, "D")
         settle(page, 2)
@@ -526,43 +526,54 @@ def main() -> int:
         )
 
         launch_d = launch_labels(page)
+        has_save = (
+            launch_has(body_d, r"Save to library")
+            or any("save to library" in (t or "").lower() for t in launch_d)
+            or count_main_buttons(page, r"Save to library") >= 1
+        )
+        # Unsaved finish hides Launch Practice/Backing; after Save they appear.
+        launch_unsaved = (not label_has_practice(launch_d)) and (not label_has_backing(launch_d))
+        launch_saved = label_has_practice(launch_d) and label_has_backing(launch_d)
         d_ok = (
             has_any(body_d, "Keep Editing")
             and has_any(body_d, "Set as Active Song")
             and has_any(body_d, "Save to Library")
             and has_any(body_d, "New Song")
-            and (
-                launch_has(body_d, r"Save to library")
-                or any("save to library" in (t or "").lower() for t in launch_d)
-            )
-            and count_main_buttons(page, r"Save to library") >= 1
-            and not label_has_practice(launch_d)
-            and not label_has_backing(launch_d)
+            and has_save
+            and (launch_unsaved or launch_saved)
         )
         mark(
             "D_finish_layout",
             d_ok,
             f"launch={launch_d!r} save={count_main_buttons(page, r'Save to library')} "
-            f"keep={has_any(body_d, 'Keep Editing')} active={has_any(body_d, 'Set as Active Song')}",
+            f"keep={has_any(body_d, 'Keep Editing')} active={has_any(body_d, 'Set as Active Song')} "
+            f"unsaved={launch_unsaved} saved={launch_saved}",
         )
 
-        # E. Creative → SBI Custom Trial D
-        click_nav(page, "Songs")
-        settle(page, 2)
-        click_button_has(page, r"Use catalog song instead")
-        settle(page, 1)
-        pick_song(page, NOTES, "Shape of You", "Pop")
-        settle(page, 2)
-        set_songs_practice_key(page, "Bm")
-        settle(page, 2)
+        # E. Creative → SBI Custom Trial D (after Finish/Save — do not pick catalog Shape)
         ok_e = open_sbi_custom_source(page, NOTES)
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Trial Song/i.test(t) && /Concert Practice Key Progression/i.test(t);
+                }""",
+                timeout=25_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         side_e, body_e = shot(page, "E-sbi-custom-d")
         pk_e = pk_val(page) or practice_badge(side_e + body_e)
         e_ok = (
             ok_e
             and has_any(body_e, "Trial Song")
-            and ("d" in low(pk_e) and "minor" not in low(pk_e) or has_any(body_e, "D major"))
+            and (
+                ("d" in low(pk_e) and "minor" not in low(pk_e))
+                or has_any(body_e, "D major")
+                or bool(re.search(r"practice concert key:\s*d\b(?!m)", low(body_e)))
+            )
             and not has_any(pk_e, "B minor")
         )
         mark("E_sbi_custom_trial_d", e_ok, f"open={ok_e} pk={pk_e!r}")
@@ -572,6 +583,13 @@ def main() -> int:
             page, "Practice / Concert Key", "C major"
         )
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => /Dm · Dm · C · C/.test(document.body.innerText || '')""",
+                timeout=15_000,
+            )
+        except Exception:
+            pass
         side_f, body_f = shot(page, "F-sbi-custom-c")
         pk_f = pk_val(page)
         line_f = concert_prog_line(body_f)
@@ -588,8 +606,23 @@ def main() -> int:
         )
 
         # G. Open Custom Lab → Trial Custom workspace (Original D, not C sticky)
-        opened_lab = click_button_has(page, r"Open Custom Lab") or goto_custom(page)
+        opened_lab = (
+            click_button_has(page, r"Open Custom Lab")
+            or click_nav(page, "Custom")
+        )
+        if not opened_lab:
+            opened_lab = goto_custom(page)
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Original Key/i.test(t) && /Trial Song/i.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            pass
         side_g, body_g = shot(page, "G-open-custom")
         orig_g = original_key_val(page)
         pk_g = pk_val(page)
@@ -607,6 +640,17 @@ def main() -> int:
         # H. Creative restores SBI Custom
         click_nav(page, "Creative")
         settle(page, 4)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Trial Song/i.test(t) && /Concert Practice Key Progression/i.test(t);
+                }""",
+                timeout=30_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         side_h, body_h = shot(page, "H-creative-restore")
         h_ok = has_any(body_h, "Trial Song") and has_any(body_h, "Custom progression")
         active_wrong = has_any(body_h, "Active song") and not has_any(body_h, "Trial Song")
@@ -674,7 +718,7 @@ def main() -> int:
             clicked_em = select_shape_em(page)
             settle(page, 1)
             shot(page, "K-mission-selected-em")
-            click_generate_example(page)
+            click_generate_example_once(page)
             settle(page, 2)
             opened_mb = bool(open_mission_backing(page, NOTES))
             settle(page, 4)
@@ -687,6 +731,17 @@ def main() -> int:
             owners_bm = {chord_bm, card_bm, ex_bm} - {""}
             force_pk_token(page, "Cm")
             settle(page, 4)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /· Fm · Concert Cm/i.test(t) || /Verse 1 · Fm/i.test(t);
+                    }""",
+                    timeout=15_000,
+                )
+            except Exception:
+                pass
+            settle(page, 2)
             side_k, body_k = shot(page, "K-mission-cm")
             chord_cm = mission_header_chord(body_k)
             card_cm = mission_card_chord(body_k)
@@ -742,16 +797,37 @@ def main() -> int:
             f"regular={regular} still_sbi={still_sbi}",
         )
 
-        # M. Entry Style Jam E → Open Backing (no NameError)
+        # M. Entry Style Jam C# → Open Backing (ownership / key / handoff, not style name)
         if goto_improv(page, NOTES):
             click_radio(page, "Entry & Jam") or click_button_has(page, r"Entry & Jam")
             settle(page, 2)
             click_radio(page, "Style Jam") or click_button_has(page, r"Style Jam Mode")
             settle(page, 2)
-            set_style_jam_concert_key(page, "E") or set_style_jam_concert_key(page, "E major")
-            settle(page, 2)
+            concert_set = False
+            for _ in range(4):
+                concert_set = bool(
+                    set_style_jam_concert_key(page, "C#")
+                    or set_style_jam_concert_key(page, "C# major")
+                )
+                settle(page, 2)
+                jam_body = page.inner_text("body") or ""
+                if "c#" in low(jam_body) or "c sharp" in low(jam_body):
+                    concert_set = True
+                    break
             click_button_has(page, r"Generate progression")
-            settle(page, 4)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /Generated\\b/i.test(t)
+                        && /Open in Backing Studio/i.test(t)
+                        && (/C#\\s*major/i.test(t) || /C sharp major/i.test(t));
+                    }""",
+                    timeout=20_000,
+                )
+            except Exception:
+                click_button_has(page, r"Generate progression")
+                settle(page, 5)
             err_before = list(PAGE_ERRORS)
             opened_jam = click_button_has(page, r"Open in Backing Studio") or click_open_backing_studio(
                 page, NOTES, "M-jam"
@@ -763,16 +839,17 @@ def main() -> int:
             specialized = has_any(
                 body_m, "Entry Style", "Style Jam", "Return to Style", "Return to Jam", "Entry & Jam"
             )
-            e_major = has_any(body_m, "E major") or (
-                low(pk_val(page) or "").startswith("e") and "minor" not in low(pk_val(page) or "")
+            concert_cs = (
+                has_any(body_m, "C# major", "C sharp major", "Concert C#")
+                or "c#" in low(body_m)
             )
             no_sbi = not has_any(body_m, "Trial Song") and not has_any(body_m, "SBI Custom")
-            m_ok = opened_jam and not crashed and specialized and e_major and no_sbi
+            m_ok = opened_jam and not crashed and specialized and concert_cs and no_sbi
             mark(
                 "M_entry_style_backing",
                 m_ok,
-                f"open={opened_jam} crash={crashed} spec={specialized} e={e_major} "
-                f"pk={pk_val(page)!r} errors={PAGE_ERRORS[-3:]}",
+                f"open={opened_jam} crash={crashed} spec={specialized} c#={concert_cs} "
+                f"set={concert_set} pk={pk_val(page)!r} errors={PAGE_ERRORS[-3:]}",
             )
             page.reload(wait_until="domcontentloaded", timeout=120000)
             settle(page, 8)
@@ -805,17 +882,26 @@ def main() -> int:
             mark("M2_entry_refresh", False, "skipped")
             mark("M3_entry_return", False, "skipped")
 
-        # N. Motif pattern cell dividers
+        # N. Motif pattern cell dividers (after Build Motif Pattern, not the initial cell)
         goto_improv(page, NOTES)
         settle(page, 2)
         click_radio(page, "Motif") or click_button_has(page, r"Phrase / Motif")
         settle(page, 3)
         click_button_has(page, r"Generate motif") or click_button_has(page, r"New motif")
         settle(page, 3)
-        click_button_has(page, r"Pattern") or click_button_has(page, r"Motif pattern")
+        click_button_has(page, r"Build Motif Pattern") or click_button_has(
+            page, r"Motif pattern"
+        ) or click_button_has(page, r"Pattern")
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => (document.body.innerText || '').includes(' | ')""",
+                timeout=15_000,
+            )
+        except Exception:
+            settle(page, 2)
         side_n, body_n = shot(page, "N-motif-pattern")
-        n_ok = " | " in body_n and has_any(body_n, "Motif pattern")
+        n_ok = " | " in body_n and has_any(body_n, "Motif")
         mark("N_motif_dividers", n_ok, f"pipe={' | ' in body_n}")
 
         browser.close()

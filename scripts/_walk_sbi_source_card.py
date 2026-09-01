@@ -128,42 +128,53 @@ def wait_sbi_card(page: Page, *needles: str, timeout_s: float = 20.0) -> bool:
 
 
 def click_sbi_composition(page: Page) -> bool:
+    """Click the Song source 🎹 Composition radio (not Composition Studio nav)."""
     try:
-        custom = page.get_by_role("radio", name=re.compile(r"Custom Progression", re.I))
-        if custom.count():
-            custom.last.focus()
-            page.keyboard.press("ArrowRight")
-            settle(page, 4)
+        group = page.locator('[role="radiogroup"]').filter(
+            has_text=re.compile(r"Custom Progression", re.I)
+        )
+        target = group.locator("label").filter(
+            has_text=re.compile(r"Composition", re.I)
+        ).filter(has_not_text=re.compile(r"Studio", re.I))
+        if target.count():
+            el = target.last
+            el.scroll_into_view_if_needed()
+            el.click(timeout=5000)
+            settle(page, 3)
             if wait_sbi_card(page, "No composition source", "not available as an SBI"):
                 return True
     except Exception as exc:
-        log(f"composition keyboard err {exc!r}")
+        log(f"composition label click err {exc!r}")
+    if click_radio(page, "Composition"):
+        settle(page, 3)
+        if wait_sbi_card(page, "No composition source", "not available as an SBI"):
+            return True
     try:
         via = page.evaluate(
             """() => {
-              const groups = [...document.querySelectorAll('[role="radiogroup"]')];
+              const vis = (el) => !!(el && el.offsetParent !== null);
+              const groups = [...document.querySelectorAll('[role="radiogroup"]')].filter(vis);
               for (const g of groups) {
                 const gtxt = (g.innerText || '').toLowerCase();
-                if (!gtxt.includes('composition')) continue;
                 if (!gtxt.includes('custom progression')) continue;
-                const labels = [...g.querySelectorAll('label')];
-                const target = labels.find((l) => /^\\s*composition\\s*$/i.test((l.innerText||'').trim()));
+                if (!gtxt.includes('active')) continue;
+                const labels = [...g.querySelectorAll('label')].filter(vis);
+                const target = labels.find((l) => {
+                  const t = (l.innerText || '').replace(/\\s+/g, ' ').trim();
+                  return /composition/i.test(t) && !/studio/i.test(t);
+                });
                 if (!target) continue;
-                target.scrollIntoView({block:'center'});
+                target.scrollIntoView({block: 'center'});
                 const input = target.querySelector('input[type=radio]');
-                if (input) {
-                  input.click();
-                  input.dispatchEvent(new Event('input', {bubbles: true}));
-                  input.dispatchEvent(new Event('change', {bubbles: true}));
-                  return 'input';
-                }
+                if (input) input.click();
                 const p = target.querySelector('p');
                 (p || target).click();
-                return p ? 'p' : 'label';
+                return (target.innerText || '').trim();
               }
               return '';
             }"""
         )
+        log(f"composition js via={via!r}")
         if via:
             settle(page, 4)
             return wait_sbi_card(page, "No composition source", "not available as an SBI")
@@ -249,8 +260,20 @@ def main() -> int:
         mark("C_pk_type_unchanged", pk_ok, f"title={title_c!r}")
 
         # D. Refresh SBI Backing
-        page.reload(wait_until="domcontentloaded")
-        settle(page, 6)
+        page.reload(wait_until="domcontentloaded", timeout=120_000)
+        settle(page, 8)
+        wait_for_backing(page, NOTES, "D_refresh")
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /CREATIVE BACKING SESSION/i.test(t)
+                    && /Trial Song/i.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            settle(page, 4)
         body_d = shot(page, "D-refresh")
         title_d = blue_card_title(page)
         refresh_ok = card_ok(title_d or body_d, song="Trial Song", kind="Custom progression")

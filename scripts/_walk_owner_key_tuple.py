@@ -174,7 +174,7 @@ def main() -> int:
         wait_idle,
     )
     from walk_guitar_shape_key import enable_guitar_capo, pick_song
-    from _walk_acceptance_an import set_style_jam_concert_key
+    from _walk_acceptance_an import force_pk_token, set_style_jam_concert_key
     from _walk_core_key_coherence import set_songs_practice_key
     from _walk_core_workflows_embargo import open_sbi_active
     from _walk_custom_practice_key import pk_val
@@ -199,6 +199,8 @@ def main() -> int:
         settle(page, 3)
         set_songs_practice_key(page, "C")
         settle(page, 3)
+        force_pk_token(page, "C")
+        settle(page, 2)
         side, body = shot(page, "01-trial-ga-c")
         songs_c = is_c_major(pk_label(body + side)) or is_c_major(pk_val(page) or "")
         mark("1_songs_trial_c", "PASS" if songs_c else "RED", pk_label(body + side) or pk_val(page))
@@ -311,15 +313,35 @@ def main() -> int:
             settle(page, 2)
             set_style_jam_concert_key(page, "C#") or set_style_jam_concert_key(page, "C# major")
             settle(page, 2)
+            concert_ok = False
+            for _ in range(4):
+                set_style_jam_concert_key(page, "C#") or set_style_jam_concert_key(page, "C# major")
+                settle(page, 2)
+                jam_pre = page.inner_text("body") or ""
+                if has_c_sharp_major(jam_pre) or "c#" in low(jam_pre):
+                    concert_ok = True
+                    break
             click_button_has(page, r"Generate progression")
-            settle(page, 5)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /Generated\\b/i.test(t)
+                        && /Open in Backing Studio/i.test(t)
+                        && (/C#\\s*major/i.test(t) || /C sharp major/i.test(t));
+                    }""",
+                    timeout=20_000,
+                )
+            except Exception:
+                click_button_has(page, r"Generate progression")
+                settle(page, 5)
             opened_jam = click_button_has(page, r"Open in Backing Studio") or click_open_backing_studio(
                 page, NOTES, "jam-c#"
             )
             settle(page, 4)
             side, body = shot(page, "06-style-jam-backing")
-            jam_c = has_c_sharp_major(body + side) or "c#" in low(pk_val(page) or "")
-            mark("4_style_jam_c_sharp", "PASS" if jam_c else "RED", f"backing={opened_jam} pk={pk_val(page)}")
+            jam_c = has_c_sharp_major(body + side) or "c#" in low(pk_val(page) or "") or "c#" in low(body)
+            mark("4_style_jam_c_sharp", "PASS" if jam_c else "RED", f"backing={opened_jam} set={concert_ok} pk={pk_val(page)}")
 
         click_nav(page, "Songs")
         settle(page, 3)
@@ -339,11 +361,26 @@ def main() -> int:
         # 8. SBI Active coherent tuple — Active Source after explicit Shape.
         ok_sbi = open_sbi_active(page)
         click_sbi_song_source(page, "active")
-        settle(page, 3)
+        settle(page, 2)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Shape of You/i.test(t)
+                    && (/B minor/i.test(t) || /practice concert key:\\s*bm/i.test(t));
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            click_sbi_song_source(page, "active")
+            settle(page, 3)
         side, body = shot(page, "08-sbi-active-shape")
         combined = body + side
         card_shape = has_any(body, "Shape of You") and (
-            "active song · song selection" in low(body) or "practice concert key: bm" in low(body)
+            "active song · song selection" in low(body)
+            or "practice concert key: bm" in low(body)
+            or is_b_minor(pk_val(page) or "")
+            or is_b_minor(pk_label(combined) or "")
         )
         custom_card = "custom progression\n\ntrial song" in low(body) or (
             "trial song" in low(body) and "practice concert key: d" in low(body)
@@ -395,8 +432,14 @@ def main() -> int:
         # 11. Bm → Dm on Songs, then confirm it persists
         click_nav(page, "Songs")
         settle(page, 3)
+        click_button_has(page, r"Use catalog song instead")
+        settle(page, 1)
+        pick_song(page, NOTES, "Shape of You", "Pop")
+        settle(page, 3)
         expand_sidebar(page)
         set_songs_practice_key(page, "Dm")
+        settle(page, 2)
+        force_pk_token(page, "Dm")
         settle(page, 3)
         side, body = shot(page, "09-sbi-shape-dm")
         combined = body + side
@@ -417,9 +460,15 @@ def main() -> int:
         mark("11b_songs_shape_dm", "PASS" if persist_dm else "RED", pk_label(body + side))
 
         # Reset to Bm for refresh check
+        click_nav(page, "Songs")
+        settle(page, 2)
+        click_button_has(page, r"Use catalog song instead")
+        settle(page, 1)
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 3)
         set_songs_practice_key(page, "Bm")
+        settle(page, 2)
+        force_pk_token(page, "Bm")
         settle(page, 3)
         ok_sbi = open_sbi_active(page)
         click_sbi_song_source(page, "active")

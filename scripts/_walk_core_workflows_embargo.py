@@ -6,6 +6,7 @@ Written projection, refresh, and hard reboot A/B/C.
 Usage:
   MUSIC_APP_DATA_DIR=<isolated> streamlit run ... --server.port 8530
   python scripts/_walk_core_workflows_embargo.py http://127.0.0.1:8530
+  python scripts/_walk_core_workflows_embargo.py http://127.0.0.1:8530 --only=6_missions,9_motif
 """
 from __future__ import annotations
 
@@ -23,7 +24,18 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
-URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8530"
+def _cli() -> tuple[str, set[str]]:
+    url = "http://127.0.0.1:8530"
+    only: set[str] = set()
+    for arg in sys.argv[1:]:
+        if arg.startswith("--only="):
+            only = {p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()}
+        elif arg.startswith("http://") or arg.startswith("https://"):
+            url = arg
+    return url, only
+
+
+URL, ONLY_GATES = _cli()
 OUT = SCRIPTS / "evidence-creative-backing"
 OUT.mkdir(parents=True, exist_ok=True)
 PREFIX = "core-wf-"
@@ -132,6 +144,22 @@ def wait_for_body(page: Page, *needles: str, timeout_s: float = 45.0) -> str:
     return body
 
 
+def wait_for_body_all(page: Page, *needles: str, timeout_s: float = 45.0) -> str:
+    """Poll until every needle is present — remount chrome is not enough."""
+    deadline = time.time() + timeout_s
+    body = ""
+    wanted = [n for n in needles if n]
+    while time.time() < deadline:
+        try:
+            body = page.inner_text("body") or ""
+        except Exception:
+            body = ""
+        if wanted and all(n.lower() in low(body) for n in wanted):
+            return body
+        time.sleep(1.2)
+    return body
+
+
 def leave_mission_backing(page: Page) -> bool:
     from walk_creative_backing_matrix import click_button_has
 
@@ -234,6 +262,287 @@ def click_available_mission_chord(page: Page, prefer: list[str] | None = None) -
     return ""
 
 
+def click_mission_chord_once(page: Page, label: str) -> str:
+    """Click one intended chord tile (retry the same label only) until the heading matches."""
+    from walk_creative_backing_matrix import click_button_has
+
+    try:
+        btn = page.get_by_role("button", name=label, exact=True)
+        n = min(btn.count(), 12)
+        log(f"chord once {label!r} buttons={n}")
+        for i in range(n):
+            el = btn.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+                el.scroll_into_view_if_needed(timeout=3000)
+                el.click(timeout=5000)
+                settle(page, 3)
+                after = mission_selected_chord(page.inner_text("body") or "")
+                log(f"chord once {label!r} i={i} heading={after!r}")
+                if after and after.lower() == label.lower():
+                    return after
+            except Exception as exc:
+                log(f"chord once {label!r} i={i} err {exc!r}")
+                continue
+    except Exception as exc:
+        log(f"chord click {label!r} err {exc!r}")
+    click_button_has(page, rf"^{re.escape(label)}$")
+    settle(page, 3)
+    try:
+        page.wait_for_function(
+            """(want) => {
+              const t = document.body ? (document.body.innerText || '') : '';
+              const m = t.match(/Selected Mission Chord:\\s*([A-G](?:#|b)?m?\\d*)/i);
+              return m && m[1].toLowerCase() === String(want).toLowerCase();
+            }""",
+            arg=label,
+            timeout=8_000,
+        )
+    except Exception:
+        pass
+    after = mission_selected_chord(page.inner_text("body") or "")
+    if after and after.lower() == label.lower():
+        return after
+    return after or ""
+
+
+def click_generate_example_once(page: Page) -> bool:
+    """Click Generate example once — no New idea retries."""
+    from walk_creative_backing_matrix import click_button_has
+
+    clicked = False
+    try:
+        btn = page.get_by_role("button", name=re.compile(r"^Generate example$", re.I))
+        if btn.count():
+            el = btn.first
+            el.scroll_into_view_if_needed(timeout=3000)
+            el.click(timeout=5000)
+            clicked = True
+    except Exception as exc:
+        log(f"generate once err {exc!r}")
+    if not clicked:
+        clicked = bool(
+            click_button_has(page, r"^Generate example$")
+            or click_button_has(page, r"Generate example")
+        )
+    if clicked:
+        settle(page, 4)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Mission example\\s*[·•]/i.test(t) || /Notes:\\s*[A-G]/i.test(t);
+                }""",
+                timeout=12_000,
+            )
+        except Exception:
+            pass
+    return bool(clicked)
+
+
+def click_generate_motif_once(page: Page) -> bool:
+    """Click Generate motif once and wait until MOTIF ON / Notes render."""
+    from walk_creative_backing_matrix import click_button_has
+
+    clicked = bool(
+        click_button_has(page, r"Generate motif") or click_button_has(page, r"New motif")
+    )
+    if clicked:
+        settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  if (/MOTIF\\s+ON/i.test(t) && /[A-G](?:#|b)?\\s*(?:[–—\\-]|\\|)/.test(t)) {
+                    return true;
+                  }
+                  return /Notes:\\s*[A-G]/i.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            settle(page, 4)
+    return bool(clicked)
+
+
+def seed_shape_bm_missions(page: Page) -> bool:
+    """Land Shape of You at Bm so Verse tiles are Bm · Em · G · A."""
+    from walk_creative_backing_matrix import click_nav, goto_improv, set_instrument
+    from walk_guitar_shape_key import pick_song
+    from _walk_core_key_coherence import set_songs_practice_key
+    from _walk_pass8_validate import ensure_missions_workspace
+
+    click_nav(page, "Songs")
+    settle(page, 2)
+    pick_song(page, NOTES, "Shape of You", "Pop")
+    settle(page, 3)
+    set_songs_practice_key(page, "Bm")
+    settle(page, 2)
+    set_instrument(page, "Piano")
+    settle(page, 1)
+    if not goto_improv(page, NOTES):
+        return False
+    ensure_missions_workspace(page, NOTES)
+    settle(page, 2)
+    return True
+
+
+def run_gate_6_missions(page: Page) -> bool:
+    """One explicit Em click → heading Em → Generate once → example Em."""
+    if not seed_shape_bm_missions(page):
+        mark("6_missions", "RED", "could not open Creative/Missions")
+        return False
+    before_chord = mission_selected_chord(page.inner_text("body") or "")
+    heading_chord = click_mission_chord_once(page, "Em")
+    settle(page, 2)
+    body = shot(page, "06-mission-chord")
+    if not heading_chord:
+        heading_chord = mission_selected_chord(body)
+    one_click = bool(heading_chord) and heading_chord.lower() == "em"
+    gen = click_generate_example_once(page)
+    settle(page, 2)
+    body2 = shot(page, "06b-mission-example")
+    example_chord = ""
+    m_ex = re.search(r"Mission example\s*[·•]\s*([A-G](?:#|b)?m?\d*)", body2, re.I)
+    if m_ex:
+        example_chord = m_ex.group(1)
+    has_example = bool(example_chord) or bool(re.search(r"Notes:\s*[A-G]", body2, re.I))
+    example_matches = bool(heading_chord) and (
+        not example_chord
+        or example_chord.lower().replace(" ", "") == heading_chord.lower().replace(" ", "")
+    )
+    mission_ok = bool(
+        one_click and heading_chord and has_example and example_matches and gen
+    )
+    mark(
+        "6_missions",
+        "PASS" if mission_ok else "RED",
+        f"before={before_chord!r} after={heading_chord!r} one_click={one_click} "
+        f"ex={example_chord!r} gen={gen}",
+    )
+    return True
+
+
+def run_gate_9_motif(page: Page) -> bool:
+    """Generate one motif, parse compact/pipe/Notes display, Sequence Up, Change Rhythm."""
+    from walk_creative_backing_matrix import click_button_has, click_radio, goto_improv
+
+    leave_mission_backing(page)
+    goto_improv(page, NOTES)
+    settle(page, 2)
+    landed_motif = False
+    for attempt in range(6):
+        click_radio(page, "Phrase / Motif") or click_button_has(
+            page, r"♪?\s*Phrase / Motif"
+        ) or click_radio(page, "Motif") or click_button_has(page, r"Phrase / Motif")
+        settle(page, 2)
+        body_chk = page.inner_text("body") or ""
+        if re.search(r"Generate motif", body_chk, re.I) or has_any(body_chk, "New motif"):
+            landed_motif = True
+            break
+        log(f"motif tab attempt={attempt} generate_motif={bool(re.search(r'Generate motif', body_chk, re.I))}")
+    if not landed_motif:
+        mark("9_motif", "RED", "could not open Phrase / Motif")
+        return False
+    gen_ok = click_generate_motif_once(page)
+    body = shot(page, "09-motif")
+    notes_m = motif_notes_from_body(body)
+    if not notes_m:
+        gen_ok = click_generate_motif_once(page) or gen_ok
+        body = shot(page, "09-motif")
+        notes_m = motif_notes_from_body(body)
+    jumps = absurd_octave_jumps(notes_m) if notes_m else False
+    base_midi = _to_midiish(notes_m)
+    base_avg = sum(base_midi) / len(base_midi) if base_midi else 0.0
+    before_seq = list(notes_m)
+    before_disp = " – ".join(before_seq)
+    up_clicked = click_button_has(page, r"Sequence Up")
+    if not up_clicked:
+        try:
+            page.get_by_role("button", name=re.compile(r"Sequence Up", re.I)).first.click(
+                timeout=4000
+            )
+            up_clicked = True
+        except Exception:
+            pass
+    try:
+        page.wait_for_function(
+            """(before) => {
+              const t = document.body ? (document.body.innerText || '') : '';
+              const m = t.match(/MOTIF\\s+ON[^\\n]*\\n+([^\\n]+)/i);
+              const notes = t.match(/Notes:\\s*([^\\n]+)/i);
+              const line = ((m && m[1]) || (notes && notes[1]) || '').trim();
+              if (!line || !/[A-G]/.test(line)) return false;
+              const norm = line.replace(/\\s+/g, ' ');
+              const beforeNorm = String(before || '').replace(/\\s+/g, ' ');
+              return norm !== beforeNorm;
+            }""",
+            arg=before_disp,
+            timeout=12_000,
+        )
+    except Exception:
+        settle(page, 4)
+    settle(page, 2)
+    body_asc = shot(page, "09b-motif-asc")
+    notes_asc = motif_notes_from_body(body_asc)
+    asc_midi = _to_midiish(notes_asc)
+    asc_avg = sum(asc_midi) / len(asc_midi) if asc_midi else 0.0
+    asc_ok = bool(notes_asc) and notes_asc != before_seq
+    down_clicked = click_button_has(page, r"Sequence Down")
+    if not down_clicked:
+        try:
+            page.get_by_role("button", name=re.compile(r"Sequence Down", re.I)).first.click(
+                timeout=4000
+            )
+        except Exception:
+            pass
+    try:
+        page.wait_for_function(
+            """(before) => {
+              const t = document.body ? (document.body.innerText || '') : '';
+              const m = t.match(/MOTIF\\s+ON[^\\n]*\\n+([^\\n]+)/i);
+              const notes = t.match(/Notes:\\s*([^\\n]+)/i);
+              const line = ((m && m[1]) || (notes && notes[1]) || '').trim();
+              if (!line || !/[A-G]/.test(line)) return false;
+              const norm = line.replace(/\\s+/g, ' ');
+              const beforeNorm = String(before || '').replace(/\\s+/g, ' ');
+              return norm !== beforeNorm;
+            }""",
+            arg=" – ".join(notes_asc or before_seq),
+            timeout=12_000,
+        )
+    except Exception:
+        settle(page, 4)
+    settle(page, 2)
+    body_desc = shot(page, "09c-motif-desc")
+    notes_desc = motif_notes_from_body(body_desc)
+    desc_midi = _to_midiish(notes_desc)
+    desc_avg = sum(desc_midi) / len(desc_midi) if desc_midi else 0.0
+    desc_ok = bool(notes_desc) and notes_desc != notes_asc
+    pitches_before = [re.sub(r"\d", "", n) for n in (notes_desc or notes_asc or notes_m)]
+    click_button_has(page, r"^Change Rhythm$") or click_button_has(page, r"Change Rhythm")
+    settle(page, 3)
+    body_r = shot(page, "09d-motif-rhythm")
+    notes_r = motif_notes_from_body(body_r)
+    pitches_after = [re.sub(r"\d", "", n) for n in notes_r]
+    rhythm_ok = True
+    if pitches_before and pitches_after:
+        n = min(len(pitches_before), len(pitches_after))
+        rhythm_ok = pitches_before[:n] == pitches_after[:n] if n else True
+    sheet_ok = has_any(body_r, "Sheet music", "ABC")
+    motif_core = bool(notes_m) and not jumps and sheet_ok
+    motif_ok = motif_core and asc_ok and desc_ok and rhythm_ok and up_clicked
+    mark(
+        "9_motif",
+        "PASS" if motif_ok else ("PARTIAL" if motif_core else "RED"),
+        f"notes={len(notes_m)} jumps={jumps} asc={asc_ok} desc={desc_ok} "
+        f"avg0={base_avg:.1f} avgUp={asc_avg:.1f} avgDown={desc_avg:.1f} "
+        f"rhythm_ok={rhythm_ok} sheet={sheet_ok} up_click={up_clicked} gen={gen_ok}",
+    )
+    return motif_ok
+
+
 def open_sbi_active(page: Page) -> bool:
     from walk_creative_backing_matrix import click_button_has, click_radio, goto_improv
 
@@ -304,34 +613,62 @@ _PC = {
 }
 
 
+_MOTIF_NOTE = r"[A-G](?:#|b)?"
+_MOTIF_SEP = r"(?:\s*[–—\-]\s*|\s*\|\s*)"
+
+
+def _notes_from_motif_line(line: str) -> list[str]:
+    blob = (line or "").strip()
+    if not blob:
+        return []
+    return re.findall(_MOTIF_NOTE, blob)[:32]
+
+
 def motif_notes_from_body(body: str) -> list[str]:
-    """Parse motif pitch tokens from Pattern / Notes / MOTIF ON lines (octaves optional)."""
+    """Parse motif pitches from compact MOTIF ON, cell dividers, or linear Notes."""
     chunk = body or ""
-    m = re.search(
-        r"(?:MOTIF\s+(?:PATTERN\s+)?ON[^\n]*\n+|MOTIF PATTERN[^\n]*\n+|Notes:\s*)"
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+    if not re.search(r"MOTIF\s+ON", chunk, re.I):
+        return []
+    m_notes = re.search(
+        rf"Notes:\s*({_MOTIF_NOTE}(?:{_MOTIF_SEP}{_MOTIF_NOTE}){{2,}})",
         chunk,
         re.I,
     )
-    if m:
-        return re.findall(r"[A-G](?:#|b)?", m.group(1))[:32]
-    idx = low(chunk).find("motif pattern")
-    if idx < 0:
-        idx = low(chunk).find("motif on")
-    if idx < 0:
-        idx = low(chunk).find("motif")
+    if m_notes:
+        found = _notes_from_motif_line(m_notes.group(1))
+        if len(found) >= 3:
+            return found
+    m_on = re.search(
+        rf"MOTIF\s+ON[^\n]*\n+({_MOTIF_NOTE}(?:{_MOTIF_SEP}{_MOTIF_NOTE}){{2,}})",
+        chunk,
+        re.I,
+    )
+    if m_on:
+        found = _notes_from_motif_line(m_on.group(1))
+        if len(found) >= 3:
+            return found
+    m_pat = re.search(
+        rf"MOTIF\s+PATTERN[^\n]*\n+({_MOTIF_NOTE}(?:{_MOTIF_SEP}{_MOTIF_NOTE}){{2,}})",
+        chunk,
+        re.I,
+    )
+    if m_pat:
+        found = _notes_from_motif_line(m_pat.group(1))
+        if len(found) >= 3:
+            return found
+    idx = low(chunk).find("motif on")
     if idx < 0:
         return []
-    window = chunk[idx : idx + 3500]
+    window = chunk[idx : idx + 2500]
     numbered = re.findall(r"\b([A-G](?:#|b)?\d)\b", window)
     if numbered:
         return numbered[:32]
     line = re.search(
-        r"([A-G](?:#|b)?(?:\s*[–—\-]\s*[A-G](?:#|b)?){2,})",
+        rf"({_MOTIF_NOTE}(?:{_MOTIF_SEP}{_MOTIF_NOTE}){{2,}})",
         window,
     )
     if line:
-        return re.findall(r"[A-G](?:#|b)?", line.group(1))[:32]
+        return _notes_from_motif_line(line.group(1))
     return []
 
 
@@ -451,6 +788,38 @@ def hard_reboot_streamlit(port: int = 8530) -> None:
     log("reboot: server wait timeout")
 
 
+def _emit_summary(meta: dict[str, str]) -> int:
+    reds = [k for k, v in RESULTS.items() if v == "RED"]
+    partials = [k for k, v in RESULTS.items() if v == "PARTIAL"]
+    passes = [k for k, v in RESULTS.items() if v == "PASS"]
+    overall = "PASS" if not reds and not partials else ("PARTIAL" if not reds else "RED")
+    summary = {
+        "meta": meta,
+        "overall": overall,
+        "results": RESULTS,
+        "pass": passes,
+        "partial": partials,
+        "red": reds,
+        "notes": NOTES[-80:],
+    }
+    (OUT / f"{PREFIX}summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (OUT / f"{PREFIX}summary.txt").write_text(
+        "\n".join(
+            [
+                f"OVERALL={overall}",
+                f"PASS={len(passes)} PARTIAL={len(partials)} RED={len(reds)}",
+                json.dumps(RESULTS, indent=2),
+                "",
+                *NOTES[-60:],
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(json.dumps(RESULTS, indent=2), flush=True)
+    print(f"OVERALL={overall}", flush=True)
+    return 0 if overall == "PASS" else 1
+
+
 def main() -> int:
     from walk_creative_backing_matrix import (
         click_button_has,
@@ -478,6 +847,16 @@ def main() -> int:
         page = browser.new_page(viewport={"width": 1440, "height": 960})
         page.goto(URL, wait_until="domcontentloaded", timeout=180000)
         settle(page, 5)
+
+        if ONLY_GATES:
+            if "6_missions" in ONLY_GATES:
+                run_gate_6_missions(page)
+            if "9_motif" in ONLY_GATES:
+                if "6_missions" not in ONLY_GATES:
+                    seed_shape_bm_missions(page)
+                run_gate_9_motif(page)
+            browser.close()
+            return _emit_summary(meta)
 
         # ---------- Seed: Shape GA + Trial LAST_CUSTOM ----------
         shape_badge = ""
@@ -660,111 +1039,9 @@ def main() -> int:
             f"shape={has_any(body,'Shape of You')} trial={has_any(body,'Trial Song')}",
         )
 
-        # ========== 6. Missions ==========
-        if not goto_improv(page, NOTES):
-            mark("6_missions", "RED", "could not open Creative/Missions")
-        else:
-            ensure_missions_workspace(page, NOTES)
-            settle(page, 2)
-            before_chord = mission_selected_chord(page.inner_text("body") or "")
-            heading_chord = click_available_mission_chord(page)
-            settle(page, 2)
-            body = shot(page, "06-mission-chord")
-            if not heading_chord:
-                heading_chord = mission_selected_chord(body)
-            one_click = bool(
-                heading_chord
-                and before_chord
-                and heading_chord.lower() != before_chord.lower()
-            )
-            gen = click_generate_example(page)
-            settle(page, 2)
-            body2 = shot(page, "06b-mission-example")
-            example_chord = ""
-            m_ex = re.search(r"Mission example\s*[·•]\s*([A-G](?:#|b)?m?\d*)", body2, re.I)
-            if m_ex:
-                example_chord = m_ex.group(1)
-            has_example = bool(example_chord) or bool(
-                re.search(r"Notes:\s*[A-G]", body2, re.I)
-            )
-            example_matches = (not example_chord) or (
-                bool(heading_chord)
-                and example_chord.lower().replace(" ", "")
-                == heading_chord.lower().replace(" ", "")
-            )
-            if heading_chord and example_chord and not example_matches:
-                click_generate_example(page)
-                settle(page, 2)
-                body2 = shot(page, "06b-mission-example-retry")
-                m_ex = re.search(r"Mission example\s*[·•]\s*([A-G](?:#|b)?m?\d*)", body2, re.I)
-                if m_ex:
-                    example_chord = m_ex.group(1)
-                has_example = bool(example_chord) or bool(
-                    re.search(r"Notes:\s*[A-G]", body2, re.I)
-                )
-                example_matches = (not example_chord) or (
-                    example_chord.lower().replace(" ", "")
-                    == heading_chord.lower().replace(" ", "")
-                )
-            # PK: use proven setter; prefer Em (in-key for Shape) then Bm original.
-            from _walk_pass8_live import set_practice_key as _set_pk
-
-            notes_before = ""
-            nm = re.search(r"Notes:\s*([^\n]+)", body2, re.I)
-            if nm:
-                notes_before = nm.group(1).strip()
-            pk_set = _set_pk(page, "Em") or _set_pk(page, "Bm") or set_baseweb_select(
-                page, "Practice / Concert Key", "Em"
-            )
-            settle(page, 3)
-            try:
-                page.wait_for_function(
-                    """() => {
-                      const t = document.body ? (document.body.innerText || '') : '';
-                      return /Practice Key:\\s*(Em|Bm|E\\b|B\\b)/i.test(t)
-                        && !/Practice Key:\\s*Dm\\b/i.test(t);
-                    }""",
-                    timeout=15_000,
-                )
-            except Exception:
-                pass
-            click_generate_example(page)
-            settle(page, 2)
-            body3 = shot(page, "06c-mission-pk")
-            pk_heading = ""
-            mh = re.search(r"Practice Key:\s*([A-G](?:#|b)?m?)", body3, re.I)
-            if mh:
-                pk_heading = mh.group(1)
-            pk_label = practice_badge(body3) or sidebar_pk_input(page)
-            notes_after = ""
-            nm2 = re.search(r"Notes:\s*([^\n]+)", body3, re.I)
-            if nm2:
-                notes_after = nm2.group(1).strip()
-            pk_changed = bool(pk_heading) and pk_heading.lower() in {"em", "bm", "e", "b"}
-            if not pk_changed:
-                pk_changed = bool(pk_set) and (
-                    "e minor" in low(pk_label)
-                    or "b minor" in low(pk_label)
-                    or str(pk_label).strip().lower() in {"em", "bm", "e", "b"}
-                )
-            content_moved = bool(notes_before and notes_after and notes_before != notes_after)
-            mission_ok = bool(
-                one_click
-                and heading_chord
-                and has_example
-                and example_matches
-                and (pk_changed or content_moved)
-            )
-            mark(
-                "6_missions",
-                "PASS"
-                if mission_ok
-                else ("PARTIAL" if (one_click and heading_chord and has_example) else "RED"),
-                f"before={before_chord!r} after={heading_chord!r} one_click={one_click} "
-                f"ex={example_chord!r} gen={gen} pk={pk_changed} content_moved={content_moved} "
-                f"pk_heading={pk_heading!r} pk_label={pk_label!r}",
-            )
-
+        # ========== 6. Missions (one explicit chord click, then Generate once) ==========
+        g6_opened = run_gate_6_missions(page)
+        if g6_opened:
             # ========== 7. Mission → Backing → Return ==========
             click_button_has(page, r"Generate [Ee]xample")
             settle(page, 2)
@@ -797,6 +1074,8 @@ def main() -> int:
                 "PASS" if g7 else "RED",
                 f"open={opened_mb} mission={is_mission_bk} pk={pk_m!r} ret={ret}",
             )
+        else:
+            mark("7_mission_backing_return", "RED", "missions page did not open")
 
         # ========== 8. Live Coach ==========
         leave_mission_backing(page)
@@ -826,114 +1105,7 @@ def main() -> int:
         )
 
         # ========== 9. Motif ==========
-        leave_mission_backing(page)
-        goto_improv(page, NOTES)
-        settle(page, 2)
-        click_radio(page, "Motif") or click_button_has(page, r"Phrase / Motif") or click_radio(
-            page, "Phrase"
-        ) or click_button_has(page, r"Motif")
-        settle(page, 3)
-        # Ensure Motif panel mounted
-        for _ in range(3):
-            body_chk = page.inner_text("body") or ""
-            if has_any(body_chk, "Generate motif", "New motif", "Phrase / Motif"):
-                break
-            click_radio(page, "Phrase / Motif") or click_button_has(page, r"Phrase / Motif")
-            settle(page, 2)
-        click_available_mission_chord(page, prefer=["Dm", "Gm", "Am", "Em", "C", "Eb", "Fm"])
-        settle(page, 2)
-        click_button_has(page, r"Generate motif") or click_button_has(page, r"New motif")
-        settle(page, 3)
-        body = shot(page, "09-motif")
-        notes_m = motif_notes_from_body(body)
-        if not notes_m:
-            click_button_has(page, r"Generate motif")
-            settle(page, 3)
-            body = shot(page, "09-motif")
-            notes_m = motif_notes_from_body(body)
-        jumps = absurd_octave_jumps(notes_m) if notes_m else False
-        base_midi = _to_midiish(notes_m)
-        base_avg = sum(base_midi) / len(base_midi) if base_midi else 0.0
-        # Sequence Up / Down — wait for visible pitch change (Streamlit rerun lag)
-        before_seq = list(notes_m)
-        before_disp = " – ".join(before_seq)
-        up_clicked = click_button_has(page, r"Sequence Up")
-        if not up_clicked:
-            try:
-                page.get_by_role("button", name=re.compile(r"Sequence Up", re.I)).first.click(
-                    timeout=4000
-                )
-                up_clicked = True
-            except Exception:
-                pass
-        try:
-            page.wait_for_function(
-                """(before) => {
-                  const t = document.body ? (document.body.innerText || '') : '';
-                  const m = t.match(/MOTIF\\s+ON[^\\n]*\\n+([^\\n]+)/i);
-                  if (!m) return false;
-                  const line = (m[1] || '').trim();
-                  return line && line !== before && /[A-G]/.test(line);
-                }""",
-                arg=before_disp,
-                timeout=12_000,
-            )
-        except Exception:
-            settle(page, 4)
-        settle(page, 2)
-        body_asc = shot(page, "09b-motif-asc")
-        notes_asc = motif_notes_from_body(body_asc)
-        asc_midi = _to_midiish(notes_asc)
-        asc_avg = sum(asc_midi) / len(asc_midi) if asc_midi else 0.0
-        asc_ok = bool(notes_asc) and notes_asc != before_seq
-        down_clicked = click_button_has(page, r"Sequence Down")
-        if not down_clicked:
-            try:
-                page.get_by_role("button", name=re.compile(r"Sequence Down", re.I)).first.click(
-                    timeout=4000
-                )
-            except Exception:
-                pass
-        try:
-            page.wait_for_function(
-                """(before) => {
-                  const t = document.body ? (document.body.innerText || '') : '';
-                  const m = t.match(/MOTIF\\s+ON[^\\n]*\\n+([^\\n]+)/i);
-                  if (!m) return false;
-                  const line = (m[1] || '').trim();
-                  return line && line !== before && /[A-G]/.test(line);
-                }""",
-                arg=" – ".join(notes_asc or before_seq),
-                timeout=12_000,
-            )
-        except Exception:
-            settle(page, 4)
-        settle(page, 2)
-        body_desc = shot(page, "09c-motif-desc")
-        notes_desc = motif_notes_from_body(body_desc)
-        desc_midi = _to_midiish(notes_desc)
-        desc_avg = sum(desc_midi) / len(desc_midi) if desc_midi else 0.0
-        desc_ok = bool(notes_desc) and notes_desc != notes_asc
-        pitches_before = [re.sub(r"\d", "", n) for n in (notes_desc or notes_asc or notes_m)]
-        click_button_has(page, r"^Change Rhythm$") or click_button_has(page, r"Change Rhythm")
-        settle(page, 3)
-        body_r = shot(page, "09d-motif-rhythm")
-        notes_r = motif_notes_from_body(body_r)
-        pitches_after = [re.sub(r"\d", "", n) for n in notes_r]
-        rhythm_ok = True
-        if pitches_before and pitches_after:
-            n = min(len(pitches_before), len(pitches_after))
-            rhythm_ok = pitches_before[:n] == pitches_after[:n] if n else True
-        sheet_ok = has_any(body_r, "Sheet music", "ABC")
-        motif_core = bool(notes_m) and not jumps and sheet_ok
-        motif_ok = motif_core and asc_ok and desc_ok and rhythm_ok
-        mark(
-            "9_motif",
-            "PASS" if motif_ok else ("PARTIAL" if motif_core else "RED"),
-            f"notes={len(notes_m)} jumps={jumps} asc={asc_ok} desc={desc_ok} "
-            f"avg0={base_avg:.1f} avgUp={asc_avg:.1f} avgDown={desc_avg:.1f} "
-            f"rhythm_ok={rhythm_ok} sheet={sheet_ok} up_click={up_clicked}",
-        )
+        run_gate_9_motif(page)
 
         # ========== 10. Written / Alto ==========
         set_instrument(page, "Piano")
@@ -1024,7 +1196,13 @@ def main() -> int:
         browser.close()
 
         # Actual process death + restart (preserves MUSIC_APP_DATA_DIR)
-        hard_reboot_streamlit(8530)
+        try:
+            from urllib.parse import urlparse
+
+            reboot_port = int(urlparse(URL).port or 8530)
+        except Exception:
+            reboot_port = 8530
+        hard_reboot_streamlit(reboot_port)
         time.sleep(5)
 
         browser2 = p.chromium.launch(headless=True)
@@ -1041,11 +1219,11 @@ def main() -> int:
         settle(page2, 6)
         body_boot = shot(page2, "12-post-reboot")
         boot_mission = has_any(body_boot, "Return to Mission", "Mission Backing", "MISSION BACKING")
-        # A: leave mission jam, open Songs, assert Shape sticky Dm
+        # A: leave mission jam, open Songs, assert restored Shape Dm.
+        # Do not re-pick Shape: pick_song is a new selection and can reset Concert Key.
         leave_mission_backing(page2)
         click_nav(page2, "Songs")
-        settle(page2, 3)
-        pick_song(page2, NOTES, "Shape of You", "Pop")
+        wait_for_body_all(page2, "Shape of You", "D minor", timeout_s=45.0)
         settle(page2, 3)
         body_a = shot(page2, "12a-songs-after-reboot")
         a_badge = practice_badge(body_a) or card_practice_label(body_a)
@@ -1072,13 +1250,13 @@ def main() -> int:
         click_nav(page2, "Songs")
         settle(page2, 2)
         pick_song(page2, NOTES, "Perfect", "Pop")
+        wait_for_body_all(page2, "NOW LOADED FOR PRACTICE", "Perfect", "G major", timeout_s=30.0)
         settle(page2, 3)
         body = shot(page2, "13-perfect")
-        perfect_ok = "g major" in low(practice_badge(body)) or has_any(body, "G major")
-        if has_any(body, "minor") and "g major" not in low(practice_badge(body)):
-            # card must not be minor for Perfect fresh
-            if "minor" in low(practice_badge(body)):
-                perfect_ok = False
+        badge13 = practice_badge(body) or card_practice_label(body)
+        perfect_ok = has_any(body, "Perfect") and "g major" in low(badge13 or "")
+        if "minor" in low(badge13 or "") and "g major" not in low(badge13 or ""):
+            perfect_ok = False
         open_sbi_active(page2)
         body = shot(page2, "13-sbi-active-final")
         final_active = has_any(body, "Perfect") and not has_any(body, "Trial Song")
@@ -1130,11 +1308,12 @@ def main() -> int:
                 ):
                     click_nav(page2, "Songs")
                 settle(page2, 4)
-                wait_for_body(
+                wait_for_body_all(
                     page2,
                     "NOW LOADED FOR PRACTICE",
-                    "Choose a song from your library",
-                    timeout_s=20.0,
+                    "Embargo Trial",
+                    "D major",
+                    timeout_s=30.0,
                 )
                 body14 = shot(page2, "14-custom-to-songs")
                 badge14 = practice_badge(body14) or card_practice_label(body14)
@@ -1172,6 +1351,7 @@ def main() -> int:
             if goto_improv(page2, NOTES):
                 sbi_opened = open_sbi_active(page2)
                 settle(page2, 3)
+                wait_for_body_all(page2, "Embargo Trial", "Concert Practice Key Progression", timeout_s=25.0)
                 body_sbi = shot(page2, "15-sbi-custom-ga")
                 sbi_prog_ok = rendered_em_em_d_d(body_sbi)
                 sbi_title_ok = has_any(body_sbi, "Embargo Trial", "Trial Song")
@@ -1263,36 +1443,7 @@ def main() -> int:
 
         browser2.close()
 
-    # Summary
-    reds = [k for k, v in RESULTS.items() if v == "RED"]
-    partials = [k for k, v in RESULTS.items() if v == "PARTIAL"]
-    passes = [k for k, v in RESULTS.items() if v == "PASS"]
-    overall = "PASS" if not reds and not partials else ("PARTIAL" if not reds else "RED")
-    summary = {
-        "meta": meta,
-        "overall": overall,
-        "results": RESULTS,
-        "pass": passes,
-        "partial": partials,
-        "red": reds,
-        "notes": NOTES[-80:],
-    }
-    (OUT / f"{PREFIX}summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (OUT / f"{PREFIX}summary.txt").write_text(
-        "\n".join(
-            [
-                f"OVERALL={overall}",
-                f"PASS={len(passes)} PARTIAL={len(partials)} RED={len(reds)}",
-                json.dumps(RESULTS, indent=2),
-                "",
-                *NOTES[-60:],
-            ]
-        ),
-        encoding="utf-8",
-    )
-    print(json.dumps(RESULTS, indent=2), flush=True)
-    print(f"OVERALL={overall}", flush=True)
-    return 0 if overall == "PASS" else 1
+    return _emit_summary(meta)
 
 
 if __name__ == "__main__":

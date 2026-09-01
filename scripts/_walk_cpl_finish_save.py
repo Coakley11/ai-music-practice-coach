@@ -43,7 +43,7 @@ def _git() -> dict[str, str]:
 
 def log(msg: str) -> None:
     NOTES.append(msg)
-    print(msg, flush=True)
+    print(str(msg).encode("ascii", "replace").decode("ascii"), flush=True)
 
 
 def shot(page: Page, name: str) -> str:
@@ -114,7 +114,7 @@ def buttons_below_heading(page: Page, heading: str) -> list[str]:
 
 
 def launch_labels(page: Page) -> list[str]:
-    """Buttons in the Launch-in-the-studio cluster only (not footer nav)."""
+    """Buttons in the Launch-in-the-studio cluster only (not sidebar PAGES nav)."""
     loc = page.get_by_text("Launch in the studio", exact=False)
     if loc.count() == 0:
         return []
@@ -131,6 +131,15 @@ def launch_labels(page: Page) -> list[str]:
     if not box:
         return []
     y0 = box["y"]
+    sidebar_right = 0.0
+    try:
+        sb = page.locator('[data-testid="stSidebar"]')
+        if sb.count():
+            sbox = sb.first.bounding_box()
+            if sbox:
+                sidebar_right = float(sbox["x"]) + float(sbox["width"])
+    except Exception:
+        sidebar_right = 0.0
     labels: list[str] = []
     btns = page.locator('[data-testid="stAppViewContainer"] button')
     for i in range(btns.count()):
@@ -140,6 +149,8 @@ def launch_labels(page: Page) -> list[str]:
                 continue
             bb = el.bounding_box()
             if not bb:
+                continue
+            if sidebar_right and bb["x"] < sidebar_right + 8:
                 continue
             if bb["y"] < y0 - 2 or bb["y"] > y0 + 180:
                 continue
@@ -318,9 +329,33 @@ def main() -> int:
         log(f"F backing={GATES['F_backing_nav']}")
 
         page.reload(wait_until="domcontentloaded", timeout=180000)
-        wait_idle(page, 6000)
-        goto_custom(page)
-        wait_idle(page, 3000)
+        wait_idle(page, 4000)
+        for _ in range(5):
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      if (t.length < 800) return false;
+                      return /Keep Editing/i.test(t) || /Finish Song/i.test(t)
+                        || /Finish Save Walk/i.test(t);
+                    }""",
+                    timeout=12_000,
+                )
+            except Exception:
+                pass
+            body_probe = page.inner_text("body") or ""
+            catalog_only = (
+                "SONG CATALOG" in body_probe
+                and "Keep Editing" not in body_probe
+                and "Finish Song" not in body_probe
+            )
+            if catalog_only or (
+                "Keep Editing" not in body_probe and "Finish Song" not in body_probe
+            ):
+                goto_custom(page)
+                wait_idle(page, 3000)
+                continue
+            break
         body_g = shot(page, "G-refresh")
         launch_g = launch_labels(page)
         GATES["G_refresh_saved"] = label_has_practice(launch_g) and label_has_backing(
@@ -335,7 +370,18 @@ def main() -> int:
         )
 
         click_main_button(page, r"New song") or click_button_has(page, r"New song")
-        wait_idle(page, 3000)
+        wait_idle(page, 2000)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /New blank song/i.test(t) || /Finish Song/i.test(t);
+                }""",
+                timeout=15_000,
+            )
+        except Exception:
+            pass
+        wait_idle(page, 2000)
         body_h = shot(page, "H-new-song")
         launch_h = launch_labels(page)
         GATES["H_new_practice_hidden"] = not label_has_practice(launch_h)

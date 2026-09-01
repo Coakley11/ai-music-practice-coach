@@ -69,22 +69,37 @@ def shot(page: Page, name: str) -> str:
 
 def click_songs_creative_button(page: Page) -> bool:
     loc = page.locator('[class*="st-key-picker_card_creative"] button')
-    if not loc.count():
-        log("picker_card_creative not in DOM")
-        return False
-    try:
-        loc.first.scroll_into_view_if_needed()
-        page.wait_for_timeout(200)
-        loc.first.click(timeout=5000)
+    if loc.count():
+        try:
+            loc.first.scroll_into_view_if_needed()
+            page.wait_for_timeout(200)
+            loc.first.click(timeout=5000)
+            settle(page, 3)
+            return True
+        except Exception as exc:
+            log(f"picker_card_creative click err {exc!r}")
+    # Custom GA Songs hub has 🎨 Creative / Open, not the catalog picker_card id.
+    if click_nav(page, "Creative"):
         settle(page, 3)
         return True
+    try:
+        hub = page.get_by_role("button", name=re.compile(r"^Creative$", re.I))
+        if hub.count():
+            hub.first.click(timeout=4000)
+            settle(page, 3)
+            return True
     except Exception as exc:
-        log(f"picker_card_creative click err {exc!r}")
-        return False
+        log(f"creative hub click err {exc!r}")
+    log("picker_card_creative not in DOM; sidebar Creative also missed")
+    return False
 
 
 def on_creative(body: str) -> bool:
-    return has_any(body, "Creative Lab", "Improvisation Intelligence", "Harmony, improvisation")
+    # Songs hub copy can mention Creative — require Creative-page identity.
+    return has_any(body, "Improvisation Intelligence", "Entry & Jam", "Song-Based") or (
+        has_any(body, "Harmony, improvisation")
+        and not has_any(body, "SONG CATALOG", "NOW LOADED FOR PRACTICE")
+    )
 
 
 def on_songs(body: str) -> bool:
@@ -153,6 +168,18 @@ def main() -> int:
         custom_on_songs = has_any(body3, "Trial Song") and on_songs(body3)
         no_catalog_hub = "Use catalog song instead" in body3 or has_any(body3, "your song")
         clicked3 = click_songs_creative_button(page)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Entry & Jam/i.test(t) || /Improvisation Intelligence/i.test(t)
+                    || /Song-Based/i.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         body3b = shot(page, "3-creative-custom-ga")
         still_trial = has_any(body3b, "Trial Song")
         no_shape_fallback = not (
