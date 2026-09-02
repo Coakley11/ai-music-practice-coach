@@ -1283,6 +1283,13 @@ def ensure_songs(page: Page) -> None:
         ENSURE_SONGS_STATS["nav_ok"] += 1
         return
 
+    # Extra nav retries before reload — empty/cold workspaces often land on Practice.
+    for _ in range(5):
+        page.wait_for_timeout(500)
+        if _try_nav():
+            ENSURE_SONGS_STATS["nav_ok"] += 1
+            return
+
     if not ensure_songs_reload_allowed():
         ENSURE_SONGS_STATS["reload_denied"] += 1
         page_id = _studio_page_id(page)

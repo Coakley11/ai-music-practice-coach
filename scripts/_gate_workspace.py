@@ -29,11 +29,30 @@ def workspace_url(base: str, workspace_id: str, *, dev: bool = True) -> str:
 
 
 def ensure_empty_workspace(workspace_id: str) -> Path:
-    """Create a clean workspace dir (no music_user_state.json)."""
+    """Create a clean workspace dir with a picker-page envelope (no song residue)."""
     path = WORKSPACES / workspace_id
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
     path.mkdir(parents=True, exist_ok=True)
+    # Empty dirs alone can resume onto Practice; seed a Songs/picker page so gates
+    # can reach Music Source without reload recovery.
+    state_path = path / "music_user_state.json"
+    envelope = {
+        "version": 1,
+        "app": "music",
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "state": {
+            "studio_page": "picker",
+            "session": {"studio_page": "picker"},
+            "music_workspace_state": {
+                "schema_version": 1,
+                "workspace_id": workspace_id,
+                "page": "picker",
+                "studio_page": "picker",
+            },
+        },
+    }
+    state_path.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     return path
 
 
