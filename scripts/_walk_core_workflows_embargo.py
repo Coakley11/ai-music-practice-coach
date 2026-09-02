@@ -129,6 +129,59 @@ def practice_badge(body: str) -> str:
     return ""
 
 
+def parse_concert_key_value(label: str) -> tuple[str, str]:
+    """Parse a Practice Key UI label into (tonic, mode).
+
+    ``Dm`` / ``D minor`` → D + minor. Bare ``D`` is major. ``Cm`` is C minor.
+    """
+    raw = (label or "").strip().replace("♯", "#").replace("♭", "b")
+    raw = re.sub(r"\s+", " ", raw)
+    t = raw.lower()
+    m = re.fullmatch(r"([a-g](?:#|b)?)\s+(major|minor)", t)
+    if m:
+        tonic = m.group(1)
+        return tonic[0].upper() + tonic[1:], m.group(2)
+    m = re.fullmatch(r"([a-g](?:#|b)?)m", t)
+    if m:
+        tonic = m.group(1)
+        return tonic[0].upper() + tonic[1:], "minor"
+    m = re.fullmatch(r"([a-g](?:#|b)?)", t)
+    if m:
+        tonic = m.group(1)
+        return tonic[0].upper() + tonic[1:], "major"
+    return "", ""
+
+
+def is_d_minor_practice_key(label: str) -> bool:
+    tonic, mode = parse_concert_key_value(label)
+    return tonic == "D" and mode == "minor"
+
+
+def practice_key_labels_from_body(body: str) -> list[str]:
+    """Practice Key field tokens only — not chord-chart Dm."""
+    labels: list[str] = []
+    badge = practice_badge(body)
+    if badge:
+        labels.append(badge)
+    for m in re.finditer(
+        r"Practice(?:\s*/\s*Concert)?\s*Key\s*[:\n]\s*"
+        r"([A-G](?:#|b)?(?:m|\s+major|\s+minor)?)\b",
+        body or "",
+        flags=re.I,
+    ):
+        token = (m.group(1) or "").strip()
+        if token:
+            labels.append(token)
+    return labels
+
+
+def displayed_practice_key_is_d_minor(body: str, *extra_labels: str) -> bool:
+    for lab in list(practice_key_labels_from_body(body)) + [x for x in extra_labels if x]:
+        if is_d_minor_practice_key(lab):
+            return True
+    return False
+
+
 def wait_for_body(page: Page, *needles: str, timeout_s: float = 45.0) -> str:
     """Poll until page body contains any needle (post-reload / post-reboot hydrate)."""
     deadline = time.time() + timeout_s
@@ -1223,11 +1276,34 @@ def main() -> int:
         # Do not re-pick Shape: pick_song is a new selection and can reset Concert Key.
         leave_mission_backing(page2)
         click_nav(page2, "Songs")
-        wait_for_body_all(page2, "Shape of You", "D minor", timeout_s=45.0)
+        from _walk_custom_practice_key import pk_val as _pk_val_g12
+
+        deadline_a = time.time() + 45.0
+        while time.time() < deadline_a:
+            try:
+                blob = page2.inner_text("body") or ""
+            except Exception:
+                blob = ""
+            live_pk = ""
+            try:
+                live_pk = _pk_val_g12(page2) or ""
+            except Exception:
+                live_pk = ""
+            if has_any(blob, "Shape of You") and displayed_practice_key_is_d_minor(
+                blob, live_pk
+            ):
+                break
+            time.sleep(1.2)
         settle(page2, 3)
         body_a = shot(page2, "12a-songs-after-reboot")
         a_badge = practice_badge(body_a) or card_practice_label(body_a)
-        a_ok = has_any(body_a, "Shape of You") and "d minor" in low(a_badge or "")
+        try:
+            a_live = _pk_val_g12(page2) or ""
+        except Exception:
+            a_live = ""
+        a_ok = has_any(body_a, "Shape of You") and displayed_practice_key_is_d_minor(
+            body_a, a_badge, a_live
+        )
         # B SBI Custom
         ok_b = open_sbi_custom_source(page2, NOTES)
         body_b = shot(page2, "12b-sbi-custom-after-reboot")
@@ -1243,7 +1319,7 @@ def main() -> int:
             "12_hard_reboot",
             "PASS" if g12 else ("PARTIAL" if (a_ok or b_ok) else "RED"),
             f"A={a_ok} B={b_ok} boot_mission={boot_mission} C={c_ok} "
-            f"pre_a={pre_a!r} a_badge={a_badge!r}",
+            f"pre_a={pre_a!r} a_badge={a_badge!r} a_live={a_live!r}",
         )
 
         # ========== 13. Final visual sanity path ==========

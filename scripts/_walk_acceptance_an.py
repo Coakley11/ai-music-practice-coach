@@ -76,7 +76,7 @@ PAGE_ERRORS: list[str] = []
 
 def log(msg: str) -> None:
     NOTES.append(msg)
-    print(msg, flush=True)
+    print(str(msg).encode("ascii", "replace").decode("ascii"), flush=True)
 
 
 def git_meta() -> dict[str, str]:
