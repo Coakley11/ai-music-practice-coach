@@ -340,7 +340,30 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertTrue(songs_hub_catalog_backing_selected(ss))
         self.assertFalse(songs_hub_composition_backing_selected(ss))
 
+    def test_reconcile_does_not_reclaim_composition_when_explicit_catalog(self) -> None:
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            reconcile_picker_music_source,
+        )
 
+        ss = {
+            "studio_page": "picker",
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CATALOG,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            "active_music_source": SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::stale-doc",
+            "active_song_state": {
+                "pick_key": "composition::stale-doc",
+                "music_source": SOURCE_COMPOSITION,
+            },
+        }
+        reconcile_picker_music_source(ss)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
 
 
 class TestCompositionSidebarPracticeKeyWrite(unittest.TestCase):

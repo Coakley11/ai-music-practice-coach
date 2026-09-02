@@ -1599,7 +1599,11 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     explicit = explicit_music_source_choice(session_state)
     # Explicit Composition/Custom stamps outrank a stale catalog radio restored
     # from disk after reload (Composition refresh → Songs must not mount catalog hub).
-    if explicit == SOURCE_COMPOSITION or composition_song_is_active(session_state):
+    # Never reclaim Composition when the user explicitly chose Catalog or Custom.
+    if explicit == SOURCE_COMPOSITION or (
+        composition_song_is_active(session_state)
+        and explicit not in (SOURCE_CATALOG, SOURCE_CUSTOM)
+    ):
         session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if not picker_composition_mode(session_state):
             commit_explicit_music_source_choice(
@@ -1609,7 +1613,10 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
             )
             sync_song_picker_source_widget(session_state, force=True)
             return True
-    if explicit == SOURCE_CUSTOM or custom_progression_is_active(session_state):
+    if explicit == SOURCE_CUSTOM or (
+        custom_progression_is_active(session_state)
+        and explicit not in (SOURCE_CATALOG, SOURCE_COMPOSITION)
+    ):
         session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if not picker_custom_progression_mode(session_state):
             commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
