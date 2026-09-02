@@ -1588,6 +1588,8 @@ def on_song_picker_source_change(
 
 def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     """Align active source with Songs page picker widget before widgets render."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
     page = str(
         session_state.get("studio_page") or session_state.get("page") or ""
     ).strip()
@@ -1595,9 +1597,34 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
         return reconcile_music_picker_source_widget(session_state)
 
     explicit = explicit_music_source_choice(session_state)
+    # Explicit Composition/Custom stamps outrank a stale catalog radio restored
+    # from disk after reload (Composition refresh → Songs must not mount catalog hub).
+    if explicit == SOURCE_COMPOSITION or composition_song_is_active(session_state):
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        if not picker_composition_mode(session_state):
+            commit_explicit_music_source_choice(
+                session_state,
+                SOURCE_COMPOSITION,
+                clear_composition_oneshots=False,
+            )
+            sync_song_picker_source_widget(session_state, force=True)
+            return True
+    if explicit == SOURCE_CUSTOM or custom_progression_is_active(session_state):
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        if not picker_custom_progression_mode(session_state):
+            commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
+            set_custom_source(session_state)
+            sync_song_picker_source_widget(session_state, force=True)
+            return True
+
     user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
     pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if explicit == SOURCE_CATALOG or user_catalog:
+        choice_now = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        # Live widget outranks a stale catalog stamp (USER_CATALOG blocks mode helpers).
+        if picker_choice_is_composition(choice_now) or choice_now.startswith("Use Custom"):
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            return reconcile_music_picker_source_widget(session_state)
         # Live Composition/Custom radio outranks a stale catalog stamp from disk
         # restore (reload after Composition refresh must not mount the catalog hub).
         if picker_composition_mode(session_state) or picker_custom_progression_mode(
@@ -1616,12 +1643,6 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
             set_catalog_source(session_state)
             sync_song_picker_source_widget(session_state, force=True)
             session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-            return True
-        choice_now = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-        if picker_choice_is_composition(choice_now) or choice_now.startswith("Use Custom"):
-            sync_song_picker_source_widget(session_state, force=True)
-            if pick.startswith(("composition::", "custom::")):
-                session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
             return True
 
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
