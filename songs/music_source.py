@@ -81,11 +81,14 @@ def clear_composition_one_shot_nav_flags(session_state: dict[str, Any]) -> None:
     run — reconcile / ``set_custom_source`` otherwise pops ``composition_hub_backing``
     and ``_composition_hub_backing_clicked`` before ``st.button`` body can navigate.
     """
-    if session_state.get("_composition_hub_backing_clicked"):
+    if session_state.get("_composition_hub_backing_clicked") or session_state.get(
+        "_composition_hub_backing_pending"
+    ):
         return
     for key in (
         "_force_composition_backing_open",
         "_composition_hub_backing_clicked",
+        "_composition_hub_backing_pending",
         "_composition_hub_promote_token",
         "_composition_hub_promote_error",
         "_composition_hub_outer_error",
@@ -126,14 +129,19 @@ def commit_explicit_music_source_choice(
     if clear_composition_oneshots is None:
         clear_composition_oneshots = src != SOURCE_COMPOSITION
     if clear_composition_oneshots:
-        # Explicit Catalog/Custom selection must always drop Composition force-open
-        # stamps — including a leftover hub-click flag from a prior Songs→Backing
-        # navigation. The in-flight preserve in ``clear_composition_one_shot_nav_flags``
-        # only protects the *same* script run as the hub ``on_click`` (reconcile /
-        # set_custom mid-click); a newer radio choice is an intentional leave.
-        session_state.pop("_composition_hub_backing_clicked", None)
-        session_state.pop("_force_composition_backing_open", None)
-        clear_composition_one_shot_nav_flags(session_state)
+        # Mid-run reconcile / set_custom must not drop an in-flight Composition
+        # hub Backing ``on_click`` (same contract as
+        # ``clear_composition_one_shot_nav_flags``). Intentional Catalog/Custom
+        # *radio* leave paths pop the click/pending flags before calling commit.
+        if session_state.get("_composition_hub_backing_clicked") or session_state.get(
+            "_composition_hub_backing_pending"
+        ):
+            clear_composition_one_shot_nav_flags(session_state)
+        else:
+            session_state.pop("_composition_hub_backing_clicked", None)
+            session_state.pop("_force_composition_backing_open", None)
+            session_state.pop("_composition_hub_backing_pending", None)
+            clear_composition_one_shot_nav_flags(session_state)
 
 
 def composition_song_is_active(session_state: dict[str, Any]) -> bool:
@@ -242,6 +250,9 @@ def source_ownership_snapshot(session_state: dict[str, Any]) -> dict[str, Any]:
         "user_catalog_choice": bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)),
         "force_composition_backing": bool(
             session_state.get("_force_composition_backing_open")
+        ),
+        "hub_backing_pending": bool(
+            session_state.get("_composition_hub_backing_pending")
         ),
         "hub_promote_token": str(
             session_state.get("_composition_hub_promote_token") or ""
@@ -1251,6 +1262,7 @@ def switch_to_catalog_from_custom(
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     # Drop Composition force-open so Songs→Backing cannot rebuild Composition.
     session.pop("_composition_hub_backing_clicked", None)
+    session.pop("_composition_hub_backing_pending", None)
     clear_composition_one_shot_nav_flags(session)
 
     def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
@@ -1527,6 +1539,11 @@ def on_song_picker_source_change(
         st.rerun()
         return
     if choice.startswith("Use Custom"):
+        # Intentional leave Composition — drop leftover/in-flight hub Backing
+        # one-shots before commit so mid-run preserve cannot keep force-open.
+        st.session_state.pop("_composition_hub_backing_clicked", None)
+        st.session_state.pop("_force_composition_backing_open", None)
+        st.session_state.pop("_composition_hub_backing_pending", None)
         commit_explicit_music_source_choice(st.session_state, SOURCE_CUSTOM)
         try:
             from custom_progression_lab import cpl_active_from_session
@@ -1579,6 +1596,11 @@ def on_song_picker_source_change(
         return
     # Catalog — stamp before leaving_non_catalog detection so composition_active
     # does not stay True from a stale composition:: pick.
+    # Intentional leave Composition — drop leftover/in-flight hub Backing one-shots
+    # before commit (mid-run preserve must not keep force-open across Catalog radio).
+    st.session_state.pop("_composition_hub_backing_clicked", None)
+    st.session_state.pop("_force_composition_backing_open", None)
+    st.session_state.pop("_composition_hub_backing_pending", None)
     commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
     leaving_non_catalog = (
         is_custom_progression(st.session_state)

@@ -7612,16 +7612,19 @@ def _picker_navigate(
             if songs_hub_custom_backing_selected(st.session_state):
                 st.session_state.pop("_force_composition_backing_open", None)
                 st.session_state.pop("_composition_hub_backing_clicked", None)
+                st.session_state.pop("_composition_hub_backing_pending", None)
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             elif songs_hub_catalog_backing_selected(st.session_state):
                 st.session_state.pop("_force_composition_backing_open", None)
                 st.session_state.pop("_composition_hub_backing_clicked", None)
+                st.session_state.pop("_composition_hub_backing_pending", None)
                 set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             elif songs_hub_composition_backing_selected(st.session_state):
                 # Always force Composition on Songs→Backing while the radio is
                 # Composition — survives Custom→Composition mid-flight where the
                 # pick may still be custom:: for one rerun.
                 st.session_state["_force_composition_backing_open"] = True
+                st.session_state.pop("_composition_hub_backing_pending", None)
                 if not composition_song_is_active(st.session_state):
                     try:
                         from songs.music_source import ensure_composition_owns_active_song
@@ -8832,13 +8835,29 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
     # If on_click set the hub-backing flags but this run never executes the
     # button body (widget remount / late hub instantiate), finish navigation
     # here so one user click always opens Composition Backing.
+    last_ev = st.session_state.get("_composition_hub_last_event")
+    last_ev = last_ev if isinstance(last_ev, dict) else {}
+    callback_pending = (
+        str(last_ev.get("event") or "") == "hub_callback"
+        and str(last_ev.get("target") or "") == "backing"
+        and float(last_ev.get("t") or 0)
+        != float(st.session_state.get("_composition_hub_callback_consumed_t") or -1)
+    )
     if (
-        st.session_state.get("_force_composition_backing_open")
-        and st.session_state.get("_composition_hub_backing_clicked")
-        and str(st.session_state.get("studio_page") or "picker")
-        in {"", "picker", "songs"}
-    ):
+        (
+            st.session_state.get("_force_composition_backing_open")
+            and st.session_state.get("_composition_hub_backing_clicked")
+        )
+        or st.session_state.get("_composition_hub_backing_pending")
+        or callback_pending
+    ) and str(st.session_state.get("studio_page") or "picker") in {
+        "",
+        "picker",
+        "songs",
+    }:
         st.session_state.pop("_composition_hub_backing_clicked", None)
+        # Re-arm force whenever pending — mid-run clears may have dropped it.
+        st.session_state["_force_composition_backing_open"] = True
         promote_ok = False
         try:
             from songs.music_source import ensure_composition_owns_active_song
@@ -8863,6 +8882,11 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
             # Stale force flags after Custom (or failed promote) must not yank
             # navigation to Backing while pick is still custom::.
             st.session_state.pop("_force_composition_backing_open", None)
+            st.session_state.pop("_composition_hub_backing_pending", None)
+            if callback_pending:
+                st.session_state["_composition_hub_callback_consumed_t"] = float(
+                    last_ev.get("t") or 0
+                )
             _composition_hub_trace_append(
                 "hub_orphan_recover_aborted",
                 target="backing",
@@ -8870,6 +8894,11 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 pick=str(st.session_state.get("active_catalog_pick_key") or ""),
             )
         else:
+            st.session_state.pop("_composition_hub_backing_pending", None)
+            if callback_pending:
+                st.session_state["_composition_hub_callback_consumed_t"] = float(
+                    last_ev.get("t") or 0
+                )
             _composition_hub_trace_append(
                 "hub_orphan_recover",
                 target="backing",
@@ -8966,6 +8995,9 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 # on_click runs before script body — survives promote races.
                 st.session_state["_force_composition_backing_open"] = True
                 st.session_state["_composition_hub_backing_clicked"] = True
+                # Sticky until Songs→Backing navigate or intentional Catalog/Custom leave.
+                # Mid-run reconcile must not drop this via clear_composition_one_shot_nav_flags.
+                st.session_state["_composition_hub_backing_pending"] = True
                 _composition_hub_trace_append(
                     "hub_callback",
                     target="backing",

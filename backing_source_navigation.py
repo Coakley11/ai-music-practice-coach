@@ -208,12 +208,14 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
         if songs_hub_custom_backing_selected(session):
             session.pop("_force_composition_backing_open", None)
             session.pop("_composition_hub_backing_clicked", None)
+            session.pop("_composition_hub_backing_pending", None)
             set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
         if songs_hub_catalog_backing_selected(session):
             session.pop("_force_composition_backing_open", None)
             session.pop("_composition_hub_backing_clicked", None)
+            session.pop("_composition_hub_backing_pending", None)
             set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
