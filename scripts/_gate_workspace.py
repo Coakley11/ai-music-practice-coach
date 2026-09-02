@@ -134,6 +134,50 @@ def point_active_workspace_file(workspace_id: str) -> None:
     )
 
 
+def land_songs_with_source_radio(page, v, *, timeout_ms: int = 45000) -> None:
+    """Reach Songs picker with a live Catalog/Custom/Composition Music Source radio.
+
+    Empty workspaces may briefly restore onto Practice; do not page.reload here.
+    """
+    deadline = time.time() + timeout_ms / 1000.0
+    last_err: Exception | None = None
+    while time.time() < deadline:
+        try:
+            if v._studio_page_id(page) != "picker":
+                try:
+                    nav = page.locator(".ui-nav-art-cell.nav-picker button")
+                    if nav.count() and nav.first.is_visible():
+                        nav.first.click(timeout=5000, no_wait_after=True)
+                    else:
+                        v.click_nav(page, "Songs")
+                except Exception as exc:
+                    last_err = exc
+                v.wait_streamlit(page, 1500)
+            v.wait_streamlit_idle(page, timeout_ms=5000)
+            radios = page.locator("[data-testid='stRadio']")
+            try:
+                total = radios.count()
+            except Exception:
+                total = 0
+            for i in range(total):
+                block = radios.nth(i)
+                try:
+                    if not v._marker_is_live(block) or not block.is_visible():
+                        continue
+                    txt = block.inner_text(timeout=1500)
+                except Exception:
+                    continue
+                if "Composition" in txt and (
+                    "Custom" in txt or "catalog" in txt.lower() or "Song Selection" in txt
+                ):
+                    return
+        except Exception as exc:
+            last_err = exc
+        page.wait_for_timeout(400)
+    detail = f" ({last_err})" if last_err else ""
+    raise RuntimeError("Songs Music Source radio never became live" + detail)
+
+
 def prepare_isolated_workspace(
     prefix: str,
     *,

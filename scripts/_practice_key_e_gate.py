@@ -111,6 +111,7 @@ def main() -> int:
         page.set_default_timeout(60_000)
         page.goto(start_url, wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
+        gw.land_songs_with_source_radio(page, v)
 
         v.ensure_songs(page)
         v.select_music_source(page, "Composition")

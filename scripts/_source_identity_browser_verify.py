@@ -1386,6 +1386,8 @@ def main() -> int:
         if not _studio_page_id(page):
             raise RuntimeError("Studio page marker never appeared during cold boot")
 
+        gw.land_songs_with_source_radio(page, sys.modules[__name__])
+
         # -------- 1. Custom Progression --------
         ensure_songs(page)
         try:

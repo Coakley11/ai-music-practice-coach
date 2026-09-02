@@ -82,6 +82,7 @@ def main() -> int:
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(start_url, wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
+        gw.land_songs_with_source_radio(page, v)
 
         # ---- A. Custom Songs UI ----
         v.ensure_songs(page)
