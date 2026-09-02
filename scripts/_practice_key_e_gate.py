@@ -46,6 +46,8 @@ def _has_practice_e(text: str) -> bool:
         re.I,
     ):
         return True
+    if re.search(r"\bE\s+major\b", text, re.I):
+        return True
     return False
 
 
@@ -69,19 +71,25 @@ def _has_e_progression(text: str, html: str) -> bool:
     return False
 
 
-def _reopen_composition_backing(page) -> None:
-    """After reload, Composition radio may be lost — restore owner then open Backing."""
+def _open_composition_backing_keep_key(page) -> None:
+    """Open Composition Backing without re-clicking the radio (reselect resets PK)."""
+    if v._on_backing_studio(page) and v._live_mode_card(
+        page, "mode-composition-song-backing"
+    ):
+        v.wait_streamlit_idle(page)
+        return
     v.ensure_songs(page)
-    v.select_music_source(page, "Composition")
+    if not v.assert_radio_selected(page, "Composition"):
+        raise RuntimeError("Composition radio not selected; refusing reselect (would reset PK)")
     v.wait_composition_hub_ready(page, timeout_ms=25000)
-    v.open_backing(page, prefer="composition")
-    v.wait_streamlit(page, 2500)
-    deadline = time.time() + 20
+    v.open_composition_backing_from_hub(page)
+    deadline = time.time() + 25
     while time.time() < deadline:
         if v._live_mode_card(page, "mode-composition-song-backing"):
+            v.wait_streamlit_idle(page)
             return
         page.wait_for_timeout(250)
-    raise RuntimeError("Composition Backing card not live after reopen")
+    raise RuntimeError("Composition Backing card not live")
 
 
 def set_practice_key_e(page) -> bool:
@@ -104,45 +112,69 @@ def main() -> int:
         v.ensure_songs(page)
         v.select_music_source(page, "Composition")
         v.wait_composition_hub_ready(page, timeout_ms=25000)
-        v.open_backing(page, prefer="composition")
-        v.wait_streamlit(page, 2500)
 
         text0 = v.body_text(page)
+        widget0 = pkh.read_practice_key_widget_value(page)
         log(
             "baseline_original_c",
             _has_original_c(text0) or "My Composition" in text0,
-            f"line={_practice_key_line(text0)!r}",
+            f"line={_practice_key_line(text0)!r} widget={widget0!r}",
         )
 
+        # Change PK on Songs (product path). Re-clicking Composition after this
+        # resets Practice Key to original C.
         changed = set_practice_key_e(page)
+        widget = pkh.read_practice_key_widget_value(page)
+        sidebar = pkh.read_sidebar_displayed_practice_key(page)
+        songs_e = pkh.key_token_in_text(widget or sidebar, "E")
+        log(
+            "practice_key_set_e_songs",
+            changed and songs_e,
+            f"changed={changed} widget={widget!r} sidebar={sidebar!r}",
+        )
+        if not (changed and songs_e):
+            failures += 1
+            v.dump_debug(page, "practice_key_set_e")
+
+        try:
+            _open_composition_backing_keep_key(page)
+        except Exception as exc:
+            log("practice_key_open_backing", False, str(exc))
+            failures += 1
+            v.dump_debug(page, "practice_key_open_backing")
+
         text = v.body_text(page)
         html = v.body_html(page)
-        has_e = _has_practice_e(text)
+        has_e = _has_practice_e(text) or pkh.key_token_in_text(
+            pkh.read_card_practice_key(text) or "", "E"
+        )
         has_prog = _has_e_progression(text, html)
         orig_c = _has_original_c(text)
-        ok_set = changed and has_e and has_prog and orig_c
+        ok_set = has_e and has_prog and orig_c
         log(
             "practice_key_set_e",
             ok_set,
-            f"changed={changed} has_e={has_e} prog_E_Cshm_A_B={has_prog} original_c={orig_c} "
+            f"has_e={has_e} prog_E_Cshm_A_B={has_prog} original_c={orig_c} "
             f"pk={_practice_key_line(text)!r}",
         )
         if not ok_set:
             failures += 1
-            v.dump_debug(page, "practice_key_set_e")
+            v.dump_debug(page, "practice_key_set_e_backing")
         v.shot(page, "practice_e_before_refresh")
 
         page.reload(wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
         try:
-            _reopen_composition_backing(page)
+            _open_composition_backing_keep_key(page)
         except Exception as exc:
             log("practice_key_reopen_after_reload", False, str(exc))
             failures += 1
             v.dump_debug(page, "practice_key_reopen")
         text = v.body_text(page)
         html = v.body_html(page)
-        still_e = _has_practice_e(text)
+        still_e = _has_practice_e(text) or pkh.key_token_in_text(
+            pkh.read_card_practice_key(text) or "", "E"
+        )
         still_prog = _has_e_progression(text, html)
         still_orig = _has_original_c(text)
         ok_ref = still_e and still_prog and still_orig
@@ -157,15 +189,18 @@ def main() -> int:
             v.dump_debug(page, "practice_key_refresh")
         v.shot(page, "practice_e_after_refresh")
 
-        # Songs → Backing coherence with E
+        # Songs → Backing coherence with E (do not reselect Composition radio)
+        v.ensure_songs(page)
         try:
-            _reopen_composition_backing(page)
+            _open_composition_backing_keep_key(page)
         except Exception as exc:
             log("practice_key_songs_backing_open", False, str(exc))
             failures += 1
         text = v.body_text(page)
         html = v.body_html(page)
-        still_e2 = _has_practice_e(text)
+        still_e2 = _has_practice_e(text) or pkh.key_token_in_text(
+            pkh.read_card_practice_key(text) or "", "E"
+        )
         still_prog2 = _has_e_progression(text, html)
         still_orig2 = _has_original_c(text)
         ok_nav = still_e2 and still_prog2 and still_orig2
