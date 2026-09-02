@@ -380,6 +380,7 @@ from backing_generation import (
 )
 from backing_display import (
     render_backing_active_song_card,
+    render_backing_advanced_settings_future_previews,
     render_backing_defaults_debug,
     render_backing_meter_selector,
 )
@@ -9655,6 +9656,7 @@ def _render_backing_step2_playback_action(
             )
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+            render_backing_advanced_settings_future_previews(st)
 
         backing_ready = bool(
             st.session_state.get("_last_backing_wav")

@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-08-23
+**Last updated:** 2026-09-02
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Long-Term Vision
 
-*See [music_app_roadmap.md](./music_app_roadmap.md).*
+*See [music_app_roadmap.md](./music_app_roadmap.md). **Key Cycle Practice** remains future-only — [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md); do not treat the inert Advanced Settings preview as shipped behavior.*
 
 ---
 

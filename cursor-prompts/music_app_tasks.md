@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-23 (Pass 8 Creative/Backing + refresh/reboot persistence contract) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-02 (Key Cycle Practice documented as future-only; inert Advanced Settings preview) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -340,6 +340,7 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 
 *(After P0–P1 or in parallel)*
 
+- [ ] **Key Cycle Practice (FUTURE — do not start during Creative/Backing stabilization).** Inert Advanced Settings preview only. Spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Later: Catalog Backing prototype on shared transport, then other surfaces.
 - [ ] Pass 8 Cases E1–E5: last Backing restores only within the same active source epoch (catalog/custom identity change invalidates restore)
 - [ ] OpenAI hub: first real “active song coach” flow (not placeholder card)
 - [ ] Karaoke: vocal pitch/score stub → minimal MVP scoring display
@@ -350,6 +351,8 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 ---
 
 ## Long-Term Vision
+
+- **Key Cycle Practice** — temporary half/whole-step Backing cycle without rewriting canonical Practice Key; shared transport; [plan](./plans/2026-09-02-key-cycle-practice.md). **Do not start until Creative/Backing stabilization is accepted.**
 
 - Unified musician profile across suite apps (Supabase user scoping already started)
 - **Progress-aware coaching** — session memory, struggle/improvement adaptation, performance-prep mode ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md))

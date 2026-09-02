@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-23 · **Branch:** `feature/creative-backing-stabilization` (Pass 8 uncommitted; do not merge to `dev`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md)
+**Last updated:** 2026-09-02 · **Branch:** `feature/creative-backing-stabilization` (Pass 8 uncommitted; do not merge to `dev`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -66,9 +66,13 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 - Active-source-change Backing restore: last Backing resumes only while the same catalog/custom source remains active.
 
+- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Inert Advanced Settings preview only. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). First real engine later: one ordinary Catalog Backing prototype in shared Backing transport, then other surfaces.
+
 ## Long-Term Vision
 
 *See Platform architecture above.*
+
+**Key Cycle Practice** — automatic half-step / whole-step practice through keys without mutating canonical Practice Key or Global Active. Shared Backing transport layer; Off leaves current behavior unchanged. See [2026-09-02 plan](./plans/2026-09-02-key-cycle-practice.md).
 
 ## Completed Features
 
