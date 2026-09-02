@@ -395,41 +395,61 @@ def select_music_source(page: Page, needle: str) -> None:
         raise RuntimeError(f"Music source radio not live for: {needle}")
 
     def _js_select_needle() -> bool:
-        """Direct label click when Playwright events are swallowed mid-remount."""
+        """Direct label/input click when Playwright events are swallowed mid-remount."""
         needles = {
-            "Custom Progression": ["Use Custom Progression", "Custom Progression"],
+            "Custom Progression": ["Use Custom Progression", "Custom Progression", "Use Custom"],
             "Composition": ["Composition"],
-            "Catalog": ["Song Selection", "Catalog"],
+            "Catalog": ["Song Selection", "Catalog", "Song Library", "Song catalog"],
         }.get(needle, [needle])
-        return bool(
-            page.evaluate(
-                """(needles) => {
-                  const blocks = Array.from(document.querySelectorAll('[data-testid="stRadio"]'));
-                  for (const b of blocks) {
-                    if (b.closest('[data-stale="true"]')) continue;
-                    if (b.offsetParent === null) continue;
-                    const labels = Array.from(b.querySelectorAll('label'));
-                    for (const needle of needles) {
-                      for (const lab of labels) {
-                        const t = (lab.innerText || '').trim();
-                        if (!t || t === 'Music source') continue;
-                        if (t.includes(needle)) {
-                          lab.click();
-                          return true;
-                        }
-                      }
+        result = page.evaluate(
+            """(needles) => {
+              const blocks = Array.from(document.querySelectorAll('[data-testid="stRadio"]'));
+              for (const b of blocks) {
+                if (b.closest('[data-stale="true"]')) continue;
+                if (b.offsetParent === null) continue;
+                const labels = Array.from(b.querySelectorAll('label'));
+                const blob = labels.map((l) => (l.innerText || '').trim()).join(' | ');
+                // Music Source block always includes Composition + Custom/Catalog.
+                if (!blob.includes('Composition')) continue;
+                if (!(blob.includes('Custom') || /catalog|song selection|song library/i.test(blob))) {
+                  continue;
+                }
+                for (const needle of needles) {
+                  for (const lab of labels) {
+                    const t = (lab.innerText || '').trim();
+                    if (!t || t === 'Music source') continue;
+                    if (!t.includes(needle)) continue;
+                    const inp = lab.querySelector('input');
+                    if (inp) {
+                      if (inp.checked) return 'already';
+                      // Prefer the native input — Streamlit on_change listens here.
+                      inp.click();
+                      return 'input';
                     }
+                    lab.click();
+                    return 'label';
                   }
-                  return false;
-                }""",
-                needles,
-            )
+                }
+              }
+              return '';
+            }""",
+            needles,
         )
+        return bool(result)
 
     if assert_radio_selected(page, needle):
         # Already on the desired source — still wait for hub readiness below.
         pass
     else:
+        # Leaving Composition: hub chrome can swallow the first Catalog/Custom
+        # Playwright click. Prefer a native input click, then settle.
+        leaving_composition = assert_radio_selected(page, "Composition") or (
+            _count_live_hub_buttons(page, "composition_hub_backing") > 0
+        )
+        if leaving_composition and needle in {"Catalog", "Custom Progression"}:
+            if _js_select_needle():
+                wait_streamlit_idle(page, timeout_ms=10000)
+                wait_streamlit(page, 1200)
         # Composition↔Custom after a prior Custom session can desync the Streamlit
         # widget value from the visible radio (UI shows Composition, session still
         # Custom). Bouncing through Catalog forces a real on_change.
@@ -447,6 +467,8 @@ def select_music_source(page: Page, needle: str) -> None:
                         for (const lab of b.querySelectorAll('label')) {
                           const t = (lab.innerText || '').trim();
                           if (t.includes('Song Selection') || t.includes('Catalog')) {
+                            const inp = lab.querySelector('input');
+                            if (inp) { inp.click(); return true; }
                             lab.click();
                             return true;
                           }
@@ -471,6 +493,8 @@ def select_music_source(page: Page, needle: str) -> None:
                         for (const lab of b.querySelectorAll('label')) {
                           const t = (lab.innerText || '').trim();
                           if (t.includes('Song Selection') || t.includes('Catalog')) {
+                            const inp = lab.querySelector('input');
+                            if (inp) { inp.click(); return true; }
                             lab.click();
                             return true;
                           }
@@ -483,7 +507,8 @@ def select_music_source(page: Page, needle: str) -> None:
                 wait_streamlit(page, 800)
             except Exception:
                 pass
-        _click_needle_once()
+        if not assert_radio_selected(page, needle):
+            _click_needle_once()
         if not assert_radio_selected(page, needle):
             _click_needle_once()
         if not assert_radio_selected(page, needle):
@@ -493,8 +518,15 @@ def select_music_source(page: Page, needle: str) -> None:
             _click_needle_once()
         if not assert_radio_selected(page, needle):
             if _js_select_needle():
-                wait_streamlit_idle(page)
+                wait_streamlit_idle(page, timeout_ms=10000)
                 wait_streamlit(page, 1200)
+        # Poll — Composition leave can land one remount late.
+        if not assert_radio_selected(page, needle):
+            deadline = time.time() + 8
+            while time.time() < deadline and not assert_radio_selected(page, needle):
+                if _js_select_needle():
+                    wait_streamlit_idle(page, timeout_ms=5000)
+                page.wait_for_timeout(250)
         if not assert_radio_selected(page, needle):
             raise RuntimeError(f"Music source radio did not select: {needle}")
 
@@ -1678,6 +1710,12 @@ def main() -> int:
         # -------- 4. Switch Catalog / Custom / Composition --------
         # Catalog
         ensure_songs(page)
+        try:
+            import _gate_workspace as _gw
+
+            _gw.land_songs_with_source_radio(page, sys.modules[__name__], timeout_ms=25000)
+        except Exception:
+            wait_streamlit_idle(page, timeout_ms=8000)
         capture_switch_telemetry(page, "switch:catalog_start")
         try:
             select_music_source(page, "Catalog")
