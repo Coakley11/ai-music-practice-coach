@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 __all__ = (
     "render_backing_active_song_card",
-    "render_backing_advanced_settings_future_previews",
     "render_backing_defaults_debug",
     "render_backing_generation_debug",
     "render_backing_meter_selector",
@@ -232,17 +231,6 @@ def render_backing_meter_selector(
     override_note = " · user override" if override else ""
     st.caption(f"**{choice}**{override_note}")
     return str(choice)
-
-
-def render_backing_advanced_settings_future_previews(st: Any) -> None:
-    """Shared Advanced Settings footer for deferred Backing features.
-
-    Currently only the inert Key Cycle Practice placeholder. Must not mutate
-    playback, Practice Key, source ownership, or persist.
-    """
-    from key_cycle_practice_preview import render_key_cycle_practice_preview
-
-    render_key_cycle_practice_preview(st)
 
 
 def render_backing_defaults_debug(

@@ -18,7 +18,7 @@
 
 ## Long-Term Vision
 
-*See [music_app_roadmap.md](./music_app_roadmap.md). **Key Cycle Practice** remains future-only — [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md); do not treat the inert Advanced Settings preview as shipped behavior.*
+*See [music_app_roadmap.md](./music_app_roadmap.md). **Key Cycle Practice** remains future-only — [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md); no product UI during Creative/Backing stabilization.*
 
 ---
 

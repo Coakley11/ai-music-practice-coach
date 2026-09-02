@@ -1,6 +1,6 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-02 (Key Cycle Practice documented as future-only; inert Advanced Settings preview) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-02 (Key Cycle Practice documented as future-only; product UI deferred) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
@@ -340,7 +340,7 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 
 *(After P0–P1 or in parallel)*
 
-- [ ] **Key Cycle Practice (FUTURE — do not start during Creative/Backing stabilization).** Inert Advanced Settings preview only. Spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Later: Catalog Backing prototype on shared transport, then other surfaces.
+- [ ] **Key Cycle Practice (FUTURE — do not start during Creative/Backing stabilization).** Spec only; no product UI until after acceptance. Spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Later: Catalog Backing prototype on shared transport, then other surfaces.
 - [ ] Pass 8 Cases E1–E5: last Backing restores only within the same active source epoch (catalog/custom identity change invalidates restore)
 - [ ] OpenAI hub: first real “active song coach” flow (not placeholder card)
 - [ ] Karaoke: vocal pitch/score stub → minimal MVP scoring display

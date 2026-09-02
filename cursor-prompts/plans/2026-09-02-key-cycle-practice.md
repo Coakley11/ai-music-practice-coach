@@ -4,7 +4,7 @@
 
 **Not part of** Creative/Backing human-acceptance (H1–H9, Owner, 17-gate, A–N).
 
-**Shipped now:** documentation + an **inert** Advanced Settings visual placeholder (`key_cycle_practice_preview.py`). The placeholder must stay disabled until this plan is deliberately opened.
+**Shipped now:** documentation/specification only. **No product UI** during Creative/Backing stabilization (the inert Advanced Settings preview was removed so it does not change shared Backing Advanced Settings).
 
 **First real implementation later:** a narrow prototype on **one ordinary Catalog Backing** workflow, in the **shared** Backing playback/transport architecture. Only after that prototype is proven may the same engine be exposed on other Backing surfaces.
 
@@ -363,23 +363,6 @@ Expose the same shared system across Custom, Composition, SBI, Missions, Jam, St
 
 ---
 
-## Current placeholder (2026-09-02)
+## Current product status (2026-09-02)
 
-`key_cycle_practice_preview.py` + `backing_display.render_backing_advanced_settings_future_previews` render a **Coming soon / Preview — not active yet** control under Advanced playback settings.
-
-The placeholder must **not**:
-
-- change Practice Key
-- create temporary playback keys
-- transpose audio or charts
-- create cycle state
-- write session state that affects Backing
-- persist anything
-- change source ownership
-- change scope/loop behavior
-- alter Global Active
-- hook into transport completion
-- add speculative playback architecture
-- change existing Backing behavior
-
-Tests: `tests/test_key_cycle_practice_preview.py`.
+Documentation only. **Do not add Key Cycle UI or transport during Creative/Backing stabilization.** Advanced playback settings must remain unchanged until this plan is deliberately opened after human acceptance.

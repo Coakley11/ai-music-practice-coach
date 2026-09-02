@@ -66,7 +66,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 - Active-source-change Backing restore: last Backing resumes only while the same catalog/custom source remains active.
 
-- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Inert Advanced Settings preview only. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). First real engine later: one ordinary Catalog Backing prototype in shared Backing transport, then other surfaces.
+- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Spec only; no product UI until after acceptance. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). First real engine later: one ordinary Catalog Backing prototype in shared Backing transport, then other surfaces.
 
 ## Long-Term Vision
 

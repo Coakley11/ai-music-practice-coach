@@ -79,7 +79,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Backing Track Studio
 
-- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Automatic half-step / whole-step practice through keys without mutating canonical Practice Key or Global Active. Shared Backing transport only. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Inert Advanced Settings preview only until then.
+- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Automatic half-step / whole-step practice through keys without mutating canonical Practice Key or Global Active. Shared Backing transport only. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Product UI deferred until after stabilization acceptance.
 - More groove templates per genre (funk, bossa, ballad swing)
 - Stem export (bass-only, drums-only) from backing engine
 - Tap-tempo BPM detect from user recording
