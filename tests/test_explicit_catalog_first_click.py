@@ -11,10 +11,15 @@ from unittest.mock import patch
 
 from song_catalog.catalog import format_pick_key
 from songs.music_source import (
+    CATALOG_BEFORE_CUSTOM_KEY,
+    CATALOG_BEFORE_CUSTOM_LOCK_KEY,
+    CATALOG_DEFAULT_INIT_PICK_KEY,
     CATALOG_PICKER_PENDING_EXPLICIT_KEY,
     CATALOG_RESTORE_PIN_KEY,
+    LAST_CATALOG_STATE_KEY,
     SOURCE_CATALOG,
     SOURCE_CUSTOM,
+    _is_unremembered_first_valid_pick,
     begin_explicit_catalog_selection,
     pin_catalog_restore_identity,
     switch_to_catalog_from_custom,
@@ -486,6 +491,120 @@ class TestExplicitCatalogFirstClick(unittest.TestCase):
         master = reconcile_active_song_identity(session, CATALOG)
         self.assertEqual(master, PK_SHAPE)
         self.assertEqual(session.get("song"), "Shape of You")
+
+    def _say_snap(self) -> dict:
+        return {
+            "pick_key": PK_SAY,
+            "selected_song": {
+                "pick_key": PK_SAY,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            "original_key": "G",
+            "display_key": "G",
+        }
+
+    def test_default_init_say_is_not_explicit_catalog_history(self) -> None:
+        session = {
+            CATALOG_DEFAULT_INIT_PICK_KEY: PK_SAY,
+            CATALOG_BEFORE_CUSTOM_LOCK_KEY: PK_SAY,
+            LAST_CATALOG_STATE_KEY: self._say_snap(),
+            CATALOG_BEFORE_CUSTOM_KEY: self._say_snap(),
+            "_reconcile_song_picker_catalog": CATALOG,
+        }
+        self.assertTrue(_is_unremembered_first_valid_pick(session, PK_SAY, CATALOG))
+        self.assertFalse(_is_unremembered_first_valid_pick(session, PK_PERFECT, CATALOG))
+        session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = PK_SAY
+        self.assertFalse(_is_unremembered_first_valid_pick(session, PK_SAY, CATALOG))
+
+    def test_default_say_trial_use_catalog_keeps_trial_and_practice_c(self) -> None:
+        from songs.music_source import commit_custom_active_song
+
+        session = {
+            "studio_page": "picker",
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+            _LAST_PICK_KEY: PK_SAY,
+            "song": "Say",
+            "active_song_title": "Say",
+            "display_key": "G",
+            "concert_key": "G",
+            "_reconcile_song_picker_catalog": CATALOG,
+            CATALOG_DEFAULT_INIT_PICK_KEY: PK_SAY,
+            CATALOG_BEFORE_CUSTOM_LOCK_KEY: PK_SAY,
+            LAST_CATALOG_STATE_KEY: self._say_snap(),
+            CATALOG_BEFORE_CUSTOM_KEY: self._say_snap(),
+            "catalog_recent_pick_keys": [PK_SAY],
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"), patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(st, self._trial_row(), invalidate_backing=lambda *_a, **_k: None)
+            session["display_key"] = "C"
+            session["concert_key"] = "C"
+            ok = switch_to_catalog_from_custom(
+                st,
+                song_picker_catalog=CATALOG,
+                invalidate_backing=lambda *_a, **_k: None,
+                force=True,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+        self.assertIn("Trial", str(session.get("song") or ""))
+        self.assertNotEqual(str(session.get("song") or ""), "Say")
+        self.assertTrue(session.get(CATALOG_PICKER_PENDING_EXPLICIT_KEY))
+        self.assertEqual(str(session.get("display_key") or ""), "C")
+        session["matching_song_dropdown"] = PK_SHAPE
+        with patch("songs.state.persist_music_local_state"):
+            apply_explicit_catalog_dropdown_pick(st, PK_SHAPE, CATALOG)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        self.assertFalse(session.get(CATALOG_PICKER_PENDING_EXPLICIT_KEY))
+
+    def test_explicit_perfect_history_still_restores_after_trial(self) -> None:
+        from songs.music_source import commit_custom_active_song
+
+        perfect_snap = {
+            "pick_key": PK_PERFECT,
+            "selected_song": {
+                "pick_key": PK_PERFECT,
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+            },
+            "original_key": "G",
+            "display_key": "G",
+        }
+        session = {
+            "studio_page": "picker",
+            "active_music_source": SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: PK_PERFECT,
+            EXPLICIT_CATALOG_PICK_COMMITTED_KEY: PK_PERFECT,
+            "song": "Perfect",
+            "display_key": "G",
+            "_reconcile_song_picker_catalog": CATALOG,
+            CATALOG_BEFORE_CUSTOM_LOCK_KEY: PK_PERFECT,
+            LAST_CATALOG_STATE_KEY: perfect_snap,
+            CATALOG_BEFORE_CUSTOM_KEY: perfect_snap,
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"), patch(
+            "songs.music_source.persist_music_local_state", create=True
+        ):
+            commit_custom_active_song(st, self._trial_row(), invalidate_backing=lambda *_a, **_k: None)
+            ok = switch_to_catalog_from_custom(
+                st,
+                song_picker_catalog=CATALOG,
+                invalidate_backing=lambda *_a, **_k: None,
+                force=True,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Perfect")
+        self.assertEqual(str(session.get("display_key") or ""), "G")
 
 
 if __name__ == "__main__":

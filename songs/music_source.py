@@ -30,6 +30,8 @@ USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"
 # Catalog picker is showing after leaving Custom, but first_valid (Say) must
 # not become Global Active until the user explicitly picks a catalog song.
 CATALOG_PICKER_PENDING_EXPLICIT_KEY = "_catalog_picker_pending_explicit_pick"
+# Cold-start first-valid (often Say) is picker display, not user Catalog history.
+CATALOG_DEFAULT_INIT_PICK_KEY = "_catalog_default_init_pick_key"
 CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
 CUSTOM_RECENT_ACTIVE_NAMES_KEY = "custom_recent_active_names"
 LAST_RECONCILED_SONG_PICKER_SOURCE_KEY = "_last_reconciled_song_picker_source"
@@ -621,7 +623,11 @@ def _is_unremembered_first_valid_pick(
     """True when *pick_key* is only the default catalog row (often Say), not a user pick.
 
     Master init / empty-catalog fallback must not become last-catalog identity.
-    An explicit Songs pick, or Catalog→Custom lock of that same pick, is remembered.
+    An explicit Songs pick (``EXPLICIT_CATALOG_PICK_COMMITTED_KEY``) is remembered
+    even when it happens to be the same row as first-valid.
+    A Catalog→Custom lock of a non-default song is remembered.
+    Cold-start default init must not become remembered via lock/LAST merely because
+    the picker needed a first-valid display value.
     """
     pk = str(pick_key or "").strip()
     if not pk or not _pick_key_is_catalog(pk):
@@ -632,9 +638,6 @@ def _is_unremembered_first_valid_pick(
         fallback = str(first_valid_pick_key(song_picker_catalog) or "").strip()
     except Exception:
         fallback = ""
-    lock = str(session_state.get(CATALOG_BEFORE_CUSTOM_LOCK_KEY) or "").strip()
-    if lock == pk:
-        return False
     try:
         from songs.state import EXPLICIT_CATALOG_PICK_COMMITTED_KEY
 
@@ -643,8 +646,15 @@ def _is_unremembered_first_valid_pick(
         committed = ""
     if committed == pk:
         return False
+    default_init = str(session_state.get(CATALOG_DEFAULT_INIT_PICK_KEY) or "").strip()
+    if not default_init and session_state.get("_music_default_song_ephemeral"):
+        default_init = fallback or pk
+    if default_init and pk == default_init:
+        return True
+    lock = str(session_state.get(CATALOG_BEFORE_CUSTOM_LOCK_KEY) or "").strip()
+    if lock == pk:
+        return False
     if not fallback or pk == fallback:
-        # Missing catalog: treat uncommitted first-row stamps as unremembered.
         return True
     return False
 
@@ -1919,6 +1929,7 @@ def commit_catalog_active_song(
     except ImportError:
         pass
     push_catalog_recent_pick_key(session, pick_key)
+    session.pop(CATALOG_DEFAULT_INIT_PICK_KEY, None)
     pin_catalog_restore_identity(
         session,
         pick_key,
@@ -2158,6 +2169,13 @@ def switch_to_catalog_from_custom(
             return True
 
     pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_key_is_catalog(pick_key):
+        # Live Catalog owner (H9 flags-cleared Shape) may still be first_valid in a
+        # tiny catalog. Only skip when Custom still owns and this pick is default init.
+        if identity_still_custom and _is_unremembered_first_valid_pick(
+            session, pick_key, song_picker_catalog
+        ):
+            pick_key = ""
     if _pick_key_is_catalog(pick_key):
         data = apply_pick_key(
             st,

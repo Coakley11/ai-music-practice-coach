@@ -689,6 +689,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "_last_custom_song_state",
     "_catalog_before_custom_state",
     "_catalog_before_custom_lock_pick",
+    "_catalog_default_init_pick_key",
 )
 
 _LIST_KEYS = (

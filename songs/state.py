@@ -96,6 +96,12 @@ def apply_explicit_catalog_dropdown_pick(
             pass
     if requested and not requested.startswith("custom::"):
         session[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = requested
+        try:
+            from songs.music_source import CATALOG_DEFAULT_INIT_PICK_KEY
+
+            session.pop(CATALOG_DEFAULT_INIT_PICK_KEY, None)
+        except ImportError:
+            session.pop("_catalog_default_init_pick_key", None)
     specialized_fresh = bool(
         session.get("_explicit_catalog_fresh_activation")
         or session.get("_pending_catalog_fresh_activation_after_specialized")
@@ -1248,6 +1254,12 @@ def ensure_master_song_initialized(
     r0 = all_records[0]
     label0 = f"{r0['title']} — {r0['artist']}"
     pk = format_pick_key(r0["genre"], label0)
+    try:
+        from songs.music_source import CATALOG_DEFAULT_INIT_PICK_KEY
+
+        st.session_state[CATALOG_DEFAULT_INIT_PICK_KEY] = pk
+    except ImportError:
+        st.session_state["_catalog_default_init_pick_key"] = pk
     apply_pick_key(st, pk, song_picker_catalog, persist=False, origin=origin)
     st.session_state["_music_default_song_ephemeral"] = True
 
