@@ -365,6 +365,27 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
         self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
 
+    def test_live_catalog_radio_outranks_lagging_composition_stamp(self) -> None:
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            reconcile_picker_music_source,
+        )
+
+        ss = {
+            "studio_page": "picker",
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            "active_music_source": SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::still-there",
+        }
+        reconcile_picker_music_source(ss)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+
     def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,

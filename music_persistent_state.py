@@ -599,6 +599,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "composition_recent_active_ids",
     "active_music_source",
     "explicit_music_source_choice",
+    "song_picker_active_source",
     "chart_edit_mode",
     "picker_editor_tab",
     "picker_song_editor_open",
