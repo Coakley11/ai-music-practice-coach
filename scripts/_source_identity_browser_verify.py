@@ -561,6 +561,12 @@ def select_music_source(page: Page, needle: str) -> None:
             wait_catalog_hub_ready(page, timeout_ms=35000)
 
 def assert_radio_selected(page: Page, needle: str) -> bool:
+    alias = {
+        "Custom Progression": r"Custom Progression|Use Custom",
+        "Composition": r"Composition",
+        "Catalog": r"Catalog|Song catalog|Song Library|Song Selection",
+        "Song Selection": r"Catalog|Song catalog|Song Library|Song Selection",
+    }.get(needle, re.escape(needle))
     radios = page.locator("[data-testid='stRadio']")
     for i in range(radios.count()):
         block = radios.nth(i)
@@ -572,7 +578,7 @@ def assert_radio_selected(page: Page, needle: str) -> bool:
             continue
         if "Composition" not in txt:
             continue
-        labels = block.locator("label").filter(has_text=re.compile(needle, re.I))
+        labels = block.locator("label").filter(has_text=re.compile(alias, re.I))
         for j in range(labels.count()):
             lab = labels.nth(j)
             inp = lab.locator("input")
