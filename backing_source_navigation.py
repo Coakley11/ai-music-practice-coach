@@ -200,6 +200,7 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
     page = str(from_page or session.get("studio_page") or "").strip()
     try:
         from songs.music_source import (
+            songs_hub_catalog_backing_selected,
             songs_hub_composition_backing_selected,
             songs_hub_custom_backing_selected,
         )
