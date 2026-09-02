@@ -74,10 +74,13 @@ def _wait_composition_backing_card_hydrated(page, *, timeout_ms: int = 20000) ->
 
 def main() -> int:
     fails = 0
+    import _gate_workspace as gw
+
+    _ws, start_url = gw.prepare_isolated_workspace("gate_songs_hub", seed="empty")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
-        page.goto(v.URL + "/?dev=1", wait_until="domcontentloaded", timeout=180_000)
+        page.goto(start_url, wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
 
         # ---- A. Custom Songs UI ----
@@ -141,7 +144,7 @@ def main() -> int:
             # After Custom Practice Key edits, ownership promote can lag one run —
             # remount Songs and re-select Composition.
             log("composition_select_retry", False, str(first_exc)[:160])
-            page.goto(v.URL + "/?dev=1", wait_until="domcontentloaded", timeout=120_000)
+            page.goto(start_url, wait_until="domcontentloaded", timeout=120_000)
             v.wait_streamlit(page, 4000)
             v.ensure_songs(page)
             v.select_music_source(page, "Composition")

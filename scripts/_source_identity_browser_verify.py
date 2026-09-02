@@ -303,7 +303,7 @@ def _click_radio_option(option) -> None:
     except Exception:
         pass
     try:
-        option.click(timeout=8000)
+        option.click(timeout=5000, no_wait_after=True)
         return
     except Exception:
         pass
@@ -315,7 +315,7 @@ def _click_radio_option(option) -> None:
         pass
     # Last resort: click the associated input if present.
     try:
-        option.locator("input").first.click(timeout=3000, force=True)
+        option.locator("input").first.click(timeout=3000, force=True, no_wait_after=True)
     except Exception:
         pass
 
@@ -336,7 +336,11 @@ def select_music_source(page: Page, needle: str) -> None:
 
     def _live_source_radio():
         radios = page.locator("[data-testid='stRadio']")
-        for i in range(radios.count()):
+        try:
+            total = radios.count()
+        except Exception:
+            total = 0
+        for i in range(total):
             block = radios.nth(i)
             if not _radio_block_is_live(block):
                 continue
@@ -353,26 +357,42 @@ def select_music_source(page: Page, needle: str) -> None:
                 "Custom" in txt or "catalog" in txt.lower() or "Song Selection" in txt
             ):
                 return block
-        for i in range(radios.count()):
+        for i in range(total):
             block = radios.nth(i)
             try:
                 if _radio_block_is_live(block) and block.is_visible():
                     return block
             except Exception:
                 continue
-        return radios.first
+        return None
 
     def _click_needle_once() -> None:
         # Re-query after every Streamlit remount — stale labels swallow clicks.
-        wait_streamlit_idle(page, timeout_ms=8000)
-        target = _live_source_radio()
-        target.wait_for(state="visible", timeout=20000)
-        option = target.locator("label").filter(has_text=re.compile(alias, re.I))
-        if option.count() == 0:
-            raise RuntimeError(f"Music source option not found: {needle}")
-        _click_radio_option(option.first)
-        wait_streamlit_idle(page)
-        wait_streamlit(page, 800)
+        deadline = time.time() + 20
+        last_err: Exception | None = None
+        while time.time() < deadline:
+            wait_streamlit_idle(page, timeout_ms=5000)
+            target = _live_source_radio()
+            if target is not None:
+                try:
+                    target.wait_for(state="visible", timeout=5000)
+                    option = target.locator("label").filter(has_text=re.compile(alias, re.I))
+                    if option.count() == 0:
+                        raise RuntimeError(f"Music source option not found: {needle}")
+                    _click_radio_option(option.first)
+                    wait_streamlit_idle(page, timeout_ms=8000)
+                    wait_streamlit(page, 800)
+                    return
+                except Exception as exc:
+                    last_err = exc
+            if _js_select_needle():
+                wait_streamlit_idle(page, timeout_ms=8000)
+                wait_streamlit(page, 800)
+                return
+            page.wait_for_timeout(400)
+        if last_err is not None:
+            raise RuntimeError(f"Music source radio not live for: {needle} ({last_err})")
+        raise RuntimeError(f"Music source radio not live for: {needle}")
 
     def _js_select_needle() -> bool:
         """Direct label click when Playwright events are swallowed mid-remount."""
@@ -483,6 +503,9 @@ def select_music_source(page: Page, needle: str) -> None:
         try:
             wait_composition_hub_ready(page, timeout_ms=25000)
         except RuntimeError:
+            # Evidence/gates with reload denied must fail closed — no page.reload recovery.
+            if not ensure_songs_reload_allowed():
+                raise
             # One recovery: reload Songs and reselect Composition (product ensure
             # must still stamp composition::; this only clears a stuck remount).
             try:
@@ -726,21 +749,44 @@ def open_composition_backing_from_hub(page: Page) -> None:
     require_picker_page(page)
     marker = wait_composition_hub_ready(page, timeout_ms=25000)
     capture_switch_telemetry(page, "open_comp_backing:pre_click")
-    loc = page.locator(".st-key-composition_hub_backing button")
+    # Prefer a real Playwright click, but never block forever on Streamlit remounts —
+    # fall back to a live-DOM label click with a hard wall-clock budget.
     clicked = False
-    for i in range(loc.count()):
+    loc = page.locator(".st-key-composition_hub_backing button")
+    try:
+        n = loc.count()
+    except Exception:
+        n = 0
+    for i in range(n):
         btn = loc.nth(i)
         try:
             if not btn.is_visible():
                 continue
             if not _marker_is_live(btn):
                 continue
-            btn.scroll_into_view_if_needed(timeout=3000)
-            btn.click(timeout=8000)
+            btn.scroll_into_view_if_needed(timeout=2000)
+            btn.click(timeout=5000, no_wait_after=True)
             clicked = True
             break
         except Exception:
             continue
+    if not clicked:
+        clicked = bool(
+            page.evaluate(
+                """() => {
+                  const btns = Array.from(
+                    document.querySelectorAll('.st-key-composition_hub_backing button')
+                  );
+                  for (const btn of btns) {
+                    if (btn.closest('[data-stale=\"true\"]')) continue;
+                    if (btn.offsetParent === null) continue;
+                    btn.click();
+                    return true;
+                  }
+                  return false;
+                }"""
+            )
+        )
     if not clicked:
         raise RuntimeError(
             "No live composition_hub_backing button after ready "
@@ -1317,10 +1363,13 @@ def _run_switch_source_cycle(page: Page, label: str) -> tuple[bool, str]:
 
 def main() -> int:
     failures = 0
+    import _gate_workspace as gw
+
+    _ws, start_url = gw.prepare_isolated_workspace("gate_source_identity", seed="empty")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
-        page.goto(URL, wait_until="domcontentloaded", timeout=180_000)
+        page.goto(start_url, wait_until="domcontentloaded", timeout=180_000)
         boot_deadline = time.time() + 120
         while time.time() < boot_deadline:
             page.wait_for_timeout(2000)

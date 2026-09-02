@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import sys
 import time
@@ -21,6 +22,7 @@ REPO = ROOT.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(REPO))
 
+import _gate_workspace as gw  # noqa: E402
 import _practice_key_harness as pkh  # noqa: E402
 
 OUT = ROOT / "_source_identity_browser_evidence"
@@ -35,6 +37,8 @@ RESULTS: list[dict] = []
 ACCEPTANCE_ROWS: list[dict] = []
 RECOVERY_COUNTS: dict[str, int] = {"first_attempt_failures": 0, "reload_recovery": 0}
 COLD_START_META: dict[str, Any] = {}
+GATE_START_URL = v.URL + "/?dev=1"
+GATE_WORKSPACE_ID = ""
 
 
 @dataclass
@@ -881,7 +885,7 @@ def _composition_reset_c(page: Page, step: str = "composition_reset_c") -> bool:
 
 
 def _goto_songs_picker(page: Page) -> None:
-    page.goto(v.URL + "/?dev=1", wait_until="domcontentloaded", timeout=180_000)
+    page.goto(GATE_START_URL, wait_until="domcontentloaded", timeout=180_000)
     v.wait_streamlit(page, 4000)
     try:
         v.click_nav(page, "Songs")
@@ -1292,9 +1296,25 @@ def _print_acceptance_table() -> None:
 
 
 def main() -> int:
+    global GATE_START_URL, GATE_WORKSPACE_ID
     fails = 0
     obs = WalkObs()
     product_sha = ""
+    phase = (os.environ.get("AUTHORITY_PHASE") or "all").strip().lower()
+    # fresh|all → empty isolated workspace; restored → reuse GATE_WORKSPACE disk (deliberate).
+    if phase in {"restored", "cold", "disk_cold_start"}:
+        ws = (os.environ.get("GATE_WORKSPACE") or "").strip()
+        if not ws:
+            print("[FAIL] AUTHORITY_PHASE=restored requires GATE_WORKSPACE", flush=True)
+            return 1
+        GATE_WORKSPACE_ID = ws
+        gw.point_active_workspace_file(ws)
+        GATE_START_URL = gw.workspace_url(v.URL, ws)
+        print(f"[workspace] restored id={ws} url={GATE_START_URL}", flush=True)
+    else:
+        GATE_WORKSPACE_ID, GATE_START_URL = gw.prepare_isolated_workspace(
+            "gate_authority", seed="empty"
+        )
     try:
         import subprocess
 
@@ -1308,106 +1328,66 @@ def main() -> int:
     except Exception:
         product_sha = "unknown"
 
+    run_fresh = phase in {"all", "fresh"}
+    run_restored = phase in {"all", "restored", "cold", "disk_cold_start"}
+
     with sync_playwright() as p:
         browser: Browser = p.chromium.launch(headless=True)
 
-        try:
-            from suite_user_persistence import reset_user_state
+        if run_fresh:
+            try:
+                from suite_user_persistence import reset_user_state
 
-            reset_user_state("music")
-        except Exception:
-            pass
+                reset_user_state("music")
+            except Exception:
+                pass
 
-        ctx_fresh = browser.new_context(viewport={"width": 1500, "height": 1200})
-        page = ctx_fresh.new_page()
-        page.set_default_timeout(60000)
-        _goto_songs_picker(page)
-        fails += run_walk(page, label="fresh", obs=obs)
-        ctx_fresh.close()
+            ctx_fresh = browser.new_context(viewport={"width": 1500, "height": 1200})
+            page = ctx_fresh.new_page()
+            page.set_default_timeout(60000)
+            _goto_songs_picker(page)
+            fails += run_walk(page, label="fresh", obs=obs)
+            ctx_fresh.close()
 
-        if not obs.catalog_baseline_key:
-            obs.catalog_baseline_key = obs.catalog_original_key or "G"
+            if not obs.catalog_baseline_key:
+                obs.catalog_baseline_key = obs.catalog_original_key or "G"
 
-        try:
-            from suite_user_persistence import load_user_state
+            try:
+                from suite_user_persistence import load_user_state
 
-            disk, _ = load_user_state("music")
-            if isinstance(disk, dict):
-                sess = disk.get("session") if isinstance(disk.get("session"), dict) else {}
-                core = disk.get("core") if isinstance(disk.get("core"), dict) else {}
-                pick = str(
-                    sess.get("active_catalog_pick_key") or core.get("pick_key") or obs.catalog_pick or ""
-                ).strip()
-                if pick and not pick.startswith(("custom::", "composition::")):
-                    obs.catalog_pick = pick
-                if not obs.catalog_title:
-                    obs.catalog_title = str(core.get("song") or "")
-                if not obs.catalog_baseline_key:
-                    obs.catalog_baseline_key = obs.catalog_original_key or "G"
-        except Exception:
-            pass
+                disk, _ = load_user_state("music")
+                if isinstance(disk, dict):
+                    sess = disk.get("session") if isinstance(disk.get("session"), dict) else {}
+                    core = disk.get("core") if isinstance(disk.get("core"), dict) else {}
+                    pick = str(
+                        sess.get("active_catalog_pick_key")
+                        or core.get("pick_key")
+                        or obs.catalog_pick
+                        or ""
+                    ).strip()
+                    if pick and not pick.startswith(("custom::", "composition::")):
+                        obs.catalog_pick = pick
+                    if not obs.catalog_title:
+                        obs.catalog_title = str(core.get("song") or "")
+                    if not obs.catalog_baseline_key:
+                        obs.catalog_baseline_key = obs.catalog_original_key or "G"
+            except Exception:
+                pass
 
-        # Failed-state switches in a fresh browser context (avoids late-suite hangs).
-        ctx_fail = browser.new_context(viewport={"width": 1500, "height": 1200})
-        fail_page = ctx_fail.new_page()
-        fail_page.set_default_timeout(60000)
-        _goto_songs_picker(fail_page)
-        # Re-establish Custom target identity before failed-state probes.
-        ok_fc, rec_fc = _select_source_first_click(
-            fail_page, "Custom Progression", "failed_ctx:seed_custom", allow_recovery=False
-        )
-        if ok_fc and not rec_fc:
-            _capture_custom_target(fail_page, obs)
-        fails += run_failed_state_custom_switches(fail_page, obs, label="failed")
-        # Same-session stale + reload (NOT cold-start) inside this context.
-        same_obs = WalkObs(
-            catalog_title=obs.catalog_title,
-            catalog_original_key=obs.catalog_baseline_key or obs.catalog_original_key,
-            catalog_baseline_key=obs.catalog_baseline_key or obs.catalog_original_key,
-            catalog_pick=obs.catalog_pick,
-            custom_original_key=obs.custom_original_key,
-            custom_title=obs.custom_title,
-            custom_pick=obs.custom_pick,
-        )
-        browser_seeded = seed_stale_state_in_browser(fail_page, same_obs)
-        log(
-            "same_session_stale_seed",
-            browser_seeded,
-            "same-session stale transitions (not cold-start)",
-        )
-        if not browser_seeded:
-            fails += 1
-        else:
-            fail_page.reload(wait_until="domcontentloaded", timeout=180_000)
-            v.wait_streamlit(fail_page, 4000)
+            # Failed-state switches in a fresh browser context (avoids late-suite hangs).
+            ctx_fail = browser.new_context(viewport={"width": 1500, "height": 1200})
+            fail_page = ctx_fail.new_page()
+            fail_page.set_default_timeout(60000)
             _goto_songs_picker(fail_page)
-            ok_ss, rec_ss = _select_source_first_click(
-                fail_page, "Catalog", "same_session_reload:start_catalog", allow_recovery=False
+            # Re-establish Custom target identity before failed-state probes.
+            ok_fc, rec_fc = _select_source_first_click(
+                fail_page, "Custom Progression", "failed_ctx:seed_custom", allow_recovery=False
             )
-            if not (ok_ss and not rec_ss):
-                fails += 1
-            if not _wait_catalog_coherent(fail_page, same_obs, timeout_ms=40000):
-                fails += 1
-            else:
-                log(
-                    "same_session_reload_coherence",
-                    True,
-                    "catalog coherent after reload (not cold-start)",
-                )
-        ctx_fail.close()
-
-        # Supported restored-state cold start (new process session via new context).
-        COLD_START_META.update(_persist_via_app_then_disk_ok())
-        disk_seeded = seed_valid_app_persisted_workspace(obs)
-        COLD_START_META["app_persisted_disk_seed_ok"] = disk_seeded
-        log(
-            "supported_persistence_probe",
-            True,
-            json.dumps(COLD_START_META, sort_keys=True),
-        )
-
-        if COLD_START_META.get("supported_layer") == "disk" and disk_seeded:
-            rest_obs = WalkObs(
+            if ok_fc and not rec_fc:
+                _capture_custom_target(fail_page, obs)
+            fails += run_failed_state_custom_switches(fail_page, obs, label="failed")
+            # Same-session stale + reload (NOT cold-start) inside this context.
+            same_obs = WalkObs(
                 catalog_title=obs.catalog_title,
                 catalog_original_key=obs.catalog_baseline_key or obs.catalog_original_key,
                 catalog_baseline_key=obs.catalog_baseline_key or obs.catalog_original_key,
@@ -1416,26 +1396,121 @@ def main() -> int:
                 custom_title=obs.custom_title,
                 custom_pick=obs.custom_pick,
             )
-            ctx_cold = browser.new_context(viewport={"width": 1500, "height": 1200})
-            cold_page = ctx_cold.new_page()
-            cold_page.set_default_timeout(60000)
-            _goto_songs_picker(cold_page)
-            fails += run_walk(cold_page, label="disk_cold_start", obs=rest_obs)
-            ctx_cold.close()
-            COLD_START_META["disk_cold_start_ran"] = True
-            COLD_START_META["disk_cold_start_result"] = "ran"
-        else:
-            COLD_START_META["disk_cold_start_ran"] = False
-            COLD_START_META["disk_cold_start_result"] = "skipped"
-            if COLD_START_META.get("cloud_storage_enabled"):
-                log(
-                    "cloud_cold_start",
-                    True,
-                    "HUMAN_ONLY: authenticated cloud persistence/restart not reproducible here",
-                )
-            else:
+            browser_seeded = seed_stale_state_in_browser(fail_page, same_obs)
+            log(
+                "same_session_stale_seed",
+                browser_seeded,
+                "same-session stale transitions (not cold-start)",
+            )
+            if not browser_seeded:
                 fails += 1
-                log("disk_cold_start", False, "supported disk layer but seed missing")
+            else:
+                fail_page.reload(wait_until="domcontentloaded", timeout=180_000)
+                v.wait_streamlit(fail_page, 4000)
+                _goto_songs_picker(fail_page)
+                ok_ss, rec_ss = _select_source_first_click(
+                    fail_page, "Catalog", "same_session_reload:start_catalog", allow_recovery=False
+                )
+                if not (ok_ss and not rec_ss):
+                    fails += 1
+                if not _wait_catalog_coherent(fail_page, same_obs, timeout_ms=40000):
+                    fails += 1
+                else:
+                    log(
+                        "same_session_reload_coherence",
+                        True,
+                        "catalog coherent after reload (not cold-start)",
+                    )
+            ctx_fail.close()
+
+            # Persist envelope for a later restored/cold-start Streamlit process.
+            COLD_START_META.update(_persist_via_app_then_disk_ok())
+            disk_seeded = seed_valid_app_persisted_workspace(obs)
+            COLD_START_META["app_persisted_disk_seed_ok"] = disk_seeded
+            log(
+                "supported_persistence_probe",
+                True,
+                json.dumps(COLD_START_META, sort_keys=True),
+            )
+            obs_path = OUT / "authority_fresh_obs.json"
+            obs_path.write_text(
+                json.dumps(
+                    {
+                        "workspace_id": GATE_WORKSPACE_ID,
+                        "catalog_title": obs.catalog_title,
+                        "catalog_original_key": obs.catalog_original_key,
+                        "catalog_baseline_key": obs.catalog_baseline_key,
+                        "catalog_pick": obs.catalog_pick,
+                        "custom_title": obs.custom_title,
+                        "custom_pick": obs.custom_pick,
+                        "custom_original_key": obs.custom_original_key,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            print(f"[workspace] wrote fresh obs {obs_path} ws={GATE_WORKSPACE_ID}", flush=True)
+
+        if run_restored:
+            if not run_fresh:
+                # Load observations captured by the fresh-phase gate.
+                obs_path = OUT / "authority_fresh_obs.json"
+                try:
+                    raw = json.loads(obs_path.read_text(encoding="utf-8"))
+                    obs = WalkObs(
+                        catalog_title=str(raw.get("catalog_title") or ""),
+                        catalog_original_key=str(raw.get("catalog_original_key") or ""),
+                        catalog_baseline_key=str(raw.get("catalog_baseline_key") or ""),
+                        catalog_pick=str(raw.get("catalog_pick") or ""),
+                        custom_title=str(raw.get("custom_title") or ""),
+                        custom_pick=str(raw.get("custom_pick") or ""),
+                        custom_original_key=str(raw.get("custom_original_key") or ""),
+                    )
+                except Exception as exc:
+                    print(f"[FAIL] restored missing authority_fresh_obs.json: {exc}", flush=True)
+                    return 1
+                COLD_START_META.update(_persist_via_app_then_disk_ok())
+                disk_seeded = seed_valid_app_persisted_workspace(obs)
+                COLD_START_META["app_persisted_disk_seed_ok"] = disk_seeded
+            else:
+                disk_seeded = bool(COLD_START_META.get("app_persisted_disk_seed_ok"))
+
+            log(
+                "supported_persistence_probe",
+                True,
+                json.dumps(COLD_START_META, sort_keys=True),
+            )
+
+            if COLD_START_META.get("supported_layer") == "disk" and disk_seeded:
+                rest_obs = WalkObs(
+                    catalog_title=obs.catalog_title,
+                    catalog_original_key=obs.catalog_baseline_key or obs.catalog_original_key,
+                    catalog_baseline_key=obs.catalog_baseline_key or obs.catalog_original_key,
+                    catalog_pick=obs.catalog_pick,
+                    custom_original_key=obs.custom_original_key,
+                    custom_title=obs.custom_title,
+                    custom_pick=obs.custom_pick,
+                )
+                ctx_cold = browser.new_context(viewport={"width": 1500, "height": 1200})
+                cold_page = ctx_cold.new_page()
+                cold_page.set_default_timeout(60000)
+                _goto_songs_picker(cold_page)
+                fails += run_walk(cold_page, label="disk_cold_start", obs=rest_obs)
+                ctx_cold.close()
+                COLD_START_META["disk_cold_start_ran"] = True
+                COLD_START_META["disk_cold_start_result"] = "ran"
+            else:
+                COLD_START_META["disk_cold_start_ran"] = False
+                COLD_START_META["disk_cold_start_result"] = "skipped"
+                if COLD_START_META.get("cloud_storage_enabled"):
+                    log(
+                        "cloud_cold_start",
+                        True,
+                        "HUMAN_ONLY: authenticated cloud persistence/restart not reproducible here",
+                    )
+                else:
+                    fails += 1
+                    log("disk_cold_start", False, "supported disk layer but seed missing")
 
         browser.close()
 

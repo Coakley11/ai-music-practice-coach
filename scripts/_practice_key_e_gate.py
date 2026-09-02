@@ -102,11 +102,14 @@ def set_practice_key_e(page) -> bool:
 
 def main() -> int:
     failures = 0
+    import _gate_workspace as gw
+
+    _ws, start_url = gw.prepare_isolated_workspace("gate_practice_key_e", seed="empty")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.set_default_timeout(60_000)
-        page.goto(f"{v.URL}/?dev=1", wait_until="domcontentloaded", timeout=180_000)
+        page.goto(start_url, wait_until="domcontentloaded", timeout=180_000)
         v.wait_streamlit(page, 5000)
 
         v.ensure_songs(page)
