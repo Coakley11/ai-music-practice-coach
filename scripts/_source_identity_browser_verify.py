@@ -1372,7 +1372,7 @@ def main() -> int:
     failures = 0
     import _gate_workspace as gw
 
-    _ws, start_url = gw.prepare_isolated_workspace("gate_source_identity", seed="empty")
+    _ws, start_url = gw.prepare_isolated_workspace("gate_source_identity", seed="catalog")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})

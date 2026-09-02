@@ -94,17 +94,22 @@ def _open_composition_backing_keep_key(page) -> None:
 
 def set_practice_key_e(page) -> bool:
     """Open the Practice / Concert Key selectbox and choose E; verify live value."""
-    ok, _before, _after = pkh.select_practice_key_option(page, "E", v.wait_streamlit_idle)
-    if ok:
-        v.wait_streamlit(page, 1500)
-    return ok
+    # Virtualized Streamlit selectboxes are more reliable via typeahead fill.
+    for _attempt in range(3):
+        ok, _before, _after = pkh.select_practice_key_option(page, "E", v.wait_streamlit_idle)
+        if ok:
+            v.wait_streamlit(page, 1500)
+            return True
+        v.wait_streamlit_idle(page, timeout_ms=5000)
+        page.wait_for_timeout(500)
+    return False
 
 
 def main() -> int:
     failures = 0
     import _gate_workspace as gw
 
-    _ws, start_url = gw.prepare_isolated_workspace("gate_practice_key_e", seed="empty")
+    _ws, start_url = gw.prepare_isolated_workspace("gate_practice_key_e", seed="catalog")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
