@@ -1515,31 +1515,7 @@ def main() -> int:
             marker = {}
 
         try:
-            # One normal click after ready — no force, no blind retries.
-            loc = page.locator(".st-key-composition_hub_backing button")
-            clicked = False
-            for i in range(loc.count()):
-                btn = loc.nth(i)
-                try:
-                    if not btn.is_visible():
-                        continue
-                    if not _marker_is_live(btn):
-                        continue
-                    btn.scroll_into_view_if_needed(timeout=3000)
-                    btn.click(timeout=8000)
-                    clicked = True
-                    break
-                except Exception:
-                    continue
-            if not clicked:
-                raise RuntimeError("No live composition_hub_backing button after ready")
-            if not _await_backing_studio(
-                page, timeout_ms=25000, prefer="composition"
-            ):
-                raise RuntimeError(
-                    "Composition Backing did not open after one hub click "
-                    f"(page={_studio_page_id(page)!r} marker={marker!r})"
-                )
+            open_composition_backing_from_hub(page)
             log("comp_open_backing", True, "one click opened Composition Backing")
         except Exception as exc:
             log("comp_open_backing", False, str(exc))
