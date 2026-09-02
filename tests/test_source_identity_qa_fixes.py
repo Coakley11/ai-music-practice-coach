@@ -365,6 +365,36 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
         self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
 
+    def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_COMPOSITION,
+            song_picker_composition_option_label,
+        )
+        from studio_page_persistence import apply_page_snapshot
+
+        ss = {
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+            "active_music_source": SOURCE_COMPOSITION,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: song_picker_composition_option_label(),
+            "active_catalog_pick_key": "composition::doc-1",
+        }
+        apply_page_snapshot(
+            ss,
+            {
+                "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+                "song_picker_level_filter": "Any level",
+            },
+        )
+        self.assertEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY],
+            song_picker_composition_option_label(),
+        )
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+        self.assertEqual(ss.get("song_picker_level_filter"), "Any level")
+
 
 class TestCompositionSidebarPracticeKeyWrite(unittest.TestCase):
     def test_sidebar_composition_practice_key_persists_e(self) -> None:

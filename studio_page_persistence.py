@@ -62,7 +62,9 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "workspace_genre_filter",
             "workspace_genre_filters",
             "song_search_text",
-            "song_picker_active_source",
+            # song_picker_active_source is ownership-global (with active_music_source /
+            # explicit_music_source_choice) — never page-snapshotted. Stale Custom/Catalog
+            # radio in the picker snapshot was reclaiming Composition after refresh.
         }
     ),
     "backing": frozenset(
@@ -275,6 +277,10 @@ _GLOBAL_APP_STATE_KEYS = frozenset(
         "global_source_mode",
         "active_music_source",
         "_last_active_music_source",
+        "song_picker_active_source",
+        "explicit_music_source_choice",
+        "_explicit_music_source_seq",
+        "_user_chose_catalog_music_source",
         "active_genre",
         "active_song_title",
         "selected_transposing_instrument",
@@ -535,6 +541,15 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         CREATIVE_BACKING_RETURN_WIDGET_KEYS = frozenset()  # type: ignore[misc,assignment]
     for key, val in local.items():
         if key in _VOLATILE_BACKING_SNAPSHOT_KEYS:
+            continue
+        # Ownership radio is global — ignore stale values from older picker snapshots.
+        if key in {
+            "song_picker_active_source",
+            "explicit_music_source_choice",
+            "_explicit_music_source_seq",
+            "_user_chose_catalog_music_source",
+            "active_music_source",
+        }:
             continue
         if skip_creative_widget_snapshot and key in CREATIVE_BACKING_RETURN_WIDGET_KEYS:
             continue
