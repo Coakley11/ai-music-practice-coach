@@ -344,9 +344,21 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     except ImportError:
         phase_done = False
 
+    # Live widget value — checked directly because ``picker_custom_progression_mode``
+    # returns False while ``USER_CATALOG`` is set (intentional for hub/nav vetoes).
+    # That veto must not reset a live Custom/Composition radio back to Catalog.
+    choice_live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    live_custom = choice_live == SONG_PICKER_SOURCE_CUSTOM or choice_live.startswith(
+        "Use Custom"
+    )
+    live_composition = picker_choice_is_composition(choice_live)
+
     # Trust an in-progress Songs radio selection before pick-based reclaim.
-    if picker_custom_progression_mode(session_state):
+    if live_custom or picker_custom_progression_mode(session_state):
         changed = False
+        if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            changed = True
         if explicit_music_source_choice(session_state) != SOURCE_CUSTOM:
             commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
             changed = True
@@ -356,8 +368,11 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
             set_custom_source(session_state)
             changed = True
         return changed
-    if picker_composition_mode(session_state):
+    if live_composition or picker_composition_mode(session_state):
         changed = False
+        if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            changed = True
         if explicit_music_source_choice(session_state) != SOURCE_COMPOSITION:
             commit_explicit_music_source_choice(
                 session_state,

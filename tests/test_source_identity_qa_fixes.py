@@ -386,6 +386,77 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
         self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
 
+    def test_live_custom_radio_outranks_stale_user_catalog_widget_reconcile(
+        self,
+    ) -> None:
+        """Cold-start Catalog→Custom must not snap the radio back to Catalog.
+
+        First divergence (pre-fix): ``picker_custom_progression_mode`` returns
+        False while ``USER_CATALOG`` is set, so reconcile fell through to the
+        ``phase_done and USER_CATALOG`` branch and ``_assign_song_picker_source_widget``
+        forced Catalog — even though the live widget value was already Custom.
+        """
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_CATALOG,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            picker_custom_progression_mode,
+            reconcile_music_picker_source_widget,
+        )
+
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CATALOG,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "catalog::Say",
+        }
+        # Mode helper still vetoes under USER_CATALOG (hub/nav contract).
+        self.assertFalse(picker_custom_progression_mode(ss))
+        reconcile_music_picker_source_widget(ss)
+        # Live widget must win — radio stays Custom; catalog stamp cleared.
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
+        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
+
+    def test_live_composition_radio_outranks_stale_user_catalog_widget_reconcile(
+        self,
+    ) -> None:
+        """Same USER_CATALOG veto must not snap a live Composition radio to Catalog."""
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            reconcile_music_picker_source_widget,
+            song_picker_composition_option_label,
+        )
+
+        comp = song_picker_composition_option_label()
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CATALOG,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: comp,
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "catalog::Say",
+        }
+        reconcile_music_picker_source_widget(ss)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], comp)
+        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
+
     def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
