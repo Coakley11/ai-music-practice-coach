@@ -443,6 +443,9 @@ def select_music_source(page: Page, needle: str) -> None:
     else:
         # Leaving Composition: hub chrome can swallow the first Catalog/Custom
         # Playwright click. Prefer a native input click, then settle.
+        # Do NOT Catalog-bounce first when targeting Custom — Catalog's on_change
+        # calls st.rerun() and races the follow-up Custom click (authority
+        # failed_composition_to_custom + verify switch_custom).
         leaving_composition = assert_radio_selected(page, "Composition") or (
             _count_live_hub_buttons(page, "composition_hub_backing") > 0
         )
@@ -452,10 +455,15 @@ def select_music_source(page: Page, needle: str) -> None:
                 wait_streamlit(page, 1200)
         # Composition↔Custom after a prior Custom session can desync the Streamlit
         # widget value from the visible radio (UI shows Composition, session still
-        # Custom). Bouncing through Catalog forces a real on_change.
-        if needle == "Custom Progression" and (
-            assert_radio_selected(page, "Composition")
-            or _count_live_hub_buttons(page, "composition_hub_backing") > 0
+        # Custom). Bounce Catalog only when already on Custom is NOT selected and
+        # we are targeting Custom from a non-Composition source.
+        if (
+            needle == "Custom Progression"
+            and not leaving_composition
+            and (
+                assert_radio_selected(page, "Composition")
+                or _count_live_hub_buttons(page, "composition_hub_backing") > 0
+            )
         ):
             try:
                 # Temporarily select Catalog via JS, then continue to Custom.
