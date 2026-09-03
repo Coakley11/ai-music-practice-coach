@@ -523,6 +523,45 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
         self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
 
+    def test_ensure_composition_refuses_live_catalog_or_custom_radio(self) -> None:
+        """Hub promote must not force Composition over a live leave radio."""
+        from types import SimpleNamespace
+
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            ensure_composition_owns_active_song,
+            song_picker_composition_option_label,
+        )
+
+        for live, source in (
+            (SONG_PICKER_SOURCE_CATALOG, SOURCE_CATALOG),
+            (SONG_PICKER_SOURCE_CUSTOM, SOURCE_CUSTOM),
+            ("", SOURCE_COMPOSITION),
+        ):
+            ss = {
+                SONG_PICKER_ACTIVE_SOURCE_KEY: live,
+                EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+                "active_music_source": SOURCE_COMPOSITION,
+                "active_catalog_pick_key": "composition::still-there",
+            }
+            st = SimpleNamespace(session_state=ss)
+            doc = ensure_composition_owns_active_song(
+                st, invalidate_backing=lambda _s: None
+            )
+            self.assertIsNone(doc)
+            self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], live)
+            self.assertNotEqual(
+                ss[SONG_PICKER_ACTIVE_SOURCE_KEY],
+                song_picker_composition_option_label(),
+            )
+            self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+
     def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,

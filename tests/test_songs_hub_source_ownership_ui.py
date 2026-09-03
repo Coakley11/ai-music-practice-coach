@@ -102,7 +102,8 @@ class TestCompositionEnsureSurvivesCustomPick(unittest.TestCase):
             "concert_key": "Eb",
             "active_music_source": "custom_progression",
             "active_catalog_pick_key": "custom::My Progression",
-            "song_picker_active_source": "Use Custom Progression",
+            # on_change Composition updates the widget before ensure runs.
+            "song_picker_active_source": "🪶 Composition",
             "_streamlit_widgets_locked_this_run": True,
             "cpl_active_progression": {
                 "name": "My Progression",
@@ -335,6 +336,10 @@ class TestExplicitSourceSwitchResetsPracticeKey(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(ss, custom_pick), "")
 
         # Explicit switch back to Composition → original C, not E.
+        # on_change Composition updates the widget before ensure runs.
+        from songs.music_source import song_picker_composition_option_label
+
+        ss["song_picker_active_source"] = song_picker_composition_option_label()
         ss["active_catalog_pick_key"] = custom_pick
         ss["_composition_reset_practice_on_ensure"] = True
         ensure_composition_owns_active_song(st, invalidate_backing=lambda _s: None)

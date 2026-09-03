@@ -1457,6 +1457,26 @@ def ensure_composition_owns_active_song(
     )
 
     session = st.session_state
+    # Live Songs radio is highest authority when the widget key is mounted.
+    # Hub promote / orphan recover must never force Composition over an
+    # in-flight Catalog/Custom leave (verify switch + authority leave).
+    # Key absent = pre-widget / unit-test / backing ensure — allow promote.
+    if SONG_PICKER_ACTIVE_SOURCE_KEY in session:
+        choice_live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        if not choice_live:
+            session["_composition_ensure_skipped_empty"] = True
+            return None
+        if choice_live == SONG_PICKER_SOURCE_CATALOG or (
+            choice_live.startswith("Song Selection") and "Composition" not in choice_live
+        ):
+            session["_composition_ensure_skipped_live_catalog"] = True
+            return None
+        if choice_live == SONG_PICKER_SOURCE_CUSTOM or choice_live.startswith(
+            "Use Custom"
+        ):
+            session["_composition_ensure_skipped_live_custom"] = True
+            return None
+
     # Explicit Songs radio switch sets this oneshot. Refresh / hub promote must
     # preserve a saved Composition Practice Key (same-source persistence).
     reset_pk = bool(session.pop("_composition_reset_practice_on_ensure", False))
