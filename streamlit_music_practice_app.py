@@ -8609,6 +8609,10 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
             picker_custom_progression_mode,
         )
 
+        # Mid-remount empty widget: never reclaim Composition/Custom hub from
+        # stamps — hub promote would force-assign Composition over a leave click.
+        if not choice:
+            return ""
         # Live radio is the highest authority for which hub to render.
         if picker_composition_mode(st.session_state) or "Composition" in choice:
             return "composition"
@@ -8616,7 +8620,9 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
             "Use Custom"
         ):
             return "custom"
-        if choice == SONG_PICKER_SOURCE_CATALOG:
+        if choice == SONG_PICKER_SOURCE_CATALOG or (
+            choice.startswith("Song Selection") and "Composition" not in choice
+        ):
             # Catalog radio must never fall through to a stale Custom/Composition stamp.
             return ""
         explicit = explicit_music_source_choice(st.session_state)
@@ -8626,6 +8632,8 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
             return "custom"
     except Exception:
         pass
+    if not choice:
+        return ""
     if music_picker_shows_composition_hub(st.session_state) or "Composition" in choice:
         return "composition"
     if music_picker_shows_custom_hub(st.session_state) or choice.startswith("Use Custom"):
@@ -9303,14 +9311,8 @@ def _render_catalog_song_picker_block(
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )
-        try:
-            from songs.music_source import composition_song_is_active as _comp_owns
-
-            if _comp_owns(st.session_state):
-                _render_composition_active_song_hub(wrap_section=wrap_section)
-                return
-        except Exception:
-            pass
+        # Live radio / empty mid-remount outrank composition_song_is_active stamps
+        # (hub promote must not force Composition over Catalog/Custom leave).
         if music_picker_shows_composition_hub(st.session_state):
             _render_composition_active_song_hub(wrap_section=wrap_section)
             return

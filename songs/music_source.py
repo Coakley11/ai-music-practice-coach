@@ -854,7 +854,12 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
 def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
     """True when the Song Selection UI should show the custom library, not catalog."""
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if choice == SONG_PICKER_SOURCE_CATALOG:
+    # Empty mid-remount must not reclaim Custom from a lagging stamp.
+    if not choice:
+        return False
+    if choice == SONG_PICKER_SOURCE_CATALOG or (
+        choice.startswith("Song Selection") and "Composition" not in choice
+    ):
         return False
     if picker_composition_mode(session_state):
         return False
@@ -870,7 +875,13 @@ def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
 def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
     """True when Song Selection should show the Composition Songs library."""
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if choice == SONG_PICKER_SOURCE_CATALOG:
+    # Empty mid-remount must not reclaim Composition from a lagging stamp —
+    # hub promote would force-assign the Composition radio over Catalog/Custom.
+    if not choice:
+        return False
+    if choice == SONG_PICKER_SOURCE_CATALOG or (
+        choice.startswith("Song Selection") and "Composition" not in choice
+    ):
         return False
     if picker_custom_progression_mode(session_state) or choice.startswith("Use Custom"):
         return False
@@ -951,6 +962,11 @@ def sync_song_picker_source_widget(
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if not force:
         if current:
+            return
+        # Mid-remount can leave the key present but empty. Filling from a lagging
+        # Composition/Catalog stamp here overwrites an in-flight leave click.
+        # Only seed when the key is truly absent (first mount).
+        if SONG_PICKER_ACTIVE_SOURCE_KEY in session_state:
             return
         if current == expected:
             return
@@ -1656,6 +1672,10 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
 
     explicit = explicit_music_source_choice(session_state)
     choice_live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    # Same mid-remount contract as reconcile_music_picker_source_widget: an empty
+    # widget key must not force Composition/Custom from a lagging explicit stamp.
+    if not choice_live:
+        return False
     live_catalog_radio = choice_live == SONG_PICKER_SOURCE_CATALOG or (
         bool(choice_live)
         and choice_live.startswith("Song Selection")
@@ -1672,6 +1692,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if (
         not live_catalog_radio
         and not live_custom_radio
+        and live_composition_radio
         and (
             explicit == SOURCE_COMPOSITION
             or (
@@ -1692,6 +1713,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if (
         not live_catalog_radio
         and not live_composition_radio
+        and live_custom_radio
         and (
             explicit == SOURCE_CUSTOM
             or (

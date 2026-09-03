@@ -433,8 +433,11 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             SONG_PICKER_ACTIVE_SOURCE_KEY,
             SONG_PICKER_SOURCE_CUSTOM,
             SOURCE_COMPOSITION,
+            music_picker_shows_composition_hub,
             reconcile_music_picker_source_widget,
+            reconcile_picker_music_source,
             song_picker_composition_option_label,
+            sync_song_picker_source_widget,
         )
 
         ss = {
@@ -453,6 +456,16 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
         )
         self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        # Hub routing + non-force sync must also refuse stamp reclaim.
+        self.assertFalse(music_picker_shows_composition_hub(ss))
+        sync_song_picker_source_widget(ss, force=False)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], "")
+        changed_picker = reconcile_picker_music_source(ss)
+        self.assertFalse(changed_picker)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], "")
+        self.assertNotEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
+        )
 
     def test_live_catalog_widget_outranks_composition_explicit_in_widget_reconcile(
         self,
