@@ -359,10 +359,18 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     # returns False while ``USER_CATALOG`` is set (intentional for hub/nav vetoes).
     # That veto must not reset a live Custom/Composition radio back to Catalog.
     choice_live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    # Mid-remount the widget key can be briefly empty. Do not reclaim Composition
+    # from a lagging explicit stamp in that window — it overwrites an in-flight
+    # Catalog/Custom click (authority failed_composition_to_custom / verify switch).
+    if not choice_live:
+        return False
     live_custom = choice_live == SONG_PICKER_SOURCE_CUSTOM or choice_live.startswith(
         "Use Custom"
     )
     live_composition = picker_choice_is_composition(choice_live)
+    live_catalog = choice_live == SONG_PICKER_SOURCE_CATALOG or choice_live.startswith(
+        "Song Selection"
+    )
 
     # Trust an in-progress Songs radio selection before pick-based reclaim.
     if live_custom or picker_custom_progression_mode(session_state):
@@ -379,7 +387,20 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
             set_custom_source(session_state)
             changed = True
         return changed
-    if live_composition or picker_composition_mode(session_state):
+    # Live Catalog outranks a lagging Composition explicit/pick (same contract as Custom).
+    if live_catalog:
+        changed = False
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+            set_catalog_source(session_state)
+            changed = True
+        if explicit_music_source_choice(session_state) != SOURCE_CATALOG:
+            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
+            changed = True
+        pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if pick_key.startswith("custom::") or _pick_looks_composition(pick_key):
+            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
+        return changed
+    if live_composition:
         changed = False
         if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
             session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)

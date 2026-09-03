@@ -426,6 +426,59 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
         self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
 
+    def test_empty_picker_widget_does_not_reclaim_composition_mid_remount(self) -> None:
+        """Empty widget key must not force Composition over an in-flight leave click."""
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_COMPOSITION,
+            reconcile_music_picker_source_widget,
+            song_picker_composition_option_label,
+        )
+
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: "",
+            "active_music_source": SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::still-there",
+        }
+        changed = reconcile_music_picker_source_widget(ss)
+        self.assertFalse(changed)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], "")
+        # Must not stamp Composition onto the widget mid-remount.
+        self.assertNotEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
+        )
+        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+
+    def test_live_catalog_widget_outranks_composition_explicit_in_widget_reconcile(
+        self,
+    ) -> None:
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            reconcile_music_picker_source_widget,
+        )
+
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            "active_music_source": SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::still-there",
+        }
+        reconcile_music_picker_source_widget(ss)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(ss["active_music_source"], SOURCE_CATALOG)
+
     def test_live_composition_radio_outranks_stale_user_catalog_widget_reconcile(
         self,
     ) -> None:
