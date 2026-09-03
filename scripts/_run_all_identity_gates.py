@@ -132,9 +132,7 @@ def main() -> int:
     # 1) Authority fresh
     start_fresh_streamlit()
     results.append(run_gate("authority_fresh", "_source_authority_sequential_walk.py", {"AUTHORITY_PHASE": "fresh"}))
-    if not results[-1]["ok"]:
-        summary_path.write_text(json.dumps({"sha": product, "results": results}, indent=2), encoding="utf-8")
-        return 1
+    # Continue remaining gates even if one fails — report all at the final SHA.
 
     obs = EV / "authority_fresh_obs.json"
     ws = ""
