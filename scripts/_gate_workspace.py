@@ -166,6 +166,20 @@ def land_songs_with_source_radio(page, v, *, timeout_ms: int = 45000) -> None:
                             continue
                     except Exception:
                         continue
+                    # Warm the radio once: re-click the already-selected option so
+                    # Streamlit's on_change path is known-live before Catalog→Custom.
+                    try:
+                        block.evaluate(
+                            """(b) => {
+                              try { b.scrollIntoView({block: 'start'}); } catch (e) {}
+                              const checked = b.querySelector('input[type=\"radio\"]:checked');
+                              if (checked) { checked.click(); return true; }
+                              return false;
+                            }"""
+                        )
+                        v.wait_streamlit_idle(page, timeout_ms=5000)
+                    except Exception:
+                        pass
                     return
         except Exception as exc:
             last_err = exc

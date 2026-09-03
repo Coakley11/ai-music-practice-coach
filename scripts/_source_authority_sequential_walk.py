@@ -888,20 +888,23 @@ def _goto_songs_picker(page: Page) -> None:
     page.goto(GATE_START_URL, wait_until="domcontentloaded", timeout=180_000)
     v.wait_streamlit(page, 4000)
     try:
-        v.click_nav(page, "Songs")
-        v.wait_streamlit(page, 2500)
+        gw.land_songs_with_source_radio(page, v, timeout_ms=45000)
     except Exception:
-        v.ensure_songs(page)
-    deadline = time.time() + 25
-    while time.time() < deadline:
-        if v._studio_page_id(page) == "picker":
-            break
         try:
             v.click_nav(page, "Songs")
-            v.wait_streamlit_idle(page)
+            v.wait_streamlit(page, 2500)
         except Exception:
-            pass
-        page.wait_for_timeout(400)
+            v.ensure_songs(page)
+        deadline = time.time() + 25
+        while time.time() < deadline:
+            if v._studio_page_id(page) == "picker":
+                break
+            try:
+                v.click_nav(page, "Songs")
+                v.wait_streamlit_idle(page)
+            except Exception:
+                pass
+            page.wait_for_timeout(400)
 
 
 def _persist_via_app_then_disk_ok() -> dict[str, Any]:

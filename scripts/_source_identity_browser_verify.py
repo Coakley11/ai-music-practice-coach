@@ -414,6 +414,8 @@ def select_music_source(page: Page, needle: str) -> None:
                 if (!(blob.includes('Custom') || /catalog|song selection|song library/i.test(blob))) {
                   continue;
                 }
+                // Bring Music Source into view — Composition hub chrome can steal hits.
+                try { b.scrollIntoView({block: 'start', inline: 'nearest'}); } catch (e) {}
                 for (const needle of needles) {
                   for (const lab of labels) {
                     const t = (lab.innerText || '').trim();
@@ -422,9 +424,21 @@ def select_music_source(page: Page, needle: str) -> None:
                     const inp = lab.querySelector('input');
                     if (inp) {
                       if (inp.checked) return 'already';
-                      // Prefer the native input — Streamlit on_change listens here.
+                      try { inp.focus(); } catch (e) {}
+                      // Native click first (Streamlit listens on the input).
                       inp.click();
-                      return 'input';
+                      if (inp.checked) return 'input';
+                      // React/Streamlit sometimes needs input+change after checked=.
+                      try {
+                        const setter = Object.getOwnPropertyDescriptor(
+                          window.HTMLInputElement.prototype, 'checked'
+                        );
+                        if (setter && setter.set) setter.set.call(inp, true);
+                        else inp.checked = true;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                      } catch (e) {}
+                      if (inp.checked) return 'dispatch';
                     }
                     lab.click();
                     return 'label';
