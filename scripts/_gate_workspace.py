@@ -151,6 +151,21 @@ def land_songs_with_source_radio(page, v, *, timeout_ms: int = 45000) -> None:
                 if "Composition" in txt and (
                     "Custom" in txt or "catalog" in txt.lower() or "Song Selection" in txt
                 ):
+                    # Require at least one enabled radio input so cold-start
+                    # clicks are not swallowed by a still-wiring Streamlit widget.
+                    try:
+                        inputs = block.locator("input[type='radio']")
+                        if inputs.count() == 0:
+                            continue
+                        enabled = False
+                        for j in range(min(inputs.count(), 3)):
+                            if inputs.nth(j).is_enabled():
+                                enabled = True
+                                break
+                        if not enabled:
+                            continue
+                    except Exception:
+                        continue
                     return
         except Exception as exc:
             last_err = exc

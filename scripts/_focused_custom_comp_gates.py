@@ -107,46 +107,12 @@ def _snap(page, label: str) -> dict:
 
 def _reach_songs(page) -> bool:
     """Navigate to Songs once as setup (not mid-assertion recovery)."""
-    for _ in range(6):
-        if v._studio_page_id(page) == "picker":
-            # Require a live Music Source radio before declaring ready.
-            try:
-                radios = page.locator("[data-testid='stRadio']")
-                for i in range(radios.count()):
-                    block = radios.nth(i)
-                    if not v._marker_is_live(block):
-                        continue
-                    if not block.is_visible():
-                        continue
-                    txt = block.inner_text(timeout=1500)
-                    if "Composition" in txt and ("Custom" in txt or "catalog" in txt.lower()):
-                        return True
-            except Exception:
-                pass
-            # Marker says picker but radio still remounting — brief idle then retry.
-            v.wait_streamlit_idle(page, timeout_ms=3000)
-            try:
-                radios = page.locator("[data-testid='stRadio']")
-                for i in range(radios.count()):
-                    block = radios.nth(i)
-                    if v._marker_is_live(block) and block.is_visible():
-                        return True
-            except Exception:
-                pass
-        try:
-            nav = page.locator(".ui-nav-art-cell.nav-picker button")
-            if nav.count() and nav.first.is_visible():
-                nav.first.click(timeout=5000, no_wait_after=True)
-                v.wait_streamlit(page, 3000)
-                continue
-        except Exception:
-            pass
-        try:
-            v.click_nav(page, "Songs")
-            v.wait_streamlit(page, 3000)
-        except Exception:
-            page.wait_for_timeout(500)
-    return v._studio_page_id(page) == "picker"
+    try:
+        gw.land_songs_with_source_radio(page, v, timeout_ms=45000)
+        v.wait_streamlit_idle(page, timeout_ms=5000)
+        return True
+    except Exception:
+        return v._studio_page_id(page) == "picker"
 
 
 def run_cold_start_custom(page, workspace_id: str) -> int:
