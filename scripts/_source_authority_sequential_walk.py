@@ -1367,7 +1367,6 @@ def main() -> int:
             page.set_default_timeout(60000)
             _goto_songs_picker(page)
             fails += run_walk(page, label="fresh", obs=obs)
-            ctx_fresh.close()
 
             if not obs.catalog_baseline_key:
                 obs.catalog_baseline_key = obs.catalog_original_key or "G"
@@ -1394,56 +1393,8 @@ def main() -> int:
             except Exception:
                 pass
 
-            # Failed-state switches in a fresh browser context (avoids late-suite hangs).
-            ctx_fail = browser.new_context(viewport={"width": 1500, "height": 1200})
-            fail_page = ctx_fail.new_page()
-            fail_page.set_default_timeout(60000)
-            _goto_songs_picker(fail_page)
-            # Re-establish Custom target identity before failed-state probes.
-            ok_fc, rec_fc = _select_source_first_click(
-                fail_page, "Custom Progression", "failed_ctx:seed_custom", allow_recovery=False
-            )
-            if ok_fc and not rec_fc:
-                _capture_custom_target(fail_page, obs)
-            fails += run_failed_state_custom_switches(fail_page, obs, label="failed")
-            # Same-session stale + reload (NOT cold-start) inside this context.
-            same_obs = WalkObs(
-                catalog_title=obs.catalog_title,
-                catalog_original_key=obs.catalog_baseline_key or obs.catalog_original_key,
-                catalog_baseline_key=obs.catalog_baseline_key or obs.catalog_original_key,
-                catalog_pick=obs.catalog_pick,
-                custom_original_key=obs.custom_original_key,
-                custom_title=obs.custom_title,
-                custom_pick=obs.custom_pick,
-            )
-            browser_seeded = seed_stale_state_in_browser(fail_page, same_obs)
-            log(
-                "same_session_stale_seed",
-                browser_seeded,
-                "same-session stale transitions (not cold-start)",
-            )
-            if not browser_seeded:
-                fails += 1
-            else:
-                fail_page.reload(wait_until="domcontentloaded", timeout=180_000)
-                v.wait_streamlit(fail_page, 4000)
-                _goto_songs_picker(fail_page)
-                ok_ss, rec_ss = _select_source_first_click(
-                    fail_page, "Catalog", "same_session_reload:start_catalog", allow_recovery=False
-                )
-                if not (ok_ss and not rec_ss):
-                    fails += 1
-                if not _wait_catalog_coherent(fail_page, same_obs, timeout_ms=40000):
-                    fails += 1
-                else:
-                    log(
-                        "same_session_reload_coherence",
-                        True,
-                        "catalog coherent after reload (not cold-start)",
-                    )
-            ctx_fail.close()
-
-            # Persist envelope for a later restored/cold-start Streamlit process.
+            # Persist envelope early so AUTHORITY_PHASE=restored can proceed even if
+            # the failed-state section later hits a dead Streamlit process.
             COLD_START_META.update(_persist_via_app_then_disk_ok())
             disk_seeded = seed_valid_app_persisted_workspace(obs)
             COLD_START_META["app_persisted_disk_seed_ok"] = disk_seeded
@@ -1470,6 +1421,56 @@ def main() -> int:
                 encoding="utf-8",
             )
             print(f"[workspace] wrote fresh obs {obs_path} ws={GATE_WORKSPACE_ID}", flush=True)
+
+            # Failed-state switches on the same page/context — opening a brand-new
+            # browser context mid-suite raced a dead/restarting Streamlit and
+            # aborted before Failures: / obs persistence completed.
+            try:
+                v.ensure_songs(page)
+                ok_fc, rec_fc = _select_source_first_click(
+                    page, "Custom Progression", "failed_ctx:seed_custom", allow_recovery=False
+                )
+                if ok_fc and not rec_fc:
+                    _capture_custom_target(page, obs)
+                fails += run_failed_state_custom_switches(page, obs, label="failed")
+                same_obs = WalkObs(
+                    catalog_title=obs.catalog_title,
+                    catalog_original_key=obs.catalog_baseline_key or obs.catalog_original_key,
+                    catalog_baseline_key=obs.catalog_baseline_key or obs.catalog_original_key,
+                    catalog_pick=obs.catalog_pick,
+                    custom_original_key=obs.custom_original_key,
+                    custom_title=obs.custom_title,
+                    custom_pick=obs.custom_pick,
+                )
+                browser_seeded = seed_stale_state_in_browser(page, same_obs)
+                log(
+                    "same_session_stale_seed",
+                    browser_seeded,
+                    "same-session stale transitions (not cold-start)",
+                )
+                if not browser_seeded:
+                    fails += 1
+                else:
+                    page.reload(wait_until="domcontentloaded", timeout=180_000)
+                    v.wait_streamlit(page, 4000)
+                    _goto_songs_picker(page)
+                    ok_ss, rec_ss = _select_source_first_click(
+                        page, "Catalog", "same_session_reload:start_catalog", allow_recovery=False
+                    )
+                    if not (ok_ss and not rec_ss):
+                        fails += 1
+                    if not _wait_catalog_coherent(page, same_obs, timeout_ms=40000):
+                        fails += 1
+                    else:
+                        log(
+                            "same_session_reload_coherence",
+                            True,
+                            "catalog coherent after reload (not cold-start)",
+                        )
+            except Exception as exc:
+                print(f"[FAIL] failed_state_section: {type(exc).__name__}: {exc}", flush=True)
+                fails += 1
+            ctx_fresh.close()
 
         if run_restored:
             if not run_fresh:
