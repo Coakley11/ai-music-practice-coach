@@ -1223,7 +1223,7 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
     need(_composition_reset_c(page, step=f"{label}:composition_reset_c"))
 
     # Request D#; assert the app's live canonical spelling (may be Eb).
-    comp_live = _change_pk(page, "D#", f"{label}:composition_change_ds")
+    comp_live = _change_pk(page, "Eb", f"{label}:composition_change_ds")
     need(bool(comp_live))
     _same_source_refresh(page, "Composition")
     need(

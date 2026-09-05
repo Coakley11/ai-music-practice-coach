@@ -249,67 +249,80 @@ def select_practice_key_option(page: Any, needle: str, wait_fn: Any) -> tuple[bo
     """Open PK control, choose ``needle``, verify live value changed and matches."""
     wait_practice_key_widget(page, timeout_ms=12000)
     before = read_practice_key_widget_value(page)
-    if not _open_practice_key_menu(page):
-        return False, before, before
-    if hasattr(wait_fn, "__call__"):
-        try:
-            wait_fn(page, 600)
-        except TypeError:
-            wait_fn(page)
-    try:
-        page.wait_for_selector('[role="option"]', timeout=8000)
-    except Exception:
-        page.keyboard.press("Escape")
-        return False, before, before
-
     needles = key_equivalents(needle)
-    opts = page.locator('[role="option"]')
-    picked = False
-    for i in range(min(opts.count(), 120)):
+    needle_norms = {normalize_key_token(x) for x in needles}
+    target_norm = normalize_key_token(needle)
+
+    def _pick_from_open_menu() -> bool:
         try:
-            t = (opts.nth(i).inner_text(timeout=1200) or "").strip()
+            page.wait_for_selector('[role="option"]', timeout=8000)
         except Exception:
-            continue
-        if not t or t == "No results":
-            continue
-        norm = normalize_key_token(t)
-        if t in needles or norm in {normalize_key_token(x) for x in needles}:
+            return False
+        opts = page.locator('[role="option"]')
+        for i in range(min(opts.count(), 120)):
             try:
-                opts.nth(i).click(timeout=5000)
-                picked = True
-                break
-            except Exception:
-                page.keyboard.press("Escape")
-                return False, before, before
-        if any(n in t for n in needles if len(n) >= 2):
-            try:
-                opts.nth(i).click(timeout=5000)
-                picked = True
-                break
+                t = (opts.nth(i).inner_text(timeout=1200) or "").strip()
             except Exception:
                 continue
-    if not picked:
+            if not t or t == "No results":
+                continue
+            norm = normalize_key_token(t)
+            # Exact token / label only — never substring (\"E major\" must not
+            # match unrelated rows; typing \"E\" must not click the first row).
+            if t in needles or norm in needle_norms or norm == target_norm:
+                try:
+                    opts.nth(i).scroll_into_view_if_needed(timeout=2000)
+                    opts.nth(i).click(timeout=5000)
+                    return True
+                except Exception:
+                    return False
         esc = re.escape(needle.replace("#", "[#♯]").replace("b", "[b♭]"))
-        choice = page.get_by_role("option", name=re.compile(rf"^{esc}(\s+major|\s+minor)?$", re.I))
+        choice = page.get_by_role(
+            "option", name=re.compile(rf"^{esc}(\s+major|\s+minor)?$", re.I)
+        )
         if choice.count():
             try:
                 choice.first.click(timeout=5000)
-                picked = True
+                return True
             except Exception:
-                pass
-    if not picked:
-        # ComboBox: type into input then pick first match.
+                return False
         inp = _locate_practice_key_input(page)
-        if inp is not None:
+        if inp is None:
+            return False
+        try:
+            inp.fill(target_norm)
+            page.wait_for_timeout(400)
+            opts = page.locator('[role="option"]')
+            for i in range(min(opts.count(), 40)):
+                try:
+                    t = (opts.nth(i).inner_text(timeout=800) or "").strip()
+                except Exception:
+                    continue
+                norm = normalize_key_token(t)
+                if norm == target_norm or norm in needle_norms or t in needles:
+                    opts.nth(i).click(timeout=5000)
+                    return True
+        except Exception:
+            return False
+        return False
+
+    picked = False
+    for _attempt in range(2):
+        if not _open_practice_key_menu(page):
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+            continue
+        if hasattr(wait_fn, "__call__"):
             try:
-                inp.fill(normalize_key_token(needle))
-                page.wait_for_timeout(400)
-                opts = page.locator('[role="option"]')
-                if opts.count():
-                    opts.first.click(timeout=5000)
-                    picked = True
-            except Exception:
-                pass
+                wait_fn(page, 600)
+            except TypeError:
+                wait_fn(page)
+        picked = _pick_from_open_menu()
+        if picked:
+            break
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(250)
+
     if not picked:
         page.keyboard.press("Escape")
         return False, before, before
