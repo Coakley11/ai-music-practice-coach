@@ -23,19 +23,28 @@ def sha() -> str:
     )
 
 
-def wait_http(url: str = "http://127.0.0.1:8501", timeout_s: int = 120) -> bool:
+def wait_http(url: str = "http://127.0.0.1:8501", timeout_s: int = 180) -> bool:
     import urllib.request
 
     deadline = time.time() + timeout_s
+    saw_ok = False
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(url, timeout=3) as r:
                 if r.status == 200:
-                    return True
+                    saw_ok = True
+                    body = r.read(8000).decode("utf-8", errors="replace")
+                    # Empty Streamlit shell can 200 before the app script finishes.
+                    if "streamlit" in body.lower() and (
+                        "root" in body.lower() or "stApp" in body or "Music" in body
+                    ):
+                        # Brief settle so first script run / deploy preflight completes.
+                        time.sleep(5)
+                        return True
         except Exception:
             pass
         time.sleep(2)
-    return False
+    return saw_ok
 
 
 def _kill_streamlit() -> None:

@@ -885,26 +885,43 @@ def _composition_reset_c(page: Page, step: str = "composition_reset_c") -> bool:
 
 
 def _goto_songs_picker(page: Page) -> None:
-    page.goto(GATE_START_URL, wait_until="domcontentloaded", timeout=180_000)
-    v.wait_streamlit(page, 4000)
-    try:
-        gw.land_songs_with_source_radio(page, v, timeout_ms=45000)
-    except Exception:
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        page.goto(GATE_START_URL, wait_until="domcontentloaded", timeout=180_000)
+        v.wait_streamlit(page, 8000 if attempt == 1 else 12000)
+        try:
+            gw.land_songs_with_source_radio(page, v, timeout_ms=60000)
+            return
+        except Exception as exc:
+            last_exc = exc
+            print(f"[goto_songs] land attempt {attempt}/3 failed: {exc}", flush=True)
+            page.wait_for_timeout(2000)
         try:
             v.click_nav(page, "Songs")
-            v.wait_streamlit(page, 2500)
+            v.wait_streamlit(page, 3000)
         except Exception:
-            v.ensure_songs(page)
-        deadline = time.time() + 25
+            pass
+        deadline = time.time() + 30
         while time.time() < deadline:
             if v._studio_page_id(page) == "picker":
-                break
+                try:
+                    gw.land_songs_with_source_radio(page, v, timeout_ms=30000)
+                    return
+                except Exception as exc:
+                    last_exc = exc
+                    break
             try:
                 v.click_nav(page, "Songs")
                 v.wait_streamlit_idle(page)
             except Exception:
                 pass
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(500)
+    # Final ensure — may still raise when reload is disabled; surface last land error.
+    try:
+        v.ensure_songs(page)
+        gw.land_songs_with_source_radio(page, v, timeout_ms=45000)
+    except Exception as exc:
+        raise RuntimeError(f"goto_songs_picker failed after retries: {last_exc or exc}") from exc
 
 
 def _persist_via_app_then_disk_ok() -> dict[str, Any]:
