@@ -1006,27 +1006,31 @@ def _await_backing_studio(
     Does not re-click the hub — one user click must be sufficient.
     """
     deadline = time.time() + timeout_ms / 1000.0
+
+    def _prefer_ok() -> bool:
+        if prefer == "composition":
+            return bool(
+                _live_mode_card(page, "mode-composition-song-backing")
+                or read_live_backing_card_owner(page) == "composition"
+            )
+        if prefer == "custom":
+            return bool(
+                _live_mode_card(page, "mode-custom-progression-backing")
+                or read_live_backing_card_owner(page) == "custom"
+            )
+        if prefer == "catalog":
+            return bool(
+                _live_mode_card(page, "mode-catalog-song-backing")
+                or read_live_backing_card_owner(page) == "catalog"
+            )
+        return True
+
     while time.time() < deadline:
-        if _on_backing_studio(page):
-            if prefer == "composition":
-                if _live_mode_card(page, "mode-composition-song-backing"):
-                    wait_streamlit_idle(page)
-                    return True
-            elif prefer == "custom":
-                if _live_mode_card(page, "mode-custom-progression-backing"):
-                    wait_streamlit_idle(page)
-                    return True
-            else:
-                wait_streamlit_idle(page)
-                return True
+        if _on_backing_studio(page) and _prefer_ok():
+            wait_streamlit_idle(page)
+            return True
         page.wait_for_timeout(250)
-    if not _on_backing_studio(page):
-        return False
-    if prefer == "composition":
-        return _live_mode_card(page, "mode-composition-song-backing")
-    if prefer == "custom":
-        return _live_mode_card(page, "mode-custom-progression-backing")
-    return True
+    return bool(_on_backing_studio(page) and _prefer_ok())
 
 
 def open_backing(page: Page, prefer: str | None = None) -> None:
