@@ -662,8 +662,12 @@ class TestCustomPracticeBackingOwnership(unittest.TestCase):
         self.assertEqual(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
         session.pop("_streamlit_widgets_locked_this_run", None)
         apply_pending_widget_hydrates(session)
-        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
+        # Live Custom outranks lagging Catalog pending (leave-click contract).
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CUSTOM)
         self.assertIsNone(session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY))
+        # Ownership realign when unlocked uses force sync, not pending overwrite.
+        sync_song_picker_source_widget(session, force=True)
+        self.assertEqual(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY), SONG_PICKER_SOURCE_CATALOG)
 
     def test_backing_page_transport_defaults_use_catalog_context(self) -> None:
         from backing_context import (

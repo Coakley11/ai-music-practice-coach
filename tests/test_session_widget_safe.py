@@ -153,12 +153,54 @@ class TestSessionWidgetSafe(unittest.TestCase):
         apply_creative_session_to_session(session, sess, widget_safe=False)
         self.assertEqual(session.get("display_key"), "D")
 
-    def test_apply_pending_widget_hydrates_overwrites_stale_entry_mode(self) -> None:
-        session = {"improv_entry_mode": "Song-Based Improvisation"}
-        session[PENDING_IMPROV_ENTRY_MODE_KEY] = "Style Jam Mode"
+    def test_apply_pending_picker_drops_reclaim_keeps_catalog_bounce(self) -> None:
+        """Lagging Catalog/Composition reclaim must not snap leave radios.
+
+        Catalog→Composition pending must still apply (Catalog bounce mid-leave).
+        """
+        from songs.music_source import (
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            song_picker_composition_option_label,
+        )
+
+        comp = song_picker_composition_option_label()
+
+        # Composition ensure must not reclaim over live Custom.
+        session = {
+            "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY: comp,
+        }
         apply_pending_widget_hydrates(session)
-        self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
-        self.assertNotIn(PENDING_IMPROV_ENTRY_MODE_KEY, session)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
+
+        # Catalog seed must not reclaim over live Custom.
+        session = {
+            "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+        }
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
+
+        # Catalog seed must not reclaim over live Composition.
+        session = {
+            "song_picker_active_source": comp,
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+        }
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("song_picker_active_source"), comp)
+        self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
+
+        # Catalog bounce: pending Composition may replace live Catalog.
+        session = {
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY: comp,
+        }
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("song_picker_active_source"), comp)
+        self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
 
     def test_apply_pending_when_locked_keeps_display_key_pending(self) -> None:
         session = {"display_key": "G", "concert_key": "G", PENDING_DISPLAY_KEY: "F"}

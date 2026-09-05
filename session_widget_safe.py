@@ -235,9 +235,30 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
 
     pending_picker = session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY)
     if pending_picker is not None:
-        current_picker = session.get("song_picker_active_source")
-        if current_picker is not None and str(current_picker) == str(pending_picker):
+        current_s = str(session.get("song_picker_active_source") or "").strip()
+        pending_s = str(pending_picker or "").strip()
+        if current_s and current_s == pending_s:
             session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+        elif current_s and current_s != pending_s:
+            # Drop only reclaiming pending that snaps an intentional leave:
+            # - Catalog seed over live Custom/Composition
+            # - Composition ensure over live Custom
+            # Still allow pending Custom/Composition over Catalog (Catalog bounce
+            # mid-leave) and pending Custom over Composition.
+            pending_is_catalog = pending_s.startswith("Song Selection")
+            pending_is_composition = (
+                pending_s == "Composition" or "Composition" in pending_s
+            )
+            live_is_custom = current_s.startswith("Use Custom")
+            live_is_catalog = current_s.startswith("Song Selection")
+            reclaim = (pending_is_catalog and not live_is_catalog) or (
+                pending_is_composition and live_is_custom
+            )
+            if reclaim:
+                session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+            elif not locked:
+                session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+                session["song_picker_active_source"] = pending_picker
         elif not locked:
             session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
             session["song_picker_active_source"] = pending_picker

@@ -39,6 +39,55 @@ class TestCatalogCustomPickerSwitch(unittest.TestCase):
         }
         self.assertFalse(music_picker_shows_custom_hub(session))
 
+    def test_pending_catalog_from_picker_does_not_reclaim_live_custom(self) -> None:
+        from songs.music_source import (
+            PENDING_CATALOG_FROM_PICKER_KEY,
+            SOURCE_COMPOSITION,
+            apply_pending_catalog_from_picker_before_widgets,
+            song_picker_composition_option_label,
+        )
+
+        st = SimpleNamespace(
+            session_state={
+                "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+                "active_music_source": SOURCE_COMPOSITION,
+                PENDING_CATALOG_FROM_PICKER_KEY: True,
+            }
+        )
+        with patch(
+            "songs.music_source.switch_to_catalog_from_custom",
+            return_value=True,
+        ) as switch:
+            self.assertFalse(
+                apply_pending_catalog_from_picker_before_widgets(
+                    st,
+                    song_picker_catalog={},
+                    invalidate_backing=lambda _s: None,
+                )
+            )
+            switch.assert_not_called()
+        self.assertNotIn(PENDING_CATALOG_FROM_PICKER_KEY, st.session_state)
+
+        st = SimpleNamespace(
+            session_state={
+                "song_picker_active_source": song_picker_composition_option_label(),
+                "active_music_source": SOURCE_COMPOSITION,
+                PENDING_CATALOG_FROM_PICKER_KEY: True,
+            }
+        )
+        with patch(
+            "songs.music_source.switch_to_catalog_from_custom",
+            return_value=True,
+        ) as switch:
+            self.assertFalse(
+                apply_pending_catalog_from_picker_before_widgets(
+                    st,
+                    song_picker_catalog={},
+                    invalidate_backing=lambda _s: None,
+                )
+            )
+            switch.assert_not_called()
+
     def test_switch_to_catalog_restores_last_catalog_state(self) -> None:
         from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 

@@ -1430,6 +1430,16 @@ def apply_pending_catalog_from_picker_before_widgets(
     """Apply catalog restore when the picker radio shows catalog while custom is still active."""
     if not st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None):
         return False
+    session = st.session_state
+    choice = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    # Catalog-bounce mid Custom→Composition can leave this flag set. Never let it
+    # reclaim after the live radio (or explicit stamp) already left Catalog.
+    if choice.startswith("Use Custom") or picker_choice_is_composition(choice):
+        return False
+    if not choice:
+        explicit = explicit_music_source_choice(session)
+        if explicit in (SOURCE_CUSTOM, SOURCE_COMPOSITION):
+            return False
     return switch_to_catalog_from_custom(
         st,
         song_picker_catalog=song_picker_catalog,
@@ -1486,6 +1496,7 @@ def ensure_composition_owns_active_song(
         clear_composition_oneshots=False,
     )
     session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    session.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
     ensure_composition_library_hydrated(session)
     mark_composition_songs_source_ready(session)
     set_composition_source(session)
@@ -1564,6 +1575,8 @@ def on_song_picker_source_change(
     if "Composition" in choice:
         # Commit stamp first so the same-rerun reconcile / open-backing cannot
         # reclaim Custom from a stale custom:: pick.
+        st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+        st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
         commit_explicit_music_source_choice(
             st.session_state,
             SOURCE_COMPOSITION,
@@ -1601,6 +1614,11 @@ def on_song_picker_source_change(
         st.session_state.pop("_composition_hub_backing_clicked", None)
         st.session_state.pop("_force_composition_backing_open", None)
         st.session_state.pop("_composition_hub_backing_pending", None)
+        # Drop lagging Composition/Catalog pending widget stamps so the next
+        # apply_pending_widget_hydrates cannot snap the radio back.
+        st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
+        # Drop Catalog-bounce restore oneshot (Custom→Composition bounce).
+        st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
         commit_explicit_music_source_choice(st.session_state, SOURCE_CUSTOM)
         try:
             from custom_progression_lab import cpl_active_from_session
@@ -1658,6 +1676,7 @@ def on_song_picker_source_change(
     st.session_state.pop("_composition_hub_backing_clicked", None)
     st.session_state.pop("_force_composition_backing_open", None)
     st.session_state.pop("_composition_hub_backing_pending", None)
+    st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
     commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
     leaving_non_catalog = (
         is_custom_progression(st.session_state)
