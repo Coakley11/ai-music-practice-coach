@@ -1095,7 +1095,7 @@ def run_failed_state_custom_switches(page: Page, obs: WalkObs, label: str) -> in
     )
     need(ok_comp2)
     need(_composition_reset_c(page, step=f"{label}:prep_comp_backing_reset"))
-    prep_live = _change_pk(page, "D#", f"{label}:prep_comp_backing_pk")
+    prep_live = _change_pk(page, "Eb", f"{label}:prep_comp_backing_pk")
     need(bool(prep_live))
     # Prefer sidebar Backing nav after PK change (hub open_backing can hang
     # late in long suites). Composition ownership should already be stamped.
