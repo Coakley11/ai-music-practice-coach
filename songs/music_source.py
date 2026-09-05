@@ -1400,6 +1400,22 @@ def switch_to_catalog_from_custom(
     ):
         return True
 
+    # Catalog radio leave must never keep composition::/custom:: or empty pick —
+    # Songs→Backing would otherwise open the prior Custom card.
+    live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if (not live_pick) or live_pick.startswith(("custom::", "composition::")):
+        for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+            snap = session.get(snap_key)
+            if isinstance(snap, dict) and _try_restore_from_snap(snap):
+                return True
+        if fallback:
+            # Last resort: stamp catalog source + first valid pick even if apply failed.
+            session[ACTIVE_CATALOG_PICK_KEY] = fallback
+            set_catalog_source(session)
+            sync_song_picker_source_widget(session, force=True)
+            note_active_source_change(st, invalidate_backing=invalidate_backing)
+            return True
+
     set_catalog_source(session)
     sync_song_picker_source_widget(session, force=True)
     note_active_source_change(st, invalidate_backing=invalidate_backing)

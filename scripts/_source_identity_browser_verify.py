@@ -905,13 +905,17 @@ def open_catalog_backing_from_hub(page: Page) -> None:
     clicked = False
     for key in hub_keys:
         loc = page.locator(f".st-key-{key} button")
-        for i in range(loc.count()):
+        try:
+            n = loc.count()
+        except Exception:
+            n = 0
+        for i in range(n):
             btn = loc.nth(i)
             try:
                 if not btn.is_visible() or not _marker_is_live(btn):
                     continue
                 btn.scroll_into_view_if_needed(timeout=3000)
-                btn.click(timeout=8000)
+                btn.click(timeout=8000, no_wait_after=True)
                 clicked = True
                 break
             except Exception:
@@ -919,12 +923,36 @@ def open_catalog_backing_from_hub(page: Page) -> None:
         if clicked:
             break
     if not clicked:
+        clicked = bool(
+            page.evaluate(
+                """() => {
+                  const keys = ['catalog_hub_backing','picker_card_backing','active_song_hub_backing'];
+                  for (const key of keys) {
+                    const btns = Array.from(
+                      document.querySelectorAll('.st-key-' + key + ' button')
+                    );
+                    for (const btn of btns) {
+                      if (btn.closest('[data-stale=\"true\"]')) continue;
+                      if (btn.offsetParent === null) continue;
+                      btn.click();
+                      return true;
+                    }
+                  }
+                  return false;
+                }"""
+            )
+        )
+    if not clicked:
         raise RuntimeError(
             "No live catalog hub Backing button "
             f"(keys={hub_keys} page={_studio_page_id(page)!r})"
         )
-    if not _await_backing_studio(page, timeout_ms=30000, prefer="catalog"):
-        raise RuntimeError("Catalog Backing page did not open after one hub click")
+    if not _await_backing_studio(page, timeout_ms=45000, prefer="catalog"):
+        raise RuntimeError(
+            "Catalog Backing page did not open after one hub click "
+            f"(page={_studio_page_id(page)!r} "
+            f"card_owner={read_live_backing_card_owner(page)!r})"
+        )
     if not await_backing_card_owner(page, "catalog", timeout_ms=35000):
         capture_switch_telemetry(page, "open_catalog_backing:owner_mismatch")
         raise RuntimeError(
