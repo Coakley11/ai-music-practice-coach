@@ -21,7 +21,11 @@ from music_source_ownership import (
     practice_backing_owners_align,
     reconcile_source_ownership,
 )
-from songs.music_source import SOURCE_CATALOG, USER_CATALOG_SOURCE_CHOICE_KEY
+from songs.music_source import (
+    SOURCE_CATALOG,
+    SOURCE_CUSTOM,
+    USER_CATALOG_SOURCE_CHOICE_KEY,
+)
 
 
 def _stale_entry_jam_ctx(**overrides: object) -> dict:
