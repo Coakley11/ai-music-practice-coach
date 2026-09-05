@@ -53,6 +53,21 @@ class TestMusicSourceOwnership(unittest.TestCase):
         session[BACKING_CONTEXT_KEY] = _stale_entry_jam_ctx()
         self.assertEqual(intended_practice_owner(session), "catalog")
 
+    def test_intended_practice_owner_live_catalog_radio_beats_cpl_remnant(self) -> None:
+        from songs.music_source import SONG_PICKER_ACTIVE_SOURCE_KEY, SONG_PICKER_SOURCE_CATALOG
+
+        session = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "",
+            "cpl_active_progression": {
+                "name": "My Progression",
+                "id": "remnant",
+                "original_key_center": "C",
+            },
+        }
+        self.assertEqual(intended_practice_owner(session), "catalog")
+
     def test_intended_practice_owner_none_during_intentional_creative_backing(self) -> None:
         session = {
             USER_CATALOG_SOURCE_CHOICE_KEY: True,

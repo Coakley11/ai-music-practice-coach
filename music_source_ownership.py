@@ -215,6 +215,26 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
         explicit = explicit_music_source_choice(session)
         if explicit == SOURCE_COMPOSITION or composition_song_is_active(session):
             return None
+        # Live Songs radio outranks lagging CPL / empty-pick Catalog leave.
+        try:
+            from songs.music_source import (
+                SONG_PICKER_ACTIVE_SOURCE_KEY,
+                SONG_PICKER_SOURCE_CATALOG,
+                picker_choice_is_composition,
+                picker_custom_progression_mode,
+            )
+
+            choice = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+            if choice == SONG_PICKER_SOURCE_CATALOG or (
+                choice.startswith("Song Selection") and "Composition" not in choice
+            ):
+                return "catalog"
+            if picker_custom_progression_mode(session) or choice.startswith("Use Custom"):
+                return "custom"
+            if picker_choice_is_composition(choice):
+                return None
+        except ImportError:
+            pass
         # Stale composition:: pick must not block Custom/Catalog after an
         # explicit non-Composition choice (Composition → Custom race).
         if explicit == SOURCE_CUSTOM:
@@ -872,7 +892,7 @@ def activate_catalog_ownership(
             practice_key = _resolved_practice_display_key(session)
         except ImportError:
             practice_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if pick and not pick.startswith("custom::"):
+    if pick and not pick.startswith(("custom::", "composition::")):
         return rebuild_catalog_backing_from_canonical_pick(
             session,
             st_like=st_like,
@@ -881,6 +901,65 @@ def activate_catalog_ownership(
             reset_to_original=not preserve_practice_key,
             force_bpm_reset=True,
         )
+    # Empty / composition:: pick after Catalog radio leave — restore last catalog
+    # song (or first valid catalog row) before rebuilding Backing.
+    try:
+        from songs.music_source import (
+            CATALOG_BEFORE_CUSTOM_KEY,
+            CATALOG_RECENT_PICK_KEYS,
+            LAST_CATALOG_STATE_KEY,
+            restore_last_catalog_active_song,
+        )
+        from types import SimpleNamespace
+
+        st_proxy = st_like if st_like is not None else SimpleNamespace(session_state=session)
+        if not hasattr(st_proxy, "session_state"):
+            st_proxy = SimpleNamespace(session_state=session)
+        for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+            snap = session.get(snap_key)
+            if isinstance(snap, dict):
+                pk = str(snap.get("pick_key") or "").strip()
+                if pk and not pk.startswith(("custom::", "composition::")):
+                    session["active_catalog_pick_key"] = pk
+                    pick = pk
+                    break
+        if not pick:
+            for pk in session.get(CATALOG_RECENT_PICK_KEYS) or []:
+                cand = str(pk or "").strip()
+                if cand and not cand.startswith(("custom::", "composition::")):
+                    session["active_catalog_pick_key"] = cand
+                    pick = cand
+                    break
+        if pick and not pick.startswith(("custom::", "composition::")):
+            return rebuild_catalog_backing_from_canonical_pick(
+                session,
+                st_like=st_like,
+                pick_key=pick,
+                practice_concert_key=practice_key,
+                reset_to_original=not preserve_practice_key,
+                force_bpm_reset=True,
+            )
+        # Best-effort restore path when snaps are missing.
+        try:
+            restore_last_catalog_active_song(
+                st_proxy,
+                song_picker_catalog=session.get("_reconcile_song_picker_catalog") or {},
+                invalidate_backing=None,
+            )
+            pick = active_catalog_pick_key(session)
+            if pick and not pick.startswith(("custom::", "composition::")):
+                return rebuild_catalog_backing_from_canonical_pick(
+                    session,
+                    st_like=st_like,
+                    pick_key=pick,
+                    practice_concert_key=practice_key,
+                    reset_to_original=not preserve_practice_key,
+                    force_bpm_reset=True,
+                )
+        except Exception:
+            pass
+    except ImportError:
+        pass
     _clear_cross_owner_transport(session)
     from backing_context import restore_regular_song_backing
 

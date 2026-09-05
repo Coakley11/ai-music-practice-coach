@@ -291,12 +291,22 @@ def songs_hub_custom_backing_selected(session_state: dict[str, Any]) -> bool:
         return False
     if picker_choice_is_composition(choice):
         return False
+    # Empty mid-remount: never claim Custom from CPL remnants — Catalog/Comp
+    # leave clicks remount with an empty widget key for one frame.
+    if not choice:
+        return False
     explicit = explicit_music_source_choice(session_state)
     if explicit == SOURCE_CUSTOM:
         return True
     if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     if explicit == SOURCE_COMPOSITION:
+        return False
+    if str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() in {
+        SOURCE_CATALOG,
+        "catalog",
+        "regular_song",
+    }:
         return False
     if picker_custom_progression_mode(session_state):
         return True
