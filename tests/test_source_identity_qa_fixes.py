@@ -340,6 +340,30 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertTrue(songs_hub_catalog_backing_selected(ss))
         self.assertFalse(songs_hub_composition_backing_selected(ss))
 
+    def test_catalog_radio_outranks_lagging_custom_activity_for_hub_nav(self) -> None:
+        """Comp→Catalog leave must not open Custom Backing from CPL remnants."""
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SOURCE_CUSTOM,
+            songs_hub_catalog_backing_selected,
+            songs_hub_custom_backing_selected,
+        )
+
+        ss = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            "active_catalog_pick_key": "",
+            "cpl_active_progression": {
+                "name": "My Progression",
+                "id": "custom-remnant",
+                "original_key_center": "C",
+            },
+        }
+        self.assertFalse(songs_hub_custom_backing_selected(ss))
+        self.assertTrue(songs_hub_catalog_backing_selected(ss))
+
     def test_reconcile_does_not_reclaim_composition_when_explicit_catalog(self) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,

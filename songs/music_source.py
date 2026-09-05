@@ -281,6 +281,16 @@ def picker_composition_mode(session_state: dict[str, Any]) -> bool:
 
 def songs_hub_custom_backing_selected(session_state: dict[str, Any]) -> bool:
     """Live Songs hub: Custom owns the next hub Backing navigation."""
+    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    # Live Catalog/Composition radio always outranks lagging custom activity —
+    # Comp→Catalog leave can clear pick before catalog restore finishes while
+    # CPL remnants still look "custom active".
+    if choice == SONG_PICKER_SOURCE_CATALOG or (
+        choice.startswith("Song Selection") and "Composition" not in choice
+    ):
+        return False
+    if picker_choice_is_composition(choice):
+        return False
     explicit = explicit_music_source_choice(session_state)
     if explicit == SOURCE_CUSTOM:
         return True
@@ -1347,7 +1357,7 @@ def switch_to_catalog_from_custom(
             return True
 
     pick_key = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if pick_key and not pick_key.startswith("custom::"):
+    if pick_key and not pick_key.startswith(("custom::", "composition::")):
         data = apply_pick_key(
             st,
             pick_key,
