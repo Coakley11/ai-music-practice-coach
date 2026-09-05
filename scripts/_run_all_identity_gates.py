@@ -182,12 +182,22 @@ def main() -> int:
         )
     )
 
+    # 7) Focused 20x Composition → Custom leave (no recovery)
+    start_fresh_streamlit()
+    results.append(
+        run_gate(
+            "focused_comp_to_custom_20",
+            "_focused_comp_to_custom_gate.py",
+            {"FOCUSED_LEAVE_CYCLES": "20"},
+        )
+    )
+
     summary = {
         "sha": product,
         "results": results,
         "all_ok": all(r.get("ok") for r in results),
         "restored_workspace": ws,
-        "units_related": "119 passed (separate)",
+        "units_related": "see units_related_<sha>.txt",
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2), flush=True)
