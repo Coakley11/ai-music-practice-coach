@@ -49,6 +49,7 @@ def wait_http(url: str = "http://127.0.0.1:8501", timeout_s: int = 180) -> bool:
 
 def _kill_streamlit() -> None:
     global _STREAMLIT_PROC
+    # Only the gate-target music app on :8501 — leave other local Streamlit ports alone.
     if sys.platform.startswith("win"):
         subprocess.run(
             [
@@ -56,13 +57,20 @@ def _kill_streamlit() -> None:
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" |"
-                " Where-Object { $_.CommandLine -match 'streamlit' } |"
-                " ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+                " Where-Object {"
+                "   $_.CommandLine -match 'streamlit run streamlit_music_practice_app'"
+                "   -and $_.CommandLine -match '8501'"
+                " } |"
+                " ForEach-Object { Stop-Process -Id $_.ProcessId -Force"
+                " -ErrorAction SilentlyContinue }",
             ],
             check=False,
         )
     else:
-        subprocess.run(["pkill", "-f", "streamlit run streamlit_music_practice_app.py"], check=False)
+        subprocess.run(
+            ["pkill", "-f", "streamlit run streamlit_music_practice_app.py.*8501"],
+            check=False,
+        )
     if _STREAMLIT_PROC is not None:
         try:
             _STREAMLIT_PROC.terminate()
@@ -133,6 +141,47 @@ def run_gate(label: str, script: str, env_extra: dict[str, str] | None = None) -
     return result
 
 
+def run_related_units(product: str) -> dict:
+    out = EV / f"units_related_{product}.txt"
+    tests = [
+        "tests/test_session_widget_safe.py",
+        "tests/test_creative_experience_polish.py",
+        "tests/test_backing_source_navigation.py",
+        "tests/test_source_identity_qa_fixes.py",
+        "tests/test_songs_hub_source_ownership_ui.py",
+        "tests/test_source_authority_coherence.py",
+        "tests/test_music_source_ownership.py",
+    ]
+    print(f"[gate] START units_related sha={product} out={out.name}", flush=True)
+    t0 = time.time()
+    with out.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"# gate=units_related sha={product} started={time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        fh.flush()
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "pytest", "-q", "--tb=line", *tests],
+            cwd=str(ROOT),
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+        rc = proc.wait()
+        elapsed = time.time() - t0
+        fh.write(f"\n# gate_exit={rc} elapsed_s={elapsed:.1f}\n")
+    print(f"[gate] DONE units_related rc={rc} elapsed_s={elapsed:.1f}", flush=True)
+    return {
+        "label": "units_related",
+        "sha": product,
+        "rc": rc,
+        "elapsed_s": round(elapsed, 1),
+        "out": str(out.name),
+        "ok": rc == 0,
+        "fresh_streamlit": False,
+        "recovery": False,
+        "ensure_songs_allow_reload": "0",
+    }
+
+
 def main() -> int:
     product = sha()
     summary_path = EV / f"gate_summary_{product}.json"
@@ -201,12 +250,17 @@ def main() -> int:
         )
     )
 
+    # Related units at the same tip (package completeness).
+    results.append(run_related_units(product))
+
     summary = {
         "sha": product,
         "results": results,
         "all_ok": all(r.get("ok") for r in results),
         "restored_workspace": ws,
-        "units_related": "see units_related_<sha>.txt",
+        "units_related": f"units_related_{product}.txt",
+        "recovery": False,
+        "ensure_songs_allow_reload": "0",
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2), flush=True)
