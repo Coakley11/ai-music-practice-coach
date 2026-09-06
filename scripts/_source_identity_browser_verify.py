@@ -885,7 +885,9 @@ def open_custom_backing_from_hub(page: Page) -> None:
             if not btn.is_visible() or not _marker_is_live(btn):
                 continue
             btn.scroll_into_view_if_needed(timeout=3000)
-            btn.click(timeout=8000)
+            # Streamlit remounts after hub nav; waiting for navigation can hang
+            # forever while Backing is already live (stress Catalog→Custom).
+            btn.click(timeout=8000, no_wait_after=True)
             clicked = True
             break
         except Exception:
