@@ -852,8 +852,14 @@ def open_composition_backing_from_hub(page: Page) -> None:
             "No live composition_hub_backing button after ready "
             f"(marker={marker!r} page={_studio_page_id(page)!r})"
         )
-    if not _await_backing_studio(page, timeout_ms=30000, prefer="composition"):
+    if not _await_backing_studio(page, timeout_ms=45000, prefer="composition"):
         capture_switch_telemetry(page, "open_comp_backing:await_failed")
+        # Last-chance settle before declaring the first click failed.
+        if (
+            _studio_page_id(page) == "backing"
+            and read_live_backing_card_owner(page) == "composition"
+        ):
+            return
         raise RuntimeError(
             "Composition Backing did not open after one hub click "
             f"(page={_studio_page_id(page)!r} card_owner={read_live_backing_card_owner(page)!r})"
@@ -1050,14 +1056,35 @@ def _await_backing_studio(
             return bool(
                 _live_mode_card(page, "mode-catalog-song-backing")
                 or read_live_backing_card_owner(page) == "catalog"
+                # Catalog mode CSS is not always present; page+radio leave is enough
+                # once Songs→Backing landed.
+                or (
+                    _studio_page_id(page) == "backing"
+                    and (
+                        assert_radio_selected(page, "Catalog")
+                        or assert_radio_selected(page, "Song Selection")
+                    )
+                )
             )
         return True
 
     while time.time() < deadline:
         if _on_backing_studio(page) and _prefer_ok():
-            wait_streamlit_idle(page)
+            # Do not block on a long idle before returning — owner badges can land
+            # during idle while a prior poll already saw page=backing.
+            try:
+                wait_streamlit_idle(page, timeout_ms=2500)
+            except Exception:
+                pass
             return True
         page.wait_for_timeout(250)
+    # Final settle: Streamlit often paints data-backing-card-owner one beat after
+    # studio_page=backing (stress flakes showed await_failed with owner already set).
+    try:
+        page.wait_for_timeout(800)
+        wait_streamlit_idle(page, timeout_ms=3000)
+    except Exception:
+        pass
     return bool(_on_backing_studio(page) and _prefer_ok())
 
 
