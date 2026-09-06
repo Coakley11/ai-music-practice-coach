@@ -980,6 +980,17 @@ def open_catalog_backing_from_hub(page: Page) -> None:
 def _studio_page_id(page: Page) -> str:
     """Return the live studio page id from the release marker (not CSS text)."""
     try:
+        # body.dataset is updated for the active page and outranks stale sibling
+        # markers that have not yet received data-stale (ensure_songs after hub
+        # open was stuck on backing while Songs had already mounted).
+        body_page = str(
+            page.evaluate(
+                "() => (document.body && document.body.dataset.studioPage) || ''"
+            )
+            or ""
+        ).strip()
+        if body_page:
+            return body_page
         markers = page.locator("#studio-ui-release-marker")
         n = markers.count()
         live_pages: list[str] = []
@@ -998,20 +1009,9 @@ def _studio_page_id(page: Page) -> str:
                     live_pages.append(page_id)
             except Exception:
                 continue
-        # During Streamlit transitions both prior + next markers can be live;
-        # prefer backing when present so hub opens are not stuck on picker.
-        if "backing" in live_pages:
-            return "backing"
+        # Prefer the newest live marker when body has not caught up yet.
         if live_pages:
             return live_pages[-1]
-        body_page = str(
-            page.evaluate(
-                "() => (document.body && document.body.dataset.studioPage) || ''"
-            )
-            or ""
-        ).strip()
-        if body_page:
-            return body_page
         if n:
             return str(markers.nth(n - 1).get_attribute("data-studio-page") or "").strip()
     except Exception:
@@ -1394,14 +1394,17 @@ def ensure_songs(page: Page) -> None:
         nav = page.locator(".ui-nav-art-cell.nav-picker button")
         try:
             if nav.count() and nav.first.is_visible():
-                nav.first.click(timeout=8000)
-                wait_streamlit(page, 2500)
-                return _on_songs_picker()
+                nav.first.click(timeout=8000, no_wait_after=True)
+                wait_streamlit_idle(page, timeout_ms=5000)
+                wait_streamlit(page, 1500)
+                if _on_songs_picker():
+                    return True
         except Exception:
             pass
         try:
             click_nav(page, "Songs")
-            wait_streamlit(page, 2000)
+            wait_streamlit_idle(page, timeout_ms=5000)
+            wait_streamlit(page, 1500)
             return _on_songs_picker()
         except Exception:
             return False
@@ -1442,7 +1445,11 @@ def ensure_songs(page: Page) -> None:
 
 def _run_switch_source_cycle(page: Page, label: str) -> tuple[bool, str]:
     """One Catalog → Custom → Composition Backing cycle (first-attempt only)."""
-    ensure_songs(page)
+    try:
+        ensure_songs(page)
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:ensure_songs_start_failed")
+        return False, f"ensure_songs: {exc}"
     capture_switch_telemetry(page, f"{label}:catalog_start")
     try:
         select_music_source(page, "Catalog")
@@ -1453,7 +1460,11 @@ def _run_switch_source_cycle(page: Page, label: str) -> tuple[bool, str]:
         capture_switch_telemetry(page, f"{label}:catalog_failed")
         return False, f"catalog: {exc}"
 
-    ensure_songs(page)
+    try:
+        ensure_songs(page)
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:ensure_songs_after_catalog_failed")
+        return False, f"ensure_songs_after_catalog: {exc}"
     capture_switch_telemetry(page, f"{label}:custom_start")
     try:
         select_music_source(page, "Custom Progression")
@@ -1464,7 +1475,11 @@ def _run_switch_source_cycle(page: Page, label: str) -> tuple[bool, str]:
         capture_switch_telemetry(page, f"{label}:custom_failed")
         return False, f"custom: {exc}"
 
-    ensure_songs(page)
+    try:
+        ensure_songs(page)
+    except Exception as exc:
+        capture_switch_telemetry(page, f"{label}:ensure_songs_after_custom_failed")
+        return False, f"ensure_songs_after_custom: {exc}"
     capture_switch_telemetry(page, f"{label}:comp_start")
     try:
         select_music_source(page, "Composition")
