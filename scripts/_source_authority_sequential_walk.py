@@ -1112,7 +1112,7 @@ def run_failed_state_custom_switches(page: Page, obs: WalkObs, label: str) -> in
     )
     need(ok_comp2)
     need(_composition_reset_c(page, step=f"{label}:prep_comp_backing_reset"))
-    prep_live = _change_pk(page, "Eb", f"{label}:prep_comp_backing_pk")
+    prep_live = _change_pk(page, "G", f"{label}:prep_comp_backing_pk")
     need(bool(prep_live))
     # Prefer sidebar Backing nav after PK change (hub open_backing can hang
     # late in long suites). Composition ownership should already be stamped.
@@ -1240,7 +1240,7 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
     need(_composition_reset_c(page, step=f"{label}:composition_reset_c"))
 
     # Request D#; assert the app's live canonical spelling (may be Eb).
-    comp_live = _change_pk(page, "Eb", f"{label}:composition_change_ds")
+    comp_live = _change_pk(page, "G", f"{label}:composition_change_ds")
     need(bool(comp_live))
     _same_source_refresh(page, "Composition")
     need(

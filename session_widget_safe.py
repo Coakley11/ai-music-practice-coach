@@ -243,16 +243,20 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
             # Drop only reclaiming pending that snaps an intentional leave:
             # - Catalog seed over live Custom/Composition
             # - Composition ensure over live Custom
-            # Still allow pending Custom/Composition over Catalog (Catalog bounce
-            # mid-leave) and pending Custom over Composition.
+            # - Composition ensure over live Catalog while USER_CATALOG leave stamp
+            # Still allow pending Custom/Composition over Catalog without the
+            # Catalog leave stamp (Catalog bounce mid Custom→Composition).
             pending_is_catalog = pending_s.startswith("Song Selection")
             pending_is_composition = (
                 pending_s == "Composition" or "Composition" in pending_s
             )
             live_is_custom = current_s.startswith("Use Custom")
             live_is_catalog = current_s.startswith("Song Selection")
-            reclaim = (pending_is_catalog and not live_is_catalog) or (
-                pending_is_composition and live_is_custom
+            user_catalog_leave = bool(session.get("_user_chose_catalog_music_source"))
+            reclaim = (
+                (pending_is_catalog and not live_is_catalog)
+                or (pending_is_composition and live_is_custom)
+                or (pending_is_composition and live_is_catalog and user_catalog_leave)
             )
             if reclaim:
                 session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)

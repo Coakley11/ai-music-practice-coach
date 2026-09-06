@@ -954,6 +954,14 @@ def open_catalog_backing_from_hub(page: Page) -> None:
             f"(keys={hub_keys} page={_studio_page_id(page)!r})"
         )
     if not _await_backing_studio(page, timeout_ms=45000, prefer="catalog"):
+        # Detect Composition reclaim mid Catalog hub open (radio unmount race).
+        if assert_radio_selected(page, "Composition"):
+            capture_switch_telemetry(page, "open_catalog_backing:reclaimed_composition")
+            raise RuntimeError(
+                "Catalog Backing open reclaimed by Composition "
+                f"(page={_studio_page_id(page)!r} "
+                f"card_owner={read_live_backing_card_owner(page)!r})"
+            )
         raise RuntimeError(
             "Catalog Backing page did not open after one hub click "
             f"(page={_studio_page_id(page)!r} "

@@ -332,6 +332,13 @@ def select_practice_key_option(page: Any, needle: str, wait_fn: Any) -> tuple[bo
     except TypeError:
         wait_fn(page, 2000)
     after = read_practice_key_widget_value(page)
+    # Streamlit may apply the combobox value one idle tick late.
+    if (not after or after == before) and not key_token_in_text(after or "", needle):
+        for _ in range(8):
+            page.wait_for_timeout(300)
+            after = read_practice_key_widget_value(page)
+            if after and after != before and key_token_in_text(after, needle):
+                break
     if not after or after == before:
         return False, before, after
     if not key_token_in_text(after, needle):

@@ -1506,7 +1506,17 @@ def ensure_composition_owns_active_song(
     # Live Songs radio is highest authority when the widget key is mounted.
     # Hub promote / orphan recover must never force Composition over an
     # in-flight Catalog/Custom leave (verify switch + authority leave).
-    # Key absent = pre-widget / unit-test / backing ensure — allow promote.
+    # Key absent = pre-widget / unit-test / backing ensure — allow promote
+    # *only* when Catalog/Custom leave stamps are also absent. Songs→Backing
+    # remounts unmount the radio key while USER_CATALOG / explicit Catalog
+    # still mark an intentional Catalog leave (stress Catalog hub open).
+    if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        session["_composition_ensure_skipped_user_catalog"] = True
+        return None
+    explicit_leave = explicit_music_source_choice(session)
+    if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
+        session["_composition_ensure_skipped_explicit_leave"] = True
+        return None
     if SONG_PICKER_ACTIVE_SOURCE_KEY in session:
         choice_live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
         if not choice_live:

@@ -8863,57 +8863,91 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         "picker",
         "songs",
     }:
-        st.session_state.pop("_composition_hub_backing_clicked", None)
-        # Re-arm force whenever pending — mid-run clears may have dropped it.
-        st.session_state["_force_composition_backing_open"] = True
-        promote_ok = False
+        # Never orphan-recover into Composition while Catalog/Custom leave
+        # stamps are live (radio may remount one beat late after Catalog hub).
+        _orphan_leave_abort = False
         try:
-            from songs.music_source import ensure_composition_owns_active_song
-            from songs.state import ACTIVE_CATALOG_PICK_KEY as _ORPHAN_PICK
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_CUSTOM,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                explicit_music_source_choice,
+            )
 
-            ensure_composition_owns_active_song(
-                st,
-                invalidate_backing=invalidate_backing_cache,
-            )
-            promote_ok = str(st.session_state.get(_ORPHAN_PICK) or "").startswith(
-                "composition::"
-            )
+            _orphan_explicit = explicit_music_source_choice(st.session_state)
+            if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or _orphan_explicit in {
+                SOURCE_CATALOG,
+                SOURCE_CUSTOM,
+            }:
+                _orphan_leave_abort = True
+                st.session_state.pop("_composition_hub_backing_clicked", None)
+                st.session_state.pop("_force_composition_backing_open", None)
+                st.session_state.pop("_composition_hub_backing_pending", None)
+                if callback_pending:
+                    st.session_state["_composition_hub_callback_consumed_t"] = float(
+                        last_ev.get("t") or 0
+                    )
+                _composition_hub_trace_append(
+                    "hub_orphan_recover_aborted_leave",
+                    target="backing",
+                    page=str(st.session_state.get("studio_page") or ""),
+                    explicit=str(_orphan_explicit or ""),
+                )
         except Exception:
+            _orphan_leave_abort = False
+
+        if not _orphan_leave_abort:
+            st.session_state.pop("_composition_hub_backing_clicked", None)
+            # Re-arm force whenever pending — mid-run clears may have dropped it.
+            st.session_state["_force_composition_backing_open"] = True
             promote_ok = False
-        try:
-            from composition_songs_bridge import set_composition_source
+            try:
+                from songs.music_source import ensure_composition_owns_active_song
+                from songs.state import ACTIVE_CATALOG_PICK_KEY as _ORPHAN_PICK
 
-            set_composition_source(st.session_state)
-        except Exception:
-            pass
-        if not promote_ok:
-            # Stale force flags after Custom (or failed promote) must not yank
-            # navigation to Backing while pick is still custom::.
-            st.session_state.pop("_force_composition_backing_open", None)
-            st.session_state.pop("_composition_hub_backing_pending", None)
-            if callback_pending:
-                st.session_state["_composition_hub_callback_consumed_t"] = float(
-                    last_ev.get("t") or 0
+                ensure_composition_owns_active_song(
+                    st,
+                    invalidate_backing=invalidate_backing_cache,
                 )
-            _composition_hub_trace_append(
-                "hub_orphan_recover_aborted",
-                target="backing",
-                page=str(st.session_state.get("studio_page") or ""),
-                pick=str(st.session_state.get("active_catalog_pick_key") or ""),
-            )
-        else:
-            st.session_state.pop("_composition_hub_backing_pending", None)
-            if callback_pending:
-                st.session_state["_composition_hub_callback_consumed_t"] = float(
-                    last_ev.get("t") or 0
+                promote_ok = str(st.session_state.get(_ORPHAN_PICK) or "").startswith(
+                    "composition::"
                 )
-            _composition_hub_trace_append(
-                "hub_orphan_recover",
-                target="backing",
-                page=str(st.session_state.get("studio_page") or ""),
-            )
-            _picker_navigate("backing")
-            return
+            except Exception:
+                promote_ok = False
+            try:
+                from composition_songs_bridge import set_composition_source
+
+                set_composition_source(st.session_state)
+            except Exception:
+                pass
+            if not promote_ok:
+                # Stale force flags after Custom (or failed promote) must not yank
+                # navigation to Backing while pick is still custom::.
+                st.session_state.pop("_force_composition_backing_open", None)
+                st.session_state.pop("_composition_hub_backing_pending", None)
+                if callback_pending:
+                    st.session_state["_composition_hub_callback_consumed_t"] = float(
+                        last_ev.get("t") or 0
+                    )
+                _composition_hub_trace_append(
+                    "hub_orphan_recover_aborted",
+                    target="backing",
+                    page=str(st.session_state.get("studio_page") or ""),
+                    pick=str(st.session_state.get("active_catalog_pick_key") or ""),
+                )
+            else:
+                st.session_state.pop("_composition_hub_backing_pending", None)
+                if callback_pending:
+                    st.session_state["_composition_hub_callback_consumed_t"] = float(
+                        last_ev.get("t") or 0
+                    )
+                _composition_hub_trace_append(
+                    "hub_orphan_recover",
+                    target="backing",
+                    page=str(st.session_state.get("studio_page") or ""),
+                )
+                _picker_navigate("backing")
+                return
 
     # Radio can show the Composition hub before global ownership catches up.
     # Promote once per radio selection; never loop st.rerun forever.

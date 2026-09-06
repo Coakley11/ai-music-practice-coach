@@ -586,6 +586,33 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             )
             self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
 
+    def test_ensure_composition_refuses_catalog_leave_when_radio_unmounted(self) -> None:
+        """Songs→Backing remounts drop the radio key; USER_CATALOG must still win."""
+        from types import SimpleNamespace
+
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            ensure_composition_owns_active_song,
+        )
+
+        ss = {
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CATALOG,
+            "active_music_source": SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::stale-doc",
+        }
+        st = SimpleNamespace(session_state=ss)
+        doc = ensure_composition_owns_active_song(
+            st, invalidate_backing=lambda _s: None
+        )
+        self.assertIsNone(doc)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        self.assertEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_CATALOG)
+        self.assertTrue(ss.get("_composition_ensure_skipped_user_catalog"))
+
     def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,

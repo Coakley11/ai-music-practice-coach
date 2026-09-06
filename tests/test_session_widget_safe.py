@@ -202,6 +202,16 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get("song_picker_active_source"), comp)
         self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
 
+        # Composition ensure must not reclaim over Catalog leave stamp.
+        session = {
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+            "_user_chose_catalog_music_source": True,
+            PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY: comp,
+        }
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CATALOG)
+        self.assertNotIn(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, session)
+
     def test_apply_pending_when_locked_keeps_display_key_pending(self) -> None:
         session = {"display_key": "G", "concert_key": "G", PENDING_DISPLAY_KEY: "F"}
         _lock_widgets(session)
