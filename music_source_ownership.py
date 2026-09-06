@@ -741,6 +741,16 @@ def rebuild_catalog_backing_from_canonical_pick(
             is_fixed_practice_key_mode = lambda _session: False  # type: ignore[misc,assignment]
         saved_key = get_practice_concert_key(session, pick)
         live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        leaving_specialized = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        if leaving_specialized:
+            if live_dk == leaving_specialized:
+                live_dk = ""
+            if saved_key == leaving_specialized:
+                saved_key = ""
+            sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+            if sealed and sealed != leaving_specialized:
+                saved_key = sealed
+                practice_concert_key = sealed
         # Only adopt live_dk when Backing is already bound to this same pick
         # (sticky PK mid-session). Never invent sticky from a foreign live key
         # during identity heal or first bind (Say G / Day Tripper E).

@@ -454,12 +454,14 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         from source_session_state import (
             SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
             SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            adopt_restore_sbi_custom_stamp,
             clear_sbi_follow_active_after_explicit_catalog,
             note_explicit_sbi_source_selection,
             sbi_must_follow_global_active,
             _sbi_source_click_trace,
         )
 
+        adopt_restore_sbi_custom_stamp(session_state)
         live_now = str(session_state.get("improv_song_source") or "").strip()
         last_now = str(session_state.get("_last_improv_song_source") or "").strip()
         if (
@@ -547,6 +549,9 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         preview = get_sbi_preview_source(session_state)
         live = str(session_state.get("improv_song_source") or "").strip()
         hydrated = bool(session_state.get("_sbi_song_source_hydrated"))
+        restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+        if restore_custom and preview not in {"Custom progression", "Composition"}:
+            preview = "Custom progression"
         if (
             preview in {"Custom progression", "Composition"}
             and live != preview
@@ -554,8 +559,8 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
             and live in {"", "Active song"}
         ):
             # First Creative render after reboot: widget often defaults to Active
-            # while persisted preview is Custom or Composition. After that, trust
-            # the radio so a real Active click is not overwritten.
+            # while persisted preview is Custom. Flush runs before the radio, so
+            # write the widget key even if the sidebar already locked other widgets.
             try:
                 from session_widget_safe import safe_session_assign
 
@@ -563,12 +568,13 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
                     session_state,
                     "improv_song_source",
                     preview,
-                    widget_safe=True,
+                    widget_safe=False,
                 )
             except ImportError:
-                if "improv_song_source" not in session_state or live == "Active song":
-                    session_state["improv_song_source"] = preview
+                session_state["improv_song_source"] = preview
             session_state["_sbi_song_source_hydrated"] = True
+            session_state["_last_improv_song_source"] = preview
+            return
         elif live in IMPROV_SONG_SOURCES:
             if preview != live:
                 set_sbi_preview_source(session_state, live)

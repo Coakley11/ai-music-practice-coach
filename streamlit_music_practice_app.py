@@ -9256,6 +9256,13 @@ def _render_backing_return_source_action() -> None:
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     try:
+                        live_leave = str(
+                            st.session_state.get("display_key")
+                            or st.session_state.get("improv_jam_key")
+                            or ""
+                        ).strip()
+                        if live_leave:
+                            st.session_state["_specialized_practice_token_leaving"] = live_leave
                         from backing_source_navigation import (
                             release_specialized_backing_for_generic_navigation,
                         )
@@ -10405,6 +10412,19 @@ try:
     from backing_context import active_creative_backing_context, get_backing_context
 
     _backing_ctx_for_sidebar = get_backing_context(st.session_state)
+    try:
+        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+            from source_session_state import bind_sidebar_practice_key_to_backing_owner
+
+            bind_sidebar_practice_key_to_backing_owner(st, st.session_state)
+            try:
+                from h3_live_key_trace import emit
+
+                emit(st.session_state, "after_bind_sidebar")
+            except Exception:
+                pass
+    except ImportError:
+        pass
     _catalog_regular_backing = (
         _backing_ctx_for_sidebar is not None
         and str(getattr(_backing_ctx_for_sidebar, "source", "") or "").strip() == "regular_song"
@@ -10548,6 +10568,20 @@ except Exception:
         def on_sidebar_practice_concert_key_change() -> None:  # type: ignore[misc]
             mark_display_key_changed(st)
 
+try:
+    from h3_live_key_trace import emit
+
+    emit(
+        st.session_state,
+        "sidebar_path_ready",
+        generated_backing_sidebar=bool(_generated_backing_sidebar),
+        catalog_regular_backing=bool(_catalog_regular_backing),
+        original_key=str(original_key or ""),
+        options_head=list(_display_key_options or [])[:8],
+    )
+except Exception:
+    pass
+
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">Song Original Key: <strong>{original_key}</strong></p>',
     unsafe_allow_html=True,
@@ -10684,42 +10718,85 @@ else:
                 st.session_state[_pk_widget_key] = _live_sbi
         try:
             from backing_context import get_backing_context
-            from music_theory import key_mode, practice_keys_for_mode
+            from creative_key_sync import (
+                MISSION_BACKING_PRACTICE_KEY_WIDGET,
+                _mode_locked_practice_key_options,
+            )
 
             _pk_ctx = get_backing_context(st.session_state)
             if (
                 _pk_ctx is not None
                 and str(getattr(_pk_ctx, "source", "") or "").strip() == "mission"
             ):
-                # Hard guarantee: Mission Backing always gets major+minor options,
-                # even if an earlier branch (major-jam) prepared an 11-key list.
                 _live_pk = str(
-                    st.session_state.get("display_key")
+                    st.session_state.get("improv_mission_concert_key")
+                    or st.session_state.get("display_key")
                     or st.session_state.get("concert_key")
                     or getattr(_pk_ctx, "key", "")
                     or "C"
                 ).strip() or "C"
-                # Minors first so C minor / C# minor are in the initial virtualized
-                # window (BaseWeb only mounts ~11 rows). Majors remain available below.
-                _min = list(practice_keys_for_mode("minor"))
-                _maj = list(practice_keys_for_mode("major"))
-                _display_key_options = _min + [k for k in _maj if k not in _min]
-                if _live_pk not in _display_key_options:
-                    _display_key_options = [_live_pk] + [
-                        k for k in _display_key_options if k != _live_pk
-                    ]
-                _n_opts = len(_display_key_options)
-                _pk_widget_key = f"display_key_mission_backing_{_n_opts}"
+                _display_key_options = _mode_locked_practice_key_options(
+                    st.session_state, _live_pk
+                )
+                _pk_widget_key = MISSION_BACKING_PRACTICE_KEY_WIDGET
+                _want_pk = _live_pk if _live_pk in _display_key_options else _display_key_options[0]
+                try:
+                    from creative_key_sync import (
+                        canonical_mission_practice_key,
+                        prepare_mission_backing_practice_key_widget,
+                    )
+
+                    seeded = prepare_mission_backing_practice_key_widget(
+                        st.session_state, options=_display_key_options
+                    )
+                    if seeded and seeded in _display_key_options:
+                        _want_pk = seeded
+                    _mission_canon = canonical_mission_practice_key(st.session_state)
+                    if _mission_canon and _mission_canon in _display_key_options:
+                        _want_pk = _mission_canon
+                except ImportError:
+                    pass
+                _pending_pk = str(st.session_state.get("_pending_display_key") or "").strip()
+                _widget_now = str(st.session_state.get(_pk_widget_key) or "").strip()
                 if _pk_widget_key not in st.session_state:
-                    st.session_state[_pk_widget_key] = _live_pk
+                    st.session_state[_pk_widget_key] = _want_pk
+                elif _widget_now and _widget_now not in _display_key_options:
+                    st.session_state[_pk_widget_key] = _want_pk
+                elif _want_pk and _widget_now != _want_pk and _want_pk in _display_key_options:
+                    st.session_state[_pk_widget_key] = _want_pk
                 try:
                     from pathlib import Path
+                    import json
+                    import time
 
-                    Path("scripts/evidence-creative-backing/_mission_pk_opts_diag.txt").write_text(
-                        f"selectbox_force_mission n={_n_opts} cm={('Cm' in _display_key_options)} "
-                        f"live={_live_pk!r}\n",
-                        encoding="utf-8",
+                    _dbg = (
+                        Path(__file__).resolve().parent
+                        / "scripts"
+                        / "evidence-creative-backing"
+                        / "h6-mission-widget-seed.jsonl"
                     )
+                    _dbg.parent.mkdir(parents=True, exist_ok=True)
+                    with _dbg.open("a", encoding="utf-8") as fh:
+                        fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "canonical": str(
+                                        st.session_state.get("improv_mission_concert_key") or ""
+                                    ),
+                                    "want": _want_pk,
+                                    "widget_before_selectbox": str(
+                                        st.session_state.get(_pk_widget_key) or ""
+                                    ),
+                                    "pending_display": _pending_pk,
+                                    "pending_mission": str(
+                                        st.session_state.get("_pending_mission_practice_key")
+                                        or ""
+                                    ),
+                                }
+                            )
+                            + "\n"
+                        )
                 except Exception:
                     pass
         except ImportError:
@@ -10760,14 +10837,26 @@ else:
                         # Capture prior Practice Key before overwrite so Mission transpose
                         # uses the real from_key (not enharmonic lick key_center / already-new token).
                         prior = str(
-                            st.session_state.get("display_key")
+                            st.session_state.get("improv_mission_concert_key")
+                            or st.session_state.get("display_key")
                             or st.session_state.get("concert_key")
                             or ""
                         ).strip()
                         if prior and prior != tok:
                             st.session_state["_mission_pk_transpose_from"] = prior
-                        st.session_state["display_key"] = tok
-                        st.session_state["concert_key"] = tok
+                        if _pk_widget_key == "display_key_mission_backing":
+                            try:
+                                from creative_key_sync import apply_specialized_mission_practice_key
+
+                                apply_specialized_mission_practice_key(st.session_state, tok)
+                            except Exception:
+                                st.session_state["display_key"] = tok
+                                st.session_state["concert_key"] = tok
+                                st.session_state["improv_mission_concert_key"] = tok
+                        else:
+                            st.session_state["display_key"] = tok
+                            st.session_state["concert_key"] = tok
+                            st.session_state["improv_mission_concert_key"] = tok
                 on_sidebar_practice_concert_key_change()
             except Exception as _pk_cb_exc:
                 try:
@@ -10783,6 +10872,27 @@ else:
                 except Exception:
                     pass
 
+        try:
+            from h3_live_key_trace import emit
+
+            emit(
+                st.session_state,
+                "before_selectbox",
+                widget_key=_pk_widget_key,
+                options=list(_display_key_options or [])[:16],
+                generated_backing_sidebar=bool(_generated_backing_sidebar),
+            )
+        except Exception:
+            pass
+        try:
+            from source_session_state import sync_specialized_leave_catalog_widget
+
+            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+                sync_specialized_leave_catalog_widget(
+                    st.session_state, widget_key=_pk_widget_key
+                )
+        except Exception:
+            pass
         st.sidebar.selectbox(
             "Practice / Concert Key",
             _display_key_options,
@@ -10790,6 +10900,26 @@ else:
             help="Concert pitch for charts and backing audio.",
             on_change=_on_mission_or_global_pk_change,
         )
+        try:
+            from h3_live_key_trace import emit
+
+            emit(
+                st.session_state,
+                "after_selectbox",
+                widget_key=_pk_widget_key,
+                widget_return=str(st.session_state.get(_pk_widget_key) or ""),
+            )
+        except Exception:
+            pass
+        try:
+            from source_session_state import sync_specialized_leave_catalog_widget
+
+            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+                sync_specialized_leave_catalog_widget(
+                    st.session_state, widget_key=_pk_widget_key, allow_clear=True
+                )
+        except Exception:
+            pass
 try:
     from key_display_diagnostics import render_key_display_diagnostics
 
@@ -11315,6 +11445,22 @@ sync_written_key_instrument_anchor(st.session_state, instrument)
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)
+try:
+    from creative_key_sync import (
+        canonical_mission_practice_key,
+        mission_backing_owns_left_panel_key,
+    )
+
+    if mission_backing_owns_left_panel_key(st.session_state):
+        # Local recap/chart concert only. Do not write session here — assigning
+        # display_key after sidebar widgets can fight the native Mission click.
+        mission_pk = canonical_mission_practice_key(st.session_state) or str(
+            st.session_state.get("display_key") or display_key or ""
+        ).strip()
+        if mission_pk:
+            display_key = mission_pk
+except Exception:
+    pass
 if display_key not in _display_key_options:
     try:
         from creative_key_sync import is_creative_major_jam_active
@@ -13703,6 +13849,27 @@ elif _studio_page == "backing":
                 _backing_written_key = (
                     _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
                 )
+            try:
+                from h3_live_key_trace import emit
+
+                emit(
+                    st.session_state,
+                    "card_inputs_resolved",
+                    practice_key=_backing_practice_key,
+                    creative_ctx_key=str(
+                        getattr(_creative_backing_ctx, "concert_key", "")
+                        or getattr(_creative_backing_ctx, "key", "")
+                        or ""
+                    ),
+                    early_ctx_key=str(
+                        getattr(_early_backing_ctx, "concert_key", "")
+                        or getattr(_early_backing_ctx, "key", "")
+                        or ""
+                    ) if _early_backing_ctx is not None else "",
+                    card_kind="creative",
+                )
+            except Exception:
+                pass
             if _backing_musical and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
             else:

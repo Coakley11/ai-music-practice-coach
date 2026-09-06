@@ -297,6 +297,7 @@ def commit_jam_session_generation(
     if new_session or not sid:
         sid = str(uuid.uuid4())
         jam["id"] = sid
+    session["_jam_session_generator_session_id"] = sid
     pt, pm = _tonic_mode_from_token(key_center)
     sections = jam.get("sections") if isinstance(jam.get("sections"), dict) else {}
     jam = seal_jam_session_musical_context(jam, key_center=key_center, sections=sections)

@@ -281,6 +281,7 @@ def _identity_from_live_practice_key(session: dict[str, Any]) -> WorkflowKeyIden
 def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKeyIdentity | None:
     """Single resolver for sidebar, backing header, missions, and notation consumers."""
     ctx_source = ""
+    ctx = None
     try:
         from backing_context import get_backing_context
 
@@ -293,13 +294,38 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
     # Stale entry_jam BackingContext must not keep owning Practice Key after the user
     # leaves Jam Backing for Shape-of-You Missions/SBI (generated F# must not leak).
     on_entry_jam_backing = page == "backing" and ctx_source == "entry_jam"
+    if on_entry_jam_backing:
+        try:
+            from generated_jam_key_change import resolve_generated_workflow_session_id
+            from music_workflow_state_store import get_workflow_blob
+
+            entry = str(getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or "").strip()
+            jam_owner = "style_jam" if "Style Jam" in entry else "jam_session_generator"
+            jam_sid = resolve_generated_workflow_session_id(session, jam_owner)
+            jam_blob = get_workflow_blob(session, jam_owner, jam_sid) if jam_sid else None
+            if jam_blob is not None:
+                return _identity_from_blob(
+                    jam_owner,
+                    jam_sid,
+                    jam_blob,
+                    source="active_workflow_blob",
+                )
+        except ImportError:
+            pass
     song_owns = False
     if song_or_mission_workflow_owns_practice_key(session) and not on_entry_jam_backing:
         song_owns = True
     elif ctx_source in {"mission", "regular_song", "song_improv"}:
         song_owns = True
     if song_owns:
-        if not session.get("_missions_parent_key_hydrate_guard"):
+        mission_backing = False
+        try:
+            from creative_key_sync import mission_backing_owns_left_panel_key
+
+            mission_backing = mission_backing_owns_left_panel_key(session)
+        except ImportError:
+            mission_backing = False
+        if (not mission_backing) and (not session.get("_missions_parent_key_hydrate_guard")):
             session["_missions_parent_key_hydrate_guard"] = True
             try:
                 from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated

@@ -22,6 +22,22 @@ _SOURCE_BY_WIDGET = {
     _GEN_WIDGET: "on_improv_jam_key_change",
 }
 
+# Groove-intensity names historically used as jam_session_generator session ids.
+# Those hollow blobs must not outrank the generated UUID session render consumes.
+_JAM_GROOVE_LEFTOVER_SIDS = frozenset(
+    {
+        "ballad",
+        "medium",
+        "light",
+        "heavy",
+        "straight",
+        "soft",
+        "intense",
+        "jam_gen",
+        "auto",
+    }
+)
+
 
 def _widgets_locked(session: dict[str, Any]) -> bool:
     try:
@@ -50,14 +66,171 @@ def _session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         return ""
 
 
+def _looks_like_jam_groove_leftover_sid(sid: str) -> bool:
+    return str(sid or "").strip().lower() in _JAM_GROOVE_LEFTOVER_SIDS
+
+
+def _jam_blob_has_generated_material(blob: Any) -> bool:
+    sm = getattr(blob, "section_map", None)
+    if isinstance(sm, dict) and any(isinstance(v, list) and v for v in sm.values()):
+        return True
+    return False
+
+
+def _iter_jam_generator_blobs(session: dict[str, Any], owner: str):
+    try:
+        from music_workflow_canonical_persistence import CWS_WORKFLOW_STATE_NESTED_KEY
+        from music_workflow_state_store import MUSIC_WORKFLOW_STATE_STORE_KEY, WorkflowStateBlob
+    except ImportError:
+        try:
+            from music_workflow_state_store import MUSIC_WORKFLOW_STATE_STORE_KEY, WorkflowStateBlob
+
+            CWS_WORKFLOW_STATE_NESTED_KEY = "music_workflow_state_v1"
+        except ImportError:
+            return
+    stores: list[dict[str, Any]] = []
+    seen_store_ids: set[int] = set()
+
+    def _add_store(store: Any) -> None:
+        if not isinstance(store, dict):
+            return
+        sid = id(store)
+        if sid in seen_store_ids:
+            return
+        seen_store_ids.add(sid)
+        stores.append(store)
+
+    def _add_cws(cws: Any) -> None:
+        if not isinstance(cws, dict):
+            return
+        nested = cws.get(CWS_WORKFLOW_STATE_NESTED_KEY)
+        if isinstance(nested, dict) and isinstance(nested.get("store"), dict):
+            _add_store(nested["store"])
+        elif isinstance(nested, dict) and isinstance(nested.get("blobs"), dict):
+            _add_store(nested)
+
+    live = session.get(MUSIC_WORKFLOW_STATE_STORE_KEY)
+    if isinstance(live, dict):
+        _add_store(live)
+        if isinstance(live.get("store"), dict):
+            _add_store(live["store"])
+    _add_cws(session.get("creative_workspace_state"))
+    mws = session.get("music_workspace_state")
+    if isinstance(mws, dict):
+        _add_cws(mws.get("creative_workspace_state") if isinstance(mws.get("creative_workspace_state"), dict) else None)
+        nested = mws.get(CWS_WORKFLOW_STATE_NESTED_KEY)
+        if isinstance(nested, dict) and isinstance(nested.get("store"), dict):
+            _add_store(nested["store"])
+    top_nested = session.get(CWS_WORKFLOW_STATE_NESTED_KEY)
+    if isinstance(top_nested, dict) and isinstance(top_nested.get("store"), dict):
+        _add_store(top_nested["store"])
+    prefix = f"{owner}|"
+    seen: set[str] = set()
+    for store in stores:
+        blobs_raw = store.get("blobs") if isinstance(store, dict) else {}
+        if not isinstance(blobs_raw, dict):
+            continue
+        for key, raw in blobs_raw.items():
+            if not str(key).startswith(prefix):
+                continue
+            blob = raw if hasattr(raw, "section_map") and hasattr(raw, "keys") else None
+            if blob is None:
+                blob = WorkflowStateBlob.from_dict(raw)
+            if blob is None:
+                continue
+            sid = str(getattr(blob, "workflow_session_id", "") or str(key)[len(prefix) :]).strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            yield sid, blob
+
+
+def _hydrate_jam_blob_into_live_store(session: dict[str, Any], owner: str, sid: str) -> None:
+    sid = str(sid or "").strip()
+    if not sid:
+        return
+    try:
+        from music_workflow_state_store import get_workflow_blob, save_workflow_blob
+    except ImportError:
+        return
+    live = get_workflow_blob(session, owner, sid)
+    if live is not None and _jam_blob_has_generated_material(live):
+        return
+    for found_sid, blob in _iter_jam_generator_blobs(session, owner) or []:
+        if found_sid == sid and _jam_blob_has_generated_material(blob):
+            save_workflow_blob(session, blob, source="jam_canonical_blob_hydrate")
+            return
+
+
+def resolve_generated_workflow_session_id(session: dict[str, Any], owner: str) -> str:
+    """Live generated-workflow session id used by Practice Key write + render.
+
+    For Jam Session Generator the canonical identity is the generated session blob
+    (`jam_session_generator|{uuid}`), never a leftover groove-named hollow blob.
+    """
+    owner = str(owner or "").strip()
+    if owner != "jam_session_generator":
+        return _session_id_for_owner(session, owner)
+
+    jam = session.get("improv_jam_session")
+    jam_id = str(jam.get("id") or "").strip() if isinstance(jam, dict) else ""
+    if jam_id and _looks_like_jam_groove_leftover_sid(jam_id):
+        jam_id = ""
+    stored = str(session.get("_jam_session_generator_session_id") or "").strip()
+    if stored and _looks_like_jam_groove_leftover_sid(stored):
+        stored = ""
+    material_ids: list[str] = []
+    for sid, blob in _iter_jam_generator_blobs(session, owner) or []:
+        if _jam_blob_has_generated_material(blob):
+            material_ids.append(sid)
+
+    if stored:
+        _hydrate_jam_blob_into_live_store(session, owner, stored)
+        return stored
+    if jam_id:
+        session["_jam_session_generator_session_id"] = jam_id
+        _hydrate_jam_blob_into_live_store(session, owner, jam_id)
+        return jam_id
+
+    ptr_sid = ""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        ptr = get_active_workflow_pointer(session)
+        if ptr and str(ptr.workflow_owner or "") == owner:
+            ptr_sid = str(ptr.workflow_session_id or "").strip()
+    except ImportError:
+        ptr = None
+    if ptr_sid and not _looks_like_jam_groove_leftover_sid(ptr_sid):
+        if not material_ids or ptr_sid in material_ids:
+            _hydrate_jam_blob_into_live_store(session, owner, ptr_sid)
+            return ptr_sid
+    if material_ids:
+        for sid in material_ids:
+            if "-" in sid and len(sid) >= 16:
+                session["_jam_session_generator_session_id"] = sid
+                _hydrate_jam_blob_into_live_store(session, owner, sid)
+                return sid
+        session["_jam_session_generator_session_id"] = material_ids[0]
+        _hydrate_jam_blob_into_live_store(session, owner, material_ids[0])
+        return material_ids[0]
+    if ptr_sid:
+        return ptr_sid
+    return _session_id_for_owner(session, owner)
+
+
 def _blob_key_snapshot(session: dict[str, Any], owner: str) -> tuple[str, str]:
     try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
         ptr = get_active_workflow_pointer(session)
-        sid = _session_id_for_owner(session, owner)
+        sid = resolve_generated_workflow_session_id(session, owner)
         if ptr and str(ptr.workflow_owner or "") == owner:
-            sid = str(ptr.workflow_session_id or sid)
+            ptr_sid = str(ptr.workflow_session_id or "").strip()
+            if ptr_sid and not (
+                owner == "jam_session_generator" and _looks_like_jam_groove_leftover_sid(ptr_sid)
+            ):
+                sid = ptr_sid or sid
         blob = get_workflow_blob(session, owner, sid)
         if blob is None:
             return "", f"{owner}|{sid}"
@@ -130,7 +303,14 @@ def align_generated_workflow_pointer_for_key_edit(
         )
     except ImportError:
         return False
-    sid = str(session_id or "").strip() or str(legacy_session_id_for_owner(session, owner) or "").strip()
+    sid = str(session_id or "").strip()
+    if owner == "jam_session_generator":
+        resolved = resolve_generated_workflow_session_id(session, owner)
+        given = get_workflow_blob(session, owner, sid) if sid else None
+        if resolved and (not sid or not _jam_blob_has_generated_material(given)):
+            sid = resolved
+    if not sid:
+        sid = str(legacy_session_id_for_owner(session, owner) or "").strip()
     if not sid:
         return False
     ptr = get_active_workflow_pointer(session)
@@ -138,6 +318,14 @@ def align_generated_workflow_pointer_for_key_edit(
         return True
     blob = get_workflow_blob(session, owner, sid)
     if blob is None:
+        for found_sid, nested_blob in _iter_jam_generator_blobs(session, owner) or []:
+            if found_sid == sid:
+                save_workflow_blob(session, nested_blob, source="generated_key_edit_hydrate")
+                blob = nested_blob
+                break
+    if blob is None:
+        if owner == "jam_session_generator" and _looks_like_jam_groove_leftover_sid(sid):
+            return False
         blob = build_workflow_blob_from_legacy(session, owner)
         blob.workflow_owner = owner
         blob.workflow_session_id = sid
@@ -499,6 +687,45 @@ def mutate_generated_practice_key_from_control(
     return True
 
 
+def copy_canonical_jam_uuid_blob(session: dict[str, Any]) -> Any:
+    """Deep copy of the generated UUID jam blob. Catalog return must not mutate this."""
+    try:
+        import copy as _copy
+
+        from music_workflow_state_store import get_workflow_blob
+    except ImportError:
+        return None
+    sid = str(resolve_generated_workflow_session_id(session, "jam_session_generator") or "").strip()
+    if not sid or _looks_like_jam_groove_leftover_sid(sid):
+        return None
+    blob = get_workflow_blob(session, "jam_session_generator", sid)
+    if blob is None or not _jam_blob_has_generated_material(blob):
+        return None
+    return _copy.deepcopy(blob)
+
+
+def restore_canonical_jam_uuid_blob_if_mutated(session: dict[str, Any], preserved: Any) -> bool:
+    """If Catalog return rewrote the saved Jam UUID, put the preserved blob back."""
+    if preserved is None:
+        return False
+    try:
+        from music_workflow_state_store import get_workflow_blob, save_workflow_blob
+    except ImportError:
+        return False
+    sid = str(getattr(preserved, "workflow_session_id", "") or "").strip()
+    if not sid:
+        return False
+    live = get_workflow_blob(session, "jam_session_generator", sid)
+    keep_t = str(getattr(getattr(preserved, "keys", None), "practice_tonic", "") or "").strip()
+    live_t = str(getattr(getattr(live, "keys", None), "practice_tonic", "") or "").strip() if live else ""
+    keep_map = getattr(preserved, "section_map", None) or {}
+    live_map = getattr(live, "section_map", None) or {} if live is not None else {}
+    if live is not None and live_t == keep_t and live_map == keep_map:
+        return False
+    save_workflow_blob(session, preserved, source="catalog_return_preserve_jam_uuid")
+    return True
+
+
 __all__ = [
     "GENERATED_KEY_CHANGE_DIAG_KEY",
     "GENERATED_KEY_EDIT_OUTCOME_KEY",
@@ -507,8 +734,11 @@ __all__ = [
     "apply_pending_generated_key_edit_pre_widget",
     "capture_generated_key_edit_intent",
     "clear_generated_key_hydrate_guard",
+    "copy_canonical_jam_uuid_blob",
     "generated_key_hydrate_guard_blocks_blob",
     "log_generated_key_change",
     "mutate_generated_practice_key_from_control",
     "mark_generated_key_hydrate_guard",
+    "resolve_generated_workflow_session_id",
+    "restore_canonical_jam_uuid_blob_if_mutated",
 ]

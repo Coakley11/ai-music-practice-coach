@@ -198,6 +198,8 @@ def activate_generated_jam_key_ownership(
     # Live concert follows the generated session while jam owns Creative/Backing.
     # Do not clobber ``display_key`` here — generation can keep a catalog leftover
     # until the jam sidebar/backing owner writes. Songs must still release jam tokens.
+    # Backing sidebar bind (`bind_sidebar_practice_key_to_backing_owner`) copies the
+    # jam token onto the live widget after specialized Backing is the current owner.
     session["concert_key"] = token
 
 

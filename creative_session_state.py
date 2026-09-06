@@ -700,9 +700,11 @@ def apply_creative_session_to_session(
             if not sec_name:
                 sec_name = next(iter(sess.sections.keys()), "")
             chords = sess.sections.get(sec_name) or []
-            if sec_name:
+            existing_sec = str(session.get("ii_selected_section") or "").strip()
+            existing_chord = str(session.get("ii_selected_chord") or "").strip()
+            if sec_name and not existing_sec:
                 session["ii_selected_section"] = sec_name
-            if chords:
+            if chords and not existing_chord:
                 session["ii_selected_chord"] = str(chords[0])
     elif sess.tool_type == "jam_session_generator":
         _set("improv_jam_style", sess.style)

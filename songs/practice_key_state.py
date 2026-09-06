@@ -95,10 +95,17 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
         return True
     if page == "backing":
         try:
-            from backing_context import get_backing_context
+            from backing_context import (
+                BACKING_PREF_CATALOG,
+                get_backing_context,
+                get_backing_source_preference,
+            )
 
             ctx = get_backing_context(session)
-            if ctx is not None and str(ctx.source or "") == "entry_jam":
+            src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+            if src == "regular_song" or get_backing_source_preference(session) == BACKING_PREF_CATALOG:
+                return False
+            if src == "entry_jam":
                 return True
         except ImportError:
             pass
@@ -108,6 +115,21 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
         if creative_session_is_active(session):
             sess = get_creative_session(session)
             if sess is not None and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+                page = str(session.get("studio_page") or "").strip().lower()
+                if page == "backing":
+                    try:
+                        from backing_context import (
+                            BACKING_PREF_CATALOG,
+                            get_backing_context,
+                            get_backing_source_preference,
+                        )
+
+                        ctx = get_backing_context(session)
+                        src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+                        if src == "regular_song" or get_backing_source_preference(session) == BACKING_PREF_CATALOG:
+                            return False
+                    except ImportError:
+                        pass
                 return True
     except ImportError:
         pass
@@ -143,6 +165,11 @@ def resolve_settings_pick_for_write(
     if custom_sbi_pick and not explicit:
         return custom_sbi_pick
 
+    if session.get("_specialized_practice_token_leaving"):
+        if explicit and is_song_source_pick(explicit) and not explicit.startswith("creative::"):
+            return explicit
+        if explicit.startswith("creative::"):
+            return ""
     if creative_jam_owns_practice_settings(session):
         if explicit.startswith("creative::"):
             return explicit
@@ -381,6 +408,7 @@ def set_practice_concert_key(
             and "catalog_sticky" not in src
             and live
             and live != key
+            and not session.get("_specialized_practice_token_leaving")
         ):
             return
         # During an explicit sidebar commit, never write a different token than the
@@ -474,6 +502,16 @@ def set_practice_concert_key(
             pass
     # Generated Jam / Style Jam keys must never land in a catalog song slot.
     if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
+        leaving_tok = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        if leaving_tok and key == leaving_tok:
+            return
+        try:
+            from songs.key_state import widget_value_is_stale_owner_transition
+
+            if widget_value_is_stale_owner_transition(session, key):
+                return
+        except ImportError:
+            pass
         try:
             from generated_jam_key_context import generated_jam_practice_key_tokens
 

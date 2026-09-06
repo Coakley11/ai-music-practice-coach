@@ -626,6 +626,13 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
 
 def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str:
     """Keep song/mission Practice Key coherent — live/store override wins over stale blob."""
+    try:
+        from creative_key_sync import canonical_mission_practice_key, mission_backing_owns_left_panel_key
+
+        if mission_backing_owns_left_panel_key(session):
+            return str(canonical_mission_practice_key(session) or "").strip()
+    except ImportError:
+        pass
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()

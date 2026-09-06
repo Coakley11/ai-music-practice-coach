@@ -356,7 +356,14 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     out_owner, out_sid, outgoing = capture_outgoing_blob(session)
     trace["outgoing_owner"] = out_owner
     trace["outgoing_session"] = out_sid
-    if outgoing and out_owner and out_sid:
+    skip_jam_outgoing = (
+        str(out_owner or "") == "jam_session_generator"
+        and str(target_owner or "") != "jam_session_generator"
+        and str(request.activation_source or "") == "restore_regular_song_backing"
+    )
+    if skip_jam_outgoing:
+        trace["outgoing_jam_preserved"] = True
+    elif outgoing and out_owner and out_sid:
         if out_owner != target_owner or out_sid != target_sid:
             saved = save_workflow_blob(session, outgoing, source=f"activate_out:{request.activation_source}")
             trace["outgoing_blob_captured"] = saved

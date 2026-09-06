@@ -627,6 +627,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "latest_practice_analysis_full_report",
     "latest_practice_analysis_handoff_status",
     "backing_context",
+    "_backing_source_preference",
     "_backing_explicit_handoff_source",
     "_backing_entry_class",
     "_nested_custom_sbi_backing",
@@ -636,6 +637,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_generated_sections",
     "improv_style_meta",
     "improv_jam_session",
+    "_jam_session_generator_session_id",
     "improv_style_key",
     "improv_style",
     "improv_style_bpm",
@@ -663,6 +665,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "ii_selected_chord_label",
     "improv_mission_practice_context",
     "improv_mission_recording_seal",
+    "improv_mission_concert_key",
     "improv_mission_workspace_updated_at",
     "harmony_map_section",
     "harmony_map_chord",
@@ -683,6 +686,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "fixed_practice_key_family_spelling",
     "song_picker_active_source",
     "sbi_preview_source",
+    "_restore_sbi_custom_source",
     "catalog_session",
     "custom_session",
     "_last_catalog_song_state",
@@ -2610,6 +2614,39 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                     except ImportError:
                         pass
             extra[key] = val
+    try:
+        from creative_key_sync import _emit_h6_mission_pk_trace, live_backing_source
+
+        if live_backing_source(ss) == "mission":
+            _emit_h6_mission_pk_trace(
+                ss,
+                "F_persist_extra_copy",
+                extra_display_key=str(extra.get("display_key") or extra.get("improv_mission_concert_key") or ""),
+                extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                extra_show_written=bool(extra.get("show_chart_in_instrument_key")),
+                live_display_key=str(ss.get("display_key") or ""),
+                live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+            )
+            if str(ss.get("display_key") or "") and str(extra.get("improv_mission_concert_key") or "") not in {
+                str(ss.get("display_key") or ""),
+                "",
+            }:
+                _emit_h6_mission_pk_trace(
+                    ss,
+                    "F_first_writer_mission_concert_mismatch",
+                    extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                    live_display_key=str(ss.get("display_key") or ""),
+                )
+            if str(ss.get("ii_selected_chord") or "") != str(extra.get("ii_selected_chord") or ss.get("ii_selected_chord") or ""):
+                _emit_h6_mission_pk_trace(
+                    ss,
+                    "F_first_writer_ii_selected_mismatch",
+                    extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                    live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+                )
+    except Exception:
+        pass
     for key in _LIST_KEYS:
         if key in ss:
             val = ss[key]
@@ -2658,6 +2695,22 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             if key in ss:
                 extra[key] = copy.deepcopy(ss[key])
     except ImportError:
+        pass
+    try:
+        from creative_key_sync import _emit_h6_mission_pk_trace, live_backing_source
+
+        if live_backing_source(ss) == "mission":
+            _emit_h6_mission_pk_trace(
+                ss,
+                "F_persist_envelope_before_freeze",
+                extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                extra_show_written=bool(extra.get("show_chart_in_instrument_key")),
+                core_display_key=str((core or {}).get("display_key") or ""),
+                live_display_key=str(ss.get("display_key") or ""),
+                live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+            )
+    except Exception:
         pass
     state: dict[str, Any] = {"core": core, "session": extra}
     for key in _WORKSPACE_KEYS:

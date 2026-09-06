@@ -209,6 +209,15 @@ def build_snapshot_from_session(
         sid = ""
         if ptr and str(ptr.workflow_owner or "") == owner:
             sid = str(ptr.workflow_session_id or "")
+        if owner == "jam_session_generator":
+            try:
+                from generated_jam_key_change import resolve_generated_workflow_session_id
+
+                resolved = str(resolve_generated_workflow_session_id(session, owner) or "").strip()
+                if resolved:
+                    sid = resolved
+            except ImportError:
+                pass
         if not sid:
             sid = str(legacy_session_id_for_owner(session, owner) or "")
         blob = get_workflow_blob(session, owner, sid) if sid else None
@@ -281,12 +290,6 @@ def build_snapshot_from_session(
             if ss:
                 style = ss
         elif owner == "jam_session_generator":
-            jm = str(session.get("improv_jam_mood") or "").strip()
-            if jm:
-                mood = jm
-            js = str(session.get("improv_jam_style") or "").strip()
-            if js:
-                style = js
             jk = str(session.get("improv_jam_key") or "").strip()
             if jk:
                 try:
@@ -295,6 +298,13 @@ def build_snapshot_from_session(
                     pt, pm = _tonic_mode_from_token(jk)
                 except ImportError:
                     pass
+    if owner == "jam_session_generator":
+        jm = str(session.get("improv_jam_mood") or "").strip()
+        if jm:
+            mood = jm
+        js = str(session.get("improv_jam_style") or "").strip()
+        if js:
+            style = js
 
     if owner == "style_jam" and not str(mood or "").strip() and not blob_authoritative:
         mood = str(session.get("improv_mood") or "")
@@ -494,11 +504,126 @@ def seal_backing_handoff_snapshot_for_creative_open(session: dict[str, Any]) -> 
 
 def peek_backing_owner_artifact_snapshot(session: dict[str, Any]) -> GeneratedWorkflowArtifactSnapshot | None:
     raw = session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY)
-    return GeneratedWorkflowArtifactSnapshot.from_dict(raw)
+    snap = GeneratedWorkflowArtifactSnapshot.from_dict(raw)
+    owner = str(snap.workflow_owner or "") if snap is not None else ""
+    if owner == "jam_session_generator" or (snap is None and session.get("improv_entry_mode") == "Jam Session Generator"):
+        live = live_jam_canonical_snapshot_for_render(session)
+        if live is not None:
+            return live
+        if snap is not None and owner == "jam_session_generator":
+            # Stale cache with no live UUID blob: do not treat existence as current.
+            return None
+    return snap
 
 
 def concert_key_from_snapshot(snapshot: GeneratedWorkflowArtifactSnapshot) -> str:
     return _practice_key_label(snapshot.practice_tonic, snapshot.practice_mode)
+
+
+def _canonical_jam_blob_and_sid(session: dict[str, Any]) -> tuple[str, Any]:
+    """Canonical generated UUID blob for Jam Session Generator — never leftover groove ids."""
+    try:
+        from generated_jam_key_change import resolve_generated_workflow_session_id
+        from music_workflow_state_store import get_workflow_blob
+    except ImportError:
+        return "", None
+    sid = str(resolve_generated_workflow_session_id(session, "jam_session_generator") or "").strip()
+    if not sid:
+        return "", None
+    blob = get_workflow_blob(session, "jam_session_generator", sid)
+    return sid, blob
+
+
+def jam_owner_snapshot_is_current(snap: GeneratedWorkflowArtifactSnapshot | None, blob: Any, sid: str) -> bool:
+    """True only when the derived snapshot still matches the live UUID blob."""
+    if snap is None or blob is None:
+        return False
+    if str(snap.workflow_owner or "") != "jam_session_generator":
+        return False
+    if str(snap.workflow_session_id or "").strip() != str(sid or "").strip():
+        return False
+    snap_t = str(snap.practice_tonic or "").strip()
+    blob_t = str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "").strip()
+    if not snap_t or not blob_t or snap_t != blob_t:
+        return False
+    blob_map = getattr(blob, "section_map", None)
+    if isinstance(blob_map, dict) and blob_map and blob_map != (snap.section_map or {}):
+        return False
+    return True
+
+
+def rebuild_jam_owner_artifact_snapshot_from_canonical_blob(
+    session: dict[str, Any],
+) -> GeneratedWorkflowArtifactSnapshot | None:
+    """Option A: rewrite the owner snapshot as a projection of the live UUID blob.
+
+    Musical fields always come from the generated UUID blob. A leftover C snapshot
+    must never remain the render authority after the blob is Eb.
+    """
+    sid, blob = _canonical_jam_blob_and_sid(session)
+    if blob is None or not sid:
+        return None
+    prev = GeneratedWorkflowArtifactSnapshot.from_dict(session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY))
+    snap = build_snapshot_from_session(
+        session,
+        owner="jam_session_generator",
+        entry_mode="Jam Session Generator",
+        new_revision=False,
+    )
+    if snap is None:
+        return None
+    if prev is not None and str(prev.workflow_session_id or "").strip() == str(sid):
+        if str(prev.exact_return_destination or "").strip():
+            snap.exact_return_destination = prev.exact_return_destination
+        if str(prev.selected_scope or "").strip():
+            snap.selected_scope = prev.selected_scope
+        if prev.selected_section_ids:
+            snap.selected_section_ids = list(prev.selected_section_ids)
+    # Widget mood/style are control metadata, not a second key authority.
+    jm = str(session.get("improv_jam_mood") or "").strip()
+    if jm:
+        snap.mood = jm
+    js = str(session.get("improv_jam_style") or "").strip()
+    if js:
+        snap.style = js
+    session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
+    return snap
+
+
+def live_jam_canonical_snapshot_for_render(
+    session: dict[str, Any],
+) -> GeneratedWorkflowArtifactSnapshot | None:
+    """Snapshot used by live Jam Backing render — UUID blob wins over a stale cache."""
+    sid, blob = _canonical_jam_blob_and_sid(session)
+    if blob is None or not sid:
+        return None
+    sm = getattr(blob, "section_map", None)
+    if not (isinstance(sm, dict) and any(isinstance(v, list) and v for v in sm.values())):
+        return None
+    snap = GeneratedWorkflowArtifactSnapshot.from_dict(session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY))
+    if jam_owner_snapshot_is_current(snap, blob, sid):
+        jm = str(session.get("improv_jam_mood") or "").strip()
+        js = str(session.get("improv_jam_style") or "").strip()
+        if snap is not None and (jm or js):
+            if jm:
+                snap.mood = jm
+            if js:
+                snap.style = js
+            session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
+        return snap
+    return rebuild_jam_owner_artifact_snapshot_from_canonical_blob(session)
+
+
+def invalidate_jam_backing_render_snapshot(session: dict[str, Any]) -> None:
+    """Drop Jam render cache/handoff so it cannot paint Catalog (or a later owner)."""
+    session.pop(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY, None)
+    session.pop("_backing_handoff_entry_mode", None)
+    session.pop("_backing_creative_chart_sections", None)
+    cws = session.get("creative_workspace_state")
+    if isinstance(cws, dict):
+        cws.pop(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY, None)
+        cws.pop("_backing_handoff_entry_mode", None)
+        cws.pop("_backing_creative_chart_sections", None)
 
 
 def commit_generated_artifact_revision(
@@ -587,8 +712,12 @@ __all__ = [
     "build_snapshot_from_session",
     "commit_generated_artifact_revision",
     "concert_key_from_snapshot",
+    "invalidate_jam_backing_render_snapshot",
+    "jam_owner_snapshot_is_current",
+    "live_jam_canonical_snapshot_for_render",
     "owner_for_entry_mode",
     "peek_backing_owner_artifact_snapshot",
+    "rebuild_jam_owner_artifact_snapshot_from_canonical_blob",
     "resolve_handoff_entry_mode",
     "seal_backing_handoff_snapshot_for_creative_open",
     "validate_owner_artifact_snapshot",

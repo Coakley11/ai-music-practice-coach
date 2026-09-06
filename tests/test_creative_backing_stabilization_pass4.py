@@ -488,6 +488,57 @@ class TestGeneratedBackingKeyVsCatalog(unittest.TestCase):
         self.assertTrue(token.startswith("E"), token)
         self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "A")
 
+    def test_leftover_sbi_pointer_does_not_steal_jam_backing_sidebar_key(self) -> None:
+        from creative_key_sync import generated_backing_owns_left_panel_key, sync_sidebar_creative_concert_key
+        from music_workflow_state_store import ActiveWorkflowPointer, set_active_workflow_pointer
+
+        session = _jam_session(jam_key="C")
+        self.assertTrue(generated_backing_owns_left_panel_key(session))
+        catalog_before = get_practice_concert_key(session, PERFECT_PICK)
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id=PERFECT_PICK,
+                activation_source="leftover_sbi",
+            ),
+        )
+        session["display_key"] = "Eb"
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(session.get("improv_jam_key"), "Eb")
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), catalog_before)
+        ctx = session.get(BACKING_CONTEXT_KEY) or {}
+        self.assertIn(str(ctx.get("concert_key") or ""), {"Eb", "Eb major"})
+
+    def test_leftover_missions_tab_does_not_steal_jam_backing_sidebar_key(self) -> None:
+        from creative_key_sync import (
+            _catalog_song_workflow_owns_practice_key,
+            generated_backing_owns_left_panel_key,
+            resolve_practice_key_write_owner,
+            sync_sidebar_creative_concert_key,
+        )
+        from songs.key_state import mark_display_key_changed
+        from types import SimpleNamespace
+
+        session = _jam_session(jam_key="C")
+        session["improv_intelligence_tab"] = "Missions"
+        session["creative_improv_intelligence_tab"] = "Missions"
+        catalog_before = get_practice_concert_key(session, PERFECT_PICK)
+        self.assertEqual(resolve_practice_key_write_owner(session), "entry_jam")
+        self.assertTrue(generated_backing_owns_left_panel_key(session))
+        self.assertFalse(_catalog_song_workflow_owns_practice_key(session))
+        session["display_key"] = "Eb"
+        st = SimpleNamespace(session_state=session)
+        with patch("active_song_state.flush_active_song_edits_and_save", create=True, return_value=True):
+            with patch("songs.state.persist_music_local_state"):
+                with patch("custom_progression_lab.on_global_display_key_change", return_value=False):
+                    mark_display_key_changed(st)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), catalog_before)
+        session["display_key"] = "Eb"
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(session.get("improv_jam_key"), "Eb")
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), catalog_before)
+
     def test_generated_key_never_mutates_catalog_practice_key(self) -> None:
         from songs.practice_key_state import creative_jam_owns_practice_settings, should_write_song_source_settings
 

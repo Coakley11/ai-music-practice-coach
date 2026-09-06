@@ -533,6 +533,25 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
     except ImportError:
         pass
     try:
+        from songs.key_state import (
+            canonical_token_for_owner_transition,
+            owner_transition_record,
+            resolve_display_key_widget_owner_id,
+        )
+
+        rec = owner_transition_record(session)
+        canonical = canonical_token_for_owner_transition(session)
+        if rec and canonical:
+            to_id = str(rec.get("to") or "").strip()
+            # Mid-restore ctx may still be entry_jam while Rec already points at Catalog.
+            if to_id.startswith("catalog"):
+                return canonical, canonical, canonical
+            current = resolve_display_key_widget_owner_id(session)
+            if to_id and current == to_id:
+                return canonical, canonical, canonical
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, creative_entry_concert_key
         from songs.key_state import PENDING_DISPLAY_KEY
 
@@ -686,6 +705,14 @@ def _resolve_chart_display_key(session: dict[str, Any], concert_key: str) -> str
 def _entry_jam_sections_dict(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
     mode = str(entry_mode or "").strip()
     if mode == "Jam Session Generator":
+        try:
+            from generated_workflow_artifact import live_jam_canonical_snapshot_for_render
+
+            snap = live_jam_canonical_snapshot_for_render(session)
+            if snap is not None and snap.section_map:
+                return copy.deepcopy(snap.section_map)
+        except ImportError:
+            pass
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict):
             raw = jam.get("sections")
@@ -1348,6 +1375,8 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
 def _entry_jam_context_from_owner_snapshot(
     session: dict[str, Any],
     snap: Any,
+    *,
+    skip_coherence: bool = False,
 ) -> BackingContext:
     from generated_workflow_artifact import GeneratedWorkflowArtifactSnapshot, concert_key_from_snapshot
 
@@ -1357,45 +1386,46 @@ def _entry_jam_context_from_owner_snapshot(
         return build_entry_jam_context(session)
     entry_mode = str(snap.entry_mode or "").strip() or "Style Jam Mode"
     concert_key = concert_key_from_snapshot(snap)
-    try:
-        from musical_context_coherence import (
-            GENERATED_OWNERS,
-            CreativeBackingHandoffBlocked,
-            raise_coherence_handoff_blocked,
-            resolve_coherent_musical_context,
-            validate_coherent_musical_context,
-            validate_generated_snapshot_coherence,
-        )
-
-        owner = str(snap.workflow_owner or "")
-        coherent = resolve_coherent_musical_context(
-            session, prefer_owners=(owner,) if owner in GENERATED_OWNERS else None
-        )
-        if coherent is not None:
-            snap_v = validate_coherent_musical_context(coherent)
-        else:
-            prog = list(snap.progression or [])
-            if not prog and snap.section_map:
-                try:
-                    from improvisation_intelligence import flatten_sections
-
-                    prog = flatten_sections(snap.section_map)
-                except ImportError:
-                    prog = [c for chs in snap.section_map.values() for c in chs if str(c).strip()]
-            snap_v = validate_generated_snapshot_coherence(
-                practice_tonic=str(snap.practice_tonic or "C"),
-                practice_mode=str(snap.practice_mode or "major"),
-                progression=prog,
-                style_id=str(snap.style or ""),
-                mood=str(snap.mood or "Mellow"),
-                owner=owner or "jam_session_generator",
+    if not skip_coherence:
+        try:
+            from musical_context_coherence import (
+                GENERATED_OWNERS,
+                CreativeBackingHandoffBlocked,
+                raise_coherence_handoff_blocked,
+                resolve_coherent_musical_context,
+                validate_coherent_musical_context,
+                validate_generated_snapshot_coherence,
             )
-        if snap_v:
-            raise_coherence_handoff_blocked(session, snap_v)
-    except CreativeBackingHandoffBlocked:
-        raise
-    except ImportError:
-        pass
+
+            owner = str(snap.workflow_owner or "")
+            coherent = resolve_coherent_musical_context(
+                session, prefer_owners=(owner,) if owner in GENERATED_OWNERS else None
+            )
+            if coherent is not None:
+                snap_v = validate_coherent_musical_context(coherent)
+            else:
+                prog = list(snap.progression or [])
+                if not prog and snap.section_map:
+                    try:
+                        from improvisation_intelligence import flatten_sections
+
+                        prog = flatten_sections(snap.section_map)
+                    except ImportError:
+                        prog = [c for chs in snap.section_map.values() for c in chs if str(c).strip()]
+                snap_v = validate_generated_snapshot_coherence(
+                    practice_tonic=str(snap.practice_tonic or "C"),
+                    practice_mode=str(snap.practice_mode or "major"),
+                    progression=prog,
+                    style_id=str(snap.style or ""),
+                    mood=str(snap.mood or "Mellow"),
+                    owner=owner or "jam_session_generator",
+                )
+            if snap_v:
+                raise_coherence_handoff_blocked(session, snap_v)
+        except CreativeBackingHandoffBlocked:
+            raise
+        except ImportError:
+            pass
     key = display_key = concert_key
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style = str(snap.style or "").strip() or "Jazz Swing"
@@ -1463,6 +1493,26 @@ def _entry_jam_context_from_owner_snapshot(
 
 
 def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
+    stored = get_backing_context(session)
+    stored_entry = str(getattr(stored, "entry_mode", "") or "") if stored is not None else ""
+    stored_src = str(getattr(stored, "source", "") or "") if stored is not None else ""
+    jam_uuid = str(session.get("_jam_session_generator_session_id") or "").strip()
+    try:
+        from generated_workflow_artifact import live_jam_canonical_snapshot_for_render
+
+        style_jam = "Style Jam" in stored_entry
+        if (not style_jam) and (
+            stored_src == "entry_jam"
+            or stored_entry == "Jam Session Generator"
+            or (jam_uuid and stored_src in {"", "entry_jam"})
+        ):
+            live_jam = live_jam_canonical_snapshot_for_render(session)
+            if live_jam is not None:
+                return _entry_jam_context_from_owner_snapshot(
+                    session, live_jam, skip_coherence=True
+                )
+    except Exception:
+        pass
     try:
         from generated_workflow_artifact import (
             BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY,
@@ -1470,9 +1520,26 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             WORKFLOW_OWNER_INTEGRITY_FAILURE,
             WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY,
             detect_cross_owner_handoff_fields,
+            live_jam_canonical_snapshot_for_render,
             peek_backing_owner_artifact_snapshot,
             validate_owner_artifact_snapshot,
         )
+
+        entry_guess = ""
+        stored_entry = ""
+        try:
+            from backing_source_navigation import resolve_entry_jam_entry_mode
+
+            entry_guess = str(resolve_entry_jam_entry_mode(session) or "").strip()
+        except ImportError:
+            entry_guess = str(session.get("improv_entry_mode") or "").strip()
+        stored = get_backing_context(session)
+        if stored is not None:
+            stored_entry = str(getattr(stored, "entry_mode", "") or "").strip()
+        if entry_guess == "Jam Session Generator" or stored_entry == "Jam Session Generator":
+            live_jam = live_jam_canonical_snapshot_for_render(session)
+            if live_jam is not None:
+                return _entry_jam_context_from_owner_snapshot(session, live_jam)
 
         snap = peek_backing_owner_artifact_snapshot(session)
         if snap is not None:
@@ -2402,7 +2469,18 @@ def apply_backing_context_to_session(
             }:
                 ident = resolve_practice_key_identity_for_ui(session)
                 if ident is not None:
-                    concert = ident.practice_key_token
+                    if str(ctx.source or "") == "entry_jam":
+                        live_jam = str(
+                            session.get("improv_jam_key")
+                            or session.get("improv_style_key")
+                            or ""
+                        ).strip()
+                        if live_jam:
+                            concert = live_jam
+                        else:
+                            concert = ident.practice_key_token
+                    else:
+                        concert = ident.practice_key_token
         except ImportError:
             pass
         # Regular catalog Backing must never demote the active-source sticky Practice Key
@@ -2418,6 +2496,19 @@ def apply_backing_context_to_session(
                     or ""
                 ).strip()
                 sticky = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+                try:
+                    from songs.key_state import (
+                        canonical_token_for_owner_transition,
+                        widget_value_is_stale_owner_transition,
+                    )
+
+                    rebound = canonical_token_for_owner_transition(session)
+                    if rebound and (
+                        not sticky or widget_value_is_stale_owner_transition(session, sticky)
+                    ):
+                        sticky = rebound
+                except ImportError:
+                    pass
                 if sticky:
                     concert = sticky
             except ImportError:
@@ -2462,6 +2553,11 @@ def apply_backing_context_to_session(
                     safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
                 else:
                     safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
+                if str(ctx.concert_key or "") != concert or str(ctx.display_key or "") != concert:
+                    ctx.concert_key = concert
+                    ctx.display_key = concert
+                    ctx.key = concert
+                    set_backing_context(session, ctx, trace_caller="apply_backing_context:jam_live_key")
             except ImportError:
                 entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
                 if entry == "Jam Session Generator":
@@ -3549,8 +3645,9 @@ def creative_nested_backing_should_override_catalog(
     """True when reboot/hydrate must rebuild Creative SBI/Mission/Jam over a stale catalog ctx.
 
     Contract: refresh/reboot keeps the same nested Backing visit. A persisted
-    ``regular_song`` blob must not win when Creative still owns Song-Based /
-    Mission / Entry Jam and the user is on the Backing page.
+    ``regular_song`` blob must not win when Creative still owns nested Custom
+    SBI. After an explicit Return to Catalog, leftover Jam/Mission tab or a
+    saved Jam UUID must not reclaim Backing — Catalog is the current owner.
     """
     if session.get("_backing_released_specialized_context"):
         return False
@@ -3577,6 +3674,28 @@ def creative_nested_backing_should_override_catalog(
         or cw.get("improv_intelligence_tab")
         or ""
     ).strip()
+    preview = str(
+        session.get("sbi_preview_source")
+        or session.get("improv_song_source")
+        or cw.get("sbi_preview_source")
+        or cw.get("improv_song_source")
+        or ""
+    ).strip()
+    nested_custom_sbi = bool(session.get(NESTED_CUSTOM_SBI_BACKING_KEY)) or (
+        "Song-Based" in entry and preview == "Custom progression"
+    )
+    ctx = get_backing_context(session)
+    ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+    pref = get_backing_source_preference(session)
+    # H4: explicit Return leaves current owner as Catalog. A saved Jam UUID,
+    # leftover Entry & Jam tab, or leftover Creative tool must not reclaim
+    # Backing. H2 stale-catalog + nested Custom SBI still overrides below.
+    if pref == BACKING_PREF_CATALOG and not nested_custom_sbi:
+        return False
+    if ctx_src == "regular_song":
+        if nested_custom_sbi:
+            return True
+        return False
     if "Song-Based" in entry or tab in {"Entry & Jam", "Entry and Jam"}:
         return True
     if tab == "Missions" or "mission" in entry.lower():
@@ -3868,6 +3987,65 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     from songs.music_source import activate_catalog_song_for_backing, resolve_catalog_pick_for_backing_restore
 
     existing_ctx = get_backing_context(session)
+    raw_blob = session.get(BACKING_CONTEXT_KEY)
+    raw_src = str(raw_blob.get("source") or "").strip() if isinstance(raw_blob, dict) else ""
+    leaving_source = str(getattr(existing_ctx, "source", "") or "").strip() if existing_ctx is not None else ""
+    if not leaving_source:
+        leaving_source = raw_src
+    handoff_src = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    if not leaving_source:
+        leaving_source = handoff_src
+    specialized_leave = leaving_source in {"entry_jam", "mission", "song_improv"} or handoff_src in {
+        "entry_jam",
+        "mission",
+        "song_improv",
+    }
+    specialized_practice_token = ""
+    if specialized_leave:
+        blob_key = ""
+        if isinstance(raw_blob, dict):
+            blob_key = str(
+                raw_blob.get("concert_key") or raw_blob.get("display_key") or raw_blob.get("key") or ""
+            ).strip()
+        specialized_practice_token = str(
+            session.get("display_key")
+            or session.get("concert_key")
+            or (getattr(existing_ctx, "concert_key", "") if existing_ctx is not None else "")
+            or (getattr(existing_ctx, "display_key", "") if existing_ctx is not None else "")
+            or (getattr(existing_ctx, "key", "") if existing_ctx is not None else "")
+            or blob_key
+            or session.get("improv_jam_key")
+            or ""
+        ).strip()
+        if specialized_practice_token:
+            session["_specialized_practice_token_leaving"] = specialized_practice_token
+    try:
+        import json
+        import os
+        import time
+
+        _dump = os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_h4_return.jsonl")
+        if _dump.strip("\\/"):
+            with open(_dump, "a", encoding="utf-8") as _fh:
+                _fh.write(
+                    json.dumps(
+                        {
+                            "ts": time.time(),
+                            "phase": "restore_regular_enter",
+                            "specialized_leave": specialized_leave,
+                            "leaving_source": leaving_source,
+                            "handoff_src": handoff_src,
+                            "token": specialized_practice_token,
+                            "display_key": session.get("display_key"),
+                            "pick": session.get("active_catalog_pick_key"),
+                            "pk_map": dict(session.get("practice_key_by_source") or {}),
+                        },
+                        default=str,
+                    )
+                    + "\n"
+                )
+    except Exception:
+        pass
     pick = str(session.get("active_catalog_pick_key") or "").strip()
     ctx_pick = ""
     if existing_ctx is not None:
@@ -3903,6 +4081,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             expire_backing_play_session(session)
         except ImportError:
             pass
+    preserved_jam_blob = None
+    try:
+        from generated_jam_key_change import copy_canonical_jam_uuid_blob
+        from generated_workflow_artifact import invalidate_jam_backing_render_snapshot
+
+        preserved_jam_blob = copy_canonical_jam_uuid_blob(session)
+        invalidate_jam_backing_render_snapshot(session)
+    except ImportError:
+        session.pop("_backing_owner_artifact_snapshot", None)
+        session.pop("_backing_handoff_entry_mode", None)
+        session.pop("_backing_creative_chart_sections", None)
     try:
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
     except Exception:
@@ -3948,9 +4137,105 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         from songs.practice_key_state import get_practice_concert_key
 
         pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if specialized_leave:
+            try:
+                resolved = resolve_catalog_pick_for_backing_restore(session, reason=reason)
+                if resolved:
+                    pick = resolved
+            except Exception:
+                pass
+            try:
+                from songs.music_source import _pick_key_is_catalog as _is_cat
+
+                if pick.startswith("creative::") or pick.startswith("generated::") or (
+                    pick and not _is_cat(pick)
+                ):
+                    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                    sel_pick = str((sel or {}).get("pick_key") or "").strip()
+                    if sel_pick:
+                        pick = sel_pick
+            except Exception:
+                if pick.startswith("creative::") or pick.startswith("generated::"):
+                    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                    pick = str((sel or {}).get("pick_key") or "").strip()
         saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
         live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        if not saved and live_dk:
+        if specialized_leave:
+            # Jam/Mission/SBI Practice Key must not become Catalog sticky PK.
+            if not saved:
+                sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                saved = str((sel or {}).get("key") or (sel or {}).get("original_key") or "").strip()
+            if not saved or saved == specialized_practice_token:
+                try:
+                    from songs.music_source import resolve_catalog_song_for_pick
+
+                    _sel, orig = resolve_catalog_song_for_pick(
+                        session, pick, authoritative_transport=True
+                    )
+                    orig = str(orig or "").strip()
+                    if orig and orig != specialized_practice_token:
+                        saved = orig
+                except Exception:
+                    pass
+            if saved and saved != specialized_practice_token:
+                try:
+                    from songs.key_state import begin_display_key_owner_transition
+
+                    begin_display_key_owner_transition(
+                        session,
+                        new_owner_id=f"catalog::{pick}" if pick else "catalog",
+                        canonical=saved,
+                        stale=live_dk or specialized_practice_token,
+                        st_like=st_like,
+                    )
+                except Exception:
+                    pass
+            if saved and pick and not pick.startswith("creative::") and not pick.startswith("generated::"):
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(
+                        session, saved, pick_key=pick, allow_restore_original=True
+                    )
+                except Exception:
+                    pass
+            if saved and saved != specialized_practice_token:
+                session["_specialized_leave_catalog_pk"] = saved
+                session["_specialized_leave_catalog_pick"] = pick
+                session["display_key"] = saved
+                session["concert_key"] = saved
+                session["_pending_display_key"] = saved
+                if st_like is not None and getattr(st_like, "session_state", None) is not None:
+                    st_like.session_state["display_key"] = saved
+                    st_like.session_state["concert_key"] = saved
+            try:
+                import json
+                import os
+                import time
+
+                _dump = os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_h4_return.jsonl")
+                if _dump.strip("\\/"):
+                    with open(_dump, "a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "ts": time.time(),
+                                    "phase": "restore_regular_after_pk",
+                                    "specialized_leave": specialized_leave,
+                                    "token": specialized_practice_token,
+                                    "pick": pick,
+                                    "saved": saved,
+                                    "sealed": session.get("_specialized_leave_catalog_pk"),
+                                    "display_key": session.get("display_key"),
+                                    "pk_map": dict(session.get("practice_key_by_source") or {}),
+                                },
+                                default=str,
+                            )
+                            + "\n"
+                        )
+            except Exception:
+                pass
+        elif not saved and live_dk:
             try:
                 from songs.practice_key_state import set_practice_concert_key
 
@@ -3958,7 +4243,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
                 saved = live_dk
             except Exception:
                 saved = live_dk
-        if reason == "switch_to_catalog_backing" and pick:
+        if specialized_leave:
+            song_tok = saved
+            if song_tok:
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, song_tok, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["_pending_display_key"] = song_tok
+                    session["concert_key"] = song_tok
+        elif reason == "switch_to_catalog_backing" and pick:
             # Same Global Active catalog pick with sticky PK: keep it.
             # Only force Original Key when this pick has no sticky override yet.
             if saved:
@@ -4036,8 +4331,31 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
                     )
                 except ImportError:
                     pass
-    except ImportError:
-        pass
+    except Exception:
+        try:
+            import json
+            import os
+            import time
+            import traceback
+
+            _dump = os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_h4_return.jsonl")
+            if _dump.strip("\\/"):
+                with open(_dump, "a", encoding="utf-8") as _fh:
+                    _fh.write(
+                        json.dumps(
+                            {
+                                "ts": time.time(),
+                                "phase": "restore_regular_pk_exc",
+                                "error": traceback.format_exc()[-2000:],
+                                "display_key": session.get("display_key"),
+                                "pick": session.get("active_catalog_pick_key"),
+                            },
+                            default=str,
+                        )
+                        + "\n"
+                    )
+        except Exception:
+            pass
     try:
         from music_workflow_activation import activate_workflow_simple
 
@@ -4082,6 +4400,20 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             save_page_snapshot(session, "backing")
         except ImportError:
             pass
+        try:
+            from generated_jam_key_change import restore_canonical_jam_uuid_blob_if_mutated
+
+            restore_canonical_jam_uuid_blob_if_mutated(session, preserved_jam_blob)
+        except ImportError:
+            pass
+        if specialized_leave:
+            session.pop("_backing_explicit_handoff_source", None)
+            try:
+                from generated_workflow_artifact import invalidate_jam_backing_render_snapshot
+
+                invalidate_jam_backing_render_snapshot(session)
+            except ImportError:
+                session.pop("_backing_owner_artifact_snapshot", None)
         return ctx
     set_backing_source_preference(session, BACKING_PREF_CATALOG)
     ctx = build_regular_song_context(session)
@@ -4093,6 +4425,20 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         save_page_snapshot(session, "backing")
     except ImportError:
         pass
+    try:
+        from generated_jam_key_change import restore_canonical_jam_uuid_blob_if_mutated
+
+        restore_canonical_jam_uuid_blob_if_mutated(session, preserved_jam_blob)
+    except ImportError:
+        pass
+    if specialized_leave:
+        session.pop("_backing_explicit_handoff_source", None)
+        try:
+            from generated_workflow_artifact import invalidate_jam_backing_render_snapshot
+
+            invalidate_jam_backing_render_snapshot(session)
+        except ImportError:
+            session.pop("_backing_owner_artifact_snapshot", None)
     return ctx
 
 

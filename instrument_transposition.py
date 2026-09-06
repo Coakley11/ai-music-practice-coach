@@ -616,17 +616,30 @@ def render_sidebar_transposing_recap(
 
     if not is_transposing_instrument(instrument):
         return
-    written = written_key_for_instrument(concert_key, instrument, st.session_state)
+    concert = str(concert_key or "").strip()
+    try:
+        from creative_key_sync import (
+            canonical_mission_practice_key,
+            mission_backing_owns_left_panel_key,
+        )
+
+        if mission_backing_owns_left_panel_key(st.session_state):
+            owned = canonical_mission_practice_key(st.session_state)
+            if owned:
+                concert = owned
+    except ImportError:
+        pass
+    written = written_key_for_instrument(concert, instrument, st.session_state)
     t_type = selected_transposing_type(st.session_state, instrument)
     show_written = chart_in_instrument_key(st.session_state)
     charts_in = charts_shown_in_key(
-        concert_key,
+        concert,
         written,
         show_in_instrument_key=show_written,
     )
     st.sidebar.markdown(
         f'<div class="ui-card soft ui-transposing-recap" style="margin:0.5rem 0;padding:0.65rem;">'
-        f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
+        f"<strong>Concert key:</strong> {html.escape(concert)}<br>"
         f"<strong>Written key:</strong> {html.escape(written)}<br>"
         f"<strong>Charts shown in:</strong> {html.escape(charts_in)}<br>"
         f"<small class=\"ui-transposing-recap-meta\">{html.escape(instrument_display_name(t_type, instrument))}</small>"

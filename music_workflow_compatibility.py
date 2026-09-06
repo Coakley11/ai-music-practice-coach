@@ -108,7 +108,23 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         record_legacy_field_read(session, "improv_jam_session", adapter="session_id")
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict) and jam.get("id"):
-            return str(jam.get("id"))
+            sid = str(jam.get("id") or "").strip()
+            if sid and sid.lower() not in {
+                "ballad",
+                "medium",
+                "light",
+                "heavy",
+                "straight",
+                "soft",
+                "intense",
+                "jam_gen",
+                "auto",
+            }:
+                session["_jam_session_generator_session_id"] = sid
+                return sid
+        stored = str(session.get("_jam_session_generator_session_id") or "").strip()
+        if stored:
+            return stored
         record_legacy_field_read(session, "improv_jam_style", adapter="session_id")
         return str(session.get("improv_jam_style") or "jam_gen").strip() or "jam_gen"
     if owner == "pending_upload_analysis":

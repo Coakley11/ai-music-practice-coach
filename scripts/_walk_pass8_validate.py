@@ -690,21 +690,59 @@ def ensure_missions_workspace(page: Page, notes: list[str]) -> bool:
     return False
 
 
-def open_mission_backing(page: Page, notes: list[str]) -> bool:
-    """Open Mission Backing only (not Song-Based Improvisation Backing)."""
-    # Mission-specific buttons only — never "Open in Backing Studio" (SBI/Jam entry).
-    clicked = (
+def _click_mission_backing_button(page: Page) -> bool:
+    """Click the Missions-page Practice-in-Jam control in the main pane only."""
+    try:
+        page.wait_for_function(
+            """() => {
+              const w = document.querySelector('[data-testid="stStatusWidget"]');
+              if (!w) return true;
+              const t = (w.innerText || '').toLowerCase();
+              return !t.includes('running');
+            }""",
+            timeout=20_000,
+        )
+    except Exception:
+        pass
+    main = page.locator('[data-testid="stMain"]')
+    patterns = (
+        r"Practice in Backing Jam",
+        r"Open Mission Backing",
+        r"▶ Practice in Backing",
+    )
+    for pat in patterns:
+        try:
+            btn = main.get_by_role("button", name=re.compile(pat, re.I))
+            if not btn.count():
+                continue
+            el = btn.last
+            el.scroll_into_view_if_needed()
+            wait(page, 400)
+            box = el.bounding_box()
+            if box:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            else:
+                el.click(timeout=5000)
+            wait(page, 2500)
+            return True
+        except Exception:
+            continue
+    return bool(
         click_button_has(page, r"Practice in Backing Jam")
         or click_button_has(page, r"Open Mission Backing")
         or click_button_has(page, r"▶ Practice in Backing")
-        or click_button_has(page, r"Backing Jam")
     )
+
+
+def open_mission_backing(page: Page, notes: list[str]) -> bool:
+    """Open Mission Backing only (not Song-Based Improvisation Backing)."""
+    # Mission-specific buttons only — never "Open in Backing Studio" (SBI/Jam entry).
+    clicked = _click_mission_backing_button(page)
     notes.append(f"mission_backing_click={clicked}")
     if not clicked:
-        # Dump visible button labels for diagnosis.
         try:
             labels = page.evaluate(
-                """() => [...document.querySelectorAll('button')]
+                """() => [...document.querySelectorAll('[data-testid="stMain"] button')]
                   .filter(b => b.offsetParent)
                   .map(b => (b.innerText||'').trim().replace(/\\s+/g,' '))
                   .filter(t => /jam|backing|mission|generate/i.test(t))
@@ -716,10 +754,13 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
         notes.append("mission_backing_no_mission_button")
         shot(page, "zz-mission-open-fail")
         return False
-    wait(page, 3500)
 
     def _is_mission_backing(body: str) -> bool:
-        if "Backing Track Studio" not in body:
+        if "Return to Mission" in body or "Creative Backing Jam · Mission" in body:
+            return True
+        if re.search(r"\bMISSION BACKING\b", body) and "Generate example" not in body:
+            return True
+        if "Backing Track Studio" not in body and not _body_has_tempo_controls(body):
             return False
         if "Song-Based Improvisation" in body and "Creative Backing Jam · Mission" not in body:
             if "MISSION BACKING" not in body and "Return to Mission" not in body:
@@ -730,22 +771,26 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             or "Creative Backing Jam · Mission" in body
         )
 
-    for attempt in range(16):
+    for attempt in range(8):
         body = page.inner_text("body") or ""
         if _is_mission_backing(body) and (
-            "Backing Track Studio" in body or _body_has_tempo_controls(body)
+            "Return to Mission" in body
+            or "Backing Track Studio" in body
+            or _body_has_tempo_controls(body)
         ):
             notes.append(f"mission_backing_landed=True attempt={attempt}")
             return True
-        # Still on Creative with sync caption — wait for deferred handoff consume.
         if "Mission context is still syncing" in body:
             notes.append(f"mission_backing_waiting_sync attempt={attempt}")
-        wait(page, 1200)
+        # First click often does not register with Streamlit; re-click from stMain.
+        _click_mission_backing_button(page)
+        wait(page, 1800)
     body = page.inner_text("body") or ""
     notes.append(
         f"mission_backing_FAILED syncing={'Mission context is still syncing' in body} "
         f"sbi={'Song-Based Improvisation' in body} "
-        f"studio={'Backing Track Studio' in body}"
+        f"studio={'Backing Track Studio' in body} "
+        f"return_mission={'Return to Mission' in body}"
     )
     shot(page, "zz-mission-open-fail-final")
     return False

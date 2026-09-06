@@ -1294,8 +1294,10 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
         return False
     try:
         from backing_context import (
+            BACKING_PREF_CATALOG,
             BACKING_PREF_CREATIVE,
             get_backing_context,
+            get_backing_source_preference,
             set_backing_source_preference,
             sync_live_keys_from_backing_context,
         )
@@ -1303,6 +1305,8 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
         return False
     ctx = get_backing_context(session)
     src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if not src and get_backing_source_preference(session) == BACKING_PREF_CATALOG:
+        src = "regular_song"
     if src == "regular_song":
         try:
             from backing_context import restore_regular_song_backing
@@ -1429,7 +1433,7 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
             # Stale specialized ctx must not survive a restore miss (song change → Catalog).
             clear_backing_context(session)
     except ImportError:
-        pass
+        src = ""
     session["_backing_released_specialized_context"] = True
     try:
         from backing_track_state import reset_backing_playback_scope_to_full_song
@@ -1439,6 +1443,7 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         pass
     # Seal live Practice Key onto the active catalog pick before ownership reconcile
     # so opening ordinary Backing cannot treat a missing sticky slot as Original Key.
+    # Do not copy a specialized Jam/Mission live token onto Catalog (H4).
     try:
         from songs.practice_key_state import (
             get_practice_concert_key,
@@ -1452,7 +1457,20 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
             or ""
         ).strip()
         live_dk = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        if pick and live_dk and not pick.startswith("custom::"):
+        jam_live = False
+        try:
+            from generated_jam_key_context import generated_jam_practice_key_tokens
+
+            jam_live = bool(live_dk and live_dk in generated_jam_practice_key_tokens(session))
+        except ImportError:
+            jam_live = bool(session.get("_specialized_practice_token_leaving") == live_dk)
+        if (
+            pick
+            and live_dk
+            and not pick.startswith("custom::")
+            and not jam_live
+            and str(session.get("_specialized_practice_token_leaving") or "") != live_dk
+        ):
             sticky = str(get_practice_concert_key(session, pick) or "").strip()
             if not sticky:
                 set_practice_concert_key(session, live_dk, pick_key=pick)
@@ -1840,6 +1858,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         pass
     # Heal: live sidebar Practice Key ahead of sticky store for this catalog pick.
     try:
+        from songs.key_state import (
+            apply_display_key_owner_transition_if_needed,
+            widget_value_is_stale_owner_transition,
+        )
         from songs.music_source import cpl_session_is_active, is_custom_progression
         from songs.practice_key_state import (
             get_practice_concert_key,
@@ -1847,14 +1869,27 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             set_practice_concert_key,
         )
 
+        apply_display_key_owner_transition_if_needed(session, st_like=st_like)
         if not (is_custom_progression(session) or cpl_session_is_active(session)):
             pick = str(
                 resolve_practice_source_pick(session) or session.get("active_catalog_pick_key") or ""
             ).strip()
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
             sticky = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+            leaving = str(
+                session.get("_specialized_practice_token_leaving")
+                or ""
+            ).strip()
+            sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+            if leaving and live == leaving:
+                live = sealed or sticky
+            if widget_value_is_stale_owner_transition(session, live):
+                live = sealed or sticky
             if pick and live and live != sticky and not pick.startswith("custom::"):
-                set_practice_concert_key(session, live, pick_key=pick)
+                if not (leaving and live == leaving) and not widget_value_is_stale_owner_transition(
+                    session, live
+                ):
+                    set_practice_concert_key(session, live, pick_key=pick)
     except ImportError:
         pass
     generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
@@ -2941,7 +2976,13 @@ def restore_session_widgets_from_backing_context(
             session["improv_mission_pick"] = ctx.mission_id
         if ctx.progression:
             chord = str(ctx.progression[0] or "").strip()
-            if chord:
+            existing = str(
+                session.get("ii_selected_chord") or session.get("II_SELECTED_CHORD") or ""
+            ).strip()
+            # Persisted Mission chord identity wins. progression[0] is only a
+            # fallback when restore has no selected chord yet — never replace
+            # transposed Em with Shape-in-Cm's first chord.
+            if chord and not existing:
                 session["ii_selected_chord"] = chord
                 session["II_SELECTED_CHORD"] = chord
         if ctx.section:

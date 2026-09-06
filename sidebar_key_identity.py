@@ -143,9 +143,39 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
     ident = resolve_sidebar_key_identity(session)
     token = ident.selector_token
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    try:
+        from h3_live_key_trace import emit
+
+        emit(
+            session,
+            "prime_sidebar",
+            ident_owner=ident.owner,
+            ident_token=token,
+            live_before=live,
+        )
+    except Exception:
+        pass
     # Catalog song surfaces: prefer per-source sticky over a stale SBI/mission blob.
-    if page in {"", "picker", "practice", "songs"} or page not in {"creative", "backing", "custom"}:
-        if str(ident.owner or "") in {"song_based_improvisation", "mission_jam"}:
+    catalog_surface = page in {"", "picker", "practice", "songs"} or page not in {
+        "creative",
+        "backing",
+        "custom",
+    }
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "regular_song":
+                catalog_surface = True
+        except Exception:
+            pass
+    if catalog_surface:
+        if str(ident.owner or "") in {
+            "song_based_improvisation",
+            "mission_jam",
+            "jam_session_generator",
+        } or page == "backing":
             sticky = ""
             try:
                 from songs.practice_key_state import (
@@ -153,12 +183,22 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
                     resolve_practice_source_pick,
                 )
 
-                pick = str(resolve_practice_source_pick(session) or "").strip()
+                pick = str(
+                    session.get("_specialized_leave_catalog_pick")
+                    or resolve_practice_source_pick(session)
+                    or ""
+                ).strip()
                 if pick:
                     sticky = str(get_practice_concert_key(session, pick) or "").strip()
             except ImportError:
                 sticky = ""
-            protect_catalog = sticky or live
+            leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+            sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+            if leaving and sticky == leaving:
+                sticky = ""
+            protect_catalog = sealed or sticky or live
+            if leaving and protect_catalog == leaving:
+                protect_catalog = sealed or sticky or ""
             if protect_catalog:
                 session["concert_key"] = protect_catalog
                 if live != protect_catalog:

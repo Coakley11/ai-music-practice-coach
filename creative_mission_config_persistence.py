@@ -305,6 +305,66 @@ def derive_default_mission_target(
     }
 
 
+def _retarget_identity_to_chord_symbol(
+    *,
+    chord: str,
+    section: str,
+    label: str,
+    chord_options: list[str],
+    section_map: list[tuple[str, list[str]]],
+    index: Any = None,
+) -> dict[str, Any] | None:
+    """Chord symbol is Mission identity. Index/options[0] must not replace it."""
+    ch = str(chord or "").strip()
+    if not ch:
+        return None
+    sec = str(section or "").strip()
+    match_idx: int | None = None
+    tokens = [str(o).strip() for o in (chord_options or [])]
+    if section_map:
+        try:
+            from improvisation_motif import flatten_section_map, section_and_chord_at_global_index
+
+            flat = [str(o).strip() for o in flatten_section_map(section_map)]
+            for i, tok in enumerate(flat):
+                if tok != ch:
+                    continue
+                exp_sec, _ = section_and_chord_at_global_index(section_map, i)
+                if not sec or str(exp_sec) == sec:
+                    match_idx = i
+                    sec = str(exp_sec or sec)
+                    break
+            if match_idx is None:
+                for i, tok in enumerate(flat):
+                    if tok == ch:
+                        match_idx = i
+                        exp_sec, _ = section_and_chord_at_global_index(section_map, i)
+                        sec = str(exp_sec or sec)
+                        break
+        except ImportError:
+            match_idx = tokens.index(ch) if ch in tokens else None
+    elif ch in tokens:
+        match_idx = tokens.index(ch)
+    if match_idx is None:
+        try:
+            keep_idx = int(index)
+        except (TypeError, ValueError):
+            keep_idx = 0
+        return {
+            "ii_selected_chord_index": keep_idx,
+            "ii_selected_chord": ch,
+            "ii_selected_section": sec,
+            "ii_selected_chord_label": str(label or "").strip()
+            or _expected_mission_chord_label(sec, ch),
+        }
+    return {
+        "ii_selected_chord_index": match_idx,
+        "ii_selected_chord": ch,
+        "ii_selected_section": sec,
+        "ii_selected_chord_label": _expected_mission_chord_label(sec, ch),
+    }
+
+
 def reconcile_mission_target_identity(
     session: dict[str, Any],
     values: dict[str, Any],
@@ -359,6 +419,35 @@ def reconcile_mission_target_identity(
             label=click_tuple.get("ii_selected_chord_label"),
         ):
             values.update({k: copy.deepcopy(click_tuple[k]) for k in MISSION_TARGET_IDENTITY_KEYS})
+            return values
+
+    persisted = str(values.get("ii_selected_chord") or "").strip()
+    if not persisted:
+        practice = session.get("improv_mission_practice_context")
+        if isinstance(practice, dict):
+            raw = practice.get("chord")
+            if isinstance(raw, dict):
+                persisted = str(raw.get("symbol") or raw.get("chord") or "").strip()
+            else:
+                persisted = str(raw or "").strip()
+        if not persisted:
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict):
+                persisted = str(click.get("chord") or "").strip()
+        label = str(values.get("ii_selected_chord_label") or "").strip()
+        if not persisted and " · " in label:
+            persisted = label.rsplit(" · ", 1)[-1].strip()
+    if persisted:
+        retargeted = _retarget_identity_to_chord_symbol(
+            chord=persisted,
+            section=str(values.get("ii_selected_section") or "").strip(),
+            label=str(values.get("ii_selected_chord_label") or "").strip(),
+            chord_options=chord_options,
+            section_map=section_map,
+            index=values.get("ii_selected_chord_index"),
+        )
+        if retargeted:
+            values.update(retargeted)
             return values
 
     candidates: list[dict[str, Any]] = []

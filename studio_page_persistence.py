@@ -76,6 +76,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "selected_sections",
             "backing_volume",
             "backing_context",
+            "_backing_source_preference",
             "_backing_explicit_handoff_source",
             "_backing_entry_class",
             "_nested_custom_sbi_backing",
@@ -135,6 +136,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_generated_sections",
             "improv_style_meta",
             "improv_jam_session",
+            "_jam_session_generator_session_id",
             "improv_motif",
             "improv_motif_output_mode",
             "improv_motif_abc",
@@ -598,6 +600,14 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
                 or ""
             ).strip()
             snap_preview = str(val or "").strip()
+            restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+            # Durable Custom click outranks leftover Follow Active + stale Active snapshots.
+            if restore_custom and snap_preview != "Custom progression":
+                continue
+            if restore_custom and snap_preview == "Custom progression":
+                session_state[key] = snap_preview
+                session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                continue
             # Do not let a stale Creative page snapshot reclaim Active Source
             # when the live/persisted SBI source is already Custom.
             if live_preview == "Custom progression" and snap_preview != live_preview:

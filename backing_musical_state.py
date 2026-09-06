@@ -142,13 +142,25 @@ def _resolve_creative_practice_concert_key(
         # Custom SBI keeps the sticky-home path below (Shape Dm must not leak onto Trial).
         creative_src = str(getattr(creative, "source", "") or "").strip()
         if creative_src == "mission":
-            live_mission = str(session.get("display_key") or "").strip()
+            live_mission = str(
+                session.get("improv_mission_concert_key")
+                or session.get("display_key")
+                or session.get("concert_key")
+                or ""
+            ).strip()
             mission_widget = ""
-            for _k, _v in list(session.items()):
-                if str(_k).startswith("display_key_mission_backing_") and str(_v or "").strip():
-                    mission_widget = str(_v).strip()
-                    break
-            chosen = mission_widget or live_mission
+            try:
+                from creative_key_sync import live_mission_backing_practice_key_widget_token
+
+                mission_widget = live_mission_backing_practice_key_widget_token(session)
+            except ImportError:
+                for _k, _v in list(session.items()):
+                    if str(_k).startswith("display_key_mission_backing") and str(_v or "").strip():
+                        mission_widget = str(_v).strip()
+                        break
+            # Canonical Mission Practice Key wins. A stale widget token must not
+            # paint the card from a previous generation or overwrite persist.
+            chosen = live_mission or mission_widget
             if chosen:
                 try:
                     from pathlib import Path
@@ -162,7 +174,6 @@ def _resolve_creative_practice_concert_key(
                     )
                 except Exception:
                     pass
-                # Keep session identity aligned with the Mission widget selection.
                 session["display_key"] = chosen
                 session["concert_key"] = chosen
                 return chosen
@@ -352,13 +363,12 @@ def resolve_current_backing_musical_state(
     practice = ""
     if creative_active and creative and str(getattr(creative, "source", "") or "") == "entry_jam":
         try:
-            from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
+            from workflow_key_identity import resolve_practice_key_identity_for_ui
 
-            if generated_workflow_owns_practice_key(session):
-                ident = resolve_active_workflow_key_identity(session)
-                if ident is not None:
-                    practice = ident.practice_key_token
-                    major_jam = ident.practice_mode != "minor"
+            ident = resolve_practice_key_identity_for_ui(session)
+            if ident is not None and str(ident.practice_key_token or "").strip():
+                practice = str(ident.practice_key_token).strip()
+                major_jam = ident.practice_mode != "minor"
         except ImportError:
             pass
     if creative_active and creative and not practice:
@@ -439,6 +449,19 @@ def resolve_current_backing_musical_state(
         if generated_workflow_owns_practice_key(session) and source_type == "entry_jam":
             ident = resolve_active_workflow_key_identity(session)
             if ident is not None:
+                try:
+                    from h3_live_key_trace import emit
+
+                    emit(
+                        session,
+                        "musical_state_pointer_overwrite",
+                        before_practice=practice,
+                        pointer_token=ident.practice_key_token,
+                        pointer_sid=ident.workflow_session_id,
+                        pointer_owner=ident.workflow_owner,
+                    )
+                except Exception:
+                    pass
                 practice = ident.practice_key_token
                 sidebar = ident.practice_key_token
                 major_jam = ident.practice_mode != "minor"

@@ -4866,6 +4866,16 @@ def activate_catalog_song_for_backing(
                 continue
             if not _pick_keys_match(snap_pick, pick_key, session_state=session):
                 continue
+            # A Jam/Mission live key captured into a catalog snapshot must not
+            # become Catalog sticky PK on Return.
+            live_specialized = str(
+                session.get("_specialized_practice_token_leaving")
+                or session.get("improv_jam_key")
+                or ""
+            ).strip()
+            orig = str(catalog_original or "").strip()
+            if snap_dk and orig and snap_dk != orig and live_specialized and snap_dk == live_specialized:
+                continue
             sticky_pk = snap_dk
             display_key = snap_dk
             try:

@@ -229,7 +229,8 @@ def render_backing_creative_context_card(
                 section_map=sm if isinstance(sm, list) else None,
                 fallback_key=str(practice_key or ctx.concert_key or "C"),
             )
-            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
+            live_selected = str(session.get("ii_selected_chord") or "").strip()
+            mission_chord = live_selected or str(proj.display_chord or proj.concert_chord or "").strip()
         except ImportError:
             mission_chord = ""
         if not mission_chord:
@@ -339,17 +340,47 @@ def render_backing_creative_context_card(
     default_style = str(ctx.style or ctx.groove or "").strip()
     default_meter = str(ctx.meter or "4/4").strip() or "4/4"
     concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")
+    if str(getattr(ctx, "source", "") or "") == "entry_jam":
+        try:
+            from h3_live_key_trace import emit
+
+            prog = ""
+            if state.chart_sections:
+                for _ch in (state.chart_sections or {}).values():
+                    if isinstance(_ch, list) and _ch:
+                        prog = " – ".join(str(c) for c in _ch[:4])
+                        break
+            elif ctx.progression:
+                prog = " – ".join(str(c) for c in list(ctx.progression)[:4])
+            emit(
+                session,
+                "card_render",
+                call_site="render_backing_creative_context_card",
+                ctx_source=str(getattr(ctx, "source", "") or ""),
+                ctx_entry=str(getattr(ctx, "entry_mode", "") or ""),
+                ctx_key=str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or ""),
+                ctx_progression=prog,
+                practice_key_arg=str(practice_key or ""),
+                state_practice=str(getattr(state, "practice_concert_key", "") or ""),
+                concert_raw=concert_raw,
+            )
+        except Exception:
+            pass
     if str(getattr(ctx, "source", "") or "") == "mission":
-        # Mission visit: live sidebar / mission widget outranks stale resolver D.
-        live_sidebar = str(session.get("display_key") or "").strip()
-        mission_widget = ""
-        for _k, _v in list(session.items()):
-            if str(_k).startswith("display_key_mission_backing_") and str(_v or "").strip():
-                mission_widget = str(_v).strip()
-                break
-        preferred = mission_widget or live_sidebar
-        if preferred:
-            concert_raw = preferred
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+
+            owned = canonical_mission_practice_key(session)
+            if owned:
+                concert_raw = owned
+        except ImportError:
+            live_sidebar = str(
+                session.get("improv_mission_concert_key")
+                or session.get("display_key")
+                or ""
+            ).strip()
+            if live_sidebar:
+                concert_raw = live_sidebar
         try:
             from pathlib import Path
 
@@ -358,7 +389,7 @@ def render_backing_creative_context_card(
             ).write_text(
                 f"practice_key={practice_key!r} state_pk={getattr(state,'practice_concert_key',None)!r} "
                 f"ctx_ck={getattr(ctx,'concert_key',None)!r} display={session.get('display_key')!r} "
-                f"mission_widget={mission_widget!r} concert_raw={concert_raw!r}\n",
+                f"canonical={concert_raw!r} widget={session.get('display_key_mission_backing')!r}\n",
                 encoding="utf-8",
             )
         except Exception:

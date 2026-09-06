@@ -26,11 +26,53 @@ __all__ = (
     "resolve_studio_page_for_restore",
     "bootstrap_studio_page_session",
     "write_canonical_studio_nav_state",
+    "_studio_page_from_blob",
+    "_studio_page_layers_from_blob",
 )
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# Startup/default pages that must not outrank a persisted current Backing visit.
+_GENERIC_STARTUP_PAGES = frozenset({"", "picker", "practice"})
+
+
+def _page_from_nav_map(src: Any) -> str:
+    if not isinstance(src, dict):
+        return ""
+    return _normalize_page(src.get("studio_page") or src.get("page")) or ""
+
+
+def _studio_page_layers_from_blob(state: dict[str, Any]) -> dict[str, str]:
+    """Collect persisted studio_page votes from a disk/cloud envelope."""
+    if not isinstance(state, dict):
+        return {}
+    inner = state.get("state") if isinstance(state.get("state"), dict) else {}
+    session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
+    if not session_extra and isinstance(inner.get("session"), dict):
+        session_extra = inner["session"]
+    core = state.get("core") if isinstance(state.get("core"), dict) else {}
+    if not core and isinstance(inner.get("core"), dict):
+        core = inner["core"]
+    ws = state.get("music_workspace_state")
+    if not isinstance(ws, dict):
+        ws = inner.get("music_workspace_state") if isinstance(inner.get("music_workspace_state"), dict) else {}
+    nav = state.get(STUDIO_NAV_STATE_KEY)
+    if not isinstance(nav, dict):
+        nav = inner.get(STUDIO_NAV_STATE_KEY) if isinstance(inner.get(STUDIO_NAV_STATE_KEY), dict) else {}
+        if not isinstance(nav, dict) and isinstance(session_extra.get(STUDIO_NAV_STATE_KEY), dict):
+            nav = session_extra[STUDIO_NAV_STATE_KEY]
+    top_page = _page_from_nav_map(state)
+    if not top_page:
+        top_page = _page_from_nav_map(inner)
+    return {
+        "workspace": _page_from_nav_map(ws),
+        "studio_nav": _page_from_nav_map(nav),
+        "session": _page_from_nav_map(session_extra) or top_page,
+        "core": _page_from_nav_map(core),
+    }
 
 
 def is_studio_nav_locally_dirty(session: dict[str, Any]) -> bool:
@@ -135,6 +177,17 @@ def write_canonical_studio_nav_state(
         "last_write_reason": reason or None,
     }
     session["studio_page"] = normalized
+    try:
+        from h3_live_key_trace import dump_studio_page_write
+
+        dump_studio_page_write(
+            session,
+            old_page=old_page,
+            new_page=normalized,
+            reason=reason or "",
+        )
+    except ImportError:
+        pass
     try:
         from music_coach_context import sync_music_coach_workspace_page
 
@@ -317,6 +370,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                     "session_page",
                     "session_page_preserved",
                     "user_nav_this_run",
+                    "persisted_session_backing",
                 ):
                     return _finish(
                         "hydrated_page_over_stale_canonical",
@@ -329,6 +383,17 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                             "restore_source": restore_source,
                         },
                     )
+            if preferred == "backing" and (not canonical or canonical in _GENERIC_STARTUP_PAGES):
+                return _finish(
+                    "persisted_backing_over_default",
+                    preferred,
+                    reason="persisted_backing_over_default",
+                    allow_detail={
+                        "canonical": canonical,
+                        "hydrated": hydrated,
+                        "live": live,
+                    },
+                )
             if canonical:
                 return _finish(
                     "canonical_post_restore",
@@ -355,6 +420,19 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                 reason="session_page_wins",
                 local_edit=True,
                 allow_detail={"restore_source": restore_source, "canonical": canonical, "live": live},
+            )
+        if live == "backing" and canonical in _GENERIC_STARTUP_PAGES:
+            return _finish(
+                "session_page_wins",
+                live,
+                reason="session_page_wins",
+                local_edit=True,
+                allow_detail={
+                    "restore_source": restore_source,
+                    "canonical": canonical,
+                    "live": live,
+                    "why": "persisted_backing_over_default_picker",
+                },
             )
         if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
             try:
@@ -465,25 +543,28 @@ def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "au
 
 
 def _studio_page_from_blob(state: dict[str, Any]) -> str:
-    if not isinstance(state, dict):
-        return ""
-    ws = state.get("music_workspace_state")
-    if isinstance(ws, dict):
-        page = _normalize_page(ws.get("studio_page") or ws.get("page"))
-        if page:
-            return page
-    meta = state.get(STUDIO_NAV_STATE_KEY)
-    if isinstance(meta, dict):
-        page = _normalize_page(meta.get("studio_page"))
-        if page:
-            return page
-    core = state.get("core") if isinstance(state.get("core"), dict) else {}
-    session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
-    for src in (core, session_extra, state):
-        if isinstance(src, dict):
-            page = _normalize_page(src.get("studio_page") or src.get("page"))
-            if page:
-                return page
+    """Authoritative persisted page for restore.
+
+    A generic picker/practice workspace default must not outrank a persisted
+    current Backing visit (session or studio_nav_state). A saved Jam UUID
+    alone is not enough — the persisted page must actually be backing.
+    """
+    layers = _studio_page_layers_from_blob(state)
+    workspace = str(layers.get("workspace") or "")
+    nav = str(layers.get("studio_nav") or "")
+    session_page = str(layers.get("session") or "")
+    core = str(layers.get("core") or "")
+    current_backing = nav == "backing" or session_page == "backing"
+    if workspace in _GENERIC_STARTUP_PAGES and current_backing:
+        return "backing"
+    if workspace:
+        return workspace
+    if nav:
+        return nav
+    if core:
+        return core
+    if session_page:
+        return session_page
     return ""
 
 
@@ -515,6 +596,11 @@ def resolve_studio_page_for_restore(
         ):
             return "creative", "creative_return_from_backing"
     blob_page = _studio_page_from_blob(blob)
+    layers = _studio_page_layers_from_blob(blob if isinstance(blob, dict) else {})
+    session_or_nav_backing = (
+        layers.get("session") == "backing" or layers.get("studio_nav") == "backing"
+    )
+    workspace_generic = str(layers.get("workspace") or "") in _GENERIC_STARTUP_PAGES
     pre = _normalize_page(pre_restore_page)
     if session.get("_studio_nav_from_history") and pre:
         return pre, "history_nav_preserved"
@@ -534,6 +620,8 @@ def resolve_studio_page_for_restore(
         return pre, "user_page_preserved"
     if pre and not blob_page:
         return pre, "session_page_preserved"
+    if session_or_nav_backing and workspace_generic and not user_owns_page:
+        return "backing", "persisted_session_backing"
     if blob_page:
         return blob_page, "workspace_blob"
     if pre:

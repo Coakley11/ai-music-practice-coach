@@ -1014,9 +1014,17 @@ def update_active_practice_key(
 ) -> MutationResult:
     """B3 — update practice key on the active owner blob only."""
     ptr = get_active_workflow_pointer(session)
+    expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
+    if expected == "jam_session_generator":
+        try:
+            from generated_jam_key_change import align_generated_workflow_pointer_for_key_edit
+
+            align_generated_workflow_pointer_for_key_edit(session, expected)
+            ptr = get_active_workflow_pointer(session)
+        except ImportError:
+            pass
     if ptr is None:
         return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
-    expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
     if expected and ptr.workflow_owner != expected:
         if source in {"on_improv_style_key_change", "on_improv_jam_key_change"}:
             try:
