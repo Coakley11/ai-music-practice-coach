@@ -894,8 +894,20 @@ def open_custom_backing_from_hub(page: Page) -> None:
             continue
     if not clicked:
         raise RuntimeError("No live custom_hub_backing button after ready")
-    if not _await_backing_studio(page, timeout_ms=30000, prefer="custom"):
-        raise RuntimeError("Custom Backing did not open after one hub click")
+    if not _await_backing_studio(page, timeout_ms=45000, prefer="custom"):
+        capture_switch_telemetry(page, "open_custom_backing:await_failed")
+        # Last-chance settle: owner badge can land one beat after prefer poll
+        # (stress7 failed with page=backing owner=custom in post-fail telemetry).
+        if (
+            _studio_page_id(page) == "backing"
+            and read_live_backing_card_owner(page) == "custom"
+        ):
+            return
+        raise RuntimeError(
+            "Custom Backing did not open after one hub click "
+            f"(page={_studio_page_id(page)!r} "
+            f"card_owner={read_live_backing_card_owner(page)!r})"
+        )
     if not await_backing_card_owner(page, "custom", timeout_ms=35000):
         raise RuntimeError(
             f"Custom Backing card owner mismatch (owner={read_live_backing_card_owner(page)!r})"
