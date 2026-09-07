@@ -942,14 +942,12 @@ def land_songs_picker(page: Page) -> bool:
         click_nav(page, "Songs")
         settle(page, 3)
         st = songs_hub_state(page)
-        picker = False
         catalog_copy = False
         try:
-            picker = page.locator('[data-testid="stMain"] [data-testid="stSelectbox"]').count() > 0
             main = page.locator('[data-testid="stMain"]').inner_text() or ""
             catalog_copy = bool(
                 re.search(
-                    r"NOW LOADED FOR PRACTICE|Choose a song from your library|SONG CATALOG|Switch active song",
+                    r"NOW LOADED FOR PRACTICE|Choose a song from your library|SONG CATALOG|Switch active song|Use catalog song instead",
                     main,
                     re.I,
                 )
@@ -963,7 +961,6 @@ def land_songs_picker(page: Page) -> bool:
             st.get("on_songs")
             or st.get("custom_hub")
             or st.get("catalog_picker_mounted")
-            or picker
             or catalog_copy
         ):
             log(f"land_songs ready attempt={attempt} hub={json.dumps(st, default=str)}")
