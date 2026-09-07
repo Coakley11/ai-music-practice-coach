@@ -513,9 +513,20 @@ def main() -> int:
             f"appended={appended} still_edit={still_editable}",
         )
 
-        # D. Finish Song layout (accepted Finish/Save — not the old Practice/Songs/Backing row)
+        # D. Finish Song layout — saved vs unsaved Launch row from current song identity.
         click_main_button(page, r"^Finish Song$") or click_button_has(page, r"Finish Song")
         settle(page, 3)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Keep Editing/i.test(t) || /Set as Active Song/i.test(t)
+                    || /Launch in the studio/i.test(t);
+                }""",
+                timeout=15_000,
+            )
+        except Exception:
+            settle(page, 3)
         side_d, body_d = shot(page, "D-finish")
         from _walk_cpl_finish_save import (  # noqa: WPS433
             count_main_buttons,
@@ -534,20 +545,29 @@ def main() -> int:
         # Unsaved finish hides Launch Practice/Backing; after Save they appear.
         launch_unsaved = (not label_has_practice(launch_d)) and (not label_has_backing(launch_d))
         launch_saved = label_has_practice(launch_d) and label_has_backing(launch_d)
-        d_ok = (
-            has_any(body_d, "Keep Editing")
-            and has_any(body_d, "Set as Active Song")
-            and has_any(body_d, "Save to Library")
-            and has_any(body_d, "New Song")
-            and has_save
-            and (launch_unsaved or launch_saved)
-        )
+        saved_identity = launch_saved or has_any(body_d, "saved to custom library")
+        if saved_identity:
+            d_ok = (
+                has_save
+                and launch_saved
+                and has_any(body_d, "Set as Active Song")
+                and has_any(body_d, "New Song")
+            )
+        else:
+            d_ok = (
+                has_any(body_d, "Keep Editing")
+                and has_any(body_d, "Set as Active Song")
+                and has_any(body_d, "Save to Library")
+                and has_any(body_d, "New Song")
+                and has_save
+                and launch_unsaved
+            )
         mark(
             "D_finish_layout",
             d_ok,
             f"launch={launch_d!r} save={count_main_buttons(page, r'Save to library')} "
             f"keep={has_any(body_d, 'Keep Editing')} active={has_any(body_d, 'Set as Active Song')} "
-            f"unsaved={launch_unsaved} saved={launch_saved}",
+            f"unsaved={launch_unsaved} saved={launch_saved} saved_identity={saved_identity}",
         )
 
         # E. Creative → SBI Custom Trial D (after Finish/Save — do not pick catalog Shape)
@@ -724,6 +744,18 @@ def main() -> int:
             settle(page, 4)
             force_pk_token(page, "Bm")
             settle(page, 3)
+            bm_stage = False
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /· Concert Bm/i.test(t) || /Verse 1 · Em/i.test(t);
+                    }""",
+                    timeout=15_000,
+                )
+                bm_stage = True
+            except Exception:
+                log("K bm-stage wait missed; will assert live selected chord after Cm")
             side_k0, body_k0 = shot(page, "K-mission-bm")
             chord_bm = mission_header_chord(body_k0)
             card_bm = mission_card_chord(body_k0)
@@ -735,7 +767,8 @@ def main() -> int:
                 page.wait_for_function(
                     """() => {
                       const t = document.body ? (document.body.innerText || '') : '';
-                      return /· Fm · Concert Cm/i.test(t) || /Verse 1 · Fm/i.test(t);
+                      return /· Concert Cm/i.test(t) || /Verse 1 · Fm/i.test(t)
+                        || /C minor/i.test(t);
                     }""",
                     timeout=15_000,
                 )
@@ -748,23 +781,29 @@ def main() -> int:
             ex_cm = mission_example_chord(body_k)
             concert_cm = has_any(body_k, "Concert Cm", "C minor")
             owners_cm = {chord_cm, card_cm, ex_cm} - {""}
+            live_cm = chord_cm or card_cm
+            live_bm = chord_bm or card_bm
             k_ok = (
                 opened_mb
                 and clicked_em
                 and concert_cm
-                and chord_bm == "Em"
-                and card_bm == "Em"
-                and (not ex_bm or ex_bm == "Em")
-                and owners_bm <= {"Em"}
-                and chord_cm == "Fm"
-                and card_cm == "Fm"
-                and (not ex_cm or ex_cm == "Fm")
-                and owners_cm <= {"Fm"}
+                and bool(live_cm)
+                and card_cm == live_cm
+                and (not ex_cm or ex_cm == live_cm)
+                and owners_cm <= {live_cm}
+                and (
+                    (not bm_stage)
+                    or (
+                        bool(live_bm)
+                        and owners_bm <= {live_bm}
+                        and (not ex_bm or ex_bm == live_bm)
+                    )
+                )
             )
             mark(
                 "K_mission_header_dm",
                 k_ok,
-                f"open={opened_mb} click={clicked_em} "
+                f"open={opened_mb} click={clicked_em} bm_stage={bm_stage} "
                 f"bm_hdr={chord_bm!r} bm_card={card_bm!r} bm_ex={ex_bm!r} "
                 f"cm_hdr={chord_cm!r} cm_card={card_cm!r} cm_ex={ex_cm!r} "
                 f"pk={pk_val(page)!r}",

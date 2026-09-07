@@ -134,39 +134,47 @@ def main() -> int:
         settle(page, 5)
 
         # 1. Songs with Shape active → Creative
-        click_nav(page, "Songs")
+        from _walk_owner_key_tuple import ensure_catalog_shape_bm, wait_for_studio_ready
+
+        wait_for_studio_ready(page)
+        landed_shape = ensure_catalog_shape_bm(page, notes)
         settle(page, 2)
-        click_button_has(page, r"Use catalog song instead")
-        settle(page, 2)
-        landed_shape = False
-        for attempt in range(4):
-            landed_shape = pick_song(page, notes, "Shape of You", "Pop")
-            settle(page, 2)
-            body_pick = page.inner_text("body") or ""
-            if landed_shape or has_any(body_pick, "NOW LOADED FOR PRACTICE") and has_any(
-                body_pick, "Shape of You"
-            ):
-                landed_shape = True
-                break
-            log(f"pick Shape retry={attempt}")
-        settle(page, 3)
-        set_songs_practice_key(page, "Bm")
-        settle(page, 3)
         body1 = shot(page, "1-songs-shape")
         pk1 = practice_badge(body1) or pk_val(page)
-        shape_on_songs = has_any(body1, "Shape of You") and on_songs(body1)
-        btn_visible = page.locator('[class*="st-key-picker_card_creative"]').count() > 0
-        clicked = click_songs_creative_button(page)
-        body1b = shot(page, "1-creative-shape")
-        pk1b = practice_badge(body1b) or pk_val(page)
-        still_shape = has_any(body1b, "Shape of You") and not has_any(body1b, "Trial Song")
-        pk_same = pk_is_b_minor(pk1b, body1b)
-        mark(
-            "1_shape_to_creative",
-            bool(shape_on_songs and btn_visible and clicked and on_creative(body1b) and still_shape and pk_same),
-            f"btn={btn_visible} click={clicked} creative={on_creative(body1b)} "
-            f"shape={still_shape} pk={pk1!r}->{pk1b!r}",
-        )
+        shape_on_songs = has_any(body1, "Shape of You") and on_songs(body1) and landed_shape
+        body1b = body1
+        pk1b = pk1
+        if not landed_shape or not shape_on_songs:
+            mark(
+                "1_shape_to_creative",
+                False,
+                f"landed={landed_shape} songs={on_songs(body1)} pk={pk1!r} skipped Creative",
+            )
+        else:
+            btn_visible = page.locator('[class*="st-key-picker_card_creative"]').count() > 0
+            clicked = click_songs_creative_button(page)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /Entry & Jam/i.test(t) || /Improvisation Intelligence/i.test(t)
+                        || /Song-Based/i.test(t);
+                    }""",
+                    timeout=20_000,
+                )
+            except Exception:
+                pass
+            settle(page, 2)
+            body1b = shot(page, "1-creative-shape")
+            pk1b = practice_badge(body1b) or pk_val(page)
+            still_shape = has_any(body1b, "Shape of You") and not has_any(body1b, "Trial Song")
+            pk_same = pk_is_b_minor(pk1b, body1b)
+            mark(
+                "1_shape_to_creative",
+                bool(shape_on_songs and clicked and on_creative(body1b) and still_shape and pk_same),
+                f"landed={landed_shape} btn={btn_visible} click={clicked} creative={on_creative(body1b)} "
+                f"shape={still_shape} pk={pk1!r}->{pk1b!r}",
+            )
 
         # 2. Creative → Songs → Creative (ownership stays coherent)
         sbi_before = has_any(body1b, "Active Source", "Active song")

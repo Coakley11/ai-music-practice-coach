@@ -813,9 +813,6 @@ def songs_hub_state(page: Page) -> dict:
                       || (/Music source/i.test(main)
                           && /Use Custom Progression/i.test(main)
                           && /Use catalog song instead/i.test(main)),
-                    on_songs: /Use catalog song instead/i.test(main)
-                      || /Switch active song/i.test(main)
-                      || (/Music source/i.test(main) && /Song Selection \\(catalog song\\)/i.test(main)),
                     on_creative: /Improvisation section/i.test(main) && /Analysis mode/i.test(main),
                     catalog_picker_mounted: /Switch active song/i.test(main) && vis(widget),
                     dropdown_visible: vis(widget),
@@ -826,6 +823,13 @@ def songs_hub_state(page: Page) -> dict:
                     ga_say: /Say/i.test(side) && /John Mayer/i.test(side),
                     ga_perfect: /Perfect/i.test(side),
                     sidebar_head: side.slice(0, 400),
+                    on_songs: /Use catalog song instead/i.test(main)
+                      || /Switch active song/i.test(main)
+                      || (/Music source/i.test(main) && /Song Selection \\(catalog song\\)/i.test(main))
+                      || /NOW LOADED FOR PRACTICE/i.test(main)
+                      || /Choose a song from your library/i.test(main)
+                      || /SONG CATALOG/i.test(main)
+                      || vis(widget),
                   };
                 }"""
             )
@@ -938,10 +942,30 @@ def land_songs_picker(page: Page) -> bool:
         click_nav(page, "Songs")
         settle(page, 3)
         st = songs_hub_state(page)
+        picker = False
+        catalog_copy = False
+        try:
+            picker = page.locator('[data-testid="stMain"] [data-testid="stSelectbox"]').count() > 0
+            main = page.locator('[data-testid="stMain"]').inner_text() or ""
+            catalog_copy = bool(
+                re.search(
+                    r"NOW LOADED FOR PRACTICE|Choose a song from your library|SONG CATALOG|Switch active song",
+                    main,
+                    re.I,
+                )
+            )
+        except Exception:
+            pass
         if st.get("on_creative"):
             log(f"land_songs still Creative attempt={attempt}")
             continue
-        if st.get("on_songs") or st.get("custom_hub") or st.get("catalog_picker_mounted"):
+        if (
+            st.get("on_songs")
+            or st.get("custom_hub")
+            or st.get("catalog_picker_mounted")
+            or picker
+            or catalog_copy
+        ):
             log(f"land_songs ready attempt={attempt} hub={json.dumps(st, default=str)}")
             return True
         log(f"land_songs attempt={attempt} state={json.dumps(st, default=str)}")
@@ -1063,6 +1087,49 @@ def custom_hub_to_catalog_song(page: Page, notes: list[str], title: str = "Shape
     }
 
 
+def ensure_catalog_shape_bm(page: Page, notes: list[str] | None = None) -> bool:
+    """Land Catalog Shape of You / B minor from Custom hub or an already-open picker."""
+    notes = notes if notes is not None else NOTES
+    if not land_songs_picker(page):
+        log("ensure_shape: never reached Songs picker")
+        return False
+    st = songs_hub_state(page)
+    log(f"ensure_shape before={json.dumps(st, default=str)}")
+    if st.get("ga_shape") and wait_shape_activation_bm(page):
+        return True
+    if st.get("custom_hub") or st.get("ga_trial"):
+        return bool(custom_hub_to_catalog_song(page, notes, "Shape of You").get("ok"))
+    clicked = pick_matching_song_once(page, "Shape of You")
+    log(f"ensure_shape pick clicked={clicked}")
+    if wait_shape_activation_bm(page):
+        return True
+    from walk_guitar_shape_key import pick_song
+
+    pick_song(page, notes, "Shape of You", "Pop")
+    settle(page, 3)
+    return wait_shape_activation_bm(page)
+
+
+def style_jam_backing_landed(body: str, side: str, pk: str = "") -> bool:
+    """True when specialized Style Jam Backing is the live page, not leftover Custom/Catalog."""
+    blob = low(f"{body} {side} {pk}")
+    on_bk = (
+        "return to creative" in blob
+        or "return to style" in blob
+        or "return to jam" in blob
+        or ("backing track studio" in blob and "tempo" in blob)
+    )
+    still_creative = "open in backing studio" in blob and "return to" not in blob
+    specialized = (
+        "style jam" in blob
+        or "entry style" in blob
+        or ("jam" in blob and "return to" in blob)
+    )
+    catalog = "shape of you" in blob and "catalog song" in blob and "return to" not in blob
+    trial = "trial song" in blob and "custom" in blob and "return to" not in blob
+    return bool(on_bk and specialized and not still_creative and not catalog and not trial)
+
+
 def wait_for_studio_ready(page: Page) -> dict:
     from walk_creative_backing_matrix import click_nav, expand_pages_nav
 
@@ -1115,6 +1182,7 @@ def main() -> int:
         expand_sidebar,
         goto_improv,
         set_instrument,
+        wait_for_backing,
         wait_idle,
     )
     from walk_guitar_shape_key import pick_song
@@ -1340,6 +1408,17 @@ def main() -> int:
             settle(page, 2)
             click_radio(page, "Style Jam") or click_button_has(page, r"Style Jam Mode")
             settle(page, 2)
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      return /STYLE JAM MODE/i.test(t) && /Generate progression/i.test(t);
+                    }""",
+                    timeout=15_000,
+                )
+            except Exception:
+                click_radio(page, "Style Jam") or click_button_has(page, r"Style Jam Mode")
+                settle(page, 3)
             set_style_jam_concert_key(page, "C#") or set_style_jam_concert_key(page, "C# major")
             settle(page, 2)
             concert_ok = False
@@ -1364,70 +1443,97 @@ def main() -> int:
                     f"setter_harness live={live_jam!r} skipped_generate",
                 )
             else:
-                click_button_has(page, r"Generate progression")
-                try:
-                    page.wait_for_function(
-                        """() => {
-                          const t = document.body ? (document.body.innerText || '') : '';
-                          return /Generated\\b/i.test(t)
-                            && /Open in Backing Studio/i.test(t)
-                            && (/C#\\s*major/i.test(t) || /C sharp major/i.test(t));
-                        }""",
-                        timeout=20_000,
-                    )
-                except Exception:
+                gen_heading = ""
+                for _gen in range(3):
                     click_button_has(page, r"Generate progression")
-                    settle(page, 5)
+                    settle(page, 4)
+                    try:
+                        page.wait_for_function(
+                            """() => {
+                              const t = document.body ? (document.body.innerText || '') : '';
+                              return /Generated\\b/i.test(t) && /Open in Backing Studio/i.test(t);
+                            }""",
+                            timeout=20_000,
+                        )
+                    except Exception:
+                        pass
+                    body_gen = page.inner_text("body") or ""
+                    m_gen = re.search(r"Generated[^\n]*", body_gen)
+                    gen_heading = (m_gen.group(0) if m_gen else "")[:240]
+                    log(f"jam_generate heading={gen_heading!r}")
+                    if has_c_sharp_major(gen_heading) or has_c_sharp_major(body_gen):
+                        break
+                    set_style_jam_concert_key(page, "C#") or set_style_jam_concert_key(
+                        page, "C# major"
+                    )
+                    settle(page, 2)
                 opened_jam = click_button_has(page, r"Open in Backing Studio") or click_open_backing_studio(
                     page, NOTES, "jam-c#"
                 )
-                settle(page, 4)
+                landed_jam = wait_for_backing(page, NOTES, "jam-c#")
+                settle(page, 3)
                 side, body = shot(page, "06-style-jam-backing")
-                jam_c = has_c_sharp_major(body + side) or "c#" in low(pk_val(page) or "") or "c#" in low(body)
+                pk_jam = pk_val(page) or ""
+                landed_specialized = style_jam_backing_landed(body, side, pk_jam)
+                jam_c = (
+                    landed_jam
+                    and landed_specialized
+                    and (
+                        has_c_sharp_major(body + side)
+                        or "c#" in low(pk_jam)
+                        or "c#" in low(body)
+                    )
+                )
                 mark(
                     "4_style_jam_c_sharp",
                     "PASS" if jam_c else "RED",
-                    f"backing={opened_jam} set={concert_ok} live={live_jam!r} pk={pk_val(page)}",
+                    f"backing={opened_jam} landed={landed_jam} spec={landed_specialized} "
+                    f"set={concert_ok} live={live_jam!r} gen={gen_heading!r} pk={pk_jam}",
                 )
 
         click_nav(page, "Songs")
         settle(page, 3)
-        pick_song(page, NOTES, "Shape of You", "Pop")
-        settle(page, 4)
+        shape_ok = ensure_catalog_shape_bm(page, NOTES)
+        settle(page, 2)
         side, body = shot(page, "07-songs-shape-after-jam")
         combined = body + side
         no_leak = not has_c_sharp_major(combined)
         sidebar_bm = is_b_minor(pk_val(page) or "") or is_b_minor(pk_label(side) or "")
-        shape_fresh = has_any(side, "Shape of You") and sidebar_bm
+        shape_fresh = has_any(side, "Shape of You") and sidebar_bm and shape_ok
         mark(
             "4_shape_bm_after_jam",
             "PASS" if shape_fresh and no_leak else "RED",
-            f"pk={pk_label(side)!r} sidebar={pk_val(page)!r} c#={not no_leak}",
+            f"land={shape_ok} pk={pk_label(side)!r} sidebar={pk_val(page)!r} c#={not no_leak}",
         )
 
         # 8. SBI Active coherent tuple — Active Source after explicit Shape.
+        if not shape_ok:
+            shape_ok = ensure_catalog_shape_bm(page, NOTES)
         ok_sbi = open_sbi_active(page)
         landed_active = False
         for attempt in range(4):
             click_sbi_song_source(page, "active")
             settle(page, 2)
-            try:
-                page.wait_for_function(
-                    """() => {
-                      const t = document.body ? (document.body.innerText || '') : '';
-                      const low = t.toLowerCase();
-                      const shape = /Shape of You/i.test(t);
-                      const bm = /B minor/i.test(t) || /practice concert key:\\s*bm/i.test(low);
-                      const custom_trial = /trial song/i.test(t)
-                        && /practice concert key:\\s*d\\b/.test(low);
-                      return shape && bm && !custom_trial;
-                    }""",
-                    timeout=10_000,
-                )
-                landed_active = True
-                break
-            except Exception:
-                log(f"sbi active wait attempt={attempt}")
+            if wait_sbi_tuple(page, source="active", title="Shape of You", timeout_ms=12_000):
+                try:
+                    page.wait_for_function(
+                        """() => {
+                          const t = document.body ? (document.body.innerText || '') : '';
+                          const low = t.toLowerCase();
+                          const shape = /Shape of You/i.test(t);
+                          const bm = /B minor/i.test(t) || /practice concert key:\\s*bm/i.test(low);
+                          const custom_trial = /trial song/i.test(t)
+                            && /practice concert key:\\s*d\\b/.test(low);
+                          return shape && bm && !custom_trial;
+                        }""",
+                        timeout=10_000,
+                    )
+                    landed_active = True
+                    break
+                except Exception:
+                    log(f"sbi active identity wait attempt={attempt}")
+            else:
+                log(f"sbi active radio wait attempt={attempt} state={sbi_source_state(page)!r}")
         side, body = shot(page, "08-sbi-active-shape")
         combined = body + side
         card_shape = has_any(body, "Shape of You") and (

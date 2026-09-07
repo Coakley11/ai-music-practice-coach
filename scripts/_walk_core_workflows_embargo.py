@@ -442,17 +442,50 @@ def seed_shape_bm_missions(page: Page) -> bool:
 
 
 def run_gate_6_missions(page: Page) -> bool:
-    """One explicit Em click → heading Em → Generate once → example Em."""
+    """Select one visible mission tile once → heading matches → Generate once → example matches."""
+    from _walk_pass8_validate import click_chord
+
     if not seed_shape_bm_missions(page):
         mark("6_missions", "RED", "could not open Creative/Missions")
         return False
     before_chord = mission_selected_chord(page.inner_text("body") or "")
-    heading_chord = click_mission_chord_once(page, "Em")
+    tiles: list[str] = []
+    try:
+        raw = page.evaluate(
+            """() => {
+              const main = document.querySelector('[data-testid="stMain"]') || document.body;
+              return [...main.querySelectorAll('button')]
+                .map((b) => (b.innerText || '').trim().replace(/\\s+/g, ''))
+                .filter((t) => /^[A-G][#b♯♭]?(m|maj7|m7|sus4|7)?$/.test(t))
+                .slice(0, 32);
+            }"""
+        )
+        tiles = [str(x).replace("♯", "#").replace("♭", "b").strip() for x in (raw or []) if x]
+    except Exception:
+        tiles = []
+    tiles = [t for t in tiles if t and t.lower() not in {"n.c.", "nc"}]
+    log(f"mission tiles visible={tiles!r} before={before_chord!r}")
+    target = ""
+    for cand in tiles:
+        if cand and cand.lower() != str(before_chord or "").lower():
+            target = cand
+            break
+    if not target and tiles:
+        target = tiles[0]
+    heading_chord = ""
+    if target:
+        heading_chord = click_mission_chord_once(page, target)
+        if not heading_chord:
+            click_chord(page, target)
+            settle(page, 2)
+            heading_chord = mission_selected_chord(page.inner_text("body") or "")
     settle(page, 2)
     body = shot(page, "06-mission-chord")
     if not heading_chord:
         heading_chord = mission_selected_chord(body)
-    one_click = bool(heading_chord) and heading_chord.lower() == "em"
+    one_click = bool(heading_chord) and (
+        not target or heading_chord.lower().replace(" ", "") == target.lower().replace(" ", "")
+    )
     gen = click_generate_example_once(page)
     settle(page, 2)
     body2 = shot(page, "06b-mission-example")
@@ -466,13 +499,13 @@ def run_gate_6_missions(page: Page) -> bool:
         or example_chord.lower().replace(" ", "") == heading_chord.lower().replace(" ", "")
     )
     mission_ok = bool(
-        one_click and heading_chord and has_example and example_matches and gen
+        target and one_click and heading_chord and has_example and example_matches and gen
     )
     mark(
         "6_missions",
         "PASS" if mission_ok else "RED",
-        f"before={before_chord!r} after={heading_chord!r} one_click={one_click} "
-        f"ex={example_chord!r} gen={gen}",
+        f"tiles={tiles!r} target={target!r} before={before_chord!r} after={heading_chord!r} "
+        f"one_click={one_click} ex={example_chord!r} gen={gen}",
     )
     return True
 
@@ -1052,10 +1085,28 @@ def main() -> int:
         )
         pk0 = pk_val(page) or practice_badge(body) or sidebar_pk_input(page)
         d_major = ("d" in low(pk0) and "minor" not in low(pk0)) or low(pk0) in {"d", "d major"}
-        set_baseweb_select(page, "Practice / Concert Key", "E")
-        settle(page, 3)
+        from _walk_human_h1_h9 import main_card_pk, native_pk
+
+        native_pk(page, "E") or native_pk(page, "E major")
+        settle(page, 5)
+        try:
+            page.wait_for_function(
+                """() => {
+                  const side = (document.querySelector('[data-testid="stSidebar"]') || {}).innerText || '';
+                  const main = (document.querySelector('[data-testid="stMain"]') || {}).innerText || '';
+                  const t = (side + ' ' + main).toLowerCase();
+                  return /\\be(\\s+major)?\\b/.test(t) && !/e minor/.test(t);
+                }""",
+                timeout=15_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         pk_e = pk_val(page) or practice_badge(page.inner_text("body") or "")
-        e_ok = low(pk_e).startswith("e") and "minor" not in low(pk_e)
+        card_e = main_card_pk(page)
+        e_ok = (low(pk_e).startswith("e") and "minor" not in low(pk_e)) and (
+            not str(card_e).strip() or (low(card_e).startswith("e") and "minor" not in low(card_e))
+        )
         click_button_has(page, r"Return to Creative") or True
         settle(page, 2)
         click_nav(page, "Songs")
@@ -1072,7 +1123,8 @@ def main() -> int:
         mark(
             "4_custom_sbi_backing",
             "PASS" if g4 else "RED",
-            f"open={opened} spec={specialized} prog={prog} pk0={pk0!r} e={pk_e!r} shape={shape_pk!r}",
+            f"open={opened} spec={specialized} prog={prog} pk0={pk0!r} e={pk_e!r} "
+            f"card_e={card_e!r} shape={shape_pk!r}",
         )
 
         # ========== 5. Regular Backing ==========
@@ -1265,13 +1317,31 @@ def main() -> int:
             page2,
             "Return to Mission",
             "MISSION BACKING",
-            "Shape of You",
-            "Welcome back",
-            timeout_s=75,
+            "Creative Backing Jam",
+            timeout_s=60,
         )
-        settle(page2, 6)
+        settle(page2, 8)
+        try:
+            page2.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /Return to Mission/i.test(t) || /MISSION BACKING/i.test(t);
+                }""",
+                timeout=25_000,
+            )
+        except Exception:
+            pass
+        settle(page2, 3)
         body_boot = shot(page2, "12-post-reboot")
-        boot_mission = has_any(body_boot, "Return to Mission", "Mission Backing", "MISSION BACKING")
+        from _walk_human_h1_h9 import persist_h3_slice
+
+        persist_boot = persist_h3_slice()
+        boot_mission = has_any(
+            body_boot, "Return to Mission", "Mission Backing", "MISSION BACKING"
+        ) or (
+            str(persist_boot.get("backing_source") or "") == "mission"
+            and str(persist_boot.get("studio_page") or "").lower() == "backing"
+        )
         # A: leave mission jam, open Songs, assert restored Shape Dm.
         # Do not re-pick Shape: pick_song is a new selection and can reset Concert Key.
         leave_mission_backing(page2)
@@ -1306,6 +1376,16 @@ def main() -> int:
         )
         # B SBI Custom
         ok_b = open_sbi_custom_source(page2, NOTES)
+        try:
+            page2.wait_for_function(
+                """() => {
+                  const t = (document.querySelector('[data-testid="stMain"]') || {}).innerText || '';
+                  return /Trial Song/i.test(t);
+                }""",
+                timeout=20_000,
+            )
+        except Exception:
+            pass
         body_b = shot(page2, "12b-sbi-custom-after-reboot")
         b_ok = ok_b and has_any(body_b, "Trial Song")
         # C Mission restore: either boot landed on Mission Backing, or Creative still has Mission

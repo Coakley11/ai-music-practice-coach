@@ -117,6 +117,28 @@ def song_source_labels(page: Page) -> list[str]:
         return []
 
 
+def wait_sbi_active_shape(page: Page, timeout_s: float = 20.0) -> bool:
+    """Wait until Active Source has committed Shape / Bm — not leftover Custom Trial."""
+    from _walk_owner_key_tuple import sbi_source_state
+
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        radio = sbi_source_state(page)
+        try:
+            main = page.locator('[data-testid="stMain"]').inner_text() or ""
+        except Exception:
+            main = page.inner_text("body") or ""
+        t = low(main)
+        shape = "shape of you" in t
+        bm = "b minor" in t or bool(re.search(r"practice concert key:\s*bm", t))
+        catalog = "active song · song selection" in t or "catalog song" in t
+        trial = "trial song" in t and "custom progression" in t
+        if radio == "active" and shape and bm and catalog and not trial:
+            return True
+        settle(page, 1.2)
+    return False
+
+
 def wait_sbi_card(page: Page, *needles: str, timeout_s: float = 20.0) -> bool:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -287,20 +309,26 @@ def main() -> int:
         body_e0 = shot(page, "E0-return-creative")
         open_sbi_active(page)
         settle(page, 3)
-        if not wait_sbi_card(page, "Active song · Song Selection", timeout_s=8.0):
+        if not wait_sbi_active_shape(page, timeout_s=12.0):
             try:
-                custom = page.get_by_role("radio", name=re.compile(r"Custom Progression", re.I))
-                if custom.count():
-                    custom.last.focus()
-                    page.keyboard.press("ArrowLeft")
+                lab = page.locator('[role="radiogroup"] label').filter(
+                    has_text=re.compile(r"^Active Source$", re.I)
+                )
+                if lab.count():
+                    el = lab.first
+                    el.scroll_into_view_if_needed()
+                    el.hover(timeout=2000)
+                    el.click(timeout=4000, force=False)
                     settle(page, 4)
             except Exception as exc:
-                log(f"active ArrowLeft err {exc!r}")
-            open_sbi_active(page)
-            wait_sbi_card(page, "Active song · Song Selection", timeout_s=12.0)
+                log(f"active label click err {exc!r}")
+            click_radio(page, "Active Source") or click_radio(page, "Active song")
+            settle(page, 3)
+            wait_sbi_active_shape(page, timeout_s=16.0)
         click_open_backing_studio(page, NOTES, "active") or click_button_has(page, r"Open in Backing")
         wait_for_backing(page, NOTES, "active")
         settle(page, 4)
+        wait_sbi_card(page, "Shape of You", timeout_s=12.0)
         body_b = shot(page, "B-active-backing")
         title_b = blue_card_title(page)
         catalog_ok = card_ok(title_b or body_b, song="Shape of You", kind="Catalog song")
@@ -325,9 +353,11 @@ def main() -> int:
         settle(page, 3)
         open_sbi_active(page)
         settle(page, 2)
+        wait_sbi_active_shape(page, timeout_s=16.0)
         click_open_backing_studio(page, NOTES, "e-active") or click_button_has(page, r"Open in Backing")
         wait_for_backing(page, NOTES, "e-active")
         settle(page, 3)
+        wait_sbi_card(page, "Shape of You", timeout_s=12.0)
         title_e2 = blue_card_title(page)
         body_e2 = shot(page, "E-switch-active")
         switch_active = card_ok(title_e2 or body_e2, song="Shape of You", kind="Catalog song")
