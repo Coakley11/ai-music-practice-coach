@@ -253,6 +253,19 @@ def adopt_restore_sbi_custom_stamp(session: dict[str, Any]) -> bool:
     return False
 
 
+def clear_restore_sbi_custom_source(session: dict[str, Any]) -> None:
+    """Drop a Custom restore stamp from session and the Creative blob.
+
+    An explicit later Active Source click must clear both copies. Leaving the
+    blob stamp lets ``adopt_restore_sbi_custom_stamp`` re-arm Custom on the
+    next run and seed the radio back to Custom.
+    """
+    session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+
+
 def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> None:
     """Stamp a genuine Custom/Composition click so Follow Active cannot heal it."""
     src = str(source or "").strip()
@@ -1567,6 +1580,7 @@ __all__ = [
     "SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY",
     "SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY",
     "adopt_restore_sbi_custom_stamp",
+    "clear_restore_sbi_custom_source",
     "apply_sbi_radio_live_against_restore_stamp",
     "seed_sbi_custom_radio_before_render",
     "bind_sbi_preview_to_active_after_explicit_catalog",

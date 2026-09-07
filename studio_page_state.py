@@ -417,7 +417,12 @@ def apply_improv_song_source(
         session_state[PENDING_IMPROV_SONG_SOURCE] = src
         if src == "Active song":
             session_state.pop("_sbi_custom_visit_pk", None)
-            session_state.pop("_restore_sbi_custom_source", None)
+            try:
+                from source_session_state import clear_restore_sbi_custom_source
+
+                clear_restore_sbi_custom_source(session_state)
+            except ImportError:
+                session_state.pop("_restore_sbi_custom_source", None)
         elif src == "Custom progression":
             session_state["_restore_sbi_custom_source"] = True
         elif src == "Composition":
@@ -433,7 +438,12 @@ def apply_improv_song_source(
         pass
     if src == "Active song":
         session_state.pop("_sbi_custom_visit_pk", None)
-        session_state.pop("_restore_sbi_custom_source", None)
+        try:
+            from source_session_state import clear_restore_sbi_custom_source
+
+            clear_restore_sbi_custom_source(session_state)
+        except ImportError:
+            session_state.pop("_restore_sbi_custom_source", None)
     elif src == "Custom progression":
         session_state["_restore_sbi_custom_source"] = True
     elif src == "Composition":
@@ -511,8 +521,13 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
     ):
         # Explicit Active click — leftover pending Custom/Composition must not win.
         pending = ""
-        session_state.pop("_restore_sbi_custom_source", None)
         session_state.pop("_explicit_sbi_source_click", None)
+        try:
+            from source_session_state import clear_restore_sbi_custom_source
+
+            clear_restore_sbi_custom_source(session_state)
+        except ImportError:
+            session_state.pop("_restore_sbi_custom_source", None)
     elif (
         pending == "Active song"
         and live_now in {"Custom progression", "Composition"}
@@ -521,8 +536,23 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
     ):
         # Snapshot/canonical restored Custom over an Active click; pending Active wins.
         session_state["improv_song_source"] = "Active song"
-        session_state.pop("_restore_sbi_custom_source", None)
         session_state.pop("_explicit_sbi_source_click", None)
+        try:
+            from source_session_state import clear_restore_sbi_custom_source
+
+            clear_restore_sbi_custom_source(session_state)
+        except ImportError:
+            session_state.pop("_restore_sbi_custom_source", None)
+    if pending == "Active song":
+        # Explicit Active click outranks a leftover Custom restore stamp, even
+        # when the widget is already Active so the branch above does not fire.
+        session_state.pop("_explicit_sbi_source_click", None)
+        try:
+            from source_session_state import clear_restore_sbi_custom_source
+
+            clear_restore_sbi_custom_source(session_state)
+        except ImportError:
+            session_state.pop("_restore_sbi_custom_source", None)
     if pending:
         try:
             from session_widget_safe import safe_session_assign

@@ -142,6 +142,195 @@ class TestH2SbiCustomRefreshOutranksFollowActive(unittest.TestCase):
         self.assertEqual(session.get("improv_song_source"), "Custom progression")
         self.assertEqual(get_sbi_preview_source(session), "Custom progression")
 
+    def test_flush_pending_active_clears_stale_custom_restore_stamp(self) -> None:
+        from source_session_state import seed_sbi_custom_radio_before_render
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            PENDING_IMPROV_SONG_SOURCE: "Active song",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "creative_workspace_state": {
+                RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+                "sbi_preview_source": "Custom progression",
+            },
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+        self.assertFalse(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        blob = session.get("creative_workspace_state") or {}
+        self.assertFalse(blob.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        self.assertEqual(seed_sbi_custom_radio_before_render(session), "Active song")
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
+    def test_next_rerun_cannot_readopt_cleared_custom_stamp(self) -> None:
+        from source_session_state import (
+            adopt_restore_sbi_custom_stamp,
+            seed_sbi_custom_radio_before_render,
+        )
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            PENDING_IMPROV_SONG_SOURCE: "Active song",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "creative_workspace_state": {RESTORE_SBI_CUSTOM_SOURCE_KEY: True},
+        }
+        flush_pending_improv_song_source(session)
+        self.assertFalse(adopt_restore_sbi_custom_stamp(session))
+        self.assertEqual(seed_sbi_custom_radio_before_render(session), "Active song")
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
+    def test_explicit_custom_click_still_stamps_session_and_blob(self) -> None:
+        session = {
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "creative_workspace_state": {},
+        }
+        note_explicit_sbi_source_selection(session, "Custom progression")
+        self.assertEqual(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY), True)
+        blob = session.get("creative_workspace_state") or {}
+        self.assertTrue(blob.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
+    def test_active_custom_cycle_one_transition_each(self) -> None:
+        from studio_page_state import apply_improv_song_source
+
+        session = {
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            "creative_workspace_state": {RESTORE_SBI_CUSTOM_SOURCE_KEY: True},
+        }
+
+        def _noop(_sess: dict) -> None:
+            return None
+
+        apply_improv_song_source(
+            session, "Active song", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertFalse(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        self.assertFalse((session.get("creative_workspace_state") or {}).get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+
+        apply_improv_song_source(
+            session, "Custom progression", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        self.assertEqual(session.get("sbi_preview_source"), "Custom progression")
+        self.assertTrue(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        self.assertTrue((session.get("creative_workspace_state") or {}).get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+
+        apply_improv_song_source(
+            session, "Active song", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertFalse(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+
+        apply_improv_song_source(
+            session, "Custom progression", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        self.assertEqual(session.get("sbi_preview_source"), "Custom progression")
+        self.assertTrue(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+
+    def test_composition_remains_a_distinct_third_source(self) -> None:
+        from studio_page_state import apply_improv_song_source
+
+        session = {
+            "improv_song_source": "Custom progression",
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            "creative_workspace_state": {RESTORE_SBI_CUSTOM_SOURCE_KEY: True},
+        }
+
+        def _noop(_sess: dict) -> None:
+            return None
+
+        apply_improv_song_source(
+            session, "Composition", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(session.get("sbi_preview_source"), "Composition")
+        self.assertFalse(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        self.assertNotEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertNotEqual(session.get("improv_song_source"), "Active song")
+
+    def test_refresh_after_active_keeps_active_not_custom(self) -> None:
+        from source_session_state import seed_sbi_custom_radio_before_render
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            PENDING_IMPROV_SONG_SOURCE: "Active song",
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+            "_sbi_song_source_hydrated": True,
+            "creative_workspace_state": {RESTORE_SBI_CUSTOM_SOURCE_KEY: True},
+        }
+        flush_pending_improv_song_source(session)
+        remount = {
+            "improv_song_source": "Active song",
+            "sbi_preview_source": session.get("sbi_preview_source"),
+            "_last_improv_song_source": session.get("_last_improv_song_source"),
+            "_sbi_song_source_hydrated": False,
+            "creative_workspace_state": dict(session.get("creative_workspace_state") or {}),
+        }
+        flush_pending_improv_song_source(remount)
+        self.assertEqual(seed_sbi_custom_radio_before_render(remount), "Active song")
+        self.assertEqual(remount.get("improv_song_source"), "Active song")
+        self.assertFalse(remount.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+
+    def test_refresh_after_explicit_custom_still_restores_custom(self) -> None:
+        from source_session_state import seed_sbi_custom_radio_before_render
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            "studio_page": "creative",
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            "sbi_preview_source": "Custom progression",
+            "improv_song_source": "Active song",
+            "_sbi_song_source_hydrated": False,
+            "creative_workspace_state": {
+                RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+                "sbi_preview_source": "Custom progression",
+            },
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(seed_sbi_custom_radio_before_render(session), "Custom progression")
+
+    def test_last_custom_trial_survives_when_active_wins(self) -> None:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+        from studio_page_state import apply_improv_song_source
+
+        trial = {
+            "name": "Trial Song",
+            "active": {"name": "Trial Song", "original_key_center": "D"},
+        }
+        session = {
+            LAST_CUSTOM_STATE_KEY: trial,
+            "improv_song_source": "Custom progression",
+            RESTORE_SBI_CUSTOM_SOURCE_KEY: True,
+            "creative_workspace_state": {RESTORE_SBI_CUSTOM_SOURCE_KEY: True},
+        }
+
+        def _noop(_sess: dict) -> None:
+            return None
+
+        apply_improv_song_source(
+            session, "Active song", set_catalog_source=_noop, set_custom_source=_noop
+        )
+        snap = session.get(LAST_CUSTOM_STATE_KEY) or {}
+        self.assertEqual(snap.get("name"), "Trial Song")
+        self.assertEqual((snap.get("active") or {}).get("original_key_center"), "D")
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+
     def test_remounted_active_radio_cannot_pop_restore_stamp(self) -> None:
         from source_session_state import apply_sbi_radio_live_against_restore_stamp
 
