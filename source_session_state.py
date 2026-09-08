@@ -1290,16 +1290,6 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     leftover = str(session.get("cpl_last_display_key") or "").strip()
     if leftover:
         custom_tokens.add(leftover)
-    try:
-        from custom_progression_lab import default_active_progression
-
-        shell_home = str(
-            (default_active_progression() or {}).get("original_key_center") or ""
-        ).strip()
-        if shell_home:
-            custom_tokens.add(shell_home)
-    except Exception:
-        pass
     last_visit = str(session.get("_sbi_custom_last_visit_pk") or "").strip()
     if last_visit:
         custom_tokens.add(last_visit)
