@@ -1154,22 +1154,32 @@ def main() -> int:
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 2)
         # Re-assert Shape sticky Dm after Custom SBI key work (must not become D major).
-        # Do not immediately click Dm: a leftover C/E token in the closed widget can be
-        # confirmed as a Songs edit. Wait for the sealed catalog heal to remount Dm.
+        # First paint may still show Original Bm or leftover C; wait for Catalog Shape
+        # to own the page, then one Songs PK click. Do not re-pick Shape in the loop.
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /NOW LOADED FOR PRACTICE[\\s\\S]{0,80}Shape of You/i.test(t)
+                    && /SOURCE\\s*\\n\\s*Catalog Song/i.test(t);
+                }""",
+                timeout=12_000,
+            )
+        except Exception:
+            pass
+        settle(page, 2)
         shape_pk = ""
-        for attempt in range(6):
+        for attempt in range(3):
+            set_songs_practice_key(page, "Dm")
+            settle(page, 2)
             try:
                 page.wait_for_function(
                     """() => {
                       const t = document.body ? (document.body.innerText || '') : '';
-                      const shape = /NOW LOADED FOR PRACTICE[\\s\\S]{0,80}Shape of You/i.test(t)
-                        || /Shape of You/i.test(t);
-                      const catalog = /SOURCE\\s*\\n\\s*Catalog Song/i.test(t);
-                      const dm = /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
+                      return /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
                         || /Practice concert key:\\s*D\\s+minor/i.test(t);
-                      return shape && catalog && dm;
                     }""",
-                    timeout=6_000,
+                    timeout=8_000,
                 )
             except Exception:
                 pass
@@ -1178,19 +1188,6 @@ def main() -> int:
             log(f"4_shape_isolation attempt={attempt} badge={shape_pk!r}")
             if "d minor" in low(shape_pk):
                 break
-            if attempt in {1, 3}:
-                click_nav(page, "Songs")
-                settle(page, 2)
-                pick_song(page, NOTES, "Shape of You", "Pop")
-                settle(page, 2)
-            else:
-                settle(page, 2)
-        if "d minor" not in low(shape_pk):
-            # Last resort only after heal had a chance; never the first action.
-            set_songs_practice_key(page, "Dm")
-            settle(page, 2)
-            body_s = shot(page, "04b-shape-isolation")
-            shape_pk = practice_badge(body_s)
         shape_still_dm = "d minor" in low(shape_pk)
         g4 = bool(opened and specialized and prog and d_major and e_ok and shape_still_dm)
         mark(
