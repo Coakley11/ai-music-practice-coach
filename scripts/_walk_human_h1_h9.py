@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -471,6 +472,98 @@ def native_pk(page: Page, token: str) -> bool:
             except Exception:
                 pass
     return False
+
+
+def pointer_pick_sidebar_pk_e(page: Page) -> dict:
+    """One pointer click on sidebar Practice Key option E / E major. No keyboard."""
+    info = {"found": False, "opened": False, "clicked": False, "option": "", "via": ""}
+    expand_sidebar(page)
+    page.wait_for_timeout(300)
+    combo = page.locator(
+        'section[data-testid="stSidebar"] input[aria-label="Practice / Concert Key"]'
+    )
+    if combo.count() == 0:
+        combo = page.get_by_role("combobox", name="Practice / Concert Key")
+    if combo.count() == 0:
+        return info
+    el = combo.first
+    el.scroll_into_view_if_needed()
+    page.wait_for_timeout(250)
+    box = el.bounding_box()
+    info["found"] = True
+    if not box:
+        return info
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    info["opened"] = True
+    page.wait_for_timeout(500)
+    try:
+        page.wait_for_selector('[role="listbox"], [data-baseweb="menu"]', timeout=6000)
+    except Exception:
+        return info
+
+    def _is_e_major_option(text: str) -> bool:
+        t = re.sub(r"\s+", " ", (text or "").strip().lower()).replace("♯", "#").replace("♭", "b")
+        if not t:
+            return False
+        if "minor" in t or "e#" in t or t in {"em", "e m"}:
+            return False
+        return t in {"e", "e major"} or bool(re.match(r"^e(\s+major)?$", t))
+
+    direction = -180
+    for step in range(28):
+        opts = page.locator('[role="option"]')
+        n = opts.count()
+        for i in range(n):
+            node = opts.nth(i)
+            try:
+                if not node.is_visible():
+                    continue
+                text = (node.inner_text() or "").strip()
+            except Exception:
+                continue
+            if not _is_e_major_option(text):
+                continue
+            ob = node.bounding_box()
+            if not ob:
+                continue
+            page.mouse.click(ob["x"] + ob["width"] / 2, ob["y"] + ob["height"] / 2)
+            info["clicked"] = True
+            info["option"] = text
+            info["via"] = "mouse.click-option"
+            return info
+        menu = page.locator('[role="listbox"], [data-baseweb="menu"]').first
+        mb = menu.bounding_box() if menu.count() else None
+        if mb:
+            page.mouse.move(mb["x"] + mb["width"] / 2, mb["y"] + 24)
+            page.mouse.wheel(0, direction)
+        if step == 14:
+            direction = 180
+        page.wait_for_timeout(200)
+    return info
+
+
+def wait_custom_sbi_backing_pk_e(page: Page, timeout_s: float = 25.0) -> dict:
+    """Ready when Custom SBI Backing is mounted and closed widget + card are E major."""
+    deadline = time.time() + timeout_s
+    info: dict = {"ready": False, "widget": "", "card": ""}
+    while time.time() < deadline:
+        widget = pk_val(page) or ""
+        card = main_card_pk(page)
+        try:
+            main = page.locator('[data-testid="stMain"]').inner_text() or ""
+        except Exception:
+            main = ""
+        mounted = "return to creative" in low(main) and "trial song" in low(main)
+        w = low(widget)
+        c = low(card)
+        widget_e = bool(w) and "minor" not in w and (w in {"e", "e major"} or w.startswith("e"))
+        card_e = bool(c) and "minor" not in c and (c in {"e", "e major"} or c.startswith("e"))
+        info.update({"widget": widget, "card": card, "mounted": mounted})
+        if mounted and widget_e and card_e:
+            info["ready"] = True
+            return info
+        page.wait_for_timeout(800)
+    return info
 
 
 def main_card_pk(page: Page, body: str = "") -> str:

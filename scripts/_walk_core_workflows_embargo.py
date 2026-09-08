@@ -197,6 +197,55 @@ def wait_for_body(page: Page, *needles: str, timeout_s: float = 45.0) -> str:
     return body
 
 
+def wait_restored_mission_backing(page: Page, timeout_s: float = 90.0) -> dict:
+    """Wait for persisted Mission Backing after hard reboot. Welcome-back is not ready."""
+    from _walk_human_h1_h9 import persist_h3_slice
+    from _walk_custom_practice_key import pk_val
+
+    deadline = time.time() + timeout_s
+    info: dict = {"ready": False, "ui": False, "persist_mission": False, "pk": "", "welcome": False}
+    while time.time() < deadline:
+        try:
+            main = page.locator('[data-testid="stMain"]').inner_text() or ""
+        except Exception:
+            main = ""
+        try:
+            body = page.inner_text("body") or ""
+        except Exception:
+            body = ""
+        persist = persist_h3_slice()
+        persist_mission = (
+            str(persist.get("backing_source") or "") == "mission"
+            and str(persist.get("studio_page") or "").lower() == "backing"
+        )
+        ui = has_any(main, "Return to Mission", "Mission Backing", "MISSION BACKING")
+        welcome = "welcome back" in low(main) and not ui
+        pk = ""
+        try:
+            pk = pk_val(page) or sidebar_pk_input(page) or practice_badge(main) or practice_badge(body) or ""
+        except Exception:
+            pk = sidebar_pk_input(page) or ""
+        info.update(
+            {
+                "ui": ui,
+                "persist_mission": persist_mission,
+                "pk": pk,
+                "welcome": welcome,
+                "studio_page": persist.get("studio_page"),
+                "backing_source": persist.get("backing_source"),
+                "main_head": main[:240],
+            }
+        )
+        if welcome:
+            time.sleep(1.0)
+            continue
+        if ui and str(pk).strip():
+            info["ready"] = True
+            return info
+        time.sleep(1.2)
+    return info
+
+
 def wait_for_body_all(page: Page, *needles: str, timeout_s: float = 45.0) -> str:
     """Poll until every needle is present — remount chrome is not enough."""
     deadline = time.time() + timeout_s
@@ -1085,26 +1134,17 @@ def main() -> int:
         )
         pk0 = pk_val(page) or practice_badge(body) or sidebar_pk_input(page)
         d_major = ("d" in low(pk0) and "minor" not in low(pk0)) or low(pk0) in {"d", "d major"}
-        from _walk_human_h1_h9 import main_card_pk, native_pk
+        from _walk_human_h1_h9 import main_card_pk, pointer_pick_sidebar_pk_e, wait_custom_sbi_backing_pk_e
 
-        native_pk(page, "E") or native_pk(page, "E major")
-        settle(page, 5)
-        try:
-            page.wait_for_function(
-                """() => {
-                  const side = (document.querySelector('[data-testid="stSidebar"]') || {}).innerText || '';
-                  const main = (document.querySelector('[data-testid="stMain"]') || {}).innerText || '';
-                  const t = (side + ' ' + main).toLowerCase();
-                  return /\\be(\\s+major)?\\b/.test(t) && !/e minor/.test(t);
-                }""",
-                timeout=15_000,
-            )
-        except Exception:
-            pass
-        settle(page, 2)
-        pk_e = pk_val(page) or practice_badge(page.inner_text("body") or "")
-        card_e = main_card_pk(page)
-        e_ok = (low(pk_e).startswith("e") and "minor" not in low(pk_e)) and (
+        clicked_e = pointer_pick_sidebar_pk_e(page)
+        log(f"4_custom_sbi pointer_e={json.dumps(clicked_e, default=str)}")
+        ready_e = wait_custom_sbi_backing_pk_e(page, timeout_s=25.0)
+        log(f"4_custom_sbi ready_e={json.dumps(ready_e, default=str)}")
+        pk_e = ready_e.get("widget") or pk_val(page) or practice_badge(page.inner_text("body") or "")
+        card_e = ready_e.get("card") or main_card_pk(page)
+        e_ok = bool(ready_e.get("ready")) and (
+            low(pk_e).startswith("e") and "minor" not in low(pk_e)
+        ) and (
             not str(card_e).strip() or (low(card_e).startswith("e") and "minor" not in low(card_e))
         )
         click_button_has(page, r"Return to Creative") or True
@@ -1114,10 +1154,43 @@ def main() -> int:
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 2)
         # Re-assert Shape sticky Dm after Custom SBI key work (must not become D major).
-        set_songs_practice_key(page, "Dm")
-        settle(page, 2)
-        body_s = shot(page, "04b-shape-isolation")
-        shape_pk = practice_badge(body_s)
+        # Do not immediately click Dm: a leftover C/E token in the closed widget can be
+        # confirmed as a Songs edit. Wait for the sealed catalog heal to remount Dm.
+        shape_pk = ""
+        for attempt in range(6):
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const t = document.body ? (document.body.innerText || '') : '';
+                      const shape = /NOW LOADED FOR PRACTICE[\\s\\S]{0,80}Shape of You/i.test(t)
+                        || /Shape of You/i.test(t);
+                      const catalog = /SOURCE\\s*\\n\\s*Catalog Song/i.test(t);
+                      const dm = /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
+                        || /Practice concert key:\\s*D\\s+minor/i.test(t);
+                      return shape && catalog && dm;
+                    }""",
+                    timeout=6_000,
+                )
+            except Exception:
+                pass
+            body_s = shot(page, "04b-shape-isolation")
+            shape_pk = practice_badge(body_s)
+            log(f"4_shape_isolation attempt={attempt} badge={shape_pk!r}")
+            if "d minor" in low(shape_pk):
+                break
+            if attempt in {1, 3}:
+                click_nav(page, "Songs")
+                settle(page, 2)
+                pick_song(page, NOTES, "Shape of You", "Pop")
+                settle(page, 2)
+            else:
+                settle(page, 2)
+        if "d minor" not in low(shape_pk):
+            # Last resort only after heal had a chance; never the first action.
+            set_songs_practice_key(page, "Dm")
+            settle(page, 2)
+            body_s = shot(page, "04b-shape-isolation")
+            shape_pk = practice_badge(body_s)
         shape_still_dm = "d minor" in low(shape_pk)
         g4 = bool(opened and specialized and prog and d_major and e_ok and shape_still_dm)
         mark(
@@ -1313,35 +1386,25 @@ def main() -> int:
         browser2 = p.chromium.launch(headless=True)
         page2 = browser2.new_page(viewport={"width": 1440, "height": 960})
         page2.goto(URL, wait_until="domcontentloaded", timeout=180000)
-        wait_for_body(
-            page2,
-            "Return to Mission",
-            "MISSION BACKING",
-            "Creative Backing Jam",
-            timeout_s=60,
-        )
-        settle(page2, 8)
-        try:
-            page2.wait_for_function(
-                """() => {
-                  const t = document.body ? (document.body.innerText || '') : '';
-                  return /Return to Mission/i.test(t) || /MISSION BACKING/i.test(t);
-                }""",
-                timeout=25_000,
-            )
-        except Exception:
-            pass
+        ready_boot = wait_restored_mission_backing(page2, timeout_s=90.0)
+        log(f"12_reboot ready={json.dumps(ready_boot, default=str)}")
         settle(page2, 3)
         body_boot = shot(page2, "12-post-reboot")
         from _walk_human_h1_h9 import persist_h3_slice
 
         persist_boot = persist_h3_slice()
-        boot_mission = has_any(
-            body_boot, "Return to Mission", "Mission Backing", "MISSION BACKING"
-        ) or (
-            str(persist_boot.get("backing_source") or "") == "mission"
-            and str(persist_boot.get("studio_page") or "").lower() == "backing"
+        log(
+            "12_reboot persist="
+            + json.dumps(
+                {
+                    "studio_page": persist_boot.get("studio_page"),
+                    "backing_source": persist_boot.get("backing_source"),
+                    "display_key": persist_boot.get("display_key"),
+                },
+                default=str,
+            )
         )
+        boot_mission = bool(ready_boot.get("ready")) and not bool(ready_boot.get("welcome"))
         # A: leave mission jam, open Songs, assert restored Shape Dm.
         # Do not re-pick Shape: pick_song is a new selection and can reset Concert Key.
         leave_mission_backing(page2)
