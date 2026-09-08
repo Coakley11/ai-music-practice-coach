@@ -214,18 +214,26 @@ def seed_display_key_for_owner_transition(
     concert = str(token or "").strip()
     if not concert:
         return
-    session["display_key"] = concert
-    session["concert_key"] = concert
-    session[PENDING_DISPLAY_KEY] = concert
-    session["_pending_display_key"] = concert
-    session[LAST_DISPLAY_KEY] = concert
+    target = session
     if st_like is not None:
         ss = getattr(st_like, "session_state", None)
         if ss is not None:
-            ss["display_key"] = concert
-            ss["concert_key"] = concert
-            ss[PENDING_DISPLAY_KEY] = concert
-            ss[LAST_DISPLAY_KEY] = concert
+            target = ss
+    target["concert_key"] = concert
+    target[LAST_DISPLAY_KEY] = concert
+    if target is not session:
+        session["concert_key"] = concert
+        session[LAST_DISPLAY_KEY] = concert
+    live = str(target.get("display_key") or "").strip()
+    # Streamlit rejects even a same-value write after the sidebar widget exists.
+    if live == concert:
+        return
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(target, concert, widget_safe=True, st_like=st_like)
+    except ImportError:
+        target["display_key"] = concert
 
 
 def begin_display_key_owner_transition(

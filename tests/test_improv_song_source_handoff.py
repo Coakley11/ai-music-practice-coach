@@ -42,6 +42,36 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(len(custom_calls), 0)
         self.assertEqual(len(catalog_calls), 0)
 
+    def test_open_backing_handoff_skips_same_value_widget_assignment(self) -> None:
+        """Handoff must not assign improv_song_source after the radio exists."""
+
+        class _Session(dict):
+            writes: list[str] = []
+
+            def __setitem__(self, key, value):  # type: ignore[override]
+                if key == "improv_song_source":
+                    type(self).writes.append(str(value))
+                dict.__setitem__(self, key, value)
+
+        _Session.writes = []
+        session = _Session()
+        dict.__setitem__(session, "improv_song_source", "Active song")
+        dict.__setitem__(session, "creative_lab_analysis_mode", "Improvisation Intelligence")
+
+        def _noop(_ss: dict) -> None:
+            return None
+
+        sync_improv_song_source_for_handoff(
+            session,
+            "Active song",
+            set_catalog_source=_noop,
+            set_custom_source=_noop,
+        )
+        self.assertEqual(_Session.writes, [])
+        self.assertEqual(session["improv_song_source"], "Active song")
+        self.assertEqual(session[PENDING_IMPROV_SONG_SOURCE], "Active song")
+        self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Active song")
+
     def test_widget_safe_apply_skips_widget_key_and_global_source(self) -> None:
         from song_catalog.catalog import format_pick_key
         from source_session_state import SBI_PREVIEW_SOURCE_KEY

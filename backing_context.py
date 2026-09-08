@@ -4202,12 +4202,13 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             if saved and saved != specialized_practice_token:
                 session["_specialized_leave_catalog_pk"] = saved
                 session["_specialized_leave_catalog_pick"] = pick
-                session["display_key"] = saved
-                session["concert_key"] = saved
-                session["_pending_display_key"] = saved
-                if st_like is not None and getattr(st_like, "session_state", None) is not None:
-                    st_like.session_state["display_key"] = saved
-                    st_like.session_state["concert_key"] = saved
+                try:
+                    from session_widget_safe import safe_assign_display_key
+
+                    safe_assign_display_key(session, saved, widget_safe=True, st_like=st_like)
+                except ImportError:
+                    session["_pending_display_key"] = saved
+                    session["concert_key"] = saved
             try:
                 import json
                 import os

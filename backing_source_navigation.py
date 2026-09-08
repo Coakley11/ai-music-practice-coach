@@ -1435,6 +1435,19 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
     except ImportError:
         src = ""
     session["_backing_released_specialized_context"] = True
+    # Explicit leave (Return Regular / ordinary Catalog Backing) must drop the
+    # Creative handoff latch. Hydrate otherwise reopens song_improv/jam/mission.
+    session.pop("_backing_explicit_handoff_source", None)
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_music_pending_backing_workflow_handoff", None)
+        session.pop("_music_pending_backing_workflow_consume_armed_seq", None)
+    last_src = str(session.get("_last_valid_backing_source") or "").strip()
+    if last_src in {"entry_jam", "song_improv", "mission"}:
+        session["_last_valid_backing_source"] = "regular_song"
     try:
         from backing_track_state import reset_backing_playback_scope_to_full_song
 

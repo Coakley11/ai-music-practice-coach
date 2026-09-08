@@ -383,7 +383,21 @@ def sync_improv_song_source_for_handoff(
         pass
     session_state[CREATIVE_BACKING_SONG_SOURCE_KEY] = src
     session_state[PENDING_IMPROV_SONG_SOURCE] = src
-    session_state["improv_song_source"] = src
+    live = str(session_state.get("improv_song_source") or "").strip()
+    # Open Backing runs after the SBI radio widget exists. Streamlit rejects even
+    # a same-value write to ``improv_song_source`` and aborts the handoff.
+    if live != src:
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(
+                session_state,
+                "improv_song_source",
+                src,
+                widget_safe=True,
+            )
+        except ImportError:
+            pass
     # Deliberately do not call set_custom_source / set_catalog_source here.
 
 

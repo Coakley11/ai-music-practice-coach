@@ -239,6 +239,63 @@ class TestH4OwnerTransitionBoundary(unittest.TestCase):
         tok = bind_sidebar_practice_key_to_backing_owner(_St(session), session)
         self.assertTrue(str(tok).startswith("G"), tok)
 
+    def test_return_regular_clears_sbi_handoff_so_hydrate_does_not_reclaim(self) -> None:
+        from backing_context import get_backing_context
+        from backing_session_route import navigate_to_regular_backing
+        from backing_source_navigation import hydrate_backing_source_for_page
+        from song_catalog.catalog import format_pick_key
+
+        shape_pick = format_pick_key("Pop", "Shape of You")
+        shape_song = {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+            "pick_key": shape_pick,
+            "bpm": 82,
+            "sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        }
+        session = {
+            "studio_page": "backing",
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "active_catalog_pick_key": shape_pick,
+            "selected_song": dict(shape_song),
+            "practice_key_by_source": {shape_pick: "Bm"},
+            "_backing_explicit_handoff_source": "song_improv",
+            "_last_valid_backing_source": "song_improv",
+            DISPLAY_KEY_WIDGET_OWNER_ID_KEY: f"song_improv::{shape_pick}",
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="song_improv",
+                source_label="Song-Based Improvisation",
+                active_song_id=shape_pick,
+                bound_pick_key=shape_pick,
+                song_title="Shape of You",
+                key="Bm",
+                display_key="Bm",
+                concert_key="Bm",
+                bpm=82,
+                style="Pop groove",
+                groove="Pop groove",
+            ),
+        )
+        st_like = SimpleNamespace(session_state=session)
+        with patch("backing_track_state.write_canonical_backing_state"):
+            with patch(
+                "songs.music_source.resolve_catalog_song_for_pick",
+                return_value=(shape_song, "Bm"),
+            ):
+                navigate_to_regular_backing(session, st_like=st_like)
+                hydrate_backing_source_for_page(session, st_like=st_like)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "regular_song")
+        self.assertNotEqual(str(session.get("_backing_explicit_handoff_source") or ""), "song_improv")
+        self.assertEqual(str(session.get("_last_valid_backing_source") or ""), "regular_song")
+        self.assertTrue(str(session.get("display_key") or "").startswith("B"))
+
     def test_g_catalog_to_jam_uses_jam_key(self) -> None:
         helper = TestH3StaleSnapshotDoesNotOutrankUuidBlob()
         session, jam_id = helper._session_uuid_eb_stale_snap_c()
