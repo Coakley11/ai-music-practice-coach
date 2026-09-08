@@ -1022,6 +1022,20 @@ def main() -> int:
         settle(page, 2)
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 2)
+        # Trial LAST_CUSTOM visit can empty the Shape slot. Re-assert same-owner
+        # Dm before SBI so the Custom overlay seals Shape Dm, not Trial D.
+        shape_badge = ""
+        for attempt in range(3):
+            set_songs_practice_key(page, "Dm")
+            settle(page, 2)
+            body = shot(page, "00b-shape-dm-after-trial")
+            shape_badge = practice_badge(body)
+            if "d minor" in low(shape_badge):
+                break
+        if "d minor" not in low(shape_badge):
+            mark("seed_shape_dm_after_trial", "RED", f"badge={shape_badge!r}")
+        else:
+            mark("seed_shape_dm_after_trial", "PASS", shape_badge)
 
         # ========== 1. SBI Active ==========
         ok_active = open_sbi_active(page)
@@ -1154,8 +1168,8 @@ def main() -> int:
         pick_song(page, NOTES, "Shape of You", "Pop")
         settle(page, 2)
         # Re-assert Shape sticky Dm after Custom SBI key work (must not become D major).
-        # First paint may still show Original Bm or leftover C; wait for Catalog Shape
-        # to own the page, then one Songs PK click. Do not re-pick Shape in the loop.
+        # Same-owner sticky should already render D minor; wait first. Do not
+        # treat a major-mode leftover as a Songs PK click target (that lands on C).
         try:
             page.wait_for_function(
                 """() => {
@@ -1169,25 +1183,40 @@ def main() -> int:
             pass
         settle(page, 2)
         shape_pk = ""
-        for attempt in range(3):
-            set_songs_practice_key(page, "Dm")
-            settle(page, 2)
-            try:
-                page.wait_for_function(
-                    """() => {
-                      const t = document.body ? (document.body.innerText || '') : '';
-                      return /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
-                        || /Practice concert key:\\s*D\\s+minor/i.test(t);
-                    }""",
-                    timeout=8_000,
-                )
-            except Exception:
-                pass
-            body_s = shot(page, "04b-shape-isolation")
-            shape_pk = practice_badge(body_s)
-            log(f"4_shape_isolation attempt={attempt} badge={shape_pk!r}")
-            if "d minor" in low(shape_pk):
-                break
+        try:
+            page.wait_for_function(
+                """() => {
+                  const t = document.body ? (document.body.innerText || '') : '';
+                  return /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
+                    || /Practice concert key:\\s*D\\s+minor/i.test(t);
+                }""",
+                timeout=10_000,
+            )
+        except Exception:
+            pass
+        body_s = shot(page, "04b-shape-isolation")
+        shape_pk = practice_badge(body_s)
+        log(f"4_shape_isolation native badge={shape_pk!r}")
+        if "d minor" not in low(shape_pk):
+            for attempt in range(3):
+                set_songs_practice_key(page, "Dm")
+                settle(page, 2)
+                try:
+                    page.wait_for_function(
+                        """() => {
+                          const t = document.body ? (document.body.innerText || '') : '';
+                          return /PRACTICE\\s*\\/\\s*CONCERT\\s*KEY\\s*\\n\\s*D\\s+minor/i.test(t)
+                            || /Practice concert key:\\s*D\\s+minor/i.test(t);
+                        }""",
+                        timeout=8_000,
+                    )
+                except Exception:
+                    pass
+                body_s = shot(page, "04b-shape-isolation")
+                shape_pk = practice_badge(body_s)
+                log(f"4_shape_isolation attempt={attempt} badge={shape_pk!r}")
+                if "d minor" in low(shape_pk):
+                    break
         shape_still_dm = "d minor" in low(shape_pk)
         g4 = bool(opened and specialized and prog and d_major and e_ok and shape_still_dm)
         mark(
