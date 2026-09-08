@@ -1565,7 +1565,14 @@ def apply_pick_key(
                 from songs.practice_key_state import clear_practice_concert_key
 
                 clear_practice_concert_key(st.session_state, pick_key)
-                if prev and str(prev) != str(pick_key):
+                # Custom LAST_CUSTOM / Custom-page identity must not wipe the
+                # previous catalog sticky (Shape Dm). Custom becoming Global
+                # Active still forgets via forget_catalog_visit_practice_key.
+                if (
+                    prev
+                    and str(prev) != str(pick_key)
+                    and not str(pick_key).startswith("custom::")
+                ):
                     clear_practice_concert_key(st.session_state, str(prev))
             except ImportError:
                 pass

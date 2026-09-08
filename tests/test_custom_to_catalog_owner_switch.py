@@ -207,6 +207,31 @@ class TestCustomToCatalogOwnerSwitch(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
         self.assertEqual(session.get("display_key"), "Dm")
 
+    def test_fresh_shape_activation_without_sticky_uses_original_bm(self) -> None:
+        """No Shape sticky + explicit Shape pick initializes Original B minor, not C."""
+        session = _shape_catalog_session(practice_key="Bm")
+        session[ACTIVE_CATALOG_PICK_KEY] = PK_SAY
+        session[_LAST_PICK_KEY] = PK_SAY
+        session["song"] = "Say"
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        session[PRACTICE_KEY_BY_SOURCE_KEY] = {}
+        session[SELECTED_SONG_STATE_KEY] = {
+            "pick_key": PK_SAY,
+            "title": "Say",
+            "artist": "John Mayer",
+            "key": "G",
+        }
+        st = SimpleNamespace(session_state=session, rerun=lambda: None)
+        begin_explicit_catalog_selection(session)
+        with patch("songs.state.persist_music_local_state"):
+            apply_pick_key(st, PK_SHAPE, CATALOG, persist=False, origin="user")
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song"), "Shape of You")
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        self.assertNotEqual(str(session.get("display_key") or ""), "C")
+        self.assertNotEqual(get_practice_concert_key(session, PK_SHAPE), "Dm")
+
     def test_switch_to_catalog_from_custom_is_fresh_shape_bm(self) -> None:
         session = _shape_catalog_session(practice_key="Dm")
         st = self._activate_trial(session)

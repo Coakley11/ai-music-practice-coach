@@ -2175,6 +2175,13 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
+    page = str(session.get("studio_page") or "").strip().lower()
+    # Catalog Songs / Practice after a specialized SBI Custom visit must not keep
+    # leftover Song-Based Improvisation / song_improv backing as the sidebar PK
+    # owner. That built Custom major options (C, D, E…) while Shape Original is Bm,
+    # so the widget remounted to C and overwrote Shape sticky Dm.
+    if page in {"picker", "songs", "practice"}:
+        return False
     try:
         from backing_musical_state import should_skip_regular_song_defaults
 
@@ -2191,7 +2198,6 @@ def should_use_live_practice_key_sidebar(session: dict[str, Any]) -> bool:
                 return False
     except ImportError:
         pass
-    page = str(session.get("studio_page") or "").strip().lower()
     if page == "creative":
         return True
     if page == "custom":

@@ -291,6 +291,104 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         flat = [c for chs in sections.values() for c in chs]
         self.assertEqual(flat[:4], ["F#m", "F#m", "E", "E"])
 
+    def test_overlay_does_not_fill_empty_catalog_sticky_from_custom_live(self) -> None:
+        """Empty Shape sticky must not adopt Custom live D (or later E)."""
+        from source_session_state import (
+            clear_sbi_custom_sidebar_overlay_if_needed,
+            prepare_sbi_custom_sidebar_display_key,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        shape = str(session.get("active_catalog_pick_key") or "")
+        session["practice_key_by_source"].pop(shape, None)
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["studio_page"] = "creative"
+        session["sbi_preview_source"] = "Custom progression"
+        session["practice_key_by_source"]["custom::trial-1"] = "D"
+
+        class _St:
+            session_state = session
+
+        prepare_sbi_custom_sidebar_display_key(_St(), session)
+        self.assertFalse(get_practice_concert_key(session, shape))
+        self.assertNotEqual(str(session.get("_sbi_custom_sealed_catalog_pk") or ""), "D")
+        self.assertTrue(str(session.get("display_key") or "").upper().startswith("D"))
+        self.assertNotIn(str(session.get("display_key") or "").lower(), {"dm", "d minor"})
+
+        session["studio_page"] = "backing"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        prepare_sbi_custom_sidebar_display_key(_St(), session)
+        self.assertFalse(get_practice_concert_key(session, shape))
+
+        session["studio_page"] = "songs"
+        clear_sbi_custom_sidebar_overlay_if_needed(session)
+        self.assertFalse(get_practice_concert_key(session, shape))
+        self.assertNotEqual(str(session.get("display_key") or ""), "C")
+        self.assertNotEqual(str(get_practice_concert_key(session, shape) or ""), "D")
+
+    def test_catalog_return_after_custom_sbi_e_keeps_shape_dm(self) -> None:
+        """Same-owner Shape sticky Dm survives Custom SBI D→E and catalog return."""
+        from source_session_state import (
+            clear_sbi_custom_sidebar_overlay_if_needed,
+            prepare_sbi_custom_sidebar_display_key,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        shape = str(session.get("active_catalog_pick_key") or "")
+        session["practice_key_by_source"][shape] = "Dm"
+        session["studio_page"] = "creative"
+        session["sbi_preview_source"] = "Custom progression"
+        session["display_key"] = "Dm"
+        session["concert_key"] = "Dm"
+
+        class _St:
+            session_state = session
+
+        prepare_sbi_custom_sidebar_display_key(_St(), session)
+        self.assertEqual(session.get("_sbi_custom_sealed_catalog_pk"), "Dm")
+        session["studio_page"] = "backing"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        session["studio_page"] = "songs"
+        clear_sbi_custom_sidebar_overlay_if_needed(session)
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        self.assertNotEqual(str(session.get("display_key") or ""), "C")
+        self.assertNotEqual(str(session.get("display_key") or ""), "D")
+        self.assertEqual(session.get("practice_key_by_source").get("custom::trial-1"), "E")
+
+    def test_catalog_songs_after_sbi_custom_does_not_use_live_major_sidebar(self) -> None:
+        """Leftover SBI Custom visit must not keep major PK options on Catalog Songs."""
+        from creative_key_sync import should_use_live_practice_key_sidebar
+        from songs.music_source import SOURCE_CATALOG
+        from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        shape = str(session.get("active_catalog_pick_key") or "")
+        session["active_music_source"] = SOURCE_CATALOG
+        session["studio_page"] = "picker"
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        session["sbi_preview_source"] = "Custom progression"
+        session["improv_song_source"] = "Custom progression"
+        session["display_key"] = "E"
+        session["concert_key"] = "E"
+        session["practice_key_by_source"][shape] = "Dm"
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        session["practice_key_by_source"]["custom::My Progression"] = "C"
+        self.assertFalse(should_use_live_practice_key_sidebar(session))
+        session["display_key_change_source"] = "sidebar_on_change"
+        set_practice_concert_key(session, "C", pick_key=shape)
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+
     def test_custom_page_seal_does_not_overwrite_catalog_sticky(self) -> None:
         """Entering Custom must not stamp Custom live E onto Shape sticky Dm."""
         from custom_progression_lab import prepare_custom_workspace_sidebar_display_key

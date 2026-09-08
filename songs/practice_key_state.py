@@ -522,6 +522,28 @@ def set_practice_concert_key(
         jam_widget = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
         if jam_widget and key == jam_widget and creative_jam_owns_practice_settings(session):
             return
+        existing = str(get_practice_concert_key(session, pk) or "").strip()
+        orig = ""
+        try:
+            from songs.music_source import _catalog_original_key_for_session
+
+            probe = dict(session)
+            probe["active_catalog_pick_key"] = pk
+            orig = str(_catalog_original_key_for_session(probe) or "").strip()
+        except Exception:
+            orig = ""
+        if existing and existing != key and orig:
+            try:
+                from music_theory import practice_key_inherits_source_mode
+
+                # Streamlit remount of leftover Custom-major options (C) onto a
+                # minor catalog sticky (Shape Dm / Original Bm) is not a user edit.
+                if practice_key_inherits_source_mode(existing, orig) and not practice_key_inherits_source_mode(
+                    key, orig
+                ):
+                    return
+            except ImportError:
+                pass
         # Streamlit sidebar reseeds to catalog Original on page change; that must
         # not wipe a sticky Practice Key (C#m → Bm on leave Backing→Practice, H2).
         # Explicit user Practice Key commits (Dm → Bm return to Original) MUST write.

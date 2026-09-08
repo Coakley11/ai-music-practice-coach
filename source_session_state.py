@@ -1094,38 +1094,27 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
 def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
     """Creative SBI → Custom progression: sidebar PK uses Trial/Custom sticky + home mode.
 
-    Seals the current catalog live Practice Key into the catalog sticky first so
-    Shape Dm survives, then projects Custom sticky/home into ``display_key`` for
-    the sidebar widget without writing the Custom token onto the catalog pick.
+    Seals an *existing* catalog sticky (Shape Dm) so leave can restore it, then
+    projects Custom sticky/home into ``display_key`` for the sidebar widget.
+    Never writes Custom live into the catalog pick — empty catalog sticky stays empty.
     """
     overlay_already = bool(session.get("_sbi_custom_sidebar_overlay"))
     from songs.key_state import PENDING_DISPLAY_KEY, display_key_options
 
-    # Seal catalog sticky once on enter. Never overwrite an existing catalog sticky
-    # with Custom live (Eb → Shape D#m bleed when the overlay flag flickers).
-    # Remember the sealed catalog token so leave can restore it even if live Custom
-    # PK (E) briefly poisoned the catalog sticky via Streamlit widget remount.
+    # Seal catalog sticky once on enter. Never copy Custom live into the catalog
+    # slot — including when that slot is empty. Empty Shape sticky is not a
+    # license to adopt Trial D / visit E; leave would then heal D major onto
+    # Catalog Shape. Only a real existing catalog sticky (Shape Dm) is sealed.
     try:
         from songs.practice_key_state import (
             get_practice_concert_key,
             resolve_practice_source_pick,
-            resolve_settings_pick_for_write,
-            set_practice_concert_key,
         )
 
         catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
         if not session.get("_sbi_custom_sidebar_overlay"):
             if catalog_pick and not catalog_pick.startswith("custom::"):
                 existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if not existing and live:
-                    set_practice_concert_key(
-                        session,
-                        live,
-                        pick_key=catalog_pick,
-                        allow_catalog_during_sbi_custom=True,
-                    )
-                    existing = live
                 if existing:
                     session["_sbi_custom_sealed_catalog_pk"] = existing
                     session["_sbi_custom_sealed_catalog_pick"] = catalog_pick
