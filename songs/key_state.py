@@ -299,6 +299,24 @@ def clear_display_key_owner_transition(session: dict[str, Any]) -> None:
     session.pop("_specialized_leave_catalog_pick", None)
 
 
+def _sticky_token_for_widget_owner(session: dict[str, Any], owner_id: str) -> str:
+    """Current owner's persisted Practice Key — never the leftover landing rec."""
+    oid = str(owner_id or "").strip()
+    if oid.startswith("mission::"):
+        return str(session.get("improv_mission_concert_key") or "").strip()
+    pick = ""
+    if "::" in oid:
+        pick = oid.split("::", 1)[1].strip()
+    if oid.startswith(("catalog::", "song_improv::", "custom::")) and pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            return ""
+    return ""
+
+
 def apply_display_key_owner_transition_if_needed(
     session: dict[str, Any],
     *,
@@ -316,6 +334,25 @@ def apply_display_key_owner_transition_if_needed(
     if rec:
         canonical = str(rec.get("canonical") or "").strip()
         to_id = str(rec.get("to") or "").strip()
+        same_owner = bool(current and ((to_id and current == to_id) or prev == current))
+        # Leftover landing rec must not reseed Original over a later same-owner
+        # user Practice Key (Shape sticky Dm vs rec canonical Bm).
+        if same_owner and canonical:
+            owner_sticky = _sticky_token_for_widget_owner(session, current)
+            if owner_sticky and owner_sticky != canonical:
+                clear_display_key_owner_transition(session)
+                if live != owner_sticky:
+                    seed_display_key_for_owner_transition(
+                        session, owner_sticky, st_like=st_like
+                    )
+                return owner_sticky
+            if (
+                live
+                and live != canonical
+                and not widget_value_is_stale_owner_transition(session, live)
+            ):
+                clear_display_key_owner_transition(session)
+                return ""
         # Mission same-owner user edit: landing rec (Bm) must not keep reseeding
         # after improv_mission_concert_key already moved (Cm). Live Mission
         # concert wins; leftover rec is not a new owner transition.

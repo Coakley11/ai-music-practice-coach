@@ -401,5 +401,76 @@ class TestH4OwnerTransitionBoundary(unittest.TestCase):
         self.assertEqual(str(live.keys.practice_tonic), "Eb")
 
 
+class TestOwner13SameOwnerStickyBeatsStaleCanonical(unittest.TestCase):
+    """Leftover landing rec (Original Bm) must not reseed after Shape sticky Dm."""
+
+    def _shape_session(self, *, live: str, sticky: str, canonical: str = "Bm", stale: str = "C") -> dict:
+        shape_pick = format_pick_key("Pop", "Shape of You")
+        shape_song = {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+            "pick_key": shape_pick,
+            "bpm": 96,
+            "sections": {"Verse": ["Bm", "Em", "G", "A"]},
+        }
+        return {
+            "studio_page": "picker",
+            "display_key": live,
+            "concert_key": live,
+            "active_catalog_pick_key": shape_pick,
+            "selected_song": shape_song,
+            "practice_key_by_source": {shape_pick: sticky},
+            DISPLAY_KEY_WIDGET_OWNER_ID_KEY: f"catalog::{shape_pick}",
+            DISPLAY_KEY_OWNER_TRANSITION_KEY: {
+                "from": "custom::trial",
+                "to": f"catalog::{shape_pick}",
+                "canonical": canonical,
+                "stale": stale,
+            },
+            "backing_context": {
+                "source": "regular_song",
+                "bound_pick_key": shape_pick,
+                "display_key": live,
+                "concert_key": live,
+                "key": live,
+            },
+            "_shape_pick": shape_pick,
+        }
+
+    def test_sticky_dm_clears_stale_bm_rec_and_keeps_dm(self) -> None:
+        session = self._shape_session(live="Dm", sticky="Dm")
+        returned = apply_display_key_owner_transition_if_needed(session)
+        self.assertEqual(returned, "Dm")
+        self.assertIsNone(session.get(DISPLAY_KEY_OWNER_TRANSITION_KEY))
+        self.assertEqual(str(session.get("display_key") or ""), "Dm")
+        self.assertEqual(str(get_practice_concert_key(session, session["_shape_pick"]) or ""), "Dm")
+
+    def test_bad_seed_bm_widget_is_corrected_from_sticky_dm(self) -> None:
+        session = self._shape_session(live="Bm", sticky="Dm")
+        returned = apply_display_key_owner_transition_if_needed(session)
+        self.assertEqual(returned, "Dm")
+        self.assertIsNone(session.get(DISPLAY_KEY_OWNER_TRANSITION_KEY))
+        self.assertEqual(str(session.get("display_key") or ""), "Dm")
+
+    def test_user_widget_dm_before_sticky_write_is_not_reseeded_to_bm(self) -> None:
+        session = self._shape_session(live="Dm", sticky="Bm")
+        returned = apply_display_key_owner_transition_if_needed(session)
+        self.assertEqual(returned, "")
+        self.assertIsNone(session.get(DISPLAY_KEY_OWNER_TRANSITION_KEY))
+        self.assertEqual(str(session.get("display_key") or ""), "Dm")
+        self.assertEqual(str(get_practice_concert_key(session, session["_shape_pick"]) or ""), "Bm")
+
+    def test_stale_jam_token_still_seeds_catalog_canonical(self) -> None:
+        session = self._shape_session(live="C#", sticky="Bm", canonical="Bm", stale="C#")
+        session["_specialized_practice_token_leaving"] = "C#"
+        returned = apply_display_key_owner_transition_if_needed(session)
+        self.assertEqual(returned, "Bm")
+        self.assertEqual(str(session.get("display_key") or ""), "Bm")
+        rec = session.get(DISPLAY_KEY_OWNER_TRANSITION_KEY)
+        self.assertIsInstance(rec, dict)
+        self.assertEqual(str(rec.get("canonical") or ""), "Bm")
+
+
 if __name__ == "__main__":
     unittest.main()
