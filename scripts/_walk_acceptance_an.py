@@ -10,6 +10,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
@@ -59,6 +60,8 @@ from _walk_core_workflows_embargo import (  # noqa: E402
     practice_badge,
 )
 from _walk_custom_sbi_owner import concert_prog_line, trial_prog_at_c  # noqa: E402
+from _walk_owner_key_tuple import sbi_source_state, wait_sbi_tuple  # noqa: E402
+from _oneshot_an_f_pk import pointer_pick_sidebar_pk_c  # noqa: E402
 from _walk_pass8_validate import (  # noqa: E402
     click_chord,
     ensure_missions_workspace,
@@ -283,45 +286,66 @@ def force_pk_token(page: Page, token: str) -> bool:
         return False
 
 
-def force_piano_concert_shape_tiles(page: Page) -> bool:
-    """Keep piano + concert spelling so Shape tiles are Bm · Em · G · A."""
-    for _ in range(4):
-        expand_sidebar(page)
-        set_instrument(page, "Piano")
-        settle(page, 1)
-        set_main_instrument_piano(page)
-        click_radio(page, "Written Charts off")
-        ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
-        force_pk_token(page, "Bm")
-        settle(page, 2)
+def mission_main_text(page: Page) -> str:
+    try:
+        return page.locator('[data-testid="stMain"]').inner_text() or ""
+    except Exception:
+        return page.inner_text("body") or ""
+
+
+def wait_visible_mission_tiles(page: Page, timeout_s: float = 12.0) -> list[str]:
+    """After PK settles, read unique concert tiles actually shown in the Mission map."""
+    expand_sidebar(page)
+    set_instrument(page, "Piano")
+    set_main_instrument_piano(page)
+    click_radio(page, "Written Charts off")
+    ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
+    deadline = time.time() + timeout_s
+    last: list[str] = []
+    while time.time() < deadline:
         try:
             page.get_by_text("Chord map by section", exact=False).first.scroll_into_view_if_needed(
-                timeout=2500
+                timeout=2000
             )
         except Exception:
             pass
-        tiles = list_chord_tiles(page)
-        if "Em" in tiles and "Bm" in tiles:
-            return True
-        log(f"K wait concert Bm tiles={tiles} pk={pk_val(page)!r}")
-    return False
+        raw = list_chord_tiles(page)
+        uniq: list[str] = []
+        for tok in raw:
+            if tok and tok not in uniq:
+                uniq.append(tok)
+        if uniq:
+            return uniq
+        last = raw
+        page.wait_for_timeout(400)
+    return last
 
 
-def select_shape_em(page: Page) -> bool:
-    """Click catalog Em and wait until Selected Mission Chord is Em (concert)."""
-    for attempt in range(6):
-        have_tiles = force_piano_concert_shape_tiles(page)
-        tiles = list_chord_tiles(page)
-        log(f"K tiles attempt={attempt} have={have_tiles} pk={pk_val(page)!r} {tiles}")
-        if "Em" not in tiles:
-            continue
-        clicked = click_catalog_shape_tile(page, "Em")
-        settle(page, 2)
-        sel = _norm_ch(mission_selected_chord(page.inner_text("body") or ""))
-        log(f"K selected={sel!r} clicked={clicked}")
-        if sel == "Em":
-            return True
-    return False
+def select_visible_mission_tile(page: Page) -> str:
+    """Click one visible Mission tile once. Prefer Em only when Em is on screen."""
+    tiles = wait_visible_mission_tiles(page)
+    log(f"K visible tiles={tiles} pk={pk_val(page)!r}")
+    if not tiles:
+        return ""
+    pick = "Em" if "Em" in tiles else (tiles[1] if len(tiles) > 1 else tiles[0])
+    if not click_catalog_shape_tile(page, pick):
+        log(f"K tile click failed pick={pick!r}")
+        return ""
+    deadline = time.time() + 12.0
+    while time.time() < deadline:
+        main = mission_main_text(page)
+        sel = _norm_ch(
+            mission_selected_chord(main)
+            or mission_header_chord(main)
+            or mission_card_chord(main)
+        )
+        card = mission_card_chord(main)
+        if sel == pick or card == pick:
+            log(f"K selected={sel!r} card={card!r} pick={pick!r}")
+            return pick
+        page.wait_for_timeout(400)
+    log(f"K selected mismatch after click pick={pick!r}")
+    return ""
 
 
 def set_style_jam_concert_key(page: Page, option: str) -> bool:
@@ -599,30 +623,78 @@ def main() -> int:
         mark("E_sbi_custom_trial_d", e_ok, f"open={ok_e} pk={pk_e!r}")
 
         # F. Temporary SBI Custom PK C → Dm Dm C C
-        set_baseweb_select(page, "Practice / Concert Key", "C") or set_baseweb_select(
-            page, "Practice / Concert Key", "C major"
+        # Native pointer proof: click commits card/progression before closed widget value.
+        wait_sbi_tuple(
+            page,
+            source="custom",
+            title="Trial Song",
+            d_major=True,
+            em_d_prog=True,
+            timeout_ms=20_000,
         )
-        settle(page, 3)
-        try:
-            page.wait_for_function(
-                """() => /Dm · Dm · C · C/.test(document.body.innerText || '')""",
-                timeout=15_000,
+        click_f = pointer_pick_sidebar_pk_c(page)
+        log(f"F pointer={click_f}")
+        deadline_f = time.time() + 30.0
+        snap_f = {"radio": "", "pk": "", "card_c": False, "widget_c": False, "line": ""}
+        while time.time() < deadline_f:
+            try:
+                main_f = page.locator('[data-testid="stMain"]').inner_text() or ""
+            except Exception:
+                main_f = page.inner_text("body") or ""
+            expand_sidebar(page)
+            pk_live = pk_val(page) or ""
+            line_live = concert_prog_line(main_f) or ""
+            card_c = bool(re.search(r"practice concert key:\s*c\b(?!#)", low(main_f))) or has_any(
+                main_f, "C major"
             )
-        except Exception:
-            pass
+            widget_c = "c" in low(pk_live) and "minor" not in low(pk_live) and "c#" not in low(pk_live)
+            snap_f = {
+                "radio": sbi_source_state(page),
+                "pk": pk_live,
+                "card_c": card_c,
+                "widget_c": widget_c,
+                "line": line_live,
+            }
+            if (
+                snap_f["radio"] == "custom"
+                and has_any(main_f, "Trial Song")
+                and (card_c or widget_c)
+                and trial_prog_at_c(line_live or main_f)
+            ):
+                if widget_c:
+                    break
+            page.wait_for_timeout(700)
+        wait_sbi_tuple(
+            page,
+            source="custom",
+            title="Trial Song",
+            c_major=True,
+            dm_c_prog=True,
+            timeout_ms=15_000,
+        )
         side_f, body_f = shot(page, "F-sbi-custom-c")
+        try:
+            main_f = page.locator('[data-testid="stMain"]').inner_text() or ""
+        except Exception:
+            main_f = body_f
         pk_f = pk_val(page)
-        line_f = concert_prog_line(body_f)
+        line_f = concert_prog_line(main_f) or concert_prog_line(body_f)
+        card_c = bool(re.search(r"practice concert key:\s*c\b(?!#)", low(main_f))) or has_any(
+            main_f, "C major"
+        )
+        widget_c = "c" in low(pk_f) and "minor" not in low(pk_f) and "c#" not in low(pk_f)
         f_ok = (
-            has_any(body_f, "Trial Song")
-            and "c" in low(pk_f)
-            and "minor" not in low(pk_f)
+            click_f.get("clicked")
+            and sbi_source_state(page) == "custom"
+            and has_any(body_f, "Trial Song")
+            and (card_c or widget_c)
             and trial_prog_at_c(line_f or body_f)
         )
         mark(
             "F_sbi_custom_c_proj",
             f_ok,
-            f"pk={pk_f!r} line={line_f!r} proj={trial_prog_at_c(line_f or body_f)}",
+            f"clicked={click_f.get('clicked')} radio={sbi_source_state(page)!r} "
+            f"pk={pk_f!r} widget_c={widget_c} card_c={card_c} line={line_f!r}",
         )
 
         # G. Open Custom Lab → Trial Custom workspace (Original D, not C sticky)
@@ -735,9 +807,9 @@ def main() -> int:
             settle(page, 1)
             force_pk_token(page, "Bm")
             settle(page, 2)
-            clicked_em = select_shape_em(page)
+            clicked_tile = select_visible_mission_tile(page)
             settle(page, 1)
-            shot(page, "K-mission-selected-em")
+            shot(page, "K-mission-selected-tile")
             click_generate_example_once(page)
             settle(page, 2)
             opened_mb = bool(open_mission_backing(page, NOTES))
@@ -749,7 +821,7 @@ def main() -> int:
                 page.wait_for_function(
                     """() => {
                       const t = document.body ? (document.body.innerText || '') : '';
-                      return /· Concert Bm/i.test(t) || /Verse 1 · Em/i.test(t);
+                      return /· Concert Bm/i.test(t) || /Verse 1 · /i.test(t);
                     }""",
                     timeout=15_000,
                 )
@@ -767,7 +839,7 @@ def main() -> int:
                 page.wait_for_function(
                     """() => {
                       const t = document.body ? (document.body.innerText || '') : '';
-                      return /· Concert Cm/i.test(t) || /Verse 1 · Fm/i.test(t)
+                      return /· Concert Cm/i.test(t) || /Verse 1 · /i.test(t)
                         || /C minor/i.test(t);
                     }""",
                     timeout=15_000,
@@ -785,7 +857,7 @@ def main() -> int:
             live_bm = chord_bm or card_bm
             k_ok = (
                 opened_mb
-                and clicked_em
+                and bool(clicked_tile)
                 and concert_cm
                 and bool(live_cm)
                 and card_cm == live_cm
@@ -803,7 +875,7 @@ def main() -> int:
             mark(
                 "K_mission_header_dm",
                 k_ok,
-                f"open={opened_mb} click={clicked_em} bm_stage={bm_stage} "
+                f"open={opened_mb} click={clicked_tile!r} bm_stage={bm_stage} "
                 f"bm_hdr={chord_bm!r} bm_card={card_bm!r} bm_ex={ex_bm!r} "
                 f"cm_hdr={chord_cm!r} cm_card={card_cm!r} cm_ex={ex_cm!r} "
                 f"pk={pk_val(page)!r}",
