@@ -1212,31 +1212,6 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
     return options
 
 
-def _practice_key_token_aliases(token: str) -> set[str]:
-    """Match sidebar labels (C / C major) to stored practice-key tokens.
-
-    Do not coerce major↔minor (D must not alias Dm); that would treat catalog
-    sticky as Custom bleed.
-    """
-    raw = str(token or "").strip()
-    if not raw:
-        return set()
-    aliases = {raw, raw.replace("♯", "#").replace("♭", "b")}
-    try:
-        from music_theory import format_key_label_from_parts, key_center_token, split_key_center
-
-        tonic, mode = split_key_center(raw)
-        if tonic:
-            aliases.add(tonic)
-            aliases.add(key_center_token(tonic, mode or "major"))
-            if mode:
-                aliases.add(format_key_label_from_parts(tonic, mode))
-                aliases.add(f"{tonic} {mode}")
-    except Exception:
-        pass
-    return {str(a).strip() for a in aliases if str(a).strip()}
-
-
 def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> str:
     """After Custom SBI leave, keep sealed catalog PK in the sidebar widget.
 
@@ -1318,12 +1293,7 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     except Exception:
         pass
     # Force sealed whenever live still equals a Custom sticky token (bleed).
-    # Songs may show "C major" while the store has "C" (My Progression default).
-    live_aliases = _practice_key_token_aliases(live)
-    custom_aliases: set[str] = set()
-    for tok in custom_tokens:
-        custom_aliases |= _practice_key_token_aliases(tok)
-    if live == sealed or (live and (live in custom_tokens or (live_aliases & custom_aliases))):
+    if live == sealed or (live and live in custom_tokens):
         try:
             from songs.practice_key_state import set_practice_concert_key
 
