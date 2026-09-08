@@ -2422,11 +2422,28 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                         except ImportError:
                             pick = ""
                     if pick.startswith("custom::"):
+                        persist_last_custom = True
+                        try:
+                            from source_session_state import (
+                                coerce_token_to_custom_home_mode,
+                                sbi_custom_visit_is_local_only,
+                            )
+
+                            new = coerce_token_to_custom_home_mode(session, new)
+                            persist_last_custom = not bool(
+                                sbi_custom_visit_is_local_only(session)
+                            )
+                        except ImportError:
+                            persist_last_custom = True
+                        session["display_key"] = new
                         session["concert_key"] = new
-                        set_practice_concert_key(session, new, pick_key=pick)
-                        # Do not call on_global_display_key_change here — historically it
-                        # re-wrote resolve_practice_source_pick (catalog Shape) and bled PK.
-                        session["cpl_last_display_key"] = new
+                        session["_sbi_custom_visit_pk"] = new
+                        session["_sbi_custom_last_visit_pk"] = new
+                        if persist_last_custom:
+                            set_practice_concert_key(session, new, pick_key=pick)
+                            # Do not call on_global_display_key_change here — historically it
+                            # re-wrote resolve_practice_source_pick (catalog Shape) and bled PK.
+                            session["cpl_last_display_key"] = new
                         invalidate_creative_backing_context(session)
                         _apply_pending_backing_context_on_page(session, st_like=st_like)
                         return

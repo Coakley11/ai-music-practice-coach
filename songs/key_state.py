@@ -529,6 +529,18 @@ def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
             return text
     except ImportError:
         pass
+    # Creative SBI Custom: coerce with LAST_CUSTOM/Custom home mode, never Shape.
+    # Catalog selected_song (Shape Bm) would turn a major C click into Cm.
+    try:
+        from source_session_state import (
+            coerce_token_to_custom_home_mode,
+            custom_sbi_owns_sidebar_practice_key,
+        )
+
+        if custom_sbi_owns_sidebar_practice_key(session):
+            return coerce_token_to_custom_home_mode(session, text)
+    except ImportError:
+        pass
     # Explicit specialized Backing visit: keep the mode the user picked (Cm, C#m).
     try:
         from backing_context import get_backing_context

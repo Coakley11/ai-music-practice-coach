@@ -121,6 +121,72 @@ def resolve_sbi_custom_practice_key(
     return home
 
 
+def last_custom_home_key(session: dict[str, Any]) -> str:
+    """LAST_CUSTOM / live CPL original key — Custom mode, never Global Active Shape."""
+    home = ""
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            home = str(snap.get("custom_home_key") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict) and not home:
+                home = str(
+                    active.get("original_key_center") or active.get("original_key") or ""
+                ).strip()
+    except ImportError:
+        home = ""
+    if not home:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, cpl_draft_written_key
+
+            active = session.get(CPL_ACTIVE_KEY)
+            if isinstance(active, dict):
+                home = str(cpl_draft_written_key(active) or "").strip()
+        except Exception:
+            home = ""
+    return str(home or "").strip()
+
+
+def coerce_token_to_custom_home_mode(session: dict[str, Any], token: str) -> str:
+    """Keep tonic; apply LAST_CUSTOM/Custom mode so Shape minor cannot turn C into Cm."""
+    text = str(token or "").strip()
+    if not text:
+        return text
+    home = last_custom_home_key(session)
+    if not home:
+        return text
+    try:
+        from music_theory import coerce_key_to_mode, key_mode
+
+        return coerce_key_to_mode(text, key_mode(home))
+    except Exception:
+        return text
+
+
+def sbi_custom_visit_is_local_only(session: dict[str, Any]) -> bool:
+    """Creative CASE B: SBI Custom PK is a visit overlay and must not mutate LAST_CUSTOM.
+
+    Custom SBI Backing persist is left unchanged (separate owner / 17-gate).
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    if get_sbi_preview_source(session) != SBI_SONG_SOURCE_CUSTOM:
+        return False
+    if sbi_custom_identity_is_global_active(session):
+        return False
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            return False
+    except ImportError:
+        pass
+    return True
+
+
 def composition_sbi_source_available(session: dict[str, Any]) -> bool:
     """True when a distinct Composition progression exists for SBI.
 

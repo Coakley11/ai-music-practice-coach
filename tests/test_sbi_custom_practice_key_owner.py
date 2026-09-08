@@ -93,12 +93,176 @@ class TestSbiCustomPracticeKeyOwner(unittest.TestCase):
             LAST_CUSTOM_STATE_KEY: {
                 "name": "Trial Song",
                 "pick_key": custom,
+                "custom_home_key": "D",
                 "active": {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
             },
         }
         on_global_display_key_change(session, "Eb")
         self.assertEqual(get_practice_concert_key(session, shape), "Dm")
-        self.assertEqual(get_practice_concert_key(session, custom), "Eb")
+        # Creative CASE B: visit PK must not mutate LAST_CUSTOM.
+        self.assertEqual(get_practice_concert_key(session, custom), "D")
+
+    def test_case_b_creative_sbi_c_does_not_write_last_custom_cm(self) -> None:
+        """Shape/Bm GA + Trial/D: SBI Custom C stays visit-only C major, not LAST_CUSTOM Cm."""
+        from creative_key_sync import sync_sidebar_creative_concert_key
+        from songs.key_state import normalize_sidebar_display_key
+        from source_session_state import (
+            coerce_token_to_custom_home_mode,
+            sbi_custom_visit_is_local_only,
+        )
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_intelligence_tab": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": shape,
+            "display_key": "C",
+            "concert_key": "D",
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape},
+            "practice_key_by_source": {shape: "Bm", custom: "D"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "custom_home_key": "D",
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        self.assertTrue(sbi_custom_visit_is_local_only(session))
+        self.assertEqual(normalize_sidebar_display_key(session, "C"), "C")
+        self.assertEqual(coerce_token_to_custom_home_mode(session, "C"), "C")
+        self.assertNotEqual(coerce_token_to_custom_home_mode(session, "C"), "Cm")
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(get_practice_concert_key(session, custom), "D")
+        self.assertEqual(get_practice_concert_key(session, shape), "Bm")
+        self.assertEqual(str(session.get("_sbi_custom_visit_pk") or ""), "C")
+        self.assertNotEqual(str(session.get("display_key") or "").lower(), "cm")
+        self.assertNotEqual(str(session.get("cpl_last_display_key") or "").lower(), "cm")
+
+    def test_open_custom_lab_after_sbi_c_restores_d_not_cm(self) -> None:
+        """CASE B visit C must not seed Custom Lab as C minor; home D wins."""
+        from types import SimpleNamespace
+
+        from custom_progression_lab import (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            prepare_custom_workspace_sidebar_display_key,
+            start_new_progression,
+            apply_cpl_session_progression,
+        )
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "custom",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": shape,
+            "display_key": "C",
+            "concert_key": "C",
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": shape},
+            "practice_key_by_source": {shape: "Bm", custom: "D"},
+            "_sbi_custom_last_visit_pk": "C",
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET: "C",
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "custom_home_key": "D",
+                "active": {
+                    "id": "trial-1",
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                },
+            },
+        }
+        song = start_new_progression()
+        song["id"] = "trial-1"
+        song["name"] = "Trial Song"
+        song["original_key_center"] = "D"
+        song["user_locked_home_key"] = True
+        apply_cpl_session_progression(session, song, reset_display_key=False)
+        session["practice_key_by_source"][custom] = "D"
+        session["_cpl_force_pk_to_home"] = "D"
+        st = SimpleNamespace(session_state=session)
+        prepare_custom_workspace_sidebar_display_key(st, session)
+        pk = str(
+            session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
+            or session.get("display_key")
+            or ""
+        )
+        self.assertTrue(pk.startswith("D"), pk)
+        self.assertNotEqual(pk.lower(), "cm")
+        self.assertEqual(get_practice_concert_key(session, custom), "D")
+        self.assertEqual(get_practice_concert_key(session, shape), "Bm")
+
+    def test_custom_page_pk_edit_still_persists_last_custom(self) -> None:
+        """Ordinary Custom-page Practice Key edits outside CASE B still persist."""
+        from custom_progression_lab import (
+            apply_cpl_session_progression,
+            start_new_progression,
+            sync_custom_workspace_practice_key,
+        )
+
+        shape = "Pop\x1fShape of You — Ed Sheeran"
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "custom",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": shape,
+            "practice_key_by_source": {shape: "Bm", custom: "D"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "custom_home_key": "D",
+                "active": {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
+            },
+        }
+        song = start_new_progression()
+        song["id"] = "trial-1"
+        song["name"] = "Trial Song"
+        song["original_key_center"] = "D"
+        song["user_locked_home_key"] = True
+        apply_cpl_session_progression(session, song, reset_display_key=False)
+        sync_custom_workspace_practice_key(session, practice_key="E", active=song)
+        self.assertEqual(get_practice_concert_key(session, custom), "E")
+        self.assertEqual(get_practice_concert_key(session, shape), "Bm")
+
+    def test_case_a_sbi_custom_pk_still_writes_last_custom(self) -> None:
+        """When Custom is Global Active, SBI Custom PK still updates LAST_CUSTOM."""
+        from creative_key_sync import sync_sidebar_creative_concert_key
+        from songs.music_source import SOURCE_CUSTOM
+        from source_session_state import sbi_custom_visit_is_local_only
+
+        custom = "custom::trial-1"
+        session = {
+            "studio_page": "creative",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "improv_intelligence_tab": "Song-Based Improvisation",
+            "improv_song_source": "Custom progression",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": custom,
+            "display_key": "E",
+            "concert_key": "D",
+            "practice_key_by_source": {custom: "D"},
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "pick_key": custom,
+                "custom_home_key": "D",
+                "active": {"id": "trial-1", "name": "Trial Song", "original_key_center": "D"},
+            },
+        }
+        self.assertFalse(sbi_custom_visit_is_local_only(session))
+        sync_sidebar_creative_concert_key(session)
+        self.assertEqual(get_practice_concert_key(session, custom), "E")
 
     def test_catalog_does_not_own_sidebar_when_sbi_custom(self) -> None:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key

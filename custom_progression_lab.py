@@ -1147,10 +1147,22 @@ def on_cpl_apply_manual_home_key() -> None:
         invalidate_cpl_derived_outputs(st.session_state)
 
 
+def _sbi_custom_visit_skips_last_custom_write(session_state) -> bool:
+    """Creative CASE B visit PK must not become LAST_CUSTOM / cpl_last."""
+    try:
+        from source_session_state import sbi_custom_visit_is_local_only
+
+        return bool(sbi_custom_visit_is_local_only(session_state))
+    except ImportError:
+        return False
+
+
 def on_global_display_key_change(session_state, display_key):
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
+    skip_last_custom = _sbi_custom_visit_skips_last_custom_write(session_state)
     if last is None:
-        session_state[CPL_LAST_DISPLAY_KEY] = display_key
+        if not skip_last_custom:
+            session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode
             from songs.practice_key_state import (
@@ -1158,7 +1170,7 @@ def on_global_display_key_change(session_state, display_key):
                 set_practice_concert_key,
             )
 
-            if not is_fixed_practice_key_mode(session_state):
+            if not skip_last_custom and not is_fixed_practice_key_mode(session_state):
                 # SBI Custom / Custom page must write LAST_CUSTOM sticky — never
                 # Global Active catalog via resolve_practice_source_pick (Shape bleed).
                 set_practice_concert_key(
@@ -1183,6 +1195,8 @@ def on_global_display_key_change(session_state, display_key):
             pass
         return False
     if last != display_key:
+        if skip_last_custom:
+            return False
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode
