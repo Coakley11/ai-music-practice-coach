@@ -177,6 +177,33 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertEqual(healed, "Bm")
         self.assertEqual(session.get("display_key"), "Bm")
 
+    def test_heal_sealed_restores_shape_dm_from_c_major_after_custom_sbi_e(self) -> None:
+        """After Custom SBI D→E, Songs Shape must not keep My Progression C major."""
+        from source_session_state import heal_sealed_catalog_sidebar_if_needed
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = _shape_contaminated_session()
+        install_last_custom_into_live_cpl(session)
+        shape = str(session.get("active_catalog_pick_key") or "")
+        session["studio_page"] = "picker"
+        session["display_key"] = "C major"
+        session["concert_key"] = "C major"
+        session["practice_key_by_source"][shape] = "Dm"
+        session["practice_key_by_source"]["custom::My Progression"] = "C"
+        session["practice_key_by_source"]["custom::trial-1"] = "E"
+        session["_sbi_custom_last_visit_pk"] = "E"
+        session["_sbi_custom_sealed_catalog_pk"] = "Dm"
+        session["_sbi_custom_sealed_catalog_pick"] = shape
+
+        class _St:
+            session_state = session
+
+        healed = heal_sealed_catalog_sidebar_if_needed(_St(), session)
+        self.assertEqual(healed, "Dm")
+        self.assertEqual(session.get("display_key"), "Dm")
+        self.assertEqual(get_practice_concert_key(session, shape), "Dm")
+        self.assertEqual(session.get("practice_key_by_source").get("custom::trial-1"), "E")
+
     def test_custom_ga_concert_progression_line_keeps_em_em_d_d(self) -> None:
         """Missions/SBI concert line must show the full Trial cycle, not collapsed Em · D."""
         from creative_key_sync import creative_progression_display
