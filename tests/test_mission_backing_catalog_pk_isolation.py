@@ -56,6 +56,19 @@ class MissionBackingCatalogPkIsolationTests(unittest.TestCase):
         set_practice_concert_key(session, "Fm", pick_key=SHAPE)
         self.assertEqual(get_practice_concert_key(session, SHAPE), "Dm")
 
+    def test_creative_missions_cm_does_not_overwrite_shape_dm_sticky(self) -> None:
+        session = _mission_backing_session()
+        session["studio_page"] = "creative"
+        session["improv_intelligence_tab"] = "Missions"
+        session["display_key"] = "Cm"
+        session["concert_key"] = "Cm"
+        session["improv_mission_concert_key"] = "Cm"
+        session["backing_context"]["key"] = "Cm"
+        session["backing_context"]["display_key"] = "Cm"
+        session["backing_context"]["concert_key"] = "Cm"
+        set_practice_concert_key(session, "Cm", pick_key=SHAPE)
+        self.assertEqual(get_practice_concert_key(session, SHAPE), "Dm")
+
 
 if __name__ == "__main__":
     unittest.main()
