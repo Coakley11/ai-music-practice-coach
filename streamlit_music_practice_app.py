@@ -10440,6 +10440,14 @@ try:
     try:
         _page_for_jam_release = str(st.session_state.get("studio_page") or "").strip().lower()
         if _page_for_jam_release in {"picker", "practice", "songs"}:
+            try:
+                from creative_key_sync import retire_mission_left_panel_for_catalog_surface
+
+                retire_mission_left_panel_for_catalog_surface(
+                    st.session_state, st_like=st
+                )
+            except Exception:
+                pass
             from generated_jam_key_context import release_generated_jam_key_for_catalog_surface
 
             release_generated_jam_key_for_catalog_surface(st.session_state)
@@ -10721,13 +10729,11 @@ else:
             from creative_key_sync import (
                 MISSION_BACKING_PRACTICE_KEY_WIDGET,
                 _mode_locked_practice_key_options,
+                mission_owns_left_panel_key,
             )
 
             _pk_ctx = get_backing_context(st.session_state)
-            if (
-                _pk_ctx is not None
-                and str(getattr(_pk_ctx, "source", "") or "").strip() == "mission"
-            ):
+            if mission_owns_left_panel_key(st.session_state):
                 _live_pk = str(
                     st.session_state.get("improv_mission_concert_key")
                     or st.session_state.get("display_key")

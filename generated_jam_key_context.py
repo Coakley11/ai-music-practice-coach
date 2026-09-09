@@ -329,6 +329,11 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
         session["_backing_released_specialized_context"] = True
         released = True
 
+    # Leftover Mission handoff on Songs must not be treated as a Style Jam leak
+    # that clears Shape sticky (Dm) back to Original (Bm).
+    if specialized and handoff == "mission" and not jam_ctx and not leaked:
+        return released
+
     tokens = generated_jam_practice_key_tokens(session)
     pick = str(session.get("active_catalog_pick_key") or "").strip()
     if pick.startswith("custom::") or pick.startswith("custom\x1f"):

@@ -49,7 +49,7 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
         if not jam_id and ctx is not None:
             jam_id = str(getattr(ctx, "jam_id", "") or "").strip()
         return f"entry_jam::{jam_id or 'jam'}"
-    if src == "mission":
+    if src == "mission" and page not in {"picker", "practice", "songs"}:
         mid = ""
         if ctx is not None:
             mid = str(
@@ -1200,9 +1200,16 @@ def apply_display_key_for_active_song(
 
             ctx = get_backing_context(st.session_state)
             src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
-            specialized_backing = src in {"entry_jam", "mission", "song_improv"} or bool(
-                creative_jam_owns_practice_settings(st.session_state)
-            )
+            page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            leftover_mission_on_catalog = src == "mission" and page_now in {
+                "picker",
+                "practice",
+                "songs",
+            }
+            specialized_backing = (
+                src in {"entry_jam", "mission", "song_improv"}
+                or bool(creative_jam_owns_practice_settings(st.session_state))
+            ) and not leftover_mission_on_catalog
         except Exception:
             specialized_backing = False
         # Sticky SSOT: if practice_key_by_source and the widget disagree, heal the

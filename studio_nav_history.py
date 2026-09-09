@@ -249,6 +249,12 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         return False
     if current == "backing" and page_id != "backing":
         try:
+            from creative_key_sync import seal_mission_pk_on_leave_backing
+
+            seal_mission_pk_on_leave_backing(session_state)
+        except ImportError:
+            pass
+        try:
             from backing_play_session import expire_backing_play_session_on_page_exit
 
             expire_backing_play_session_on_page_exit(

@@ -379,16 +379,22 @@ def set_practice_concert_key(
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
-    # Mission Backing Practice Key is specialized. Gate 12: Mission Fm must not
-    # stamp the catalog Shape sticky, or Songs after leave/reboot shows F minor.
+    # Mission Practice Key is specialized on Mission Backing and Creative Missions.
+    # Gate 12 leave: leftover Mission Cm must not stamp the catalog Shape sticky.
     if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
         try:
-            from creative_key_sync import mission_backing_owns_left_panel_key
+            from creative_key_sync import mission_owns_left_panel_key
 
-            if mission_backing_owns_left_panel_key(session):
+            if mission_owns_left_panel_key(session):
                 return
         except ImportError:
-            pass
+            try:
+                from creative_key_sync import mission_backing_owns_left_panel_key
+
+                if mission_backing_owns_left_panel_key(session):
+                    return
+            except ImportError:
+                pass
     # Protect a recent explicit user Practice Key commit from stale remount /
     # pending / identity writes that land 1–2s later (Bm → Dm rollback).
     try:

@@ -103,6 +103,233 @@ def mission_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
     return live_backing_source(session) == "mission"
 
 
+def _catalog_surface_page(session: dict[str, Any]) -> bool:
+    return str(session.get("studio_page") or "").strip().lower() in {
+        "picker",
+        "practice",
+        "songs",
+    }
+
+
+def mission_owns_left_panel_key(session: dict[str, Any]) -> bool:
+    """Mission PK owns Mission Backing and Creative Missions — not Songs/catalog.
+
+    After Return to Mission, studio_page is creative so
+    ``mission_backing_owns_left_panel_key`` is already false, but the leftover
+    Mission widget/token is still live. Catalog Shape sticky must not treat
+    that token as a Shape user edit.
+    """
+    if mission_backing_owns_left_panel_key(session):
+        return True
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab == "Missions":
+        return True
+    return live_backing_source(session) == "mission"
+
+
+def leftover_mission_token_on_catalog_surface(session: dict[str, Any]) -> str:
+    """Leftover Mission Practice Key currently living in the catalog widget.
+
+    Once catalog live no longer equals Mission PK, leftover ctx/widget residue
+    must not re-open the leave transition (Shape Dm→Bm is a real catalog edit).
+    """
+    if mission_owns_left_panel_key(session):
+        return ""
+    if not _catalog_surface_page(session):
+        return ""
+    mission_tok = str(session.get("improv_mission_concert_key") or "").strip()
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not mission_tok and live_backing_source(session) == "mission":
+        mission_tok = live
+    if not live or not mission_tok:
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+        if leaving and live == leaving and sealed and live != sealed:
+            return live
+        return ""
+    if live != mission_tok:
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+        if leaving and live == leaving and sealed and live != sealed:
+            return live
+        return ""
+    pick = _catalog_pick_for_mission_leave(session)
+    sticky = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+    if not sticky and pick and not pick.startswith("custom::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    if sticky and live == sticky:
+        return ""
+    return live
+
+
+def _catalog_pick_for_mission_leave(session: dict[str, Any]) -> str:
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick:
+        return pick
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        ctx = None
+    if ctx is not None:
+        pick = str(
+            getattr(ctx, "bound_pick_key", "")
+            or getattr(ctx, "active_song_id", "")
+            or ""
+        ).strip()
+        if pick:
+            return pick
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        return str(sel.get("pick_key") or "").strip()
+    return ""
+
+
+def _dump_g12_leave(session: dict[str, Any], stage: str, **fields: Any) -> None:
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        data_dir = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+        if not data_dir:
+            return
+        payload = {
+            "t": time.time(),
+            "stage": stage,
+            "page": str(session.get("studio_page") or ""),
+            "display_key": str(session.get("display_key") or ""),
+            "improv_mission_concert_key": str(session.get("improv_mission_concert_key") or ""),
+            "leaving": str(session.get("_specialized_practice_token_leaving") or ""),
+            "sealed_catalog": str(session.get("_specialized_leave_catalog_pk") or ""),
+            "handoff": str(session.get("_backing_explicit_handoff_source") or ""),
+            **fields,
+        }
+        path = Path(data_dir) / "_g12_leave.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def seal_mission_pk_on_leave_backing(session: dict[str, Any]) -> bool:
+    """When leaving Mission Backing, leftover Mission PK is not a Catalog edit.
+
+    Stamps the leave seal before Creative generic sync can treat Cm as Shape.
+    Does not seed Catalog onto Creative Missions (Mission still owns that surface).
+    """
+    if live_backing_source(session) != "mission":
+        return False
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "backing":
+        return False
+    stale = str(
+        session.get("improv_mission_concert_key")
+        or session.get("display_key")
+        or session.get("concert_key")
+        or ""
+    ).strip()
+    pick = _catalog_pick_for_mission_leave(session)
+    sticky = ""
+    if pick and not pick.startswith("custom::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    if stale:
+        session["_specialized_practice_token_leaving"] = stale
+    if sticky:
+        session["_specialized_leave_catalog_pk"] = sticky
+        if pick:
+            session["_specialized_leave_catalog_pick"] = pick
+    _dump_g12_leave(
+        session,
+        "seal_mission_pk_on_leave_backing",
+        stale=stale,
+        sticky=sticky,
+        pick=pick,
+    )
+    return bool(stale)
+
+
+def retire_mission_left_panel_for_catalog_surface(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> bool:
+    """Catalog Songs/Practice: leftover Mission PK is stale, Shape sticky wins.
+
+    Does not clear Mission workspace (improv_mission_concert_key, pick, chord).
+    Does not value-heal a specific token; ownership transition only.
+    """
+    stale = leftover_mission_token_on_catalog_surface(session)
+    if not stale:
+        return False
+    pick = _catalog_pick_for_mission_leave(session)
+    if pick.startswith("custom::"):
+        return False
+    sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+    sticky = sealed
+    if not sticky and pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+    session["_specialized_practice_token_leaving"] = stale
+    if sticky:
+        session["_specialized_leave_catalog_pk"] = sticky
+        session["_specialized_leave_catalog_pick"] = pick
+        try:
+            from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+            mapped = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+            if pick and mapped == stale and sticky != stale:
+                set_practice_concert_key(session, sticky, pick_key=pick)
+        except Exception:
+            pass
+        try:
+            from songs.key_state import begin_display_key_owner_transition
+
+            begin_display_key_owner_transition(
+                session,
+                new_owner_id=f"catalog::{pick}" if pick else "catalog",
+                canonical=sticky,
+                stale=stale,
+                st_like=st_like,
+            )
+        except ImportError:
+            session["display_key"] = sticky
+            session["concert_key"] = sticky
+            session["_pending_display_key"] = sticky
+    _dump_g12_leave(
+        session,
+        "retire_mission_left_panel_for_catalog_surface",
+        stale=stale,
+        sticky=sticky,
+        pick=pick,
+    )
+    return True
+
+
 def _emit_h6_mission_pk_trace(session: dict[str, Any], stage: str, **fields: Any) -> None:
     """Env-gated H6 native-path ordering dump. Writes only under MUSIC_APP_DATA_DIR."""
     try:
@@ -190,12 +417,19 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
 
         current = str(resolve_display_key_widget_owner_id(session) or "").strip()
         if current.startswith("mission::"):
-            clear_display_key_owner_transition(session)
+            sealed_catalog = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+            leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+            session.pop("_display_key_owner_transition", None)
+            if not (sealed_catalog and leaving and leaving != sealed_catalog):
+                clear_display_key_owner_transition(session)
     except Exception:
+        sealed_catalog = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
         session.pop("_display_key_owner_transition", None)
-        session.pop("_specialized_practice_token_leaving", None)
-        session.pop("_specialized_leave_catalog_pk", None)
-        session.pop("_specialized_leave_catalog_pick", None)
+        if not (sealed_catalog and leaving and leaving != sealed_catalog):
+            session.pop("_specialized_practice_token_leaving", None)
+            session.pop("_specialized_leave_catalog_pk", None)
+            session.pop("_specialized_leave_catalog_pick", None)
     # Same-owner user edit: display_key is the Mission UI mirror, not a competing
     # catalog authority. Stamp the explicit sidebar source so freeze/merge cannot
     # keep the previous Mission generation (Cm) in the save envelope.
@@ -1444,7 +1678,11 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         from backing_context import get_backing_context
 
         ctx_mission = get_backing_context(session)
-        if ctx_mission is not None and str(getattr(ctx_mission, "source", "") or "").strip() == "mission":
+        if (
+            ctx_mission is not None
+            and str(getattr(ctx_mission, "source", "") or "").strip() == "mission"
+            and mission_owns_left_panel_key(session)
+        ):
             session.pop("_sbi_custom_sealed_catalog_pk", None)
             session.pop("_sbi_custom_sealed_catalog_pick", None)
             live = str(
@@ -2302,11 +2540,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
     if not new:
         return
     try:
-        from backing_context import get_backing_context
-
-        page = str(session.get("studio_page") or "").strip().lower()
-        ctx = get_backing_context(session)
-        if page == "backing" and ctx is not None and str(ctx.source or "") == "mission":
+        if mission_owns_left_panel_key(session):
             apply_specialized_mission_practice_key(session, new)
             return
     except ImportError:
