@@ -338,7 +338,18 @@ def snapshot_disk_copy(tag: str) -> str:
     try:
         shutil.copy2(hits[0], dest)
     except Exception:
-        return str(hits[0])
+        dest = hits[0]
+    tree_dest = data_dir.parent / f"{data_dir.name}_g12_{tag}_datadir"
+    try:
+        if tree_dest.exists():
+            shutil.rmtree(tree_dest, ignore_errors=True)
+        shutil.copytree(
+            data_dir,
+            tree_dest,
+            ignore=shutil.ignore_patterns("_g12_*_datadir", "*_g12_*_datadir"),
+        )
+    except Exception:
+        tree_dest = data_dir
     return str(dest)
 
 
