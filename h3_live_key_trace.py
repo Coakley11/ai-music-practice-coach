@@ -395,3 +395,57 @@ def dump_persist_save(
             fh.write(json.dumps(row, default=str) + "\n")
     except Exception:
         return
+
+
+def _own_path() -> str:
+    return os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_g12_own.jsonl")
+
+
+def dump_backing_owner_write(
+    session: dict[str, Any] | None,
+    *,
+    old_source: str = "",
+    new_source: str = "",
+    caller: str = "",
+    reason: str = "",
+) -> None:
+    """Every backing_context.source mutation during isolated proofs."""
+    if not _enabled() or session is None:
+        return
+    old = str(old_source or "").strip()
+    new = str(new_source or "").strip()
+    if old == new and not reason:
+        return
+    try:
+        sess = session if isinstance(session, dict) else dict(session)
+    except Exception:
+        return
+    bctx = sess.get("backing_context") if isinstance(sess.get("backing_context"), dict) else {}
+    row = {
+        "ts": time.monotonic(),
+        "wall": time.time(),
+        "caller": str(caller or ""),
+        "reason": str(reason or ""),
+        "old_source": old,
+        "new_source": new,
+        "studio_page": str(sess.get("studio_page") or ""),
+        "handoff": str(sess.get("_backing_explicit_handoff_source") or ""),
+        "open_intent": str(sess.get("_backing_open_intent") or ""),
+        "entry_class": str(sess.get("_backing_entry_class") or ""),
+        "entry_mode": str(sess.get("improv_entry_mode") or ""),
+        "tab": str(sess.get("improv_intelligence_tab") or ""),
+        "sbi_preview": str(sess.get("sbi_preview_source") or sess.get("improv_song_source") or ""),
+        "pending_handoff": bool(sess.get("_music_pending_backing_workflow_handoff")),
+        "ctx_source": str(bctx.get("source") or ""),
+        "stack": [
+            f"{fr.function}:{fr.lineno}"
+            for fr in inspect.stack()[1:12]
+            if fr.function not in {"dump_backing_owner_write"}
+        ],
+    }
+    try:
+        with open(_own_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        return
+

@@ -290,6 +290,17 @@ def set_backing_context(
             )
     except Exception:
         pass
+    try:
+        from h3_live_key_trace import dump_backing_owner_write
+
+        dump_backing_owner_write(
+            session,
+            old_source=str(prev_blob.get("source") or "") if isinstance(prev_blob, dict) else "",
+            new_source=str(getattr(ctx, "source", "") or ""),
+            caller=str(trace_caller or "set_backing_context"),
+        )
+    except Exception:
+        pass
     explicit_route_arg_present = creative_return_route is not _CREATIVE_RETURN_ROUTE_ARG_UNSET
     payload = refresh_backing_context_timestamps(ctx).to_dict()
     preservation_reason = "no_previous_route"
@@ -4554,6 +4565,35 @@ def ensure_backing_context_from_creative_session(session: dict[str, Any]) -> Bac
     try:
         from creative_session_state import creative_session_is_active, get_creative_session
 
+        handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        persisted_src = str(getattr(existing, "source", "") or "").strip() if existing is not None else ""
+        # Most recent explicit Backing owner outranks leftover Creative-session
+        # tool_type / SBI radio residue (full-history Mission reboot).
+        authority = handoff or persisted_src
+        if authority == "mission":
+            ctx = build_mission_context(session)
+            set_backing_context(
+                session,
+                ctx,
+                trace_caller="ensure_backing_context_from_creative_session:handoff_mission",
+            )
+            return ctx
+        if authority == "song_improv":
+            ctx = build_song_improv_context(session)
+            set_backing_context(
+                session,
+                ctx,
+                trace_caller="ensure_backing_context_from_creative_session:handoff_sbi",
+            )
+            return ctx
+        if authority == "entry_jam":
+            ctx = build_entry_jam_context(session)
+            set_backing_context(
+                session,
+                ctx,
+                trace_caller="ensure_backing_context_from_creative_session:handoff_jam",
+            )
+            return ctx
         if not creative_session_is_active(session):
             return existing
         sess = get_creative_session(session)
@@ -4629,7 +4669,17 @@ def _restore_should_rebind_custom_sbi(session: dict[str, Any]) -> bool:
 
 def _persisted_backing_is_custom_sbi(session: dict[str, Any]) -> bool:
     """True when the restored backing blob is nested SBI Custom (not Catalog Active)."""
+    handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
     raw = session.get(BACKING_CONTEXT_KEY) or session.get("backing_context")
+    ctx_src = ""
+    if isinstance(raw, BackingContext):
+        ctx_src = str(raw.source or "")
+    elif isinstance(raw, dict):
+        ctx_src = str(raw.get("source") or "")
+    # Current Mission/Jam owner is not a Custom SBI visit. Leftover nested-SBI
+    # stamps from earlier history must not rebuild song_improv over them.
+    if handoff in {"mission", "entry_jam"} or ctx_src in {"mission", "entry_jam"}:
+        return False
     if _ctx_blob_is_custom_sbi(raw):
         return True
     return _restore_should_rebind_custom_sbi(session)

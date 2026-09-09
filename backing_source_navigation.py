@@ -1811,6 +1811,20 @@ def commit_active_catalog_source_before_backing_hydrate(
 
 def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply backing navigation intent and preserve last Backing Studio source (Cases B + refresh)."""
+    try:
+        from backing_context import get_backing_context
+        from h3_live_key_trace import dump_backing_owner_write
+
+        ctx = get_backing_context(session)
+        dump_backing_owner_write(
+            session,
+            old_source=str(getattr(ctx, "source", "") or "") if ctx is not None else "",
+            new_source=str(getattr(ctx, "source", "") or "") if ctx is not None else "",
+            caller="hydrate_backing_source_for_page:entry",
+            reason="hydrate_entry",
+        )
+    except Exception:
+        pass
     # Explicit "Use catalog song backing" — next hydrates must seal Catalog ownership.
     # Backing runs hydrate twice per paint; keep the force for 2 consumes so the
     # second pass cannot restore_last a stale custom_progression ctx (H9).

@@ -31,6 +31,11 @@ _TOOL_TO_ENTRY_MODE: dict[CreativeToolType, str] = {
     "entry_style_jam": "Style Jam Mode",
     "jam_session_generator": "Jam Session Generator",
     "song_based_improvisation": "Song-Based Improvisation",
+    # Missions / Custom keep the SBI-shaped entry radio. from_dict must still
+    # treat persisted tool_type as authoritative — leftover Song-Based
+    # Improvisation entry_mode is not a newer user action.
+    "mission": "Song-Based Improvisation",
+    "custom_progression": "Song-Based Improvisation",
 }
 
 
