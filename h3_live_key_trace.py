@@ -24,6 +24,10 @@ def _page_path() -> str:
     return os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_h3_studio_page.jsonl")
 
 
+def _persist_path() -> str:
+    return os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_h3_persist.jsonl")
+
+
 def _tonic_of_blob_raw(raw: Any) -> str:
     if raw is None:
         return ""
@@ -190,6 +194,39 @@ def snapshot_live_keys(session: dict[str, Any]) -> dict[str, Any]:
             or session.get("_streamlit_widgets_locked")
         ),
         "stores": enumerate_workflow_store_copies(session),
+        "visit_pk": session.get("_sbi_custom_visit_pk"),
+        "last_visit_pk": session.get("_sbi_custom_last_visit_pk"),
+        "sbi_overlay": bool(session.get("_sbi_custom_sidebar_overlay")),
+        "sealed_pk": session.get("_sbi_custom_sealed_catalog_pk"),
+        "sealed_pick": session.get("_sbi_custom_sealed_catalog_pick"),
+        "widget_owner": session.get("_display_key_widget_owner_id"),
+        "owner_transition": session.get("_display_key_owner_transition"),
+        "active_source": session.get("active_music_source"),
+        "pick_key": session.get("active_catalog_pick_key"),
+        "selected_title": (session.get("selected_song") or {}).get("title")
+        if isinstance(session.get("selected_song"), dict)
+        else None,
+        "selected_key": (session.get("selected_song") or {}).get("key")
+        if isinstance(session.get("selected_song"), dict)
+        else None,
+        "sbi_widget": session.get("display_key_sbi_custom"),
+        "sbi_preview": session.get("sbi_preview_source"),
+        "improv_song_source": session.get("improv_song_source"),
+        "picker_source": session.get("song_picker_active_source"),
+        "cpl_last_display_key": session.get("cpl_last_display_key"),
+        "last_writer": session.get("last_key_writer_function"),
+        "shape_sticky": {
+            str(k): str(v)
+            for k, v in (session.get("practice_key_by_source") or {}).items()
+            if isinstance(session.get("practice_key_by_source"), dict)
+            and "shape of you" in str(k).lower()
+        },
+        "custom_stickies": {
+            str(k): str(v)
+            for k, v in (session.get("practice_key_by_source") or {}).items()
+            if isinstance(session.get("practice_key_by_source"), dict)
+            and str(k).startswith("custom::")
+        },
     }
 
 
@@ -276,6 +313,85 @@ def dump_studio_page_write(
     }
     try:
         with open(_page_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        return
+
+
+def dump_persist_save(
+    session: dict[str, Any] | None,
+    *,
+    reason: str = "",
+    write_path: str = "",
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Every disk persist during isolated proofs. Not a product authority."""
+    if not _enabled() or session is None:
+        return
+    try:
+        sess = session if isinstance(session, dict) else dict(session)
+    except Exception:
+        return
+    bctx = sess.get("backing_context") if isinstance(sess.get("backing_context"), dict) else {}
+    nav = sess.get("studio_nav_state") if isinstance(sess.get("studio_nav_state"), dict) else {}
+    cws = sess.get("creative_workspace_state") if isinstance(sess.get("creative_workspace_state"), dict) else {}
+    payload_page = ""
+    payload_src = ""
+    if isinstance(payload, dict):
+        core = payload.get("core") if isinstance(payload.get("core"), dict) else {}
+        p_sess = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+        p_nav = payload.get("studio_nav_state") if isinstance(payload.get("studio_nav_state"), dict) else {}
+        p_bctx = (
+            p_sess.get("backing_context")
+            if isinstance(p_sess.get("backing_context"), dict)
+            else payload.get("backing_context")
+        )
+        if not isinstance(p_bctx, dict):
+            p_bctx = {}
+        payload_page = str(
+            p_sess.get("studio_page")
+            or core.get("studio_page")
+            or p_nav.get("studio_page")
+            or payload.get("studio_page")
+            or ""
+        )
+        payload_src = str(p_bctx.get("source") or p_sess.get("backing_source") or "")
+    mission = sess.get("improv_active_mission") or cws.get("improv_active_mission")
+    mid = ""
+    if isinstance(mission, dict):
+        mid = str(mission.get("id") or mission.get("title") or mission.get("name") or "")
+    elif mission:
+        mid = str(mission)
+    row = {
+        "ts": time.time(),
+        "reason": str(reason or ""),
+        "write_path": str(write_path or ""),
+        "studio_page": str(sess.get("studio_page") or cws.get("studio_page") or ""),
+        "nav_page": str(nav.get("studio_page") or ""),
+        "backing_source": str(bctx.get("source") or sess.get("backing_source") or ""),
+        "payload_studio_page": payload_page,
+        "payload_backing_source": payload_src,
+        "handoff": str(sess.get("_backing_explicit_handoff_source") or ""),
+        "open_intent": str(sess.get("_backing_open_intent") or ""),
+        "navigate_pending": str(sess.get("_navigate_to_studio_page") or ""),
+        "user_nav_page": str(sess.get("_music_user_navigated_page_this_run") or ""),
+        "mission_id": mid or str(sess.get("improv_mission_pick") or cws.get("improv_mission_pick") or ""),
+        "mission_pk": str(
+            sess.get("improv_mission_concert_key")
+            or cws.get("improv_mission_concert_key")
+            or sess.get("display_key_mission_backing")
+            or ""
+        ),
+        "ii_chord": str(sess.get("ii_selected_chord") or cws.get("ii_selected_chord") or ""),
+        "tab": str(sess.get("improv_intelligence_tab") or cws.get("improv_intelligence_tab") or ""),
+        "stack": [
+            f"{fr.function}:{fr.lineno}"
+            for fr in inspect.stack()[1:12]
+            if fr.function not in {"dump_persist_save"}
+        ],
+    }
+    try:
+        with open(_persist_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, default=str) + "\n")
     except Exception:
         return

@@ -4431,6 +4431,16 @@ def prepare_music_workspace(
 def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
     """Update ?dev=1 trace after force/autosave (phone→Dell page sync diagnostics)."""
     try:
+        from h3_live_key_trace import dump_persist_save
+
+        dump_persist_save(
+            st.session_state,
+            reason=str(reason or ""),
+            write_path="_record_music_persist_trace",
+        )
+    except Exception:
+        pass
+    try:
         from music_persistence_trace import get_trace, update_trace
 
         ss = st.session_state
@@ -4899,6 +4909,17 @@ def persist_music_disk_state(st: Any) -> None:
         write_path="persist_music_disk_state",
     )
     save_user_state(APP_ID, state)
+    try:
+        from h3_live_key_trace import dump_persist_save
+
+        dump_persist_save(
+            st.session_state,
+            reason=str(reason or ""),
+            write_path="persist_music_disk_state",
+            payload=state if isinstance(state, dict) else None,
+        )
+    except Exception:
+        pass
 
 
 def reset_music_disk_state(st: Any) -> None:

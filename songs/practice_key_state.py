@@ -105,7 +105,7 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
             src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
             if src == "regular_song" or get_backing_source_preference(session) == BACKING_PREF_CATALOG:
                 return False
-            if src == "entry_jam":
+            if src in {"entry_jam", "mission"}:
                 return True
         except ImportError:
             pass
@@ -379,6 +379,16 @@ def set_practice_concert_key(
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
+    # Mission Backing Practice Key is specialized. Gate 12: Mission Fm must not
+    # stamp the catalog Shape sticky, or Songs after leave/reboot shows F minor.
+    if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
+        try:
+            from creative_key_sync import mission_backing_owns_left_panel_key
+
+            if mission_backing_owns_left_panel_key(session):
+                return
+        except ImportError:
+            pass
     # Protect a recent explicit user Practice Key commit from stale remount /
     # pending / identity writes that land 1–2s later (Bm → Dm rollback).
     try:
