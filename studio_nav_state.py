@@ -35,8 +35,10 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-# Startup/default pages that must not outrank a persisted current Backing visit.
+# Startup/default pages that must not outrank a persisted current visit.
 _GENERIC_STARTUP_PAGES = frozenset({"", "picker", "practice"})
+# Explicit page visits that beat generic Songs/Practice bootstrap on refresh.
+_PERSISTED_VISIT_PAGES = frozenset({"backing", "custom"})
 
 
 def _page_from_nav_map(src: Any) -> str:
@@ -371,6 +373,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                     "session_page_preserved",
                     "user_nav_this_run",
                     "persisted_session_backing",
+                    "persisted_session_custom",
                 ):
                     return _finish(
                         "hydrated_page_over_stale_canonical",
@@ -383,11 +386,13 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                             "restore_source": restore_source,
                         },
                     )
-            if preferred == "backing" and (not canonical or canonical in _GENERIC_STARTUP_PAGES):
+            if preferred in _PERSISTED_VISIT_PAGES and (
+                not canonical or canonical in _GENERIC_STARTUP_PAGES
+            ):
                 return _finish(
-                    "persisted_backing_over_default",
+                    f"persisted_{preferred}_over_default",
                     preferred,
-                    reason="persisted_backing_over_default",
+                    reason=f"persisted_{preferred}_over_default",
                     allow_detail={
                         "canonical": canonical,
                         "hydrated": hydrated,
@@ -421,7 +426,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                 local_edit=True,
                 allow_detail={"restore_source": restore_source, "canonical": canonical, "live": live},
             )
-        if live == "backing" and canonical in _GENERIC_STARTUP_PAGES:
+        if live in _PERSISTED_VISIT_PAGES and canonical in _GENERIC_STARTUP_PAGES:
             return _finish(
                 "session_page_wins",
                 live,
@@ -431,7 +436,7 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
                     "restore_source": restore_source,
                     "canonical": canonical,
                     "live": live,
-                    "why": "persisted_backing_over_default_picker",
+                    "why": f"persisted_{live}_over_default_picker",
                 },
             )
         if restore_source in ("workspace_blob", "cloud_restore", "session_page", "session_page_preserved"):
@@ -546,8 +551,9 @@ def _studio_page_from_blob(state: dict[str, Any]) -> str:
     """Authoritative persisted page for restore.
 
     A generic picker/practice workspace default must not outrank a persisted
-    current Backing visit (session or studio_nav_state). A saved Jam UUID
-    alone is not enough — the persisted page must actually be backing.
+    current Backing or Custom visit (session or studio_nav_state). Global
+    Active catalog identity is not page authority. A saved Jam UUID alone
+    is not enough — the persisted page must actually be backing.
     """
     layers = _studio_page_layers_from_blob(state)
     workspace = str(layers.get("workspace") or "")
@@ -555,8 +561,11 @@ def _studio_page_from_blob(state: dict[str, Any]) -> str:
     session_page = str(layers.get("session") or "")
     core = str(layers.get("core") or "")
     current_backing = nav == "backing" or session_page == "backing"
+    current_custom = nav == "custom" or session_page == "custom"
     if workspace in _GENERIC_STARTUP_PAGES and current_backing:
         return "backing"
+    if workspace in _GENERIC_STARTUP_PAGES and current_custom:
+        return "custom"
     if workspace:
         return workspace
     if nav:
@@ -600,6 +609,9 @@ def resolve_studio_page_for_restore(
     session_or_nav_backing = (
         layers.get("session") == "backing" or layers.get("studio_nav") == "backing"
     )
+    session_or_nav_custom = (
+        layers.get("session") == "custom" or layers.get("studio_nav") == "custom"
+    )
     workspace_generic = str(layers.get("workspace") or "") in _GENERIC_STARTUP_PAGES
     pre = _normalize_page(pre_restore_page)
     if session.get("_studio_nav_from_history") and pre:
@@ -622,6 +634,8 @@ def resolve_studio_page_for_restore(
         return pre, "session_page_preserved"
     if session_or_nav_backing and workspace_generic and not user_owns_page:
         return "backing", "persisted_session_backing"
+    if session_or_nav_custom and workspace_generic and not user_owns_page:
+        return "custom", "persisted_session_custom"
     if blob_page:
         return blob_page, "workspace_blob"
     if pre:

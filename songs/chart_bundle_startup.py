@@ -10,6 +10,8 @@ CHART_BUNDLE_RECOVERY_DIAG_KEY = "_chart_bundle_recovery_diag"
 CHART_BUNDLE_RECOVERY_STOP_REASON_KEY = "_chart_bundle_recovery_stop_reason"
 
 # Pages that must reach RUN_COMPLETED without a catalog chart bundle.
+# Custom Lab uses LAST_CUSTOM / CPL, not the Global Active catalog chart.
+# A catalog chart failure must not stop the run before Custom page dispatch.
 CHART_BUNDLE_EXEMPT_STUDIO_PAGES = frozenset(
     {
         "analysis",
@@ -17,6 +19,7 @@ CHART_BUNDLE_EXEMPT_STUDIO_PAGES = frozenset(
         "picker",
         "multitrack",
         "composition",
+        "custom",
     }
 )
 
