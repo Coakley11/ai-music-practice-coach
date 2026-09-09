@@ -907,6 +907,20 @@ def persist_mission_slice() -> dict:
             "core_display_key": core.get("display_key"),
             "ass_display_key": ass.get("display_key"),
             "ass_show_written": ass.get("show_chart_in_instrument_key"),
+            "persist_mission": (
+                str(base.get("studio_page") or "").lower() == "backing"
+                and str(bctx.get("source") or base.get("backing_source") or "") == "mission"
+            ),
+            "open_intent": sess.get("_backing_open_intent") or cws.get("_backing_open_intent"),
+            "pending_backing_apply": sess.get("_pending_backing_context_apply"),
+            "pending_workflow_handoff": sess.get("_music_pending_backing_workflow_handoff"),
+            "nav_page": (
+                (envelope.get("studio_nav_state") or {}).get("studio_page")
+                if isinstance(envelope.get("studio_nav_state"), dict)
+                else None
+            ),
+            "tab": sess.get("improv_intelligence_tab") or cws.get("improv_intelligence_tab"),
+            "entry_mode": sess.get("improv_entry_mode") or cws.get("improv_entry_mode"),
         }
     )
     return base

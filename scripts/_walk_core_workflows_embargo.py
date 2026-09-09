@@ -24,18 +24,21 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
-def _cli() -> tuple[str, set[str]]:
+def _cli() -> tuple[str, set[str], str]:
     url = "http://127.0.0.1:8530"
     only: set[str] = set()
+    until = ""
     for arg in sys.argv[1:]:
         if arg.startswith("--only="):
             only = {p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()}
+        elif arg.startswith("--until="):
+            until = arg.split("=", 1)[1].strip()
         elif arg.startswith("http://") or arg.startswith("https://"):
             url = arg
-    return url, only
+    return url, only, until
 
 
-URL, ONLY_GATES = _cli()
+URL, ONLY_GATES, UNTIL_GATE = _cli()
 OUT = SCRIPTS / "evidence-creative-backing"
 OUT.mkdir(parents=True, exist_ok=True)
 PREFIX = "core-wf-"
@@ -45,7 +48,7 @@ NOTES: list[str] = []
 
 def log(msg: str) -> None:
     NOTES.append(msg)
-    print(msg, flush=True)
+    print(str(msg).encode("ascii", "replace").decode("ascii"), flush=True)
 
 
 def mark(gate: str, status: str, detail: str = "") -> None:
@@ -239,6 +242,16 @@ def wait_restored_mission_backing(page: Page, timeout_s: float = 90.0) -> dict:
         if welcome:
             time.sleep(1.0)
             continue
+        page_now = str(persist.get("studio_page") or "").lower()
+        src_now = str(persist.get("backing_source") or "")
+        if (
+            not persist_mission
+            and page_now in {"creative", "practice", "songs", "song_picker"}
+            and src_now in {"regular_song", "custom_progression", "song_improv", ""}
+        ):
+            info["ready"] = False
+            info["persist_not_mission"] = True
+            return info
         if ui and str(pk).strip():
             info["ready"] = True
             return info
@@ -273,6 +286,162 @@ def leave_mission_backing(page: Page) -> bool:
         click_button_has(page, r"Return to Creative")
         settle(page, 3)
     return not has_any(page.inner_text("body") or "", "Return to Mission", "MISSION BACKING")
+
+
+def ui_is_true_mission_backing(body: str) -> bool:
+    """Welcome chrome and the Missions tab are not Mission Backing."""
+    return has_any(
+        body,
+        "Return to Mission",
+        "MISSION BACKING",
+        "Creative Backing Jam · Mission",
+    )
+
+
+def disk_is_mission_backing(persist: dict) -> bool:
+    page = str(persist.get("studio_page") or "").lower()
+    src = str(persist.get("backing_source") or "")
+    if persist.get("persist_mission") is True:
+        return True
+    return page == "backing" and src == "mission"
+
+
+def last_persist_writes(n: int = 8) -> list[dict]:
+    import os
+
+    data_dir = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    path = Path(data_dir) / "_h3_persist.jsonl" if data_dir else None
+    if not path or not path.exists():
+        return []
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            continue
+    return rows[-n:]
+
+
+def snapshot_disk_copy(tag: str) -> str:
+    import os
+    import shutil
+
+    data_dir = Path(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip())
+    if not data_dir:
+        return ""
+    hits = list(data_dir.rglob("music_user_state.json"))
+    if not hits:
+        return ""
+    dest = data_dir / f"_g12_{tag}_music_user_state.json"
+    try:
+        shutil.copy2(hits[0], dest)
+    except Exception:
+        return str(hits[0])
+    return str(dest)
+
+
+def capture_g12_prekill(page: Page, *, tag: str = "prekill") -> dict:
+    """UI + persist envelope + disk snapshot immediately before any reboot action."""
+    from _walk_custom_practice_key import pk_val
+    from _walk_human_h1_h9 import persist_mission_slice
+    from walk_creative_backing_matrix import expand_sidebar
+
+    try:
+        expand_sidebar(page)
+    except Exception:
+        pass
+    try:
+        body = page.inner_text("body") or ""
+    except Exception:
+        body = ""
+    try:
+        main = page.locator('[data-testid="stMain"]').inner_text() or ""
+    except Exception:
+        main = ""
+    try:
+        side = page.locator('[data-testid="stSidebar"]').inner_text() or ""
+    except Exception:
+        side = ""
+    persist = persist_mission_slice()
+    live_pk = ""
+    try:
+        live_pk = pk_val(page) or sidebar_pk_input(page) or ""
+    except Exception:
+        live_pk = sidebar_pk_input(page) or ""
+    ui_mb = ui_is_true_mission_backing(body) or ui_is_true_mission_backing(main)
+    creative_lab = has_any(body, "IMPROVISATION LAB", "Creative Lab")
+    heading = ""
+    for needle in (
+        "MISSION BACKING",
+        "Return to Mission",
+        "Creative Backing Jam · Mission",
+        "IMPROVISATION LAB",
+        "Creative Lab",
+        "Song Selection",
+        "NOW LOADED FOR PRACTICE",
+    ):
+        if has_any(body, needle):
+            heading = needle
+            break
+    subpage = ""
+    if has_any(body, "Missions") and has_any(body, "Selected Mission"):
+        subpage = "Missions"
+    elif has_any(body, "Live Coach"):
+        subpage = "Live Coach"
+    elif has_any(body, "Phrase", "Motif"):
+        subpage = "Motif"
+    written = has_any(body + side, "Written", "Concert charts", "show chart")
+    disk_path = snapshot_disk_copy(tag)
+    writers = last_persist_writes(8)
+    layers = persist.get("page_layers") if isinstance(persist.get("page_layers"), dict) else {}
+    row = {
+        "tag": tag,
+        "ui": {
+            "page": "backing" if ui_mb else ("creative" if creative_lab else heading or "unknown"),
+            "creative_subpage": subpage,
+            "heading": heading,
+            "mission_backing": ui_mb,
+            "welcome": "welcome back" in low(main) and not ui_mb,
+            "source_owner": persist.get("backing_source"),
+            "practice_key": live_pk or practice_badge(body) or persist.get("persisted_mission_pk"),
+            "mission_id": persist.get("mission_id"),
+            "selected_chord": mission_selected_chord(body),
+            "card": practice_badge(body),
+            "written": written,
+            "main_head": (main or "")[:400],
+        },
+        "live_persist_envelope": {
+            "studio_page": persist.get("studio_page"),
+            "backing_source": persist.get("backing_source"),
+            "persist_mission": persist.get("persist_mission"),
+            "mission_id": persist.get("mission_id"),
+            "mission_pk": persist.get("persisted_mission_pk") or persist.get("mission_concert"),
+            "mission_widget": persist.get("mission_widget"),
+            "nav_page": persist.get("nav_page") or layers.get("studio_nav"),
+            "navigate_pending": layers.get("navigate_pending"),
+            "handoff": layers.get("handoff") or persist.get("open_intent"),
+            "open_intent": persist.get("open_intent"),
+            "pending_restore": persist.get("pending_restore"),
+            "pending_backing_apply": persist.get("pending_backing_apply"),
+            "pending_workflow_handoff": persist.get("pending_workflow_handoff"),
+            "tab": persist.get("tab"),
+            "entry_mode": persist.get("entry_mode"),
+            "page_layers": layers,
+        },
+        "disk_path": disk_path,
+        "disk_is_mission": disk_is_mission_backing(persist),
+        "last_persist_writers": writers[-3:],
+        "persist_raw": persist,
+    }
+    try:
+        (OUT / f"{PREFIX}12-{tag}.json").write_text(
+            json.dumps(row, indent=2, default=str), encoding="utf-8"
+        )
+    except Exception:
+        pass
+    return row
 
 
 def sidebar_pk_input(page: Page) -> str:
@@ -1389,15 +1558,126 @@ def main() -> int:
         click_available_mission_chord(page)
         click_button_has(page, r"Generate [Ee]xample")
         settle(page, 2)
+        opened_mb = False
         try:
-            open_mission_backing(page, NOTES)
+            opened_mb = bool(open_mission_backing(page, NOTES))
         except Exception:
-            click_button_has(page, r"Open Mission Backing")
+            opened_mb = bool(click_button_has(page, r"Open Mission Backing"))
+        if not opened_mb:
+            opened_mb = bool(
+                click_button_has(page, r"🎧\s*Backing Jam")
+                or click_button_has(page, r"Backing Jam")
+            )
+            NOTES.append(f"g12_emoji_backing_jam_click={opened_mb}")
+            settle(page, 4)
+        deadline_ui = time.time() + 25.0
+        while time.time() < deadline_ui:
+            try:
+                body_wait = page.inner_text("body") or ""
+            except Exception:
+                body_wait = ""
+            if ui_is_true_mission_backing(body_wait):
+                break
+            time.sleep(1.2)
         settle(page, 4)
         body_c_pre = shot(page, "12-pre-reboot-mission-backing")
-        is_mb_pre = has_any(body_c_pre, "Return to Mission", "Mission")
+        is_mb_pre = ui_is_true_mission_backing(body_c_pre)
+        prekill = capture_g12_prekill(page, tag="prekill")
+        log("12_prekill=" + json.dumps(prekill, default=str)[:8000])
+        ui_mb = bool(prekill.get("ui", {}).get("mission_backing")) or is_mb_pre
+        disk_mb = bool(prekill.get("disk_is_mission"))
+        if disk_mb and not ui_mb:
+            deadline_disk = time.time() + 20.0
+            while time.time() < deadline_disk:
+                time.sleep(1.2)
+                waited = capture_g12_prekill(page, tag="prekill-wait-ui")
+                ui_mb = bool(waited.get("ui", {}).get("mission_backing"))
+                disk_mb = bool(waited.get("disk_is_mission"))
+                log(
+                    "12_prekill_wait_ui="
+                    + json.dumps(
+                        {
+                            "ui_mb": ui_mb,
+                            "disk_is_mission": disk_mb,
+                            "heading": (waited.get("ui") or {}).get("heading"),
+                        },
+                        default=str,
+                    )
+                )
+                if ui_mb and disk_mb:
+                    prekill = waited
+                    break
+        if ui_mb and not disk_mb:
+            deadline_disk = time.time() + 20.0
+            while time.time() < deadline_disk:
+                time.sleep(1.2)
+                waited = capture_g12_prekill(page, tag="prekill-wait")
+                disk_mb = bool(waited.get("disk_is_mission"))
+                log(
+                    "12_prekill_wait="
+                    + json.dumps(
+                        {
+                            "disk_is_mission": disk_mb,
+                            "studio_page": (waited.get("live_persist_envelope") or {}).get("studio_page"),
+                            "backing_source": (waited.get("live_persist_envelope") or {}).get("backing_source"),
+                        },
+                        default=str,
+                    )
+                )
+                if disk_mb:
+                    prekill = waited
+                    break
+        if ui_mb and not disk_mb:
+            mark(
+                "12_hard_reboot",
+                "RED",
+                "CASE_A UI Mission Backing but disk is not mission — STOPPED before kill "
+                f"ui={prekill.get('ui')} persist={prekill.get('live_persist_envelope')} "
+                f"writers={prekill.get('last_persist_writers')}",
+            )
+            browser.close()
+            return _emit_summary(meta)
+        if not ui_mb and not disk_mb:
+            mark(
+                "12_hard_reboot",
+                "PARTIAL",
+                "CASE_C UI/disk already Creative before kill — STOPPED; Mission never persisted "
+                f"ui={prekill.get('ui')} persist={prekill.get('live_persist_envelope')} "
+                f"writers={prekill.get('last_persist_writers')}",
+            )
+            browser.close()
+            return _emit_summary(meta)
+        if disk_mb and not ui_mb:
+            log("12_prekill disk is Mission Backing; UI scrape still Creative — proceeding on disk authority")
 
+        log("12_prekill_verified_mission_on_disk writers=" + json.dumps(prekill.get("last_persist_writers"), default=str))
         browser.close()
+        from _walk_human_h1_h9 import persist_mission_slice as _persist_mission_after_close
+
+        after_close = _persist_mission_after_close()
+        snapshot_disk_copy("after-browser-close")
+        log(
+            "12_after_browser_close="
+            + json.dumps(
+                {
+                    "studio_page": after_close.get("studio_page"),
+                    "backing_source": after_close.get("backing_source"),
+                    "persist_mission": after_close.get("persist_mission"),
+                    "writers": last_persist_writes(3),
+                },
+                default=str,
+            )
+        )
+        if not disk_is_mission_backing(after_close):
+            mark(
+                "12_hard_reboot",
+                "RED",
+                "CASE_A after browser.close disk left Mission — STOPPED before kill "
+                f"studio_page={after_close.get('studio_page')!r} "
+                f"backing_source={after_close.get('backing_source')!r} "
+                f"writers={last_persist_writes(3)}",
+            )
+            return _emit_summary(meta)
 
         # Actual process death + restart (preserves MUSIC_APP_DATA_DIR)
         try:
@@ -1412,6 +1692,26 @@ def main() -> int:
         browser2 = p.chromium.launch(headless=True)
         page2 = browser2.new_page(viewport={"width": 1440, "height": 960})
         page2.goto(URL, wait_until="domcontentloaded", timeout=180000)
+        from _walk_human_h1_h9 import persist_mission_slice as _persist_startup
+
+        snapshot_disk_copy("startup-first-read")
+        startup_disk = _persist_startup()
+        log(
+            "12_startup_disk="
+            + json.dumps(
+                {
+                    "studio_page": startup_disk.get("studio_page"),
+                    "backing_source": startup_disk.get("backing_source"),
+                    "persist_mission": startup_disk.get("persist_mission"),
+                    "mission_id": startup_disk.get("mission_id"),
+                    "mission_pk": startup_disk.get("persisted_mission_pk"),
+                    "nav_page": startup_disk.get("nav_page"),
+                    "tab": startup_disk.get("tab"),
+                    "page_layers": startup_disk.get("page_layers"),
+                },
+                default=str,
+            )
+        )
         ready_boot = wait_restored_mission_backing(page2, timeout_s=90.0)
         log(f"12_reboot ready={json.dumps(ready_boot, default=str)}")
         settle(page2, 3)
@@ -1477,19 +1777,23 @@ def main() -> int:
             pass
         body_b = shot(page2, "12b-sbi-custom-after-reboot")
         b_ok = ok_b and has_any(body_b, "Trial Song")
-        # C Mission restore: either boot landed on Mission Backing, or Creative still has Mission
-        if not boot_mission:
-            goto_improv(page2, NOTES)
-            ensure_missions_workspace(page2, NOTES)
-        body_c = shot(page2, "12c-after-reboot-creative")
-        c_ok = boot_mission or has_any(body_c, "Mission", "Selected Mission")
-        g12 = a_ok and b_ok and (c_ok or is_mb_pre)
+        # A: after reboot, leave Mission, Songs still shows Shape D-minor
+        #    (catalog sticky). Source of truth: Songs card/badge/live PK.
+        # B: after reboot, SBI Custom still shows Trial Song.
+        # C / boot_mission: hard reboot restored Mission Backing (UI + persist),
+        #    not Welcome-only chrome and not a later Creative re-nav.
+        c_ok = bool(boot_mission)
+        g12 = a_ok and b_ok and boot_mission
         mark(
             "12_hard_reboot",
             "PASS" if g12 else ("PARTIAL" if (a_ok or b_ok) else "RED"),
             f"A={a_ok} B={b_ok} boot_mission={boot_mission} C={c_ok} "
             f"pre_a={pre_a!r} a_badge={a_badge!r} a_live={a_live!r}",
         )
+
+        if UNTIL_GATE in {"12", "12_hard_reboot"}:
+            browser2.close()
+            return _emit_summary(meta)
 
         # ========== 13. Final visual sanity path ==========
         click_nav(page2, "Songs")
