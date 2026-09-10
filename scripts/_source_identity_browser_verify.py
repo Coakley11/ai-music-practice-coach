@@ -133,6 +133,50 @@ def wait_streamlit_idle(page: Page, timeout_ms: int = 15000) -> None:
         pass
 
 
+def songs_source_radio_live(page: Page) -> bool:
+    """True when a live Songs Music Source radio block is visible."""
+    try:
+        radios = page.locator("[data-testid='stRadio']")
+        total = radios.count()
+    except Exception:
+        return False
+    for i in range(total):
+        block = radios.nth(i)
+        try:
+            if not _marker_is_live(block) or not block.is_visible():
+                continue
+            txt = block.inner_text(timeout=1500)
+        except Exception:
+            continue
+        if "Composition" in txt and (
+            "Custom" in txt or "catalog" in txt.lower() or "Song Selection" in txt
+        ):
+            return True
+    return False
+
+
+def wait_studio_ui_ready(page: Page, *, timeout_ms: int = 90_000) -> str:
+    """After reload/goto, wait until a live studio page or Songs radio is observable.
+
+    Empty ``page_id`` alone is not a product failure — the DOM often lags the
+    server hydration that already logged ``page=backing`` / ``page=picker``.
+    """
+    deadline = time.time() + timeout_ms / 1000.0
+    last = ""
+    while time.time() < deadline:
+        wait_streamlit_idle(page, timeout_ms=3000)
+        last = _studio_page_id(page)
+        if last:
+            return last
+        if songs_source_radio_live(page):
+            return _studio_page_id(page) or "picker"
+        page.wait_for_timeout(400)
+    raise RuntimeError(
+        "studio UI never became ready after wait "
+        f"(page_id={_studio_page_id(page)!r} songs_radio={songs_source_radio_live(page)})"
+    )
+
+
 def _marker_is_live(el) -> bool:
     try:
         handle = el.element_handle()
@@ -1390,12 +1434,8 @@ def ensure_songs(page: Page) -> None:
             # Only use radio fallback when the marker is missing/unknown.
             if page_id:
                 return False
-            for label in ("Custom Progression", "Composition", "Catalog"):
-                loc = page.locator("[data-testid='stRadio'] label").filter(
-                    has_text=re.compile(re.escape(label), re.I)
-                )
-                if loc.count() and loc.first.is_visible():
-                    return True
+            # Require the full Songs Music Source block, not a lone sidebar label.
+            return songs_source_radio_live(page)
         except Exception:
             pass
         return False
@@ -1423,23 +1463,42 @@ def ensure_songs(page: Page) -> None:
         except Exception:
             return False
 
+    # If the marker is still empty, wait for live studio/Songs UI before the
+    # single navigation click (reload settle often races body.dataset).
+    if not _studio_page_id(page) and not songs_source_radio_live(page):
+        try:
+            wait_studio_ui_ready(page, timeout_ms=60_000)
+        except Exception:
+            pass
+        if _on_songs_picker():
+            ENSURE_SONGS_STATS["already_on_songs"] += 1
+            return
+
     if _try_nav():
         ENSURE_SONGS_STATS["nav_ok"] += 1
         return
 
-    # Extra nav retries before reload — empty/cold workspaces often land on Practice.
-    for _ in range(5):
-        page.wait_for_timeout(500)
+    if not ensure_songs_reload_allowed():
+        ENSURE_SONGS_STATS["reload_denied"] += 1
+        # One readiness wait + one more nav — no multi-click storm.
+        try:
+            wait_studio_ui_ready(page, timeout_ms=45_000)
+        except Exception:
+            pass
+        if _on_songs_picker():
+            ENSURE_SONGS_STATS["already_on_songs"] += 1
+            return
         if _try_nav():
             ENSURE_SONGS_STATS["nav_ok"] += 1
             return
-
-    if not ensure_songs_reload_allowed():
-        ENSURE_SONGS_STATS["reload_denied"] += 1
         page_id = _studio_page_id(page)
+        try:
+            shot(page, "ensure_songs_nav_failed")
+        except Exception:
+            pass
         raise RuntimeError(
             "ensure_songs nav failed and reload fallback disabled "
-            f"(page_id={page_id!r})"
+            f"(page_id={page_id!r} songs_radio={songs_source_radio_live(page)})"
         )
 
     ENSURE_SONGS_STATS["reload_fallback"] += 1

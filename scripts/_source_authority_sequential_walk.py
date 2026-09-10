@@ -410,7 +410,10 @@ def _change_pk(page: Page, needle: str, step: str) -> str | None:
 def _same_source_refresh(page: Page, source_label: str) -> None:
     """Reload and stay on the same source — never re-click radio (that resets PK)."""
     page.reload(wait_until="domcontentloaded", timeout=180_000)
-    v.wait_streamlit(page, 4000)
+    v.wait_streamlit_idle(page, timeout_ms=15000)
+    # Server may finish hydration (page=backing/picker) before body.dataset is
+    # visible to Playwright — wait for live studio/Songs UI, then one Songs nav.
+    v.wait_studio_ui_ready(page, timeout_ms=90_000)
     v.ensure_songs(page)
     v.wait_streamlit_idle(page)
     deadline = time.time() + 20
@@ -1239,13 +1242,13 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
     need(ok and not rec)
     need(_composition_reset_c(page, step=f"{label}:composition_reset_c"))
 
-    # Request D#; assert the app's live canonical spelling (may be Eb).
-    comp_live = _change_pk(page, "G", f"{label}:composition_change_ds")
+    # Select Practice Key G (step name historically said "ds"; live value is G).
+    comp_live = _change_pk(page, "G", f"{label}:composition_change_g")
     need(bool(comp_live))
     _same_source_refresh(page, "Composition")
     need(
         _assert_pk_authority(
-            page, comp_live or "D#", step=f"{label}:composition_refresh_keeps_ds"
+            page, comp_live or "G", step=f"{label}:composition_refresh_keeps_g"
         )
     )
     id_ok, id_detail = _assert_composition_identity(page)
