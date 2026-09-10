@@ -1620,6 +1620,20 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                     key = display_key = concert_key = jam_key
         except ImportError:
             pass
+    if used_coherent_generated and "Style Jam" in entry_mode:
+        # Coherent snapshot may still be a leftover Jam Generator key (Eb)
+        # after the user set Entry Style Practice Key to F.
+        try:
+            from creative_key_sync import creative_entry_concert_key
+            from music_theory import transpose_sections_dict
+
+            widget = str(creative_entry_concert_key(session) or "").strip()
+            if widget and widget != key:
+                if sections_dict:
+                    sections_dict = transpose_sections_dict(sections_dict, key, widget)
+                key = display_key = concert_key = widget
+        except Exception:
+            pass
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     if entry_mode == "Jam Session Generator":
@@ -3084,11 +3098,12 @@ def backing_page_sync_id(session: dict[str, Any], *, song_sync_id: str = "") -> 
     """
     ctx = get_backing_context(session)
     if ctx is not None and ctx.source == "custom_progression":
-        sig = str(ctx.custom_revision_id or ctx.bound_pick_key or "").strip()
+        # Prefer stable Custom pick identity. Revision-id churn remounts the
+        # Tempo slider and snaps every BPM edit back to the source default.
+        sig = str(ctx.bound_pick_key or ctx.active_song_id or ctx.custom_revision_id or "").strip()
         if sig:
             return f"custom:{sig}"
-        active_id = str(ctx.active_song_id or "").strip()
-        return f"custom:{active_id or 'progression'}"
+        return "custom:progression"
     ctx = active_creative_backing_context(session)
     if ctx is None:
         return str(song_sync_id or "").strip()

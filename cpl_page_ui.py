@@ -430,8 +430,14 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
-    def _render_launch_in_studio(*, has_chords: bool, include_workspace_nav: bool) -> None:
-        """Launch actions. Practice/Backing appear only after Save to Library succeeds."""
+    def _render_launch_in_studio(
+        *,
+        has_chords: bool,
+        include_workspace_nav: bool,
+        include_practice_backing: bool = True,
+    ) -> None:
+        """Launch actions. Practice/Backing appear only after Save, and never
+        duplicate the finished-view Open Practice/Backing row."""
         st.markdown("#### Launch in the studio")
         saved_now = cpl_library_saved_for_current_song(
             st.session_state, cpl_active_from_session(st.session_state)
@@ -439,7 +445,7 @@ def render_custom_progression_lab_page() -> None:
         cells = ["save"]
         if include_workspace_nav:
             cells.extend(["active", "songs"])
-        if saved_now:
+        if include_practice_backing and saved_now:
             cells.extend(["backing", "practice"])
         cols = st.columns(max(1, len(cells)))
         for col, kind in zip(cols, cells):
@@ -721,7 +727,11 @@ def render_custom_progression_lab_page() -> None:
                     st.session_state["cpl_finished"] = False
                     st.rerun()
 
-            _render_launch_in_studio(has_chords=has_chords, include_workspace_nav=False)
+            _render_launch_in_studio(
+                has_chords=has_chords,
+                include_workspace_nav=False,
+                include_practice_backing=False,
+            )
             _save(None)
             return
 

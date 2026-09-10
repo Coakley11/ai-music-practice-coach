@@ -733,7 +733,7 @@ def apply_mission_motif_transform(
         motif = transform_motif(
             dict(example.motif),
             operation,
-            key_center=improv_ctx.display_key,
+            key_center=improv_ctx.key_center or improv_ctx.display_key,
         )
         motif = sync_motif_midi(motif)
     example.motif = motif

@@ -42,7 +42,28 @@ def resolve_song_practice_key_token(session: dict[str, Any]) -> str:
     if blob is None:
         return ""
     tonic = str(blob.keys.practice_tonic or "C").strip() or "C"
-    mode = str(blob.keys.practice_mode or "major").strip().lower()
+    mode = str(blob.keys.practice_mode or "").strip().lower()
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if live:
+        try:
+            from music_theory import normalize_root, split_key_center
+
+            live_tonic, live_mode = split_key_center(live)
+            if mode not in {"major", "minor"}:
+                mode = live_mode or "major"
+            elif (
+                mode == "major"
+                and live_mode == "minor"
+                and normalize_root(tonic) == normalize_root(live_tonic)
+            ):
+                # Empty/default blob mode must not turn a live minor Practice Key into C major.
+                mode = "minor"
+                tonic = live_tonic or tonic
+        except ImportError:
+            if mode not in {"major", "minor"}:
+                mode = "major"
+    elif mode not in {"major", "minor"}:
+        mode = "major"
     if mode == "minor":
         return f"{tonic}m" if not tonic.lower().endswith("m") else tonic
     return tonic
@@ -651,10 +672,33 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         except ImportError:
             pass
         seed_song_practice_blob_from_live_practice_key(session)
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+            from music_theory import split_key_center
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            saved = ""
+            if pick and not pick.startswith("custom::"):
+                saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if saved:
+                _st, smode = split_key_center(saved)
+                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+                _lt, lmode = split_key_center(live) if live else ("", "")
+                if smode == "minor" and lmode != "minor":
+                    session["display_key"] = saved
+                    session["concert_key"] = saved
+                    session["_pending_display_key"] = saved
+                    session["_creative_visit_practice_key"] = saved
+                    session["_creative_visit_source"] = "missions"
+        except ImportError:
+            pass
         mirror_mission_keys_from_song_blob(session)
         # Reconcile Practice Key *before* concert rehydrate so sync cannot transpose
         # using a stale blob token while live identity is already the destination.
         token = reconcile_catalog_practice_key_owner(session, source="missions_tab_song_blob_reconcile")
+        if token:
+            session["_creative_visit_practice_key"] = token
+            session["_creative_visit_source"] = "missions"
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity

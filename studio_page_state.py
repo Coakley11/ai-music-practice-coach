@@ -401,6 +401,47 @@ def sync_improv_song_source_for_handoff(
     # Deliberately do not call set_custom_source / set_catalog_source here.
 
 
+def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
+    """Restore the catalog source Practice Key when SBI switches to Active song.
+
+    Custom visit keys stay isolated on `_sbi_custom_visit_pk` and must not remain
+    in `display_key` after this switch.
+    """
+    catalog_pk = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::"):
+            catalog_pk = str(get_practice_concert_key(session_state, pick) or "").strip()
+    except ImportError:
+        catalog_pk = ""
+    if not catalog_pk:
+        try:
+            from source_session_state import get_catalog_session, _catalog_display_key
+
+            catalog = get_catalog_session(session_state)
+            if isinstance(catalog, dict) and catalog:
+                catalog_pk = str(_catalog_display_key(session_state, catalog) or "").strip()
+        except ImportError:
+            catalog_pk = ""
+    if not catalog_pk:
+        return ""
+    session_state["display_key"] = catalog_pk
+    session_state["concert_key"] = catalog_pk
+    session_state["_pending_display_key"] = catalog_pk
+    session_state["_creative_visit_practice_key"] = catalog_pk
+    session_state["_creative_visit_source"] = "sbi_active"
+    session_state["_pk_user_commit_token"] = catalog_pk
+    try:
+        import time as _time
+
+        session_state["_pk_user_commit_at"] = _time.time()
+    except Exception:
+        pass
+    return catalog_pk
+
+
 def apply_improv_song_source(
     session_state: dict,
     source: str,
@@ -437,6 +478,7 @@ def apply_improv_song_source(
                 clear_restore_sbi_custom_source(session_state)
             except ImportError:
                 session_state.pop("_restore_sbi_custom_source", None)
+            _restore_sbi_active_catalog_practice_key(session_state)
         elif src == "Custom progression":
             session_state["_restore_sbi_custom_source"] = True
         elif src == "Composition":
@@ -458,6 +500,7 @@ def apply_improv_song_source(
             clear_restore_sbi_custom_source(session_state)
         except ImportError:
             session_state.pop("_restore_sbi_custom_source", None)
+        _restore_sbi_active_catalog_practice_key(session_state)
     elif src == "Custom progression":
         session_state["_restore_sbi_custom_source"] = True
     elif src == "Composition":

@@ -120,6 +120,21 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         _store_nav_diag(session, candidates, deduped, removed)
         return deduped, removed
 
+    if src == "custom_progression":
+        candidates.append(
+            BackingNavAction(
+                action_id="return_custom_songs",
+                label=str(return_to_source_button_label(ctx) or "✏️ Return to Custom Page"),
+                destination="custom",
+                purpose="return_custom_page",
+                icon="creative",
+                priority=10,
+            )
+        )
+        deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+        _store_nav_diag(session, candidates, deduped, removed)
+        return deduped, removed
+
     if src == "regular_song" or not src:
         try:
             from backing_session_route import get_backing_session_route

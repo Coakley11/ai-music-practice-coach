@@ -229,15 +229,14 @@ def render_backing_creative_context_card(
                 section_map=sm if isinstance(sm, list) else None,
                 fallback_key=str(practice_key or ctx.concert_key or "C"),
             )
-            live_selected = str(session.get("ii_selected_chord") or "").strip()
-            mission_chord = live_selected or str(proj.display_chord or proj.concert_chord or "").strip()
+            # Visible chord is the projected display chord. Raw ii_selected_chord
+            # is concert (or stale) and must not outrank written projection.
+            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
         except ImportError:
             mission_chord = ""
         if not mission_chord:
-            # Prefer live selected concert identity over sealed ctx progression.
             mission_chord = str(
-                session.get("ii_selected_chord")
-                or (ctx.progression[0] if ctx.progression else "")
+                (ctx.progression[0] if ctx.progression else "")
                 or ctx.progression_label
                 or ""
             ).strip()

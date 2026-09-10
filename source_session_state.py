@@ -1074,7 +1074,7 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         or session.get("creative_improv_intelligence_tab")
         or ""
     ).strip()
-    if tab in {"Missions", "Live Coach", "Phrase / Motif", "Motif"}:
+    if tab in {"Missions", "Live Coach"}:
         try:
             from songs.music_source import custom_progression_is_active
 
@@ -1082,6 +1082,17 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
                 return False
         except ImportError:
             pass
+    if tab in {"Phrase / Motif", "Motif"}:
+        # SBI Custom → Motif keeps the Custom visit key. Catalog GA + Active SBI
+        # still uses catalog PK.
+        if get_sbi_preview_source(session) != "Custom progression":
+            try:
+                from songs.music_source import custom_progression_is_active
+
+                if not custom_progression_is_active(session):
+                    return False
+            except ImportError:
+                pass
     if get_sbi_preview_source(session) == "Custom progression":
         return True
     if src == "custom_progression":
@@ -1454,6 +1465,19 @@ def bind_sidebar_practice_key_to_backing_owner(st: Any, session: dict[str, Any])
             ).strip()
         except Exception:
             token = ""
+        try:
+            from creative_key_sync import creative_entry_concert_key
+
+            entry = str(
+                getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""
+            ).strip()
+            widget = str(creative_entry_concert_key(session) or "").strip()
+            # Entry Style Jam: leftover Jam Generator key/snapshot must not keep
+            # the sidebar on Eb after the user set Style Practice Key to F.
+            if widget and "Style Jam" in entry:
+                token = widget
+        except Exception:
+            pass
         if not token:
             try:
                 from workflow_key_identity import resolve_practice_key_identity_for_ui
@@ -1464,11 +1488,24 @@ def bind_sidebar_practice_key_to_backing_owner(st: Any, session: dict[str, Any])
             except Exception:
                 token = ""
         if not token:
-            token = str(
-                session.get("improv_jam_key")
-                or session.get("improv_style_key")
-                or ""
-            ).strip()
+            try:
+                from backing_context import get_backing_context
+                from creative_key_sync import creative_entry_concert_key
+
+                ctx_entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+                entry = ctx_entry or str(session.get("improv_entry_mode") or "").strip()
+                token = str(creative_entry_concert_key(session) or "").strip()
+                if not token:
+                    if "Style Jam" in entry:
+                        token = str(session.get("improv_style_key") or "").strip()
+                    else:
+                        token = str(session.get("improv_jam_key") or "").strip()
+            except Exception:
+                token = str(
+                    session.get("improv_style_key")
+                    or session.get("improv_jam_key")
+                    or ""
+                ).strip()
         if not token:
             try:
                 from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY

@@ -384,6 +384,27 @@ def _max_leap(midis: list[int]) -> int:
     return max(abs(int(midis[i]) - int(midis[i - 1])) for i in range(1, len(midis)))
 
 
+def _shift_phrase_into_bounds(midis: list[int]) -> list[int]:
+    """Octave-shift the WHOLE phrase into staff bounds — never wrap one note.
+
+    If a descending phrase would finish below ``_PATTERN_MIDI_LO``, raise the
+    entire phrase. Do not pull a high starting register down merely because the
+    first note sits above ``_PATTERN_MIDI_HI`` — descending patterns start high
+    on purpose. Isolated per-note octave wraps are forbidden.
+    """
+    if not midis:
+        return []
+    out = [int(m) for m in midis]
+    guard = 0
+    while min(out) < _PATTERN_MIDI_LO and guard < 8:
+        out = [m + 12 for m in out]
+        guard += 1
+    while min(out) > _PATTERN_MIDI_HI and guard < 16:
+        out = [m - 12 for m in out]
+        guard += 1
+    return out
+
+
 # Comfortable staff-ish bounds for long patterns. Ascending may start below LO;
 # descending may start above HI — never mid-pattern octave-reset.
 _PATTERN_MIDI_LO = 53  # F3
@@ -981,7 +1002,7 @@ def generate_motif_for_chord(
         motif["notes"] = respell_notes_for_key(list(notes), key_center)
         motif["display"] = " – ".join(motif["notes"])
     # Spelling may change note names — re-bind compact register to final names.
-    motif["midi"] = _compact_midis_from_notes(list(motif.get("notes") or []))
+    motif["midi"] = _shift_phrase_into_bounds(_compact_midis_from_notes(list(motif.get("notes") or [])))
     motif["display"] = " – ".join(list(motif.get("notes") or []))
     return motif
 
@@ -1136,7 +1157,14 @@ def build_motif_pattern(
         cells.append(cell_notes)
         cell_midis.append(cell_ms)
     flat = [n for cell in cells for n in cell]
-    flat_midi = [m for cell in cell_midis for m in cell]
+    flat_midi = _shift_phrase_into_bounds([m for cell in cell_midis for m in cell])
+    # Re-slice cell midi from the globally shifted phrase so cells stay continuous.
+    cell_midis = []
+    cursor = 0
+    for cell in cells:
+        n = len(cell)
+        cell_midis.append(flat_midi[cursor : cursor + n])
+        cursor += n
     cell_len = max(1, len(base_notes))
     base_rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
     base_syms = list(motif.get("rhythm_symbols") or _RHYTHM_PATTERNS.get(base_rk, ["♩"] * cell_len))
@@ -1385,23 +1413,21 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     else:
         motif["display"] = " – ".join(notes)
     existing = list(motif.get("midi") or [])
-    midis: list[int] = []
-    prev: int | None = None
-    for i, n in enumerate(notes):
-        target_pc = _midi_from_note(str(n), 4) % 12
-        if (
-            i < len(existing)
-            and isinstance(existing[i], (int, float))
-            and int(existing[i]) % 12 == target_pc
-        ):
-            mid = int(existing[i])
-        elif prev is not None:
-            mid = _nearest_midi_for_pc(target_pc, prev)
-        else:
-            mid = _nearest_midi_for_pc(target_pc, 64)
-        midis.append(mid)
-        prev = mid
-    motif["midi"] = midis
+    pcs_ok = (
+        len(existing) >= len(notes)
+        and all(
+            isinstance(existing[i], (int, float))
+            and int(existing[i]) % 12 == _midi_from_note(str(notes[i]), 4) % 12
+            for i in range(len(notes))
+        )
+    )
+    if pcs_ok:
+        # Planned register (pattern / sequence) is authoritative. Never nearest-wrap
+        # an individual note to the previous MIDI — that jumps octaves mid-phrase.
+        motif["midi"] = _shift_phrase_into_bounds([int(m) for m in existing[: len(notes)]])
+    else:
+        compact = _compact_midis_from_notes(notes)
+        motif["midi"] = _shift_phrase_into_bounds(compact)
     stored = motif.get("rhythm_symbols")
     if isinstance(stored, list) and stored and any(str(s) in ("z", "Z") for s in stored):
         motif["rhythm_symbols"] = [str(s) for s in stored]

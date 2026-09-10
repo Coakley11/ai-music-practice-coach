@@ -113,6 +113,24 @@ def resolve_mission_projection_state(
         if not concert_chord and at_ch:
             concert_chord = at_ch
             section_label = at_sec or section_label
+        elif concert_chord and at_ch:
+            try:
+                from music_theory import normalize_chord_for_theory
+
+                from improvisation_motif import flatten_section_map
+
+                concert_syms = {
+                    normalize_chord_for_theory(c)
+                    for c in flatten_section_map(section_map)
+                    if str(c).strip()
+                }
+                selected_n = normalize_chord_for_theory(concert_chord)
+                if concert_syms and selected_n not in concert_syms:
+                    # Written/stale D#m must not replace concert Dm sitting at this index.
+                    concert_chord = at_ch
+                    section_label = at_sec or section_label
+            except Exception:
+                pass
         if concert_chord and write_authoritative_chord_selection is not None:
             try:
                 write_authoritative_chord_selection(

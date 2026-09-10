@@ -111,6 +111,43 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
+        from source_session_state import (
+            get_sbi_preview_source,
+            resolve_sbi_custom_practice_key,
+        )
+
+        entry = str(session_state.get("improv_entry_mode") or "").strip()
+        tab = str(
+            session_state.get("improv_intelligence_tab")
+            or session_state.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if entry not in {"Style Jam Mode", "Jam Session Generator"}:
+            src = get_sbi_preview_source(session_state)
+            if src == "Custom progression" and tab in {
+                "Phrase / Motif",
+                "Motif",
+                "Entry & Jam",
+            }:
+                custom_pk = str(resolve_sbi_custom_practice_key(session_state) or "").strip()
+                if custom_pk:
+                    session_state["_creative_visit_practice_key"] = custom_pk
+                    session_state["_creative_visit_source"] = "sbi_custom"
+                    return custom_pk
+            visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
+            visit_src = str(session_state.get("_creative_visit_source") or "").strip()
+            # Same-source Creative navigation keeps the visit key. Missions itself
+            # must still reclaim leftover generated keys from the song blob.
+            if (
+                visit
+                and src != "Custom progression"
+                and visit_src in {"sbi_active", "missions"}
+                and tab not in {"Missions"}
+            ):
+                return visit
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import user_sidebar_display_key_authoritative
         from music_workflow_pending_song_practice_key_edit import (
             overlay_destination_practice_key,
@@ -1738,20 +1775,11 @@ def _tab_motif(
     motif_chord_label = gen_chord
     title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
     display_text = _motif_display_text(motif)
-    notes_linear = " – ".join(
-        str(n) for n in list(motif.get("notes") or []) if str(n).strip()
-    )
-    notes_html = ""
-    if notes_linear and " | " in display_text:
-        notes_html = (
-            f'<p class="ui-card-sub">Notes: {html.escape(notes_linear)}</p>'
-        )
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
         f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
         f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
         f'{html.escape(display_text)}</p>'
-        f'{notes_html}'
         f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
         unsafe_allow_html=True,
     )
@@ -1791,6 +1819,33 @@ def _tab_motif(
         )
         session_state["improv_motif_pattern_type"] = str(type_choice)
     with pc3:
+        def _on_motif_dir_change() -> None:
+            live = session_state.get("improv_motif")
+            if not isinstance(live, dict) or not live.get("is_pattern"):
+                return
+            direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
+            session_state["improv_motif"] = rebuild_motif_pattern(
+                live,
+                key_center=motif_key,
+                pattern_type=str(
+                    session_state.get("improv_motif_pattern_type")
+                    or live.get("pattern_type")
+                    or "auto"
+                ),
+                direction=direction,
+                length=int(
+                    session_state.get("improv_motif_pattern_length")
+                    or live.get("pattern_length")
+                    or 8
+                ),
+            )
+            _refresh_motif_output_after_transform(
+                session_state,
+                key_center=motif_key,
+                bpm=bpm,
+            )
+            _persist_motif_artifact(session_state, interaction="motif_direction_change")
+
         dir_choice = st.radio(
             "Direction",
             options=["ascending", "descending"],
@@ -1798,6 +1853,7 @@ def _tab_motif(
             index=0 if cur_dir != "descending" else 1,
             horizontal=True,
             key="improv_motif_pattern_dir_widget",
+            on_change=_on_motif_dir_change,
         )
 
     pb1, pb2, pb3 = st.columns(3)
@@ -2477,6 +2533,9 @@ def render_mission_practice_lick_on_backing(
         if proj.concert_chord:
             concert_chord = proj.concert_chord
         display_chord = str(proj.display_chord or "").strip()
+        concert_key_from_proj = str(proj.concert_key or "").strip()
+        if concert_key_from_proj:
+            session_state["_mission_projection_concert_key"] = concert_key_from_proj
     except ImportError:
         display_chord = ""
     if not display_chord:
@@ -2484,7 +2543,11 @@ def render_mission_practice_lick_on_backing(
             from effective_practice_context import musician_facing_chart_key, musician_facing_chord
 
             concert_key = str(
-                session_state.get("display_key") or payload.get("key_center") or "C"
+                session_state.get("_mission_projection_concert_key")
+                or session_state.get("improv_mission_concert_key")
+                or session_state.get("concert_key")
+                or payload.get("key_center")
+                or "C"
             ).strip() or "C"
             chart_key = musician_facing_chart_key(session_state, concert_key)
             src = concert_chord or str(payload.get("chord") or "")
@@ -2492,23 +2555,24 @@ def render_mission_practice_lick_on_backing(
         except ImportError:
             display_chord = concert_chord or str(payload.get("chord") or "")
     chord = display_chord or concert_chord or str(payload.get("chord") or "")
-    key_center = str(payload.get("key_center") or "C")
+    concert_key = str(
+        session_state.get("_mission_projection_concert_key")
+        or session_state.get("improv_mission_concert_key")
+        or session_state.get("concert_key")
+        or payload.get("key_center")
+        or "C"
+    ).strip() or "C"
+    key_center = str(payload.get("key_center") or concert_key or "C")
     try:
         from effective_practice_context import musician_facing_chart_key
 
-        key_center = musician_facing_chart_key(
-            session_state,
-            str(session_state.get("display_key") or key_center or "C"),
-        ) or key_center
+        key_center = musician_facing_chart_key(session_state, concert_key) or key_center
     except ImportError:
         pass
     song = str(payload.get("song_title") or "")
     section = str(payload.get("section_label") or "")
     level = str(payload.get("level") or "")
     example_type = _mission_example_type_label(str(payload.get("example_variant") or "normal"))
-    concert_key = str(
-        session_state.get("display_key") or session_state.get("concert_key") or payload.get("key_center") or "C"
-    ).strip() or "C"
     out = None
     try:
         from improvisation_missions import mission_example_for_display

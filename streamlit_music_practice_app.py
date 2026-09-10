@@ -8320,91 +8320,6 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         st.caption(
             "This is **your** song — Practice, Backing Track, and charts follow this custom progression."
         )
-        if st.button(
-            "Use catalog song instead",
-            key="custom_hub_switch_to_catalog",
-            use_container_width=True,
-            help="Leave Custom Progression and restore your last catalog song.",
-        ):
-            from songs.key_state import invalidate_backing_cache
-            from songs.music_source import switch_to_catalog_from_custom
-
-            switch_to_catalog_from_custom(
-                st,
-                song_picker_catalog=SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                invalidate_backing=invalidate_backing_cache,
-                force=True,
-            )
-            st.rerun()
-        visible_records = _picker_visible_records()
-        catalog_pick_options = [
-            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
-            for r in visible_records
-            if r.get("genre") and r.get("title")
-        ]
-        if catalog_pick_options:
-            from songs.state import consume_uncommitted_catalog_dropdown
-
-            widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
-            if widget not in catalog_pick_options:
-                # custom:: / empty is not a valid catalog option. Visual default
-                # only — consume will not apply first_valid while Custom owns.
-                st.session_state["matching_song_dropdown"] = catalog_pick_options[0]
-            consume_uncommitted_catalog_dropdown(
-                st,
-                catalog_pick_options,
-                SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-            )
-            if not (
-                is_custom_progression(st.session_state)
-                or custom_progression_is_active(st.session_state)
-            ):
-                st.rerun()
-        if catalog_pick_options:
-            st.markdown(
-                '<p class="ui-active-song-picker-label">Switch to a catalog song</p>',
-                unsafe_allow_html=True,
-            )
-            _hub_favs = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
-
-            def _on_custom_hub_catalog_pick() -> None:
-                from songs.key_state import invalidate_backing_cache
-                from songs.state import apply_explicit_catalog_dropdown_pick
-
-                raw_pick = st.session_state.get("matching_song_dropdown", "")
-                resolved_pick = resolve_pick_key(
-                    raw_pick,
-                    song_picker_catalog=SONG_PICKER_CATALOG,
-                    records=visible_records,
-                )
-                if not resolved_pick or str(resolved_pick).startswith("custom::"):
-                    return
-                apply_explicit_catalog_dropdown_pick(
-                    st,
-                    resolved_pick,
-                    SONG_PICKER_CATALOG,
-                    song_library=SONG_LIBRARY,
-                )
-                note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
-                try:
-                    st.toast(
-                        "Song updated — chart and backing track follow this selection.",
-                        icon="🎵",
-                    )
-                except Exception:
-                    pass
-
-            st.selectbox(
-                "Active song",
-                catalog_pick_options,
-                format_func=lambda opt: _picker_song_dropdown_label(opt, favorites=_hub_favs),
-                key="matching_song_dropdown",
-                on_change=_on_custom_hub_catalog_pick,
-                label_visibility="collapsed",
-                help="Pick a catalog song. This leaves Custom and makes that song Global Active.",
-            )
         _render_custom_song_library_selector()
         _render_active_song_card(rec)
         st.markdown('<div class="ui-song-card-actions ui-active-song-hub-actions">', unsafe_allow_html=True)
@@ -9281,19 +9196,28 @@ def _render_backing_return_source_action() -> None:
                     st.rerun()
             elif action.action_id == "return_custom_songs":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    save_page_snapshot(st.session_state, "backing")
                     try:
-                        from songs.music_source import LAST_CUSTOM_STATE_KEY
-                        from custom_progression_lab import apply_cpl_session_progression
+                        from songs.key_state import invalidate_backing_cache
+                        from songs.music_source import restore_last_custom_active_song
 
-                        snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
-                        if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-                            apply_cpl_session_progression(
-                                st.session_state,
-                                dict(snap["active"]),
-                                reset_display_key=False,
-                            )
+                        restore_last_custom_active_song(
+                            st, invalidate_backing=invalidate_backing_cache
+                        )
                     except Exception:
-                        pass
+                        try:
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY
+                            from custom_progression_lab import apply_cpl_session_progression
+
+                            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                                apply_cpl_session_progression(
+                                    st.session_state,
+                                    dict(snap["active"]),
+                                    reset_display_key=False,
+                                )
+                        except Exception:
+                            pass
                     navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
@@ -9307,6 +9231,9 @@ def _render_backing_return_source_action() -> None:
         if nav_has_creative:
             return
 
+        if any(a.action_id == "return_custom_songs" for a in actions):
+            return
+
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
             return
 
@@ -9316,10 +9243,13 @@ def _render_backing_return_source_action() -> None:
             if src == "custom_progression":
                 # Custom Backing → actual Custom page (not Creative).
                 try:
+                    from songs.key_state import invalidate_backing_cache
                     from songs.music_source import restore_last_custom_active_song
 
-                    restore_last_custom_active_song(st.session_state)
-                except ImportError:
+                    restore_last_custom_active_song(
+                        st, invalidate_backing=invalidate_backing_cache
+                    )
+                except Exception:
                     pass
                 navigate_studio_page(st.session_state, "custom")
                 st.rerun()
@@ -9605,6 +9535,19 @@ def _render_backing_step2_playback_action(
             if lock > 0:
                 bpm = lock
         st.markdown("</div>", unsafe_allow_html=True)
+
+        try:
+            from backing_key_cycle import (
+                BACKING_KEY_CYCLE_DIRECTION_KEY,
+                BACKING_KEY_CYCLE_STEP_KEY,
+                render_backing_key_cycle_controls,
+            )
+
+            st.session_state.setdefault(BACKING_KEY_CYCLE_STEP_KEY, "semitone")
+            st.session_state.setdefault(BACKING_KEY_CYCLE_DIRECTION_KEY, "up")
+            render_backing_key_cycle_controls(st, st.session_state)
+        except ImportError:
+            pass
 
         _render_backing_scope_controls(
             section_names,

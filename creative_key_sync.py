@@ -2175,13 +2175,19 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
     if generated_backing_owns_left_panel_key(session):
         from music_theory import key_mode, practice_keys_for_mode
 
-        jam_tok = str(
-            session.get("improv_jam_key")
-            or session.get("improv_style_key")
-            or session.get("display_key")
-            or session.get("concert_key")
-            or ""
-        ).strip()
+        # Entry Style Jam owns `improv_style_key`. Leftover Jam Generator
+        # `improv_jam_key` (e.g. Eb) must not steal the sidebar while Style is F.
+        jam_tok = str(creative_entry_concert_key(session) or "").strip()
+        if not jam_tok:
+            entry = str(session.get("improv_entry_mode") or "").strip()
+            if "Style Jam" in entry:
+                jam_tok = str(session.get("improv_style_key") or "").strip()
+            else:
+                jam_tok = str(session.get("improv_jam_key") or "").strip()
+        if not jam_tok:
+            jam_tok = str(
+                session.get("display_key") or session.get("concert_key") or ""
+            ).strip()
         if jam_tok:
             options = practice_keys_for_mode("minor" if key_mode(jam_tok) == "minor" else "major")
             if jam_tok not in options:
