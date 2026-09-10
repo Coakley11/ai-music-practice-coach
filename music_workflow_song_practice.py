@@ -681,10 +681,10 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             if pick and not pick.startswith("custom::"):
                 saved = str(get_practice_concert_key(session, pick) or "").strip()
             if saved:
-                _st, smode = split_key_center(saved)
                 live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-                _lt, lmode = split_key_center(live) if live else ("", "")
-                if smode == "minor" and lmode != "minor":
+                # Prefer the saved catalog Practice Key over the song's original
+                # (Bm vs user Cm are both minor — mode-only heal left first paint on Bm).
+                if saved != live:
                     session["display_key"] = saved
                     session["concert_key"] = saved
                     session["_pending_display_key"] = saved
@@ -699,6 +699,23 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         if token:
             session["_creative_visit_practice_key"] = token
             session["_creative_visit_source"] = "missions"
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            saved = ""
+            if pick and not pick.startswith("custom::"):
+                saved = str(get_practice_concert_key(session, pick) or "").strip()
+            live_now = str(session.get("display_key") or session.get("concert_key") or token or "").strip()
+            if saved and saved != live_now:
+                session["display_key"] = saved
+                session["concert_key"] = saved
+                session["_pending_display_key"] = saved
+                session["_creative_visit_practice_key"] = saved
+                session["_creative_visit_source"] = "missions"
+                token = saved
+        except ImportError:
+            pass
         rehydrate_full_song_concert_sections(session, source="missions_tab_song_blob_reconcile")
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import traceback
 from pathlib import Path
 
@@ -31,10 +32,23 @@ NAV = {
 
 def _log(notes: list[str], msg: str) -> None:
     notes.append(msg)
+    text = str(msg)
     try:
-        print(msg, flush=True)
-    except UnicodeEncodeError:
-        print(msg.encode("ascii", "replace").decode("ascii"), flush=True)
+        stream = getattr(sys, "stdout", None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        print(text, flush=True)
+        return
+    except Exception:
+        pass
+    try:
+        encoded = text.encode("ascii", "replace").decode("ascii")
+        print(encoded, flush=True)
+    except Exception:
+        pass
 
 
 def wait_idle(page: Page, ms: int = 2500) -> None:

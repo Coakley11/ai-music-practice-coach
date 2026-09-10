@@ -1728,7 +1728,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         except ImportError:
             jam_owns = False
         if not jam_owns:
-            session.pop(PENDING_DISPLAY_KEY, None)
+            src_lbl = ""
             try:
                 from backing_context import get_backing_context
                 from workflow_key_identity import resolve_song_practice_key_identity
@@ -1740,8 +1740,11 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                     if song_ident is not None:
                         session["_sidebar_key_identity_label"] = song_ident.practice_label
             except ImportError:
-                pass
-            return preserved_early
+                src_lbl = ""
+            # Entry Style Jam refresh must not restore LAST_CUSTOM / catalog D.
+            if src_lbl != "entry_jam":
+                session.pop(PENDING_DISPLAY_KEY, None)
+                return preserved_early
     try:
         from backing_context import get_backing_context
         from workflow_key_identity import (
@@ -1890,6 +1893,29 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                         )
                         session["concert_key"] = selected
                         session["_sidebar_key_identity_label"] = gen.practice_label
+                        return options
+                if ctx_source_early == "entry_jam":
+                    jam_tok = str(
+                        creative_entry_concert_key(session)
+                        or session.get("improv_style_key")
+                        or getattr(ctx_early, "concert_key", "")
+                        or getattr(ctx_early, "key", "")
+                        or session.get("display_key")
+                        or ""
+                    ).strip()
+                    if jam_tok:
+                        jam_mode = key_mode(jam_tok)
+                        options = practice_keys_for_mode(
+                            "minor" if jam_mode == "minor" else "major"
+                        )
+                        if jam_tok not in options:
+                            options = [jam_tok] + options
+                        _apply_display_key_before_widget(
+                            st, jam_tok, source="entry_jam_refresh_concert_key"
+                        )
+                        session["concert_key"] = jam_tok
+                        session["display_key"] = jam_tok
+                        session["improv_style_key"] = jam_tok
                         return options
                 song_ident = resolve_song_practice_key_identity(session)
                 if song_ident is not None:

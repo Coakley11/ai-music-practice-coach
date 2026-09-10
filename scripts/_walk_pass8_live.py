@@ -231,6 +231,9 @@ def body_bpms(text: str) -> list[int]:
 
 
 def current_card_bpm(text: str) -> int | None:
+    m = re.search(r"Practice concert key:[^\n]*BPM:\s*(\d{2,3})", text or "", flags=re.I)
+    if m:
+        return int(m.group(1))
     m = re.search(r"Current\s+(\d{2,3})\s*BPM", text, flags=re.I)
     if m:
         return int(m.group(1))
@@ -238,6 +241,9 @@ def current_card_bpm(text: str) -> int | None:
     if m:
         return int(m.group(1))
     m = re.search(r"⏱\s*BPM\s*·\s*(\d{2,3})", text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"BPM:\s*(\d{2,3})", text or "", flags=re.I)
     if m:
         return int(m.group(1))
     m = re.search(r"BPM\s*·\s*(\d{2,3})", text)

@@ -232,6 +232,64 @@ class TestStyleJamLeftoverJamKey(unittest.TestCase):
         self.assertEqual(session.get("display_key"), "F")
         self.assertEqual(session.get("improv_style_key"), "F")
 
+    def test_jam_backing_refresh_does_not_restore_custom_d(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+        from types import SimpleNamespace
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F",
+            "display_key": "D",
+            "concert_key": "D",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "practice_key_by_source": {SHAPE_PICK: "Cm"},
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="jam-style",
+                entry_mode="Style Jam Mode",
+                song_title="Style Jam",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=110,
+                style="Bossa Nova",
+                groove="Bossa nova",
+            ),
+        )
+        st = SimpleNamespace(session_state=session)
+        prepare_backing_context_sidebar_display_key(st, session)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertNotEqual(session.get("display_key"), "D")
+
+
+class TestMissionsSavedCatalogKey(unittest.TestCase):
+    def test_saved_cm_wins_over_live_original_bm(self) -> None:
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+        from songs.practice_key_state import set_practice_concert_key
+
+        session = {
+            "studio_page": "creative",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "display_key": "Bm",
+            "concert_key": "Bm",
+            "selected_song": {"title": "Shape of You", "key": "Bm", "pick_key": SHAPE_PICK},
+        }
+        set_practice_concert_key(session, "Cm", pick_key=SHAPE_PICK)
+        session["improv_intelligence_tab"] = "Missions"
+        token = ensure_missions_parent_practice_key_hydrated(session)
+        self.assertNotEqual(session.get("display_key"), "Bm")
+        self.assertTrue(
+            str(session.get("display_key") or token or "").replace(" ", "").lower().startswith("cm")
+            or str(session.get("display_key") or "").lower().startswith("c min")
+        )
+
 
 class TestCustomBackingBpmSyncId(unittest.TestCase):
     def test_custom_sync_id_prefers_stable_pick_not_revision(self) -> None:

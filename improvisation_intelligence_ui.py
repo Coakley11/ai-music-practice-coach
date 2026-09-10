@@ -145,6 +145,31 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                 and tab not in {"Missions"}
             ):
                 return visit
+            if src != "Custom progression" and tab in {
+                "Phrase / Motif",
+                "Motif",
+                "Harmony Map",
+                "Harmony",
+                "Missions",
+            }:
+                try:
+                    from songs.practice_key_state import (
+                        get_practice_concert_key,
+                        resolve_practice_source_pick,
+                    )
+
+                    pick = str(resolve_practice_source_pick(session_state) or "").strip()
+                    saved = ""
+                    if pick and not pick.startswith("custom::"):
+                        saved = str(get_practice_concert_key(session_state, pick) or "").strip()
+                    if saved:
+                        session_state["_creative_visit_practice_key"] = saved
+                        session_state["_creative_visit_source"] = (
+                            "missions" if tab == "Missions" else "sbi_active"
+                        )
+                        return saved
+                except ImportError:
+                    pass
     except ImportError:
         pass
     try:
