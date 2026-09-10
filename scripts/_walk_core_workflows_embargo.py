@@ -942,7 +942,7 @@ def _notes_from_motif_line(line: str) -> list[str]:
 def motif_notes_from_body(body: str) -> list[str]:
     """Parse motif pitches from compact MOTIF ON, cell dividers, or linear Notes."""
     chunk = body or ""
-    if not re.search(r"MOTIF\s+ON", chunk, re.I):
+    if not re.search(r"MOTIF(?:\s+PATTERN)?\s+ON", chunk, re.I):
         return []
     m_notes = re.search(
         rf"Notes:\s*({_MOTIF_NOTE}(?:{_MOTIF_SEP}{_MOTIF_NOTE}){{2,}})",

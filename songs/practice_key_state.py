@@ -425,6 +425,7 @@ def set_practice_concert_key(
             and live
             and live != key
             and not session.get("_specialized_practice_token_leaving")
+            and not allow_restore_original
         ):
             return
         # During an explicit sidebar commit, never write a different token than the
@@ -437,7 +438,8 @@ def set_practice_concert_key(
         ):
             return
         # Stale pending remount (Dm) must not overwrite a live Bm commit.
-        if src == "pending_display_key" and live and live != key:
+        # Key cycle is an explicit user action (allow_restore_original).
+        if src == "pending_display_key" and live and live != key and not allow_restore_original:
             return
     except ImportError:
         pass

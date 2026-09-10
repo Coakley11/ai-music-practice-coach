@@ -1585,14 +1585,32 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     if entry_mode in {"Style Jam Mode", "Jam Session Generator"}:
         try:
             from musical_context_coherence import (
-                GENERATED_OWNERS,
                 CreativeBackingHandoffBlocked,
                 raise_coherence_handoff_blocked,
                 resolve_coherent_musical_context,
                 validate_coherent_musical_context,
             )
 
-            coherent = resolve_coherent_musical_context(session, prefer_owners=tuple(GENERATED_OWNERS))
+            prefer = (
+                ("style_jam",)
+                if "Style Jam" in entry_mode
+                else ("jam_session_generator",)
+            )
+            if stored is not None and str(getattr(stored, "source", "") or "") == "entry_jam":
+                sealed = str(getattr(stored, "concert_key", "") or getattr(stored, "key", "") or "").strip()
+                # Restore a remounted Style default (G) from the sealed visit.
+                # Never clobber a live cycle (F→E) with a stale sealed snapshot.
+                if sealed and "Style Jam" in entry_mode:
+                    live_style = str(session.get("improv_style_key") or "").strip()
+                    remount = live_style in {"", "G", "Eb", "G major", "Eb major"}
+                    if not live_style or (live_style != sealed and remount):
+                        session["improv_style_key"] = sealed
+                elif sealed and entry_mode == "Jam Session Generator":
+                    live_jam = str(session.get("improv_jam_key") or "").strip()
+                    remount = live_jam in {"", "Eb", "G", "Eb major", "G major"}
+                    if not live_jam or (live_jam != sealed and remount):
+                        session["improv_jam_key"] = sealed
+            coherent = resolve_coherent_musical_context(session, prefer_owners=prefer)
             if coherent is not None:
                 coherence_v = validate_coherent_musical_context(coherent)
                 if coherence_v:

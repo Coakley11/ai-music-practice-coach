@@ -124,28 +124,57 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
         ).strip()
         if entry not in {"Style Jam Mode", "Jam Session Generator"}:
             src = get_sbi_preview_source(session_state)
-            if src == "Custom progression" and tab in {
-                "Phrase / Motif",
-                "Motif",
-                "Entry & Jam",
-            }:
+            visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
+            visit_src = str(session_state.get("_creative_visit_source") or "").strip()
+            catalog_visit = visit_src in {"missions", "sbi_active"}
+            custom_is_ga = False
+            try:
+                from songs.music_source import custom_progression_is_active
+
+                custom_is_ga = bool(custom_progression_is_active(session_state))
+            except ImportError:
+                custom_is_ga = False
+            # Leftover SBI Custom preview must not steal Motif/Harmony after a
+            # Missions catalog visit (refresh restored Trial D).
+            if (
+                src == "Custom progression"
+                and tab in {
+                    "Phrase / Motif",
+                    "Motif",
+                    "Entry & Jam",
+                }
+                and not catalog_visit
+                and (visit_src == "sbi_custom" or custom_is_ga)
+            ):
                 custom_pk = str(resolve_sbi_custom_practice_key(session_state) or "").strip()
                 if custom_pk:
                     session_state["_creative_visit_practice_key"] = custom_pk
                     session_state["_creative_visit_source"] = "sbi_custom"
                     return custom_pk
-            visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
-            visit_src = str(session_state.get("_creative_visit_source") or "").strip()
             # Same-source Creative navigation keeps the visit key. Missions itself
             # must still reclaim leftover generated keys from the song blob.
             if (
                 visit
-                and src != "Custom progression"
                 and visit_src in {"sbi_active", "missions"}
                 and tab not in {"Missions"}
             ):
                 return visit
-            if src != "Custom progression" and tab in {
+            if not visit_src and visit and tab in {
+                "Phrase / Motif",
+                "Motif",
+                "Harmony Map",
+                "Harmony",
+            }:
+                session_state["_creative_visit_source"] = "missions"
+                return visit
+            if tab == "Missions":
+                live_now = str(
+                    session_state.get("concert_key") or session_state.get("display_key") or ""
+                ).strip()
+                if live_now:
+                    session_state["_creative_visit_practice_key"] = live_now
+                    session_state["_creative_visit_source"] = "missions"
+            if (src != "Custom progression" or catalog_visit or not custom_is_ga) and tab in {
                 "Phrase / Motif",
                 "Motif",
                 "Harmony Map",
@@ -163,6 +192,10 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                     if pick and not pick.startswith("custom::"):
                         saved = str(get_practice_concert_key(session_state, pick) or "").strip()
                     if saved:
+                        visit_now = str(session_state.get("_creative_visit_practice_key") or "").strip()
+                        visit_src_now = str(session_state.get("_creative_visit_source") or "").strip()
+                        if visit_now and visit_src_now in {"missions", "sbi_active"}:
+                            return visit_now
                         session_state["_creative_visit_practice_key"] = saved
                         session_state["_creative_visit_source"] = (
                             "missions" if tab == "Missions" else "sbi_active"
@@ -1786,7 +1819,7 @@ def _tab_motif(
                 session_state["improv_motif"] = transform_motif(
                     source_motif,
                     op,
-                    key_center=motif_key,
+                    key_center=concert_key or motif_key,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
@@ -1846,12 +1879,14 @@ def _tab_motif(
     with pc3:
         def _on_motif_dir_change() -> None:
             live = session_state.get("improv_motif")
-            if not isinstance(live, dict) or not live.get("is_pattern"):
+            if not isinstance(live, dict):
+                return
+            if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
                 return
             direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
             session_state["improv_motif"] = rebuild_motif_pattern(
                 live,
-                key_center=motif_key,
+                key_center=concert_key or motif_key,
                 pattern_type=str(
                     session_state.get("improv_motif_pattern_type")
                     or live.get("pattern_type")
@@ -1866,7 +1901,7 @@ def _tab_motif(
             )
             _refresh_motif_output_after_transform(
                 session_state,
-                key_center=motif_key,
+                key_center=concert_key or motif_key,
                 bpm=bpm,
             )
             _persist_motif_artifact(session_state, interaction="motif_direction_change")
@@ -1880,13 +1915,43 @@ def _tab_motif(
             key="improv_motif_pattern_dir_widget",
             on_change=_on_motif_dir_change,
         )
+        widget_dir = str(
+            session_state.get("improv_motif_pattern_dir_widget") or dir_choice or "ascending"
+        ).strip().lower()
+        if (
+            widget_dir in {"ascending", "descending"}
+            and widget_dir != cur_dir
+            and (motif.get("notes") or motif.get("base_motif_notes") or motif.get("is_pattern"))
+        ):
+            session_state["improv_motif"] = rebuild_motif_pattern(
+                motif,
+                key_center=concert_key or motif_key,
+                pattern_type=str(
+                    session_state.get("improv_motif_pattern_type")
+                    or motif.get("pattern_type")
+                    or "auto"
+                ),
+                direction=widget_dir,
+                length=int(
+                    session_state.get("improv_motif_pattern_length")
+                    or motif.get("pattern_length")
+                    or 8
+                ),
+            )
+            motif = session_state["improv_motif"]
+            cur_dir = widget_dir
+            _refresh_motif_output_after_transform(
+                session_state,
+                key_center=concert_key or motif_key,
+                bpm=bpm,
+            )
 
     pb1, pb2, pb3 = st.columns(3)
     with pb1:
         if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
             session_state["improv_motif"] = build_motif_pattern(
                 motif,
-                key_center=motif_key,
+                key_center=concert_key or motif_key,
                 pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
                 direction=str(dir_choice or "ascending"),
                 length=int(session_state.get("improv_motif_pattern_length") or 8),
@@ -1895,21 +1960,21 @@ def _tab_motif(
             _persist_motif_artifact(session_state, interaction="motif_build_pattern")
             st.rerun()
     with pb2:
-        if motif.get("is_pattern") and st.button(
+        if st.button(
             "Apply Pattern Type / Direction",
             key="improv_rebuild_motif_pattern",
             use_container_width=True,
         ):
             session_state["improv_motif"] = rebuild_motif_pattern(
                 motif,
-                key_center=motif_key,
+                key_center=concert_key or motif_key,
                 pattern_type=str(type_choice or "auto"),
                 direction=str(dir_choice or "ascending"),
                 length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
             )
             _refresh_motif_output_after_transform(
                 session_state,
-                key_center=motif_key,
+                key_center=concert_key or motif_key,
                 bpm=bpm,
             )
             _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
@@ -2424,7 +2489,6 @@ def _render_section_chord_map(
                     f"ii_chord_tile_{src}_{key_prefix}_{section_slug}_{gidx}_{safe_ch}"
                 )
                 with cols[ci]:
-                    is_sel = sel_section == label and sel_chord == ch
                     try:
                         from effective_practice_context import musician_facing_chart_key, musician_facing_chord
 
@@ -2436,6 +2500,7 @@ def _render_section_chord_map(
                         )
                     except ImportError:
                         tile_label = ch
+                    is_sel = sel_section == label and (sel_chord == ch or sel_chord == tile_label)
                     pressed = st.button(
                         tile_label,
                         key=button_key,
@@ -2446,7 +2511,9 @@ def _render_section_chord_map(
                     # reliably set the return True path; on_click alone often misses.
                     if pressed:
                         clicked = True
-                        _chord_tile_on_click(ch, label, gidx, button_key)
+                        # Store the visible tile identity. Written-facing Dm is the
+                        # chord the musician selected — not the concert Fm reverse-map.
+                        _chord_tile_on_click(tile_label, label, gidx, button_key)
     if clicked:
         return
     cap = (
@@ -4252,19 +4319,19 @@ def _tab_missions(
         with t1:
             if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
                 apply_mission_motif_transform(
-                    session_state, improv_ctx, "sequence_up", bpm=bpm
+                    session_state, improv_ctx, "sequence_up", bpm=bpm, key_center=practice_key
                 )
                 transform_clicked = True
         with t2:
             if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
                 apply_mission_motif_transform(
-                    session_state, improv_ctx, "sequence_down", bpm=bpm
+                    session_state, improv_ctx, "sequence_down", bpm=bpm, key_center=practice_key
                 )
                 transform_clicked = True
         with t3:
             if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
                 apply_mission_motif_transform(
-                    session_state, improv_ctx, "invert", bpm=bpm
+                    session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
                 )
                 transform_clicked = True
         with t4:

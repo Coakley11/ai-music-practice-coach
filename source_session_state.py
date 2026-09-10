@@ -1082,9 +1082,10 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
                 return False
         except ImportError:
             pass
-    if tab in {"Phrase / Motif", "Motif"}:
-        # SBI Custom → Motif keeps the Custom visit key. Catalog GA + Active SBI
-        # still uses catalog PK.
+    if tab in {"Phrase / Motif", "Motif", "Harmony Map", "Harmony", "Missions"}:
+        visit_src = str(session.get("_creative_visit_source") or "").strip()
+        if visit_src in {"missions", "sbi_active"}:
+            return False
         if get_sbi_preview_source(session) != "Custom progression":
             try:
                 from songs.music_source import custom_progression_is_active

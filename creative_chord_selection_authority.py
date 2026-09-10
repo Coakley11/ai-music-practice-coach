@@ -104,14 +104,29 @@ def resolve_authoritative_chord_selection(
         if c_sym and c_sec and c_idx >= 0:
             click_pk = str(click.get("practice_key") or "").strip()
             live_pk = str(
-                session.get("display_key") or session.get("concert_key") or ""
+                session.get("concert_key") or session.get("display_key") or ""
             ).strip()
             transposed_for_pk = False
+            skip_transpose = False
             if click_pk and live_pk and click_pk != live_pk:
-                # Bm → Cm is +1. C#m → Dm and F# → G. Never substitute the
-                # chord sitting at a regenerated flattening index (F# → Bb).
-                c_sym = transpose_chord_identity(c_sym, click_pk, live_pk)
-                transposed_for_pk = True
+                try:
+                    from effective_practice_context import musician_facing_chart_key
+
+                    chart = str(musician_facing_chart_key(session, live_pk) or "").strip()
+                    if click_pk == chart:
+                        # display_key was written Am while concert is Cm — the
+                        # clicked tile identity (Dm) is already what the musician
+                        # selected. Do not transpose it to concert Fm.
+                        skip_transpose = True
+                except ImportError:
+                    skip_transpose = False
+                if not skip_transpose:
+                    # Bm → Cm is +1. C#m → Dm and F# → G. Never substitute the
+                    # chord sitting at a regenerated flattening index (F# → Bb).
+                    c_sym = transpose_chord_identity(c_sym, click_pk, live_pk)
+                    transposed_for_pk = True
+                else:
+                    transposed_for_pk = False
             # Keep the clicked slot when this (section, symbol, index) still matches
             # (duplicate C#m in Melody B must not collapse to the first occurrence).
             if authoritative_pair_matches_index(
@@ -136,9 +151,9 @@ def resolve_authoritative_chord_selection(
                                 str(label or "").strip() or c_sec,
                                 int(global_chord_index(section_map, si, ci)),
                             )
-            if c_sym and (transposed_for_pk or (click_pk and live_pk and click_pk == live_pk)):
+            if c_sym:
                 return c_sym, c_sec, c_idx if c_idx >= 0 else 0
-            # Stale original-key symbol with no Practice Key on the click: use index.
+            # Stale original-key symbol with no click chord: use index.
             at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
             if at_ch:
                 return at_ch, at_sec or c_sec, c_idx
@@ -199,6 +214,9 @@ def resolve_authoritative_chord_selection(
                         sym_on_map = True
                         break
             if not sym_on_map:
+                click = session.get("_mission_chord_click_authority")
+                if isinstance(click, dict) and str(click.get("chord") or "").strip() == sym:
+                    return sym, sec, idx
                 return at_ch, at_sec or sec, idx
 
     flat: list[str] = []
@@ -318,6 +336,16 @@ def read_authoritative_mission_chord_selection(
 ) -> tuple[str, str, int]:
     sm = section_map or read_mission_section_map_from_session(session)
     if not sm:
+        click = session.get("_mission_chord_click_authority")
+        if isinstance(click, dict):
+            click_sym = str(click.get("chord") or "").strip()
+            if click_sym:
+                sec = str(click.get("section") or session.get(II_SELECTED_SECTION) or "").strip()
+                try:
+                    idx = int(click.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)))
+                except (TypeError, ValueError):
+                    idx = 0
+                return click_sym, sec, idx
         sym = str(session.get(II_SELECTED_CHORD) or "").strip()
         sec = str(session.get(II_SELECTED_SECTION) or "").strip()
         try:

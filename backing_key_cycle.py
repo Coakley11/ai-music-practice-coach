@@ -125,6 +125,11 @@ def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
         src = ""
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "backing" and src == "entry_jam":
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if "Style Jam" in entry:
+            tok = str(session.get("improv_style_key") or "").strip()
+            if tok:
+                return tok
         try:
             from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
 
@@ -135,9 +140,11 @@ def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
                     return tok
         except ImportError:
             pass
+        if "Style Jam" in entry:
+            return str(session.get("improv_style_key") or session.get("display_key") or "C").strip()
         return str(
-            session.get("improv_style_key")
-            or session.get("improv_jam_key")
+            session.get("improv_jam_key")
+            or session.get("improv_style_key")
             or session.get("display_key")
             or "C"
         ).strip()
@@ -183,6 +190,20 @@ def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
     return str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
 
 
+def _stamp_cycle_commit(session: dict[str, Any], new: str) -> None:
+    session["display_key"] = new
+    session["concert_key"] = new
+    session["_pending_display_key"] = new
+    session["_pk_user_commit_token"] = new
+    session["display_key_change_source"] = "backing_key_cycle"
+    try:
+        import time as _time
+
+        session["_pk_user_commit_at"] = _time.time()
+    except Exception:
+        pass
+
+
 def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = None) -> str:
     """Cycle the current Backing owner's concert Practice Key. Written is derived."""
     try:
@@ -199,15 +220,24 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
     new = cycle_concert_practice_key(current, semitones=steps, spelling_prefs=prefs)
     if not new:
         return current
-    page = str(session.get("studio_page") or "").strip().lower()
     if owner == "entry_jam" or src == "entry_jam":
+        applied = ""
         try:
             from creative_key_sync import apply_specialized_jam_practice_key
 
-            apply_specialized_jam_practice_key(session, new)
+            applied = str(apply_specialized_jam_practice_key(session, new) or "").strip()
         except ImportError:
-            session["display_key"] = new
-            session["concert_key"] = new
+            applied = ""
+        if not applied:
+            session["improv_style_key"] = new
+            session["improv_jam_key"] = new
+        else:
+            entry = str(session.get("improv_entry_mode") or "").strip()
+            if "Style Jam" in entry:
+                session["improv_style_key"] = new
+            else:
+                session["improv_jam_key"] = new
+        _stamp_cycle_commit(session, new)
         return new
     if owner == "mission" or src == "mission":
         try:
@@ -216,8 +246,7 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
             apply_specialized_mission_practice_key(session, new)
         except ImportError:
             session["improv_mission_concert_key"] = new
-            session["display_key"] = new
-            session["concert_key"] = new
+        _stamp_cycle_commit(session, new)
         return new
     if owner == "custom" or src == "custom_progression":
         try:
@@ -230,8 +259,8 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
                 source="backing_key_cycle",
             )
         except ImportError:
-            session["display_key"] = new
-            session["concert_key"] = new
+            pass
+        _stamp_cycle_commit(session, new)
         return new
     if src == "song_improv":
         try:
@@ -239,9 +268,7 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
 
             if get_sbi_preview_source(session) == "Custom progression":
                 session["_sbi_custom_visit_pk"] = new
-                session["display_key"] = new
-                session["concert_key"] = new
-                session["_pending_display_key"] = new
+                _stamp_cycle_commit(session, new)
                 return new
         except ImportError:
             pass
@@ -253,10 +280,8 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
             set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
     except ImportError:
         pass
-    session["display_key"] = new
-    session["concert_key"] = new
-    session["_pending_display_key"] = new
     session["_creative_visit_practice_key"] = new
+    _stamp_cycle_commit(session, new)
     return new
 
 

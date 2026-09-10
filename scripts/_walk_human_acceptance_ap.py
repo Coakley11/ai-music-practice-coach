@@ -202,19 +202,179 @@ def set_pk(page: Page, token: str) -> bool:
     return bool(ok)
 
 
+def click_radio_exact(page: Page, text: str) -> bool:
+    """Click a visible radio/label whose visible text equals ``text`` (not a substring)."""
+    needle = str(text or "").strip()
+    if not needle:
+        return False
+    clicked = page.evaluate(
+        """(text) => {
+          const needle = String(text || '').trim().toLowerCase();
+          const vis = (el) => !!(el && el.offsetParent !== null);
+          const clickEl = (el) => {
+            if (!el) return false;
+            el.scrollIntoView({block: 'center'});
+            el.click();
+            return true;
+          };
+          const groups = [...document.querySelectorAll('[role="radiogroup"]')].filter(vis);
+          for (const group of groups) {
+            const labels = [...group.querySelectorAll('label')].filter(vis);
+            const match = labels.find((el) => ((el.innerText || '').trim().toLowerCase()) === needle);
+            if (match && clickEl(match)) return true;
+          }
+          const radios = [...document.querySelectorAll('[role="radio"]')].filter(vis);
+          const roleMatch = radios.find((el) => ((el.innerText || '').trim().toLowerCase()) === needle);
+          if (roleMatch && clickEl(roleMatch)) return true;
+          return false;
+        }""",
+        needle,
+    )
+    if clicked:
+        wait_idle(page, 4000)
+        return True
+    try:
+        loc = page.get_by_text(needle, exact=True)
+        if loc.count():
+            loc.last.click(timeout=4000)
+            wait_idle(page, 3000)
+            return True
+    except Exception:
+        pass
+    return click_radio(page, needle)
+
+
+def catalog_cm_family(text: str, pk: str) -> bool:
+    """Concert C minor, or Alto written A minor of that same visit — not Shape Bm / Custom D."""
+    compact = (pk or "").replace(" ", "").lower()
+    if compact in {"bm", "bminor", "d", "dmajor"}:
+        return False
+    if concert_key_in(text, "C minor", "Cm"):
+        return True
+    if concert_key_in(text, "A minor", "Am") or compact in {"am", "aminor"}:
+        return True
+    return compact in {"cm", "cminor"}
+
+
 def refresh(page: Page) -> None:
     page.reload(wait_until="domcontentloaded", timeout=180_000)
     wait_idle(page, 5000)
 
 
 def concert_key_in(text: str, *tokens: str) -> bool:
+    """True when any token appears as the same tonic+mode, not a raw substring trap.
+
+    ``Cm`` matches ``C minor``. ``C minor`` does not match ``C major``.
+    """
     blob = text or ""
     low = blob.lower()
     for tok in tokens:
-        t = tok.lower()
-        if t in low:
+        t = str(tok or "").strip()
+        if not t:
+            continue
+        if t.lower() in low:
+            if len(t) <= 3 and not re.search(
+                rf"(?<![A-Za-z#]){re.escape(t.lower())}(?![a-z])",
+                low,
+            ):
+                if _semantic_key_in_text(blob, t):
+                    return True
+                continue
+            if _token_is_mode_specific(t) and _mode_conflict(blob, t):
+                continue
+            return True
+        if _semantic_key_in_text(blob, t):
             return True
     return False
+
+
+def _token_is_mode_specific(tok: str) -> bool:
+    compact = tok.replace(" ", "").lower()
+    return compact.endswith("minor") or compact.endswith("major") or compact.endswith("m")
+
+
+def _mode_conflict(blob: str, tok: str) -> bool:
+    """Reject 'C minor' hits that are actually C major when the token demanded minor."""
+    try:
+        from music_theory import split_key_center
+
+        _tonic, mode = split_key_center(tok)
+    except Exception:
+        return False
+    if mode == "minor" and re.search(r"\bc\s*major\b", blob, re.I) and not re.search(
+        r"\bc\s*minor\b|\bcm\b", blob, re.I
+    ):
+        return True
+    return False
+
+
+def _semantic_key_in_text(text: str, tok: str) -> bool:
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        tonic, mode = split_key_center(tok)
+        if not tonic:
+            return False
+        compact = key_center_token(tonic, mode or "major")
+        needles = [compact, f"{tonic} {mode}".strip()]
+        if mode == "minor":
+            needles.extend([f"{tonic}m", f"{tonic} minor"])
+        else:
+            needles.extend([f"{tonic} major", f"Concert {tonic}"])
+        low = text.lower()
+        for needle in needles:
+            n = str(needle or "").strip().lower()
+            if not n:
+                continue
+            if len(n) <= 2:
+                if re.search(rf"(?<![A-Za-z#]){re.escape(n)}(?![a-z#])", low):
+                    return True
+            elif n in low:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def mission_blue_card_chord(text: str) -> str:
+    """Chord on the Mission Backing blue card — not Song Original Key Bm."""
+    blob = text or ""
+    m = re.search(
+        r"(?:Chord tones only|Guide tones|Target|Mission)[^\n]{0,80}·\s*[^\n·]+·\s*([A-G](?:#|b)?m?)\b",
+        blob,
+        re.I,
+    )
+    if m:
+        return m.group(1)
+    m = re.search(r"·\s*([A-G](?:#|b)?m?)\s*(?:\n|$)", blob)
+    return m.group(1) if m else ""
+
+
+def mission_notes_line(text: str) -> str:
+    m = re.search(r"Notes:\s*`([^`]+)`", text or "", re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"Notes:\s*([^\n]+)", text or "", re.I)
+    return m.group(1).strip() if m else ""
+
+
+def mission_sheet_title_chord(abc: str) -> str:
+    m = re.search(r"T:.*?(?:—|-)\s*([A-G](?:#|b)?m?)\b", abc or "", re.I)
+    return m.group(1) if m else ""
+
+
+def click_mission_chord_tile(page: Page, symbol: str) -> bool:
+    pat = re.compile(rf"^{re.escape(symbol)}$")
+    try:
+        btn = page.get_by_role("button", name=pat)
+        if btn.count():
+            btn.last.scroll_into_view_if_needed()
+            btn.last.click(timeout=5000)
+            wait_idle(page, 2000)
+            return True
+    except Exception:
+        pass
+    return click_button_has(page, rf"^{re.escape(symbol)}$")
 
 
 def parse_notes(text: str) -> list[str]:
@@ -264,7 +424,6 @@ def open_custom_backing(page: Page) -> bool:
     clicked = (
         click_button_has(page, r"Open in Backing")
         or click_button_has(page, r"🎧 Backing")
-        or click_button_has(page, r"^Backing$")
         or click_button_has(page, r"Open Backing")
     )
     log(f"custom_open_backing clicked={clicked}")
@@ -287,6 +446,8 @@ def open_style_jam_backing(page: Page) -> bool:
         page, r"Style Jam"
     )
     wait_idle(page, 2500)
+    set_baseweb_select(page, "Concert Key", "F") or set_pk(page, "F")
+    wait_idle(page, 2000)
     click_button_has(page, r"Generate progression")
     try:
         page.wait_for_function(
@@ -294,11 +455,11 @@ def open_style_jam_backing(page: Page) -> bool:
               const t = document.body ? (document.body.innerText || '') : '';
               return /Generated\\b/i.test(t) && /Open in Backing Studio/i.test(t);
             }""",
-            timeout=25_000,
+            timeout=40_000,
         )
     except Exception:
         click_button_has(page, r"Generate progression")
-        wait_idle(page, 5000)
+        wait_idle(page, 8000)
     body = body_text(page)
     if "Open in Backing Studio" not in body:
         log("jam_open: Open in Backing Studio never appeared")
@@ -587,6 +748,7 @@ def _run() -> int:
             )
 
         # --- 4 Entry Style Jam F ---
+        seed_shape_cm(page)
         jam_opened = open_style_jam_backing(page)
         if not jam_opened or not require_backing(page, "jam", "JAM_F"):
             fail_setup("JAM_F", "Entry Style Jam Backing did not open")
@@ -602,9 +764,10 @@ def _run() -> int:
             card = card_practice_key(body)
             jam_f = (
                 classify_backing(body) == "jam"
-                and (pk in {"F", "F major"} or concert_key_in(side, "F major", "F Major"))
-                and concert_key_in(body, "F major", "Concert F", "F")
-                and not concert_key_in(side, "Eb major", "E-flat", "A major")
+                and (pk in {"F", "F major"} or concert_key_in(side, "F major", "F"))
+                and (card in {"F", "F major"} or concert_key_in(body, "Concert F", "F major"))
+                and "Eb" not in (pk or "")
+                and "Trial Song" not in (backing_source_line(body) or "")
             )
             set_gate(
                 "JAM_F",
@@ -616,19 +779,26 @@ def _run() -> int:
                 side_rf = sidebar_text(page)
                 body_rf = body_text(page)
                 shot(page, "4-jam-f-refresh")
+                pk_rf = sidebar_pk_token(page)
+                card_rf = card_practice_key(body_rf)
                 set_gate(
                     "JAM_F_REFRESH",
-                    concert_key_in(side_rf, "F major", "F Major") and classify_backing(body_rf) == "jam",
-                    f"pk={sidebar_pk_token(page)!r} card={card_practice_key(body_rf)!r}",
+                    classify_backing(body_rf) == "jam"
+                    and pk_rf in {"F", "F major"}
+                    and (card_rf in {"F", "F major", ""} or concert_key_in(body_rf, "Concert F")),
+                    f"pk={pk_rf!r} card={card_rf!r}",
                 )
-            # Key cycle Jam (semitone up) then confirm Shape still Cm later
+            # Key cycle Jam (semitone up) then confirm Shape still Cm
+            before_jam_cycle = sidebar_pk_token(page) or card_practice_key(body_text(page))
             click_cycle_key(page, step="semitone", direction="up")
             shot(page, "9-cycle-jam")
             jam_cycled = card_practice_key(body_text(page)) or sidebar_pk_token(page)
             set_gate(
                 "KEY_CYCLE_JAM",
-                classify_backing(body_text(page)) == "jam" and bool(jam_cycled),
-                f"after={jam_cycled!r}",
+                classify_backing(body_text(page)) == "jam"
+                and bool(jam_cycled)
+                and jam_cycled != before_jam_cycle,
+                f"before={before_jam_cycle!r} after={jam_cycled!r}",
             )
             shape_after_jam = shape_songs_key(page)
             set_gate(
@@ -646,7 +816,10 @@ def _run() -> int:
         side = sidebar_text(page)
         body = body_text(page)
         shot(page, "5-missions-cm")
-        missions_cm = concert_key_in(side, "C minor", "C Minor", "Cm")
+        missions_cm = concert_key_in(side, "C minor", "Cm") or sidebar_pk_token(page).replace(" ", "").lower() in {
+            "cm",
+            "cminor",
+        }
         set_gate("MISSIONS_CM", missions_cm, f"pk={sidebar_pk_token(page)!r}")
 
         expand_sidebar(page)
@@ -680,39 +853,57 @@ def _run() -> int:
         shot(page, "5-motif")
         set_gate(
             "CROSS_PAGE_KEYS",
-            concert_key_in(side, "C minor", "C Minor")
-            and concert_key_in(side_h, "C minor", "C Minor")
-            and concert_key_in(side_m, "C minor", "C Minor"),
+            catalog_cm_family(side, "")
+            and catalog_cm_family(side_h, "")
+            and catalog_cm_family(side_m, ""),
             "missions-harmony-motif",
         )
         refresh(page)
         wait_idle(page, 4000)
         side_rf = sidebar_text(page)
         shot(page, "5-cross-refresh")
+        pk_rf = sidebar_pk_token(page)
         set_gate(
             "CROSS_PAGE_REFRESH",
-            concert_key_in(side_rf, "C minor", "C Minor") and not concert_key_in(side_rf, "C major"),
-            f"pk={sidebar_pk_token(page)!r}",
+            catalog_cm_family(side_rf, pk_rf)
+            and not concert_key_in(side_rf, "C major")
+            and pk_rf.replace(" ", "").lower() not in {"d", "dmajor", "bm", "bminor"},
+            f"pk={pk_rf!r}",
         )
 
         # --- 7 Sequence / Motif (on Motif + Missions) ---
         click_radio(page, "Motif") or click_button_has(page, r"Motif")
         wait_idle(page, 2000)
-        click_radio(page, "descending") or click_button_has(page, r"descending")
+        click_button_has(page, r"Generate motif") or click_button_has(page, r"New motif")
+        wait_idle(page, 2500)
+        click_button_has(page, r"Build Motif Pattern")
+        wait_idle(page, 2500)
+        click_radio_exact(page, "Descending")
+        try:
+            grp = page.locator("[role='radiogroup']").filter(has_text=re.compile(r"Direction", re.I))
+            if grp.count():
+                grp.last.get_by_text("Descending", exact=True).click(timeout=4000)
+                wait_idle(page, 2500)
+        except Exception:
+            pass
         wait_idle(page, 3000)
+        click_button_has(page, r"Apply Pattern Type / Direction")
+        wait_idle(page, 2500)
+        click_button_has(page, r"Generate Sheet Music")
+        wait_idle(page, 2500)
         text_desc = shot(page, "7-motif-desc")
         desc_notes = parse_notes(text_desc)
         desc_midi = _to_midiish(desc_notes)
         descending = False
         if len(desc_midi) >= 4:
-            starts = desc_midi[:: max(1, len(desc_midi) // 4)]
-            descending = all(starts[i] > starts[i + 1] for i in range(len(starts) - 1)) or (
-                desc_midi[0] > desc_midi[-1]
-            )
+            descending = desc_midi[0] > desc_midi[-1] and midi_no_isolated_wrap(desc_midi)
         abc_desc = extract_abc(page)
         set_gate(
             "MOTIF_DESCENDING",
-            "descending" in text_desc.lower() and (descending or len(desc_notes) >= 3),
+            "descending" in text_desc.lower()
+            and len(desc_notes) >= 3
+            and descending
+            and bool(abc_desc or desc_notes),
             f"notes={desc_notes[:12]} midi={desc_midi[:12]} abc={bool(abc_desc)}",
         )
 
@@ -720,6 +911,8 @@ def _run() -> int:
         wait_idle(page, 2000)
         ensure_missions_workspace(page, NOTES)
         wait_idle(page, 2500)
+        ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
+        wait_idle(page, 1500)
         click_generate_example_once(page)
         wait_idle(page, 3000)
         before_txt = shot(page, "7-seq-before")
@@ -730,28 +923,51 @@ def _run() -> int:
         down_notes = parse_notes(down_txt)
         down_midi = _to_midiish(down_notes)
         before_midi = _to_midiish(before_notes)
+        concert_now = sidebar_pk_token(page) or "C"
         down_ok = bool(down) and down_notes and before_notes and down_notes != before_notes
-        if down_ok and before_midi and down_midi and len(before_midi) == len(down_midi):
-            intervals_b = [before_midi[i] - before_midi[0] for i in range(len(before_midi))]
-            intervals_d = [down_midi[i] - down_midi[0] for i in range(len(down_midi))]
-            down_ok = intervals_b == intervals_d and down_midi[0] < before_midi[0]
+        if down_ok and before_notes:
+            try:
+                from improvisation_motif import transform_motif
+
+                want = transform_motif(
+                    {"chord": "C", "notes": before_notes, "midi": before_midi},
+                    "sequence_down",
+                    key_center=concert_now,
+                )
+                want_notes = [str(n).replace("♭", "b").replace("♯", "#") for n in (want.get("notes") or [])]
+                got = [str(n).replace("♭", "b").replace("♯", "#") for n in down_notes]
+                down_ok = bool(want_notes) and want_notes == got
+            except Exception:
+                down_ok = False
         set_gate(
             "SEQUENCE_DOWN",
             down_ok,
-            f"before={before_notes} after={down_notes} midi_b={before_midi} midi_d={down_midi}",
+            f"before={before_notes} after={down_notes} midi_b={before_midi} midi_d={down_midi} key={concert_now!r}",
         )
         up = click_button_has(page, r"Sequence Up")
         wait_idle(page, 2500)
         up_txt = shot(page, "7-seq-up")
         up_notes = parse_notes(up_txt)
         up_midi = _to_midiish(up_notes)
-        up_ok = bool(up) and up_notes != down_notes
-        if up_ok and down_midi and up_midi and len(down_midi) == len(up_midi):
-            up_ok = up_midi[0] > down_midi[0]
+        up_ok = bool(up) and up_notes and down_notes
+        if up_ok:
+            try:
+                from improvisation_motif import transform_motif
+
+                want_up = transform_motif(
+                    {"chord": "C", "notes": down_notes, "midi": down_midi},
+                    "sequence_up",
+                    key_center=concert_now,
+                )
+                want_notes = [str(n).replace("♭", "b").replace("♯", "#") for n in (want_up.get("notes") or [])]
+                got = [str(n).replace("♭", "b").replace("♯", "#") for n in up_notes]
+                up_ok = bool(want_notes) and want_notes == got
+            except Exception:
+                up_ok = False
         set_gate(
             "SEQUENCE_UP",
             up_ok,
-            f"down={down_notes} up={up_notes} midi_u={up_midi}",
+            f"down={down_notes} up={up_notes} midi_u={up_midi} key={concert_now!r}",
         )
 
         # --- 6 SBI transitions ---
@@ -817,7 +1033,16 @@ def _run() -> int:
         wait_idle(page, 2000)
         ensure_missions_workspace(page, NOTES)
         wait_idle(page, 2500)
-        click_radio(page, "Dm") or click_button_has(page, r"^Dm$") or click_button_has(page, r"\bDm\b")
+        expand_sidebar(page)
+        set_instrument(page, "Saxophone")
+        wait_idle(page, 1500)
+        set_baseweb_select(page, "Saxophone type", "Alto saxophone (Eb)") or set_baseweb_select(
+            page, "Saxophone type", "Alto"
+        )
+        wait_idle(page, 1500)
+        ensure_checkbox(page, "Show chart in written key for instrument", checked=True)
+        wait_idle(page, 2000)
+        click_mission_chord_tile(page, "Dm")
         wait_idle(page, 2000)
         click_generate_example_once(page)
         wait_idle(page, 2500)
@@ -830,15 +1055,22 @@ def _run() -> int:
             ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
             wait_idle(page, 2000)
             text_off = shot(page, "8-mission-written-off")
+            card_ch = mission_blue_card_chord(text_off)
+            notes_off = mission_notes_line(text_off)
+            abc_off = extract_abc(page)
+            title_off = mission_sheet_title_chord(abc_off)
             concert_ok = (
-                "D#m" not in text_off
-                and has_any(text_off, "Dm", "D minor")
-                and classify_backing(text_off) == "mission"
+                classify_backing(text_off) == "mission"
+                and "D#m" not in text_off
+                and "Fm" not in (card_ch or "")
+                and card_ch in {"Dm", "D"}
+                and ("D" in notes_off or "Dm" in text_off)
+                and title_off in {"", "Dm"}
             )
             set_gate(
                 "MISSION_BACKING_CONCERT_DM",
                 concert_ok,
-                f"banner={backing_source_line(text_off)!r} dsharp={'D#m' in text_off}",
+                f"card_chord={card_ch!r} notes={notes_off!r} title={title_off!r} orig_bm={'Original Key' in text_off and 'Bm' in text_off}",
             )
             expand_sidebar(page)
             set_instrument(page, "Saxophone")
@@ -852,15 +1084,22 @@ def _run() -> int:
             )
             wait_idle(page, 2500)
             text_on = shot(page, "8-mission-written-on")
+            card_bm = mission_blue_card_chord(text_on)
+            notes_on = mission_notes_line(text_on)
+            abc_on = extract_abc(page)
+            title_on = mission_sheet_title_chord(abc_on)
             written_ok = (
-                "D#m" not in text_on
-                and has_any(text_on, "Bm", "B minor")
-                and classify_backing(text_on) == "mission"
+                classify_backing(text_on) == "mission"
+                and "D#m" not in text_on
+                and "Fm" not in (card_bm or "")
+                and card_bm in {"Bm", "B"}
+                and ("B" in notes_on or "Bm" in notes_on or card_bm == "Bm")
+                and title_on in {"", "Bm"}
             )
             set_gate(
                 "MISSION_BACKING_WRITTEN_BM",
                 written_ok,
-                f"dsharp={'D#m' in text_on} bm={has_any(text_on, 'Bm')}",
+                f"card_chord={card_bm!r} notes={notes_on!r} title={title_on!r} not_orig_only={card_bm == 'Bm'}",
             )
             refresh(page)
             if require_backing(page, "mission", "MISSION_BACKING_REFRESH"):
@@ -876,7 +1115,7 @@ def _run() -> int:
             after_m = sidebar_pk_token(page)
             set_gate(
                 "KEY_CYCLE_MISSION",
-                classify_backing(body_text(page)) == "mission",
+                classify_backing(body_text(page)) == "mission" and bool(after_m) and after_m != before_m,
                 f"before={before_m!r} after={after_m!r}",
             )
             shape_after_m = shape_songs_key(page)
@@ -905,10 +1144,11 @@ def _run() -> int:
             )
             refresh(page)
             wait_for_backing(page, NOTES, "Catalog-refresh")
+            pk_c_rf = sidebar_pk_token(page)
             set_gate(
                 "KEY_CYCLE_CATALOG_REFRESH",
-                classify_backing(body_text(page)) == "catalog",
-                f"pk={sidebar_pk_token(page)!r}",
+                classify_backing(body_text(page)) == "catalog" and pk_c_rf == after_c,
+                f"pk={pk_c_rf!r} cycled={after_c!r}",
             )
 
         goto_custom(page)
@@ -921,7 +1161,7 @@ def _run() -> int:
             after_cu = sidebar_pk_token(page)
             set_gate(
                 "KEY_CYCLE_CUSTOM",
-                classify_backing(body_text(page)) == "custom",
+                classify_backing(body_text(page)) == "custom" and bool(after_cu) and after_cu != before_cu,
                 f"before={before_cu!r} after={after_cu!r}",
             )
 

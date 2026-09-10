@@ -776,6 +776,15 @@ def _key_steps_to_center(key_center: str) -> int:
 
 def creative_entry_concert_key(session: dict[str, Any]) -> str:
     """Selected concert key from Creative entry widgets, if any."""
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry == "Style Jam Mode":
+        tok = str(session.get("improv_style_key") or "").strip()
+        if tok:
+            return tok
+    if entry == "Jam Session Generator":
+        tok = str(session.get("improv_jam_key") or "").strip()
+        if tok:
+            return tok
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
@@ -792,7 +801,6 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
             return resolve_practice_concert_key_for_song(session, "C", fallback="C")
     except ImportError:
         pass
-    entry = str(session.get("improv_entry_mode") or "").strip()
     if entry == "Style Jam Mode":
         return str(session.get("improv_style_key") or "").strip()
     if entry == "Jam Session Generator":
@@ -1287,6 +1295,41 @@ def user_sidebar_display_key_authoritative(session: dict[str, Any]) -> bool:
     return False
 
 
+def recent_practice_key_user_commit(session: dict[str, Any]) -> str:
+    """Concert token from Cycle / sidebar commit still inside the short protect window."""
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    if not commit:
+        return ""
+    try:
+        import time as _time
+
+        committed_at = float(session.get("_pk_user_commit_at") or 0.0)
+        if committed_at and (_time.time() - committed_at) < 5.0:
+            return commit
+    except (TypeError, ValueError):
+        return ""
+    return ""
+
+
+def apply_recent_practice_key_commit(st: Any, session: dict[str, Any]) -> str:
+    """Re-apply Cycle / user PK onto the sidebar widget before it remounts the old value."""
+    commit = recent_practice_key_user_commit(session)
+    if not commit:
+        return ""
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if _practice_keys_semantically_equal(live, commit):
+        return commit
+    try:
+        from songs.key_state import _apply_display_key_before_widget
+
+        _apply_display_key_before_widget(st, commit, source="pk_user_commit")
+    except ImportError:
+        session["display_key"] = commit
+        session["concert_key"] = commit
+        session["_pending_display_key"] = commit
+    return commit
+
+
 def live_mission_backing_practice_key_widget_token(session: dict[str, Any]) -> str:
     """Stable Mission Backing sidebar widget, plus leftover n_opts-suffixed keys."""
     tok = str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or "").strip()
@@ -1623,6 +1666,19 @@ def _sidebar_preserve_user_display_key_options(
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
     if not live:
         return None
+    commit = recent_practice_key_user_commit(session)
+    if commit and not _practice_keys_semantically_equal(live, commit):
+        return None
+    visit_tok = str(session.get("_creative_visit_practice_key") or "").strip()
+    visit_src = str(session.get("_creative_visit_source") or "").strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    if (
+        page == "creative"
+        and visit_src in {"missions", "sbi_active"}
+        and visit_tok
+        and not _practice_keys_semantically_equal(live, visit_tok)
+    ):
+        return None
     session["concert_key"] = live
     options = _sidebar_key_options_including(session, live)
     try:
@@ -1656,6 +1712,7 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
     flush_pending_creative_major_keys(session)
+    apply_recent_practice_key_commit(st, session)
 
     # Custom SBI / Custom progression Backing: LAST_CUSTOM sticky + home mode
     # (never Shape Dm via preserve_user after overlay clear).
@@ -1709,6 +1766,41 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             except ImportError:
                 pass
             return options
+    except Exception:
+        pass
+
+    # Entry Style Jam: sealed/live ctx owns the sidebar. Leftover Jam Generator
+    # Eb / remounted Style G must not win before preserve_user runs.
+    try:
+        from backing_context import get_backing_context
+        from music_theory import key_mode, practice_keys_for_mode
+
+        ctx_jam = get_backing_context(session)
+        ctx_src = str(getattr(ctx_jam, "source", "") or "").strip() if ctx_jam else ""
+        entry_now = str(session.get("improv_entry_mode") or "").strip()
+        if ctx_src == "entry_jam" and "Style Jam" in entry_now:
+            ctx_tok = str(
+                getattr(ctx_jam, "concert_key", "") or getattr(ctx_jam, "key", "") or ""
+            ).strip()
+            live_style = str(session.get("improv_style_key") or "").strip()
+            if ctx_tok and (not live_style or live_style in {"G", "Eb", "G major", "Eb major"}):
+                live_style = ctx_tok
+                session["improv_style_key"] = ctx_tok
+            jam_tok = live_style or ctx_tok
+            if jam_tok:
+                jam_mode = key_mode(jam_tok)
+                options = practice_keys_for_mode("minor" if jam_mode == "minor" else "major")
+                if jam_tok not in options:
+                    options = [jam_tok] + options
+                _apply_display_key_before_widget(
+                    st, jam_tok, source="entry_style_jam_ctx_before_preserve"
+                )
+                session["concert_key"] = jam_tok
+                session["display_key"] = jam_tok
+                session["improv_style_key"] = jam_tok
+                session["_sidebar_key_identity_label"] = jam_tok
+                session.pop(PENDING_DISPLAY_KEY, None)
+                return options
     except Exception:
         pass
 
@@ -1844,6 +1936,31 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
             )
             if jam_like:
                 if generated_backing_owns_left_panel_key(session):
+                    entry_live = str(
+                        session.get("improv_entry_mode") or getattr(ctx_early, "entry_mode", "") or ""
+                    ).strip()
+                    if "Style Jam" in entry_live:
+                        jam_tok = str(session.get("improv_style_key") or "").strip()
+                        ctx_tok = str(
+                            getattr(ctx_early, "concert_key", "") or getattr(ctx_early, "key", "") or ""
+                        ).strip()
+                        if ctx_tok and (not jam_tok or (jam_tok != ctx_tok and jam_tok in {"G", "Eb"})):
+                            jam_tok = ctx_tok
+                        if jam_tok:
+                            jam_mode = key_mode(jam_tok)
+                            options = practice_keys_for_mode(
+                                "minor" if jam_mode == "minor" else "major"
+                            )
+                            if jam_tok not in options:
+                                options = [jam_tok] + options
+                            _apply_display_key_before_widget(
+                                st, jam_tok, source="entry_jam_style_key_not_leftover_eb"
+                            )
+                            session["concert_key"] = jam_tok
+                            session["display_key"] = jam_tok
+                            session["improv_style_key"] = jam_tok
+                            session["_sidebar_key_identity_label"] = jam_tok
+                            return options
                     pending_token = ""
                     try:
                         from music_workflow_pending_generated_key_edit import (
@@ -2169,15 +2286,122 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
     return options
 
 
+def _practice_keys_semantically_equal(a: str, b: str) -> bool:
+    """True when two Practice Key labels are the same tonic+mode (Cm ≡ C minor)."""
+    left = str(a or "").strip()
+    right = str(b or "").strip()
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        ta, ma = split_key_center(left)
+        tb, mb = split_key_center(right)
+        if not ta or not tb:
+            return False
+        return key_center_token(ta, ma or "major") == key_center_token(tb, mb or "major")
+    except Exception:
+        return left.replace(" ", "").lower() == right.replace(" ", "").lower()
+
+
+def _last_custom_leftover_practice_key(session: dict[str, Any]) -> str:
+    """LAST_CUSTOM original/practice key — isolated from catalog Creative visits."""
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+    except ImportError:
+        snap = session.get("_last_custom_song_state")
+    active: dict[str, Any] = {}
+    if isinstance(snap, dict):
+        raw_active = snap.get("active")
+        if isinstance(raw_active, dict):
+            active = raw_active
+        for key in (
+            snap.get("display_key"),
+            snap.get("concert_key"),
+            active.get("original_key_center"),
+            active.get("key"),
+        ):
+            tok = str(key or "").strip()
+            if tok:
+                return tok
+    return str(session.get("cpl_last_display_key") or "").strip()
+
+
+def _catalog_creative_tab_should_ignore_custom_leftover(session: dict[str, Any]) -> bool:
+    """Motif/Harmony/Missions catalog visits must not preserve leftover Custom D."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab not in {
+        "Phrase / Motif",
+        "Motif",
+        "Harmony Map",
+        "Harmony",
+        "Missions",
+    }:
+        return False
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    visit_src = str(session.get("_creative_visit_source") or "").strip()
+    if visit_src == "sbi_custom":
+        return False
+    custom_active = False
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        custom_active = bool(custom_progression_is_active(session))
+    except ImportError:
+        custom_active = False
+    try:
+        from source_session_state import get_sbi_preview_source
+
+        preview = get_sbi_preview_source(session)
+        # Real SBI Custom visit keeps Trial/Custom. Leftover Custom preview
+        # during a catalog Motif/Harmony/Missions visit must not.
+        if preview == "Custom progression" and custom_active:
+            return False
+    except ImportError:
+        pass
+    saved = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+        if pick and not pick.startswith("custom::"):
+            saved = str(get_practice_concert_key(session, pick) or "").strip()
+    except ImportError:
+        saved = ""
+    if not saved:
+        saved = str(session.get("_creative_visit_practice_key") or "").strip()
+    leftover = _last_custom_leftover_practice_key(session)
+    if not live or not saved:
+        return False
+    if _practice_keys_semantically_equal(live, saved):
+        return False
+    return bool(leftover and _practice_keys_semantically_equal(live, leftover))
+
+
 def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
     """Apply Creative concert key before the sidebar Practice / Concert Key widget."""
     from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget, display_key_options
+
+    apply_recent_practice_key_commit(st, session)
 
     # Creative SBI → Custom: overlay LAST_CUSTOM sticky + home mode (not Shape).
     try:
         from source_session_state import custom_sbi_owns_sidebar_practice_key, prepare_sbi_custom_sidebar_display_key
 
-        if custom_sbi_owns_sidebar_practice_key(session):
+        if custom_sbi_owns_sidebar_practice_key(session) and not _catalog_creative_tab_should_ignore_custom_leftover(
+            session
+        ):
             return prepare_sbi_custom_sidebar_display_key(st, session)
     except ImportError:
         pass
@@ -2195,8 +2419,32 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         trace_phase="prepare_creative_sidebar:preserve_user_key",
     )
     if preserved is not None:
-        session.pop(PENDING_DISPLAY_KEY, None)
-        return preserved
+        if _catalog_creative_tab_should_ignore_custom_leftover(session):
+            preserved = None
+        else:
+            visit_tok = str(session.get("_creative_visit_practice_key") or "").strip()
+            visit_src = str(session.get("_creative_visit_source") or "").strip()
+            live_now = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            if (
+                visit_src in {"missions", "sbi_active"}
+                and visit_tok
+                and not _practice_keys_semantically_equal(live_now, visit_tok)
+            ):
+                preserved = None
+            else:
+                session.pop(PENDING_DISPLAY_KEY, None)
+                return preserved
+
+    visit_tok = str(session.get("_creative_visit_practice_key") or "").strip()
+    visit_src = str(session.get("_creative_visit_source") or "").strip()
+    if visit_src in {"missions", "sbi_active"} and visit_tok:
+        options = display_key_options(visit_tok)
+        if visit_tok not in options:
+            options = [visit_tok] + options
+        _apply_display_key_before_widget(st, visit_tok, source="creative_catalog_visit_key")
+        session["concert_key"] = visit_tok
+        session["display_key"] = visit_tok
+        return options
 
     if generated_backing_owns_left_panel_key(session):
         from music_theory import key_mode, practice_keys_for_mode
@@ -2354,8 +2602,11 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         trace_phase="prepare_creative_sidebar:preserve_user_key",
     )
     if preserved is not None:
-        session.pop(PENDING_DISPLAY_KEY, None)
-        return preserved
+        if _catalog_creative_tab_should_ignore_custom_leftover(session):
+            preserved = None
+        else:
+            session.pop(PENDING_DISPLAY_KEY, None)
+            return preserved
     options = creative_sidebar_key_options(session)
     backing_key = ""
     try:

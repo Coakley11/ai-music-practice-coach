@@ -10842,6 +10842,14 @@ else:
                 )
         except Exception:
             pass
+        _pending_cycle = str(st.session_state.get("_pending_display_key") or "").strip()
+        if (
+            _pk_widget_key in {"display_key", "display_key_sbi_custom"}
+            and _pending_cycle
+            and _pending_cycle in (_display_key_options or [])
+            and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
+        ):
+            st.session_state[_pk_widget_key] = _pending_cycle
         st.sidebar.selectbox(
             "Practice / Concert Key",
             _display_key_options,

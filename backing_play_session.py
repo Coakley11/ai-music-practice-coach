@@ -151,9 +151,10 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
             ctx_source = str(getattr(ctx, "source", "") or "").strip()
     except ImportError:
         ctx = None
-    # Catalog pick BPM must not seed generated Jam / Mission / SBI source defaults —
-    # that made Jam Current 111 fight a Shape-of-You catalog 96 on refresh.
-    if ctx_source not in {"entry_jam", "mission", "song_improv"}:
+    # Catalog pick BPM must not seed generated Jam / Mission / SBI / Custom
+    # source defaults — leftover Shape 96 must not masquerade as a Custom
+    # document tempo, and Custom Current must not be confused with catalog.
+    if ctx_source not in {"entry_jam", "mission", "song_improv", "custom_progression"}:
         try:
             from songs.music_source import catalog_transport_bpm_for_pick
 
@@ -179,8 +180,12 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
         if ctx is not None:
             ctx_bpm = int(getattr(ctx, "bpm", 0) or 0)
             # Catalog/source default already known: ctx.bpm is display/current, not init.
-            if catalog_bpm <= 0 and ctx_bpm > 0:
+            if catalog_bpm <= 0 and ctx_bpm > 0 and ctx_source != "custom_progression":
                 bpm = ctx_bpm
+            if ctx_source == "custom_progression":
+                doc = _custom_document_source_bpm(session, ctx)
+                if doc > 0:
+                    bpm = doc
             if ctx_source == "entry_jam":
                 # FIRST 98→96 writer was preferring expired catalog bag.defaults (96)
                 # over sealed generated ctx.bpm (98) while minting a NEW Jam session.
@@ -267,6 +272,15 @@ def _source_init_bpm(session: dict[str, Any], ps: dict[str, Any] | None = None) 
         if val > 0:
             return val
         return 0
+    if ctx_source == "custom_progression":
+        doc = _custom_document_source_bpm(session, ctx)
+        if doc > 0:
+            return doc
+        try:
+            val = int(((bag or {}).get("defaults") or {}).get("bpm") or 0)
+        except (TypeError, ValueError):
+            val = 0
+        return int(val or 0)
     if ctx_source in {"mission", "song_improv"}:
         try:
             val = int(((bag or {}).get("defaults") or {}).get("bpm") or 0)
@@ -303,6 +317,32 @@ def _source_init_bpm(session: dict[str, Any], ps: dict[str, Any] | None = None) 
     return 0
 
 
+def _custom_document_source_bpm(session: dict[str, Any], ctx: Any | None = None) -> int:
+    """Custom song document BPM (never Current play-session tempo)."""
+    pick = ""
+    if ctx is not None:
+        pick = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+    default_bpm = 100
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+        active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+        try:
+            default_bpm = int(active.get("bpm") or 100)
+        except (TypeError, ValueError):
+            default_bpm = 100
+    except Exception:
+        pass
+    if not pick:
+        return int(default_bpm or 0)
+    try:
+        from songs.practice_key_state import resolve_source_bpm_for_pick
+
+        return int(resolve_source_bpm_for_pick(session, pick, default_bpm=default_bpm) or 0)
+    except Exception:
+        return int(default_bpm or 0)
+
+
 def _known_source_default_bpms(session: dict[str, Any], ps: dict[str, Any] | None = None) -> set[int]:
     """Catalog/source default tempos that must not reseal Current BPM."""
     out: set[int] = set()
@@ -322,6 +362,11 @@ def _known_source_default_bpms(session: dict[str, Any], ps: dict[str, Any] | Non
         candidates.append(_generated_source_bpm(session, ctx))
         if ctx is not None:
             candidates.append(getattr(ctx, "bpm", None))
+    elif ctx_source == "custom_progression":
+        # Document BPM only. ctx.bpm may already be stamped Current (104) after
+        # a visit; treating that as the only default let a remounted document
+        # slider (100) look like a live user edit and replace Current.
+        candidates.append(_custom_document_source_bpm(session, ctx))
     elif ctx_source in {"mission", "song_improv"}:
         if ctx is not None:
             candidates.append(getattr(ctx, "bpm", None))
@@ -1157,6 +1202,9 @@ def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[s
     # Do NOT remint on sync-id string flicker when launch_id still matches
     # (browser refresh); that resealed Jam Current 111 back to source 98.
     identity_changed = bool(prev_identity and identity and prev_identity != identity)
+    # Custom pick / revision-id string flicker is the same visit (refresh).
+    if identity_changed and prev_identity.startswith("custom:") and str(identity).startswith("custom:"):
+        identity_changed = False
     launch_same = bool(
         prev_launch
         and (prev_launch == live_launch or (not live_launch and bool(prev_launch)))

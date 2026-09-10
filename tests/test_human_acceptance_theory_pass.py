@@ -389,6 +389,314 @@ class TestDescendingAbcRegister(unittest.TestCase):
         self.assertIn("T:Motif", abc)
 
 
+class TestCustomBackingPlaySessionBpmRefresh(unittest.TestCase):
+    def test_remounted_document_slider_does_not_replace_current(self) -> None:
+        from backing_context import BackingContext, refresh_backing_context_from_session, set_backing_context
+        from backing_play_session import (
+            _stale_widget_default_bpms,
+            capture_backing_play_session_overrides,
+            current_backing_play_bpm,
+            sync_backing_play_session_on_backing_page,
+        )
+
+        session = {
+            "studio_page": "backing",
+            "cpl_active_progression": {
+                "id": "custom::trial",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "bpm": 100,
+                "original_sections": {"Verse": [{"chord": "D", "bars": 4}]},
+            },
+            "display_key": "D",
+            "concert_key": "D",
+            "backing_track_bpm": 104,
+            "_backing_current_bpm_lock": 104,
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="custom_progression",
+                source_label="Custom",
+                active_song_id="custom::trial",
+                bound_pick_key="custom::trial",
+                song_title="Trial Song",
+                key="D",
+                display_key="D",
+                concert_key="D",
+                bpm=104,
+                style="Pop",
+                groove="Pop groove",
+            ),
+        )
+        capture_backing_play_session_overrides(session, bpm=104)
+        session["backing_track_bpm::custom:custom::trial"] = 100
+        self.assertIn(100, _stale_widget_default_bpms(session))
+        self.assertEqual(int(current_backing_play_bpm(session, default=0)), 104)
+        session.pop("_canonical_active_backing_song_id", None)
+        sync_backing_play_session_on_backing_page(session)
+        refreshed = refresh_backing_context_from_session(session)
+        self.assertIsNotNone(refreshed)
+        self.assertEqual(int(refreshed.bpm), 104)
+        self.assertEqual(int(session["cpl_active_progression"]["bpm"]), 100)
+
+
+class TestMotifRefreshIgnoresCustomLeftover(unittest.TestCase):
+    def test_motif_catalog_visit_keeps_cm_not_custom_d(self) -> None:
+        from types import SimpleNamespace
+
+        from creative_key_sync import prepare_creative_sidebar_display_key
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+        from songs.practice_key_state import set_practice_concert_key
+
+        session = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Phrase / Motif",
+            "display_key": "D",
+            "concert_key": "D",
+            "display_key_change_source": "sidebar",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "sbi_preview_source": "Custom progression",
+            "_creative_visit_source": "missions",
+            "_creative_visit_practice_key": "Cm",
+            LAST_CUSTOM_STATE_KEY: {
+                "name": "Trial Song",
+                "active": {
+                    "name": "Trial Song",
+                    "original_key_center": "D",
+                    "bpm": 100,
+                },
+            },
+        }
+        set_practice_concert_key(session, "Cm", pick_key=SHAPE_PICK, allow_restore_original=True)
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["display_key_change_source"] = "sidebar"
+        session["_creative_visit_source"] = "missions"
+        session["_creative_visit_practice_key"] = "Cm"
+        st = SimpleNamespace(session_state=session)
+        prepare_creative_sidebar_display_key(st, session)
+        live = str(session.get("display_key") or "")
+        compact = live.replace(" ", "").lower()
+        self.assertTrue(compact.startswith("cm") or live.lower().startswith("c min"), live)
+        self.assertNotEqual(live, "D")
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+
+        self.assertTrue(
+            str(_authoritative_practice_chart_key(session, "D")).replace(" ", "").lower().startswith("cm")
+        )
+
+
+class TestCatalogKeyCycleWritesSticky(unittest.TestCase):
+    def test_catalog_cycle_not_blocked_by_identity_prime(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+        session = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "display_key_change_source": "sidebar_key_identity:catalog",
+        }
+        set_practice_concert_key(session, "Cm", pick_key=SHAPE_PICK, allow_restore_original=True)
+        set_backing_context(
+            session,
+            BackingContext(
+                source="regular_song",
+                source_label="Catalog",
+                active_song_id=SHAPE_PICK,
+                bound_pick_key=SHAPE_PICK,
+                song_title="Shape of You",
+                key="Bm",
+                display_key="Cm",
+                concert_key="Cm",
+                bpm=96,
+                style="Pop",
+                groove="Pop groove",
+            ),
+        )
+        apply_backing_key_cycle(session, semitones=-1)
+        sticky = str(get_practice_concert_key(session, SHAPE_PICK) or "")
+        self.assertNotEqual(sticky, "Cm")
+        tonic, mode = split_key_center(sticky or session.get("display_key") or "")
+        self.assertEqual(mode, "minor")
+        self.assertNotEqual(tonic, "C")
+
+        # Widget remount still has Cm; Cycle commit must win.
+        from types import SimpleNamespace
+
+        from creative_key_sync import prepare_backing_context_sidebar_display_key
+
+        cycled = str(session.get("display_key") or "")
+        session["display_key"] = "Cm"
+        session["concert_key"] = "Cm"
+        session["display_key_change_source"] = "sidebar"
+        st = SimpleNamespace(session_state=session)
+        prepare_backing_context_sidebar_display_key(st, session)
+        live = str(session.get("display_key") or "")
+        self.assertEqual(live, cycled)
+        self.assertNotEqual(live, "Cm")
+
+
+class TestStyleJamSealedKeySurvivesRefreshRebuild(unittest.TestCase):
+    def test_build_entry_jam_context_keeps_sealed_f_not_g(self) -> None:
+        from backing_context import BackingContext, build_entry_jam_context, set_backing_context
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "G",
+            "improv_jam_key": "Eb",
+            "display_key": "G",
+            "concert_key": "G",
+            "improv_generated_sections": {
+                "Head (Jazz Swing)": ["Gm7", "C7", "Fmaj7", "D7"],
+            },
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="jam-style",
+                entry_mode="Style Jam Mode",
+                song_title="Style Jam",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=110,
+                style="Jazz Swing",
+                groove="Jazz swing",
+            ),
+        )
+        ctx = build_entry_jam_context(session)
+        self.assertIsNotNone(ctx)
+        compact = str(ctx.concert_key or ctx.key or "").replace(" ", "")
+        self.assertTrue(compact.startswith("F"), compact)
+        self.assertEqual(session.get("improv_style_key"), "F")
+
+    def test_leftover_generator_eb_widget_restores_sealed_f(self) -> None:
+        from backing_context import BackingContext, build_entry_jam_context, set_backing_context
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "Eb",
+            "improv_jam_key": "Eb",
+            "display_key": "Eb",
+            "concert_key": "Eb",
+            "improv_generated_sections": {
+                "Head (Jazz Swing)": ["Fmaj7", "Bbmaj7", "C7", "Fmaj7"],
+            },
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="jam-style",
+                entry_mode="Style Jam Mode",
+                song_title="Style Jam",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=110,
+                style="Jazz Swing",
+                groove="Jazz swing",
+            ),
+        )
+        ctx = build_entry_jam_context(session)
+        self.assertIsNotNone(ctx)
+        compact = str(ctx.concert_key or ctx.key or "").replace(" ", "")
+        self.assertTrue(compact.startswith("F"), compact)
+        self.assertEqual(session.get("improv_style_key"), "F")
+
+
+class TestMissionVisibleTileIdentity(unittest.TestCase):
+    def test_written_dm_click_stays_concert_dm_on_mission_backing(self) -> None:
+        from backing_context import build_mission_context
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "improv_mission_pick": "chord_tones",
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "improv_mission_chord_options": ["Cm", "Fm", "Ab", "Bb"],
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "instrument": "Saxophone",
+            "sax_type": "Alto saxophone (Eb)",
+            "_mission_chord_click_authority": {
+                "chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "Cm",
+            },
+            "active_catalog_pick_key": SHAPE_PICK,
+        }
+        ctx = build_mission_context(session)
+        self.assertEqual(session.get("_mission_backing_canonical_chord"), "Dm")
+        shown = " ".join(str(c) for c in (ctx.progression or []))
+        self.assertIn("Dm", shown)
+        self.assertNotIn("Fm", shown)
+
+
+class TestMissionClickDoesNotTransposeWrittenIdentity(unittest.TestCase):
+    def test_written_dm_click_is_not_transposed_to_concert_fm(self) -> None:
+        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+        session = {
+            "studio_page": "backing",
+            "display_key": "Am",
+            "concert_key": "Cm",
+            "instrument": "Saxophone",
+            "show_chart_in_instrument_key": True,
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "_mission_chord_click_authority": {
+                "chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "Am",
+            },
+        }
+        section_map = [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
+        sym, sec, _idx = read_authoritative_mission_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertEqual(sec, "Pre-Chorus 2")
+        self.assertNotEqual(sym, "Fm")
+
+
+class TestDescendingRebuildsFromMotif(unittest.TestCase):
+    def test_rebuild_descending_from_non_pattern_motif(self) -> None:
+        from improvisation_motif import rebuild_motif_pattern
+
+        motif = {
+            "chord": "C",
+            "notes": ["C", "E", "G", "A"],
+            "midi": [60, 64, 67, 69],
+        }
+        out = rebuild_motif_pattern(
+            motif,
+            key_center="C",
+            pattern_type="diatonic",
+            direction="descending",
+            length=8,
+        )
+        notes = list(out.get("notes") or [])
+        midis = [int(m) for m in out.get("midi") or []]
+        self.assertGreaterEqual(len(notes), 4)
+        self.assertEqual(out.get("pattern_direction"), "descending")
+        self.assertGreaterEqual(len(midis), 4)
+        self.assertGreater(midis[0], midis[-1])
+        leaps = [midis[i] - midis[i - 1] for i in range(1, len(midis))]
+        self.assertFalse(any(abs(leap) >= 11 and abs(leap) % 12 == 0 for leap in leaps), leaps)
+
+
 class TestReturnCustomRestoreSignature(unittest.TestCase):
     def test_restore_last_custom_requires_st_and_invalidate(self) -> None:
         import inspect

@@ -722,18 +722,20 @@ def apply_mission_motif_transform(
     operation: str,
     *,
     bpm: int = 100,
+    key_center: str = "",
 ) -> MissionExample | None:
     """Transform stored mission motif and refresh every output."""
     example = load_mission_example(session_state, improv_ctx)
     if not example:
         return None
+    concert = str(key_center or improv_ctx.key_center or "").strip()
     if operation == "change_rhythm":
         motif = cycle_motif_rhythm(dict(example.motif))
     else:
         motif = transform_motif(
             dict(example.motif),
             operation,
-            key_center=improv_ctx.key_center or improv_ctx.display_key,
+            key_center=concert or str(improv_ctx.display_key or "C"),
         )
         motif = sync_motif_midi(motif)
     example.motif = motif
