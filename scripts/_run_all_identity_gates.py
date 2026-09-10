@@ -49,7 +49,9 @@ def wait_http(url: str = "http://127.0.0.1:8501", timeout_s: int = 180) -> bool:
 
 def _kill_streamlit() -> None:
     global _STREAMLIT_PROC
-    # Only the gate-target music app on :8501 — leave other local Streamlit ports alone.
+    # Free :8501 for the music gate app — any Streamlit bound there (including
+    # suite streamlit_app.py) will 200-ok wait_http while Songs nav is absent.
+    # Leave other local Streamlit ports (e.g. :8640) alone.
     if sys.platform.startswith("win"):
         subprocess.run(
             [
@@ -58,7 +60,7 @@ def _kill_streamlit() -> None:
                 "-Command",
                 "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" |"
                 " Where-Object {"
-                "   $_.CommandLine -match 'streamlit run streamlit_music_practice_app'"
+                "   $_.CommandLine -match 'streamlit run'"
                 "   -and $_.CommandLine -match '8501'"
                 " } |"
                 " ForEach-Object { Stop-Process -Id $_.ProcessId -Force"
@@ -68,7 +70,7 @@ def _kill_streamlit() -> None:
         )
     else:
         subprocess.run(
-            ["pkill", "-f", "streamlit run streamlit_music_practice_app.py.*8501"],
+            ["pkill", "-f", "streamlit run .*8501"],
             check=False,
         )
     if _STREAMLIT_PROC is not None:

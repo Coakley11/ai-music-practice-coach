@@ -22,7 +22,7 @@ EV = gates.EV
 
 
 def _kill_music_streamlit_8501() -> None:
-    """Stop only streamlit_music_practice_app bound to port 8501."""
+    """Free port 8501 of any Streamlit (music or suite) for gate runs."""
     if sys.platform.startswith("win"):
         subprocess.run(
             [
@@ -31,7 +31,7 @@ def _kill_music_streamlit_8501() -> None:
                 "-Command",
                 "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" |"
                 " Where-Object {"
-                "   $_.CommandLine -match 'streamlit run streamlit_music_practice_app'"
+                "   $_.CommandLine -match 'streamlit run'"
                 "   -and $_.CommandLine -match '8501'"
                 " } |"
                 " ForEach-Object { Stop-Process -Id $_.ProcessId -Force"
@@ -41,7 +41,7 @@ def _kill_music_streamlit_8501() -> None:
         )
     else:
         subprocess.run(
-            ["pkill", "-f", "streamlit run streamlit_music_practice_app.py.*8501"],
+            ["pkill", "-f", "streamlit run .*8501"],
             check=False,
         )
     time.sleep(2)
