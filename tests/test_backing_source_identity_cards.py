@@ -184,12 +184,12 @@ class TestCompositionBackingCard(unittest.TestCase):
 
 
 class TestCompositionSourceOwnership(unittest.TestCase):
-    def test_ensure_composition_owns_active_song_promotes_my_composition(self) -> None:
+    def test_ensure_composition_refuses_catalog_leave_when_radio_unmounted(self) -> None:
+        """Songs→Backing remount: USER_CATALOG leave stamp must outrank hub promote."""
         from unittest.mock import MagicMock
 
-        from composition_songs_bridge import GENERIC_COMPOSITION_KEY, GENERIC_COMPOSITION_TITLE
         from songs.music_source import (
-            composition_song_is_active,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
             ensure_composition_owns_active_song,
         )
 
@@ -203,7 +203,39 @@ class TestCompositionSourceOwnership(unittest.TestCase):
                 "key": "G",
             },
             "active_music_source": "catalog_song",
-            "_user_chose_catalog_music_source": True,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+        }
+        st.session_state = ss
+
+        doc = ensure_composition_owns_active_song(st, invalidate_backing=lambda _st: None)
+        self.assertIsNone(doc)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        self.assertEqual(ss.get("active_music_source"), "catalog_song")
+        self.assertTrue(ss.get("_composition_ensure_skipped_user_catalog"))
+
+    def test_ensure_composition_owns_active_song_promotes_my_composition(self) -> None:
+        from unittest.mock import MagicMock
+
+        from composition_songs_bridge import GENERIC_COMPOSITION_KEY, GENERIC_COMPOSITION_TITLE
+        from songs.music_source import (
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            composition_song_is_active,
+            ensure_composition_owns_active_song,
+            song_picker_composition_option_label,
+        )
+
+        st = MagicMock()
+        ss: dict = {
+            "active_catalog_pick_key": "Pop\x1fSay — John Mayer",
+            "selected_song": {
+                "pick_key": "Pop\x1fSay — John Mayer",
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+            "active_music_source": "catalog_song",
+            # Live Composition radio (hub / radio path) may promote.
+            SONG_PICKER_ACTIVE_SOURCE_KEY: song_picker_composition_option_label(),
         }
         st.session_state = ss
 
