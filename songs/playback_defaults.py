@@ -130,9 +130,12 @@ def resolve_active_bpm_sync_id(
     return sync_id
 
 
-def backing_bpm_slider_widget_key(sync_id: str) -> str:
-    """Per-song slider key so Streamlit recreates the widget when the active song changes."""
+def backing_bpm_slider_widget_key(sync_id: str, *, owner: str = "") -> str:
+    """Per-owner, per-song slider key so Jam 110 cannot remount over Custom 104."""
     safe = str(sync_id).replace(":", "_").replace("/", "_").replace(" ", "_")
+    kind = str(owner or "").strip()
+    if kind:
+        return f"backing_track_bpm::{kind}::{safe}"
     return f"backing_track_bpm::{safe}"
 
 
@@ -142,9 +145,10 @@ def resolve_backing_bpm_for_slider(
     sync_id: str,
     default_bpm: int,
     song_just_reset: bool = False,
+    owner: str = "",
 ) -> int:
     """BPM for the slider *before* it renders — never clobber a user edit on rerun."""
-    slider_key = backing_bpm_slider_widget_key(sync_id)
+    slider_key = backing_bpm_slider_widget_key(sync_id, owner=owner)
     tracked_sync = str(
         st.session_state.get(LAST_BPM_SONG)
         or st.session_state.get(ACTIVE_PLAYBACK_SONG_ID_KEY)

@@ -9457,7 +9457,14 @@ def _render_backing_step2_playback_action(
             default_time_signature=default_meter,
         )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
-    slider_key = backing_bpm_slider_widget_key(song_id)
+    _bpm_owner = ""
+    try:
+        from backing_practice_key_control import backing_bpm_control_owner
+
+        _bpm_owner = backing_bpm_control_owner(st.session_state)
+    except Exception:
+        _bpm_owner = ""
+    slider_key = backing_bpm_slider_widget_key(song_id, owner=_bpm_owner)
     try:
         from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
 
@@ -9470,6 +9477,7 @@ def _render_backing_step2_playback_action(
         sync_id=song_id,
         default_bpm=default_bpm,
         song_just_reset=song_just_reset,
+        owner=_bpm_owner,
     )
 
     with st.container(key="backing_playback_panel", border=False):
@@ -10658,6 +10666,19 @@ else:
         )
     else:
         _pk_widget_key = "display_key"
+        try:
+            from backing_practice_key_control import (
+                backing_practice_key_widget_id,
+                seed_backing_practice_key_widget,
+            )
+
+            if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+                seed_backing_practice_key_widget(
+                    st.session_state, options=_display_key_options
+                )
+                _pk_widget_key = backing_practice_key_widget_id(st.session_state)
+        except ImportError:
+            _pk_widget_key = "display_key"
         if _sbi_custom_sidebar:
             # Isolate Custom SBI PK from Catalog Shape's minor-family display_key widget
             # (F → Fm / E → Em when the same selectbox reused Shape Bm options).
@@ -10783,8 +10804,6 @@ else:
                 if _pk_widget_key != "display_key":
                     tok = str(st.session_state.get(_pk_widget_key) or "").strip()
                     if tok:
-                        # Capture prior Practice Key before overwrite so Mission transpose
-                        # uses the real from_key (not enharmonic lick key_center / already-new token).
                         prior = str(
                             st.session_state.get("improv_mission_concert_key")
                             or st.session_state.get("display_key")
@@ -10793,7 +10812,15 @@ else:
                         ).strip()
                         if prior and prior != tok:
                             st.session_state["_mission_pk_transpose_from"] = prior
-                        if _pk_widget_key == "display_key_mission_backing":
+                        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+                            try:
+                                from backing_practice_key_control import commit_backing_practice_key
+
+                                commit_backing_practice_key(st.session_state, tok)
+                            except ImportError:
+                                st.session_state["display_key"] = tok
+                                st.session_state["concert_key"] = tok
+                        elif _pk_widget_key == "display_key_mission_backing":
                             try:
                                 from creative_key_sync import apply_specialized_mission_practice_key
 
@@ -10844,7 +10871,7 @@ else:
             pass
         _pending_cycle = str(st.session_state.get("_pending_display_key") or "").strip()
         if (
-            _pk_widget_key in {"display_key", "display_key_sbi_custom"}
+            _pk_widget_key
             and _pending_cycle
             and _pending_cycle in (_display_key_options or [])
             and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle

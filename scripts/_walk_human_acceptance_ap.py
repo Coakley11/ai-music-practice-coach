@@ -846,17 +846,35 @@ def _run() -> int:
         click_radio(page, "Harmony") or click_button_has(page, r"Harmony Map")
         wait_idle(page, 2500)
         side_h = sidebar_text(page)
+        body_h = body_text(page)
+        pk_h = sidebar_pk_token(page)
         shot(page, "5-harmony")
         click_radio(page, "Motif") or click_button_has(page, r"Phrase") or click_button_has(page, r"Motif")
         wait_idle(page, 2500)
         side_m = sidebar_text(page)
+        body_m = body_text(page)
+        pk_m = sidebar_pk_token(page)
         shot(page, "5-motif")
+        written_am = concert_key_in(
+            side_w + "\n" + body_w + "\n" + side_h + "\n" + body_h + "\n" + side_m + "\n" + body_m,
+            "A minor",
+            "A Minor",
+            "Am",
+        )
+        no_reclaim = all(
+            compact.replace(" ", "").lower() not in {"bm", "bminor", "d", "dmajor"}
+            for compact in (pk_h, pk_m, sidebar_pk_token(page))
+        )
+        shape_ok = has_any(body_h + "\n" + body_m, "Shape of You")
         set_gate(
             "CROSS_PAGE_KEYS",
-            catalog_cm_family(side, "")
-            and catalog_cm_family(side_h, "")
-            and catalog_cm_family(side_m, ""),
-            "missions-harmony-motif",
+            catalog_cm_family(side, sidebar_pk_token(page) or "Cm")
+            and catalog_cm_family(side_h, pk_h)
+            and catalog_cm_family(side_m, pk_m)
+            and written_am
+            and no_reclaim
+            and shape_ok,
+            f"pk_h={pk_h!r} pk_m={pk_m!r} written_am={written_am} shape={shape_ok}",
         )
         refresh(page)
         wait_idle(page, 4000)
@@ -878,12 +896,20 @@ def _run() -> int:
         wait_idle(page, 2500)
         click_button_has(page, r"Build Motif Pattern")
         wait_idle(page, 2500)
+        set_baseweb_select(page, "Direction", "Descending") or set_baseweb_select(
+            page, "Direction", "descending"
+        )
         click_radio_exact(page, "Descending")
         try:
             grp = page.locator("[role='radiogroup']").filter(has_text=re.compile(r"Direction", re.I))
             if grp.count():
                 grp.last.get_by_text("Descending", exact=True).click(timeout=4000)
                 wait_idle(page, 2500)
+        except Exception:
+            pass
+        try:
+            page.get_by_label("Direction").select_option("descending")
+            wait_idle(page, 1500)
         except Exception:
             pass
         wait_idle(page, 3000)

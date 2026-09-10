@@ -1868,8 +1868,26 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     target_chord = ""
     canonical_target = ""
     try:
-        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+        from creative_chord_selection_authority import (
+            ensure_mission_chord_snapshot,
+            read_authoritative_mission_chord_selection,
+            read_mission_chord_snapshot,
+            seal_mission_chord_snapshot,
+        )
 
+        example = session.get("improv_mission_example")
+        motif = example.motif if example is not None and isinstance(getattr(example, "motif", None), dict) else {}
+        example_concert = ""
+        if isinstance(motif, dict):
+            example_concert = str(motif.get("_concert_chord") or "").strip()
+        if example_concert and not read_mission_chord_snapshot(session):
+            seal_mission_chord_snapshot(
+                session,
+                concert_chord=example_concert,
+                section=str(session.get("ii_selected_section") or "").strip(),
+                chord_index=int(session.get("ii_selected_chord_index") or 0),
+            )
+        ensure_mission_chord_snapshot(session)
         auth_ch, _auth_sec, _auth_idx = read_authoritative_mission_chord_selection(session)
         if auth_ch:
             canonical_target = str(auth_ch).strip()
@@ -1890,9 +1908,10 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         from effective_practice_context import musician_facing_chart_key, musician_facing_chord
 
         concert = str(
-            session.get("concert_key")
-            or session.get("display_key")
+            session.get("improv_mission_concert_key")
+            or session.get("concert_key")
             or concert_key
+            or session.get("display_key")
             or ""
         ).strip()
         chart = musician_facing_chart_key(session, concert) if concert else ""
@@ -2083,6 +2102,14 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         bpm = resolve_source_bpm_for_pick(session, pick_key, default_bpm=default_bpm)
     except ImportError:
         bpm = default_bpm
+    try:
+        from backing_play_session import current_backing_play_bpm
+
+        live = int(current_backing_play_bpm(session, default=0) or 0)
+        if live > 0:
+            bpm = live
+    except Exception:
+        pass
 
     return BackingContext(
         source="custom_progression",

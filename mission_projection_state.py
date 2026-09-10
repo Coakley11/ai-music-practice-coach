@@ -125,8 +125,20 @@ def resolve_mission_projection_state(
                     if str(c).strip()
                 }
                 selected_n = normalize_chord_for_theory(concert_chord)
-                if concert_syms and selected_n not in concert_syms:
-                    # Written/stale D#m must not replace concert Dm sitting at this index.
+                snap = None
+                try:
+                    from creative_chord_selection_authority import read_mission_chord_snapshot
+
+                    snap = read_mission_chord_snapshot(session)
+                except ImportError:
+                    snap = None
+                snap_ch = str((snap or {}).get("concert_chord") or "").strip()
+                keep_identity = bool(
+                    snap_ch and normalize_chord_for_theory(snap_ch) == selected_n
+                )
+                if concert_syms and selected_n not in concert_syms and not keep_identity:
+                    # Written/stale D#m must not replace a validated snapshot chord
+                    # (Dm) with a different map chord at this index (Fm).
                     concert_chord = at_ch
                     section_label = at_sec or section_label
             except Exception:

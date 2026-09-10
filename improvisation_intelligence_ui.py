@@ -1906,15 +1906,39 @@ def _tab_motif(
             )
             _persist_motif_artifact(session_state, interaction="motif_direction_change")
 
-        dir_choice = st.radio(
+        dir_choice = st.selectbox(
             "Direction",
             options=["ascending", "descending"],
             format_func=lambda d: "Ascending" if d == "ascending" else "Descending",
             index=0 if cur_dir != "descending" else 1,
-            horizontal=True,
             key="improv_motif_pattern_dir_widget",
             on_change=_on_motif_dir_change,
         )
+        if st.button("Descending", key="improv_motif_dir_descending_btn", use_container_width=True):
+            session_state["improv_motif_pattern_dir_widget"] = "descending"
+            if motif.get("notes") or motif.get("base_motif_notes") or motif.get("is_pattern"):
+                session_state["improv_motif"] = rebuild_motif_pattern(
+                    motif,
+                    key_center=concert_key or motif_key,
+                    pattern_type=str(
+                        session_state.get("improv_motif_pattern_type")
+                        or motif.get("pattern_type")
+                        or "auto"
+                    ),
+                    direction="descending",
+                    length=int(
+                        session_state.get("improv_motif_pattern_length")
+                        or motif.get("pattern_length")
+                        or 8
+                    ),
+                )
+                _refresh_motif_output_after_transform(
+                    session_state,
+                    key_center=concert_key or motif_key,
+                    bpm=bpm,
+                )
+                _persist_motif_artifact(session_state, interaction="motif_direction_descending")
+            st.rerun()
         widget_dir = str(
             session_state.get("improv_motif_pattern_dir_widget") or dir_choice or "ascending"
         ).strip().lower()
@@ -1953,7 +1977,11 @@ def _tab_motif(
                 motif,
                 key_center=concert_key or motif_key,
                 pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
-                direction=str(dir_choice or "ascending"),
+                direction=str(
+                    session_state.get("improv_motif_pattern_dir_widget")
+                    or dir_choice
+                    or "ascending"
+                ),
                 length=int(session_state.get("improv_motif_pattern_length") or 8),
             )
             _clear_motif_outputs(session_state)
@@ -1969,7 +1997,11 @@ def _tab_motif(
                 motif,
                 key_center=concert_key or motif_key,
                 pattern_type=str(type_choice or "auto"),
-                direction=str(dir_choice or "ascending"),
+                direction=str(
+                    session_state.get("improv_motif_pattern_dir_widget")
+                    or dir_choice
+                    or "ascending"
+                ),
                 length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
             )
             _refresh_motif_output_after_transform(

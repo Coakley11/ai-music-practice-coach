@@ -415,6 +415,24 @@ def _stale_widget_default_bpms(session: dict[str, Any], ps: dict[str, Any] | Non
             out.add(int(cat))
     except Exception:
         pass
+    ctx_source = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_source = str(getattr(ctx, "source", "") or "").strip()
+    except Exception:
+        ctx_source = ""
+    if ctx_source == "custom_progression":
+        out.add(110)  # Style Jam studio default — never Custom Current
+        for key in ("improv_style_bpm", "improv_jam_bpm"):
+            try:
+                val = int(session.get(key) or 0)
+            except (TypeError, ValueError):
+                val = 0
+            if val > 0:
+                out.add(val)
     return out
 
 
@@ -476,6 +494,12 @@ def _seed_source_bpm_slider_keys(session: dict[str, Any], bpm: int) -> None:
         ).strip()
         if sid:
             session[backing_bpm_slider_widget_key(sid)] = keep
+            try:
+                from backing_practice_key_control import backing_bpm_control_owner
+
+                session[backing_bpm_slider_widget_key(sid, owner=backing_bpm_control_owner(session))] = keep
+            except Exception:
+                pass
     except ImportError:
         pass
 
@@ -512,6 +536,14 @@ def _live_slider_bpm(session: dict[str, Any], *, sync_id: str = "") -> int:
         or ""
     ).strip()
     if sid and backing_bpm_slider_widget_key is not None:
+        try:
+            from backing_practice_key_control import backing_bpm_control_owner
+
+            preferred.append(
+                backing_bpm_slider_widget_key(sid, owner=backing_bpm_control_owner(session))
+            )
+        except Exception:
+            pass
         preferred.append(backing_bpm_slider_widget_key(sid))
     try:
         from backing_context import backing_page_sync_id

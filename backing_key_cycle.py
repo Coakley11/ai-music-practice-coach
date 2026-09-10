@@ -116,6 +116,14 @@ def cycle_step_semitones(session: dict[str, Any]) -> int:
 def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
     """Concert Practice Key of the current Backing owner only."""
     try:
+        from backing_practice_key_control import canonical_concert_key_for_owner
+
+        owned = str(canonical_concert_key_for_owner(session) or "").strip()
+        if owned:
+            return owned
+    except ImportError:
+        pass
+    try:
         from creative_key_sync import live_backing_source, resolve_practice_key_write_owner
 
         owner = resolve_practice_key_write_owner(session)
@@ -196,6 +204,12 @@ def _stamp_cycle_commit(session: dict[str, Any], new: str) -> None:
     session["_pending_display_key"] = new
     session["_pk_user_commit_token"] = new
     session["display_key_change_source"] = "backing_key_cycle"
+    try:
+        from backing_practice_key_control import backing_practice_key_widget_id
+
+        session[backing_practice_key_widget_id(session)] = new
+    except ImportError:
+        pass
     try:
         import time as _time
 

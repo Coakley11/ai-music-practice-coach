@@ -46,6 +46,184 @@ def section_chord_at_global_index(
         return "", ""
 
 
+MISSION_CHORD_SNAPSHOT_KEY = "_mission_chord_snapshot"
+
+
+def _live_mission_identity(session: dict[str, Any]) -> dict[str, str]:
+    source = str(
+        session.get("active_catalog_pick_key")
+        or session.get("active_song_id")
+        or ""
+    ).strip()
+    return {
+        "mission_id": str(
+            session.get("improv_active_mission") or session.get("improv_mission_pick") or ""
+        ).strip(),
+        "session_id": str(
+            session.get("improv_mission_new_nonce")
+            or session.get("improv_mission_workspace_updated_at")
+            or ""
+        ).strip(),
+        "source_identity": source,
+        "concert_practice_key": str(
+            session.get("improv_mission_concert_key")
+            or session.get("concert_key")
+            or session.get("display_key")
+            or ""
+        ).strip(),
+    }
+
+
+def _live_concert_and_chart(session: dict[str, Any]) -> tuple[str, str]:
+    concert = str(
+        session.get("improv_mission_concert_key")
+        or session.get("concert_key")
+        or session.get("display_key")
+        or ""
+    ).strip()
+    chart = concert
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        if concert:
+            chart = str(musician_facing_chart_key(session, concert) or concert).strip() or concert
+    except ImportError:
+        chart = concert
+    return concert, chart
+
+
+def _mission_snapshot_surface(session: dict[str, Any]) -> bool:
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    src = ""
+    try:
+        from creative_key_sync import live_backing_source
+
+        src = str(live_backing_source(session) or "").strip()
+    except ImportError:
+        src = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    return tab == "Missions" or (page == "backing" and src == "mission")
+
+
+def _click_matches_open_mission(session: dict[str, Any], click: Any) -> bool:
+    """True only when the click belongs to the currently open Mission/key/source."""
+    if not isinstance(click, dict):
+        return False
+    chord = str(click.get("chord") or "").strip()
+    if not chord:
+        return False
+    ident = _live_mission_identity(session)
+    click_mission = str(click.get("mission_id") or "").strip()
+    click_session = str(click.get("session_id") or "").strip()
+    click_source = str(click.get("source_identity") or "").strip()
+    click_pk = str(click.get("practice_key") or click.get("concert_practice_key") or "").strip()
+    if click_mission and ident["mission_id"] and click_mission != ident["mission_id"]:
+        return False
+    if click_session and ident["session_id"] and click_session != ident["session_id"]:
+        return False
+    if click_source and ident["source_identity"] and click_source != ident["source_identity"]:
+        return False
+    if click_pk:
+        concert, chart = _live_concert_and_chart(session)
+        if concert and click_pk != concert and click_pk != chart:
+            return False
+    return True
+
+
+def _click_is_current_selection(
+    session: dict[str, Any],
+    click: Any,
+    snapshot: dict[str, Any] | None,
+) -> bool:
+    if not _click_matches_open_mission(session, click):
+        return False
+    chord = str(click.get("chord") or "").strip()
+    if not snapshot:
+        return True
+    snap_ch = str(snapshot.get("concert_chord") or "").strip()
+    if not snap_ch or chord == snap_ch:
+        return True
+    concert, chart = _live_concert_and_chart(session)
+    try:
+        from mission_projection_state import display_chord_from_concert
+
+        written = display_chord_from_concert(snap_ch, concert_key=concert, chart_key=chart)
+        if chord == written:
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+def read_mission_chord_snapshot(session: dict[str, Any]) -> dict[str, Any] | None:
+    raw = session.get(MISSION_CHORD_SNAPSHOT_KEY)
+    if not isinstance(raw, dict):
+        return None
+    chord = str(raw.get("concert_chord") or "").strip()
+    if not chord:
+        return None
+    ident = _live_mission_identity(session)
+    snap_mission = str(raw.get("mission_id") or "").strip()
+    snap_session = str(raw.get("session_id") or "").strip()
+    snap_source = str(raw.get("source_identity") or "").strip()
+    if snap_mission and ident["mission_id"] and snap_mission != ident["mission_id"]:
+        return None
+    if snap_session and ident["session_id"] and snap_session != ident["session_id"]:
+        return None
+    if snap_source and ident["source_identity"] and snap_source != ident["source_identity"]:
+        return None
+    return raw
+
+
+def seal_mission_chord_snapshot(
+    session: dict[str, Any],
+    *,
+    concert_chord: str,
+    section: str = "",
+    chord_index: int = 0,
+) -> dict[str, Any]:
+    ident = _live_mission_identity(session)
+    concert, _chart = _live_concert_and_chart(session)
+    snap = {
+        "mission_id": ident["mission_id"],
+        "session_id": ident["session_id"],
+        "source_identity": ident["source_identity"],
+        "section": str(section or "").strip(),
+        "chord_index": int(chord_index or 0),
+        "concert_chord": str(concert_chord or "").strip(),
+        "concert_practice_key": concert or ident["concert_practice_key"],
+    }
+    session[MISSION_CHORD_SNAPSHOT_KEY] = snap
+    if snap["concert_chord"]:
+        session["_mission_backing_canonical_chord"] = snap["concert_chord"]
+    return snap
+
+
+def ensure_mission_chord_snapshot(session: dict[str, Any]) -> dict[str, Any] | None:
+    """Seal canonical concert chord from a validated click — never the map."""
+    snap = read_mission_chord_snapshot(session)
+    if snap and str(snap.get("concert_chord") or "").strip():
+        return snap
+    if not _mission_snapshot_surface(session):
+        return None
+    click = session.get("_mission_chord_click_authority")
+    if _click_is_current_selection(session, click, None):
+        chord = str(click.get("chord") or "").strip()
+        sec = str(click.get("section") or "").strip()
+        try:
+            idx = int(click.get("chord_index") or 0)
+        except (TypeError, ValueError):
+            idx = 0
+        return seal_mission_chord_snapshot(
+            session, concert_chord=chord, section=sec, chord_index=idx
+        )
+    return None
+
+
 def transpose_chord_identity(symbol: str, from_key: str, to_key: str) -> str:
     """Transpose one chord symbol by the Practice Key interval (identity, not index)."""
     src = str(symbol or "").strip()
@@ -89,10 +267,31 @@ def resolve_authoritative_chord_selection(
     Return (chord_symbol, section_label, global_index) from session authority fields.
 
     Precedence:
-      1. explicit user click seal (``_mission_chord_click_authority``)
-      2. session (section, symbol) when present on the map
-      3. sticky index only when there is no newer click / map pair
+      1. validated Mission snapshot (canonical concert chord)
+      2. explicit user click seal when it matches the open Mission
+      3. session (section, symbol) when present on the map
+      4. sticky index only when there is no newer click / map pair
     """
+    snap = ensure_mission_chord_snapshot(session)
+    if snap:
+        s_sym = str(snap.get("concert_chord") or "").strip()
+        if s_sym:
+            click = session.get("_mission_chord_click_authority")
+            if _click_is_current_selection(session, click, snap) or not _click_matches_open_mission(
+                session, click
+            ):
+                s_sec = str(
+                    snap.get("section") or session.get(II_SELECTED_SECTION) or ""
+                ).strip()
+                try:
+                    s_idx = int(snap.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)) or 0)
+                except (TypeError, ValueError):
+                    s_idx = 0
+                mapped = global_chord_index_for_section_chord(section_map, s_sec, s_sym)
+                if mapped is not None:
+                    s_idx = int(mapped)
+                return s_sym, s_sec, s_idx
+
     click = session.get("_mission_chord_click_authority")
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()
@@ -152,6 +351,13 @@ def resolve_authoritative_chord_selection(
                                 int(global_chord_index(section_map, si, ci)),
                             )
             if c_sym:
+                snap_keep = read_mission_chord_snapshot(session)
+                snap_ch = str((snap_keep or {}).get("concert_chord") or "").strip()
+                if skip_transpose or transposed_for_pk or (snap_ch and snap_ch == c_sym):
+                    return c_sym, c_sec, c_idx if c_idx >= 0 else 0
+                at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
+                if at_ch:
+                    return at_ch, at_sec or c_sec, c_idx
                 return c_sym, c_sec, c_idx if c_idx >= 0 else 0
             # Stale original-key symbol with no click chord: use index.
             at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
@@ -309,7 +515,20 @@ def write_authoritative_chord_selection(
         "section": sec,
         "chord_index": int(gidx),
         "practice_key": pk,
+        "mission_id": str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip(),
+        "session_id": str(
+            session.get("improv_mission_new_nonce")
+            or session.get("improv_mission_workspace_updated_at")
+            or ""
+        ).strip(),
+        "source_identity": str(
+            session.get("active_catalog_pick_key") or session.get("active_song_id") or ""
+        ).strip(),
     }
+    if _mission_snapshot_surface(session) or str(session.get("improv_active_mission") or "").strip():
+        seal_mission_chord_snapshot(
+            session, concert_chord=sym, section=sec, chord_index=int(gidx)
+        )
     return sym, sec, int(gidx)
 
 
@@ -335,11 +554,47 @@ def read_authoritative_mission_chord_selection(
     section_map: list[tuple[str, list[str]]] | None = None,
 ) -> tuple[str, str, int]:
     sm = section_map or read_mission_section_map_from_session(session)
+    snap = ensure_mission_chord_snapshot(session)
+    click = session.get("_mission_chord_click_authority")
+    if snap and str(snap.get("concert_chord") or "").strip():
+        if not _click_is_current_selection(session, click, snap):
+            s_sym = str(snap.get("concert_chord") or "").strip()
+            s_sec = str(snap.get("section") or session.get(II_SELECTED_SECTION) or "").strip()
+            try:
+                s_idx = int(snap.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)) or 0)
+            except (TypeError, ValueError):
+                s_idx = 0
+            return s_sym, s_sec, s_idx
     if not sm:
+        if _click_is_current_selection(session, click, snap):
+            click_sym = str(click.get("chord") or "").strip()
+            if snap and str(snap.get("concert_chord") or "").strip():
+                click_sym = str(snap.get("concert_chord") or click_sym).strip()
+            sec = str(
+                (snap or {}).get("section")
+                or click.get("section")
+                or session.get(II_SELECTED_SECTION)
+                or ""
+            ).strip()
+            try:
+                idx = int(
+                    (snap or {}).get("chord_index", click.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)))
+                )
+            except (TypeError, ValueError):
+                idx = 0
+            return click_sym, sec, idx
+        if snap and str(snap.get("concert_chord") or "").strip():
+            s_sym = str(snap.get("concert_chord") or "").strip()
+            s_sec = str(snap.get("section") or session.get(II_SELECTED_SECTION) or "").strip()
+            try:
+                s_idx = int(snap.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)) or 0)
+            except (TypeError, ValueError):
+                s_idx = 0
+            return s_sym, s_sec, s_idx
         click = session.get("_mission_chord_click_authority")
         if isinstance(click, dict):
             click_sym = str(click.get("chord") or "").strip()
-            if click_sym:
+            if click_sym and _click_matches_open_mission(session, click):
                 sec = str(click.get("section") or session.get(II_SELECTED_SECTION) or "").strip()
                 try:
                     idx = int(click.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)))
@@ -405,12 +660,16 @@ def _section_map_fallback_raw(session: dict[str, Any], ctx: Any) -> list[tuple[s
 
 
 __all__ = [
+    "MISSION_CHORD_SNAPSHOT_KEY",
     "authoritative_pair_matches_index",
     "deduped_section_map_for_focus",
+    "ensure_mission_chord_snapshot",
     "global_chord_index_for_section_chord",
     "read_authoritative_mission_chord_selection",
+    "read_mission_chord_snapshot",
     "read_mission_section_map_from_session",
     "resolve_authoritative_chord_selection",
+    "seal_mission_chord_snapshot",
     "section_chord_at_global_index",
     "transpose_chord_identity",
     "write_authoritative_chord_selection",

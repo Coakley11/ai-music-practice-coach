@@ -1414,8 +1414,17 @@ def bind_sidebar_practice_key_to_backing_owner(st: Any, session: dict[str, Any])
         )
 
         if src != "mission":
-            apply_display_key_owner_transition_if_needed(session, st_like=st)
-            rebound = canonical_token_for_owner_transition(session)
+            try:
+                from backing_practice_key_control import backing_practice_key_widget_id
+
+                # Per-owner Backing widgets are the live control. Do not remount
+                # the legacy global display_key selectbox over them.
+                _ = backing_practice_key_widget_id(session)
+            except ImportError:
+                apply_display_key_owner_transition_if_needed(session, st_like=st)
+                rebound = canonical_token_for_owner_transition(session)
+            else:
+                rebound = canonical_token_for_owner_transition(session)
     except Exception:
         rebound = ""
     token = ""

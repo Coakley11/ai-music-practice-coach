@@ -440,6 +440,57 @@ class TestCustomBackingPlaySessionBpmRefresh(unittest.TestCase):
         self.assertEqual(int(refreshed.bpm), 104)
         self.assertEqual(int(session["cpl_active_progression"]["bpm"]), 100)
 
+    def test_style_jam_110_does_not_replace_custom_current(self) -> None:
+        from backing_context import BackingContext, refresh_backing_context_from_session, set_backing_context
+        from backing_play_session import (
+            _stale_widget_default_bpms,
+            capture_backing_play_session_overrides,
+            current_backing_play_bpm,
+            sync_backing_play_session_on_backing_page,
+        )
+
+        session = {
+            "studio_page": "backing",
+            "cpl_active_progression": {
+                "id": "custom::trial",
+                "name": "Trial Song",
+                "original_key_center": "D",
+                "bpm": 100,
+                "original_sections": {"Verse": [{"chord": "D", "bars": 4}]},
+            },
+            "display_key": "D",
+            "concert_key": "D",
+            "backing_track_bpm": 104,
+            "_backing_current_bpm_lock": 104,
+            "improv_style_bpm": 110,
+            "improv_jam_bpm": 110,
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="custom_progression",
+                source_label="Custom",
+                active_song_id="custom::trial",
+                bound_pick_key="custom::trial",
+                song_title="Trial Song",
+                key="D",
+                display_key="D",
+                concert_key="D",
+                bpm=104,
+                style="Pop",
+                groove="Pop groove",
+            ),
+        )
+        capture_backing_play_session_overrides(session, bpm=104)
+        session["backing_track_bpm::style_jam::x"] = 110
+        self.assertIn(110, _stale_widget_default_bpms(session))
+        self.assertEqual(int(current_backing_play_bpm(session, default=0)), 104)
+        sync_backing_play_session_on_backing_page(session)
+        refreshed = refresh_backing_context_from_session(session)
+        self.assertIsNotNone(refreshed)
+        self.assertEqual(int(refreshed.bpm), 104)
+        self.assertNotEqual(int(refreshed.bpm), 110)
+
 
 class TestMotifRefreshIgnoresCustomLeftover(unittest.TestCase):
     def test_motif_catalog_visit_keeps_cm_not_custom_d(self) -> None:
@@ -635,6 +686,13 @@ class TestMissionVisibleTileIdentity(unittest.TestCase):
                 "chord_index": 1,
                 "practice_key": "Cm",
             },
+            "_mission_chord_snapshot": {
+                "mission_id": "chord_tones",
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
+            },
             "active_catalog_pick_key": SHAPE_PICK,
         }
         ctx = build_mission_context(session)
@@ -662,6 +720,12 @@ class TestMissionClickDoesNotTransposeWrittenIdentity(unittest.TestCase):
                 "section": "Pre-Chorus 2",
                 "chord_index": 1,
                 "practice_key": "Am",
+            },
+            "_mission_chord_snapshot": {
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
             },
         }
         section_map = [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
@@ -695,6 +759,427 @@ class TestDescendingRebuildsFromMotif(unittest.TestCase):
         self.assertGreater(midis[0], midis[-1])
         leaps = [midis[i] - midis[i - 1] for i in range(1, len(midis))]
         self.assertFalse(any(abs(leap) >= 11 and abs(leap) % 12 == 0 for leap in leaps), leaps)
+
+
+def _backing_ctx(**kwargs):
+    from backing_context import BackingContext
+
+    base = dict(
+        source="regular_song",
+        source_label="Catalog",
+        active_song_id="catalog::shape",
+        song_title="Shape of You",
+        key="Cm",
+        display_key="Cm",
+        concert_key="Cm",
+        bpm=96,
+        style="Pop",
+        groove="Pop groove",
+    )
+    base.update(kwargs)
+    return BackingContext(**base)
+
+
+class TestPerOwnerBackingPracticeKeyWidgets(unittest.TestCase):
+    def _seed_owner(self, session, source, **ctx_kw):
+        from backing_context import set_backing_context
+        from backing_practice_key_control import seed_backing_practice_key_widget
+
+        session["studio_page"] = "backing"
+        set_backing_context(session, _backing_ctx(source=source, **ctx_kw))
+        return seed_backing_practice_key_widget(session)
+
+    def test_catalog_to_custom_restores_custom_saved_key(self) -> None:
+        from backing_practice_key_control import (
+            WIDGET_CATALOG,
+            WIDGET_CUSTOM,
+            commit_backing_practice_key,
+            owner_widget_value,
+        )
+
+        session = {
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "active_catalog_pick_key": SHAPE_PICK,
+        }
+        self._seed_owner(session, "regular_song", key="Cm", display_key="Cm", concert_key="Cm")
+        commit_backing_practice_key(session, "Cm")
+        session["cpl_active_progression"] = {
+            "id": "custom::trial",
+            "name": "Trial Song",
+            "original_key_center": "D",
+        }
+        self._seed_owner(
+            session,
+            "custom_progression",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            song_title="Trial Song",
+            active_song_id="custom::trial",
+        )
+        commit_backing_practice_key(session, "D")
+        self.assertEqual(owner_widget_value(session, "custom"), "D")
+        self._seed_owner(session, "regular_song", key="Cm", display_key="Cm", concert_key="Cm")
+        self.assertEqual(session.get(WIDGET_CATALOG), "Cm")
+        self.assertEqual(session.get(WIDGET_CUSTOM), "D")
+
+    def test_custom_to_catalog_restores_catalog_saved_key(self) -> None:
+        from backing_practice_key_control import WIDGET_CATALOG, commit_backing_practice_key
+
+        session = {"display_key": "D", "concert_key": "D"}
+        self._seed_owner(
+            session,
+            "custom_progression",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            song_title="Trial Song",
+            active_song_id="custom::trial",
+        )
+        commit_backing_practice_key(session, "D")
+        self._seed_owner(session, "regular_song", key="Cm", display_key="Cm", concert_key="Cm")
+        self.assertEqual(session.get(WIDGET_CATALOG), "Cm")
+
+    def test_custom_to_style_jam_uses_style_jam_canonical(self) -> None:
+        from backing_practice_key_control import WIDGET_CUSTOM, WIDGET_STYLE_JAM, commit_backing_practice_key
+
+        session = {
+            "display_key": "D",
+            "concert_key": "D",
+            "improv_style_key": "F",
+            "improv_entry_mode": "Style Jam Mode",
+        }
+        self._seed_owner(
+            session,
+            "custom_progression",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            song_title="Trial Song",
+            active_song_id="custom::trial",
+        )
+        commit_backing_practice_key(session, "D")
+        self._seed_owner(
+            session,
+            "entry_jam",
+            key="F",
+            display_key="F",
+            concert_key="F",
+            song_title="Style Jam",
+            entry_mode="Style Jam Mode",
+            bpm=110,
+        )
+        self.assertEqual(session.get(WIDGET_STYLE_JAM), "F")
+        self.assertEqual(session.get(WIDGET_CUSTOM), "D")
+
+    def test_style_jam_to_mission_restores_mission_key(self) -> None:
+        from backing_practice_key_control import WIDGET_MISSION, WIDGET_STYLE_JAM, commit_backing_practice_key
+
+        session = {
+            "improv_style_key": "F",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_mission_concert_key": "C",
+            "improv_active_mission": "chord_tones",
+        }
+        self._seed_owner(
+            session,
+            "entry_jam",
+            key="F",
+            display_key="F",
+            concert_key="F",
+            song_title="Style Jam",
+            entry_mode="Style Jam Mode",
+        )
+        commit_backing_practice_key(session, "F")
+        self._seed_owner(
+            session,
+            "mission",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            song_title="Shape of You",
+            mission_id="chord_tones",
+        )
+        self.assertEqual(session.get(WIDGET_MISSION), "C")
+        self.assertEqual(session.get(WIDGET_STYLE_JAM), "F")
+
+    def test_mission_to_catalog_restores_catalog_saved_key(self) -> None:
+        from backing_practice_key_control import WIDGET_CATALOG, WIDGET_MISSION, commit_backing_practice_key
+
+        session = {
+            "improv_mission_concert_key": "C",
+            "improv_active_mission": "chord_tones",
+            "active_catalog_pick_key": SHAPE_PICK,
+        }
+        self._seed_owner(
+            session,
+            "mission",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            mission_id="chord_tones",
+        )
+        commit_backing_practice_key(session, "C")
+        self._seed_owner(session, "regular_song", key="Cm", display_key="Cm", concert_key="Cm")
+        self.assertEqual(session.get(WIDGET_CATALOG), "Cm")
+        self.assertEqual(session.get(WIDGET_MISSION), "C")
+
+    def test_sbi_custom_to_sbi_active_keeps_separate_widgets(self) -> None:
+        from backing_practice_key_control import (
+            WIDGET_SBI_ACTIVE,
+            WIDGET_SBI_CUSTOM,
+            commit_backing_practice_key,
+        )
+
+        session = {
+            "sbi_preview_source": "Custom progression",
+            "_sbi_custom_visit_pk": "D",
+            "display_key": "D",
+            "concert_key": "D",
+        }
+        self._seed_owner(
+            session,
+            "song_improv",
+            key="D",
+            display_key="D",
+            concert_key="D",
+            song_title="Trial Song",
+        )
+        commit_backing_practice_key(session, "D")
+        self.assertEqual(session.get(WIDGET_SBI_CUSTOM), "D")
+        session["sbi_preview_source"] = "Active song"
+        session["active_catalog_pick_key"] = SHAPE_PICK
+        self._seed_owner(
+            session,
+            "song_improv",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            song_title="Shape of You",
+        )
+        self.assertEqual(session.get(WIDGET_SBI_CUSTOM), "D")
+        self.assertNotEqual(session.get(WIDGET_SBI_ACTIVE), "D")
+
+    def test_cycle_one_owner_leaves_other_owner_unchanged(self) -> None:
+        from backing_key_cycle import apply_backing_key_cycle
+        from backing_practice_key_control import WIDGET_CUSTOM, WIDGET_STYLE_JAM, commit_backing_practice_key
+
+        session = {
+            "improv_style_key": "F",
+            "improv_entry_mode": "Style Jam Mode",
+            "display_key": "F",
+            "concert_key": "F",
+        }
+        self._seed_owner(
+            session,
+            "entry_jam",
+            key="F",
+            display_key="F",
+            concert_key="F",
+            song_title="Style Jam",
+            entry_mode="Style Jam Mode",
+        )
+        commit_backing_practice_key(session, "F")
+        session[WIDGET_CUSTOM] = "D"
+        apply_backing_key_cycle(session, semitones=1)
+        self.assertNotEqual(session.get(WIDGET_STYLE_JAM), "F")
+        self.assertEqual(session.get(WIDGET_CUSTOM), "D")
+
+
+class TestMissionChordSnapshotAuthority(unittest.TestCase):
+    def test_matching_current_dm_click_is_preserved(self) -> None:
+        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "_mission_chord_click_authority": {
+                "chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "Cm",
+                "mission_id": "chord_tones",
+            },
+            "_mission_chord_snapshot": {
+                "mission_id": "chord_tones",
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
+            },
+        }
+        section_map = [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
+        sym, _sec, _idx = read_authoritative_mission_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertNotEqual(sym, "Fm")
+
+    def test_stale_dsharp_click_is_rejected_for_snapshot_dm(self) -> None:
+        from creative_chord_selection_authority import (
+            read_authoritative_mission_chord_selection,
+            seal_mission_chord_snapshot,
+        )
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "ii_selected_chord": "D#m",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "_mission_chord_click_authority": {
+                "chord": "D#m",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "D#m",
+                "mission_id": "other_mission",
+            },
+        }
+        seal_mission_chord_snapshot(
+            session, concert_chord="Dm", section="Pre-Chorus 2", chord_index=1
+        )
+        section_map = [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
+        sym, _sec, _idx = read_authoritative_mission_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertNotEqual(sym, "D#m")
+        self.assertNotEqual(sym, "Fm")
+
+    def test_map_fallback_cannot_replace_valid_dm_with_fm(self) -> None:
+        from mission_projection_state import resolve_mission_projection_state
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "show_chart_in_instrument_key": False,
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "_mission_chord_snapshot": {
+                "mission_id": "chord_tones",
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
+            },
+            "_mission_chord_click_authority": {
+                "chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "Cm",
+                "mission_id": "chord_tones",
+            },
+        }
+        state = resolve_mission_projection_state(
+            session,
+            section_map=[("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])],
+            fallback_key="Cm",
+        )
+        self.assertEqual(state.concert_chord, "Dm")
+        self.assertEqual(state.display_chord, "Dm")
+        self.assertNotEqual(state.concert_chord, "Fm")
+        self.assertNotEqual(state.display_chord, "Fm")
+
+    def test_written_alto_projects_dm_to_bm_once(self) -> None:
+        from mission_projection_state import resolve_mission_projection_state
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "improv_mission_concert_key": "Cm",
+            "instrument": "Saxophone",
+            "sax_type": "Alto saxophone (Eb)",
+            "show_chart_in_instrument_key": True,
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "_mission_chord_snapshot": {
+                "mission_id": "chord_tones",
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
+            },
+        }
+        state = resolve_mission_projection_state(
+            session,
+            section_map=[("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])],
+            fallback_key="Cm",
+        )
+        self.assertEqual(state.concert_chord, "Dm")
+        self.assertEqual(state.display_chord, "Bm")
+        self.assertNotEqual(state.display_chord, "Fm")
+        self.assertNotEqual(state.display_chord, "D#m")
+        self.assertEqual(state.chart_key.replace(" ", "")[:2], "Am")
+
+    def test_refresh_retains_mission_snapshot_and_chord(self) -> None:
+        from creative_chord_selection_authority import (
+            MISSION_CHORD_SNAPSHOT_KEY,
+            read_authoritative_mission_chord_selection,
+            seal_mission_chord_snapshot,
+        )
+
+        session = {
+            "studio_page": "backing",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+        }
+        snap = seal_mission_chord_snapshot(
+            session, concert_chord="Dm", section="Pre-Chorus 2", chord_index=1
+        )
+        restored = dict(session)
+        restored[MISSION_CHORD_SNAPSHOT_KEY] = dict(snap)
+        sym, sec, idx = read_authoritative_mission_chord_selection(
+            restored, [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
+        )
+        self.assertEqual(sym, "Dm")
+        self.assertEqual(sec, "Pre-Chorus 2")
+        self.assertEqual(idx, 1)
+        self.assertEqual(restored[MISSION_CHORD_SNAPSHOT_KEY]["concert_chord"], "Dm")
+
+
+class TestCrossPageWrittenAmKeepsConcertCm(unittest.TestCase):
+    def test_harmony_and_motif_keep_concert_cm_with_written_am(self) -> None:
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+        from instrument_transposition import written_key_for_type
+        from mission_projection_state import concert_and_chart_keys
+
+        session = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "_creative_visit_practice_key": "Cm",
+            "_creative_visit_source": "missions",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "instrument": "Saxophone",
+            "sax_type": "Alto saxophone (Eb)",
+            "show_chart_in_instrument_key": True,
+            "practice_key_by_source": {SHAPE_PICK: "Cm"},
+        }
+        concert, chart = concert_and_chart_keys(session, fallback="Cm")
+        self.assertEqual(split_key_center(concert)[0], "C")
+        self.assertIn(split_key_center(concert)[1], {"minor", ""})
+        written = written_key_for_type("Cm", "Alto saxophone (Eb)")
+        self.assertTrue(str(written).replace(" ", "").startswith("A"))
+        self.assertTrue(str(chart).replace(" ", "").startswith("A"))
+        for tab in ("Harmony Map", "Phrase / Motif"):
+            session["improv_intelligence_tab"] = tab
+            live = _authoritative_practice_chart_key(session, "Cm")
+            self.assertEqual(live, "Cm")
+            self.assertEqual(session.get("_creative_visit_practice_key"), "Cm")
+            self.assertNotEqual(live, "D")
+            self.assertNotEqual(live, "Bm")
 
 
 class TestReturnCustomRestoreSignature(unittest.TestCase):

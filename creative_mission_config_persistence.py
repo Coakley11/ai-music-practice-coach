@@ -1257,7 +1257,24 @@ def handle_user_mission_target_selection(
         "chord_index": gidx,
         "run_seq": _run_seq(session),
         "practice_key": str(session.get("concert_key") or session.get("display_key") or "").strip(),
+        "mission_id": str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip(),
+        "session_id": str(
+            session.get("improv_mission_new_nonce")
+            or session.get("improv_mission_workspace_updated_at")
+            or ""
+        ).strip(),
+        "source_identity": str(
+            session.get("active_catalog_pick_key") or session.get("active_song_id") or ""
+        ).strip(),
     }
+    try:
+        from creative_chord_selection_authority import seal_mission_chord_snapshot
+
+        seal_mission_chord_snapshot(
+            session, concert_chord=sym, section=sec, chord_index=gidx
+        )
+    except ImportError:
+        pass
     # Projection already applied to session — avoid a later stale-focus block wiping it.
     session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, None)
     canonical_after = _mission_target_canonical_snapshot(session)
