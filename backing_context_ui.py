@@ -416,7 +416,7 @@ def render_backing_custom_progression_context_card(
         f'<p class="ui-backing-active-kicker">Custom progression backing</p>'
         f'<p class="ui-backing-active-title">{title}</p>'
         f'<div class="ui-backing-active-badges">{source_meta}{style_meta}</div>'
-        f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
+        f'<p class="ui-backing-active-key-line">Concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · Groove: <strong>{groove}</strong> · Meter: <strong>{meter}</strong></p>"
         f"{progression_block}"
         f"</div></div>",
@@ -540,7 +540,7 @@ def render_backing_composition_song_context_card(
     # Composition-only badge density (Catalog-compatible chips). Custom Backing
     # badge redesign stays on feature/creative-backing-stabilization.
     practice_badge = (
-        f'<span class="ui-backing-badge practice-key">Practice {concert}</span>'
+        f'<span class="ui-backing-badge practice-key">Concert {concert}</span>'
     )
     written_badge = ""
     if state.show_chart_badge and chart_key_raw:

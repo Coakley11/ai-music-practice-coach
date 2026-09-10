@@ -272,6 +272,8 @@ class TestBackingCardBadgesAndProjection(unittest.TestCase):
         self.assertIn("tone-style", html_out)
         self.assertIn("Composition", html_out)
         self.assertIn("ui-backing-badge practice-key", html_out)
+        self.assertRegex(html_out, r"Concert\s+E")
+        self.assertNotIn("Practice E", html_out)
         self.assertIn("ui-backing-badge bpm", html_out)
         self.assertIn("ui-backing-badge meter", html_out)
 

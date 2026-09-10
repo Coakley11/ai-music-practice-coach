@@ -104,6 +104,8 @@ class TestSongsCardIdentity(unittest.TestCase):
         self.assertIn("📀", custom_html)
         self.assertIn("Custom progression", custom_html)
         self.assertNotIn("✍️", custom_html)
+        self.assertIn(">Concert<", custom_html)
+        self.assertNotIn("Practice / Concert Key", custom_html)
 
         comp_html = studio_song_meta_badges_html(
             original_key="C",
@@ -116,6 +118,8 @@ class TestSongsCardIdentity(unittest.TestCase):
         self.assertIn("tone-source", comp_html)
         self.assertIn("📀", comp_html)
         self.assertIn("Composition", comp_html)
+        self.assertIn(">Concert<", comp_html)
+        self.assertNotIn("Practice / Concert Key", comp_html)
         style_chunk = comp_html[comp_html.find("tone-style") : comp_html.find("tone-style") + 220]
         self.assertIn("Auto", style_chunk)
         self.assertNotIn("🪶", comp_html)
@@ -728,6 +732,90 @@ class TestCompositionSidebarPracticeKeyWrite(unittest.TestCase):
         self.assertEqual(rebuilt.key, "C")
         self.assertEqual(rebuilt.concert_key, "E")
         self.assertEqual(rebuilt.display_key, "E")
+
+
+class TestCatalogPickCommitsFromCreativePick(unittest.TestCase):
+    """Catalog dropdown selection must commit even when pick still looks custom::."""
+
+    def test_activate_catalog_pick_resets_pk_to_document_original(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SOURCE_CATALOG,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            activate_catalog_song_for_backing,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        shape_pick = format_pick_key("Pop", "Shape of You — Ed Sheeran")
+        # Fallback if label form differs — use Pop::Shape of You style via format without artist
+        if "Shape" not in shape_pick:
+            shape_pick = format_pick_key("Pop", "Shape of You")
+        selected = {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+            "pick_key": shape_pick,
+            "genre": "Pop",
+        }
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            ACTIVE_CATALOG_PICK_KEY: "custom::My Progression",
+            "selected_song": {
+                "title": "My Progression",
+                "key": "D",
+                "pick_key": "custom::My Progression",
+            },
+            "display_key": "E",
+            "concert_key": "E",
+            "instrument": "Piano",
+            "_music_restore_phase_complete": True,
+        }
+        st = SimpleNamespace(session_state=ss)
+        catalog = {
+            "Pop": {
+                "Shape of You — Ed Sheeran": selected,
+                "Shape of You": selected,
+            }
+        }
+        with (
+            patch(
+                "songs.music_source.resolve_catalog_song_for_pick",
+                return_value=(selected, "Bm"),
+            ),
+            patch(
+                "songs.music_source._pick_key_is_catalog",
+                return_value=True,
+            ),
+            patch(
+                "music_source_ownership.rebuild_catalog_backing_from_canonical_pick",
+                return_value={"ok": True},
+            ),
+            patch("music_source_ownership.write_catalog_restore_diag"),
+            patch("music_source_ownership.write_catalog_backing_restore_diag"),
+            patch("music_source_ownership.write_key_transition_diag"),
+        ):
+            ctx = activate_catalog_song_for_backing(
+                st,
+                shape_pick,
+                reason="catalog_pick",
+                invalidate_backing=lambda _s: None,
+                song_picker_catalog=catalog,
+            )
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ss.get(ACTIVE_MUSIC_SOURCE_KEY), SOURCE_CATALOG)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        self.assertEqual(ss.get(ACTIVE_CATALOG_PICK_KEY), shape_pick)
+        self.assertEqual(str(ss.get("selected_song", {}).get("title") or ""), "Shape of You")
+        # Explicit catalog_pick resets Practice Key to the document original (Bm).
+        self.assertEqual(str(ss.get("display_key") or ""), "Bm")
+        self.assertEqual(str(ss.get("concert_key") or ""), "Bm")
 
 
 if __name__ == "__main__":

@@ -7266,9 +7266,15 @@ def studio_song_meta_badges_html(
             )
         )
     if display_key:
+        display_label = "Practice / Concert Key"
+        source_l = str(source or "").strip().lower()
+        # Custom / Composition Songs + hub cards: show Concert + dynamic key/mode
+        # (e.g. "Concert C major"). Sidebar control label stays unchanged.
+        if "custom" in source_l or "composition" in source_l:
+            display_label = "Concert"
         badges.append(
             studio_meta_badge(
-                "Practice / Concert Key",
+                display_label,
                 display_key,
                 tone="display",
                 icon=FEATURE_ICONS["practice_concert_key"],

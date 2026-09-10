@@ -9368,7 +9368,6 @@ def _render_catalog_song_picker_block(
         """Canonical active-song update from dropdown, click, Enter, or tap."""
         if is_select_song_placeholder(raw_pick):
             return
-        set_catalog_source(st.session_state)
         resolved_pick = resolve_pick_key(
             raw_pick,
             song_picker_catalog=SONG_PICKER_CATALOG,
@@ -9377,15 +9376,33 @@ def _render_catalog_song_picker_block(
         if not resolved_pick:
             return
         st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
-        apply_pick_key(
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            activate_catalog_song_for_backing,
+            commit_explicit_music_source_choice,
+        )
+
+        # Same commit path as Catalog radio leave — never leave custom:: pick
+        # owning the hub while the dropdown shows a catalog song.
+        commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+        ctx = activate_catalog_song_for_backing(
             st,
             resolved_pick,
-            SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
+            reason="catalog_pick",
+            invalidate_backing=invalidate_backing_cache,
+            song_picker_catalog=SONG_PICKER_CATALOG,
         )
+        if ctx is None:
+            set_catalog_source(st.session_state)
+            apply_pick_key(
+                st,
+                resolved_pick,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+            )
         _push_recent_pick_key(
             st.session_state,
-            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "",
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or resolved_pick,
         )
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         try:
@@ -9406,10 +9423,33 @@ def _render_catalog_song_picker_block(
         if _src_hub == "custom":
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return
+        # Catalog hub with a lagging creative pick: restore catalog ownership
+        # same-run so record_for_pick_key can resolve a song card.
+        _live_pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if _live_pick.startswith(("custom::", "composition::")):
+            from songs.music_source import switch_to_catalog_from_custom
+
+            switch_to_catalog_from_custom(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+            )
 
     filtered, pick_options, active_pick_key = _apply_picker_catalog_filters(
         visible_song_records,
     )
+    # Never feed custom:: / composition:: into the Catalog active-song card.
+    if str(active_pick_key or "").startswith(("custom::", "composition::")):
+        _dd = str(st.session_state.get("matching_song_dropdown") or "").strip()
+        if (
+            _dd
+            and _dd in pick_options
+            and not is_select_song_placeholder(_dd)
+        ):
+            active_pick_key = _dd
+        else:
+            active_pick_key = ""
 
     if _library_polished:
         active_rec = (

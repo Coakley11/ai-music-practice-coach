@@ -3821,16 +3821,21 @@ def activate_catalog_song_for_backing(
         "switch_to_catalog_backing",
         "last_catalog_restore",
         "previous_catalog_restore",
+        "catalog_pick",
+        "song_pick",
     )
     display_key = catalog_original
     try:
         from songs.practice_key_state import resolve_practice_concert_key_for_pick
 
-        display_key = resolve_practice_concert_key_for_pick(
-            session,
-            pick_key,
-            original_key=catalog_original,
-        )
+        if reason in _reset_reasons:
+            display_key = catalog_original
+        else:
+            display_key = resolve_practice_concert_key_for_pick(
+                session,
+                pick_key,
+                original_key=catalog_original,
+            )
     except ImportError:
         if reason not in _reset_reasons:
             display_key = (
