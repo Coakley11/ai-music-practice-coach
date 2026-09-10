@@ -586,6 +586,61 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             )
             self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
 
+    def test_ensure_composition_promotes_when_live_radio_beats_lagging_custom(
+        self,
+    ) -> None:
+        """Live Composition radio outranks lagging explicit Custom (unit / mid-flight)."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            ensure_composition_owns_active_song,
+            song_picker_composition_option_label,
+        )
+
+        ss = {
+            SONG_PICKER_ACTIVE_SOURCE_KEY: song_picker_composition_option_label(),
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::lagging",
+            "_composition_reset_practice_on_ensure": True,
+        }
+        st = SimpleNamespace(session_state=ss)
+        sentinel = {"id": "composition::promoted", "original_key_center": "C"}
+        with (
+            patch(
+                "composition_songs_bridge.ensure_composition_library_hydrated",
+            ),
+            patch(
+                "composition_songs_bridge.mark_composition_songs_source_ready",
+            ),
+            patch(
+                "composition_songs_bridge.set_composition_source",
+            ),
+            patch(
+                "composition_songs_bridge.ensure_generic_composition_document",
+                return_value=sentinel,
+            ),
+            patch(
+                "composition_songs_bridge.commit_composition_active_song",
+                return_value=sentinel,
+            ) as commit_mock,
+        ):
+            doc = ensure_composition_owns_active_song(
+                st, invalidate_backing=lambda _s: None
+            )
+        self.assertIs(doc, sentinel)
+        commit_mock.assert_called_once()
+        self.assertTrue(
+            commit_mock.call_args.kwargs.get("reset_practice_to_original")
+        )
+        self.assertEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_COMPOSITION)
+        self.assertNotIn("_composition_ensure_skipped_explicit_leave", ss)
+
     def test_ensure_composition_refuses_catalog_leave_when_radio_unmounted(self) -> None:
         """Songs→Backing remounts drop the radio key; USER_CATALOG must still win."""
         from types import SimpleNamespace

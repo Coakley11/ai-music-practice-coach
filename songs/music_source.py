@@ -1510,13 +1510,8 @@ def ensure_composition_owns_active_song(
     # *only* when Catalog/Custom leave stamps are also absent. Songs→Backing
     # remounts unmount the radio key while USER_CATALOG / explicit Catalog
     # still mark an intentional Catalog leave (stress Catalog hub open).
-    if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        session["_composition_ensure_skipped_user_catalog"] = True
-        return None
-    explicit_leave = explicit_music_source_choice(session)
-    if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
-        session["_composition_ensure_skipped_explicit_leave"] = True
-        return None
+    # Live Composition radio must still promote when explicit Custom/Catalog
+    # lags one rerun (Custom → Composition on_change / unit path).
     if SONG_PICKER_ACTIVE_SOURCE_KEY in session:
         choice_live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
         if not choice_live:
@@ -1531,6 +1526,14 @@ def ensure_composition_owns_active_song(
             "Use Custom"
         ):
             session["_composition_ensure_skipped_live_custom"] = True
+            return None
+    else:
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            session["_composition_ensure_skipped_user_catalog"] = True
+            return None
+        explicit_leave = explicit_music_source_choice(session)
+        if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
+            session["_composition_ensure_skipped_explicit_leave"] = True
             return None
 
     # Explicit Songs radio switch sets this oneshot. Refresh / hub promote must
