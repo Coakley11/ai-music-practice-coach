@@ -84,6 +84,14 @@ CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
 CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
 
+# Dedicated Streamlit selectbox key for Custom-page Practice Key.
+# Must NOT share ``display_key``: global hydrate/prime writers remount React Aria
+# when they assign session_state["display_key"], swallowing Custom PK clicks.
+CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET = "custom_workspace_practice_key"
+PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
+CPL_PRESETS_KEY_WIDGET = "cpl_presets_key"
+CPL_PRESETS_SEEDED_FROM_KEY = "_cpl_presets_seeded_from"
+
 CPL_SECTION_NAMES: list[str] = [
     "Intro",
     "Verse",
@@ -631,15 +639,6 @@ def practice_entries_to_original_key(
     if pk == ok:
         return deep_copy_sections({"_": list(entries or [])}).get("_") or list(entries or [])
     return transpose_section_entries(list(entries or []), pk, ok)
-
-
-# Dedicated Streamlit selectbox key for Custom-page Practice Key.
-# Must NOT share ``display_key``: global hydrate/prime writers remount React Aria
-# when they assign session_state["display_key"], swallowing Custom PK clicks.
-CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET = "custom_workspace_practice_key"
-PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
-CPL_PRESETS_KEY_WIDGET = "cpl_presets_key"
-CPL_PRESETS_SEEDED_FROM_KEY = "_cpl_presets_seeded_from"
 
 
 def custom_active_owns_sidebar_practice_key(session: dict) -> bool:

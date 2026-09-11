@@ -56,6 +56,9 @@ from .music_source import (
     apply_pending_custom_library_action_before_widgets,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
     PENDING_CUSTOM_LIBRARY_ACTION_KEY,
+    prepare_song_picker_source_radio,
+    mark_song_picker_source_radio_mounted,
+    on_song_picker_source_change,
 )
 from .picker_session import (
     CATALOG_FAVORITES_KEY,
@@ -148,6 +151,9 @@ __all__ = [
     "apply_pending_custom_library_action_before_widgets",
     "PENDING_CUSTOM_ACTIVE_SONG_KEY",
     "PENDING_CUSTOM_LIBRARY_ACTION_KEY",
+    "prepare_song_picker_source_radio",
+    "mark_song_picker_source_radio_mounted",
+    "on_song_picker_source_change",
     # Form / timeline
     "chord_blocks_for_backing",
     "form_timeline_rows",

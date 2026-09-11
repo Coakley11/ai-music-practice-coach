@@ -8644,6 +8644,57 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         song_library=SONG_LIBRARY,
         invalidate_backing=invalidate_backing_cache,
     )
+    try:
+        from songs.music_source import apply_pending_song_picker_source_widget
+
+        apply_pending_song_picker_source_widget(st.session_state)
+    except ImportError:
+        pass
+
+    _catalog_switch_needs_rerun = False
+    try:
+        from songs.music_source import (
+            PENDING_CATALOG_FROM_PICKER_KEY,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            apply_pending_catalog_from_picker_before_widgets,
+            custom_progression_is_active,
+            explicit_custom_activation_is_authoritative,
+            sync_song_picker_source_widget as _force_sync_picker,
+        )
+
+        # Stale disk radio = Catalog while Custom owns practice must HEAL, not
+        # reclaim Catalog (E5 refresh). Never heal away an explicit user Catalog choice.
+        if (
+            custom_progression_is_active(st.session_state)
+            and not st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY)
+            and not st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+        ):
+            _choice = str(st.session_state.get("song_picker_active_source") or "").strip()
+            if _choice == SONG_PICKER_SOURCE_CATALOG:
+                _force_sync_picker(st.session_state, force=True, widget_safe=False)
+        if st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY) and (
+            explicit_custom_activation_is_authoritative(st.session_state)
+            or (
+                custom_progression_is_active(st.session_state)
+                and not st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+            )
+        ):
+            st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
+        if st.session_state.get(PENDING_CATALOG_FROM_PICKER_KEY):
+            _before = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+            apply_pending_catalog_from_picker_before_widgets(
+                st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+            )
+            _after = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+            if _after != _before or (
+                _before.startswith("custom::") and not str(_after).startswith("custom::")
+            ):
+                _catalog_switch_needs_rerun = True
+    except Exception:
+        pass
 
     def _picker_source_on_change() -> None:
         on_song_picker_source_change(
@@ -8671,13 +8722,17 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         )
     except ImportError:
         pass
+    if _catalog_switch_needs_rerun:
+        st.rerun()
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     try:
         from songs.music_source import (
             SOURCE_COMPOSITION,
             SOURCE_CUSTOM,
             SONG_PICKER_SOURCE_CATALOG,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
             composition_song_is_active,
+            explicit_catalog_selection_is_authoritative,
             explicit_music_source_choice,
             picker_composition_mode,
             picker_custom_progression_mode,
@@ -8687,9 +8742,15 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         # stamps — hub promote would force-assign Composition over a leave click.
         if not choice:
             return ""
-        # Live radio is the highest authority for which hub to render.
+        # Live Composition radio outranks leftover Catalog stamps.
         if picker_composition_mode(st.session_state) or "Composition" in choice:
             return "composition"
+        # Explicit Catalog choice must not keep rendering Custom hub because the
+        # Streamlit radio lagged on "Use Custom…" for one paint.
+        if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+            st.session_state
+        ):
+            return ""
         if picker_custom_progression_mode(st.session_state) or choice.startswith(
             "Use Custom"
         ):
