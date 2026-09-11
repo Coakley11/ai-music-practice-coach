@@ -116,7 +116,33 @@ def _reapply_core_practice_globals_from_payload(
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
-            session_state[PENDING_DISPLAY_KEY] = display_key
+            page = str(
+                session_state.get("studio_page") or core.get("studio_page") or ""
+            ).strip().lower()
+            raw_ctx = session_state.get("backing_context")
+            ctx_src = ""
+            ctx_entry = ""
+            if isinstance(raw_ctx, dict):
+                ctx_src = str(raw_ctx.get("source") or "").strip()
+                ctx_entry = str(raw_ctx.get("entry_mode") or "").strip()
+            # Catalog Shape Cm lives in core.display_key while Style Jam owns
+            # Backing. Do not queue that leftover as the restored Practice Key.
+            if page == "backing" and ctx_src == "entry_jam" and "Style Jam" in (
+                ctx_entry or str(session_state.get("improv_entry_mode") or "")
+            ):
+                jam_tok = ""
+                try:
+                    from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                    jam_tok = str(style_jam_authoritative_concert_key(session_state) or "").strip()
+                except ImportError:
+                    jam_tok = str(session_state.get("improv_style_key") or "").strip()
+                if jam_tok:
+                    session_state[PENDING_DISPLAY_KEY] = jam_tok
+                else:
+                    session_state.pop(PENDING_DISPLAY_KEY, None)
+            else:
+                session_state[PENDING_DISPLAY_KEY] = display_key
         except ImportError:
             pass
 
@@ -3614,6 +3640,16 @@ def apply_music_disk_state(
         from backing_context import hydrate_backing_context_after_restore
 
         hydrate_backing_context_after_restore(ss)
+        try:
+            from h3_live_key_trace import dump_blocker_snapshot
+
+            dump_blocker_snapshot(
+                ss,
+                phase="apply_music_disk_state_after_hydrate",
+                writer="apply_music_disk_state",
+            )
+        except Exception:
+            pass
     except ImportError:
         pass
 

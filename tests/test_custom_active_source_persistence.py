@@ -505,5 +505,75 @@ class TestCustomActiveSourcePersistence(unittest.TestCase):
         self.assertFalse(explicit_custom_activation_is_authoritative(session))
 
 
+class TestCustomBackingRefreshDoesNotExpirePlaySession(unittest.TestCase):
+    def test_same_custom_backing_restore_keeps_current_bpm(self) -> None:
+        """Refresh restore of the same Custom Trial Backing must not expire 104."""
+        from backing_context import BackingContext, set_backing_context
+        from backing_play_session import BACKING_PLAY_SESSION_EXPIRED_KEY, BACKING_PLAY_SESSION_KEY
+        from songs.music_source import custom_pick_key_for, custom_selected_song_record
+        from songs.state import apply_saved_custom_pick_key_context
+
+        active = _trial_active()
+        pick = custom_pick_key_for(active)
+        selected = custom_selected_song_record(active)
+        session = {
+            "studio_page": "backing",
+            "active_music_source": "custom_progression",
+            "active_catalog_pick_key": pick,
+            "selected_song": selected,
+            "song": "Trial Song",
+            "display_key": "D",
+            "concert_key": "D",
+            "cpl_active_progression": active,
+            BACKING_PLAY_SESSION_KEY: {
+                "play_session_id": "visit",
+                "launch_id": "launch",
+                "source_identity": f"custom:{pick}",
+                "expired": False,
+                "defaults": {"bpm": 96},
+                "overrides": {"bpm": 104},
+            },
+            BACKING_PLAY_SESSION_EXPIRED_KEY: False,
+            "_backing_current_bpm_lock": 104,
+            "backing_track_bpm": 104,
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="custom_progression",
+                source_label="Custom progression",
+                active_song_id=pick,
+                bound_pick_key=pick,
+                song_title="Trial Song",
+                key="D",
+                display_key="D",
+                concert_key="D",
+                bpm=104,
+                style="Pop",
+                groove="Pop groove",
+                custom_revision_id=str(active.get("id") or ""),
+            ),
+        )
+        st = SimpleNamespace(session_state=session)
+        ok = apply_saved_custom_pick_key_context(
+            st,
+            pick,
+            {"display_key": "D", "pick_key": pick},
+            song_picker_catalog={},
+        )
+        self.assertTrue(ok)
+        ps = session.get(BACKING_PLAY_SESSION_KEY) or {}
+        self.assertFalse(session.get(BACKING_PLAY_SESSION_EXPIRED_KEY))
+        self.assertFalse(bool(ps.get("expired")))
+        self.assertEqual(int((ps.get("overrides") or {}).get("bpm") or 0), 104)
+        self.assertEqual(int(session.get("_backing_current_bpm_lock") or 0), 104)
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(str(getattr(ctx, "source", "") or ""), "custom_progression")
+        self.assertEqual(int(getattr(ctx, "bpm", 0) or 0), 104)
+
+
 if __name__ == "__main__":
     unittest.main()

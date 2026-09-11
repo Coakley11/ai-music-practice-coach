@@ -381,8 +381,11 @@ def align_generated_session_to_declared_concert_key(session: dict[str, Any]) -> 
     ptr = get_active_workflow_pointer(session)
     blob = None
     if ptr is not None and str(ptr.workflow_owner or "") in {"style_jam", "jam_session_generator"}:
-        owner = str(ptr.workflow_owner or owner)
-        blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
+        ptr_owner = str(ptr.workflow_owner or "")
+        # Leftover Generator pointer must not retarget a live Style Jam F onto Eb.
+        if not ("Style Jam" in entry and ptr_owner == "jam_session_generator"):
+            owner = ptr_owner or owner
+            blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
         if blob is not None:
             try:
                 from music_theory import key_center_token

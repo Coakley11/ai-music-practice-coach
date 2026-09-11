@@ -778,9 +778,16 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
     """Selected concert key from Creative entry widgets, if any."""
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry == "Style Jam Mode":
-        tok = str(session.get("improv_style_key") or "").strip()
-        if tok:
-            return tok
+        try:
+            from backing_practice_key_control import style_jam_authoritative_concert_key
+
+            tok = str(style_jam_authoritative_concert_key(session) or "").strip()
+            if tok:
+                return tok
+        except ImportError:
+            tok = str(session.get("improv_style_key") or "").strip()
+            if tok:
+                return tok
     if entry == "Jam Session Generator":
         tok = str(session.get("improv_jam_key") or "").strip()
         if tok:
@@ -1779,14 +1786,19 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
         ctx_src = str(getattr(ctx_jam, "source", "") or "").strip() if ctx_jam else ""
         entry_now = str(session.get("improv_entry_mode") or "").strip()
         if ctx_src == "entry_jam" and "Style Jam" in entry_now:
-            ctx_tok = str(
-                getattr(ctx_jam, "concert_key", "") or getattr(ctx_jam, "key", "") or ""
-            ).strip()
-            live_style = str(session.get("improv_style_key") or "").strip()
-            if ctx_tok and (not live_style or live_style in {"G", "Eb", "G major", "Eb major"}):
-                live_style = ctx_tok
-                session["improv_style_key"] = ctx_tok
-            jam_tok = live_style or ctx_tok
+            try:
+                from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                jam_tok = str(style_jam_authoritative_concert_key(session) or "").strip()
+            except ImportError:
+                ctx_tok = str(
+                    getattr(ctx_jam, "concert_key", "") or getattr(ctx_jam, "key", "") or ""
+                ).strip()
+                live_style = str(session.get("improv_style_key") or "").strip()
+                if ctx_tok and (not live_style or live_style in {"G", "Eb", "G major", "Eb major"}):
+                    live_style = ctx_tok
+                    session["improv_style_key"] = ctx_tok
+                jam_tok = live_style or ctx_tok
             if jam_tok:
                 jam_mode = key_mode(jam_tok)
                 options = practice_keys_for_mode("minor" if jam_mode == "minor" else "major")

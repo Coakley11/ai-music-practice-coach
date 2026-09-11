@@ -116,6 +116,57 @@ class TestConcertWrittenProjection(unittest.TestCase):
         shown = display_chord_from_concert("Dm", concert_key="Cm", chart_key="Cm")
         self.assertEqual(shown, "Dm")
 
+    def test_written_off_restores_concert_notes_not_leftover_alto(self) -> None:
+        from improvisation_missions import ChordCoachInsight, MissionExample, refresh_mission_example
+
+        example = MissionExample(
+            mission="Chord Tones",
+            variant="normal",
+            chord="Dm",
+            section="Pre-Chorus 2",
+            song_title="Shape of You",
+            display_key="Dm",
+            concert_key="Dm",
+            instrument="Saxophone",
+            level="Intermediate",
+            focus="Improvisation",
+            motif={
+                "notes": ["B", "D", "F#"],
+                "display": "B – D – F#",
+                "chord": "Bm",
+                "_concert_notes": ["D", "F", "A"],
+                "_concert_chord": "Dm",
+                "_projected_display_key": "Bm",
+            },
+            abc="T:Mission — Bm\nK:Bm",
+            tab="",
+            piano_html="",
+            why="",
+            practice_steps=[],
+            insight=ChordCoachInsight(
+                chord="Bm",
+                scales=[],
+                scale_suggestions=[],
+                chord_tones=["B", "D", "F#"],
+                tensions=[],
+                avoid_notes=[],
+                target_notes=[],
+                motif_idea="",
+                resolve_hint="",
+                instrument_tips=[],
+            ),
+            show_tab=False,
+            show_piano=False,
+        )
+        refreshed = refresh_mission_example(
+            example, instrument="Saxophone", bpm=96, song_concert_key="Dm"
+        )
+        notes = [str(n).replace("♭", "b").replace("♯", "#") for n in (refreshed.motif or {}).get("notes") or []]
+        self.assertEqual(notes[:3], ["D", "F", "A"])
+        self.assertEqual(str((refreshed.motif or {}).get("chord") or ""), "Dm")
+        self.assertEqual(list((refreshed.motif or {}).get("_concert_notes") or [])[:3], ["D", "F", "A"])
+        self.assertNotIn("F#", " ".join(notes))
+
 
 class TestKeyCycle(unittest.TestCase):
     def test_semitone_up_preserves_minor(self) -> None:
@@ -230,6 +281,113 @@ class TestStyleJamLeftoverJamKey(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
         prepare_creative_sidebar_display_key(st, session)
         self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+
+    def test_owner_transition_leftover_eb_does_not_mount_style_jam_sidebar(self) -> None:
+        """Live first overwrite: leftover Generator Eb must not seed the Style Jam widget."""
+        from backing_context import BackingContext, set_backing_context
+        from backing_practice_key_control import WIDGET_STYLE_JAM, seed_backing_practice_key_widget
+        from songs.key_state import (
+            DISPLAY_KEY_OWNER_TRANSITION_KEY,
+            DISPLAY_KEY_WIDGET_OWNER_ID_KEY,
+            canonical_display_key_for_current_owner,
+        )
+        from source_session_state import (
+            bind_sidebar_practice_key_to_backing_owner,
+            sync_specialized_leave_catalog_widget,
+        )
+        from types import SimpleNamespace
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F",
+            "improv_jam_key": "Eb",
+            "display_key": "Cm",
+            "concert_key": "Cm",
+            "active_catalog_pick_key": SHAPE_PICK,
+            "practice_key_by_source": {SHAPE_PICK: "Cm"},
+            DISPLAY_KEY_WIDGET_OWNER_ID_KEY: f"catalog::{SHAPE_PICK}",
+            DISPLAY_KEY_OWNER_TRANSITION_KEY: {
+                "from": f"catalog::{SHAPE_PICK}",
+                "to": "entry_jam::jam",
+                "canonical": "Eb",
+                "stale": "Cm",
+            },
+            WIDGET_STYLE_JAM: "Eb",
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="jam-style",
+                jam_id="style-jam-f",
+                entry_mode="Style Jam Mode",
+                song_title="Style Jam",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=100,
+                style="Pop",
+                groove="Pop groove",
+            ),
+        )
+        self.assertEqual(canonical_display_key_for_current_owner(session), "F")
+        st = SimpleNamespace(session_state=session)
+        bind_sidebar_practice_key_to_backing_owner(st, session)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        seed_backing_practice_key_widget(
+            session, options=["C", "Db", "D", "Eb", "E", "F", "G"]
+        )
+        sync_specialized_leave_catalog_widget(session, widget_key=WIDGET_STYLE_JAM)
+        self.assertEqual(session.get(WIDGET_STYLE_JAM), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+
+    def test_refresh_leftover_handoff_class_does_not_reseal_style_jam(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from backing_source_navigation import (
+            BACKING_ENTRY_CLASS_KEY,
+            BACKING_ENTRY_SPECIALIZED_HANDOFF,
+            hydrate_backing_source_for_page,
+        )
+        from types import SimpleNamespace
+
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F",
+            "improv_jam_key": "Eb",
+            "display_key": "F",
+            "concert_key": "F",
+            BACKING_ENTRY_CLASS_KEY: BACKING_ENTRY_SPECIALIZED_HANDOFF,
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="jam-style",
+                jam_id="style-jam-f",
+                entry_mode="Style Jam Mode",
+                song_title="Jazz Swing",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=60,
+                style="Jazz Swing",
+                groove="Jazz swing",
+                progression=["Gm7", "C7", "Fmaj7"],
+            ),
+        )
+        st = SimpleNamespace(session_state=session)
+        hydrate_backing_source_for_page(session, st_like=st)
+        ctx = session.get("backing_context")
+        src = str(getattr(ctx, "source", "") or "")
+        if isinstance(ctx, dict):
+            src = str(ctx.get("source") or "")
+        self.assertEqual(src, "entry_jam")
         self.assertEqual(session.get("improv_style_key"), "F")
 
     def test_jam_backing_refresh_does_not_restore_custom_d(self) -> None:
@@ -663,6 +821,134 @@ class TestStyleJamSealedKeySurvivesRefreshRebuild(unittest.TestCase):
         self.assertTrue(compact.startswith("F"), compact)
         self.assertEqual(session.get("improv_style_key"), "F")
 
+    def test_live_f_wins_over_generate_default_g_snapshot_and_leftover_eb(self) -> None:
+        """Live persist split: style_key/sticky F, snapshot/ctx G, leftover jam_key Eb."""
+        from backing_context import (
+            BackingContext,
+            build_entry_jam_context,
+            set_backing_context,
+            sync_live_keys_from_backing_context,
+        )
+        from backing_practice_key_control import (
+            WIDGET_STYLE_JAM,
+            seed_backing_practice_key_widget,
+            style_jam_authoritative_concert_key,
+        )
+        from generated_workflow_artifact import (
+            BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY,
+            GeneratedWorkflowArtifactSnapshot,
+        )
+
+        g_prog = ["Am7", "D7", "Gmaj7", "E7", "Am7", "D7"]
+        session = {
+            "studio_page": "backing",
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_style_key": "F",
+            "improv_jam_key": "Eb",
+            "display_key": "F",
+            "concert_key": "F",
+            WIDGET_STYLE_JAM: "F",
+            "improv_style_meta": {"style": "Jazz Swing", "key": "G", "bpm": 60},
+            "improv_generated_sections": {
+                "Head (Jazz Swing)": ["Am7", "D7", "Gmaj7", "E7"],
+                "Bridge (Jazz Swing)": ["Am7", "D7", "Gmaj7", "Gmaj7"],
+            },
+            "active_catalog_pick_key": SHAPE_PICK,
+            "practice_key_by_source": {
+                SHAPE_PICK: "Cm",
+                "creative::entry_style_jam": "Cm",
+            },
+            "catalog_session": {"pick_key": SHAPE_PICK, "display_key": "Cm"},
+            "creative_session": {
+                "tool_type": "entry_style_jam",
+                "entry_mode": "Style Jam Mode",
+                "concert_key": "F",
+                "display_key": "F",
+            },
+            BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY: GeneratedWorkflowArtifactSnapshot(
+                workflow_owner="style_jam",
+                workflow_session_id="Jazz Swing",
+                artifact_id="style-jam-g",
+                artifact_revision=1,
+                practice_tonic="G",
+                practice_mode="major",
+                style="Jazz Swing",
+                mood="Bright",
+                bpm=60,
+                section_map={
+                    "Head (Jazz Swing)": ["Am7", "D7", "Gmaj7", "E7"],
+                    "Bridge (Jazz Swing)": ["Am7", "D7", "Gmaj7", "Gmaj7"],
+                },
+                progression=list(g_prog),
+                entry_mode="Style Jam Mode",
+            ).to_dict(),
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="entry_jam",
+                source_label="Entry Style Jam",
+                active_song_id="generated::Style Jam Mode::style-jam-g",
+                entry_mode="Style Jam Mode",
+                song_title="Jazz Swing",
+                key="G",
+                display_key="G",
+                concert_key="G",
+                bpm=60,
+                style="Jazz Swing",
+                groove="Jazz swing",
+                progression=list(g_prog),
+            ),
+        )
+        self.assertEqual(style_jam_authoritative_concert_key(session), "F")
+        ctx = build_entry_jam_context(session)
+        compact = str(ctx.concert_key or ctx.key or "").replace(" ", "")
+        self.assertTrue(compact.startswith("F"), compact)
+        joined = " ".join(ctx.progression or []).upper()
+        self.assertIn("FMAJ7", joined)
+        self.assertNotIn("GMAJ7", joined)
+        sync_live_keys_from_backing_context(session, widget_safe=False)
+        self.assertEqual(session.get("improv_style_key"), "F")
+        session[WIDGET_STYLE_JAM] = "Eb"
+        seeded = seed_backing_practice_key_widget(
+            session, options=["C", "Db", "D", "Eb", "E", "F", "G"]
+        )
+        self.assertEqual(seeded, "F")
+        self.assertEqual(session.get(WIDGET_STYLE_JAM), "F")
+        # Refresh remount: leftover catalog sticky Cm and Generator Eb must not win.
+        session["improv_style_key"] = "G"
+        session[WIDGET_STYLE_JAM] = "Eb"
+        session["display_key"] = "Cm"
+        session["_display_key_owner_transition"] = {
+            "to": f"catalog::{SHAPE_PICK}",
+            "canonical": "Cm",
+            "stale": "F",
+        }
+        from backing_context import _live_backing_concert_keys
+
+        practice, _, _ = _live_backing_concert_keys(session)
+        self.assertTrue(str(practice).replace(" ", "").startswith("F"), practice)
+        ctx2 = build_entry_jam_context(session)
+        compact2 = str(ctx2.concert_key or ctx2.key or "").replace(" ", "")
+        self.assertTrue(compact2.startswith("F"), compact2)
+        from backing_context import hydrate_backing_context_after_restore
+        from music_persistent_state import _reapply_core_practice_globals_from_payload
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session["improv_style_key"] = "F"
+        session["display_key"] = "Cm"
+        session["concert_key"] = "Cm"
+        session[PENDING_DISPLAY_KEY] = "Cm"
+        hydrate_backing_context_after_restore(session)
+        _reapply_core_practice_globals_from_payload(
+            session, {"studio_page": "backing", "display_key": "Cm"}
+        )
+        self.assertEqual(session.get("improv_style_key"), "F")
+        pending = str(session.get(PENDING_DISPLAY_KEY) or "").replace(" ", "")
+        self.assertTrue(pending.startswith("F") or pending == "", pending)
+        live = str(session.get("display_key") or session.get("concert_key") or "")
+        self.assertTrue(str(live).replace(" ", "").startswith("F"), live)
+
 
 class TestMissionVisibleTileIdentity(unittest.TestCase):
     def test_written_dm_click_stays_concert_dm_on_mission_backing(self) -> None:
@@ -722,6 +1008,43 @@ class TestMissionClickDoesNotTransposeWrittenIdentity(unittest.TestCase):
                 "practice_key": "Am",
             },
             "_mission_chord_snapshot": {
+                "concert_chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "concert_practice_key": "Cm",
+            },
+        }
+        section_map = [("Pre-Chorus 2", ["Cm", "Fm", "Ab", "Bb"])]
+        sym, sec, _idx = read_authoritative_mission_chord_selection(session, section_map)
+        self.assertEqual(sym, "Dm")
+        self.assertEqual(sec, "Pre-Chorus 2")
+        self.assertNotEqual(sym, "Fm")
+
+    def test_stale_snapshot_session_id_keeps_written_dm_not_index_fm(self) -> None:
+        from creative_chord_selection_authority import read_authoritative_mission_chord_selection
+
+        session = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "improv_active_mission": "chord_tones",
+            "display_key": "Am",
+            "concert_key": "Cm",
+            "instrument": "Saxophone",
+            "show_chart_in_instrument_key": True,
+            "ii_selected_chord": "Dm",
+            "ii_selected_section": "Pre-Chorus 2",
+            "ii_selected_chord_index": 1,
+            "improv_mission_workspace_updated_at": "2026-09-11T03:53:25.781856+00:00",
+            "_mission_chord_click_authority": {
+                "chord": "Dm",
+                "section": "Pre-Chorus 2",
+                "chord_index": 1,
+                "practice_key": "Am",
+                "mission_id": "chord_tones",
+            },
+            "_mission_chord_snapshot": {
+                "mission_id": "chord_tones",
+                "session_id": "2026-09-11T03:51:55.414542+00:00",
                 "concert_chord": "Dm",
                 "section": "Pre-Chorus 2",
                 "chord_index": 1,

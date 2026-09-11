@@ -45,9 +45,16 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
     page = str(session.get("studio_page") or "").strip().lower()
 
     if src == "entry_jam":
-        jam_id = _jam_session_id_for_widget_owner(session)
-        if not jam_id and ctx is not None:
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if ctx is not None:
+            entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        jam_id = ""
+        if ctx is not None:
             jam_id = str(getattr(ctx, "jam_id", "") or "").strip()
+        if "Style Jam" not in entry:
+            jam_id = jam_id or _jam_session_id_for_widget_owner(session)
+        if "Style Jam" in entry:
+            return f"style_jam::{jam_id or 'jam'}"
         return f"entry_jam::{jam_id or 'jam'}"
     if src == "mission" and page not in {"picker", "practice", "songs"}:
         mid = ""
@@ -171,6 +178,27 @@ def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
             return orig
         return ""
     if owner_id.startswith("entry_jam::") or owner_id.startswith("style_jam::"):
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None:
+                entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        except Exception:
+            pass
+        if "Style Jam" in entry or owner_id.startswith("style_jam::"):
+            try:
+                from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                tok = str(style_jam_authoritative_concert_key(session) or "").strip()
+                if tok:
+                    return tok
+            except ImportError:
+                tok = str(session.get("improv_style_key") or "").strip()
+                if tok:
+                    return tok
+            return str(session.get("improv_style_key") or "").strip()
         try:
             from music_workflow_state_store import get_workflow_blob
 

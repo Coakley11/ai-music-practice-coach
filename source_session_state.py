@@ -1550,7 +1550,13 @@ def bind_sidebar_practice_key_to_backing_owner(st: Any, session: dict[str, Any])
 
             rec = owner_transition_record(session)
             current = resolve_display_key_widget_owner_id(session)
-            if rec and str(rec.get("to") or "").strip() == current:
+            style_jam_live = False
+            if src == "entry_jam":
+                entry_now = str(
+                    getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""
+                ).strip()
+                style_jam_live = "Style Jam" in entry_now
+            if rec and str(rec.get("to") or "").strip() == current and not style_jam_live:
                 token = rebound
         except Exception:
             if src == "regular_song":
@@ -1619,6 +1625,14 @@ def sync_specialized_leave_catalog_widget(
             return
         if mission_backing_owns_left_panel_key(session):
             return
+        try:
+            from backing_practice_key_control import WIDGET_STYLE_JAM
+
+            if str(widget_key or "") == WIDGET_STYLE_JAM:
+                return
+        except ImportError:
+            if str(widget_key or "") == "display_key_style_jam_backing":
+                return
     except Exception:
         if str(widget_key or "").startswith("display_key_mission_backing"):
             return

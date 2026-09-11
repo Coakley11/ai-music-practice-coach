@@ -168,14 +168,12 @@ def read_mission_chord_snapshot(session: dict[str, Any]) -> dict[str, Any] | Non
         return None
     ident = _live_mission_identity(session)
     snap_mission = str(raw.get("mission_id") or "").strip()
-    snap_session = str(raw.get("session_id") or "").strip()
     snap_source = str(raw.get("source_identity") or "").strip()
     if snap_mission and ident["mission_id"] and snap_mission != ident["mission_id"]:
         return None
-    if snap_session and ident["session_id"] and snap_session != ident["session_id"]:
-        return None
     if snap_source and ident["source_identity"] and snap_source != ident["source_identity"]:
         return None
+    # session_id / workspace_updated_at churn after Generate must not drop a sealed click.
     return raw
 
 
@@ -287,6 +285,10 @@ def resolve_authoritative_chord_selection(
                     s_idx = int(snap.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)) or 0)
                 except (TypeError, ValueError):
                     s_idx = 0
+                if authoritative_pair_matches_index(
+                    section_map, section_label=s_sec, chord_symbol=s_sym, chord_index=s_idx
+                ):
+                    return s_sym, s_sec, s_idx
                 mapped = global_chord_index_for_section_chord(section_map, s_sec, s_sym)
                 if mapped is not None:
                     s_idx = int(mapped)
@@ -351,6 +353,11 @@ def resolve_authoritative_chord_selection(
                                 int(global_chord_index(section_map, si, ci)),
                             )
             if c_sym:
+                # Written-facing Dm at a concert-Fm index is the musician's chord.
+                # Keep it when the click was sealed in the written/chart domain
+                # or a snapshot still names that identity. Stale original-key
+                # clicks without a chart-key seal still follow the regenerated
+                # concert slot (C#m → Dm after a Practice Key change).
                 snap_keep = read_mission_chord_snapshot(session)
                 snap_ch = str((snap_keep or {}).get("concert_chord") or "").strip()
                 if skip_transpose or transposed_for_pk or (snap_ch and snap_ch == c_sym):

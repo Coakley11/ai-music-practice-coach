@@ -552,6 +552,12 @@ def refresh_mission_example(
         display_motif["_concert_notes"] = list(concert_notes or [])
         display_motif["_concert_chord"] = concert_chord
         display_motif["chord"] = display_chord
+        # Written OFF / same-key chart: player-facing notes must be concert,
+        # not leftover Alto/Shape projection (live: G title with E–B–G# notes).
+        if isinstance(concert_notes, list) and concert_notes:
+            display_motif["notes"] = list(concert_notes)
+            display_motif["display"] = " – ".join(str(n) for n in concert_notes)
+            display_motif.pop("midi", None)
     ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord

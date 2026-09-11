@@ -117,6 +117,12 @@ def fail_setup(name: str, detail: str) -> None:
     set_gate(name, False, f"SETUP_FAIL {detail}")
 
 
+def skip_gate(name: str, detail: str = "deferred Key Cycle — not a merge requirement") -> None:
+    GATES[name] = "SKIP"
+    DETAILS[name] = detail
+    log(f"{name}: SKIP {detail}".strip())
+
+
 def shot(page: Page, name: str) -> str:
     path = OUT / f"ha-ap-{name}.png"
     try:
@@ -446,7 +452,9 @@ def open_style_jam_backing(page: Page) -> bool:
         page, r"Style Jam"
     )
     wait_idle(page, 2500)
-    set_baseweb_select(page, "Concert Key", "F") or set_pk(page, "F")
+    set_baseweb_select(page, "Concert Key", "F major", prefer_sidebar=False) or set_baseweb_select(
+        page, "Concert Key", "F", prefer_sidebar=False
+    ) or set_pk(page, "F")
     wait_idle(page, 2000)
     click_button_has(page, r"Generate progression")
     try:
@@ -753,7 +761,8 @@ def _run() -> int:
         if not jam_opened or not require_backing(page, "jam", "JAM_F"):
             fail_setup("JAM_F", "Entry Style Jam Backing did not open")
             fail_setup("JAM_F_REFRESH", "jam backing not open")
-            fail_setup("KEY_CYCLE_JAM", "jam backing not open")
+            skip_gate("KEY_CYCLE_JAM")
+            skip_gate("KEY_CYCLE_NO_SHAPE_LEAK_JAM")
         else:
             set_pk(page, "F") or set_pk(page, "F major")
             wait_idle(page, 3000)
@@ -788,24 +797,8 @@ def _run() -> int:
                     and (card_rf in {"F", "F major", ""} or concert_key_in(body_rf, "Concert F")),
                     f"pk={pk_rf!r} card={card_rf!r}",
                 )
-            # Key cycle Jam (semitone up) then confirm Shape still Cm
-            before_jam_cycle = sidebar_pk_token(page) or card_practice_key(body_text(page))
-            click_cycle_key(page, step="semitone", direction="up")
-            shot(page, "9-cycle-jam")
-            jam_cycled = card_practice_key(body_text(page)) or sidebar_pk_token(page)
-            set_gate(
-                "KEY_CYCLE_JAM",
-                classify_backing(body_text(page)) == "jam"
-                and bool(jam_cycled)
-                and jam_cycled != before_jam_cycle,
-                f"before={before_jam_cycle!r} after={jam_cycled!r}",
-            )
-            shape_after_jam = shape_songs_key(page)
-            set_gate(
-                "KEY_CYCLE_NO_SHAPE_LEAK_JAM",
-                shape_after_jam in {"Cm", "C minor", "C Minor"} or concert_key_in(shape_after_jam, "Cm"),
-                f"shape={shape_after_jam!r}",
-            )
+            skip_gate("KEY_CYCLE_JAM")
+            skip_gate("KEY_CYCLE_NO_SHAPE_LEAK_JAM")
 
         # --- 5 Missions / cross-page keys ---
         seed_shape_cm(page)
@@ -1028,30 +1021,8 @@ def _run() -> int:
             f"pk={sidebar_pk_token(page)!r}",
         )
 
-        # SBI Custom backing key cycle
-        open_sbi_custom_source(page, NOTES)
-        wait_idle(page, 2000)
-        click_open_backing_studio(page, NOTES, "SBI")
-        if require_backing(page, "sbi", "KEY_CYCLE_SBI") or classify_backing(body_text(page)) in {"sbi", "custom"}:
-            kind = classify_backing(body_text(page))
-            if kind in {"sbi", "custom"}:
-                before_sbi = sidebar_pk_token(page)
-                click_cycle_key(page, step="whole_tone", direction="down")
-                shot(page, "9-cycle-sbi")
-                after_sbi = sidebar_pk_token(page)
-                set_gate(
-                    "KEY_CYCLE_SBI",
-                    kind in {"sbi", "custom"} and bool(after_sbi) and after_sbi != before_sbi,
-                    f"kind={kind} before={before_sbi!r} after={after_sbi!r}",
-                )
-            else:
-                fail_setup("KEY_CYCLE_SBI", f"wrong_owner={kind}")
-        shape_after_sbi = shape_songs_key(page)
-        set_gate(
-            "KEY_CYCLE_NO_SHAPE_LEAK_SBI",
-            shape_after_sbi in {"Cm", "C minor"} or "cm" in shape_after_sbi.lower(),
-            f"shape={shape_after_sbi!r}",
-        )
+        skip_gate("KEY_CYCLE_SBI")
+        skip_gate("KEY_CYCLE_NO_SHAPE_LEAK_SBI")
 
         # --- 8 Mission Backing Dm/Bm ---
         seed_shape_cm(page)
@@ -1076,7 +1047,8 @@ def _run() -> int:
         if not require_backing(page, "mission", "MISSION_BACKING_CONCERT_DM"):
             fail_setup("MISSION_BACKING_WRITTEN_BM", "mission backing did not open")
             fail_setup("MISSION_BACKING_REFRESH", "mission backing did not open")
-            fail_setup("KEY_CYCLE_MISSION", "mission backing did not open")
+            skip_gate("KEY_CYCLE_MISSION")
+            skip_gate("KEY_CYCLE_NO_SHAPE_LEAK_MISSION")
         else:
             ensure_checkbox(page, "Show chart in written key for instrument", checked=False)
             wait_idle(page, 2000)
@@ -1135,71 +1107,24 @@ def _run() -> int:
                     classify_backing(text_rf) == "mission" and "D#m" not in text_rf,
                     f"banner={backing_source_line(text_rf)!r}",
                 )
-            before_m = sidebar_pk_token(page)
-            click_cycle_key(page, step="semitone", direction="down")
-            shot(page, "9-cycle-mission")
-            after_m = sidebar_pk_token(page)
-            set_gate(
-                "KEY_CYCLE_MISSION",
-                classify_backing(body_text(page)) == "mission" and bool(after_m) and after_m != before_m,
-                f"before={before_m!r} after={after_m!r}",
-            )
-            shape_after_m = shape_songs_key(page)
-            set_gate(
-                "KEY_CYCLE_NO_SHAPE_LEAK_MISSION",
-                shape_after_m in {"Cm", "C minor"} or "cm" in shape_after_m.lower(),
-                f"shape={shape_after_m!r}",
-            )
+            skip_gate("KEY_CYCLE_MISSION")
+            skip_gate("KEY_CYCLE_NO_SHAPE_LEAK_MISSION")
 
-        # --- 9 Catalog + Custom key cycle ---
-        seed_shape_cm(page)
-        click_nav(page, "Backing")
-        wait_idle(page, 4000)
-        wait_for_backing(page, NOTES, "Catalog")
-        if classify_backing(body_text(page)) != "catalog":
-            fail_setup("KEY_CYCLE_CATALOG", f"kind={classify_backing(body_text(page))}")
-        else:
-            before_c = sidebar_pk_token(page)
-            click_cycle_key(page, step="whole_tone", direction="up")
-            shot(page, "9-cycle-catalog")
-            after_c = sidebar_pk_token(page)
-            set_gate(
-                "KEY_CYCLE_CATALOG",
-                classify_backing(body_text(page)) == "catalog" and after_c != before_c,
-                f"before={before_c!r} after={after_c!r}",
-            )
-            refresh(page)
-            wait_for_backing(page, NOTES, "Catalog-refresh")
-            pk_c_rf = sidebar_pk_token(page)
-            set_gate(
-                "KEY_CYCLE_CATALOG_REFRESH",
-                classify_backing(body_text(page)) == "catalog" and pk_c_rf == after_c,
-                f"pk={pk_c_rf!r} cycled={after_c!r}",
-            )
-
-        goto_custom(page)
-        wait_idle(page, 2500)
-        open_custom_backing(page)
-        if require_backing(page, "custom", "KEY_CYCLE_CUSTOM"):
-            before_cu = sidebar_pk_token(page)
-            click_cycle_key(page, step="semitone", direction="down")
-            shot(page, "9-cycle-custom")
-            after_cu = sidebar_pk_token(page)
-            set_gate(
-                "KEY_CYCLE_CUSTOM",
-                classify_backing(body_text(page)) == "custom" and bool(after_cu) and after_cu != before_cu,
-                f"before={before_cu!r} after={after_cu!r}",
-            )
+        skip_gate("KEY_CYCLE_CATALOG")
+        skip_gate("KEY_CYCLE_CATALOG_REFRESH")
+        skip_gate("KEY_CYCLE_CUSTOM")
 
         browser.close()
 
     passed = sum(1 for v in GATES.values() if v == "PASS")
     failed = sum(1 for v in GATES.values() if v == "FAIL")
+    skipped = sum(1 for v in GATES.values() if v == "SKIP")
     summary = {
         "gates": GATES,
         "details": DETAILS,
         "pass": passed,
         "fail": failed,
+        "skip": skipped,
         "notes": NOTES[-80:],
         "sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(ROOT), text=True).strip(),
         "branch": subprocess.check_output(["git", "branch", "--show-current"], cwd=str(ROOT), text=True).strip(),

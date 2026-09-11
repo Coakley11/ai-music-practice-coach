@@ -602,18 +602,41 @@ def dump_controls(page: Page, name: str) -> dict:
     return data
 
 
-def set_baseweb_select(page: Page, current_or_label: str, option: str) -> bool:
+def set_baseweb_select(
+    page: Page, current_or_label: str, option: str, *, prefer_sidebar: bool = True
+) -> bool:
     try:
         # Prefer sidebar-scoped Practice Key — avoid matching page chrome.
+        # Style Jam "Concert Key" lives on the Creative page body; "Concert Key"
+        # also matches sidebar "Practice / Concert Key" unless prefer_sidebar=False.
         side = page.locator('section[data-testid="stSidebar"]')
-        box = side.locator('[data-testid="stSelectbox"]').filter(
-            has_text=re.compile(current_or_label, re.I)
-        )
-        if box.count() == 0:
+        box = None
+        if prefer_sidebar:
+            box = side.locator('[data-testid="stSelectbox"]').filter(
+                has_text=re.compile(current_or_label, re.I)
+            )
+        if box is None or box.count() == 0:
             box = page.locator('[data-testid="stSelectbox"]').filter(
                 has_text=re.compile(current_or_label, re.I)
             )
-        if box.count() == 0:
+            if not prefer_sidebar and box.count():
+                # Skip sidebar matches so Creative Concert Key is not the catalog PK.
+                visible = []
+                for i in range(box.count()):
+                    el = box.nth(i)
+                    try:
+                        in_side = el.evaluate(
+                            """el => !!(el.closest('section[data-testid="stSidebar"]'))"""
+                        )
+                        if not in_side:
+                            visible.append(i)
+                    except Exception:
+                        visible.append(i)
+                if visible:
+                    box = box.nth(visible[0])
+                else:
+                    return False
+        if (box is None or (hasattr(box, "count") and box.count() == 0)) and prefer_sidebar:
             box = page.locator('[data-baseweb="select"]').filter(
                 has_text=re.compile(current_or_label, re.I)
             )

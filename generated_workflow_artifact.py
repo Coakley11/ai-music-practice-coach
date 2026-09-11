@@ -506,6 +506,20 @@ def peek_backing_owner_artifact_snapshot(session: dict[str, Any]) -> GeneratedWo
     raw = session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY)
     snap = GeneratedWorkflowArtifactSnapshot.from_dict(raw)
     owner = str(snap.workflow_owner or "") if snap is not None else ""
+    entry_now = str(session.get("improv_entry_mode") or "").strip()
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            entry_now = str(getattr(ctx, "entry_mode", "") or entry_now).strip()
+    except Exception:
+        pass
+    # Leftover Jam Generator UUID must not replace a live Style Jam visit.
+    if "Style Jam" in entry_now:
+        if snap is not None and owner == "style_jam":
+            return snap
+        return None
     if owner == "jam_session_generator" or (snap is None and session.get("improv_entry_mode") == "Jam Session Generator"):
         live = live_jam_canonical_snapshot_for_render(session)
         if live is not None:

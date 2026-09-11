@@ -300,53 +300,14 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
 
 
 def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
-    """Step / direction / spelling + one-step Cycle button for every Backing owner."""
-    prefs = spelling_prefs_from_session(session)
-    session[BACKING_KEY_SPELLING_PREFS_KEY] = dict(prefs)
-    st.markdown('<span class="ui-backing-inline-label">Key cycle</span>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1.1, 1.0, 0.9])
-    with c1:
-        st.radio(
-            "Step size",
-            options=["semitone", "whole_tone"],
-            format_func=lambda v: "Semitone" if v == "semitone" else "Whole tone",
-            horizontal=True,
-            key=BACKING_KEY_CYCLE_STEP_KEY,
-        )
-    with c2:
-        st.radio(
-            "Direction",
-            options=["up", "down"],
-            format_func=lambda d: "Up" if d == "up" else "Down",
-            horizontal=True,
-            key=BACKING_KEY_CYCLE_DIRECTION_KEY,
-        )
-    with c3:
-        if st.button("Cycle key", key="backing_key_cycle_apply", use_container_width=True):
-            apply_backing_key_cycle(session)
-            try:
-                from songs.key_state import BACKING_NEEDS_REGEN
+    """No-op: Backing transport Cycle key UI is deferred, not a merge requirement.
 
-                session[BACKING_NEEDS_REGEN] = True
-            except Exception:
-                session["backing_needs_regen"] = True
-            st.rerun()
-    with st.expander("Key spelling", expanded=False):
-        st.caption("Used when cycling through enharmonic keys. Defaults are already selected.")
-        cols = st.columns(len(ENHARMONIC_SPELLING_PAIRS))
-        live_prefs = dict(prefs)
-        for col, (sharp, flat) in zip(cols, ENHARMONIC_SPELLING_PAIRS):
-            pair = f"{sharp}/{flat}"
-            with col:
-                chosen = st.radio(
-                    pair,
-                    options=[sharp, flat],
-                    index=0 if prefs.get(pair) == sharp else 1,
-                    key=f"backing_key_spell_{pair.replace('#', 's').replace('/', '_')}",
-                    label_visibility="visible",
-                )
-                live_prefs[pair] = str(chosen)
-        session[BACKING_KEY_SPELLING_PREFS_KEY] = live_prefs
+    Helpers such as ``apply_backing_key_cycle`` remain for isolated tests. Do not
+    render visible Cycle controls until the deferred Key Cycle Practice feature
+    is scheduled after Creative/Backing stabilization.
+    """
+    _ = (st, session)
+    return
 
 
 __all__ = [

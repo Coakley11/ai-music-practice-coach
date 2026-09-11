@@ -1178,6 +1178,12 @@ def expire_backing_play_session(session: dict[str, Any]) -> None:
     session[BACKING_PLAY_SESSION_EXPIRED_KEY] = True
     session.pop("_backing_current_bpm_lock", None)
     try:
+        from h3_live_key_trace import dump_blocker_snapshot
+
+        dump_blocker_snapshot(session, phase="expire_play_session", writer="expire_backing_play_session")
+    except Exception:
+        pass
+    try:
         from backing_track_state import (
             BACKING_DIRTY_KEY,
             BACKING_USER_EDIT_INTENT_KEY,
@@ -1241,12 +1247,40 @@ def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[s
         prev_launch
         and (prev_launch == live_launch or (not live_launch and bool(prev_launch)))
     )
+    try:
+        from h3_live_key_trace import dump_blocker_snapshot
+
+        dump_blocker_snapshot(
+            session,
+            phase="sync_play_session_entry",
+            writer="sync_backing_play_session_on_backing_page",
+            extra={
+                "identity": identity,
+                "prev_identity": prev_identity,
+                "identity_changed": identity_changed,
+                "launch_same": launch_same,
+                "expired_in": expired,
+            },
+        )
+    except Exception:
+        pass
     if ps and not expired and identity_changed and not launch_same:
         expired = True
         session[BACKING_PLAY_SESSION_EXPIRED_KEY] = True
         ps = dict(ps)
         ps["expired"] = True
         session[BACKING_PLAY_SESSION_KEY] = ps
+        try:
+            from h3_live_key_trace import dump_blocker_snapshot
+
+            dump_blocker_snapshot(
+                session,
+                phase="sync_play_session_identity_expire",
+                writer="sync_backing_play_session_on_backing_page",
+                extra={"identity": identity, "prev_identity": prev_identity},
+            )
+        except Exception:
+            pass
     if ps and not expired:
         # Still in this Backing play session (rerun or browser refresh). Never mint
         # a new bag from source defaults — that reseals Current BPM/style/meter.

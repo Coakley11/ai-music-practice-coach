@@ -401,6 +401,108 @@ def _own_path() -> str:
     return os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_g12_own.jsonl")
 
 
+def _blocker_custom_path() -> str:
+    return os.path.join(str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip(), "_blocker_custom.jsonl")
+
+
+def _blocker_snapshot_fields(session: dict[str, Any]) -> dict[str, Any]:
+    sess = session if isinstance(session, dict) else {}
+    bctx = sess.get("backing_context") if isinstance(sess.get("backing_context"), dict) else {}
+    ps = sess.get("_backing_play_session") if isinstance(sess.get("_backing_play_session"), dict) else {}
+    ov = ps.get("overrides") if isinstance(ps.get("overrides"), dict) else {}
+    defaults = ps.get("defaults") if isinstance(ps.get("defaults"), dict) else {}
+    cpl = sess.get("cpl_active_progression") if isinstance(sess.get("cpl_active_progression"), dict) else {}
+    last_custom = sess.get("_last_custom_song_state") if isinstance(sess.get("_last_custom_song_state"), dict) else {}
+    last_active = last_custom.get("active") if isinstance(last_custom.get("active"), dict) else {}
+    sel = sess.get("selected_song") if isinstance(sess.get("selected_song"), dict) else {}
+    try:
+        lock = int(sess.get("_backing_current_bpm_lock") or 0)
+    except (TypeError, ValueError):
+        lock = 0
+    try:
+        ctx_bpm = int(bctx.get("bpm") or 0)
+    except (TypeError, ValueError):
+        ctx_bpm = 0
+    try:
+        ov_bpm = int(ov.get("bpm") or 0)
+    except (TypeError, ValueError):
+        ov_bpm = 0
+    try:
+        def_bpm = int(defaults.get("bpm") or 0)
+    except (TypeError, ValueError):
+        def_bpm = 0
+    widget_keys = {
+        str(k): sess.get(k)
+        for k in list(sess.keys())
+        if str(k).startswith("backing_track_bpm::") or str(k).startswith("display_key_")
+    }
+    return {
+        "studio_page": str(sess.get("studio_page") or ""),
+        "ctx_source": str(bctx.get("source") or ""),
+        "ctx_title": str(bctx.get("song_title") or ""),
+        "ctx_bound": str(bctx.get("bound_pick_key") or bctx.get("active_song_id") or ""),
+        "ctx_bpm": ctx_bpm,
+        "ctx_concert": str(bctx.get("concert_key") or ""),
+        "ctx_display": str(bctx.get("display_key") or ""),
+        "active_music_source": str(sess.get("active_music_source") or ""),
+        "active_catalog_pick": str(sess.get("active_catalog_pick_key") or ""),
+        "selected_title": str(sel.get("title") or sel.get("name") or ""),
+        "cpl_name": str(cpl.get("name") or ""),
+        "last_custom_name": str(last_active.get("name") or ""),
+        "ps_expired": bool(sess.get("_backing_play_session_expired")) or bool(ps.get("expired")),
+        "ps_identity": str(ps.get("source_identity") or ""),
+        "ps_override_bpm": ov_bpm,
+        "ps_default_bpm": def_bpm,
+        "bpm_lock": lock,
+        "display_key": str(sess.get("display_key") or ""),
+        "concert_key": str(sess.get("concert_key") or ""),
+        "pending_display_key": str(sess.get("_pending_display_key") or ""),
+        "handoff": str(sess.get("_backing_explicit_handoff_source") or ""),
+        "open_intent": str(sess.get("_backing_open_intent") or ""),
+        "entry_class": str(sess.get("_backing_entry_class") or ""),
+        "restore_anchor": str(sess.get("_backing_restore_anchor_source") or ""),
+        "pk_owner": str(sess.get("_backing_pk_control_owner") or ""),
+        "improv_style_key": str(sess.get("improv_style_key") or ""),
+        "improv_jam_key": str(sess.get("improv_jam_key") or ""),
+        "widget_keys": widget_keys,
+    }
+
+
+def dump_blocker_snapshot(
+    session: dict[str, Any] | None,
+    *,
+    phase: str,
+    writer: str = "",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Compact Custom-refresh / owner-overwrite dump (MUSIC_APP_DATA_DIR only)."""
+    if not _enabled() or session is None:
+        return
+    try:
+        sess = session if isinstance(session, dict) else dict(session)
+    except Exception:
+        return
+    row = {
+        "ts": time.monotonic(),
+        "wall": time.time(),
+        "phase": str(phase or ""),
+        "writer": str(writer or ""),
+        **_blocker_snapshot_fields(sess),
+        "stack": [
+            f"{fr.function}:{fr.lineno}"
+            for fr in inspect.stack()[1:10]
+            if fr.function not in {"dump_blocker_snapshot", "dump_backing_owner_write"}
+        ],
+    }
+    if extra:
+        row.update(extra)
+    try:
+        with open(_blocker_custom_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        return
+
+
 def dump_backing_owner_write(
     session: dict[str, Any] | None,
     *,
@@ -414,6 +516,15 @@ def dump_backing_owner_write(
         return
     old = str(old_source or "").strip()
     new = str(new_source or "").strip()
+    try:
+        dump_blocker_snapshot(
+            session,
+            phase="backing_owner_write",
+            writer=str(caller or ""),
+            extra={"old_source": old, "new_source": new, "reason": str(reason or "")},
+        )
+    except Exception:
+        pass
     if old == new and not reason:
         return
     try:

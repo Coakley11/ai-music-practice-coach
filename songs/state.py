@@ -650,9 +650,31 @@ def apply_saved_custom_pick_key_context(
         except ImportError:
             pass
 
+    same_custom_backing = False
+    try:
+        from backing_context import get_backing_context
+
+        live_ctx = get_backing_context(st.session_state)
+        if live_ctx is not None and str(getattr(live_ctx, "source", "") or "") == "custom_progression":
+            bound = str(
+                getattr(live_ctx, "bound_pick_key", "")
+                or getattr(live_ctx, "active_song_id", "")
+                or ""
+            ).strip()
+            rev = str(getattr(live_ctx, "custom_revision_id", "") or "").strip()
+            same_custom_backing = bool(
+                (bound and bound == pick_key) or (rev and rev == suffix)
+            )
+    except ImportError:
+        same_custom_backing = False
+
     try:
         from custom_progression_lab import cpl_draft_written_key
-        from songs.music_source import on_active_song_identity_changed
+        from songs.music_source import (
+            ACTIVE_SONG_IDENTITY_KEY,
+            compute_active_song_identity,
+            on_active_song_identity_changed,
+        )
         from songs.key_state import invalidate_backing_cache
         from songs.playback_defaults import (
             active_song_sync_id,
@@ -667,22 +689,34 @@ def apply_saved_custom_pick_key_context(
         artist = str(selected.get("artist") or "Custom progression")
         _pid = playback_song_id(is_custom=True, song_title=title, song_artist=artist)
         _sync_id = active_song_sync_id(pick_key=pick_key, playback_song_id=_pid, is_custom=True)
-        on_active_song_identity_changed(
-            st,
-            pick_key=pick_key,
-            title=title,
-            artist=artist,
-            original_key=home_key,
-            is_custom=True,
-            sync_id=_sync_id,
-            default_bpm=canonical_active_song_bpm(active),
-            default_groove=default_groove_for_song(active, infer_fn=lambda _rec, _fb: "Auto"),
-            default_meter=get_song_default_meter(active),
-            display_key=display_key or home_key,
-            custom_revision=str(active.get("id") or "").strip(),
-            invalidate_backing=invalidate_backing_cache,
-            force_reset=True,
-        )
+        if same_custom_backing:
+            # Refresh/reboot of the same Custom Backing visit is not a new song
+            # selection — force_reset would expire Current BPM (104 → source default).
+            st.session_state[ACTIVE_SONG_IDENTITY_KEY] = compute_active_song_identity(
+                pick_key=pick_key,
+                title=title,
+                artist=artist,
+                original_key=home_key,
+                is_custom=True,
+                custom_revision=str(active.get("id") or "").strip(),
+            )
+        else:
+            on_active_song_identity_changed(
+                st,
+                pick_key=pick_key,
+                title=title,
+                artist=artist,
+                original_key=home_key,
+                is_custom=True,
+                sync_id=_sync_id,
+                default_bpm=canonical_active_song_bpm(active),
+                default_groove=default_groove_for_song(active, infer_fn=lambda _rec, _fb: "Auto"),
+                default_meter=get_song_default_meter(active),
+                display_key=display_key or home_key,
+                custom_revision=str(active.get("id") or "").strip(),
+                invalidate_backing=invalidate_backing_cache,
+                force_reset=True,
+            )
     except Exception:
         pass
 

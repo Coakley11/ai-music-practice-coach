@@ -9544,19 +9544,6 @@ def _render_backing_step2_playback_action(
                 bpm = lock
         st.markdown("</div>", unsafe_allow_html=True)
 
-        try:
-            from backing_key_cycle import (
-                BACKING_KEY_CYCLE_DIRECTION_KEY,
-                BACKING_KEY_CYCLE_STEP_KEY,
-                render_backing_key_cycle_controls,
-            )
-
-            st.session_state.setdefault(BACKING_KEY_CYCLE_STEP_KEY, "semitone")
-            st.session_state.setdefault(BACKING_KEY_CYCLE_DIRECTION_KEY, "up")
-            render_backing_key_cycle_controls(st, st.session_state)
-        except ImportError:
-            pass
-
         _render_backing_scope_controls(
             section_names,
             from_practice_handoff=from_practice_handoff,
@@ -10870,6 +10857,28 @@ else:
         except Exception:
             pass
         _pending_cycle = str(st.session_state.get("_pending_display_key") or "").strip()
+        try:
+            from backing_practice_key_control import (
+                OWNER_STYLE_JAM,
+                STYLE_JAM_REMOUNT_DEFAULTS,
+                canonical_concert_key_for_owner,
+                resolve_backing_pk_control_owner,
+            )
+
+            if resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM:
+                _sj_pk = str(canonical_concert_key_for_owner(st.session_state) or "").strip()
+                _leftover_jam = str(st.session_state.get("improv_jam_key") or "").strip()
+                if (
+                    _sj_pk
+                    and _leftover_jam in STYLE_JAM_REMOUNT_DEFAULTS
+                    and _leftover_jam != _sj_pk
+                    and _sj_pk in (_display_key_options or [])
+                ):
+                    _pending_cycle = _sj_pk
+                    st.session_state.pop(_pk_widget_key, None)
+                    st.session_state[_pk_widget_key] = _sj_pk
+        except ImportError:
+            pass
         if (
             _pk_widget_key
             and _pending_cycle

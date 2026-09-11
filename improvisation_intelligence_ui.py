@@ -1856,6 +1856,10 @@ def _tab_motif(
     }
     cur_ptype = str(motif.get("pattern_type") or session_state.get("improv_motif_pattern_type") or "auto")
     cur_dir = str(motif.get("pattern_direction") or "ascending")
+    pending_dir = str(session_state.pop("_pending_motif_dir", "") or "").strip().lower()
+    if pending_dir in {"ascending", "descending"}:
+        session_state["improv_motif_pattern_dir_widget"] = pending_dir
+        cur_dir = pending_dir
     pc1, pc2, pc3 = st.columns(3)
     with pc1:
         length_choice = st.selectbox(
@@ -1915,20 +1919,24 @@ def _tab_motif(
             on_change=_on_motif_dir_change,
         )
         if st.button("Descending", key="improv_motif_dir_descending_btn", use_container_width=True):
-            session_state["improv_motif_pattern_dir_widget"] = "descending"
-            if motif.get("notes") or motif.get("base_motif_notes") or motif.get("is_pattern"):
+            # Set direction on the NEXT run, before the selectbox mounts.
+            # Writing the widget key this run loses to the still-ascending selectbox value.
+            session_state["_pending_motif_dir"] = "descending"
+            live = session_state.get("improv_motif")
+            source = live if isinstance(live, dict) else motif
+            if source.get("notes") or source.get("base_motif_notes") or source.get("is_pattern"):
                 session_state["improv_motif"] = rebuild_motif_pattern(
-                    motif,
+                    source,
                     key_center=concert_key or motif_key,
                     pattern_type=str(
                         session_state.get("improv_motif_pattern_type")
-                        or motif.get("pattern_type")
+                        or source.get("pattern_type")
                         or "auto"
                     ),
                     direction="descending",
                     length=int(
                         session_state.get("improv_motif_pattern_length")
-                        or motif.get("pattern_length")
+                        or source.get("pattern_length")
                         or 8
                     ),
                 )
@@ -1939,36 +1947,9 @@ def _tab_motif(
                 )
                 _persist_motif_artifact(session_state, interaction="motif_direction_descending")
             st.rerun()
-        widget_dir = str(
-            session_state.get("improv_motif_pattern_dir_widget") or dir_choice or "ascending"
-        ).strip().lower()
-        if (
-            widget_dir in {"ascending", "descending"}
-            and widget_dir != cur_dir
-            and (motif.get("notes") or motif.get("base_motif_notes") or motif.get("is_pattern"))
-        ):
-            session_state["improv_motif"] = rebuild_motif_pattern(
-                motif,
-                key_center=concert_key or motif_key,
-                pattern_type=str(
-                    session_state.get("improv_motif_pattern_type")
-                    or motif.get("pattern_type")
-                    or "auto"
-                ),
-                direction=widget_dir,
-                length=int(
-                    session_state.get("improv_motif_pattern_length")
-                    or motif.get("pattern_length")
-                    or 8
-                ),
-            )
-            motif = session_state["improv_motif"]
-            cur_dir = widget_dir
-            _refresh_motif_output_after_transform(
-                session_state,
-                key_center=concert_key or motif_key,
-                bpm=bpm,
-            )
+        # Do not auto-rebuild when the selectbox lags the motif. on_change and the
+        # Descending button are the only direction writers; a stale "ascending"
+        # widget must not flatten a descending pattern on the next run.
 
     pb1, pb2, pb3 = st.columns(3)
     with pb1:
@@ -1993,12 +1974,17 @@ def _tab_motif(
             key="improv_rebuild_motif_pattern",
             use_container_width=True,
         ):
+            live_motif = session_state.get("improv_motif")
+            if not isinstance(live_motif, dict):
+                live_motif = motif
             session_state["improv_motif"] = rebuild_motif_pattern(
-                motif,
+                live_motif,
                 key_center=concert_key or motif_key,
                 pattern_type=str(type_choice or "auto"),
                 direction=str(
-                    session_state.get("improv_motif_pattern_dir_widget")
+                    session_state.get("_pending_motif_dir")
+                    or live_motif.get("pattern_direction")
+                    or session_state.get("improv_motif_pattern_dir_widget")
                     or dir_choice
                     or "ascending"
                 ),

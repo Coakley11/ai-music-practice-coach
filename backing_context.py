@@ -359,6 +359,17 @@ def set_backing_context(
         ):
             payload["mission_return_destination"] = copy.deepcopy(prev_mission_dest)
     session[BACKING_CONTEXT_KEY] = payload
+    try:
+        from h3_live_key_trace import dump_blocker_snapshot
+
+        dump_blocker_snapshot(
+            session,
+            phase="set_backing_context_after",
+            writer=str(trace_caller or "set_backing_context"),
+            extra={"preservation_reason": str(preservation_reason or "")},
+        )
+    except Exception:
+        pass
     if (
         str(getattr(ctx, "source", "") or "") == "song_improv"
         and (
@@ -554,11 +565,32 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
         canonical = canonical_token_for_owner_transition(session)
         if rec and canonical:
             to_id = str(rec.get("to") or "").strip()
-            # Mid-restore ctx may still be entry_jam while Rec already points at Catalog.
-            if to_id.startswith("catalog"):
+            live_src = ""
+            try:
+                from creative_key_sync import live_backing_source
+
+                live_src = str(live_backing_source(session) or "").strip()
+            except ImportError:
+                live_src = ""
+            page = str(session.get("studio_page") or "").strip().lower()
+            entry_now = str(session.get("improv_entry_mode") or "").strip()
+            ctx_now = get_backing_context(session)
+            if ctx_now is not None:
+                entry_now = str(getattr(ctx_now, "entry_mode", "") or entry_now).strip()
+            # Style Jam Backing refresh must not take leftover catalog Shape Cm
+            # from a Songs seed transition record. Jam Generator still uses the
+            # catalog-leave path.
+            style_jam_backing = (
+                page == "backing"
+                and live_src == "entry_jam"
+                and "Style Jam" in entry_now
+            )
+            if style_jam_backing:
+                pass
+            elif to_id.startswith("catalog"):
                 return canonical, canonical, canonical
             current = resolve_display_key_widget_owner_id(session)
-            if to_id and current == to_id:
+            if to_id and current == to_id and not style_jam_backing:
                 return canonical, canonical, canonical
     except ImportError:
         pass
@@ -1472,6 +1504,33 @@ def _entry_jam_context_from_owner_snapshot(
     selected_sections = list(snap.selected_section_ids or section_labels)
     jam_title = style or mode_label or "Style jam"
     gen_song_id = f"generated::{entry_mode}::{snap.artifact_id or jam_id}"
+    if "Style Jam" in entry_mode:
+        try:
+            from backing_practice_key_control import (
+                STYLE_JAM_REMOUNT_DEFAULTS,
+                style_jam_authoritative_concert_key,
+            )
+            from music_theory import semitone_distance, transpose_chord, transpose_sections_dict
+
+            want = str(style_jam_authoritative_concert_key(session) or "").strip()
+            snap_key = str(concert_key or "").strip()
+            if want and snap_key and want != snap_key:
+                if sections_dict:
+                    sections_dict = transpose_sections_dict(sections_dict, snap_key, want)
+                    section_labels = list(sections_dict.keys())
+                if progression:
+                    steps = semitone_distance(snap_key, want)
+                    progression = [
+                        transpose_chord(str(c), steps, reference_key=want)
+                        for c in progression
+                    ]
+                key = display_key = concert_key = want
+                chart_display_key = _resolve_chart_display_key(session, concert_key)
+                live_style = str(session.get("improv_style_key") or "").strip()
+                if not live_style or live_style in STYLE_JAM_REMOUNT_DEFAULTS:
+                    session["improv_style_key"] = want
+        except Exception:
+            pass
     return BackingContext(
         source="entry_jam",
         source_label=_SOURCE_LABELS["entry_jam"],
@@ -2822,15 +2881,28 @@ def sync_live_keys_from_backing_context(
         return ""
     if ctx.source == "entry_jam":
         entry = str(ctx.entry_mode or session.get("improv_entry_mode") or "").strip()
+        if "Style Jam" in entry:
+            try:
+                from backing_practice_key_control import (
+                    STYLE_JAM_REMOUNT_DEFAULTS,
+                    style_jam_authoritative_concert_key,
+                )
+
+                live_auth = str(style_jam_authoritative_concert_key(session) or "").strip()
+                # Live F / sticky F must not be overwritten by a generate-default G snapshot.
+                if live_auth and live_auth not in STYLE_JAM_REMOUNT_DEFAULTS:
+                    concert = live_auth
+            except ImportError:
+                pass
         try:
             from session_widget_safe import safe_session_assign
 
-            if entry == "Style Jam Mode":
+            if "Style Jam" in entry:
                 safe_session_assign(session, "improv_style_key", concert, widget_safe=widget_safe)
             elif entry == "Jam Session Generator":
                 safe_session_assign(session, "improv_jam_key", concert, widget_safe=widget_safe)
         except ImportError:
-            if entry == "Style Jam Mode":
+            if "Style Jam" in entry:
                 session["improv_style_key"] = concert
             elif entry == "Jam Session Generator":
                 session["improv_jam_key"] = concert
@@ -4071,6 +4143,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         "mission",
         "song_improv",
     }
+    try:
+        from h3_live_key_trace import dump_blocker_snapshot
+
+        dump_blocker_snapshot(
+            session,
+            phase="restore_regular_song_backing",
+            writer="restore_regular_song_backing",
+            extra={"leaving_source": leaving_source, "handoff_src": handoff_src},
+        )
+    except Exception:
+        pass
     specialized_practice_token = ""
     if specialized_leave:
         blob_key = ""
@@ -4760,8 +4843,78 @@ def _rebind_sbi_preview_to_custom_for_restore(session: dict[str, Any]) -> None:
     session["improv_song_source"] = "Custom progression"
 
 
+def _stamp_style_jam_live_concert_key(
+    session: dict[str, Any],
+    *,
+    preserved: str = "",
+) -> None:
+    """After restore, live Style Jam F wins over leftover Generator Eb / catalog Cm."""
+    ctx = get_backing_context(session)
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if ctx is not None:
+        src = str(getattr(ctx, "source", "") or "").strip()
+        entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        if src and src != "entry_jam":
+            return
+    page = str(session.get("studio_page") or "").strip().lower()
+    if "Style Jam" not in entry and page == "backing":
+        if ctx is None or str(getattr(ctx, "source", "") or "") != "entry_jam":
+            return
+    try:
+        from backing_practice_key_control import (
+            STYLE_JAM_REMOUNT_DEFAULTS,
+            style_jam_authoritative_concert_key,
+        )
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        want = str(preserved or "").strip()
+        if not want or want in STYLE_JAM_REMOUNT_DEFAULTS:
+            want = str(style_jam_authoritative_concert_key(session) or "").strip()
+        if not want:
+            return
+        session["improv_style_key"] = want
+        session["concert_key"] = want
+        session["display_key"] = want
+        try:
+            from backing_practice_key_control import WIDGET_JAM_GENERATOR, WIDGET_STYLE_JAM
+
+            session.pop(WIDGET_JAM_GENERATOR, None)
+            session.pop(WIDGET_STYLE_JAM, None)
+            session[WIDGET_STYLE_JAM] = want
+        except ImportError:
+            pass
+        # Queue F onto the sidebar selectbox. Clearing pending left Streamlit
+        # displaying leftover Generator Eb while session_state already said F.
+        session[PENDING_DISPLAY_KEY] = want
+        session["_pending_display_key"] = want
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+            ctx_tok = str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "").strip()
+            if ctx_tok != want:
+                rebuilt = build_entry_jam_context(session)
+                set_backing_context(
+                    session,
+                    rebuilt,
+                    trace_caller="hydrate_backing_context_after_restore:style_jam_live_key",
+                )
+    except Exception:
+        pass
+
+
 def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
     """Re-apply persisted Creative/custom backing_context after cloud or disk restore."""
+    preserved_style_jam_key = ""
+    try:
+        from backing_practice_key_control import style_jam_authoritative_concert_key
+
+        ctx0 = get_backing_context(session)
+        entry0 = str(
+            getattr(ctx0, "entry_mode", "") if ctx0 is not None else session.get("improv_entry_mode") or ""
+        ).strip()
+        src0 = str(getattr(ctx0, "source", "") or "") if ctx0 is not None else ""
+        if src0 == "entry_jam" and "Style Jam" in entry0:
+            preserved_style_jam_key = str(style_jam_authoritative_concert_key(session) or "").strip()
+    except Exception:
+        preserved_style_jam_key = str(session.get("improv_style_key") or "").strip()
     if _persisted_backing_is_custom_sbi(session):
         # Follow-Active leftover from the catalog pick must not rebuild this
         # visit as Shape/Catalog before LAST_CUSTOM / sealed ctx can restore.
@@ -4834,6 +4987,7 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
         else:
             return
     if ctx is None:
+        _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
         return
     if not is_backing_context_valid(session, ctx):
         # Do not leave nested Creative Backing empty after a false-invalid clear —
@@ -4843,9 +4997,11 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             ensure_backing_context_from_creative_session(session)
             ctx = get_backing_context(session)
             if ctx is None or not is_backing_context_valid(session, ctx):
+                _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
                 return
         else:
             clear_backing_context(session)
+            _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
             return
     try:
         from backing_source_navigation import restore_session_widgets_from_backing_context
@@ -4881,6 +5037,7 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
                 session["display_key"] = concert
                 session["_pending_display_key"] = concert
     sync_improv_widgets_from_live_concert_key(session)
+    _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
     session[PENDING_BACKING_CONTEXT_APPLY] = True
     if ctx.source == "mission":
         try:
@@ -4891,6 +5048,16 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             rehydrate_mission_return_destination_from_backing_context(session)
         except ImportError:
             pass
+    try:
+        from h3_live_key_trace import dump_blocker_snapshot
+
+        dump_blocker_snapshot(
+            session,
+            phase="hydrate_backing_context_after_restore",
+            writer="hydrate_backing_context_after_restore",
+        )
+    except Exception:
+        pass
 
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:

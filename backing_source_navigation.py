@@ -1981,20 +1981,40 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             pass
         return
     elif intent == BACKING_INTENT_FROM_CREATIVE or entry_class == BACKING_ENTRY_SPECIALIZED_HANDOFF:
-        open_backing_for_creative_source(session, st_like=st_like)
-        try:
-            from backing_context import sync_live_keys_from_backing_context
+        # Refresh persists leftover specialized_handoff. That is not a new
+        # Creative open — re-sealing against leftover Generator Eb crashes Style Jam F.
+        already_specialized = False
+        if intent != BACKING_INTENT_FROM_CREATIVE:
+            try:
+                from backing_context import get_backing_context, is_backing_context_valid
 
-            sync_live_keys_from_backing_context(session, st_like=st_like)
-        except ImportError:
-            pass
-        # Handoff is one-shot. open_backing_from_creative re-marks specialized /
-        # from_creative; leave restore_last so the next Backing visit reseals
-        # the same session instead of rebuilding.
-        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
-        session.pop(BACKING_ENTRY_CLASS_KEY, None)
-        session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
-        return
+                ctx0 = get_backing_context(session)
+                src0 = str(getattr(ctx0, "source", "") or "") if ctx0 is not None else ""
+                if (
+                    ctx0 is not None
+                    and src0 in {"entry_jam", "mission", "song_improv", "custom_progression"}
+                    and is_backing_context_valid(session, ctx0)
+                ):
+                    already_specialized = True
+            except Exception:
+                already_specialized = False
+        if already_specialized:
+            intent = BACKING_INTENT_RESTORE_LAST
+        else:
+            open_backing_for_creative_source(session, st_like=st_like)
+            try:
+                from backing_context import sync_live_keys_from_backing_context
+
+                sync_live_keys_from_backing_context(session, st_like=st_like)
+            except ImportError:
+                pass
+            # Handoff is one-shot. open_backing_from_creative re-marks specialized /
+            # from_creative; leave restore_last so the next Backing visit reseals
+            # the same session instead of rebuilding.
+            set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+            session.pop(BACKING_ENTRY_CLASS_KEY, None)
+            session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+            return
     if intent == BACKING_INTENT_RESTORE_LAST:
         selected_pick_snapshot = (
             _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)

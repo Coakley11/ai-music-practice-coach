@@ -1251,12 +1251,21 @@ def handle_user_mission_target_selection(
     session["harmony_map_section"] = sec
     session["II_SELECTED_CHORD"] = sym
     session["II_SELECTED_SECTION"] = sec
+    concert_pk = str(session.get("concert_key") or session.get("display_key") or "").strip()
+    chart_pk = concert_pk
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        if concert_pk:
+            chart_pk = str(musician_facing_chart_key(session, concert_pk) or concert_pk).strip() or concert_pk
+    except ImportError:
+        chart_pk = str(session.get("display_key") or concert_pk).strip() or concert_pk
     session["_mission_chord_click_authority"] = {
         "chord": sym,
         "section": sec,
         "chord_index": gidx,
         "run_seq": _run_seq(session),
-        "practice_key": str(session.get("concert_key") or session.get("display_key") or "").strip(),
+        "practice_key": chart_pk or concert_pk,
         "mission_id": str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip(),
         "session_id": str(
             session.get("improv_mission_new_nonce")

@@ -27,6 +27,10 @@ OWNER_JAM_GENERATOR = "jam_generator"
 OWNER_MISSION = "mission"
 
 BACKING_PK_CONTROL_OWNER_KEY = "_backing_pk_control_owner"
+STYLE_JAM_STICKY_SOURCE = "creative::entry_style_jam"
+# Style Jam widgets remount to these Streamlit defaults. They are not user intent
+# when a live F / sticky F / creative-session F is already sealed for this visit.
+STYLE_JAM_REMOUNT_DEFAULTS = frozenset({"", "G", "Eb", "G major", "Eb major"})
 
 
 def _ctx_concert_if_owner(session: dict[str, Any], owner: str) -> str:
@@ -123,6 +127,70 @@ def backing_practice_key_widget_id(session: dict[str, Any]) -> str:
     return WIDGET_BY_OWNER[resolve_backing_pk_control_owner(session)]
 
 
+def _token_is_style_jam_remount(token: str) -> bool:
+    return str(token or "").strip() in STYLE_JAM_REMOUNT_DEFAULTS
+
+
+def _catalog_concert_key_token(session: dict[str, Any]) -> str:
+    """Catalog song Practice Key — not a Style Jam authority."""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+        if pick and not pick.startswith("creative::") and not pick.startswith("custom::"):
+            tok = str(get_practice_concert_key(session, pick) or "").strip()
+            if tok:
+                return tok
+    except ImportError:
+        pass
+    cs = session.get("catalog_session")
+    if isinstance(cs, dict):
+        tok = str(cs.get("display_key") or "").strip()
+        if tok:
+            return tok
+    return ""
+
+
+def style_jam_authoritative_concert_key(session: dict[str, Any]) -> str:
+    """Live Style Jam concert key. Leftover Generator Eb / generate-default G lose.
+
+    Live walker split: banner/card F, ``improv_style_key`` F, sticky F, while
+    ``backing_context`` / artifact snapshot stay G and ``improv_jam_key`` is Eb.
+    Do not heal later from G — this token is the first authority.
+    """
+    live = str(session.get("improv_style_key") or "").strip()
+    widget = str(session.get(WIDGET_STYLE_JAM) or "").strip()
+    sticky = ""
+    pks = session.get("practice_key_by_source")
+    if isinstance(pks, dict):
+        sticky = str(pks.get(STYLE_JAM_STICKY_SOURCE) or "").strip()
+    creative = ""
+    cs = session.get("creative_session")
+    if isinstance(cs, dict):
+        creative = str(cs.get("concert_key") or cs.get("display_key") or "").strip()
+    ctx_tok = _ctx_concert_if_owner(session, OWNER_STYLE_JAM)
+    pending = str(session.get("_pending_display_key") or "").strip()
+    catalog = _catalog_concert_key_token(session)
+
+    def _usable(tok: str) -> bool:
+        if not tok or _token_is_style_jam_remount(tok):
+            return False
+        # Songs seed Cm must not steal Style Jam F through the jam sticky map.
+        if catalog and tok == catalog:
+            others = {live, widget, sticky, creative, pending, ctx_tok}
+            if any(
+                other and other != catalog and not _token_is_style_jam_remount(other)
+                for other in others
+            ):
+                return False
+        return True
+
+    for tok in (live, pending, widget, sticky, creative, ctx_tok):
+        if _usable(tok):
+            return tok
+    return live or pending or widget or sticky or creative or ctx_tok
+
+
 def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") -> str:
     """Authoritative concert Practice Key for one Backing owner."""
     kind = str(owner or resolve_backing_pk_control_owner(session) or "").strip()
@@ -131,10 +199,7 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
         if tok:
             return tok
     if kind == OWNER_STYLE_JAM:
-        tok = str(session.get("improv_style_key") or "").strip()
-        ctx_tok = _ctx_concert_if_owner(session, kind)
-        if (not tok or tok in {"G", "Eb", "G major", "Eb major"}) and ctx_tok:
-            return ctx_tok
+        tok = style_jam_authoritative_concert_key(session)
         if tok:
             return tok
     if kind == OWNER_JAM_GENERATOR:
@@ -222,17 +287,35 @@ def seed_backing_practice_key_widget(
         if live_widget and live_widget not in options:
             live_widget = ""
     want = canonical
-    remount_defaults = {"G", "Eb", "G major", "Eb major"}
+    remount_defaults = set(STYLE_JAM_REMOUNT_DEFAULTS)
     if owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if canonical and (not live_widget or live_widget in remount_defaults) and live_widget != canonical:
             want = canonical
             live_widget = canonical
+            # Streamlit ignores later assignment once this widget has remounted
+            # to Eb/G. Drop the remounted value before the selectbox instantiates.
+            session.pop(widget, None)
+        if owner == OWNER_STYLE_JAM:
+            session.pop(WIDGET_JAM_GENERATOR, None)
+            leftover_jam = str(session.get("improv_jam_key") or "").strip()
+            if (
+                leftover_jam in remount_defaults
+                and canonical
+                and leftover_jam != canonical
+            ):
+                # Streamlit keeps displaying leftover Generator Eb even after
+                # session_state already says F. Pop so the selectbox remounts.
+                session.pop(widget, None)
+                live_widget = canonical
+                want = canonical
     if switched or not live_widget:
         want = canonical or live_widget
     elif live_widget and canonical and live_widget != canonical:
         # Widget is this owner's stored value; canonical wins after cycle/commit.
         commit = str(session.get("_pk_user_commit_token") or "").strip()
-        if commit == canonical:
+        if owner == OWNER_STYLE_JAM and live_widget in remount_defaults:
+            want = canonical
+        elif commit == canonical:
             want = canonical
         else:
             want = live_widget
@@ -242,6 +325,8 @@ def seed_backing_practice_key_widget(
         session[widget] = want
         session["display_key"] = want
         session["concert_key"] = want
+        if owner == OWNER_STYLE_JAM:
+            session["_pending_display_key"] = want
         # Do not overwrite a cycle/commit pending token. The selectbox applies it next.
     return want
 

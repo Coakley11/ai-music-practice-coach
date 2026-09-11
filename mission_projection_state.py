@@ -133,8 +133,13 @@ def resolve_mission_projection_state(
                 except ImportError:
                     snap = None
                 snap_ch = str((snap or {}).get("concert_chord") or "").strip()
+                click_ch = ""
+                click = session.get("_mission_chord_click_authority")
+                if isinstance(click, dict):
+                    click_ch = str(click.get("chord") or "").strip()
                 keep_identity = bool(
-                    snap_ch and normalize_chord_for_theory(snap_ch) == selected_n
+                    (snap_ch and normalize_chord_for_theory(snap_ch) == selected_n)
+                    or (click_ch and normalize_chord_for_theory(click_ch) == selected_n)
                 )
                 if concert_syms and selected_n not in concert_syms and not keep_identity:
                     # Written/stale D#m must not replace a validated snapshot chord
