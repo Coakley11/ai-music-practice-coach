@@ -71,7 +71,14 @@ def evaluate_backing_mixed_mission_catalog_context(session: dict[str, Any]) -> M
     except ImportError:
         pass
 
-    mission_active = ptr_owner == "mission_jam" or _mission_example_active(session)
+    # Explicit Songs-hub catalog/custom ownership is a leave from Mission jam.
+    # A leftover Mission example must not keep blocking Catalog/Custom Backing.
+    if ptr_owner in {"regular_catalog_backing", "regular_custom_backing"}:
+        return MixedBackingContextResult(blocked=False)
+
+    mission_active = ptr_owner == "mission_jam" or (
+        not ptr_owner and _mission_example_active(session)
+    )
     if not mission_active:
         return MixedBackingContextResult(blocked=False)
 

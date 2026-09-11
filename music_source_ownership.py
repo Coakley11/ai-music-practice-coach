@@ -439,6 +439,67 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
         pass
 
 
+def _release_stale_mission_backing_claims(session: dict[str, Any]) -> None:
+    """Drop Mission Backing one-shots so Songs hub catalog/custom owns Backing.
+
+    Leaves Mission selection / example material intact for Creative → Missions return;
+    only clears transport that would keep ``mission_jam`` mixed with catalog context.
+    """
+    session.pop("improv_mission_backing_handoff", None)
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        pending = None
+        try:
+            from music_workflow_pending_backing_handoff import peek_pending_backing_workflow_handoff
+
+            pending = peek_pending_backing_workflow_handoff(session)
+        except Exception:
+            pending = session.get("_pending_backing_workflow_handoff")
+        if isinstance(pending, dict) and str(pending.get("backing_source") or "").strip() == "mission":
+            clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_pending_backing_workflow_handoff", None)
+
+
+def _activate_songs_hub_backing_workflow(
+    session: dict[str, Any],
+    *,
+    owner: str,
+    activation_source: str,
+) -> None:
+    """Point active workflow at Songs catalog/custom without re-projecting a blob.
+
+    Full ``activate_workflow_simple`` would hydrate a stale workflow blob onto the
+    session and undo the catalog/custom rebuild we just applied. The mixed-context
+    guard only needs the pointer owner to leave ``mission_jam``.
+    """
+    _release_stale_mission_backing_claims(session)
+    try:
+        from music_workflow_state_store import (
+            ActiveWorkflowPointer,
+            get_active_workflow_pointer,
+            set_active_workflow_pointer,
+        )
+
+        prev = get_active_workflow_pointer(session)
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        session_id = pick or str(getattr(prev, "workflow_session_id", "") or "").strip() or owner
+        revision = int(getattr(prev, "context_revision", 0) or 0) + 1
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(
+                workflow_owner=owner,
+                workflow_session_id=session_id,
+                context_revision=revision,
+            ),
+            source=activation_source,
+        )
+        session["_backing_launch_workflow"] = owner
+    except ImportError:
+        session["_backing_launch_workflow"] = owner
+
+
 def _release_creative_transport_authority(session: dict[str, Any]) -> None:
     """Clear Creative/Jam transport keys that can block catalog/custom key restore."""
     try:
@@ -859,6 +920,11 @@ def rebuild_catalog_backing_from_canonical_pick(
     )
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
+    _activate_songs_hub_backing_workflow(
+        session,
+        owner="regular_catalog_backing",
+        activation_source="rebuild_catalog_backing_from_canonical_pick",
+    )
     _write_catalog_bpm_diagnostics(session, pick_key=pick, selected=selected, ctx_bpm=int(ctx.bpm or 0))
     _write_catalog_rebuild_trace(
         session,

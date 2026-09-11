@@ -13,8 +13,17 @@ _LAST_ACTIVE_PICK_KEY = "_last_active_pick_key_for_reset"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"
 SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
-SONG_PICKER_SOURCE_CUSTOM = "Use Custom Progression / Create Your Own Song"
 SONG_PICKER_SOURCE_COMPOSITION = "Composition"
+
+
+def song_picker_custom_option_label() -> str:
+    """Radio option text for Custom Progression (must match widget value exactly)."""
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        return f"{FEATURE_ICONS.get('custom', '✍️')} Custom Progression"
+    except ImportError:
+        return "✍️ Custom Progression"
 
 
 def song_picker_composition_option_label() -> str:
@@ -27,9 +36,27 @@ def song_picker_composition_option_label() -> str:
         return "🪶 Composition"
 
 
+# Canonical Custom radio value — always via FEATURE_ICONS['custom'], never a one-off glyph.
+SONG_PICKER_SOURCE_CUSTOM = song_picker_custom_option_label()
+
+
 def picker_choice_is_composition(choice: str) -> bool:
     text = str(choice or "").strip()
     return text == SONG_PICKER_SOURCE_COMPOSITION or "Composition" in text
+
+
+def picker_choice_is_custom(choice: str) -> bool:
+    """True for live or legacy Custom Progression radio labels."""
+    text = str(choice or "").strip()
+    if not text or picker_choice_is_composition(text):
+        return False
+    if text == SONG_PICKER_SOURCE_CUSTOM or text == song_picker_custom_option_label():
+        return True
+    if text.startswith("Use Custom"):
+        return True
+    if text == "Custom Progression" or text.endswith(" Custom Progression"):
+        return True
+    return False
 
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
@@ -268,9 +295,7 @@ def picker_custom_progression_mode(session_state: dict[str, Any]) -> bool:
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if "Composition" in choice:
-        return False
-    return choice == SONG_PICKER_SOURCE_CUSTOM or choice.startswith("Use Custom")
+    return picker_choice_is_custom(choice)
 
 
 def picker_composition_mode(session_state: dict[str, Any]) -> bool:
@@ -384,9 +409,7 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     # Catalog/Custom click (authority failed_composition_to_custom / verify switch).
     if not choice_live:
         return False
-    live_custom = choice_live == SONG_PICKER_SOURCE_CUSTOM or choice_live.startswith(
-        "Use Custom"
-    )
+    live_custom = picker_choice_is_custom(choice_live)
     live_composition = picker_choice_is_composition(choice_live)
     live_catalog = choice_live == SONG_PICKER_SOURCE_CATALOG or choice_live.startswith(
         "Song Selection"
@@ -883,7 +906,7 @@ def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
         return False
     if picker_composition_mode(session_state):
         return False
-    if choice.startswith("Use Custom"):
+    if picker_choice_is_custom(choice):
         return True
     # Live Catalog radio already handled; never show Custom hub from a stale pick
     # while the user has stamped Catalog.
@@ -903,7 +926,7 @@ def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
         choice.startswith("Song Selection") and "Composition" not in choice
     ):
         return False
-    if picker_custom_progression_mode(session_state) or choice.startswith("Use Custom"):
+    if picker_custom_progression_mode(session_state) or picker_choice_is_custom(choice):
         return False
     if explicit_music_source_choice(session_state) == SOURCE_CATALOG:
         return False
@@ -1470,7 +1493,7 @@ def apply_pending_catalog_from_picker_before_widgets(
     choice = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     # Catalog-bounce mid Custom→Composition can leave this flag set. Never let it
     # reclaim after the live radio (or explicit stamp) already left Catalog.
-    if choice.startswith("Use Custom") or picker_choice_is_composition(choice):
+    if picker_choice_is_custom(choice) or picker_choice_is_composition(choice):
         return False
     if not choice:
         explicit = explicit_music_source_choice(session)
@@ -1522,9 +1545,7 @@ def ensure_composition_owns_active_song(
         ):
             session["_composition_ensure_skipped_live_catalog"] = True
             return None
-        if choice_live == SONG_PICKER_SOURCE_CUSTOM or choice_live.startswith(
-            "Use Custom"
-        ):
+        if picker_choice_is_custom(choice_live):
             session["_composition_ensure_skipped_live_custom"] = True
             return None
     else:
@@ -1657,7 +1678,7 @@ def on_song_picker_source_change(
             st.session_state.pop("_composition_radio_ensure_error", None)
         st.rerun()
         return
-    if choice.startswith("Use Custom"):
+    if picker_choice_is_custom(choice):
         # Intentional leave Composition — drop leftover/in-flight hub Backing
         # one-shots before commit so mid-run preserve cannot keep force-open.
         st.session_state.pop("_composition_hub_backing_clicked", None)
@@ -1769,7 +1790,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
         and choice_live.startswith("Song Selection")
         and "Composition" not in choice_live
     )
-    live_custom_radio = choice_live.startswith("Use Custom")
+    live_custom_radio = picker_choice_is_custom(choice_live)
     live_composition_radio = picker_choice_is_composition(choice_live)
 
     # Explicit Composition/Custom stamps outrank a stale catalog radio restored
@@ -1844,7 +1865,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
     if explicit == SOURCE_CATALOG or user_catalog:
         choice_now = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
         # Live widget outranks a stale catalog stamp (USER_CATALOG blocks mode helpers).
-        if picker_choice_is_composition(choice_now) or choice_now.startswith("Use Custom"):
+        if picker_choice_is_composition(choice_now) or picker_choice_is_custom(choice_now):
             session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
             return reconcile_music_picker_source_widget(session_state)
         # Live Composition/Custom radio outranks a stale catalog stamp from disk
@@ -1868,7 +1889,7 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
             return True
 
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if choice.startswith("Use Custom") and not is_custom_progression(session_state):
+    if picker_choice_is_custom(choice) and not is_custom_progression(session_state):
         commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
         set_custom_source(session_state)
         _assign_song_picker_source_widget(session_state, SONG_PICKER_SOURCE_CUSTOM)

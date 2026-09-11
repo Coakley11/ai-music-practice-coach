@@ -8557,13 +8557,13 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         music_picker_shows_composition_hub,
         music_picker_shows_custom_hub,
         song_picker_composition_option_label,
+        song_picker_custom_option_label,
         SONG_PICKER_SOURCE_CATALOG,
-        SONG_PICKER_SOURCE_CUSTOM,
     )
 
     options = [
         SONG_PICKER_SOURCE_CATALOG,
-        SONG_PICKER_SOURCE_CUSTOM,
+        song_picker_custom_option_label(),
         song_picker_composition_option_label(),
     ]
 
@@ -9306,9 +9306,9 @@ def _render_catalog_song_picker_block(
             on_song_picker_source_change,
             reconcile_music_picker_source_widget,
             song_picker_composition_option_label,
+            song_picker_custom_option_label,
             sync_song_picker_source_widget,
             SONG_PICKER_SOURCE_CATALOG,
-            SONG_PICKER_SOURCE_CUSTOM,
         )
 
         ensure_composition_library_hydrated(st.session_state)
@@ -9316,7 +9316,7 @@ def _render_catalog_song_picker_block(
 
         _picker_source_options = [
             SONG_PICKER_SOURCE_CATALOG,
-            SONG_PICKER_SOURCE_CUSTOM,
+            song_picker_custom_option_label(),
             song_picker_composition_option_label(),
         ]
 

@@ -2987,6 +2987,16 @@ def restore_custom_song_backing(
     set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
     try:
+        from music_source_ownership import _activate_songs_hub_backing_workflow
+
+        _activate_songs_hub_backing_workflow(
+            session,
+            owner="regular_custom_backing",
+            activation_source="restore_custom_song_backing",
+        )
+    except ImportError:
+        pass
+    try:
         from songs.key_state import BACKING_NEEDS_REGEN
 
         session[BACKING_NEEDS_REGEN] = True
