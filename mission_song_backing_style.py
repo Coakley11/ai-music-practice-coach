@@ -197,6 +197,26 @@ def sync_mission_style_from_song(session: dict[str, Any], *, force: bool = False
     if resolved.source == "explicit_user_override" and not force:
         return resolved
 
+    # Ephemeral Backing play-session / user dirty knobs own Current Style/Meter.
+    # Do not reseal song metadata over a live Advanced Settings change.
+    if not force:
+        try:
+            from backing_play_session import (
+                backing_play_session_has_override,
+                play_session_blocks_canonical_seed,
+            )
+            from backing_track_state import is_backing_user_dirty
+
+            if (
+                play_session_blocks_canonical_seed(session)
+                or is_backing_user_dirty(session)
+                or backing_play_session_has_override(session, "groove")
+                or backing_play_session_has_override(session, "meter")
+            ):
+                return resolved
+        except ImportError:
+            pass
+
     session[MISSION_JAM_STYLE_PICK_KEY] = resolved.pick_key
     if resolved.groove:
         session["improv_groove"] = resolved.groove

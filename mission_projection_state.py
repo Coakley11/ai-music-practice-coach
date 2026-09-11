@@ -1,0 +1,287 @@
+"""Single Missions projection resolver: concert vs chart vs selected chord vs example."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+II_SELECTED_CHORD = "ii_selected_chord"
+II_SELECTED_SECTION = "ii_selected_section"
+II_SELECTED_CHORD_INDEX = "ii_selected_chord_index"
+
+
+@dataclass(frozen=True)
+class MissionProjectionState:
+    """Authoritative Missions key/chord snapshot for one render or Generate click."""
+
+    concert_key: str
+    chart_key: str
+    concert_chord: str
+    display_chord: str
+    section_label: str
+    chord_index: int
+
+
+def concert_and_chart_keys(session: dict[str, Any], *, fallback: str = "C") -> tuple[str, str]:
+    concert = str(fallback or "C").strip() or "C"
+    try:
+        from improvisation_intelligence_ui import _authoritative_practice_chart_key
+
+        concert = _authoritative_practice_chart_key(session, concert)
+    except ImportError:
+        concert = str(session.get("display_key") or session.get("concert_key") or concert).strip() or concert
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        chart = musician_facing_chart_key(session, concert)
+    except ImportError:
+        chart = concert
+    return concert, str(chart or concert).strip() or concert
+
+
+def display_chord_from_concert(concert_chord: str, *, concert_key: str, chart_key: str) -> str:
+    src = str(concert_chord or "").strip()
+    if not src:
+        return ""
+    concert = str(concert_key or "").strip()
+    chart = str(chart_key or "").strip()
+    if not concert or not chart or concert == chart:
+        return src
+    try:
+        from effective_practice_context import musician_facing_chord
+
+        return musician_facing_chord(src, concert_key=concert, chart_key=chart)
+    except ImportError:
+        return src
+
+
+def concert_chord_at_index(
+    section_map: list[tuple[str, list[str]]],
+    chord_index: int,
+) -> tuple[str, str]:
+    """Return (section, concert_chord) for a sticky global index."""
+    try:
+        from improvisation_motif import flatten_section_map, section_and_chord_at_global_index
+
+        flat = flatten_section_map(section_map)
+        if not flat:
+            return "", ""
+        idx = max(0, min(int(chord_index), len(flat) - 1))
+        sec, ch = section_and_chord_at_global_index(section_map, idx)
+        return str(sec or "").strip(), str(ch or "").strip()
+    except Exception:
+        return "", ""
+
+
+def resolve_mission_projection_state(
+    session: dict[str, Any],
+    *,
+    section_map: list[tuple[str, list[str]]] | None,
+    fallback_key: str = "C",
+) -> MissionProjectionState:
+    """Index-sticky concert chord, then one Shape/Written projection for display."""
+    concert_key, chart_key = concert_and_chart_keys(session, fallback=fallback_key)
+    try:
+        idx = int(session.get(II_SELECTED_CHORD_INDEX, 0) or 0)
+    except (TypeError, ValueError):
+        idx = 0
+    section_label = str(session.get(II_SELECTED_SECTION) or "").strip()
+    concert_chord = str(session.get(II_SELECTED_CHORD) or "").strip()
+    if section_map:
+        try:
+            from creative_chord_selection_authority import (
+                global_chord_index_for_section_chord,
+                resolve_authoritative_chord_selection,
+                write_authoritative_chord_selection,
+            )
+
+            concert_chord, section_label, idx = resolve_authoritative_chord_selection(
+                session, section_map
+            )
+        except ImportError:
+            global_chord_index_for_section_chord = None  # type: ignore[assignment]
+            write_authoritative_chord_selection = None  # type: ignore[assignment]
+        # Align sticky index to the authoritative SYMBOL. Never replace a committed
+        # click symbol (Bb) with a different chord sitting at a stale index (G).
+        if concert_chord and global_chord_index_for_section_chord is not None:
+            mapped = global_chord_index_for_section_chord(
+                section_map, section_label, concert_chord
+            )
+            if mapped is not None:
+                idx = int(mapped)
+        at_sec, at_ch = concert_chord_at_index(section_map, idx)
+        if not concert_chord and at_ch:
+            concert_chord = at_ch
+            section_label = at_sec or section_label
+        elif concert_chord and at_ch:
+            try:
+                from music_theory import normalize_chord_for_theory
+
+                from improvisation_motif import flatten_section_map
+
+                concert_syms = {
+                    normalize_chord_for_theory(c)
+                    for c in flatten_section_map(section_map)
+                    if str(c).strip()
+                }
+                selected_n = normalize_chord_for_theory(concert_chord)
+                snap = None
+                try:
+                    from creative_chord_selection_authority import read_mission_chord_snapshot
+
+                    snap = read_mission_chord_snapshot(session)
+                except ImportError:
+                    snap = None
+                snap_ch = str((snap or {}).get("concert_chord") or "").strip()
+                click_ch = ""
+                click = session.get("_mission_chord_click_authority")
+                if isinstance(click, dict):
+                    click_ch = str(click.get("chord") or "").strip()
+                keep_identity = bool(
+                    (snap_ch and normalize_chord_for_theory(snap_ch) == selected_n)
+                    or (click_ch and normalize_chord_for_theory(click_ch) == selected_n)
+                )
+                if concert_syms and selected_n not in concert_syms and not keep_identity:
+                    # Written/stale D#m must not replace a validated snapshot chord
+                    # (Dm) with a different map chord at this index (Fm).
+                    concert_chord = at_ch
+                    section_label = at_sec or section_label
+            except Exception:
+                pass
+        if concert_chord and write_authoritative_chord_selection is not None:
+            try:
+                write_authoritative_chord_selection(
+                    session,
+                    section_map,
+                    chord_symbol=concert_chord,
+                    section_label=section_label,
+                    chord_index=idx,
+                )
+            except Exception:
+                session[II_SELECTED_CHORD] = concert_chord
+                session[II_SELECTED_SECTION] = section_label
+                session[II_SELECTED_CHORD_INDEX] = int(idx)
+        elif concert_chord:
+            session[II_SELECTED_CHORD] = concert_chord
+            session[II_SELECTED_SECTION] = section_label
+            session[II_SELECTED_CHORD_INDEX] = int(idx)
+    display_chord = display_chord_from_concert(
+        concert_chord,
+        concert_key=concert_key,
+        chart_key=chart_key,
+    )
+    return MissionProjectionState(
+        concert_key=concert_key,
+        chart_key=chart_key,
+        concert_chord=concert_chord,
+        display_chord=display_chord,
+        section_label=section_label or "Progression",
+        chord_index=int(idx),
+    )
+
+
+def example_needs_chart_reproject(
+    example: Any,
+    state: MissionProjectionState,
+) -> bool:
+    """True when stored example heading/notes/insight still belong to a prior key/chord."""
+    if example is None:
+        return False
+    motif = example.motif if isinstance(getattr(example, "motif", None), dict) else {}
+    projected = str(motif.get("_projected_display_key") or "").strip()
+    motif_chord = str(motif.get("chord") or "").strip()
+    concert_stored = str(motif.get("_concert_chord") or getattr(example, "chord", "") or "").strip()
+    insight = getattr(example, "insight", None)
+    insight_chord = str(getattr(insight, "chord", "") or "").strip()
+    abc = str(getattr(example, "abc", "") or "")
+    display = str(state.display_chord or "").strip()
+    chart = str(state.chart_key or "").strip()
+    concert = str(state.concert_key or "").strip()
+    if projected != chart:
+        return True
+    if str(getattr(example, "concert_key", "") or "").strip() != concert:
+        return True
+    if display and motif_chord and motif_chord != display:
+        return True
+    if concert_stored and state.concert_chord and concert_stored != state.concert_chord:
+        return True
+    if display and insight_chord and insight_chord != display:
+        return True
+    if display and abc and f"— {display}" not in abc and display not in abc.split("K:", 1)[0]:
+        return True
+    tones = list(getattr(insight, "chord_tones", None) or [])
+    if display and tones:
+        from music_theory import chord_root_for_theory, normalize_root
+
+        root = normalize_root(chord_root_for_theory(display) or display)
+        tone0 = normalize_root(str(tones[0] or ""))
+        if root and tone0 and root != tone0:
+            return True
+    return False
+
+
+def project_complete_mission_example(
+    session: dict[str, Any],
+    example: Any,
+    *,
+    instrument: str = "",
+    bpm: int = 100,
+    section_map: list[tuple[str, list[str]]] | None = None,
+) -> Any:
+    """Canonical concert Mission example + current chart projection → full display example.
+
+    Authority stays on concert chord/notes/mission identity. Player-facing fields
+    (heading, tones, scales, insight, ABC/TAB) are rebuilt from the current Shape/Written chart.
+    """
+    if example is None:
+        return None
+    state = resolve_mission_projection_state(
+        session,
+        section_map=section_map,
+        fallback_key=str(getattr(example, "concert_key", "") or session.get("display_key") or "C"),
+    )
+    inst = str(instrument or session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        tempo = int(bpm or session.get("backing_track_bpm") or 100)
+    except (TypeError, ValueError):
+        tempo = 100
+    # Preserve canonical concert identity on the motif bag.
+    motif = example.motif if isinstance(getattr(example, "motif", None), dict) else {}
+    if isinstance(motif, dict):
+        motif = dict(motif)
+        if state.concert_chord and not str(motif.get("_concert_chord") or "").strip():
+            motif["_concert_chord"] = state.concert_chord
+        # Do not retag `_projected_display_key` to the NEW chart key before refresh.
+        # Refresh uses the prior tag to unproject concert notes, then projects all
+        # display fields together (chord, notes, tones, scales, ABC, TAB).
+        example.motif = motif
+    try:
+        example.display_key = state.chart_key or getattr(example, "display_key", "")
+        example.concert_key = state.concert_key or getattr(example, "concert_key", "")
+    except Exception:
+        pass
+    try:
+        from improvisation_missions import mission_example_for_display
+
+        return mission_example_for_display(
+            example,
+            instrument=inst,
+            bpm=tempo,
+            song_concert_key=state.concert_key,
+            session_state=session,
+            authoritative_concert_key=state.concert_key,
+            authoritative_display_key=state.chart_key,
+        )
+    except Exception:
+        return example
+
+
+__all__ = [
+    "MissionProjectionState",
+    "concert_and_chart_keys",
+    "concert_chord_at_index",
+    "display_chord_from_concert",
+    "example_needs_chart_reproject",
+    "project_complete_mission_example",
+    "resolve_mission_projection_state",
+]

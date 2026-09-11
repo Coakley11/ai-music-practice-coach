@@ -291,9 +291,11 @@ def validate_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any
             def _mode(k: str) -> str:
                 return "minor" if key_is_minor(k) else "major"
 
+            live_root = normalize_root(split_chord(live_key)[0])
+            pk_root = normalize_root(envelope.current_practice_concert_tonic or split_chord(envelope.current_practice_concert_key)[0])
             if _mode(live_key) != envelope.current_practice_concert_mode:
                 violations.append(VIOLATION_SONG_PRACTICE_KEY_MISMATCH)
-            elif normalize_root(split_chord(live_key)[0]) != envelope.current_practice_concert_tonic:
+            elif live_root and pk_root and live_root != pk_root:
                 if _mode(live_key) == envelope.current_practice_concert_mode:
                     violations.append(VIOLATION_SONG_PRACTICE_KEY_MISMATCH)
         except ImportError:
@@ -305,11 +307,16 @@ def validate_mission_workflow_envelope(session: dict[str, Any]) -> dict[str, Any
 
             bk = envelope.backing_display_concert_key
             pk = envelope.current_practice_concert_key
+            bk_root = normalize_root(split_chord(bk)[0])
+            pk_root = normalize_root(split_chord(pk)[0])
+            sel_root = normalize_root(split_chord(sel)[0]) if sel else ""
             if key_is_minor(pk) and not key_is_minor(bk):
-                if normalize_root(split_chord(bk)[0]) != envelope.current_practice_concert_tonic:
+                if bk_root != pk_root:
                     violations.append(VIOLATION_WORKFLOW_KEY_OWNER_MISMATCH)
-            chord_root_as_key = sel and bk.replace("m", "") == sel.replace("maj", "").replace("m", "")
-            if sel and normalize_root(split_chord(bk)[0]) == normalize_root(split_chord(sel)[0]) and key_is_minor(pk):
+            # Backing concert key collapsed to the selected chord instead of the
+            # song Practice Key. Matching tonic + selected chord after a successful
+            # Mission restore is consistent, not a pending handoff.
+            if sel_root and bk_root == sel_root and pk_root and pk_root != sel_root:
                 violations.append(VIOLATION_WORKFLOW_KEY_OWNER_MISMATCH)
         except ImportError:
             pass
@@ -495,7 +502,25 @@ def apply_atomic_mission_chord_selection(
             try:
                 import streamlit as st
 
-                st.warning(result.error_message or "Mission chord could not be saved. Reload the page.")
+                raw = str(result.error_message or "").strip()
+                low = raw.lower()
+                # Internal control tokens / deferred-activation markers — never product UI.
+                if (
+                    "requires_pre_widget_activation" in low
+                    or "active owner mismatch" in low
+                    or str(result.error_code or "")
+                    in {
+                        "OWNER_MISMATCH",
+                        "REQUIRES_PRE_WIDGET_ACTIVATION",
+                        "PROJECTION_DEFERRED",
+                        "CHORD_OWNER_ACTIVATE_DEFERRED",
+                    }
+                ):
+                    return
+                if raw:
+                    st.warning(raw)
+                else:
+                    st.warning("Mission chord could not be saved. Reload the page.")
             except ImportError:
                 pass
         return

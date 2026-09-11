@@ -22,11 +22,69 @@ from songs.music_source import (
 
 
 class TestCatalogCustomPickerSwitch(unittest.TestCase):
-    def test_reconcile_queues_catalog_switch_when_radio_catalog_while_custom_active(self) -> None:
+    def test_stale_catalog_radio_does_not_auto_queue_pending_without_user_flip(self) -> None:
+        """Songs page must not treat refresh stale radio as Custom→Catalog flip (E5)."""
+        from songs.music_source import LAST_RECONCILED_SONG_PICKER_SOURCE_KEY
+
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::trial",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+            # No LAST_RECONCILED Custom — this is restore/refresh, not a user flip.
+            LAST_RECONCILED_SONG_PICKER_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+        }
+        reconcile_music_picker_source_widget(session)
+        self.assertFalse(session.get(PENDING_CATALOG_FROM_PICKER_KEY))
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(session.get("active_music_source"), SOURCE_CUSTOM)
+
+    def test_user_catalog_flag_blocks_lagging_custom_radio_reclaim(self) -> None:
+        """After hub catalog switch, lagging Custom radio must not undo Country Roads (E5 reverse)."""
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            reconcile_picker_music_source,
+        )
+
+        session = {
+            "studio_page": "picker",
+            "active_music_source": SOURCE_CATALOG,
+            "active_catalog_pick_key": "Country\x1fTake Me Home, Country Roads — John Denver",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+        }
+        reconcile_picker_music_source(session)
+        self.assertTrue(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        self.assertEqual(session.get("active_music_source"), SOURCE_CATALOG)
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CATALOG)
+        self.assertFalse(str(session.get("active_catalog_pick_key") or "").startswith("custom::"))
+
+    def test_reconcile_queues_catalog_switch_on_user_flip_custom_to_catalog(self) -> None:
+        """Explicit PENDING/USER_CATALOG keeps Catalog; lagging radio alone must not reclaim."""
+        from songs.music_source import (
+            LAST_RECONCILED_SONG_PICKER_SOURCE_KEY,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+        )
+
+        # Lag after custom activate: heal to Custom, do not queue PENDING.
         session = {
             "active_music_source": SOURCE_CUSTOM,
             "active_catalog_pick_key": "custom::my-song",
             "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+            LAST_RECONCILED_SONG_PICKER_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+        }
+        reconcile_music_picker_source_widget(session)
+        self.assertFalse(session.get(PENDING_CATALOG_FROM_PICKER_KEY))
+        self.assertEqual(session.get("song_picker_active_source"), SONG_PICKER_SOURCE_CUSTOM)
+
+        # Deliberate flip already queued.
+        session = {
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::my-song",
+            "song_picker_active_source": SONG_PICKER_SOURCE_CATALOG,
+            LAST_RECONCILED_SONG_PICKER_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            PENDING_CATALOG_FROM_PICKER_KEY: True,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
         }
         reconcile_music_picker_source_widget(session)
         self.assertTrue(session.get(PENDING_CATALOG_FROM_PICKER_KEY))

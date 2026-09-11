@@ -1,11 +1,26 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-08-04 (Phase 2A Missions recording @ `227a55b` pending live acceptance; new P0 handoff + speed plans) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-02 (Key Cycle Practice documented as future-only; product UI deferred) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
+
+### P0 — Pass 8 Creative / Backing stabilization (uncommitted, active)
+
+**Plan:** [plans/2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md)  
+**Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) (rule: `.cursor/rules/creative-backing-persistence-contract.mdc`)
+
+Do not commit/push/`dev` until the full matrix is green. Practice Focus remains parked @ `542cf41`.
+
+- [x] Case A Catalog BPM lifecycle (frozen)
+- [x] Mission B Practice Key + first-click (frozen)
+- [x] Generated Jam key isolation (frozen)
+- [ ] Generated Jam / Style Jam source BPM + Current/slider refresh
+- [ ] Active-source-change restore epoch (Cases E1–E5): last Backing restores only while the same catalog/custom source remains active
+- [ ] Full source-transition matrix + restart confirmation
+- [ ] Refresh/reboot persistence contract P1–P9 (Creative selections, instrument/Written/Shape, Practice Key editability, Backing type+settings; Custom SBI Backing hotspot)
 
 ### P0 — Mission Take → Upload Analysis durable handoff (queued)
 
@@ -325,6 +340,8 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 
 *(After P0–P1 or in parallel)*
 
+- [ ] **Key Cycle Practice (FUTURE — do not start during Creative/Backing stabilization).** Spec only; no product UI until after acceptance. Spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Later: Catalog Backing prototype on shared transport, then other surfaces.
+- [ ] Pass 8 Cases E1–E5: last Backing restores only within the same active source epoch (catalog/custom identity change invalidates restore)
 - [ ] OpenAI hub: first real “active song coach” flow (not placeholder card)
 - [ ] Karaoke: vocal pitch/score stub → minimal MVP scoring display
 - [ ] Non-voice performance setlist (reuse karaoke queue patterns)
@@ -334,6 +351,8 @@ Back/Forward may need rebuild or re-validation after architecture changes. **Def
 ---
 
 ## Long-Term Vision
+
+- **Key Cycle Practice** — temporary half/whole-step Backing cycle without rewriting canonical Practice Key; shared transport; [plan](./plans/2026-09-02-key-cycle-practice.md). **Do not start until Creative/Backing stabilization is accepted.**
 
 - Unified musician profile across suite apps (Supabase user scoping already started)
 - **Progress-aware coaching** — session memory, struggle/improvement adaptation, performance-prep mode ([vision](./plans/2026-07-29-progress-aware-coaching-vision.md))

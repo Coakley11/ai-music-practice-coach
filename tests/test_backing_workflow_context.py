@@ -39,7 +39,7 @@ class TestBackingWorkflowContext(unittest.TestCase):
         self.assertNotIn("Jewish", str(ctx.style or ""))
         actions, _ = build_backing_nav_actions(session)
         labels = " ".join(a.label for a in actions)
-        self.assertIn("Return to Catalog Song Backing", labels)
+        self.assertIn("Return to Regular Catalog Song Backing", labels)
         self.assertIn("Return to Creative Page", labels)
 
     def test_entry_jam_defaults_full_song_scope(self) -> None:

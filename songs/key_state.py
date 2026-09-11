@@ -11,9 +11,443 @@ IDENTITY_KEY = "_display_key_song_identity"
 LAST_DISPLAY_KEY = "_last_app_display_key"
 PENDING_DISPLAY_KEY = "_pending_display_key"
 DISPLAY_KEY_OWNER_IDENTITY_KEY = "_display_key_owner_identity"
+DISPLAY_KEY_WIDGET_OWNER_ID_KEY = "_display_key_widget_owner_id"
+DISPLAY_KEY_OWNER_TRANSITION_KEY = "_display_key_owner_transition"
 LAST_DISPLAY_KEY_SAVE_OK_KEY = "_last_display_key_save_ok"
 CPL_JUMP_HOME_TARGET = "_cpl_jump_home_target"
 BACKING_NEEDS_REGEN = "_backing_needs_regen"
+
+
+def _jam_session_id_for_widget_owner(session: dict[str, Any]) -> str:
+    jam = session.get("improv_jam_session")
+    if isinstance(jam, dict):
+        jam_id = str(jam.get("id") or "").strip()
+        if jam_id:
+            return jam_id
+    return str(session.get("_jam_session_generator_session_id") or "").strip()
+
+
+def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
+    """Backing-owner identity for the live `display_key` widget.
+
+    Song identity is not enough: Global Active can stay Say while Backing owner
+    switches entry_jam → regular_song. A leftover Jam Eb must not look like a
+    Catalog user edit.
+    """
+    ctx = None
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        ctx = None
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    page = str(session.get("studio_page") or "").strip().lower()
+
+    if src == "entry_jam":
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if ctx is not None:
+            entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        jam_id = ""
+        if ctx is not None:
+            jam_id = str(getattr(ctx, "jam_id", "") or "").strip()
+        if "Style Jam" not in entry:
+            jam_id = jam_id or _jam_session_id_for_widget_owner(session)
+        if "Style Jam" in entry:
+            return f"style_jam::{jam_id or 'jam'}"
+        return f"entry_jam::{jam_id or 'jam'}"
+    if src == "mission" and page not in {"picker", "practice", "songs"}:
+        mid = ""
+        if ctx is not None:
+            mid = str(
+                getattr(ctx, "mission_id", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if not mid:
+            mid = str(
+                session.get("improv_active_mission") or session.get("improv_mission_pick") or ""
+            ).strip()
+        return f"mission::{mid or 'mission'}"
+    if src == "song_improv":
+        pick = ""
+        if ctx is not None:
+            pick = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if not pick:
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return f"song_improv::{pick or 'sbi'}"
+    if src == "custom_progression":
+        pick = ""
+        if ctx is not None:
+            pick = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+        if not pick:
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return f"custom::{pick or 'custom'}"
+    if src == "regular_song":
+        pick = ""
+        if ctx is not None:
+            pick = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if not pick:
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return f"catalog::{pick}" if pick else "catalog"
+
+    if page == "creative":
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if "Style Jam" in entry:
+            jam_id = _jam_session_id_for_widget_owner(session)
+            return f"style_jam::{jam_id or 'jam'}"
+        if "Jam Session" in entry:
+            jam_id = _jam_session_id_for_widget_owner(session)
+            return f"entry_jam::{jam_id or 'jam'}"
+        if "Mission" in entry:
+            mid = str(
+                session.get("improv_active_mission") or session.get("improv_mission_pick") or ""
+            ).strip()
+            return f"mission::{mid or 'mission'}"
+
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick:
+        return f"catalog::{pick}"
+    return f"page::{page or 'unknown'}"
+
+
+def owner_transition_record(session: dict[str, Any]) -> dict[str, Any] | None:
+    raw = session.get(DISPLAY_KEY_OWNER_TRANSITION_KEY)
+    return raw if isinstance(raw, dict) else None
+
+
+def canonical_token_for_owner_transition(session: dict[str, Any]) -> str:
+    rec = owner_transition_record(session)
+    if not rec:
+        return ""
+    return str(rec.get("canonical") or "").strip()
+
+
+def stale_widget_token_for_owner_transition(session: dict[str, Any]) -> str:
+    rec = owner_transition_record(session)
+    if not rec:
+        return str(session.get("_specialized_practice_token_leaving") or "").strip()
+    return str(rec.get("stale") or session.get("_specialized_practice_token_leaving") or "").strip()
+
+
+def widget_value_is_stale_owner_transition(session: dict[str, Any], token: str) -> bool:
+    tok = str(token or "").strip()
+    if not tok:
+        return False
+    rec = owner_transition_record(session)
+    leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+    if rec:
+        stale = str(rec.get("stale") or "").strip()
+        canonical = str(rec.get("canonical") or "").strip()
+        if stale and tok == stale:
+            return True
+        if canonical and tok != canonical and leaving and tok == leaving:
+            return True
+        return False
+    return bool(leaving and tok == leaving)
+
+
+def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
+    """New owner's canonical Practice Key — never the leftover live widget."""
+    owner_id = resolve_display_key_widget_owner_id(session)
+    rec = owner_transition_record(session)
+    if rec and str(rec.get("to") or "").strip() == owner_id:
+        stored = str(rec.get("canonical") or "").strip()
+        if stored:
+            return stored
+    if owner_id.startswith("catalog::"):
+        pick = owner_id.split("::", 1)[1].strip()
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        saved = ""
+        if pick:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                saved = str(get_practice_concert_key(session, pick) or "").strip()
+            except ImportError:
+                saved = ""
+        if saved and leaving and saved == leaving:
+            saved = ""
+        if saved:
+            return saved
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        orig = str((sel or {}).get("key") or (sel or {}).get("original_key") or "").strip()
+        if orig and not (leaving and orig == leaving):
+            return orig
+        return ""
+    if owner_id.startswith("entry_jam::") or owner_id.startswith("style_jam::"):
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None:
+                entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        except Exception:
+            pass
+        if "Style Jam" in entry or owner_id.startswith("style_jam::"):
+            try:
+                from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                tok = str(style_jam_authoritative_concert_key(session) or "").strip()
+                if tok:
+                    return tok
+            except ImportError:
+                tok = str(session.get("improv_style_key") or "").strip()
+                if tok:
+                    return tok
+            return str(session.get("improv_style_key") or "").strip()
+        try:
+            from music_workflow_state_store import get_workflow_blob
+
+            jam_id = _jam_session_id_for_widget_owner(session)
+            blob = get_workflow_blob(session, "jam_session_generator", jam_id) if jam_id else None
+            if blob is not None:
+                tonic = str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "").strip()
+                if tonic:
+                    return tonic
+        except Exception:
+            pass
+        jam = session.get("improv_jam_session")
+        if isinstance(jam, dict):
+            jammed = str(jam.get("key") or "").strip()
+            if jammed:
+                return jammed
+        return str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
+    if owner_id.startswith("mission::"):
+        return str(session.get("improv_mission_concert_key") or "").strip()
+    if owner_id.startswith("song_improv::") or owner_id.startswith("custom::"):
+        pick = owner_id.split("::", 1)[1].strip() if "::" in owner_id else ""
+        if pick:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                saved = str(get_practice_concert_key(session, pick) or "").strip()
+                if saved:
+                    return saved
+            except ImportError:
+                pass
+        return str(session.get("display_key") or session.get("concert_key") or "").strip()
+    return str(session.get("display_key") or session.get("concert_key") or "").strip()
+
+
+def seed_display_key_for_owner_transition(
+    session: dict[str, Any],
+    token: str,
+    *,
+    st_like: Any | None = None,
+) -> None:
+    concert = str(token or "").strip()
+    if not concert:
+        return
+    target = session
+    if st_like is not None:
+        ss = getattr(st_like, "session_state", None)
+        if ss is not None:
+            target = ss
+    target["concert_key"] = concert
+    target[LAST_DISPLAY_KEY] = concert
+    if target is not session:
+        session["concert_key"] = concert
+        session[LAST_DISPLAY_KEY] = concert
+    live = str(target.get("display_key") or "").strip()
+    # Streamlit rejects even a same-value write after the sidebar widget exists.
+    if live == concert:
+        return
+    try:
+        from session_widget_safe import safe_assign_display_key
+
+        safe_assign_display_key(target, concert, widget_safe=True, st_like=st_like)
+    except ImportError:
+        target["display_key"] = concert
+
+
+def begin_display_key_owner_transition(
+    session: dict[str, Any],
+    *,
+    new_owner_id: str,
+    canonical: str,
+    stale: str = "",
+    st_like: Any | None = None,
+) -> None:
+    """Stamp an owner-switch boundary. Keep it until the widget actually shows canonical."""
+    prev = str(session.get(DISPLAY_KEY_WIDGET_OWNER_ID_KEY) or "").strip()
+    stale_tok = str(
+        stale or session.get("display_key") or session.get("concert_key") or ""
+    ).strip()
+    canonical_tok = str(canonical or "").strip()
+    new_id = str(new_owner_id or "").strip()
+    if not new_id or not canonical_tok:
+        return
+    session[DISPLAY_KEY_OWNER_TRANSITION_KEY] = {
+        "from": prev,
+        "to": new_id,
+        "canonical": canonical_tok,
+        "stale": stale_tok,
+    }
+    session[DISPLAY_KEY_WIDGET_OWNER_ID_KEY] = new_id
+    if canonical_tok != stale_tok:
+        session["_specialized_practice_token_leaving"] = stale_tok or session.get(
+            "_specialized_practice_token_leaving"
+        )
+        session["_specialized_leave_catalog_pk"] = canonical_tok
+        if new_id.startswith("catalog::"):
+            session["_specialized_leave_catalog_pick"] = new_id.split("::", 1)[1]
+    seed_display_key_for_owner_transition(session, canonical_tok, st_like=st_like)
+    try:
+        from h3_live_key_trace import emit
+
+        emit(
+            session,
+            "owner_transition_begin",
+            widget_value=canonical_tok,
+            from_owner=prev,
+            to_owner=new_id,
+            stale=stale_tok,
+            canonical=canonical_tok,
+        )
+    except Exception:
+        pass
+
+
+def note_display_key_widget_owner(session: dict[str, Any]) -> str:
+    """Bind widget-owner id to the current owner without treating it as a transition."""
+    current = resolve_display_key_widget_owner_id(session)
+    if current:
+        session[DISPLAY_KEY_WIDGET_OWNER_ID_KEY] = current
+    return current
+
+
+def clear_display_key_owner_transition(session: dict[str, Any]) -> None:
+    session.pop(DISPLAY_KEY_OWNER_TRANSITION_KEY, None)
+    session.pop("_specialized_practice_token_leaving", None)
+    session.pop("_specialized_leave_catalog_pk", None)
+    session.pop("_specialized_leave_catalog_pick", None)
+
+
+def _sticky_token_for_widget_owner(session: dict[str, Any], owner_id: str) -> str:
+    """Current owner's persisted Practice Key — never the leftover landing rec."""
+    oid = str(owner_id or "").strip()
+    if oid.startswith("mission::"):
+        return str(session.get("improv_mission_concert_key") or "").strip()
+    pick = ""
+    if "::" in oid:
+        pick = oid.split("::", 1)[1].strip()
+    if oid.startswith(("catalog::", "song_improv::", "custom::")) and pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            return ""
+    return ""
+
+
+def apply_display_key_owner_transition_if_needed(
+    session: dict[str, Any],
+    *,
+    st_like: Any | None = None,
+) -> str:
+    """If the widget belongs to a different owner, seed the NEW owner's canonical key.
+
+    Returns the canonical token when a transition is open/applied, else "".
+    """
+    current = resolve_display_key_widget_owner_id(session)
+    prev = str(session.get(DISPLAY_KEY_WIDGET_OWNER_ID_KEY) or "").strip()
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    rec = owner_transition_record(session)
+
+    if rec:
+        canonical = str(rec.get("canonical") or "").strip()
+        to_id = str(rec.get("to") or "").strip()
+        same_owner = bool(current and ((to_id and current == to_id) or prev == current))
+        # Leftover landing rec must not reseed Original over a later same-owner
+        # user Practice Key (Shape sticky Dm vs rec canonical Bm).
+        if same_owner and canonical:
+            owner_sticky = _sticky_token_for_widget_owner(session, current)
+            if owner_sticky and owner_sticky != canonical:
+                clear_display_key_owner_transition(session)
+                if live != owner_sticky:
+                    seed_display_key_for_owner_transition(
+                        session, owner_sticky, st_like=st_like
+                    )
+                return owner_sticky
+            if (
+                live
+                and live != canonical
+                and not widget_value_is_stale_owner_transition(session, live)
+            ):
+                clear_display_key_owner_transition(session)
+                return ""
+        # Mission same-owner user edit: landing rec (Bm) must not keep reseeding
+        # after improv_mission_concert_key already moved (Cm). Live Mission
+        # concert wins; leftover rec is not a new owner transition.
+        if (
+            str(current or "").startswith("mission::")
+            and prev == current
+        ):
+            mission_live = str(session.get("improv_mission_concert_key") or "").strip()
+            if mission_live and canonical and mission_live != canonical:
+                clear_display_key_owner_transition(session)
+                return ""
+        if current and to_id and current != to_id:
+            canonical = canonical_display_key_for_current_owner(session) or canonical
+            if canonical:
+                begin_display_key_owner_transition(
+                    session,
+                    new_owner_id=current,
+                    canonical=canonical,
+                    stale=live,
+                    st_like=st_like,
+                )
+            return canonical
+        if canonical:
+            seed_display_key_for_owner_transition(session, canonical, st_like=st_like)
+            if current:
+                session[DISPLAY_KEY_WIDGET_OWNER_ID_KEY] = current
+            return canonical
+        return ""
+
+    if not current:
+        return ""
+
+    if prev == current:
+        return ""
+
+    if not prev:
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        canonical = canonical_display_key_for_current_owner(session)
+        specialized = current.startswith(
+            ("entry_jam::", "style_jam::", "mission::", "song_improv::")
+        )
+        if canonical and live and live != canonical and (
+            leaving or specialized
+        ):
+            begin_display_key_owner_transition(
+                session,
+                new_owner_id=current,
+                canonical=canonical,
+                stale=live,
+                st_like=st_like,
+            )
+            return canonical
+        session[DISPLAY_KEY_WIDGET_OWNER_ID_KEY] = current
+        return ""
+
+    canonical = canonical_display_key_for_current_owner(session)
+    if not canonical:
+        session[DISPLAY_KEY_WIDGET_OWNER_ID_KEY] = current
+        return ""
+    begin_display_key_owner_transition(
+        session,
+        new_owner_id=current,
+        canonical=canonical,
+        stale=live,
+        st_like=st_like,
+    )
+    return canonical
 
 
 def resolve_restore_display_key(
@@ -71,6 +505,14 @@ def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> st
         from songs.practice_key_state import get_practice_concert_key
 
         saved = get_practice_concert_key(session, pk)
+        if saved:
+            try:
+                from generated_jam_key_context import generated_jam_practice_key_tokens
+
+                if str(saved).strip() in generated_jam_practice_key_tokens(session):
+                    saved = ""
+            except ImportError:
+                pass
         if saved:
             return saved
     except ImportError:
@@ -146,10 +588,52 @@ def sync_display_key_owner_identity(session: dict[str, Any]) -> None:
 
 
 def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
-    """Normalize widget spelling to the active song mode (Cm vs C minor, etc.)."""
+    """Normalize widget spelling; preserve explicit mode on Mission/SBI Backing.
+
+    Catalog/ordinary paths still coerce to the song's original mode (Cm → C when
+    the song is major). Mission / Song-Based Backing offer both-mode Practice Key
+    lists — coercing Cm back to C major would silently reject minor selections.
+    """
+    text = str(raw or "C").strip() or "C"
+    try:
+        from songs.practice_key_state import creative_jam_owns_practice_settings
+
+        if creative_jam_owns_practice_settings(session):
+            return text
+    except ImportError:
+        pass
+    # Creative SBI Custom: coerce with LAST_CUSTOM/Custom home mode, never Shape.
+    # Catalog selected_song (Shape Bm) would turn a major C click into Cm.
+    try:
+        from source_session_state import (
+            coerce_token_to_custom_home_mode,
+            custom_sbi_owns_sidebar_practice_key,
+        )
+
+        if custom_sbi_owns_sidebar_practice_key(session):
+            return coerce_token_to_custom_home_mode(session, text)
+    except ImportError:
+        pass
+    # Explicit specialized Backing visit: keep the mode the user picked (Cm, C#m).
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in {"mission", "song_improv"}:
+            try:
+                from music_theory import key_center_token, split_key_center
+
+                tonic, mode = split_key_center(text)
+                if mode in {"major", "minor"}:
+                    return key_center_token(tonic, mode)
+            except Exception:
+                pass
+            return text
+    except ImportError:
+        pass
     selected = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str(selected.get("key") or session.get("original_key") or "C").strip() or "C"
-    text = str(raw or "C").strip() or "C"
     return coerce_key_to_mode(text, key_mode(original))
 
 
@@ -319,6 +803,40 @@ def mark_display_key_changed(st: Any) -> None:
         pass
     widget_before = str(st.session_state.get("display_key") or "").strip()
     raw_widget = widget_before
+    mission_owns = False
+    try:
+        from creative_key_sync import mission_backing_owns_left_panel_key
+
+        mission_owns = bool(mission_backing_owns_left_panel_key(st.session_state))
+    except ImportError:
+        mission_owns = False
+    try:
+        if not mission_owns:
+            apply_display_key_owner_transition_if_needed(st.session_state, st_like=st)
+            stale_widget = widget_value_is_stale_owner_transition(st.session_state, raw_widget)
+            rebound = canonical_token_for_owner_transition(st.session_state)
+            if stale_widget and rebound:
+                seed_display_key_for_owner_transition(st.session_state, rebound, st_like=st)
+                try:
+                    from h3_live_key_trace import emit as _emit_h4
+
+                    _emit_h4(
+                        st.session_state,
+                        "callback_reject_stale_owner_widget",
+                        widget_value=raw_widget,
+                        canonical=rebound,
+                    )
+                except Exception:
+                    pass
+                return
+    except Exception:
+        pass
+    try:
+        from h3_live_key_trace import emit
+
+        emit(st.session_state, "callback_enter", widget_value=raw_widget)
+    except Exception:
+        pass
     try:
         from display_key_sidebar_persistence_trace import record_display_key_sidebar_stage
 
@@ -334,7 +852,24 @@ def mark_display_key_changed(st: Any) -> None:
     dk = normalize_sidebar_display_key(st.session_state, raw_widget)
     if dk:
         st.session_state["display_key"] = dk
-    sync_display_key_owner_identity(st.session_state)
+    jam_owns_display = False
+    try:
+        from creative_key_sync import generated_backing_owns_left_panel_key
+        from songs.practice_key_state import creative_jam_owns_practice_settings as _jam_pk
+
+        jam_owns_display = bool(
+            generated_backing_owns_left_panel_key(st.session_state)
+            or _jam_pk(st.session_state)
+        )
+    except ImportError:
+        try:
+            from songs.practice_key_state import creative_jam_owns_practice_settings as _jam_pk
+
+            jam_owns_display = bool(_jam_pk(st.session_state))
+        except ImportError:
+            jam_owns_display = False
+    if not jam_owns_display:
+        sync_display_key_owner_identity(st.session_state)
     try:
         from practice_setup_globals import record_global_control_change
 
@@ -356,17 +891,111 @@ def mark_display_key_changed(st: Any) -> None:
             )
 
             if not is_fixed_practice_key_mode(st.session_state):
-                pick = resolve_practice_source_pick(st.session_state)
-                set_practice_concert_key(
-                    st.session_state,
-                    dk,
-                    pick_key=pick,
-                )
-                if should_write_song_source_settings(st.session_state, pick):
+                jam_owns = jam_owns_display
+                if not jam_owns:
                     try:
-                        from source_session_state import sync_catalog_session
+                        from creative_key_sync import generated_backing_owns_left_panel_key
 
-                        sync_catalog_session(st.session_state)
+                        jam_owns = bool(
+                            generated_backing_owns_left_panel_key(st.session_state)
+                            or creative_jam_owns_practice_settings(st.session_state)
+                        )
+                    except ImportError:
+                        jam_owns = bool(creative_jam_owns_practice_settings(st.session_state))
+                if jam_owns:
+                    try:
+                        from songs.practice_key_state import (
+                            CREATIVE_JAM_SESSION_PICK,
+                            CREATIVE_STYLE_JAM_PICK,
+                            resolve_settings_pick_for_write,
+                        )
+
+                        jam_pick = ""
+                        try:
+                            from creative_key_sync import generated_backing_owns_left_panel_key
+
+                            if generated_backing_owns_left_panel_key(st.session_state):
+                                from backing_context import get_backing_context
+
+                                ctx_j = get_backing_context(st.session_state)
+                                entry = str(
+                                    getattr(ctx_j, "entry_mode", "")
+                                    or st.session_state.get("improv_entry_mode")
+                                    or ""
+                                ).strip()
+                                jam_pick = (
+                                    CREATIVE_STYLE_JAM_PICK
+                                    if "Style Jam" in entry
+                                    else CREATIVE_JAM_SESSION_PICK
+                                )
+                        except Exception:
+                            jam_pick = ""
+                        if not jam_pick:
+                            jam_pick = str(resolve_settings_pick_for_write(st.session_state) or "").strip()
+                        if jam_pick.startswith("creative::"):
+                            set_practice_concert_key(
+                                st.session_state,
+                                dk,
+                                pick_key=jam_pick,
+                                allow_restore_original=True,
+                            )
+                    except ImportError:
+                        pass
+                    try:
+                        from creative_key_sync import apply_specialized_jam_practice_key
+
+                        apply_specialized_jam_practice_key(st.session_state, dk)
+                        try:
+                            from h3_live_key_trace import emit
+
+                            emit(st.session_state, "callback_after_jam_mutation", widget_value=dk)
+                        except Exception:
+                            pass
+                    except ImportError:
+                        pass
+                elif mission_owns:
+                    try:
+                        from creative_key_sync import apply_specialized_mission_practice_key
+
+                        apply_specialized_mission_practice_key(st.session_state, dk)
+                    except ImportError:
+                        pass
+                else:
+                    pick = resolve_practice_source_pick(st.session_state)
+                    set_practice_concert_key(
+                        st.session_state,
+                        dk,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                    )
+                    try:
+                        import time as _time
+
+                        st.session_state["_pk_user_commit_token"] = dk
+                        st.session_state["_pk_user_commit_at"] = _time.time()
+                    except Exception:
+                        pass
+                    if should_write_song_source_settings(st.session_state, pick):
+                        try:
+                            from source_session_state import sync_catalog_session
+
+                            sync_catalog_session(st.session_state)
+                        except ImportError:
+                            pass
+                    # Heal song-practice blob immediately so the next pre-widget hydrate
+                    # cannot push a stale catalog original (Bm) over this live Dm.
+                    try:
+                        from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+                        sel = st.session_state.get("selected_song")
+                        orig = ""
+                        if isinstance(sel, dict):
+                            orig = str(sel.get("key") or "").strip()
+                        ensure_song_practice_blob_for_active_song(
+                            st.session_state,
+                            practice_key=dk,
+                            original_key=orig,
+                        )
                     except ImportError:
                         pass
             if creative_jam_owns_practice_settings(st.session_state):
@@ -386,17 +1015,30 @@ def mark_display_key_changed(st: Any) -> None:
         pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
-    try:
-        from backing_context import sync_regular_song_backing_context_keys
+    jam_owns_global = jam_owns_display
+    if not jam_owns_global:
+        try:
+            from creative_key_sync import generated_backing_owns_left_panel_key
+            from songs.practice_key_state import creative_jam_owns_practice_settings as _jam_owns_pk
 
-        sync_regular_song_backing_context_keys(st.session_state)
-    except ImportError:
-        pass
-    from custom_progression_lab import on_global_display_key_change
+            jam_owns_global = bool(
+                generated_backing_owns_left_panel_key(st.session_state)
+                or _jam_owns_pk(st.session_state)
+            )
+        except ImportError:
+            jam_owns_global = False
+    if not jam_owns_global and not mission_owns:
+        try:
+            from backing_context import sync_regular_song_backing_context_keys
 
-    dk = st.session_state.get("display_key")
-    if dk:
-        on_global_display_key_change(st.session_state, dk)
+            sync_regular_song_backing_context_keys(st.session_state)
+        except ImportError:
+            pass
+        from custom_progression_lab import on_global_display_key_change
+
+        dk = st.session_state.get("display_key")
+        if dk:
+            on_global_display_key_change(st.session_state, dk)
     try:
         from music_activity import log_display_key_changed
 
@@ -452,6 +1094,12 @@ def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_d
     """Mutate display_key via widget-safe path when sidebar may already exist."""
     concert = str(key or "C").strip() or "C"
     try:
+        from h3_live_key_trace import emit_display_key_write
+
+        emit_display_key_write(st.session_state, concert, source=source)
+    except Exception:
+        pass
+    try:
         from practice_setup_globals import record_global_control_change
 
         record_global_control_change(st.session_state, "display_key", source)
@@ -496,13 +1144,24 @@ def apply_display_key_for_active_song(
 ) -> list[str]:
     """Reset or sync practice display key before the display_key widget renders."""
     options = display_key_options(original_key)
+    owner_transition_tok = ""
+    try:
+        apply_display_key_owner_transition_if_needed(st.session_state, st_like=st)
+        owner_transition_tok = canonical_token_for_owner_transition(st.session_state)
+    except Exception:
+        owner_transition_tok = ""
+    if owner_transition_tok:
+        _apply_display_key_before_widget(st, owner_transition_tok, source="owner_transition")
+        st.session_state[LAST_DISPLAY_KEY] = owner_transition_tok
     identity_changed = st.session_state.get(IDENTITY_KEY) != song_identity
 
     if identity_changed:
         st.session_state[IDENTITY_KEY] = song_identity
         pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
         identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
-        if pending_key is not None:
+        if owner_transition_tok:
+            target = owner_transition_tok
+        elif pending_key is not None:
             target = pending_key
         else:
             canonical = canonical_display_key_for_pick(st.session_state, identity_pk)
@@ -538,10 +1197,59 @@ def apply_display_key_for_active_song(
     identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
     pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
     if pending is not None:
-        _apply_display_key_before_widget(st, pending, source="pending_display_key")
+        saved = canonical_display_key_for_pick(st.session_state, identity_pk)
+        pending_tok = str(pending or "").strip()
+        # Stale remount pending (Dm) must not beat sticky SSOT (Bm) after a user commit.
+        if owner_transition_tok:
+            pending_tok = owner_transition_tok
+        elif saved and pending_tok and saved != pending_tok:
+            pending_tok = saved
+        try:
+            from generated_jam_key_context import (
+                generated_jam_owns_practice_key,
+                generated_jam_practice_key_tokens,
+            )
+
+            if (
+                pending_tok in generated_jam_practice_key_tokens(st.session_state)
+                and not generated_jam_owns_practice_key(st.session_state)
+            ):
+                pending_tok = saved or original_key
+        except ImportError:
+            pass
+        _apply_display_key_before_widget(st, pending_tok, source="pending_display_key")
     else:
         saved = canonical_display_key_for_pick(st.session_state, identity_pk)
-        if saved and saved != str(st.session_state.get("display_key") or "").strip():
+        live_now = str(st.session_state.get("display_key") or "").strip()
+        specialized_backing = False
+        try:
+            from backing_context import get_backing_context
+            from songs.practice_key_state import creative_jam_owns_practice_settings
+
+            ctx = get_backing_context(st.session_state)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            leftover_mission_on_catalog = src == "mission" and page_now in {
+                "picker",
+                "practice",
+                "songs",
+            }
+            specialized_backing = (
+                src in {"entry_jam", "mission", "song_improv"}
+                or bool(creative_jam_owns_practice_settings(st.session_state))
+            ) and not leftover_mission_on_catalog
+        except Exception:
+            specialized_backing = False
+        # Sticky SSOT: if practice_key_by_source and the widget disagree, heal the
+        # widget to sticky (Bm restore must not leave a stale Dm live value).
+        # Specialized Backing must not inherit Catalog sticky (CASE G: Say/G ↛ Jam/C).
+        if owner_transition_tok:
+            target_saved = owner_transition_tok
+            _apply_display_key_before_widget(st, target_saved, source="owner_transition")
+            st.session_state[LAST_DISPLAY_KEY] = target_saved
+        elif specialized_backing:
+            pass
+        elif saved and saved != live_now:
             target_saved = saved
             try:
                 from practice_key_mode import apply_fixed_mode_target
@@ -551,6 +1259,25 @@ def apply_display_key_for_active_song(
                 pass
             _apply_display_key_before_widget(st, target_saved, source="practice_key_restore")
             st.session_state[LAST_DISPLAY_KEY] = target_saved
+        elif live_now:
+            try:
+                from generated_jam_key_context import (
+                    generated_jam_owns_practice_key,
+                    generated_jam_practice_key_tokens,
+                )
+
+                if (
+                    live_now in generated_jam_practice_key_tokens(st.session_state)
+                    and not generated_jam_owns_practice_key(st.session_state)
+                ):
+                    _apply_display_key_before_widget(
+                        st,
+                        original_key,
+                        source="reject_generated_jam_live",
+                    )
+                    st.session_state[LAST_DISPLAY_KEY] = original_key
+            except ImportError:
+                pass
         elif "display_key" not in st.session_state:
             target_initial = original_key
             try:
@@ -645,6 +1372,25 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         from instrument_transposition import preserve_written_key_on_display_key_change
 
         preserve_written_key_on_display_key_change(st.session_state)
+    except Exception:
+        pass
+    # Mission Backing: transpose sealed example chords/notes with Practice Key.
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(st.session_state)
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+            from improvisation_missions import transpose_stored_mission_example
+
+            transpose_stored_mission_example(
+                st.session_state, from_key=previous, to_key=str(display_key or "")
+            )
+            try:
+                from backing_context import refresh_backing_context_from_session
+
+                refresh_backing_context_from_session(st.session_state)
+            except Exception:
+                pass
     except Exception:
         pass
     invalidate_backing_cache(st)
@@ -746,6 +1492,29 @@ def get_authoritative_display_key(
             home = "C"
 
     try:
+        from creative_key_sync import mission_backing_owns_left_panel_key
+
+        if mission_backing_owns_left_panel_key(session):
+            mission_pk = str(
+                session.get("improv_mission_concert_key")
+                or session.get("display_key")
+                or session.get("concert_key")
+                or ""
+            ).strip()
+            if mission_pk:
+                trace_display_key_surface(
+                    session,
+                    surface or "authoritative",
+                    mission_pk,
+                    pick_key=pick_key,
+                    source="authoritative_mission",
+                )
+                session["last_key_writer_function"] = "get_authoritative_display_key:mission"
+                return mission_pk
+    except ImportError:
+        pass
+
+    try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(session):
@@ -772,6 +1541,14 @@ def get_authoritative_display_key(
         source = "authoritative_custom"
     else:
         live = str(session.get("display_key") or "").strip()
+        sticky = ""
+        if pick_key:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
+            except ImportError:
+                sticky = ""
         meta = session.get("active_song_state")
         canonical = ""
         if isinstance(meta, dict):
@@ -781,9 +1558,34 @@ def get_authoritative_display_key(
         try:
             from active_song_state import _display_key_override_valid_for_identity
 
-            if _display_key_override_valid_for_identity(session) and live:
+            if sticky:
+                try:
+                    from music_theory import practice_key_inherits_source_mode
+
+                    if home and not practice_key_inherits_source_mode(sticky, home):
+                        sticky = ""
+                except ImportError:
+                    pass
+            if live and home:
+                try:
+                    from music_theory import practice_key_inherits_source_mode
+
+                    if not practice_key_inherits_source_mode(live, home):
+                        live = ""
+                except ImportError:
+                    pass
+            # Per-source sticky is the catalog Practice Key SSOT. When sticky and
+            # live disagree (e.g. Bm sticky after restore, stale live Dm), sticky
+            # wins so the song card cannot show the wrong mode/key.
+            if sticky:
+                resolved = sticky
+                source = "authoritative_sticky"
+            elif _display_key_override_valid_for_identity(session) and live:
                 resolved = live
                 source = "authoritative_live_override"
+            elif live:
+                resolved = live
+                source = "authoritative_live"
             elif canonical:
                 resolved = canonical
                 source = "authoritative_canonical"
@@ -791,7 +1593,7 @@ def get_authoritative_display_key(
                 resolved = home or "C"
                 source = "authoritative_home"
         except ImportError:
-            resolved = live or canonical or home or "C"
+            resolved = sticky or live or canonical or home or "C"
             source = "authoritative_fallback"
 
     trace_display_key_surface(
@@ -878,7 +1680,13 @@ def resolve_active_musical_key(
         shape_key = ""
 
     if shape_key:
-        chart_key = shape_key
+        try:
+            from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+
+            shape_key = shape_tonic_only(shape_key)
+            chart_key = shape_chart_key_for_concert(practice_concert_key, shape_key)
+        except ImportError:
+            chart_key = shape_key
         mode = "shape"
     elif is_transposing_instrument(inst) and chart_in_instrument_key(session):
         chart_key, mode = effective_chart_key(practice_concert_key, inst, session)

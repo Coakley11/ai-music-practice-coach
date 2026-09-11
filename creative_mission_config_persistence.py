@@ -305,6 +305,66 @@ def derive_default_mission_target(
     }
 
 
+def _retarget_identity_to_chord_symbol(
+    *,
+    chord: str,
+    section: str,
+    label: str,
+    chord_options: list[str],
+    section_map: list[tuple[str, list[str]]],
+    index: Any = None,
+) -> dict[str, Any] | None:
+    """Chord symbol is Mission identity. Index/options[0] must not replace it."""
+    ch = str(chord or "").strip()
+    if not ch:
+        return None
+    sec = str(section or "").strip()
+    match_idx: int | None = None
+    tokens = [str(o).strip() for o in (chord_options or [])]
+    if section_map:
+        try:
+            from improvisation_motif import flatten_section_map, section_and_chord_at_global_index
+
+            flat = [str(o).strip() for o in flatten_section_map(section_map)]
+            for i, tok in enumerate(flat):
+                if tok != ch:
+                    continue
+                exp_sec, _ = section_and_chord_at_global_index(section_map, i)
+                if not sec or str(exp_sec) == sec:
+                    match_idx = i
+                    sec = str(exp_sec or sec)
+                    break
+            if match_idx is None:
+                for i, tok in enumerate(flat):
+                    if tok == ch:
+                        match_idx = i
+                        exp_sec, _ = section_and_chord_at_global_index(section_map, i)
+                        sec = str(exp_sec or sec)
+                        break
+        except ImportError:
+            match_idx = tokens.index(ch) if ch in tokens else None
+    elif ch in tokens:
+        match_idx = tokens.index(ch)
+    if match_idx is None:
+        try:
+            keep_idx = int(index)
+        except (TypeError, ValueError):
+            keep_idx = 0
+        return {
+            "ii_selected_chord_index": keep_idx,
+            "ii_selected_chord": ch,
+            "ii_selected_section": sec,
+            "ii_selected_chord_label": str(label or "").strip()
+            or _expected_mission_chord_label(sec, ch),
+        }
+    return {
+        "ii_selected_chord_index": match_idx,
+        "ii_selected_chord": ch,
+        "ii_selected_section": sec,
+        "ii_selected_chord_label": _expected_mission_chord_label(sec, ch),
+    }
+
+
 def reconcile_mission_target_identity(
     session: dict[str, Any],
     values: dict[str, Any],
@@ -313,25 +373,91 @@ def reconcile_mission_target_identity(
     function: str,
     prefer_canonical_target: bool = False,
 ) -> dict[str, Any]:
-    """Return an internally consistent target tuple + chord_options for commit."""
-    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    """Return an internally consistent target tuple + chord_options for commit.
+
+    Explicit chord-tile clicks (``SAVE_REASON_MISSION_TARGET``) must not be
+    rewritten to a stale canonical chord when Practice Key has transposed the
+    live map (e.g. click Gbm while disk options still list Abm).
+    """
     section_map = _mission_section_map_from_session(session)
-    if section_map and not chord_options:
+    chord_options = list(values.get("improv_mission_chord_options") or _mission_chord_options_from_session(session))
+    # Live section map is authoritative for options after a Practice Key change.
+    if section_map:
         try:
             from improvisation_motif import flatten_section_map
 
-            chord_options = flatten_section_map(section_map)
+            live_options = flatten_section_map(section_map)
         except ImportError:
-            pass
+            live_options = []
+        if live_options:
+            click_ch = str(values.get("ii_selected_chord") or "").strip()
+            if (
+                save_reason == SAVE_REASON_MISSION_TARGET
+                and click_ch
+                and click_ch in live_options
+            ) or (not chord_options) or (
+                click_ch
+                and click_ch in live_options
+                and click_ch not in chord_options
+            ):
+                chord_options = list(live_options)
     if chord_options:
         values["improv_mission_chord_options"] = list(chord_options)
+
+    # Explicit click: if the payload already matches the live map, keep it —
+    # never fall through to a stale canonical Abm while the user clicked Gbm.
+    if save_reason == SAVE_REASON_MISSION_TARGET:
+        click_tuple = {
+            k: values.get(k) for k in MISSION_TARGET_IDENTITY_KEYS if k in values
+        }
+        if mission_target_identity_valid(
+            chord_options,
+            section_map,
+            index=click_tuple.get("ii_selected_chord_index"),
+            chord=click_tuple.get("ii_selected_chord"),
+            section=click_tuple.get("ii_selected_section"),
+            label=click_tuple.get("ii_selected_chord_label"),
+        ):
+            values.update({k: copy.deepcopy(click_tuple[k]) for k in MISSION_TARGET_IDENTITY_KEYS})
+            return values
+
+    persisted = str(values.get("ii_selected_chord") or "").strip()
+    if not persisted:
+        practice = session.get("improv_mission_practice_context")
+        if isinstance(practice, dict):
+            raw = practice.get("chord")
+            if isinstance(raw, dict):
+                persisted = str(raw.get("symbol") or raw.get("chord") or "").strip()
+            else:
+                persisted = str(raw or "").strip()
+        if not persisted:
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict):
+                persisted = str(click.get("chord") or "").strip()
+        label = str(values.get("ii_selected_chord_label") or "").strip()
+        if not persisted and " · " in label:
+            persisted = label.rsplit(" · ", 1)[-1].strip()
+    if persisted:
+        retargeted = _retarget_identity_to_chord_symbol(
+            chord=persisted,
+            section=str(values.get("ii_selected_section") or "").strip(),
+            label=str(values.get("ii_selected_chord_label") or "").strip(),
+            chord_options=chord_options,
+            section_map=section_map,
+            index=values.get("ii_selected_chord_index"),
+        )
+        if retargeted:
+            values.update(retargeted)
+            return values
 
     candidates: list[dict[str, Any]] = []
     if prefer_canonical_target:
         candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
     else:
         candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=False))
-        candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
+        # Only consult canonical after click when this is not an explicit tile save.
+        if save_reason != SAVE_REASON_MISSION_TARGET:
+            candidates.append(_read_mission_target_tuple(session, values, prefer_canonical=True))
 
     seen: set[tuple[Any, ...]] = set()
     for cand in candidates:
@@ -1054,7 +1180,11 @@ def handle_user_mission_target_selection(
     chord_label: str,
     button_key: str = "",
 ) -> None:
-    """Canonical-only target update (chord tile on_click — no widget key writes)."""
+    """Chord tile on_click — commit canonical target and seal session index immediately.
+
+    Session keys must update in the click callback. Waiting for next-run CWS projection
+    loses to sticky/restored selection when focus/blob briefly disagree with canonical.
+    """
     canonical_before = _mission_target_canonical_snapshot(session)
     click_args = {
         "chord": chord,
@@ -1086,6 +1216,19 @@ def handle_user_mission_target_selection(
             "ii_selected_chord_label": chord_label,
         }
     )
+    # Refresh options from the live stamped section map so a Practice Key
+    # transpose cannot invalidate the click against stale Eb-keyed options.
+    section_map = _mission_section_map_from_session(session)
+    if section_map:
+        try:
+            from improvisation_motif import flatten_section_map
+
+            live_options = flatten_section_map(section_map)
+        except ImportError:
+            live_options = []
+        if live_options:
+            values["improv_mission_chord_options"] = list(live_options)
+            session["improv_mission_chord_options"] = list(live_options)
     _handle_user_mission_config_change(
         session,
         save_reason=SAVE_REASON_MISSION_TARGET,
@@ -1093,6 +1236,56 @@ def handle_user_mission_target_selection(
         values=values,
         interaction="chord_tile_on_click",
     )
+    # Click outranks sticky/restored selection — seal index-authoritative session now.
+    # Do not run write_authoritative's resolve remap here: a briefly stale section_map
+    # would map the new click back onto the restored Am/F#m sticky index.
+    sym = str(chord or "").strip()
+    sec = str(section or "").strip()
+    gidx = int(chord_index)
+    label = str(chord_label or "").strip() or (f"{sec} · {sym}" if sec and sym else sym)
+    session["ii_selected_chord"] = sym
+    session["ii_selected_section"] = sec
+    session["ii_selected_chord_index"] = gidx
+    session["ii_selected_chord_label"] = label
+    session["harmony_map_chord"] = sym
+    session["harmony_map_section"] = sec
+    session["II_SELECTED_CHORD"] = sym
+    session["II_SELECTED_SECTION"] = sec
+    concert_pk = str(session.get("concert_key") or session.get("display_key") or "").strip()
+    chart_pk = concert_pk
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        if concert_pk:
+            chart_pk = str(musician_facing_chart_key(session, concert_pk) or concert_pk).strip() or concert_pk
+    except ImportError:
+        chart_pk = str(session.get("display_key") or concert_pk).strip() or concert_pk
+    session["_mission_chord_click_authority"] = {
+        "chord": sym,
+        "section": sec,
+        "chord_index": gidx,
+        "run_seq": _run_seq(session),
+        "practice_key": chart_pk or concert_pk,
+        "mission_id": str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip(),
+        "session_id": str(
+            session.get("improv_mission_new_nonce")
+            or session.get("improv_mission_workspace_updated_at")
+            or ""
+        ).strip(),
+        "source_identity": str(
+            session.get("active_catalog_pick_key") or session.get("active_song_id") or ""
+        ).strip(),
+    }
+    try:
+        from creative_chord_selection_authority import seal_mission_chord_snapshot
+
+        seal_mission_chord_snapshot(
+            session, concert_chord=sym, section=sec, chord_index=gidx
+        )
+    except ImportError:
+        pass
+    # Projection already applied to session — avoid a later stale-focus block wiping it.
+    session.pop(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY, None)
     canonical_after = _mission_target_canonical_snapshot(session)
     record_mission_chord_click_trace(
         session,
@@ -1103,6 +1296,7 @@ def handle_user_mission_target_selection(
         canonical_before=canonical_before,
         canonical_after=canonical_after,
         save_requested=True,
+        overwrite_source="session_click_authority",
     )
 
 

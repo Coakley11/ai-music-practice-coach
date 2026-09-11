@@ -7,6 +7,59 @@ import json
 from typing import Any
 
 ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY = "_music_orchestrated_mission_backing_rerun_seq"
+MISSION_EXPLICIT_HANDOFF_ENVELOPE_DIAG_KEY = "_mission_explicit_handoff_envelope_diag"
+
+
+def _sync_reconcile_mission_envelope_for_explicit_handoff(
+    session: dict[str, Any],
+    *,
+    mission_alignment: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Reconcile Mission envelope pre-widget so explicit Backing clicks are not stuck syncing."""
+    diag: dict[str, Any] = {}
+    try:
+        from music_workflow_pending_mission_envelope import ensure_mission_envelope_reconciliation_before_widgets
+
+        diag["ensure"] = ensure_mission_envelope_reconciliation_before_widgets(session)
+    except ImportError:
+        diag["ensure"] = "skipped"
+    if isinstance(mission_alignment, dict) and mission_alignment:
+        try:
+            from mission_backing_alignment import apply_pending_mission_backing_alignment
+
+            diag["alignment_applied"] = bool(
+                apply_pending_mission_backing_alignment(session, mission_alignment)
+            )
+        except ImportError:
+            diag["alignment_applied"] = False
+        try:
+            from active_musical_workflow_envelope import apply_mission_workflow_envelope_reconciliation
+
+            apply_mission_workflow_envelope_reconciliation(session)
+        except ImportError:
+            pass
+    try:
+        from generated_jam_key_context import (
+            deactivate_generated_jam_key_ownership,
+            generated_jam_owns_practice_key,
+        )
+
+        if generated_jam_owns_practice_key(session):
+            diag["released_jam_key"] = bool(
+                deactivate_generated_jam_key_ownership(session, pre_widget=True)
+            )
+    except ImportError:
+        pass
+    try:
+        from active_musical_workflow_envelope import validate_mission_workflow_envelope
+
+        validation = validate_mission_workflow_envelope(session)
+        diag["consistent"] = bool(validation.get("consistent"))
+        diag["violations"] = list(validation.get("violations") or [])
+    except ImportError:
+        diag["consistent"] = None
+    session[MISSION_EXPLICIT_HANDOFF_ENVELOPE_DIAG_KEY] = diag
+    return diag
 
 
 def mission_envelope_reconciliation_required(session: dict[str, Any]) -> bool:
@@ -113,7 +166,17 @@ def prepare_deferred_mission_backing_handoff(
     return_route: str = "creative",
 ) -> bool:
     """Queue backing (and envelope prerequisite if needed); request one rerun."""
+    explicit_handoff = isinstance(mission_alignment, dict) and bool(mission_alignment)
+    if explicit_handoff:
+        _sync_reconcile_mission_envelope_for_explicit_handoff(
+            session,
+            mission_alignment=mission_alignment,
+        )
     env_needed = mission_envelope_reconciliation_required(session)
+    # Explicit Mission Backing click must open in this pre-widget pass when possible.
+    if env_needed and explicit_handoff:
+        session["_mission_backing_envelope_defer_overridden"] = True
+        env_needed = False
     if env_needed:
         try:
             from music_workflow_pending_mission_envelope import (

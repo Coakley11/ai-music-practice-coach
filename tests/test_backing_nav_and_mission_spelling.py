@@ -7,7 +7,7 @@ from typing import Any
 
 from backing_context import BackingContext, build_entry_jam_context, open_backing_from_creative, set_backing_context
 from backing_nav_actions import build_backing_nav_actions, catalog_return_action_visible
-from backing_source_navigation import _creative_handoff_entry_mode
+from backing_source_navigation import _creative_handoff_entry_mode, resolve_open_backing_entry_mode
 from backing_workflow_context import get_backing_workflow_envelope, sync_backing_workflow_envelope
 from generated_jam_key_context import (
     activate_generated_jam_key_ownership,
@@ -56,6 +56,43 @@ class TestBackingNavDedupe(unittest.TestCase):
         self.assertTrue(catalog_return_action_visible(session))
         self.assertFalse(any("Use catalog song backing" in a.label for a in actions))
 
+    def test_mission_handoff_suppresses_ordinary_custom_catalog_return(self) -> None:
+        """Explicit Mission Backing must not offer Custom/Catalog fallthrough under Custom GA."""
+        session: dict[str, Any] = {
+            "improv_intelligence_tab": "Missions",
+            "_backing_explicit_handoff_source": "mission",
+            "_music_mission_canonical_return_destination": {
+                "mission_id": "m1",
+                "return_token": "t",
+            },
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            song_title="Trial Song",
+            entry_mode="Missions",
+            mode_label="Mission Jam",
+            active_song_id="custom::trial",
+            bound_pick_key="custom::trial",
+            mission_id="m1",
+            style="Pop groove",
+            groove="Pop groove",
+            bpm=100,
+            key="D",
+            display_key="D",
+            concert_key="D",
+            progression=["Em", "Em", "D", "D"],
+            sections={"Intro": ["Em", "Em", "D", "D"]},
+            section_labels=["Intro"],
+            scope="Mission chord",
+        )
+        set_backing_context(session, ctx)
+        sync_backing_workflow_envelope(session, ctx)
+        actions, _ = build_backing_nav_actions(session)
+        self.assertTrue(any(a.action_id == "return_mission" for a in actions))
+        self.assertFalse(any(a.purpose == "catalog_backing" for a in actions))
+        self.assertFalse(catalog_return_action_visible(session))
+
     def test_generator_catalog_return_without_use_button(self) -> None:
         session: dict[str, Any] = {
             "improv_entry_mode": "Jam Session Generator",
@@ -78,6 +115,27 @@ class TestGeneratorOpenBackingRoute(unittest.TestCase):
             "creative_session": {"tool_type": "song_based_improvisation", "entry_mode": "Song-Based Improvisation"},
         }
         self.assertEqual(_creative_handoff_entry_mode(session), "Jam Session Generator")
+
+    def test_style_jam_open_backing_outranks_leftover_sbi_pointer(self) -> None:
+        session = {
+            "improv_entry_mode": "Style Jam Mode",
+            "improv_intelligence_tab": "Entry & Jam",
+            "creative_session": {
+                "tool_type": "song_based_improvisation",
+                "entry_mode": "Song-Based Improvisation",
+            },
+        }
+
+        class _Ptr:
+            workflow_owner = "song_based_improvisation"
+
+        from unittest.mock import patch
+
+        with patch(
+            "music_workflow_state_store.get_active_workflow_pointer",
+            return_value=_Ptr(),
+        ):
+            self.assertEqual(resolve_open_backing_entry_mode(session), "Style Jam Mode")
 
     def test_open_backing_from_creative_entry_jam_workflow(self) -> None:
         session: dict[str, Any] = {

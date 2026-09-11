@@ -115,6 +115,12 @@ def render_unified_workflow_architecture_panel(st_module: Any, session: dict[str
                 "violations": snap.get("violations"),
             }
         )
+    try:
+        from jam_generator_live_runtime_trace import render_jam_generator_live_trace_panel
+
+        render_jam_generator_live_trace_panel(st_module, session)
+    except Exception:
+        pass
 
 
 __all__ = [

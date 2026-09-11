@@ -9,7 +9,6 @@ def invalidate_key_dependent_session_projections(session: dict[str, Any], *, own
     cleared: list[str] = []
     for key in (
         "_mission_example_output_fp",
-        "improv_mission_example",
         "_mission_exact_backing_armed",
         "improv_mission_backing_handoff",
         "improv_mission_recording_seal",
@@ -21,10 +20,10 @@ def invalidate_key_dependent_session_projections(session: dict[str, Any], *, own
         if session.pop(key, None) is not None:
             cleared.append(key)
     try:
-        from improvisation_missions import MISSION_EXAMPLE_KEY
+        from improvisation_missions import MISSIONS_GENERATE_CONTEXT_KEY
 
-        if session.pop(MISSION_EXAMPLE_KEY, None) is not None:
-            cleared.append(MISSION_EXAMPLE_KEY)
+        if session.pop(MISSIONS_GENERATE_CONTEXT_KEY, None) is not None:
+            cleared.append(MISSIONS_GENERATE_CONTEXT_KEY)
     except ImportError:
         pass
     if owner in {"mission_jam", "song_based_improvisation", "style_jam", "jam_session_generator"}:

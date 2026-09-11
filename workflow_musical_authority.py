@@ -291,9 +291,6 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
             session[IMPROV_STYLE_KEY_TRACKER] = key
         except ImportError:
             pass
-        _guarded_snapshot_assign(session, "display_key", key, wf=wf, allowlist=allow)
-        _guarded_snapshot_assign(session, "concert_key", key, wf=wf, allowlist=allow)
-        _guarded_snapshot_assign(session, "_pending_display_key", key, wf=wf, allowlist=allow)
         return True
     if wf == "jam_session_generator":
         _guarded_snapshot_assign(session, "improv_entry_mode", "Jam Session Generator", wf=wf, allowlist=allow)
@@ -313,8 +310,7 @@ def restore_workflow_snapshot(session: dict[str, Any], wf: WorkflowType) -> bool
             session[IMPROV_JAM_KEY_TRACKER] = key
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:
-            _guarded_snapshot_assign(session, "display_key", key, wf=wf, allowlist=allow)
-            _guarded_snapshot_assign(session, "concert_key", key, wf=wf, allowlist=allow)
+            pass
         return True
     if wf == "mission_jam":
         _guarded_snapshot_assign(session, "improv_intelligence_tab", "Missions", wf=wf, allowlist=allow)
@@ -404,48 +400,308 @@ def switch_workflow_owner(session: dict[str, Any], new_wf: WorkflowType) -> None
         session[ACTIVE_WORKFLOW_OWNER_KEY] = new_wf
 
 
+def section_maps_equivalent(left: Any, right: Any) -> bool:
+    """True when two section maps have the same labels and chord symbols in order."""
+    if not isinstance(left, dict) or not isinstance(right, dict) or not left or not right:
+        return False
+    if set(left) != set(right):
+        return False
+    for name in left:
+        a = [str(c).strip() for c in (left.get(name) or []) if str(c).strip()] if isinstance(left.get(name), list) else []
+        b = [str(c).strip() for c in (right.get(name) or []) if str(c).strip()] if isinstance(right.get(name), list) else []
+        if a != b:
+            return False
+    return True
+
+
+def reclaim_stale_prior_song_practice_key_on_original_chart(session: dict[str, Any]) -> str:
+    """If the live chart is still catalog-original pitch, leftover prior-song Practice Key must not own it.
+
+    Example: Say in G → pick Hevenu (Dm chart copied, original_mode D minor) while practice_tonic
+    stays G. Transposing that Dm chart as if it were in G yields G#m instead of C#m.
+    """
+    try:
+        from music_theory import key_center_token, split_key_center
+        from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+        from music_workflow_state_store import KeyAuthority, save_workflow_blob
+    except ImportError:
+        return ""
+    song = song_practice_blob(session)
+    if song is None or not isinstance(song.section_map, dict) or not song.section_map:
+        return ""
+    orig_token = key_center_token(song.keys.original_tonic, song.keys.original_mode)
+    practice_token = resolve_song_practice_key_token(session)
+    if not orig_token or not practice_token or practice_token == orig_token:
+        return practice_token
+    home = session.get("home_sections")
+    if not isinstance(home, dict) or not home:
+        return practice_token
+    if not section_maps_equivalent(song.section_map, home):
+        return practice_token
+    # Original-pitch chart + a different Practice Key for THIS song means
+    # "transpose next", not "leftover prior-song key". Only reclaim when the
+    # saved per-song practice key is missing or still the catalog original.
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        pick = str(session.get("active_catalog_pick_key") or song.workflow_session_id or "").strip()
+        saved = get_practice_concert_key(session, pick) if pick else ""
+        if saved and saved != orig_token:
+            return saved
+    except ImportError:
+        pass
+    ot, om = split_key_center(orig_token)
+    song.keys = KeyAuthority(
+        original_tonic=song.keys.original_tonic,
+        original_mode=song.keys.original_mode,
+        practice_tonic=ot,
+        practice_mode=om,
+        written_tonic=song.keys.written_tonic,
+        written_mode=song.keys.written_mode,
+        instrument=song.keys.instrument,
+        transposition=getattr(song.keys, "transposition", "") or "",
+        key_owner=song.keys.key_owner or "song_based_improvisation",
+    )
+    save_workflow_blob(session, song, source="reclaim_original_chart_practice_key")
+    session["display_key"] = orig_token
+    session["concert_key"] = orig_token
+    session["_pending_display_key"] = orig_token
+    session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+    return orig_token
+
+
+def _section_maps_same_song(expected: dict[str, list[str]], actual: dict[str, list[str]]) -> bool:
+    if not expected or not actual:
+        return False
+    overlap = [name for name in expected if name in actual]
+    if not overlap:
+        return False
+    for name in overlap:
+        want = expected[name][0] if expected[name] else ""
+        got = actual[name][0] if actual[name] else ""
+        if want and got and want != got:
+            return False
+    return True
+
+
+def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
+    """True when Global Active (or live pick) is a Custom progression — not catalog.
+
+    Custom currently owning material is not a permanent lock. An explicit Songs
+    Catalog selection (USER_CATALOG / catalog epoch) is the release boundary.
+    """
+    try:
+        from songs.music_source import (
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+            is_custom_progression,
+        )
+
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+            session
+        ):
+            return False
+        if custom_progression_is_active(session) or is_custom_progression(session):
+            return True
+    except ImportError:
+        pass
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return True
+    sel = session.get("selected_song")
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip().startswith("custom::"):
+        return True
+    return False
+
+
+def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Custom CPL sections transposed to the current practice concert key."""
+    try:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            default_active_progression,
+            ensure_original_structure,
+            sections_to_chord_lists,
+        )
+        from songs.music_source import custom_original_key, install_last_custom_into_live_cpl
+    except ImportError:
+        return {}
+    try:
+        install_last_custom_into_live_cpl(session, reset_practice_key_to_original=False)
+    except Exception:
+        pass
+    active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
+    home_sections = sections_to_chord_lists(active.get("original_sections") or {})
+    if not home_sections:
+        return {}
+    original = str(custom_original_key(active) or "C").strip() or "C"
+    practice = ""
+    try:
+        from source_session_state import (
+            get_sbi_preview_source,
+            resolve_sbi_custom_practice_key,
+            sbi_custom_identity_is_global_active,
+        )
+
+        if get_sbi_preview_source(session) == "Custom progression" or sbi_custom_identity_is_global_active(
+            session
+        ):
+            practice = str(resolve_sbi_custom_practice_key(session) or "").strip()
+    except ImportError:
+        practice = ""
+    if not practice:
+        practice = str(session.get("_sbi_custom_visit_pk") or "").strip()
+    if not practice:
+        try:
+            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+            practice = str(overlay_destination_practice_key(session) or "").strip()
+        except ImportError:
+            practice = ""
+        if not practice:
+            try:
+                from music_workflow_song_practice import resolve_song_practice_key_token
+
+                practice = str(resolve_song_practice_key_token(session) or "").strip()
+            except ImportError:
+                practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if not practice:
+            practice = original
+        try:
+            from songs.music_source import custom_pick_key_for, custom_progression_is_active
+            from songs.practice_key_state import get_practice_concert_key
+
+            if custom_progression_is_active(session):
+                pick = str(custom_pick_key_for(active) or "").strip()
+                if pick.startswith("custom::"):
+                    sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+                    if sticky:
+                        practice = sticky
+        except ImportError:
+            pass
+    if not practice:
+        practice = original
+    base = {str(k): [str(c) for c in v if str(c).strip()] for k, v in home_sections.items() if v}
+    if not base:
+        return {}
+    if not original or original == practice:
+        return base
+    try:
+        from music_theory import transpose_sections_dict
+
+        return transpose_sections_dict(base, original, practice)
+    except ImportError:
+        return base
+
+
+def refresh_custom_improv_concert_sections(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Rebuild improv_song_concert_sections from Custom owner (clears catalog bleed)."""
+    if not custom_owns_active_song_material(session):
+        return {}
+    sections = resolve_custom_concert_sections_at_practice_key(session)
+    if sections:
+        session["improv_song_concert_sections"] = copy.deepcopy(sections)
+    return sections
+
+
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog song sections transposed to current practice concert key."""
+    if custom_owns_active_song_material(session):
+        out = refresh_custom_improv_concert_sections(session)
+        if out:
+            return out
+        fallback = resolve_custom_concert_sections_at_practice_key(session)
+        if fallback:
+            session["improv_song_concert_sections"] = copy.deepcopy(fallback)
+            return fallback
+        return {}
     try:
         from music_workflow_song_practice import resolve_song_practice_key_token, song_practice_blob
+        from music_workflow_catalog_handoff import workflow_blob_matches_live_catalog_parent
+        from songs.music_source import catalog_chart_sections_for_pick
 
-        song = song_practice_blob(session)
-        if song is not None and isinstance(song.section_map, dict) and song.section_map:
-            session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
-            return copy.deepcopy(song.section_map)
-        practice = resolve_song_practice_key_token(session) or str(
+        reclaim_stale_prior_song_practice_key_on_original_chart(session)
+        practice = ""
+        try:
+            from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+            practice = str(overlay_destination_practice_key(session) or "").strip()
+        except ImportError:
+            practice = ""
+        practice = practice or resolve_song_practice_key_token(session) or str(
             session.get("display_key") or session.get("concert_key") or ""
         ).strip()
+        song = song_practice_blob(session)
+        catalog_sections = catalog_chart_sections_for_pick(
+            session, str(session.get("active_catalog_pick_key") or "")
+        )
+        if (
+            song is not None
+            and isinstance(song.section_map, dict)
+            and song.section_map
+            and workflow_blob_matches_live_catalog_parent(session, song)
+        ):
+            expected = catalog_sections
+            original = ""
+            sel = session.get("selected_song")
+            if isinstance(sel, dict):
+                original = str(sel.get("key") or "").strip()
+            if catalog_sections and original and practice and original != practice:
+                try:
+                    from music_theory import transpose_sections_dict
+
+                    expected = transpose_sections_dict(catalog_sections, original, practice)
+                except ImportError:
+                    expected = catalog_sections
+            home = session.get("home_sections")
+            still_original_pitch = bool(
+                original
+                and practice
+                and original != practice
+                and isinstance(home, dict)
+                and home
+                and section_maps_equivalent(song.section_map, home)
+            )
+            if still_original_pitch:
+                pass
+            elif not catalog_sections or _section_maps_same_song(expected, song.section_map):
+                session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
+                return copy.deepcopy(song.section_map)
     except ImportError:
         practice = str(session.get("display_key") or session.get("concert_key") or "").strip()
     if not practice:
         return {}
     try:
         from backing_context import _current_pick_key
-        from songs.music_source import resolve_catalog_song_for_pick
+        from songs.music_source import catalog_chart_sections_for_pick, resolve_catalog_song_for_pick
         from music_theory import transpose_sections_dict
 
         pick = _current_pick_key(session)
         selected, original_key = resolve_catalog_song_for_pick(session, pick)
         if not isinstance(selected, dict) or not selected:
+            selected = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        if not isinstance(selected, dict) or not selected:
             return {}
         original = str(selected.get("key") or selected.get("original_key") or original_key or "").strip()
-        sections = selected.get("sections")
-        if not isinstance(sections, dict) or not sections:
+        sections = catalog_chart_sections_for_pick(session, pick, selected=selected)
+        if not sections:
             home = session.get("home_sections")
             if isinstance(home, dict) and home:
                 sections = home
+            elif isinstance(selected.get("sections"), dict) and selected.get("sections"):
+                sections = selected.get("sections")
             else:
+                song_fb = None
                 try:
-                    from songs.music_source import _catalog_picker_from_session, _catalog_row_for_pick
+                    from music_workflow_song_practice import song_practice_blob
 
-                    catalog = _catalog_picker_from_session(session)
-                    row = _catalog_row_for_pick(pick, catalog) if catalog else None
-                    if isinstance(row, dict) and isinstance(row.get("sections"), dict):
-                        sections = row["sections"]
+                    song_fb = song_practice_blob(session)
                 except ImportError:
-                    sections = None
-        if not isinstance(sections, dict) or not sections:
+                    song_fb = None
+                if song_fb is not None and isinstance(song_fb.section_map, dict):
+                    sections = song_fb.section_map
+        if not sections:
             return {}
         base = {
             str(name): [str(c) for c in chords if str(c).strip()]
@@ -455,7 +711,24 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
         if not original or original == practice:
             out = base
         else:
-            out = transpose_sections_dict(base, original, practice)
+            # Idempotence: never treat an already-practice-pitch map as catalog original.
+            try:
+                from music_theory import normalize_root, split_chord
+
+                first = ""
+                for chs in base.values():
+                    if chs:
+                        first = str(chs[0] or "").strip()
+                        if first:
+                            break
+                practice_root = normalize_root(split_chord(practice)[0]) if practice else ""
+                first_root = normalize_root(split_chord(first)[0]) if first else ""
+                if practice_root and first_root and first_root == practice_root:
+                    out = base
+                else:
+                    out = transpose_sections_dict(base, original, practice)
+            except Exception:
+                out = transpose_sections_dict(base, original, practice)
         session["improv_song_concert_sections"] = copy.deepcopy(out)
         return out
     except ImportError:
@@ -521,8 +794,10 @@ __all__ = [
     "WORKFLOW_MUSICAL_STATES_KEY",
     "WorkflowType",
     "capture_workflow_musical_state",
+    "reclaim_stale_prior_song_practice_key_on_original_chart",
     "restore_workflow_snapshot",
     "save_workflow_snapshot",
+    "section_maps_equivalent",
     "switch_workflow_owner",
     "sync_song_improv_sections_to_practice_key",
     "validate_workflow_consistency",

@@ -8,6 +8,17 @@ from typing import Any
 TRACE_KEY = "_music_mission_backing_handoff_trace"
 
 
+def _stderr(msg: str) -> None:
+    """Best-effort stderr; never crash the Streamlit run (Windows OSError 22)."""
+    try:
+        print(msg, file=sys.stderr, flush=True)
+    except Exception:
+        try:
+            print(msg, flush=True)
+        except Exception:
+            pass
+
+
 def _append(session: dict[str, Any], phase: str, payload: dict[str, Any]) -> None:
     bucket = session.get(TRACE_KEY)
     if not isinstance(bucket, list):
@@ -42,38 +53,32 @@ def log_mission_backing_click(
             "mission_widgets_instantiated": mission_widgets_instantiated,
         },
     )
-    print(
+    _stderr(
         f"[mission_backing_handoff] click with_practice_lick={with_practice_lick} "
         f"mission={mission_id!r} chord={chord!r} widgets_locked={widgets_locked} "
-        f"mission_widgets={mission_widgets_instantiated}",
-        file=sys.stderr,
-        flush=True,
+        f"mission_widgets={mission_widgets_instantiated}"
     )
 
 
 def log_pending_queued(session: dict[str, Any], req: dict[str, Any]) -> None:
     _append(session, "queued", dict(req))
-    print(
+    _stderr(
         f"[mission_backing_handoff] queued seq={req.get('request_seq')} "
         f"lick={req.get('with_practice_lick')} mode={req.get('handoff_mode')} "
-        f"token={req.get('consume_token')}",
-        file=sys.stderr,
-        flush=True,
+        f"token={req.get('consume_token')}"
     )
 
 
 def log_rerun_request(session: dict[str, Any], *, allowed: bool, reason: str, fingerprint: str = "") -> None:
     _append(session, "rerun", {"allowed": allowed, "reason": reason, "fingerprint": fingerprint})
-    print(
-        f"[mission_backing_handoff] rerun allowed={allowed} reason={reason} fp={fingerprint[:48]}",
-        file=sys.stderr,
-        flush=True,
+    _stderr(
+        f"[mission_backing_handoff] rerun allowed={allowed} reason={reason} fp={fingerprint[:48]}"
     )
 
 
 def log_consume(session: dict[str, Any], *, phase: str, detail: dict[str, Any]) -> None:
     _append(session, phase, detail)
-    print(f"[mission_backing_handoff] consume_{phase} {detail}", file=sys.stderr, flush=True)
+    _stderr(f"[mission_backing_handoff] consume_{phase} {detail}")
 
 
 __all__ = [

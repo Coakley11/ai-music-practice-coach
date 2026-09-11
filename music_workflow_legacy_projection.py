@@ -68,6 +68,36 @@ def _practice_key_token(blob: WorkflowStateBlob) -> str:
     return tonic
 
 
+def _section_map_total_chords(section_map: dict[str, list[str]] | None) -> int:
+    if not isinstance(section_map, dict) or not section_map:
+        return 0
+    return sum(len(v) for v in section_map.values() if isinstance(v, list))
+
+
+def _concert_sections_for_legacy_projection(
+    session: dict[str, Any],
+    blob: WorkflowStateBlob,
+    *,
+    owner: str,
+) -> dict[str, list[str]] | None:
+    """Never project a one-chord mission slice onto improv_song_concert_sections."""
+    if owner == "mission_jam":
+        try:
+            from music_workflow_song_practice import rehydrate_full_song_concert_sections
+
+            full = rehydrate_full_song_concert_sections(
+                session,
+                source="legacy_projection_mission_guard",
+            )
+            if _section_map_total_chords(full) > 1:
+                return full
+        except ImportError:
+            pass
+    if isinstance(blob.section_map, dict) and _section_map_total_chords(blob.section_map) > 1:
+        return copy.deepcopy(blob.section_map)
+    return None
+
+
 def clear_incompatible_legacy_fields(session: dict[str, Any], owner: str) -> list[str]:
     """Remove transient fields that conflict with the active workflow owner."""
     cleared: list[str] = []
@@ -153,15 +183,21 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     }
     key_token = _practice_key_token(blob)
     if owner in {"song_based_improvisation", "mission_jam"}:
-        if blob.section_map and not (owner == "mission_jam" and skip_parent_practice_key):
-            session["improv_song_concert_sections"] = copy.deepcopy(blob.section_map)
-        elif owner == "mission_jam" and skip_parent_practice_key:
+        projected_sections = _concert_sections_for_legacy_projection(session, blob, owner=owner)
+        if owner == "mission_jam" and skip_parent_practice_key:
             try:
-                from music_workflow_song_practice import sync_session_practice_key_from_song_blob
+                from music_workflow_song_practice import rehydrate_full_song_concert_sections
 
-                sync_session_practice_key_from_song_blob(session, source=f"skip_mission_projection:{mutation_source}")
+                # Chord/example paths must not project Practice Key from the song blob.
+                # Only refresh concert sections under the already-authoritative live key.
+                rehydrate_full_song_concert_sections(
+                    session,
+                    source=f"skip_mission_projection_sections:{mutation_source}",
+                )
             except ImportError:
                 pass
+        elif projected_sections:
+            session["improv_song_concert_sections"] = projected_sections
         if blob.song_id:
             record_legacy_field_read(session, "active_catalog_pick_key", adapter="restore")
         if not (owner == "mission_jam" and skip_parent_practice_key):
@@ -202,11 +238,24 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     elif owner == "style_jam":
         session["improv_entry_mode"] = "Style Jam Mode"
         session["improv_style_key"] = key_token
-        session["improv_style"] = str(blob.style or blob.generated_session_id or "").strip()
-        session["improv_mood"] = str(blob.mood or "").strip()
-        session["improv_groove"] = str(blob.groove or "").strip()
-        if blob.tempo_bpm:
-            session["improv_style_bpm"] = int(blob.tempo_bpm)
+        skip_style_controls = False
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            skip_style_controls = bool(widgets_likely_instantiated(session))
+        except ImportError:
+            skip_style_controls = False
+        if str(mutation_source or "") in {
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+        }:
+            skip_style_controls = True
+        if not skip_style_controls:
+            session["improv_style"] = str(blob.style or blob.generated_session_id or "").strip()
+            session["improv_mood"] = str(blob.mood or "").strip()
+            session["improv_groove"] = str(blob.groove or "").strip()
+            if blob.tempo_bpm:
+                session["improv_style_bpm"] = int(blob.tempo_bpm)
         if blob.section_map:
             session["improv_generated_sections"] = copy.deepcopy(blob.section_map)
         try:
@@ -216,9 +265,6 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             session[IMPROV_STYLE_KEY_TRACKER] = key_token
         except ImportError:
             pass
-        _project_session_field(session, "display_key", key_token)
-        _project_session_field(session, "concert_key", key_token)
-        session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
 
@@ -228,19 +274,44 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     elif owner == "jam_session_generator":
         session["improv_entry_mode"] = "Jam Session Generator"
         session["improv_jam_key"] = key_token
-        session["improv_jam_style"] = str(blob.style or "").strip()
-        session["improv_jam_mood"] = str(blob.mood or "").strip()
-        if blob.tempo_bpm:
-            session["improv_jam_bpm"] = int(blob.tempo_bpm)
-        jam: dict[str, Any] = {}
-        if isinstance(session.get("improv_jam_session"), dict):
-            jam = copy.deepcopy(session["improv_jam_session"])
-        if blob.generated_session_id:
-            jam["id"] = blob.generated_session_id
-        if blob.section_map:
-            jam["sections"] = copy.deepcopy(blob.section_map)
-        if jam:
-            session["improv_jam_session"] = jam
+        skip_jam_controls = False
+        try:
+            from session_widget_safe import widgets_likely_instantiated
+
+            skip_jam_controls = bool(widgets_likely_instantiated(session))
+        except ImportError:
+            skip_jam_controls = False
+        if str(mutation_source or "") in {
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+        }:
+            skip_jam_controls = True
+        if not skip_jam_controls:
+            session["improv_jam_style"] = str(blob.style or "").strip()
+            session["improv_jam_mood"] = str(blob.mood or "").strip()
+            if blob.tempo_bpm:
+                session["improv_jam_bpm"] = int(blob.tempo_bpm)
+        try:
+            from improv_jam_session_projection import build_improv_jam_session_from_blob, set_improv_jam_session
+
+            existing = session.get("improv_jam_session") if isinstance(session.get("improv_jam_session"), dict) else {}
+            jam = build_improv_jam_session_from_blob(blob, existing=existing)
+            set_improv_jam_session(
+                session,
+                jam,
+                writer="restore_workflow_blob_to_session",
+                phase="jam_session_generator",
+            )
+        except ImportError:
+            jam: dict[str, Any] = {}
+            if isinstance(session.get("improv_jam_session"), dict):
+                jam = copy.deepcopy(session["improv_jam_session"])
+            if blob.generated_session_id:
+                jam["id"] = blob.generated_session_id
+            if blob.section_map:
+                jam["sections"] = copy.deepcopy(blob.section_map)
+            if jam:
+                session["improv_jam_session"] = jam
         try:
             from creative_key_sync import apply_creative_concert_key, IMPROV_JAM_KEY_TRACKER
             from generated_jam_key_context import activate_generated_jam_key_ownership
@@ -250,9 +321,6 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:
             pass
-        _project_session_field(session, "display_key", key_token)
-        _project_session_field(session, "concert_key", key_token)
-        session["_pending_display_key"] = key_token
         try:
             from music_workflow_mutation import set_legacy_owner_compat_hint
 

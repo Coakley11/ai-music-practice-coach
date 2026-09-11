@@ -73,6 +73,325 @@ def peek_pending_song_practice_key_edit(session: dict[str, Any]) -> dict[str, An
     return copy.deepcopy(raw) if isinstance(raw, dict) else None
 
 
+def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
+    """Pending Practice Key for same-rerun Creative readers. Empty if owner no longer matches."""
+    pending = peek_pending_song_practice_key_edit(session)
+    if pending:
+        token = str(pending.get("selected_key_token") or "").strip()
+        if token:
+            pending_owner = str(pending.get("workflow_owner") or "").strip()
+            try:
+                from music_workflow_state_store import get_active_workflow_pointer
+
+                ptr = get_active_workflow_pointer(session)
+                ptr_owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+                ptr_sid = str(ptr.workflow_session_id or "").strip() if ptr else ""
+                pending_sid = str(pending.get("workflow_session_id") or "").strip()
+                owner_ok = bool(ptr) and pending_owner == ptr_owner and (
+                    not pending_sid or pending_sid == ptr_sid
+                )
+                # Mission / SBI Backing: pointer may drift to song_based while the
+                # sealed backing source still owns the edit (same as capture).
+                if not owner_ok and pending_owner in {"mission_jam", "song_based_improvisation"}:
+                    try:
+                        from backing_context import get_backing_context
+
+                        ctx = get_backing_context(session)
+                        src = str(getattr(ctx, "source", "") or "").strip() if ctx else ""
+                        if pending_owner == "mission_jam" and src == "mission":
+                            owner_ok = True
+                        elif pending_owner == "song_based_improvisation" and src == "song_improv":
+                            owner_ok = True
+                    except ImportError:
+                        pass
+                    if not owner_ok:
+                        page = str(session.get("studio_page") or "").strip().lower()
+                        tab = str(
+                            session.get("improv_intelligence_tab")
+                            or session.get("creative_improv_intelligence_tab")
+                            or ""
+                        ).strip()
+                        if page == "creative" and pending_owner == "mission_jam" and tab == "Missions":
+                            owner_ok = True
+                        elif page == "creative" and pending_owner == "song_based_improvisation" and tab in {
+                            "Song-Based Improvisation",
+                            "Phrase / Motif",
+                            "Harmony Map",
+                            "Live Coach",
+                        }:
+                            owner_ok = True
+                if not owner_ok:
+                    return ""
+            except ImportError:
+                return token
+            return token
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        if generated_workflow_owns_practice_key(session):
+            return ""
+    except ImportError:
+        pass
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        return str(session.get(PENDING_DISPLAY_KEY) or "").strip()
+    except ImportError:
+        return str(session.get("_pending_display_key") or "").strip()
+
+
+def overlay_destination_practice_key(session: dict[str, Any]) -> str:
+    """Effective Practice Key for same-rerun readers.
+
+    Prefer the queued sidebar edit, then the saved catalog Practice Key map,
+    then live ``display_key`` when a catalog/song owner still holds the page.
+    Generated-jam Concert Key must not become the overlay destination for
+    catalog sections.
+    """
+    try:
+        from creative_key_sync import generated_backing_owns_left_panel_key
+
+        if generated_backing_owns_left_panel_key(session):
+            return ""
+    except ImportError:
+        pass
+    pending = pending_selected_practice_key_token(session)
+    if pending:
+        return pending
+    # Live Practice/Concert Key is the current musical owner. The per-pick store is
+    # persistence only — never let a stale Bm store override a live Dm sidebar value.
+    live = str(
+        session.get("display_key") or session.get("concert_key") or session.get("_pending_display_key") or ""
+    ).strip()
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick and not pick.startswith("custom::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+            saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if live:
+                if saved and saved != live:
+                    set_practice_concert_key(session, live, pick_key=pick)
+                return live
+            if saved:
+                return saved
+        except ImportError:
+            if live:
+                return live
+    try:
+        from workflow_key_identity import generated_workflow_owns_practice_key
+
+        if generated_workflow_owns_practice_key(session):
+            tab = str(
+                session.get("improv_intelligence_tab") or session.get("improv_entry_mode") or ""
+            ).strip()
+            if tab in {"Style Jam Mode", "Jam Session Generator", "Entry & Jam"}:
+                return ""
+    except ImportError:
+        pass
+    return live
+
+
+def infer_catalog_sections_spelled_in_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    fallback: str = "",
+) -> str:
+    """Key the current catalog section map is actually spelled in.
+
+    Blob Practice Key identity can already be the destination while the map is
+    still original-pitch. Overlay must transpose from the map's real pitch.
+    """
+    orig = ""
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        orig = str(sel.get("key") or sel.get("original_key") or "").strip()
+    dest = overlay_destination_practice_key(session)
+    blob = str(fallback or "").strip()
+    catalog = None
+    try:
+        from songs.music_source import catalog_chart_sections_for_pick
+
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pick:
+            catalog = catalog_chart_sections_for_pick(session, pick)
+    except ImportError:
+        catalog = None
+    home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else None
+    if not isinstance(sections, dict) or not sections:
+        return blob or orig or dest
+    try:
+        from music_theory import normalize_root, split_chord, transpose_sections_dict
+        from workflow_musical_authority import section_maps_equivalent
+    except ImportError:
+        return blob or orig or dest
+
+    first = ""
+    for chs in sections.values():
+        if isinstance(chs, list) and chs:
+            first = str(chs[0] or "").strip()
+            if first:
+                break
+    first_root = normalize_root(split_chord(first)[0]) if first else ""
+    orig_root = normalize_root(split_chord(orig)[0]) if orig else ""
+    dest_root = normalize_root(split_chord(dest)[0]) if dest else ""
+    blob_root = normalize_root(split_chord(blob)[0]) if blob else ""
+
+    # Pitch-class of the live map wins over polluted home/selected mirrors.
+    if first_root and dest_root and first_root == dest_root:
+        return dest or blob or orig
+    if first_root and blob_root and first_root == blob_root and (not dest_root or blob_root == dest_root):
+        return blob or dest or orig
+    if first_root and orig_root and first_root == orig_root and first_root != dest_root:
+        return orig
+
+    if isinstance(catalog, dict) and catalog and section_maps_equivalent(sections, catalog):
+        return orig or dest
+    # home_sections is often overwritten with practice-pitch concert maps — only treat a
+    # home match as original when home itself still matches catalog original pitch.
+    if (
+        isinstance(home, dict)
+        and home
+        and section_maps_equivalent(sections, home)
+        and isinstance(catalog, dict)
+        and catalog
+        and section_maps_equivalent(home, catalog)
+    ):
+        return orig or dest
+    reference = catalog if isinstance(catalog, dict) and catalog else None
+    if orig and isinstance(reference, dict) and reference:
+        try:
+            from music_theory import semitone_distance, transpose_chord
+
+            ref_first = ""
+            live_first = ""
+            for name, chs in reference.items():
+                live = sections.get(name)
+                if isinstance(chs, list) and chs and isinstance(live, list) and live:
+                    ref_first = str(chs[0] or "").strip()
+                    live_first = str(live[0] or "").strip()
+                    if ref_first and live_first:
+                        break
+            if ref_first and live_first:
+                steps = semitone_distance(ref_first, live_first)
+                spelled = str(transpose_chord(orig, steps, reference_key=orig) or "").strip()
+                if spelled:
+                    return spelled
+        except Exception:
+            pass
+    if orig and dest and dest != orig and isinstance(catalog, dict) and catalog:
+        try:
+            expected = transpose_sections_dict(catalog, orig, dest)
+            if section_maps_equivalent(sections, expected):
+                return dest
+        except Exception:
+            pass
+    if orig and blob and blob != orig and isinstance(catalog, dict) and catalog:
+        try:
+            expected = transpose_sections_dict(catalog, orig, blob)
+            if section_maps_equivalent(sections, expected):
+                return blob
+        except Exception:
+            pass
+    return blob or orig or dest
+
+
+def overlay_concert_token_with_pending_practice_key(
+    session: dict[str, Any],
+    canonical_token: str,
+) -> str:
+    """Same-rerun concert Practice Key: pending/saved edit wins over the still-uncommitted blob."""
+    canonical = str(canonical_token or "").strip()
+    dest = str(overlay_destination_practice_key(session) or "").strip()
+    if not dest:
+        return canonical
+    if not canonical or dest == canonical:
+        return dest
+    try:
+        from creative_key_sync import user_sidebar_display_key_authoritative
+
+        pending = str(pending_selected_practice_key_token(session) or "").strip()
+        user_auth = user_sidebar_display_key_authoritative(session)
+        if pending or user_auth:
+            from workflow_key_identity import normalize_user_practice_key_selection, resolve_song_practice_key_identity
+
+            token = pending or dest
+            ident = resolve_song_practice_key_identity(session)
+            default_mode = str(ident.practice_mode if ident else "minor").strip().lower()
+            if default_mode not in {"major", "minor"}:
+                default_mode = "minor"
+            _t, _m, token = normalize_user_practice_key_selection(token, default_mode=default_mode)
+            return token
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if dest == live:
+            # Stale live display_key must not downgrade a committed blob/store token.
+            return canonical
+    except ImportError:
+        pass
+    return dest
+
+
+def overlay_sections_with_pending_practice_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+    *,
+    spelled_in_key: str,
+) -> dict[str, list[str]]:
+    """Transpose a concert section map toward a queued Practice Key without writing session.
+
+    ``spelled_in_key`` must be the key the sections are currently spelled in
+    (committed blob / last committed practice key), not the destination.
+    """
+    dest = overlay_destination_practice_key(session)
+    src = infer_catalog_sections_spelled_in_key(
+        session, sections, fallback=str(spelled_in_key or "")
+    )
+    if not dest or not src or dest == src or not isinstance(sections, dict) or not sections:
+        return sections
+    try:
+        from music_theory import transpose_sections_dict
+
+        return transpose_sections_dict(sections, src, dest)
+    except ImportError:
+        return sections
+
+
+def overlay_chord_with_pending_practice_key(
+    session: dict[str, Any],
+    chord: str,
+    *,
+    spelled_in_key: str,
+) -> str:
+    dest = overlay_destination_practice_key(session)
+    src = str(spelled_in_key or "").strip()
+    raw = str(chord or "").strip()
+    orig = ""
+    sel = session.get("selected_song")
+    if isinstance(sel, dict):
+        orig = str(sel.get("key") or sel.get("original_key") or "").strip()
+    if dest and orig and dest == src and orig != dest and raw:
+        home = session.get("home_sections") if isinstance(session.get("home_sections"), dict) else {}
+        catalog_hit = False
+        for chs in (home or {}).values():
+            if isinstance(chs, list) and any(str(c).strip() == raw for c in chs):
+                catalog_hit = True
+                break
+        if catalog_hit:
+            src = orig
+    if not dest or not src or dest == src or not raw:
+        return raw
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(src, dest)
+        if not steps:
+            return raw
+        return transpose_chord(raw, steps, reference_key=dest)
+    except ImportError:
+        return raw
+
+
 def clear_pending_song_practice_key_edit(session: dict[str, Any]) -> None:
     session.pop(PENDING_SONG_PRACTICE_KEY_EDIT_KEY, None)
 
@@ -201,13 +520,35 @@ def _validate_pending(session: dict[str, Any], pending: dict[str, Any]) -> str |
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
         ptr = get_active_workflow_pointer(session)
-        if ptr is None:
+        ptr_owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+        ptr_sid = str(ptr.workflow_session_id or "").strip() if ptr else ""
+        owner_ok = bool(ptr) and ptr_owner == owner and ptr_sid == pending_sid
+        # Mission / SBI Backing: pointer may be song_based while the sealed
+        # backing source still owns the Practice Key edit (Pass 8 Dm→Em).
+        if not owner_ok and owner in {"mission_jam", "song_based_improvisation"}:
+            try:
+                from backing_context import get_backing_context
+
+                ctx = get_backing_context(session)
+                src = str(getattr(ctx, "source", "") or "").strip() if ctx else ""
+                if owner == "mission_jam" and src == "mission":
+                    owner_ok = True
+                elif owner == "song_based_improvisation" and src in {"song_improv", "mission"}:
+                    owner_ok = True
+            except ImportError:
+                pass
+        if not owner_ok:
             return "workflow_owner_mismatch"
-        if str(ptr.workflow_owner or "") != owner:
-            return "workflow_owner_mismatch"
-        if str(ptr.workflow_session_id or "") != pending_sid:
-            return "workflow_session_mismatch"
         if get_workflow_blob(session, owner, pending_sid) is None:
+            # Mission pending may target mission_jam blob that is mirrored from song.
+            if owner == "mission_jam":
+                try:
+                    from music_workflow_song_practice import song_practice_blob
+
+                    if song_practice_blob(session) is not None:
+                        return None
+                except ImportError:
+                    pass
             return "session_id_mismatch"
     except ImportError:
         return "session_id_mismatch"
@@ -305,6 +646,11 @@ __all__ = [
     "PENDING_SONG_PRACTICE_KEY_EDIT_LAST_DIAG_KEY",
     "clear_pending_song_practice_key_edit",
     "consume_pending_song_practice_key_edit",
+    "overlay_chord_with_pending_practice_key",
+    "overlay_concert_token_with_pending_practice_key",
+    "overlay_destination_practice_key",
+    "overlay_sections_with_pending_practice_key",
     "peek_pending_song_practice_key_edit",
+    "pending_selected_practice_key_token",
     "queue_pending_song_practice_key_edit",
 ]

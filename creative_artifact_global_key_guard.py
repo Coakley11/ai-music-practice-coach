@@ -241,6 +241,41 @@ def apply_frozen_global_keys_to_payload(session: dict[str, Any], state: dict[str
             frozen = diag["frozen_snapshot"]
     if not isinstance(frozen, dict) or not frozen:
         return state
+    live_dk = str(session.get("display_key") or "").strip()
+    frozen_dk = str(frozen.get("display_key") or "").strip()
+    skip_key_overlay = False
+    try:
+        from creative_key_sync import mission_backing_owns_left_panel_key
+
+        skip_key_overlay = bool(
+            explicit_display_key_user_event(session)
+            or mission_backing_owns_left_panel_key(session)
+        )
+    except ImportError:
+        skip_key_overlay = explicit_display_key_user_event(session)
+    if skip_key_overlay:
+        frozen = {
+            field: val
+            for field, val in frozen.items()
+            if field not in GLOBAL_KEY_GUARD_FIELDS
+        }
+        if not frozen:
+            return state
+    if frozen_dk and live_dk and frozen_dk != live_dk:
+        try:
+            from creative_key_sync import _emit_h6_mission_pk_trace
+
+            _emit_h6_mission_pk_trace(
+                session,
+                "F_first_writer_freeze_overlay_display_key",
+                live_display_key=live_dk,
+                frozen_display_key=frozen_dk,
+                skipped=skip_key_overlay,
+            )
+        except Exception:
+            pass
+    if skip_key_overlay:
+        return state
     core = state.get("core")
     if isinstance(core, dict):
         for field, val in frozen.items():

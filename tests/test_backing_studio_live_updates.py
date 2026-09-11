@@ -107,10 +107,12 @@ class TestBackingStudioBpmInit(unittest.TestCase):
         self.assertEqual(session[backing_bpm_slider_widget_key(sync_id)], 60)
 
     def test_same_source_bpm_override_persists(self) -> None:
+        from backing_context import backing_page_sync_id
+
         session = _entry_jam_session(bpm=60)
         ctx = build_entry_jam_context(session)
         set_backing_context(session, ctx)
-        sync_id = f"creative:entry_jam:{ctx.source_signature}"
+        sync_id = backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "jam"))
         session[_CANONICAL_BACKING_ID_KEY] = sync_id
         session[BPM_WIDGET_KEY] = 75
         session[LAST_BPM_SONG] = sync_id
@@ -435,7 +437,7 @@ class TestBackingSourceNavigation(unittest.TestCase):
         self.assertEqual(page, "creative")
         self.assertEqual(session.get("improv_entry_mode"), "Style Jam Mode")
         self.assertEqual(session.get("improv_style_key"), "F")
-        self.assertEqual(session.get("_pending_display_key"), "F")
+        self.assertNotEqual(session.get("_pending_display_key"), "F")
 
     def test_song_improv_restore_shape_of_you(self) -> None:
         from backing_source_navigation import prepare_return_to_backing_source
@@ -452,7 +454,9 @@ class TestBackingSourceNavigation(unittest.TestCase):
         page = prepare_return_to_backing_source(session)
         self.assertEqual(page, "creative")
         self.assertEqual(session.get("improv_entry_mode"), "Song-Based Improvisation")
-        self.assertEqual(session.get("_pending_display_key"), "Cm")
+        restored = str(session.get("display_key") or session.get("_pending_display_key") or "")
+        self.assertEqual(session.get("concert_key"), "Cm")
+        self.assertEqual(restored, "Cm")
 
     def test_catalog_song_label_not_regular_song(self) -> None:
         from backing_context import format_backing_context_banner
@@ -549,8 +553,9 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
         prepare_backing_context_sidebar_display_key(st, session)
         state = resolve_current_backing_musical_state(session)
-        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
         self.assertEqual(state.practice_concert_key, "F")
+        self.assertEqual(session.get("display_key"), "Bm")
 
     def test_style_jam_sidebar_prefers_backing_context_over_catalog_display_key(self) -> None:
         from creative_key_sync import prepare_creative_sidebar_display_key
@@ -569,8 +574,9 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         set_backing_context(session, ctx)
         st = SimpleNamespace(session_state=session)
         prepare_creative_sidebar_display_key(st, session)
-        self.assertEqual(session.get("display_key"), "F")
-        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("improv_style_key"), "F")
+        self.assertEqual(session.get("display_key"), "G")
+        self.assertEqual(session.get("concert_key"), "G")
 
     def test_sidebar_key_change_updates_resolver(self) -> None:
         from creative_key_sync import CREATIVE_CONCERT_KEY_SOURCE, invalidate_creative_backing_context
@@ -622,14 +628,14 @@ class TestKeyConsistencyCardSidebar(unittest.TestCase):
         set_backing_context(session, ctx)
         state = resolve_current_backing_musical_state(session)
         self.assertEqual(state.practice_concert_key, "C")
-        self.assertEqual(state.chart_badge_label, "Guitar shape")
-        self.assertEqual(state.chart_badge_value, "F")
+        self.assertEqual(state.chart_badge_label, "Charts in")
+        self.assertEqual(state.chart_badge_value, "F major")
         banner = format_backing_context_banner(ctx, practice_concert_key=state.practice_concert_key)
         self.assertIn("Twist and Shout", banner)
         self.assertIn(" · C · ", banner)
         self.assertNotIn(" · D", banner)
         full_label = f"{banner} · {state.chart_badge_label} {state.chart_badge_value}"
-        self.assertIn("Guitar shape F", full_label)
+        self.assertIn("Charts in F major", full_label)
 
     def test_sync_regular_song_backing_context_keys_updates_stale_snapshot(self) -> None:
         session = {
@@ -716,7 +722,7 @@ class TestInstrumentChartModeReset(unittest.TestCase):
         sync_written_key_instrument_anchor(session, "Alto Saxophone")
         self.assertFalse(session[CHART_IN_INSTRUMENT_KEY_KEY])
 
-    def test_switch_sax_to_guitar_capo_off_shape_matches_concert(self) -> None:
+    def test_switch_sax_to_guitar_preserves_capo_clears_written(self) -> None:
         from instrument_transposition import (
             WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY,
             sync_written_key_instrument_anchor,
@@ -727,13 +733,16 @@ class TestInstrumentChartModeReset(unittest.TestCase):
             WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY: "Saxophone",
             "show_chart_in_instrument_key": True,
             "guitar_capo_enabled": True,
-            "guitar_capo_shape_key": "Am",
+            "guitar_capo_shape_key": "Bb",
             "display_key": "C",
             "concert_key": "C",
         }
         sync_written_key_instrument_anchor(session, "Guitar")
-        self.assertFalse(session["guitar_capo_enabled"])
-        self.assertEqual(session["guitar_capo_shape_key"], "C")
+        # Written charts is instrument-family scoped; Capo is Guitar player context.
+        self.assertFalse(session["show_chart_in_instrument_key"])
+        self.assertTrue(session["guitar_capo_enabled"])
+        self.assertEqual(session["guitar_capo_shape_key"], "Bb")
+        self.assertEqual(session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY], "Guitar")
         self.assertNotIn("_creative_chart_display_key", session)
 
 

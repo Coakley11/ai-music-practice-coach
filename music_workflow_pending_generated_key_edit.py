@@ -152,6 +152,15 @@ def queue_pending_generated_key_edit(
         from music_workflow_state_store import get_workflow_blob
 
         sid = str(legacy_session_id_for_owner(session, owner) or "").strip()
+        if owner == "jam_session_generator":
+            try:
+                from generated_jam_key_change import resolve_generated_workflow_session_id
+
+                resolved = str(resolve_generated_workflow_session_id(session, owner) or "").strip()
+                if resolved:
+                    sid = resolved
+            except ImportError:
+                pass
         if not sid:
             return None
         blob = get_workflow_blob(session, owner, sid)

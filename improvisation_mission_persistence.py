@@ -37,6 +37,7 @@ MISSION_WORKSPACE_KEYS: tuple[str, ...] = (
     "improv_mission_recording_seal",
     "improv_mission_evaluation_focus",
     "improv_mission_match_example_mode",
+    "improv_mission_concert_key",
     MISSION_WORKSPACE_UPDATED_AT_KEY,
 )
 # Creative + backing page snapshots (page-local UI).
@@ -193,6 +194,18 @@ def hydrate_mission_workspace_after_restore(
         variant = str(example.get("variant") or "").strip()
         if variant:
             session.setdefault(MISSION_VARIANT_KEY, variant)
+
+    saved_pk = str(session.get("improv_mission_concert_key") or "").strip()
+    if saved_pk:
+        session["display_key"] = saved_pk
+        session["concert_key"] = saved_pk
+        session["display_key_mission_backing"] = saved_pk
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session[PENDING_DISPLAY_KEY] = saved_pk
+        except ImportError:
+            session["_pending_display_key"] = saved_pk
 
     try:
         from mission_practice_context import hydrate_mission_practice_context_after_restore

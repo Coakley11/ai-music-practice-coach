@@ -32,7 +32,14 @@ def log_projection_defer(
         f"legacy_restore_attempted={legacy_restore_attempted} "
         f"deferred_projection={deferred_projection}"
     )
-    print(line, flush=True, file=sys.stderr)
+    # Windows Streamlit can raise OSError(Errno 22) on stderr writes; never crash handoff.
+    try:
+        print(line, flush=True, file=sys.stderr)
+    except OSError:
+        try:
+            print(line, flush=True)
+        except OSError:
+            pass
 
 
 __all__ = ["log_projection_defer"]

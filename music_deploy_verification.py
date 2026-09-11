@@ -273,13 +273,22 @@ def emit_deploy_startup_log(*, force: bool = False) -> None:
         f"late_artifact_freeze={scan_a.get('present')} "
         f"modules={paths}"
     )
-    print(line, flush=True, file=sys.stderr)
-    print(line, flush=True)
+    try:
+        print(line, flush=True, file=sys.stderr)
+    except OSError:
+        pass
+    try:
+        print(line, flush=True)
+    except OSError:
+        pass
     log.info("emit_deploy_startup_log %s", line)
 
 
 def log_deploy_startup() -> None:
-    emit_deploy_startup_log(force=True)
+    try:
+        emit_deploy_startup_log(force=True)
+    except Exception:
+        pass
 
 
 def module_runtime_paths() -> dict[str, str]:

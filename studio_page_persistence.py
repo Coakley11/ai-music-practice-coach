@@ -77,6 +77,11 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "selected_sections",
             "backing_volume",
             "backing_context",
+            "_backing_source_preference",
+            "_backing_explicit_handoff_source",
+            "_backing_entry_class",
+            "_nested_custom_sbi_backing",
+            "_music_mission_canonical_return_destination",
             "creative_session",
             "improv_mission_practice_lick",
             "improv_mission_example",
@@ -93,6 +98,15 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "backing_groove_style",
             "backing_time_signature",
             "backing_time_signature_override",
+            "_backing_pk_control_owner",
+            "_mission_chord_snapshot",
+            "display_key_catalog_backing",
+            "display_key_custom_backing",
+            "display_key_sbi_active_backing",
+            "display_key_sbi_custom",
+            "display_key_style_jam_backing",
+            "display_key_jam_generator_backing",
+            "display_key_mission_backing",
         }
     ),
     "custom": frozenset(
@@ -100,6 +114,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "cpl_edit_section",
             "cpl_builder_version",
             "cpl_finished",
+            "_cpl_library_saved_song_id",
         }
     ),
     "composer": frozenset(
@@ -124,11 +139,14 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_intelligence_tab",
             "creative_improv_intelligence_tab",
             "improv_entry_mode",
+            # Nested SBI source tab (Active vs Custom) — distinct from top-level Custom page.
+            "improv_song_source",
             "sbi_preview_source",
             "creative_session",
             "improv_generated_sections",
             "improv_style_meta",
             "improv_jam_session",
+            "_jam_session_generator_session_id",
             "improv_motif",
             "improv_motif_output_mode",
             "improv_motif_abc",
@@ -159,6 +177,18 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "ii_selected_chord_label",
             "harmony_map_section",
             "harmony_map_chord",
+            "_creative_visit_source",
+            "_creative_visit_practice_key",
+            "_mission_chord_click_authority",
+            "_mission_chord_snapshot",
+            "_backing_pk_control_owner",
+            "display_key_catalog_backing",
+            "display_key_custom_backing",
+            "display_key_sbi_active_backing",
+            "display_key_sbi_custom",
+            "display_key_style_jam_backing",
+            "display_key_jam_generator_backing",
+            "display_key_mission_backing",
             "deep_harmony_lesson_step",
             "improv_deep_harmony_dha_section_idx",
             "improv_ai_metric_ids",
@@ -359,6 +389,45 @@ _NON_RESTORABLE_WIDGET_KEYS = frozenset(
 )
 
 
+def _snapshot_blob_is_custom_sbi(blob: Any) -> bool:
+    if not isinstance(blob, dict):
+        return False
+    if str(blob.get("source") or "") != "song_improv":
+        return False
+    bound = str(blob.get("bound_pick_key") or blob.get("active_song_id") or "")
+    return (
+        str(blob.get("sbi_source_owner") or "") == "Custom progression"
+        or str(blob.get("sbi_material_kind") or "").lower() == "custom"
+        or bound.lower().startswith("custom")
+        or bool(blob.get("custom_revision_id"))
+    )
+
+
+def _reapply_nested_custom_sbi_after_globals(
+    session_state: dict[str, Any],
+    local: dict[str, Any],
+) -> None:
+    """Nested Custom SBI Backing outranks leftover Follow Active globals."""
+    nested = bool(local.get("_nested_custom_sbi_backing")) or _snapshot_blob_is_custom_sbi(
+        local.get("backing_context")
+    )
+    if not nested:
+        return
+    session_state["_nested_custom_sbi_backing"] = True
+    session_state["improv_song_source"] = "Custom progression"
+    try:
+        from source_session_state import (
+            clear_sbi_follow_active_after_explicit_catalog,
+            set_sbi_preview_source,
+        )
+
+        clear_sbi_follow_active_after_explicit_catalog(session_state)
+        set_sbi_preview_source(session_state, "Custom progression")
+    except ImportError:
+        session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+        session_state["sbi_preview_source"] = "Custom progression"
+
+
 def _is_global_app_state_key(key: str) -> bool:
     """True if this key must never be saved or restored as page-local state."""
     if key in _NAV_META_KEYS or key in _GLOBAL_APP_STATE_KEYS:
@@ -507,6 +576,8 @@ _PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
     "workspace_genre_filters": "_genre_filters_user_touched",
     "creative_improv_intelligence_tab": "_improv_tab_user_touched",
     "improv_intelligence_tab": "_improv_tab_user_touched",
+    "improv_song_source": "_improv_song_source_user_touched",
+    "sbi_preview_source": "_improv_song_source_user_touched",
 }
 
 _VOLATILE_BACKING_SNAPSHOT_KEYS: frozenset[str] = frozenset(
@@ -559,6 +630,58 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
                 continue
+        if key in {"sbi_preview_source", "improv_song_source"}:
+            live_widget = str(session_state.get("improv_song_source") or "").strip()
+            last_src = str(session_state.get("_last_improv_song_source") or "").strip()
+            if (
+                bool(session_state.get("_sbi_song_source_hydrated"))
+                and last_src
+                and live_widget in {"Active song", "Custom progression", "Composition"}
+                and last_src != live_widget
+            ):
+                continue
+            live_preview = str(
+                session_state.get("sbi_preview_source")
+                or session_state.get("improv_song_source")
+                or ""
+            ).strip()
+            snap_preview = str(val or "").strip()
+            restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+            # Durable Custom click outranks leftover Follow Active + stale Active snapshots.
+            if restore_custom and snap_preview != "Custom progression":
+                continue
+            if restore_custom and snap_preview == "Custom progression":
+                session_state[key] = snap_preview
+                session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                continue
+            # Do not let a stale Creative page snapshot reclaim Active Source
+            # when the live/persisted SBI source is already Custom.
+            if live_preview == "Custom progression" and snap_preview != live_preview:
+                continue
+            nested_custom_backing = bool(local.get("_nested_custom_sbi_backing")) or (
+                "backing_context" in local
+                and snap_preview in {"Custom progression", "Composition"}
+            )
+            if nested_custom_backing and snap_preview in {"Custom progression", "Composition"}:
+                session_state[key] = snap_preview
+                session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                continue
+            follow_now = bool(session_state.get("_sbi_follow_active_after_explicit_catalog"))
+            if follow_now:
+                try:
+                    from source_session_state import sbi_must_follow_global_active
+
+                    follow_now = sbi_must_follow_global_active(session_state)
+                except ImportError:
+                    pass
+            if follow_now:
+                if snap_preview != "Active song":
+                    continue
+                session_state[key] = "Active song"
+                continue
+        if key == "song_picker_active_source":
+            # Global music-source ownership — never reclaim from page snapshots.
+            continue
         if key == "multitrack_backing_music_wav":
             snap_project = str(
                 local.get("_last_catalog_multitrack_id")
@@ -590,6 +713,46 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             continue
         if key == "backing_context":
             prev_bc = session_state.get("backing_context")
+            snap_bc = val if isinstance(val, dict) else None
+            live_bc = prev_bc if isinstance(prev_bc, dict) else None
+            if live_bc is not None and snap_bc is not None:
+                live_src = str(live_bc.get("source") or "").strip()
+                snap_src = str(snap_bc.get("source") or "").strip()
+                specialized = {
+                    "song_improv",
+                    "mission",
+                    "entry_jam",
+                    "custom_progression",
+                }
+                # Specialized visit on disk/session must not be clobbered by a
+                # stale Catalog Backing page snapshot on reboot/refresh.
+                if live_src in specialized and snap_src == "regular_song":
+                    continue
+                snap_custom = _snapshot_blob_is_custom_sbi(snap_bc)
+                live_custom = _snapshot_blob_is_custom_sbi(live_bc)
+                if snap_custom and not live_custom:
+                    pass
+                else:
+                    try:
+                        from backing_play_session import (
+                            get_backing_play_session,
+                            play_session_blocks_canonical_seed,
+                        )
+
+                        if play_session_blocks_canonical_seed(session_state):
+                            continue
+                        ps = get_backing_play_session(session_state)
+                        if (
+                            ps
+                            and not ps.get("expired")
+                            and live_src in specialized
+                            and snap_src in specialized | {"regular_song", ""}
+                        ):
+                            # Same Backing visit — keep live sealed ctx; play session
+                            # owns temporary BPM/style/loop over snapshot defaults.
+                            continue
+                    except ImportError:
+                        pass
             try:
                 from creative_return_trace import trace_direct_backing_context_write
 
@@ -603,6 +766,7 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
                 pass
         session_state[key] = copy.deepcopy(val)
     _restore_preserved_globals(session_state, preserved)
+    _reapply_nested_custom_sbi_after_globals(session_state, local)
 
 
 def save_page_snapshot(session_state: dict, page_id: str) -> None:
@@ -620,6 +784,13 @@ def save_page_snapshot(session_state: dict, page_id: str) -> None:
                 sync_creative_session_before_persist(session_state)
             except ImportError:
                 pass
+    if page_id == "backing" or str(session_state.get("studio_page") or "").strip() == "backing":
+        try:
+            from backing_play_session import seal_live_backing_tempo_for_persist
+
+            seal_live_backing_tempo_for_persist(session_state)
+        except ImportError:
+            pass
     store = session_state.setdefault(_PAGE_SNAPSHOTS_KEY, {})
     store[page_id] = capture_page_snapshot(session_state, page_id)
 
@@ -645,6 +816,13 @@ def restore_page_snapshot(session_state: dict, page_id: str) -> None:
     except ImportError:
         pass
     apply_page_snapshot(session_state, store.get(page_id))
+    if page_id == "backing":
+        try:
+            from backing_context import hydrate_backing_context_after_restore
+
+            hydrate_backing_context_after_restore(session_state)
+        except ImportError:
+            pass
 
 
 def reset_page_snapshot_tracker(session_state: dict) -> None:

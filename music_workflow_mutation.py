@@ -352,13 +352,30 @@ def commit_staged_workflow(
         canonical_keep = mutation_type == "practice_key_change" and owner in {
             "style_jam",
             "jam_session_generator",
+            "mission_jam",
+            "song_based_improvisation",
         }
         if not canonical_keep and str(source or "") in {
             "on_improv_style_key_change",
             "on_improv_jam_key_change",
+            "on_improv_style_jam_setting_change",
+            "on_improv_jam_setting_change",
+            "sidebar_song_improv",
         }:
             canonical_keep = True
-        if not canonical_keep and mutation_type == "mission_example_artifact":
+        if not canonical_keep and mutation_type in {
+            "mission_example_artifact",
+            "style_jam_control_settings",
+            # Explicit chord click already sealed session + staged blob before
+            # legacy projection. Rolling back causes one-click-behind UI and can
+            # leak RequiresPreWidgetActivation into st.warning.
+            "mission_chord_selection",
+        }:
+            canonical_keep = True
+        if not canonical_keep and str(source or "") in {
+            "apply_atomic_mission_chord",
+            "apply_atomic_mission_chord_selection",
+        }:
             canonical_keep = True
         if canonical_keep:
             trace["validation_result"] = "defer"
@@ -391,7 +408,8 @@ def commit_staged_workflow(
             return MutationResult(
                 ok=True,
                 error_code="PROJECTION_DEFERRED",
-                error_message=str(exc),
+                # Never leak internal activation tokens to UI callers.
+                error_message="",
                 rollback_performed=False,
                 trace=trace,
             )
@@ -589,10 +607,25 @@ def _invalidate_mission_chord_dependent_session(session: dict[str, Any], *, new_
         from improvisation_missions import MISSION_EXAMPLE_KEY
 
         ex = session.get(MISSION_EXAMPLE_KEY)
-        if isinstance(ex, dict) and str(ex.get("chord") or "").strip() not in {"", str(new_chord or "").strip()}:
-            session.pop(MISSION_EXAMPLE_KEY, None)
-            session.pop("_mission_example_output_fp", None)
-            session.pop("_mission_example_material_fp", None)
+        new_sym = str(new_chord or "").strip()
+        if isinstance(ex, dict) and new_sym:
+            ex_chord = str(ex.get("chord") or "").strip()
+            motif = ex.get("motif") if isinstance(ex.get("motif"), dict) else {}
+            concert_chord = str(motif.get("_concert_chord") or ex_chord).strip()
+            same = False
+            try:
+                from improvisation_intelligence_ui import _chords_identity_equal
+
+                same = _chords_identity_equal(ex_chord, new_sym) or _chords_identity_equal(
+                    concert_chord, new_sym
+                )
+            except Exception:
+                same = ex_chord == new_sym or concert_chord == new_sym
+            if not same:
+                session.pop(MISSION_EXAMPLE_KEY, None)
+                session.pop("_mission_example_output_fp", None)
+                session.pop("_mission_example_material_fp", None)
+                session.pop("_mission_example_artifact_id", None)
     except ImportError:
         session.pop("improv_mission_example", None)
     session.pop(MISSIONS_GENERATE_CONTEXT_KEY, None)
@@ -629,30 +662,21 @@ def mutate_mission_chord_selection(
         mirror_mission_keys_from_song_blob(session)
     except ImportError:
         pass
+    practice_before = (
+        str(session.get("display_key") or ""),
+        str(session.get("concert_key") or ""),
+        str(session.get("_pending_display_key") or ""),
+    )
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        song_token_before = str(resolve_song_practice_key_token(session) or "")
+    except ImportError:
+        song_token_before = ""
     ptr = get_active_workflow_pointer(session)
-    if ptr is None or ptr.workflow_owner != "mission_jam":
-        try:
-            from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
-
-            sid = str(session.get("active_catalog_pick_key") or "song").strip()
-            try:
-                from music_workflow_mission_session import mission_blob_session_id
-
-                sid = mission_blob_session_id(session)
-            except ImportError:
-                sid = f"mission|catalog|{sid}"
-            activate_workflow(
-                session,
-                ActivateWorkflowRequest(
-                    target_owner="mission_jam",
-                    target_session_id=sid,
-                    activation_source="mission_chord_pre_activate",
-                    navigation_intent="creative_missions",
-                ),
-            )
-        except ImportError:
-            return MutationResult(ok=False, error_code="NOT_MISSION", error_message="Mission workflow not active.")
-        ptr = get_active_workflow_pointer(session)
+    # Do not activate_workflow mid-click: widgets are often locked and a failed
+    # activate stamps internal OWNER_MISMATCH into activation_user_notice.
+    # Session chord is sealed below; blob commit is deferred when owner differs.
 
     prev_chord = ""
     blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id) if ptr else None
@@ -716,15 +740,120 @@ def mutate_mission_chord_selection(
             b.mission_type = str(session.get("improv_active_mission") or "").strip()
             b.mission_id = b.mission_type
 
-    result = mutate_active_workflow(
-        session,
-        _mut,
-        mutation_type="mission_chord_selection",
-        source="apply_atomic_mission_chord",
-        expected_owner="mission_jam",
-    )
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or ptr.workflow_owner != "mission_jam":
+        # Session chord already sealed above. Avoid OWNER_MISMATCH UI when Live
+        # Coach / Harmony still have a non-mission active pointer.
+        try:
+            from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+            # Chord click already sealed session; drop stale activate errors so
+            # activation_user_notice never shows "Active owner mismatch."
+            err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
+            if isinstance(err, dict):
+                session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+        except ImportError:
+            pass
+        result = MutationResult(
+            ok=True,
+            error_code="CHORD_OWNER_ACTIVATE_DEFERRED",
+            error_message="",
+            rollback_performed=False,
+            trace={
+                "mutation_type": "mission_chord_selection",
+                "session_chord_sealed": new_sym,
+                "active_owner": getattr(ptr, "workflow_owner", None),
+            },
+        )
+    else:
+        result = mutate_active_workflow(
+            session,
+            _mut,
+            mutation_type="mission_chord_selection",
+            source="apply_atomic_mission_chord",
+            expected_owner="mission_jam",
+        )
+        if (not result.ok) and str(result.error_code or "") == "OWNER_MISMATCH" and new_sym:
+            try:
+                from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+                # Chord click already sealed session; drop stale activate errors so
+                # activation_user_notice never shows "Active owner mismatch."
+                err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
+                if isinstance(err, dict):
+                        session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            except ImportError:
+                pass
+            result = MutationResult(
+                ok=True,
+                error_code="CHORD_OWNER_ACTIVATE_DEFERRED",
+                error_message="",
+                rollback_performed=False,
+                trace={**(getattr(result, "trace", None) or {}), "session_chord_sealed": new_sym},
+            )
+    if result.ok and new_sym and new_sec:
+        try:
+            from creative_chord_selection_authority import (
+                read_mission_section_map_from_session,
+                write_authoritative_chord_selection,
+            )
+
+            # Click callback already sealed session index — do not remap via resolve.
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict) and str(click.get("chord") or "").strip() == new_sym:
+                pass
+            else:
+                section_map = read_mission_section_map_from_session(session)
+                if section_map:
+                    write_authoritative_chord_selection(
+                        session,
+                        section_map,
+                        chord_symbol=new_sym,
+                        section_label=new_sec,
+                        chord_index=int(chord_index),
+                    )
+        except ImportError:
+            pass
+    if result.ok:
+        try:
+            from music_workflow_song_practice import rehydrate_full_song_concert_sections
+
+            rehydrate_full_song_concert_sections(session, source="mission_chord_selection")
+        except ImportError:
+            pass
     if chord_changed:
         _invalidate_mission_chord_dependent_session(session, new_chord=new_sym)
+    # Restore from the live Practice Key snapshot taken before chord mutation.
+    # Never prefer a stale song-blob token (e.g. Bm) over live Dm — that is a
+    # key-ownership violation (Mission chord must not mutate Practice Key).
+    restore_tok = practice_before[0] or practice_before[1] or song_token_before
+    after_display = str(session.get("display_key") or "")
+    after_concert = str(session.get("concert_key") or "")
+    after_pending = str(session.get("_pending_display_key") or "")
+    if restore_tok and (
+        after_display != restore_tok
+        or after_concert != restore_tok
+        or (after_pending and after_pending != restore_tok)
+    ):
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=restore_tok)
+        except ImportError:
+            session["display_key"] = restore_tok
+            session["concert_key"] = restore_tok
+            session["_pending_display_key"] = restore_tok
+        try:
+            from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+            ensure_song_practice_blob_for_active_song(
+                session,
+                practice_key=restore_tok,
+                original_key=str((sel or {}).get("key") or ""),
+            )
+        except ImportError:
+            pass
     return result
 
 
@@ -744,6 +873,97 @@ def _reconcile_key_dependent_state(
         return
     if owner not in {"mission_jam", "song_based_improvisation"}:
         return
+    try:
+        from improvisation_missions import transpose_stored_mission_example
+
+        transpose_stored_mission_example(session, from_key=old_key, to_key=new_key)
+    except ImportError:
+        pass
+    # Keep Mission selected-chord labels in the new Practice Key (header F → F#).
+    try:
+        from music_theory import semitone_distance, transpose_chord
+
+        steps = semitone_distance(old_key, new_key)
+        if steps:
+            for key in (
+                "ii_selected_chord",
+                "II_SELECTED_CHORD",
+                "_mission_backing_canonical_chord",
+            ):
+                raw = str(session.get(key) or "").strip()
+                if raw:
+                    session[key] = transpose_chord(raw, steps, reference_key=new_key)
+            click = session.get("_mission_chord_click_authority")
+            if isinstance(click, dict):
+                c_sym = str(click.get("chord") or "").strip()
+                if c_sym:
+                    click = dict(click)
+                    click["chord"] = transpose_chord(c_sym, steps, reference_key=new_key)
+                    click["practice_key"] = new_key
+                    session["_mission_chord_click_authority"] = click
+            label = str(session.get("ii_selected_chord_label") or "").strip()
+            if " · " in label:
+                sec, _, ch = label.partition(" · ")
+                ch = str(ch or "").strip()
+                if ch:
+                    session["ii_selected_chord_label"] = (
+                        f"{sec} · {transpose_chord(ch, steps, reference_key=new_key)}"
+                    )
+            opts = session.get("improv_mission_chord_options")
+            if isinstance(opts, list) and opts:
+                session["improv_mission_chord_options"] = [
+                    transpose_chord(str(c), steps, reference_key=new_key) if str(c).strip() else c
+                    for c in opts
+                ]
+            prog = session.get("improv_mission_progression")
+            if isinstance(prog, list) and prog:
+                session["improv_mission_progression"] = [
+                    transpose_chord(str(c), steps, reference_key=new_key) if str(c).strip() else c
+                    for c in prog
+                ]
+            # Keep Mission section maps / authority in the new key so header chord
+            # cannot be re-resolved back to the pre-transpose symbol (F stuck).
+            sm = session.get("_improv_mission_section_map")
+            if isinstance(sm, list) and sm:
+                new_sm: list[Any] = []
+                for item in sm:
+                    if isinstance(item, (tuple, list)) and len(item) >= 2:
+                        sec = item[0]
+                        chs = item[1]
+                        if isinstance(chs, list):
+                            new_sm.append(
+                                (
+                                    sec,
+                                    [
+                                        transpose_chord(str(c), steps, reference_key=new_key)
+                                        if str(c).strip()
+                                        else c
+                                        for c in chs
+                                    ],
+                                )
+                            )
+                        else:
+                            new_sm.append(item)
+                    else:
+                        new_sm.append(item)
+                session["_improv_mission_section_map"] = new_sm
+            try:
+                from creative_chord_selection_authority import write_authoritative_chord_selection
+
+                chord_now = str(session.get("ii_selected_chord") or "").strip()
+                sec_now = str(session.get("ii_selected_section") or "").strip()
+                if chord_now and isinstance(session.get("_improv_mission_section_map"), list):
+                    write_authoritative_chord_selection(
+                        session,
+                        session["_improv_mission_section_map"],
+                        chord_symbol=chord_now,
+                        section_label=sec_now,
+                        chord_index=int(session.get("ii_selected_chord_index") or 0),
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
     blob.example_fingerprint = ""
     blob.artifact_fingerprint = ""
     blob.backing_handoff_chord = ""
@@ -765,7 +985,17 @@ def _reconcile_key_dependent_state(
         pass
 
 
-def _parse_key_token(key: str) -> tuple[str, str]:
+def _parse_key_token(key: str, *, default_mode: str = "major") -> tuple[str, str]:
+    try:
+        from workflow_key_identity import normalize_user_practice_key_selection
+
+        tonic, mode, _token = normalize_user_practice_key_selection(
+            str(key or "C"),
+            default_mode=str(default_mode or "major"),
+        )
+        return tonic, mode
+    except ImportError:
+        pass
     try:
         from music_workflow_compatibility import _tonic_mode_from_token
 
@@ -784,9 +1014,17 @@ def update_active_practice_key(
 ) -> MutationResult:
     """B3 — update practice key on the active owner blob only."""
     ptr = get_active_workflow_pointer(session)
+    expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
+    if expected == "jam_session_generator":
+        try:
+            from generated_jam_key_change import align_generated_workflow_pointer_for_key_edit
+
+            align_generated_workflow_pointer_for_key_edit(session, expected)
+            ptr = get_active_workflow_pointer(session)
+        except ImportError:
+            pass
     if ptr is None:
         return MutationResult(ok=False, error_code="NO_POINTER", error_message="No active workflow.")
-    expected = _OWNER_FOR_KEY_SOURCE.get(source, "")
     if expected and ptr.workflow_owner != expected:
         if source in {"on_improv_style_key_change", "on_improv_jam_key_change"}:
             try:
@@ -810,10 +1048,14 @@ def update_active_practice_key(
     if owner not in {"song_based_improvisation", "mission_jam", "style_jam", "jam_session_generator"}:
         return MutationResult(ok=False, error_code="UNSUPPORTED_OWNER", error_message="Key change unsupported for owner.")
 
-    new_tonic, new_mode = _parse_key_token(key_token)
     blob = get_workflow_blob(session, ptr.workflow_owner, ptr.workflow_session_id)
     if blob is None:
         return MutationResult(ok=False, error_code="NO_BLOB", error_message="Active blob missing.")
+
+    new_tonic, new_mode = _parse_key_token(
+        key_token,
+        default_mode=str(blob.keys.practice_mode or "major"),
+    )
 
     prev_token = f"{blob.keys.practice_tonic}{blob.keys.practice_mode}"
     new_token = f"{new_tonic}{new_mode}"
@@ -823,6 +1065,25 @@ def update_active_practice_key(
         effective_persist = "explicit"
     prev_sections_fp = _progression_fingerprint(blob.section_map)
     auth_old_key = f"{blob.keys.practice_tonic}m" if blob.keys.practice_mode == "minor" else blob.keys.practice_tonic
+    if owner in {"song_based_improvisation", "mission_jam"} and blob.section_map:
+        try:
+            from music_theory import key_center_token
+            from workflow_musical_authority import section_maps_equivalent
+
+            orig_token = key_center_token(blob.keys.original_tonic, blob.keys.original_mode)
+            home = session.get("home_sections")
+            if (
+                orig_token
+                and orig_token != auth_old_key
+                and isinstance(home, dict)
+                and home
+                and section_maps_equivalent(blob.section_map, home)
+            ):
+                # Chart is still catalog-original pitch; leftover prior-song practice_tonic
+                # must not be the transpose from-key (Say G on a Hevenu Dm chart).
+                auth_old_key = orig_token
+        except ImportError:
+            pass
 
     def _mut(b: WorkflowStateBlob) -> None:
         orig_t = b.keys.original_tonic or b.keys.practice_tonic
@@ -853,11 +1114,22 @@ def update_active_practice_key(
                     transposed = transpose_sections_dict(sections_src, old_key, key_token)
                     b.section_map = transposed
                     if isinstance(jam, dict):
-                        session["improv_jam_session"] = {
+                        sealed = {
                             **copy.deepcopy(jam),
                             "sections": copy.deepcopy(transposed),
                             "id": jam_id or jam.get("id"),
                         }
+                        try:
+                            from music_workflow_generated_session import seal_jam_session_musical_context
+
+                            sealed = seal_jam_session_musical_context(
+                                sealed,
+                                key_center=key_token,
+                                sections=transposed,
+                            )
+                        except ImportError:
+                            pass
+                        session["improv_jam_session"] = sealed
                 except ImportError:
                     b.section_map = sections_src
                     record_compat_fallback(session, VIOLATION_GENERATOR_PRETRANSPOSE_SECTIONS_RETAINED, key_token)
@@ -994,6 +1266,12 @@ def update_mission_example_on_blob(
             b.mission_type = str(mission_type).strip()
         if section:
             b.selected_section = str(section).strip()
+        try:
+            idx_raw = session.get("II_SELECTED_CHORD_INDEX", session.get("ii_selected_chord_index"))
+            if idx_raw is not None and str(idx_raw).strip() != "":
+                b.selected_chord_index = int(idx_raw)
+        except (TypeError, ValueError):
+            pass
         if b.selected_chord_symbol and b.example_fingerprint:
             b.backing_handoff_chord = b.selected_chord_symbol
 
@@ -1022,11 +1300,31 @@ def mission_example_matches_active_blob(session: dict[str, Any], *, chord: str, 
 
 
 def should_project_mission_config_from_canonical(session: dict[str, Any]) -> bool:
-    """Active blob wins over stale canonical mission config."""
+    """Active blob wins over stale canonical mission config.
+
+    Explicit Mission chord clicks already seal session authority in the callback.
+    Never block those (or a pending widget projection from SAVE_REASON_MISSION_TARGET)
+    behind a briefly stale focus/blob chord — that is the Return→first-click failure.
+    """
     try:
-        from creative_mission_config_persistence import canonical_mission_config_value
+        from creative_mission_config_persistence import (
+            CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY,
+            CREATIVE_MISSION_USER_EVENT_KEY,
+            SAVE_REASON_MISSION_TARGET,
+            canonical_mission_config_value,
+        )
 
         canon_chord = str(canonical_mission_config_value(session, "ii_selected_chord") or "").strip()
+        ev = session.get(CREATIVE_MISSION_USER_EVENT_KEY)
+        if isinstance(ev, dict) and str(ev.get("save_reason") or "") == SAVE_REASON_MISSION_TARGET:
+            return True
+        if session.get(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY) and isinstance(ev, dict):
+            if str(ev.get("interaction") or "") == "chord_tile_on_click":
+                return True
+        click_auth = session.get("_mission_chord_click_authority")
+        if isinstance(click_auth, dict) and str(click_auth.get("chord") or "").strip():
+            # Session already sealed by the click — skip projection fights.
+            return False
     except ImportError:
         canon_chord = ""
     try:

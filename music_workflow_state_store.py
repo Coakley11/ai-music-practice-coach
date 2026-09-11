@@ -250,6 +250,77 @@ def get_music_workflow_state_store(session: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(_ensure_store(session))
 
 
+def _nested_cws_workflow_store(session: dict[str, Any]) -> dict[str, Any] | None:
+    """Canonical persist copy: creative_workspace_state.music_workflow_state_v1.store."""
+    cws = session.get("creative_workspace_state")
+    if not isinstance(cws, dict):
+        return None
+    nested = cws.get("music_workflow_state_v1")
+    if isinstance(nested, dict) and isinstance(nested.get("store"), dict):
+        return nested["store"]
+    return None
+
+
+def _blob_has_generated_sections(blob: WorkflowStateBlob | None) -> bool:
+    if blob is None:
+        return False
+    sm = blob.section_map
+    return isinstance(sm, dict) and any(isinstance(v, list) and v for v in sm.values())
+
+
+def _blob_practice_tonic(blob: WorkflowStateBlob | None) -> str:
+    if blob is None:
+        return ""
+    return str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "").strip()
+
+
+def _install_blob_into_live_store(session: dict[str, Any], blob: WorkflowStateBlob) -> None:
+    """Copy a canonical nested blob into the live store without a revision-bump fight."""
+    store = _ensure_store(session)
+    key = blob_storage_key(blob.workflow_owner, blob.workflow_session_id)
+    blobs = store.setdefault("blobs", {})
+    blobs[key] = blob.to_dict()
+
+
+def _choose_jam_uuid_blob(
+    session: dict[str, Any],
+    *,
+    live: WorkflowStateBlob | None,
+    nested: WorkflowStateBlob | None,
+) -> WorkflowStateBlob | None:
+    """Single jam UUID authority when live store and nested CWS copies diverge.
+
+    Callback mutation may write Eb into the live store while nested is still C.
+    The next script run may revert live to C while nested still holds Eb.
+    Prefer the generated copy that matches the live user/widget token; otherwise
+    prefer nested persist. A stale live C must not outrank nested Eb.
+    """
+    live_ok = live is not None and _blob_has_generated_sections(live)
+    nested_ok = nested is not None and _blob_has_generated_sections(nested)
+    if live_ok and not nested_ok:
+        return live
+    if nested_ok and not live_ok:
+        return nested
+    if not live_ok and not nested_ok:
+        return live or nested
+    live_t = _blob_practice_tonic(live)
+    nest_t = _blob_practice_tonic(nested)
+    if live_t == nest_t:
+        return live
+    widget = str(
+        session.get("display_key")
+        or session.get("improv_jam_key")
+        or session.get("_pending_display_key")
+        or ""
+    ).strip()
+    if widget:
+        if nest_t and (widget == nest_t or str(widget).startswith(nest_t)):
+            return nested
+        if live_t and (widget == live_t or str(widget).startswith(live_t)):
+            return live
+    return nested
+
+
 def get_workflow_blob(
     session: dict[str, Any],
     workflow_owner: str,
@@ -259,6 +330,15 @@ def get_workflow_blob(
     key = blob_storage_key(workflow_owner, workflow_session_id)
     raw = (store.get("blobs") or {}).get(key)
     blob = WorkflowStateBlob.from_dict(raw)
+    if workflow_owner == "jam_session_generator":
+        nested_store = _nested_cws_workflow_store(session)
+        nested_raw = (nested_store.get("blobs") or {}).get(key) if isinstance(nested_store, dict) else None
+        nested_blob = WorkflowStateBlob.from_dict(nested_raw)
+        if nested_store is not None and nested_store is not store:
+            chosen = _choose_jam_uuid_blob(session, live=blob, nested=nested_blob)
+            if chosen is not None and chosen is not blob:
+                _install_blob_into_live_store(session, chosen)
+                blob = chosen
     if blob is None and workflow_owner == "mission_jam":
         try:
             from music_workflow_mission_session import legacy_mission_session_aliases

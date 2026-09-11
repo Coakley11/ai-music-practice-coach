@@ -305,16 +305,9 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
             session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
     session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
-    try:
-        from guitar_capo import CAPO_ENABLED_KEY, sync_capo_from_practice_display_key
-
-        session_state[CAPO_ENABLED_KEY] = False
-        practice = str(
-            session_state.get("display_key") or session_state.get("concert_key") or "C"
-        ).strip() or "C"
-        sync_capo_from_practice_display_key(session_state, practice)
-    except ImportError:
-        pass
+    # Do NOT clear guitar Capo here. Capo is Guitar player context and must survive
+    # Saxophone↔Guitar hops and refresh rehydration when the written-key anchor lags.
+    # Written-charts mode is instrument-family-scoped; Capo is not.
     try:
         from backing_musical_state import clear_stale_chart_session_keys
 
@@ -525,7 +518,12 @@ def effective_practice_key(
     """
     chart_key, _ = effective_chart_key(concert_key, instrument, session_state)
     if capo_shape_key and str(instrument or "").strip() == "Guitar":
-        return str(capo_shape_key).strip() or chart_key
+        try:
+            from guitar_capo import shape_chart_key_for_concert
+
+            return shape_chart_key_for_concert(concert_key, capo_shape_key)
+        except ImportError:
+            return str(capo_shape_key).strip() or chart_key
     return chart_key
 
 
@@ -548,8 +546,13 @@ def resolve_practice_keys(
     except ImportError:
         capo_shape = None
     if capo_shape:
-        chart_key = capo_shape
-        mode = "written"
+        try:
+            from guitar_capo import shape_chart_key_for_concert
+
+            chart_key = shape_chart_key_for_concert(concert_key, capo_shape)
+        except ImportError:
+            chart_key = capo_shape
+        mode = "shape"
     global_display = concert_key
     practice_key = effective_practice_key(
         session_state,
@@ -666,17 +669,30 @@ def render_sidebar_transposing_recap(
 
     if not is_transposing_instrument(instrument):
         return
-    written = written_key_for_instrument(concert_key, instrument, st.session_state)
+    concert = str(concert_key or "").strip()
+    try:
+        from creative_key_sync import (
+            canonical_mission_practice_key,
+            mission_backing_owns_left_panel_key,
+        )
+
+        if mission_backing_owns_left_panel_key(st.session_state):
+            owned = canonical_mission_practice_key(st.session_state)
+            if owned:
+                concert = owned
+    except ImportError:
+        pass
+    written = written_key_for_instrument(concert, instrument, st.session_state)
     t_type = selected_transposing_type(st.session_state, instrument)
     show_written = chart_in_instrument_key(st.session_state)
     charts_in = charts_shown_in_key(
-        concert_key,
+        concert,
         written,
         show_in_instrument_key=show_written,
     )
     st.sidebar.markdown(
         f'<div class="ui-card soft ui-transposing-recap" style="margin:0.5rem 0;padding:0.65rem;">'
-        f"<strong>Concert key:</strong> {html.escape(concert_key)}<br>"
+        f"<strong>Concert key:</strong> {html.escape(concert)}<br>"
         f"<strong>Written key:</strong> {html.escape(written)}<br>"
         f"<strong>Charts shown in:</strong> {html.escape(charts_in)}<br>"
         f"<small class=\"ui-transposing-recap-meta\">{html.escape(instrument_display_name(t_type, instrument))}</small>"

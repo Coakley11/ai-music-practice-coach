@@ -8,6 +8,17 @@ from typing import Any
 TRACE_KEY = "_music_mission_return_handoff_trace"
 
 
+def _stderr(msg: str) -> None:
+    """Best-effort stderr; never crash the Streamlit run (Windows OSError 22)."""
+    try:
+        print(msg, file=sys.stderr, flush=True)
+    except Exception:
+        try:
+            print(msg, flush=True)
+        except Exception:
+            pass
+
+
 def _append(session: dict[str, Any], phase: str, payload: dict[str, Any]) -> None:
     bucket = session.get(TRACE_KEY)
     if not isinstance(bucket, list):
@@ -18,31 +29,25 @@ def _append(session: dict[str, Any], phase: str, payload: dict[str, Any]) -> Non
 
 def log_mission_return_click(session: dict[str, Any], *, detail: dict[str, Any]) -> None:
     _append(session, "click", detail)
-    print(f"[mission_return_handoff] click {detail}", file=sys.stderr, flush=True)
+    _stderr(f"[mission_return_handoff] click {detail}")
 
 
 def log_mission_return_queued(session: dict[str, Any], req: dict[str, Any]) -> None:
     _append(session, "queued", dict(req))
-    print(
+    _stderr(
         f"[mission_return_handoff] queued token={req.get('consume_token')} "
-        f"mission={req.get('mission_id')!r}",
-        file=sys.stderr,
-        flush=True,
+        f"mission={req.get('mission_id')!r}"
     )
 
 
 def log_mission_return_rerun(session: dict[str, Any], *, allowed: bool, fingerprint: str = "") -> None:
     _append(session, "rerun", {"allowed": allowed, "fingerprint": fingerprint})
-    print(
-        f"[mission_return_handoff] rerun allowed={allowed} fp={fingerprint[:48]}",
-        file=sys.stderr,
-        flush=True,
-    )
+    _stderr(f"[mission_return_handoff] rerun allowed={allowed} fp={fingerprint[:48]}")
 
 
 def log_mission_return_consume(session: dict[str, Any], *, phase: str, detail: dict[str, Any]) -> None:
     _append(session, phase, detail)
-    print(f"[mission_return_handoff] consume_{phase} {detail}", file=sys.stderr, flush=True)
+    _stderr(f"[mission_return_handoff] consume_{phase} {detail}")
 
 
 __all__ = [

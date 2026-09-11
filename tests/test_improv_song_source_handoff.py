@@ -38,8 +38,39 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["improv_song_source"], "Custom progression")
         self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Custom progression")
         self.assertEqual(session[PENDING_IMPROV_SONG_SOURCE], "Custom progression")
-        self.assertEqual(len(custom_calls), 1)
+        # SBI Custom is preview/handoff only — must not activate Global Custom.
+        self.assertEqual(len(custom_calls), 0)
         self.assertEqual(len(catalog_calls), 0)
+
+    def test_open_backing_handoff_skips_same_value_widget_assignment(self) -> None:
+        """Handoff must not assign improv_song_source after the radio exists."""
+
+        class _Session(dict):
+            writes: list[str] = []
+
+            def __setitem__(self, key, value):  # type: ignore[override]
+                if key == "improv_song_source":
+                    type(self).writes.append(str(value))
+                dict.__setitem__(self, key, value)
+
+        _Session.writes = []
+        session = _Session()
+        dict.__setitem__(session, "improv_song_source", "Active song")
+        dict.__setitem__(session, "creative_lab_analysis_mode", "Improvisation Intelligence")
+
+        def _noop(_ss: dict) -> None:
+            return None
+
+        sync_improv_song_source_for_handoff(
+            session,
+            "Active song",
+            set_catalog_source=_noop,
+            set_custom_source=_noop,
+        )
+        self.assertEqual(_Session.writes, [])
+        self.assertEqual(session["improv_song_source"], "Active song")
+        self.assertEqual(session[PENDING_IMPROV_SONG_SOURCE], "Active song")
+        self.assertEqual(session[CREATIVE_BACKING_SONG_SOURCE_KEY], "Active song")
 
     def test_widget_safe_apply_skips_widget_key_and_global_source(self) -> None:
         from song_catalog.catalog import format_pick_key
@@ -93,11 +124,33 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         self.assertEqual(session["active_catalog_pick_key"], shape_pick)
         self.assertEqual(session["song"], "Shape of You")
 
-    def test_flush_pending_seeds_widget_before_render(self) -> None:
-        session = {PENDING_IMPROV_SONG_SOURCE: "Custom progression"}
+    def test_flush_does_not_clobber_custom_preview_with_default_active_widget(self) -> None:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_PREVIEW_SOURCE_KEY: "Custom progression",
+            "improv_song_source": "Active song",
+            "_last_improv_song_source": "Custom progression",
+        }
         flush_pending_improv_song_source(session)
-        self.assertEqual(session["improv_song_source"], "Custom progression")
-        self.assertNotIn(PENDING_IMPROV_SONG_SOURCE, session)
+        self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Custom progression")
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+
+    def test_flush_trusts_active_radio_after_hydrate(self) -> None:
+        from source_session_state import SBI_PREVIEW_SOURCE_KEY
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_PREVIEW_SOURCE_KEY: "Custom progression",
+            "improv_song_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        session["improv_song_source"] = "Active song"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Active song")
 
     def test_resolve_prefers_preview_bucket_over_stale_handoff(self) -> None:
         from source_session_state import SBI_PREVIEW_SOURCE_KEY
@@ -200,8 +253,86 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
             set_catalog_source=_set_catalog,
             set_custom_source=_set_custom,
         )
-        self.assertEqual(session["active_catalog_pick_key"], shape_pick)
-        self.assertEqual(session["song"], "Shape of You")
+        # Handoff stamps SBI preview only — does not mutate Global Active identity.
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(session.get(CREATIVE_BACKING_SONG_SOURCE_KEY), "Active song")
+        self.assertEqual(session.get(PENDING_IMPROV_SONG_SOURCE), "Active song")
+        self.assertEqual(session["active_catalog_pick_key"], "custom::trial-1")
+        self.assertEqual(session["song"], "Trial Song")
+
+
+class TestCompositionRadioNotSwallowed(unittest.TestCase):
+    def test_live_composition_survives_init_after_custom_preview(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import flush_pending_improv_song_source, init_improvisation_state
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Custom progression",
+            "active_music_source": "catalog",
+            "active_catalog_pick_key": "Pop\x1fShape of You — Ed Sheeran",
+        }
+        init_improvisation_state(session, is_custom_active=False)
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+
+    def test_pending_composition_survives_init_when_custom_is_ga(self) -> None:
+        from source_session_state import get_sbi_preview_source
+        from studio_page_state import (
+            PENDING_IMPROV_SONG_SOURCE,
+            flush_pending_improv_song_source,
+            init_improvisation_state,
+        )
+
+        session = {
+            "studio_page": "creative",
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Custom progression",
+            PENDING_IMPROV_SONG_SOURCE: "Composition",
+            "active_music_source": "custom",
+            "active_catalog_pick_key": "custom::trial-1",
+            "song": "Trial Song",
+        }
+        init_improvisation_state(session, is_custom_active=True)
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+
+    def test_flush_follow_active_forces_over_leftover_composition_widget(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import flush_pending_improv_song_source
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Composition",
+            "sbi_preview_source": "Active song",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+
+    def test_flush_pending_composition_outranks_follow_active(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
+            get_sbi_preview_source,
+        )
+        from studio_page_state import PENDING_IMPROV_SONG_SOURCE, flush_pending_improv_song_source
+
+        session = {
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY: True,
+            "improv_song_source": "Active song",
+            "sbi_preview_source": "Active song",
+            PENDING_IMPROV_SONG_SOURCE: "Composition",
+        }
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(get_sbi_preview_source(session), "Composition")
+        self.assertFalse(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
 
 
 class TestImprovTabSnapshot(unittest.TestCase):

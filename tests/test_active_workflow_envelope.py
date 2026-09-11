@@ -8,6 +8,7 @@ from typing import Any
 from active_musical_workflow_envelope import (
     VIOLATION_MISSION_EXAMPLE_OWNER_MISMATCH,
     VIOLATION_STALE_GENERATED_JAM_KEY_LEAK,
+    VIOLATION_WORKFLOW_KEY_OWNER_MISMATCH,
     apply_atomic_mission_chord_selection,
     build_active_workflow_envelope,
     mission_example_allowed_for_projection,
@@ -163,6 +164,90 @@ class TestAtomicMissionChordSelection(unittest.TestCase):
         except ImportError:
             self.assertEqual(session.get("ii_selected_chord"), "B")
         self.assertNotIn(MISSION_EXAMPLE_KEY, session)
+
+
+class TestMissionEnvelopeAfterSuccessfulRestore(unittest.TestCase):
+    def test_matching_minor_tonic_and_selected_chord_is_consistent(self) -> None:
+        """Return to Mission with restored Ebm/Ebm must not stay in a syncing state."""
+        session: dict[str, Any] = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "display_key": "Ebm",
+            "concert_key": "Ebm",
+            "song": "Hevenu Shalom Aleichem",
+            "active_catalog_pick_key": "Jewish\x1fHevenu Shalom Aleichem — Traditional",
+            "selected_song": {
+                "title": "Hevenu Shalom Aleichem",
+                "key": "Dm",
+                "pick_key": "Jewish\x1fHevenu Shalom Aleichem — Traditional",
+            },
+            "practice_key_by_source": {
+                "Jewish\x1fHevenu Shalom Aleichem — Traditional": "Ebm",
+            },
+            "improv_song_concert_sections": {
+                "Melody A": ["Ebm", "Abm", "Bb7", "Ebm"],
+            },
+            "ii_selected_chord": "Ebm",
+            "ii_selected_section": "Melody A",
+            "ii_selected_chord_index": 0,
+            "improv_active_mission": "Improvise using only chord tones",
+            "improv_mission_pick": "Improvise using only chord tones",
+            MISSION_EXAMPLE_KEY: {
+                "chord": "Ebm",
+                "mission": "Improvise using only chord tones",
+                "section": "Melody A",
+            },
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission",
+                active_song_id="hevenu",
+                song_title="Hevenu Shalom Aleichem",
+                key="Ebm",
+                display_key="Ebm",
+                concert_key="Ebm",
+                bpm=100,
+                style="Jewish ballad",
+                groove="Ballad",
+                progression=["Ebm"],
+                mission_id="Improvise using only chord tones",
+            ),
+        )
+        diag = validate_mission_workflow_envelope(session)
+        self.assertTrue(diag.get("consistent"), diag.get("violations"))
+        self.assertNotIn(VIOLATION_WORKFLOW_KEY_OWNER_MISMATCH, diag.get("violations", []))
+
+    def test_backing_concert_collapsed_to_selected_chord_still_flags(self) -> None:
+        """Practice Em with selected B must flag when backing concert was set to B."""
+        session: dict[str, Any] = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Missions",
+            "display_key": "Em",
+            "concert_key": "Em",
+            "ii_selected_chord": "B",
+            "improv_active_mission": "Outline chord tones",
+        }
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission",
+                active_song_id="x",
+                song_title="T",
+                key="B",
+                display_key="B",
+                concert_key="B",
+                bpm=100,
+                style="Pop",
+                groove="Pop",
+                progression=["B"],
+                mission_id="Outline chord tones",
+            ),
+        )
+        diag = validate_mission_workflow_envelope(session)
+        self.assertIn(VIOLATION_WORKFLOW_KEY_OWNER_MISMATCH, diag.get("violations", []))
 
 
 if __name__ == "__main__":

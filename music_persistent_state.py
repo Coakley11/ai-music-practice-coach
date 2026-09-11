@@ -116,7 +116,33 @@ def _reapply_core_practice_globals_from_payload(
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
-            session_state[PENDING_DISPLAY_KEY] = display_key
+            page = str(
+                session_state.get("studio_page") or core.get("studio_page") or ""
+            ).strip().lower()
+            raw_ctx = session_state.get("backing_context")
+            ctx_src = ""
+            ctx_entry = ""
+            if isinstance(raw_ctx, dict):
+                ctx_src = str(raw_ctx.get("source") or "").strip()
+                ctx_entry = str(raw_ctx.get("entry_mode") or "").strip()
+            # Catalog Shape Cm lives in core.display_key while Style Jam owns
+            # Backing. Do not queue that leftover as the restored Practice Key.
+            if page == "backing" and ctx_src == "entry_jam" and "Style Jam" in (
+                ctx_entry or str(session_state.get("improv_entry_mode") or "")
+            ):
+                jam_tok = ""
+                try:
+                    from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                    jam_tok = str(style_jam_authoritative_concert_key(session_state) or "").strip()
+                except ImportError:
+                    jam_tok = str(session_state.get("improv_style_key") or "").strip()
+                if jam_tok:
+                    session_state[PENDING_DISPLAY_KEY] = jam_tok
+                else:
+                    session_state.pop(PENDING_DISPLAY_KEY, None)
+            else:
+                session_state[PENDING_DISPLAY_KEY] = display_key
         except ImportError:
             pass
 
@@ -588,6 +614,9 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_time_signature",
     "backing_time_signature_override",
     "backing_quick_section",
+    "_backing_play_session",
+    "_backing_play_session_expired",
+    "_backing_current_bpm_lock",
     "karaoke_countdown_enabled",
     "karaoke_auto_advance",
     "karaoke_session_active",
@@ -617,6 +646,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "cpl_builder_version",
     "cpl_edit_section",
     "cpl_finished",
+    "_cpl_library_saved_song_id",
     "_cpl_editing_display_key",
     "cpl_last_display_key",
     "mt_track_filenames",
@@ -632,11 +662,17 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "latest_practice_analysis_full_report",
     "latest_practice_analysis_handoff_status",
     "backing_context",
+    "_backing_source_preference",
+    "_backing_explicit_handoff_source",
+    "_backing_entry_class",
+    "_nested_custom_sbi_backing",
+    "_music_mission_canonical_return_destination",
     "creative_session",
     "improv_entry_mode",
     "improv_generated_sections",
     "improv_style_meta",
     "improv_jam_session",
+    "_jam_session_generator_session_id",
     "improv_style_key",
     "improv_style",
     "improv_style_bpm",
@@ -664,7 +700,20 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "ii_selected_chord_label",
     "improv_mission_practice_context",
     "improv_mission_recording_seal",
+    "improv_mission_concert_key",
     "improv_mission_workspace_updated_at",
+    "_creative_visit_source",
+    "_creative_visit_practice_key",
+    "_mission_chord_click_authority",
+    "_mission_chord_snapshot",
+    "_backing_pk_control_owner",
+    "display_key_catalog_backing",
+    "display_key_custom_backing",
+    "display_key_sbi_active_backing",
+    "display_key_sbi_custom",
+    "display_key_style_jam_backing",
+    "display_key_jam_generator_backing",
+    "display_key_mission_backing",
     "harmony_map_section",
     "harmony_map_chord",
     "improv_motif",
@@ -682,11 +731,16 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "fixed_practice_key",
     "fixed_practice_key_family_id",
     "fixed_practice_key_family_spelling",
+    "song_picker_active_source",
     "sbi_preview_source",
+    "_restore_sbi_custom_source",
     "catalog_session",
     "custom_session",
     "_last_catalog_song_state",
+    "_last_custom_song_state",
     "_catalog_before_custom_state",
+    "_catalog_before_custom_lock_pick",
+    "_catalog_default_init_pick_key",
 )
 
 _LIST_KEYS = (
@@ -802,7 +856,16 @@ def current_run_user_navigated_page(session: dict[str, Any]) -> str:
 
 
 def begin_script_run_navigation_markers(session: dict[str, Any]) -> None:
-    """Clear one-shot user navigation markers at the top of each Streamlit script run."""
+    """Clear one-shot user navigation markers at the top of each Streamlit script run.
+
+    Do **not** clear ``STUDIO_PAGE_RESTORE_PROJECTION_COMPLETE_KEY`` here.
+
+    origin/dev reboot persistence keeps that flag for the browser session so
+    ``prepare_studio_nav`` continues to honor the hydrated page after reruns.
+    Clearing it every run let a stale canonical ``practice`` overwrite the
+    restored page (Songs/Custom/Creative/Backing → Practice on reboot/refresh).
+    True new-session reset remains in ``begin_music_script_run`` only.
+    """
     session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
     session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
 
@@ -2097,13 +2160,14 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
     if not deferred:
         return False
+    flush_origin = "user_navigation" if ss.get("_suite_page_user_nav") else "reconciliation"
     try:
         from music_startup_save_suppression import set_page_change_origin
 
-        set_page_change_origin(ss, "reconciliation")
+        set_page_change_origin(ss, flush_origin)
     except ImportError:
         pass
-    prepare_page_change_save_state(ss, deferred, st=st, origin="reconciliation")
+    prepare_page_change_save_state(ss, deferred, st=st, origin=flush_origin)
     if not _page_change_save_ready(ss, deferred):
         return False
     ss.pop("_suite_deferred_page_change_save", None)
@@ -2130,19 +2194,22 @@ def _last_persisted_studio_page_for_save(session: dict[str, Any]) -> str:
 
 def _resolve_live_studio_page_for_save(ss: dict[str, Any], *, save_reason: str) -> tuple[str, str]:
     """Authoritative studio page for save payload (page_change must not use restored blob)."""
-    if save_reason == "page_change":
-        return _resolve_page_change_stamp_target(ss)
     live = _normalize_studio_page_for_save(ss.get("studio_page"))
+    if save_reason == "page_change":
+        if live:
+            return live, "normalized_studio_page"
+        return _resolve_page_change_stamp_target(ss)
     reason = str(save_reason or "autosave").strip() or "autosave"
     if reason in _PRESERVE_USER_NAV_SAVE_REASONS:
         last = _last_persisted_studio_page_for_save(ss)
         user_nav = bool(ss.get("_suite_page_user_nav"))
-        if last and not user_nav:
-            if not live or live != last:
-                return last, "_suite_last_persisted_page"
-        if last and user_nav and live and live == last:
+        if live:
             return live, "session_state.studio_page"
-    return live, "session_state.studio_page" if live else "missing"
+        if last and not user_nav:
+            return last, "_suite_last_persisted_page"
+    if live:
+        return live, "session_state.studio_page"
+    return _resolve_page_change_stamp_target(ss)
 
 
 def _stamp_live_studio_page_into_save_payload(
@@ -2477,6 +2544,75 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     for key in _PERSIST_KEYS:
         if key in ss:
             val = copy.deepcopy(ss[key])
+            if key == "_catalog_before_custom_state" and isinstance(val, dict):
+                # Persist-time heal: Custom Global Active must not save Say when the
+                # Catalog→Custom lock still points at Shape (same-run restamp race).
+                try:
+                    lock_pk = str(ss.get("_catalog_before_custom_lock_pick") or "").strip()
+                    before_pk = str(val.get("pick_key") or "").strip()
+                    if (
+                        lock_pk
+                        and before_pk
+                        and lock_pk != before_pk
+                        and not lock_pk.startswith("custom::")
+                    ):
+                        healed = None
+                        for snap_key in (
+                            "catalog_session",
+                            "_last_catalog_song_state",
+                        ):
+                            raw = ss.get(snap_key)
+                            if (
+                                isinstance(raw, dict)
+                                and str(raw.get("pick_key") or "").strip() == lock_pk
+                            ):
+                                healed = copy.deepcopy(raw)
+                                break
+                        if healed is None:
+                            # Rebuild from lock pick so we never persist Say under
+                            # a Shape lock when catalog_session/LAST are polluted.
+                            label = (
+                                lock_pk.split("\x1f", 1)[-1]
+                                if "\x1f" in lock_pk
+                                else lock_pk
+                            )
+                            title = label.split(" — ", 1)[0].strip() or label
+                            artist = (
+                                label.split(" — ", 1)[-1].strip()
+                                if " — " in label
+                                else ""
+                            )
+                            healed = {
+                                "pick_key": lock_pk,
+                                "original_key": "C",
+                                "display_key": "C",
+                                "selected_song": {
+                                    "pick_key": lock_pk,
+                                    "title": title,
+                                    "artist": artist,
+                                    "key": "C",
+                                },
+                            }
+                            try:
+                                from songs.music_source import (
+                                    _catalog_original_key_for_session,
+                                )
+
+                                probe = dict(ss)
+                                probe["active_catalog_pick_key"] = lock_pk
+                                orig = str(
+                                    _catalog_original_key_for_session(probe) or ""
+                                ).strip()
+                                if orig and orig != "C":
+                                    healed["original_key"] = orig
+                                    healed["display_key"] = orig
+                                    healed["selected_song"]["key"] = orig
+                            except Exception:
+                                pass
+                        val = healed
+                        ss[key] = copy.deepcopy(healed)
+                except Exception:
+                    pass
             if key == "last_analysis_result":
                 try:
                     from analysis_session_persistence import sanitize_analysis_result_for_persist
@@ -2525,6 +2661,39 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                     except ImportError:
                         pass
             extra[key] = val
+    try:
+        from creative_key_sync import _emit_h6_mission_pk_trace, live_backing_source
+
+        if live_backing_source(ss) == "mission":
+            _emit_h6_mission_pk_trace(
+                ss,
+                "F_persist_extra_copy",
+                extra_display_key=str(extra.get("display_key") or extra.get("improv_mission_concert_key") or ""),
+                extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                extra_show_written=bool(extra.get("show_chart_in_instrument_key")),
+                live_display_key=str(ss.get("display_key") or ""),
+                live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+            )
+            if str(ss.get("display_key") or "") and str(extra.get("improv_mission_concert_key") or "") not in {
+                str(ss.get("display_key") or ""),
+                "",
+            }:
+                _emit_h6_mission_pk_trace(
+                    ss,
+                    "F_first_writer_mission_concert_mismatch",
+                    extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                    live_display_key=str(ss.get("display_key") or ""),
+                )
+            if str(ss.get("ii_selected_chord") or "") != str(extra.get("ii_selected_chord") or ss.get("ii_selected_chord") or ""):
+                _emit_h6_mission_pk_trace(
+                    ss,
+                    "F_first_writer_ii_selected_mismatch",
+                    extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                    live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+                )
+    except Exception:
+        pass
     for key in _LIST_KEYS:
         if key in ss:
             val = ss[key]
@@ -2585,6 +2754,22 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             if key in ss:
                 extra[key] = copy.deepcopy(ss[key])
     except ImportError:
+        pass
+    try:
+        from creative_key_sync import _emit_h6_mission_pk_trace, live_backing_source
+
+        if live_backing_source(ss) == "mission":
+            _emit_h6_mission_pk_trace(
+                ss,
+                "F_persist_envelope_before_freeze",
+                extra_mission_concert=str(extra.get("improv_mission_concert_key") or ""),
+                extra_ii_selected=str(extra.get("ii_selected_chord") or ""),
+                extra_show_written=bool(extra.get("show_chart_in_instrument_key")),
+                core_display_key=str((core or {}).get("display_key") or ""),
+                live_display_key=str(ss.get("display_key") or ""),
+                live_ii_selected=str(ss.get("ii_selected_chord") or ""),
+            )
+    except Exception:
         pass
     state: dict[str, Any] = {"core": core, "session": extra}
     for key in _WORKSPACE_KEYS:
@@ -3019,6 +3204,15 @@ def apply_music_disk_state(
                         and cpl_draft_chord_count(local) > cpl_draft_chord_count(val)
                     ):
                         continue
+                    # Clear Section shrinks the draft. Disk may still hold the
+                    # previous longer blob; do not resurrect those chords.
+                    if (
+                        not authoritative_restore
+                        and isinstance(local, dict)
+                        and ss.get("_cpl_allow_section_shrink")
+                        and cpl_draft_chord_count(local) < cpl_draft_chord_count(val)
+                    ):
+                        continue
                 except Exception:
                     pass
             if key == "last_analysis_result":
@@ -3203,6 +3397,23 @@ def apply_music_disk_state(
         if user_nav_page and active_studio and active_studio != user_nav_page:
             active_studio = user_nav_page
             overwrite_source = "user_nav_this_run"
+        try:
+            from music_workflow_pending_creative_return import creative_return_owns_destination_page
+
+            if creative_return_owns_destination_page(ss):
+                if str(active_studio or "").strip().lower() != "creative":
+                    active_studio = "creative"
+                    overwrite_source = "creative_return_from_backing"
+                try:
+                    from backing_source_navigation import (
+                        release_specialized_backing_owner_for_creative_return,
+                    )
+
+                    release_specialized_backing_owner_for_creative_return(ss)
+                except ImportError:
+                    ss.pop("_backing_explicit_handoff_source", None)
+        except ImportError:
+            pass
         try:
             from music_phase1_write_journal import record_phase1_page_write
 
@@ -3450,6 +3661,16 @@ def apply_music_disk_state(
         from backing_context import hydrate_backing_context_after_restore
 
         hydrate_backing_context_after_restore(ss)
+        try:
+            from h3_live_key_trace import dump_blocker_snapshot
+
+            dump_blocker_snapshot(
+                ss,
+                phase="apply_music_disk_state_after_hydrate",
+                writer="apply_music_disk_state",
+            )
+        except Exception:
+            pass
     except ImportError:
         pass
 
@@ -3659,6 +3880,7 @@ def after_studio_page_change(
         pass
     if not _page_change_save_ready(ss, page_id):
         ss["_suite_deferred_page_change_save"] = page_id
+        ss["_suite_last_persisted_page"] = page_id
         return
     ss.pop("_suite_deferred_page_change_save", None)
     _mark_page_change_write_pending(ss, page_id)
@@ -3726,6 +3948,7 @@ def prepare_canonical_music_page_state(
                 apply_pending_custom_active_song_activation_before_widgets,
                 apply_pending_custom_library_action_before_widgets,
                 apply_pending_previous_catalog_restore_before_widgets,
+                apply_pending_song_picker_source_widget,
                 hydrate_explicit_music_source_from_active,
                 reconcile_picker_music_source,
             )
@@ -3734,15 +3957,13 @@ def prepare_canonical_music_page_state(
             class _SessionProxy:
                 session_state = session
 
+            # Apply deferred Catalog/Custom radio before reconcile so a post-switch
+            # Custom widget lag cannot re-queue Custom ownership (H1/H7/H9).
+            apply_pending_song_picker_source_widget(session)
             hydrate_explicit_music_source_from_active(session)
             reconcile_picker_music_source(session)
-            if song_picker_catalog:
-                apply_pending_catalog_from_picker_before_widgets(
-                    _SessionProxy(),
-                    song_picker_catalog=song_picker_catalog,
-                    song_library=song_library,
-                    invalidate_backing=invalidate_backing_cache,
-                )
+            # Custom Set-as-Active must apply before any pending catalog reclaim so
+            # disk persist cannot stamp Country Roads over Trial Song (E5).
             apply_pending_custom_active_song_activation_before_widgets(
                 _SessionProxy(),
                 invalidate_backing=invalidate_backing_cache,
@@ -3761,6 +3982,25 @@ def prepare_canonical_music_page_state(
                 apply_pending_composition_active_song_activation_before_widgets(
                     _SessionProxy(),
                 )
+            except ImportError:
+                pass
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_sample
+
+                note_e5_reclaim_sample(session, phase="prepare_canonical_after_custom_pending")
+            except ImportError:
+                pass
+            if song_picker_catalog:
+                apply_pending_catalog_from_picker_before_widgets(
+                    _SessionProxy(),
+                    song_picker_catalog=song_picker_catalog,
+                    song_library=song_library,
+                    invalidate_backing=invalidate_backing_cache,
+                )
+            try:
+                from e5_reclaim_trace import note_e5_reclaim_sample
+
+                note_e5_reclaim_sample(session, phase="prepare_canonical_after_catalog_pending")
             except ImportError:
                 pass
             if song_picker_catalog:
@@ -3944,6 +4184,12 @@ def flush_active_song_edits_and_save(st: Any, *, reason: str = "song_edit") -> b
                 "song_edit",
                 "transposing_subtype",
                 "written_key_mode",
+                "catalog_source_switch",
+                "last_catalog_restore",
+                "catalog_source_switch_fallback",
+                "previous_catalog_restore",
+                "creative_to_catalog",
+                "switch_to_catalog_backing",
             )
         )
         if should_flush:
@@ -4267,6 +4513,16 @@ def prepare_music_workspace(
 
 def _record_music_persist_trace(st: Any, *, reason: str = "") -> None:
     """Update ?dev=1 trace after force/autosave (phone→Dell page sync diagnostics)."""
+    try:
+        from h3_live_key_trace import dump_persist_save
+
+        dump_persist_save(
+            st.session_state,
+            reason=str(reason or ""),
+            write_path="_record_music_persist_trace",
+        )
+    except Exception:
+        pass
     try:
         from music_persistence_trace import get_trace, update_trace
 
@@ -4736,6 +4992,17 @@ def persist_music_disk_state(st: Any) -> None:
         write_path="persist_music_disk_state",
     )
     save_user_state(APP_ID, state)
+    try:
+        from h3_live_key_trace import dump_persist_save
+
+        dump_persist_save(
+            st.session_state,
+            reason=str(reason or ""),
+            write_path="persist_music_disk_state",
+            payload=state if isinstance(state, dict) else None,
+        )
+    except Exception:
+        pass
 
 
 def reset_music_disk_state(st: Any) -> None:
@@ -4772,6 +5039,9 @@ def apply_music_session_defaults(st: Any) -> None:
         "backing_track_single_section",
         "backing_groove_style",
         "backing_track_bpm",
+        "_backing_play_session",
+        "_backing_play_session_expired",
+        "_backing_current_bpm_lock",
         "karaoke_countdown_enabled",
         "karaoke_auto_advance",
         "active_music_source",
@@ -4792,6 +5062,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "cpl_saved_progressions",
         "cpl_builder_version",
         "cpl_finished",
+        "_cpl_library_saved_song_id",
         "_cpl_editing_display_key",
         "cpl_last_display_key",
         "_music_coach_workspace_page",

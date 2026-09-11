@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-09-02
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -16,6 +16,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
+| **P0** (active, uncommitted) | Pass 8 Creative/Backing stabilization + active-source restore epoch + refresh/reboot persistence (P1–P9) | [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md), [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) |
 | **P0** (immediate) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (immediate) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (immediate) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
@@ -78,6 +79,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ### Backing Track Studio
 
+- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Automatic half-step / whole-step practice through keys without mutating canonical Practice Key or Global Active. Shared Backing transport only. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). Product UI deferred until after stabilization acceptance.
 - More groove templates per genre (funk, bossa, ballad swing)
 - Stem export (bass-only, drums-only) from backing engine
 - Tap-tempo BPM detect from user recording
@@ -176,6 +178,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Long-Term Vision
 
+- **Key Cycle Practice (FUTURE):** automatic key cycling on Backing without rewriting canonical Practice Key. Do not implement during Creative/Backing stabilization. [plan](./plans/2026-09-02-key-cycle-practice.md).
 - **Progress-aware coaching:** teacher remembers last session; emphasizes struggle sections; graduates advice as player improves; performance-prep mode ([plan](./plans/2026-07-29-progress-aware-coaching-vision.md)).
 - **Adaptive curriculum:** system learns weak sections from logs/recordings and schedules practice.
 - **Ensemble rehearsal room:** remote multitrack + shared backing + chat.

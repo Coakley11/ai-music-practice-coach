@@ -37,7 +37,7 @@ def resolve_authoritative_mission_keys(
 ) -> tuple[str, str]:
     """Concert key from workflow blob / session; display from intent or session (not stale example fields)."""
     concert = str(intent_concert_key or session.get("concert_key") or session.get("practice_concert_key") or "").strip()
-    display = str(intent_display_key or session.get("display_key") or "").strip()
+    display = str(intent_display_key or "").strip()
     try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
@@ -51,6 +51,13 @@ def resolve_authoritative_mission_keys(
                     concert = f"{tonic}m" if mode == "minor" else tonic
     except ImportError:
         pass
+    if not display:
+        try:
+            from effective_practice_context import musician_facing_chart_key
+
+            display = musician_facing_chart_key(session, concert)
+        except ImportError:
+            display = str(session.get("display_key") or concert or "").strip()
     if concert and not display:
         display = concert
     return concert, display

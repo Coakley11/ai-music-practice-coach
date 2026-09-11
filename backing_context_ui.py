@@ -80,6 +80,8 @@ def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-met
 
 def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, str]:
     inst = str(session.get("instrument") or "")
+    mk = None
+    mode = ""
     try:
         from songs.key_state import resolve_active_musical_key
 
@@ -88,21 +90,83 @@ def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, st
     except Exception:
         mode = ""
     if inst == "Guitar" and session.get("guitar_capo_enabled"):
-        return "Guitar shape", chart_key
+        try:
+            from guitar_capo import shape_chart_label_for_concert
+
+            concert = str(getattr(mk, "practice_concert_key", None) or chart_key or "C")
+            shape = str(session.get("guitar_capo_shape_key") or chart_key or "")
+            return "Charts in", shape_chart_label_for_concert(concert, shape)
+        except Exception:
+            return "Charts in", chart_key
     if mode == "written":
         return "Written key", chart_key
     return "Charts", chart_key
 
 
-def render_backing_context_banner(st: Any, session: dict[str, Any]) -> bool:
+def render_backing_context_banner(
+    st: Any,
+    session: dict[str, Any],
+    *,
+    applied_bpm: int | None = None,
+) -> bool:
     """Show backing source banner. Returns True when a non-regular source is active."""
     from backing_musical_state import resolve_current_backing_musical_state
 
     ctx = get_backing_context(session)
-    state = resolve_current_backing_musical_state(session)
+    live_bpm: int | None = int(applied_bpm) if applied_bpm is not None and int(applied_bpm) > 0 else None
+    if live_bpm is None:
+        try:
+            from backing_play_session import current_backing_play_bpm
+
+            live_bpm = int(
+                current_backing_play_bpm(
+                    session,
+                    default=0,
+                    sync_id=str(session.get("_backing_page_bpm_sync_id") or ""),
+                )
+                or 0
+            ) or None
+        except ImportError:
+            live_bpm = None
+    if live_bpm is None:
+        try:
+            from songs.bpm_state import BPM_WIDGET_KEY
+
+            for key in ("backing_track_bpm", BPM_WIDGET_KEY, "bpm"):
+                try:
+                    val = int(session.get(key) or 0)
+                except (TypeError, ValueError):
+                    val = 0
+                if val > 0:
+                    live_bpm = val
+                    break
+        except ImportError:
+            live_bpm = None
+
+    state = resolve_current_backing_musical_state(session, applied_bpm=live_bpm)
+    mission_chord = ""
+    if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+        try:
+            from mission_projection_state import resolve_mission_projection_state
+
+            sm = session.get("_improv_mission_section_map")
+            if not isinstance(sm, list):
+                from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                sm = read_mission_section_map_from_session(session)
+            proj = resolve_mission_projection_state(
+                session,
+                section_map=sm if isinstance(sm, list) else None,
+                fallback_key=str(state.practice_concert_key or ctx.concert_key or "C"),
+            )
+            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
+        except Exception:
+            mission_chord = str(session.get("ii_selected_chord") or "").strip()
     label = format_backing_context_banner(
         ctx,
         practice_concert_key=state.practice_concert_key,
+        applied_bpm=int(live_bpm or state.applied_bpm or 0) or None,
+        mission_chord=mission_chord,
     )
     if not label:
         return False
@@ -148,8 +212,46 @@ def render_backing_creative_context_card(
     theme = _resolve_theme(ctx)
     if ctx.source == "mission":
         source_title = "Mission Backing Jam"
-        mission_chord = str(ctx.progression[0] if ctx.progression else ctx.progression_label or "").strip()
-        sec_name = str(ctx.section or "").strip()
+        mission_chord = ""
+        try:
+            from mission_projection_state import resolve_mission_projection_state
+
+            sm = session.get("_improv_mission_section_map")
+            if not isinstance(sm, list):
+                try:
+                    from creative_chord_selection_authority import read_mission_section_map_from_session
+
+                    sm = read_mission_section_map_from_session(session)
+                except ImportError:
+                    sm = None
+            proj = resolve_mission_projection_state(
+                session,
+                section_map=sm if isinstance(sm, list) else None,
+                fallback_key=str(practice_key or ctx.concert_key or "C"),
+            )
+            # Visible chord is the projected display chord. Raw ii_selected_chord
+            # is concert (or stale) and must not outrank written projection.
+            mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
+        except ImportError:
+            mission_chord = ""
+        if not mission_chord:
+            mission_chord = str(
+                (ctx.progression[0] if ctx.progression else "")
+                or ctx.progression_label
+                or ""
+            ).strip()
+            try:
+                from effective_practice_context import musician_facing_chord, musician_facing_chart_key
+
+                concert = str(practice_key or ctx.concert_key or session.get("display_key") or "C")
+                chart = musician_facing_chart_key(session, concert)
+                if mission_chord and chart and concert and chart != concert:
+                    mission_chord = musician_facing_chord(
+                        mission_chord, concert_key=concert, chart_key=chart
+                    )
+            except ImportError:
+                pass
+        sec_name = str(ctx.section or session.get("ii_selected_section") or "").strip()
         title = html.escape(str(ctx.song_title or "Mission"))
         if ctx.mission_id:
             subtitle = html.escape(
@@ -175,10 +277,17 @@ def render_backing_creative_context_card(
         subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
     elif ctx.source == "song_improv":
         source_title = "Song-Based Improvisation"
-        mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
         style_label = str(ctx.song_title or state.style or applied_groove or "Active song").strip()
+        try:
+            from source_session_state import format_sbi_backing_blue_card_subtitle
+
+            subtitle = html.escape(
+                format_sbi_backing_blue_card_subtitle(session, ctx=ctx)
+            )
+        except ImportError:
+            mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
+            subtitle = html.escape(f"{source_title} · {mode_label or style_label}")
         title = html.escape(style_label)
-        subtitle = html.escape(f"{source_title} · {mode_label or style_label}")
     else:
         source_title = ctx.source_label
         mode_label = str(ctx.mode_label or ctx.entry_mode or "Style Jam").replace(" Mode", "").replace(" Generator", "").strip()
@@ -191,18 +300,106 @@ def render_backing_creative_context_card(
     elif ctx.source == "mission":
         style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
-    backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
+    # Current Style/Meter = live Backing widgets / play-session (same-rerun owner).
+    # Sealed ctx.style/meter are Default/source only when live values are empty.
+    live_groove = ""
+    live_meter = ""
     try:
-        from musical_context_authority import format_practice_concert_key_line
-
-        concert = html.escape(
-            format_practice_concert_key_line(
-                session,
-                fallback=str(state.practice_concert_key or practice_key or "C"),
-            )
+        from backing_play_session import (
+            backing_play_session_has_override,
+            effective_backing_play_overrides,
         )
+
+        resolved = effective_backing_play_overrides(session)
+        if backing_play_session_has_override(session, "groove"):
+            live_groove = str(resolved.get("groove") or "").strip()
+        if backing_play_session_has_override(session, "meter"):
+            live_meter = str(resolved.get("meter") or "").strip()
     except ImportError:
-        concert = html.escape(str(state.practice_concert_key or practice_key or "C"))
+        pass
+    if not live_groove:
+        live_groove = str(
+            session.get("backing_groove_style")
+            or applied_groove
+            or state.groove
+            or ""
+        ).strip()
+    if not live_meter:
+        live_meter = str(
+            session.get("backing_time_signature")
+            or applied_meter
+            or state.meter
+            or ""
+        ).strip()
+    if live_groove:
+        style_label = live_groove
+        backing_style = html.escape(live_groove)
+    else:
+        backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
+    default_style = str(ctx.style or ctx.groove or "").strip()
+    default_meter = str(ctx.meter or "4/4").strip() or "4/4"
+    concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")
+    if str(getattr(ctx, "source", "") or "") == "entry_jam":
+        try:
+            from h3_live_key_trace import emit
+
+            prog = ""
+            if state.chart_sections:
+                for _ch in (state.chart_sections or {}).values():
+                    if isinstance(_ch, list) and _ch:
+                        prog = " – ".join(str(c) for c in _ch[:4])
+                        break
+            elif ctx.progression:
+                prog = " – ".join(str(c) for c in list(ctx.progression)[:4])
+            emit(
+                session,
+                "card_render",
+                call_site="render_backing_creative_context_card",
+                ctx_source=str(getattr(ctx, "source", "") or ""),
+                ctx_entry=str(getattr(ctx, "entry_mode", "") or ""),
+                ctx_key=str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or ""),
+                ctx_progression=prog,
+                practice_key_arg=str(practice_key or ""),
+                state_practice=str(getattr(state, "practice_concert_key", "") or ""),
+                concert_raw=concert_raw,
+            )
+        except Exception:
+            pass
+    if str(getattr(ctx, "source", "") or "") == "mission":
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+
+            owned = canonical_mission_practice_key(session)
+            if owned:
+                concert_raw = owned
+        except ImportError:
+            live_sidebar = str(
+                session.get("improv_mission_concert_key")
+                or session.get("display_key")
+                or ""
+            ).strip()
+            if live_sidebar:
+                concert_raw = live_sidebar
+        try:
+            from pathlib import Path
+
+            Path(__file__).resolve().parent.joinpath(
+                "scripts/evidence-creative-backing/_mission_pk_card_diag.txt"
+            ).write_text(
+                f"practice_key={practice_key!r} state_pk={getattr(state,'practice_concert_key',None)!r} "
+                f"ctx_ck={getattr(ctx,'concert_key',None)!r} display={session.get('display_key')!r} "
+                f"canonical={concert_raw!r} widget={session.get('display_key_mission_backing')!r}\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+    try:
+        from music_theory import format_key_label_from_parts, split_key_center
+
+        tonic, mode = split_key_center(concert_raw)
+        concert = html.escape(format_key_label_from_parts(tonic, mode) or concert_raw)
+    except ImportError:
+        concert = html.escape(concert_raw)
     inst_raw = str(state.instrument or session.get("instrument") or "Piano")
     try:
         from instrument_aware import instrument_theme
@@ -218,16 +415,77 @@ def render_backing_creative_context_card(
     instrument = html.escape(inst_raw)
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
-    meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4"))
-    bpm = int(state.applied_bpm or applied_bpm or ctx.bpm or 100)
+    meter = html.escape(str(live_meter or applied_meter or state.meter or ctx.meter or "4/4"))
+    live_bpm = 0
+    try:
+        from backing_play_session import current_backing_play_bpm
+
+        live_bpm = int(current_backing_play_bpm(session, default=0, sync_id=str(session.get("_backing_page_bpm_sync_id") or "")) or 0)
+    except ImportError:
+        try:
+            live_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+        except (TypeError, ValueError):
+            live_bpm = 0
+    bpm = int(live_bpm or state.applied_bpm or applied_bpm or ctx.bpm or 100)
     mood = str(ctx.mood or "").strip()
     groove_intensity = str(ctx.groove_intensity or "").strip()
+    groove_display = str(ctx.groove or "").strip()
+    if groove_display and groove_display.lower() in {"light", "medium", "heavy"}:
+        groove_display = ""
+    st_low = str(ctx.style or "").strip().lower()
+    gd_low = groove_display.lower()
+    if groove_display and "jewish" in gd_low and "jewish" not in st_low:
+        groove_display = ""
     difficulty = str(ctx.difficulty or "").strip()
 
     display_sections = state.chart_sections or state.concert_sections
+    # Prefer live Backing section multiselect over sealed ctx snapshot (same-rerun).
+    try:
+        from backing_track_state import resolve_selected_section_names
+
+        live_names = resolve_selected_section_names(
+            session,
+            list((display_sections or {}).keys())
+            or list((state.concert_sections or {}).keys())
+            or list((getattr(ctx, "sections", None) or [])),
+        )
+        if live_names and isinstance(display_sections, dict) and display_sections:
+            filtered = {
+                name: list(display_sections[name])
+                for name in live_names
+                if name in display_sections
+            }
+            if filtered:
+                display_sections = filtered
+        elif live_names and isinstance(state.concert_sections, dict):
+            filtered = {
+                name: list(state.concert_sections[name])
+                for name in live_names
+                if name in state.concert_sections
+            }
+            if filtered:
+                display_sections = filtered
+    except ImportError:
+        pass
     if ctx.source == "mission":
-        if ctx.progression:
-            progression_line = html.escape(" – ".join(ctx.progression))
+        if mission_chord:
+            progression_line = html.escape(mission_chord)
+        elif ctx.progression:
+            # Retranspose sealed progression to live chart when possible.
+            try:
+                from effective_practice_context import musician_facing_chord, musician_facing_chart_key
+
+                concert = str(practice_key or ctx.concert_key or session.get("display_key") or "C")
+                chart = musician_facing_chart_key(session, concert)
+                shown = [
+                    musician_facing_chord(c, concert_key=concert, chart_key=chart)
+                    if chart and concert and chart != concert
+                    else c
+                    for c in ctx.progression
+                ]
+                progression_line = html.escape(" – ".join(shown))
+            except ImportError:
+                progression_line = html.escape(" – ".join(ctx.progression))
         else:
             progression_line = html.escape(str(ctx.progression_label or mission_chord or "Mission chord"))
     elif display_sections:
@@ -245,13 +503,16 @@ def render_backing_creative_context_card(
     badges = [
         _themed_badge("🎷", "Style", style_label, _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style")),
         _themed_badge(mood_icon, "Mood", mood, "badge-mood"),
-        _themed_badge("🔥", "Groove", groove_intensity, groove_class),
+    ]
+    if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
+        badges.append(_themed_badge("🔥", "Groove", groove_display, groove_class))
+    badges.extend([
         _themed_badge("🎯", "Jam level", difficulty, "badge-groove"),
         _themed_badge("🎼", "Concert key", concert, "badge-key"),
         _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
         _themed_badge("𝄞", "Meter", meter, "badge-key"),
         _themed_badge(inst_icon, "Instrument", instrument, "badge-meta"),
-    ]
+    ])
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
         badges.append(_themed_badge("📄", chart_label, chart_key_raw, "badge-key"))
@@ -270,6 +531,20 @@ def render_backing_creative_context_card(
             f"<strong>{chart_key}</strong></p>"
         )
 
+    style_line = f"Style: <strong>{backing_style}</strong>"
+    if default_style and live_groove and default_style.lower() != live_groove.lower():
+        style_line = (
+            f"Default Style: <strong>{html.escape(default_style)}</strong>"
+            f" · Current Style: <strong>{backing_style}</strong>"
+        )
+    meter_line = f"Meter: <strong>{meter}</strong>"
+    current_meter_raw = str(live_meter or applied_meter or state.meter or ctx.meter or "4/4").strip()
+    if default_meter and current_meter_raw and default_meter != current_meter_raw:
+        meter_line = (
+            f"Default Meter: <strong>{html.escape(default_meter)}</strong>"
+            f" · Current Meter: <strong>{meter}</strong>"
+        )
+
     st.markdown(
         f'<div class="ui-backing-active-song mode-creative-backing ui-creative-jam-card" '
         f'style="--creative-accent:{theme["accent"]};">'
@@ -282,7 +557,7 @@ def render_backing_creative_context_card(
         f'<span class="ui-backing-active-dash"> · </span>'
         f'<span class="ui-backing-active-source">{subtitle}</span></p>'
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
-        f" · BPM: <strong>{bpm}</strong> · Style: <strong>{backing_style}</strong> · Meter: <strong>{meter}</strong></p>"
+        f" · BPM: <strong>{bpm}</strong> · {style_line} · {meter_line}</p>"
         f"{chart_line}"
         f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
         f'<div class="ui-backing-active-badges">{badges_html}</div>'
@@ -607,12 +882,161 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     with cols[0]:
         if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
             try:
+                from pathlib import Path
+
+                Path("scripts/evidence-creative-backing/h9-use-catalog-click.txt").write_text(
+                    "clicked\n", encoding="utf-8"
+                )
+            except Exception:
+                pass
+            try:
                 from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
 
                 set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
             except ImportError:
                 pass
-            restore_regular_song_backing(session, st_like=st)
+            # Capture Global Active sticky PK *before* ownership switch — Custom visit
+            # must not demote it to Original Key on same-pick return.
+            _sticky_pick = ""
+            _sticky_pk = ""
+            try:
+                from songs.music_source import CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY
+                from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+                for _sk in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
+                    _raw = session.get(_sk)
+                    if isinstance(_raw, dict):
+                        _cand = str(_raw.get("pick_key") or "").strip()
+                        if _cand and not _cand.startswith("custom::") and not _cand.startswith("custom\x1f"):
+                            _sticky_pick = _cand
+                            break
+                if not _sticky_pick:
+                    _sticky_pick = str(session.get("active_catalog_pick_key") or "").strip()
+                if _sticky_pick.startswith("custom::") or _sticky_pick.startswith("custom\x1f"):
+                    _sticky_pick = ""
+                if _sticky_pick:
+                    _sticky_pk = str(get_practice_concert_key(session, _sticky_pick) or "").strip()
+                    if _sticky_pk:
+                        set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)
+            except ImportError:
+                pass
+            try:
+                from songs.key_state import invalidate_backing_cache
+                from songs.music_source import (
+                    SONG_PICKER_ACTIVE_SOURCE_KEY,
+                    SONG_PICKER_SOURCE_CATALOG,
+                    ensure_song_library,
+                    ensure_song_picker_catalog,
+                    switch_to_catalog_from_custom,
+                    sync_song_picker_source_widget,
+                )
+                from songs.practice_key_state import set_practice_concert_key
+
+                # Clear Custom surface FIRST so no later reconcile can see CPL as
+                # practice owner and call activate_custom_ownership (H9 reclaim).
+                session.pop("cpl_active", None)
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY
+
+                    session.pop(CPL_ACTIVE_KEY, None)
+                except ImportError:
+                    pass
+                try:
+                    from backing_context import (
+                        BACKING_PREF_CATALOG,
+                        clear_backing_context,
+                        set_backing_source_preference,
+                    )
+
+                    clear_backing_context(session)
+                    set_backing_source_preference(session, BACKING_PREF_CATALOG)
+                except ImportError:
+                    session.pop("backing_context", None)
+
+                catalog = ensure_song_picker_catalog(session)
+                library = ensure_song_library(session) or catalog
+                # Full ownership transition (not just a label / sealed-ctx wipe).
+                # force=True: explicit button must restore Catalog even if Custom
+                # flags were already partially cleared on a prior failed click.
+                # Do NOT call release_specialized here — that reconciles while CPL
+                # may still look active and reclaims Custom ownership.
+                switch_to_catalog_from_custom(
+                    st,
+                    song_picker_catalog=catalog if isinstance(catalog, dict) else {},
+                    song_library=library if isinstance(library, dict) else None,
+                    invalidate_backing=invalidate_backing_cache,
+                    force=True,
+                )
+                session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                try:
+                    from songs.music_source import (
+                        LAST_RECONCILED_SONG_PICKER_SOURCE_KEY,
+                        SONG_PICKER_PRESENTED_SOURCE_KEY,
+                    )
+
+                    session[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                    session[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+                except ImportError:
+                    pass
+                # Suppress stale Custom radio restores across dual hydrate + callbacks.
+                session["_block_stale_custom_radio_reclaim"] = 4
+                sync_song_picker_source_widget(session, force=True, widget_safe=False)
+                if _sticky_pick and _sticky_pk:
+                    set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)
+                    session["active_catalog_pick_key"] = _sticky_pick
+                    # Widget may already own display_key on this run — use pending /
+                    # safe assign (never direct session["display_key"] after widgets).
+                    try:
+                        from session_widget_safe import safe_assign_display_key
+
+                        safe_assign_display_key(
+                            session, _sticky_pk, widget_safe=True, st_like=st
+                        )
+                    except ImportError:
+                        session["_pending_display_key"] = _sticky_pk
+                        session["concert_key"] = _sticky_pk
+                restore_regular_song_backing(session, st_like=st)
+                session["_force_catalog_backing_after_use_catalog"] = 4
+                try:
+                    from pathlib import Path
+
+                    Path("scripts/evidence-creative-backing/h9-post-switch.txt").write_text(
+                        f"song={session.get('song')!r}\n"
+                        f"pick={session.get('active_catalog_pick_key')!r}\n"
+                        f"source={session.get('active_music_source')!r}\n"
+                        f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n"
+                        f"force={session.get('_force_catalog_backing_after_use_catalog')!r}\n"
+                        f"ctx_source={(session.get('backing_context') or {}).get('source') if isinstance(session.get('backing_context'), dict) else session.get('backing_context')!r}\n",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                try:
+                    from backing_source_navigation import (
+                        BACKING_INTENT_RESTORE_LAST,
+                        mark_generic_catalog_backing_entry,
+                        set_backing_open_intent,
+                    )
+
+                    mark_generic_catalog_backing_entry(session)
+                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                except ImportError:
+                    pass
+            except Exception as _use_catalog_err:
+                try:
+                    from pathlib import Path
+                    import traceback
+
+                    Path("scripts/evidence-creative-backing/h9-use-catalog-error.txt").write_text(
+                        f"{type(_use_catalog_err).__name__}: {_use_catalog_err}\n{traceback.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                try:
+                    restore_regular_song_backing(session, st_like=st)
+                except Exception:
+                    pass
             st.rerun()
     if show_custom:
         with cols[1]:

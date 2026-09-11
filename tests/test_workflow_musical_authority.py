@@ -95,7 +95,7 @@ class TestGeneratorIsolation(unittest.TestCase):
         set_backing_context(session, ctx)
         actions, _ = build_backing_nav_actions(session)
         labels = [a.label for a in actions]
-        self.assertTrue(any("Return to Catalog Song Backing" in l for l in labels))
+        self.assertTrue(any("Return to Regular Catalog Song Backing" in l for l in labels))
         self.assertFalse(any(l.lower().startswith("use catalog song backing") for l in labels))
 
 
@@ -116,7 +116,7 @@ class TestWorkflowKeyIsolation(unittest.TestCase):
         save_workflow_snapshot(session, "song_based_improvisation")
         switch_workflow_owner(session, "style_jam")
         self.assertEqual(str(session.get("improv_style_key")), "D")
-        self.assertEqual(str(session.get("display_key")), "D")
+        self.assertEqual(str(session.get("display_key")), "Ebm")
 
     def test_jam_key_change_transposes_sections(self) -> None:
         sections = {"A": ["C", "F", "G"]}

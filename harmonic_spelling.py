@@ -66,12 +66,12 @@ def mission_notation_staff_key(
     song_concert_key: str = "",
     song_display_key: str = "",
 ) -> str:
-    """ABC K: header from song concert key — not from mission chord alone."""
-    concert = str(song_concert_key or "").strip()
-    if concert:
-        return concert
+    """ABC K: header matches musician-facing note spelling (one projection)."""
     display = str(song_display_key or "").strip()
-    return display or "C"
+    if display:
+        return display
+    concert = str(song_concert_key or "").strip()
+    return concert or "C"
 
 
 def scale_root_for_label(

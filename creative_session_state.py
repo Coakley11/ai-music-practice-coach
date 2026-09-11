@@ -31,6 +31,11 @@ _TOOL_TO_ENTRY_MODE: dict[CreativeToolType, str] = {
     "entry_style_jam": "Style Jam Mode",
     "jam_session_generator": "Jam Session Generator",
     "song_based_improvisation": "Song-Based Improvisation",
+    # Missions / Custom keep the SBI-shaped entry radio. from_dict must still
+    # treat persisted tool_type as authoritative — leftover Song-Based
+    # Improvisation entry_mode is not a newer user action.
+    "mission": "Song-Based Improvisation",
+    "custom_progression": "Song-Based Improvisation",
 }
 
 
@@ -240,6 +245,14 @@ def _mission_sections_from_session(session: dict[str, Any]) -> dict[str, list[st
 
 def _sections_from_session(session: dict[str, Any], entry_mode: str) -> dict[str, list[str]]:
     if entry_mode == "Jam Session Generator":
+        try:
+            from improv_jam_session_projection import authoritative_jam_section_map
+
+            auth = authoritative_jam_section_map(session)
+            if auth:
+                return auth
+        except ImportError:
+            pass
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict):
             raw = jam.get("sections")
@@ -507,6 +520,12 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     except ImportError:
         song_src = str(session.get("improv_song_source") or "Active song")
     existing = CreativeSession.from_dict(session.get(CREATIVE_SESSION_KEY)) if session.get(CREATIVE_SESSION_KEY) else None
+    try:
+        from music_workflow_catalog_handoff import song_based_session_id_for_live_pick
+
+        bound_song_id = song_based_session_id_for_live_pick(session) if tool == "song_based_improvisation" else ""
+    except ImportError:
+        bound_song_id = str(session.get("active_catalog_pick_key") or "") if tool == "song_based_improvisation" else ""
     sess = CreativeSession(
         session_id=existing.session_id if existing else "",
         tool_type=tool,
@@ -527,6 +546,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
         selected_section=str(
             session.get("improv_selected_section") or session.get("II_SELECTED_SECTION") or ""
         ).strip(),
+        bound_song_id=bound_song_id,
         intelligence_tab=_normalize_improv_intelligence_tab(tab),
     )
     set_creative_session(session, sess)
@@ -555,6 +575,21 @@ def apply_creative_session_to_session(
         safe_session_assign = None  # type: ignore[assignment,misc]
 
     def _set(key: str, value: Any) -> None:
+        if (
+            widget_safe
+            and key in {
+                "improv_mood",
+                "improv_difficulty",
+                "improv_groove",
+                "improv_jam_mood",
+                "improv_style",
+                "improv_style_bpm",
+                "improv_jam_style",
+                "improv_jam_bpm",
+            }
+            and str(session.get(key) or "").strip()
+        ):
+            return
         if safe_session_assign is not None:
             safe_session_assign(session, key, value, widget_safe=widget_safe)
         else:
@@ -608,10 +643,19 @@ def apply_creative_session_to_session(
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
+        from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
-        if is_fixed_practice_key_mode(session):
-            fixed_original = "C" if sess.tool_type in {"entry_style_jam", "jam_session_generator"} else concert
-            concert = resolve_practice_concert_key_for_song(session, fixed_original, fallback=concert)
+        if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            ident = resolve_active_workflow_key_identity(session)
+            if ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}:
+                concert = ident.practice_key_token
+                sess.concert_key = concert
+                sess.display_key = concert
+            elif is_fixed_practice_key_mode(session) and not generated_workflow_owns_practice_key(session):
+                concert = resolve_practice_concert_key_for_song(session, "C", fallback=concert)
+                sess.concert_key = concert
+        elif is_fixed_practice_key_mode(session):
+            concert = resolve_practice_concert_key_for_song(session, concert, fallback=concert)
             sess.concert_key = concert
     except ImportError:
         pass
@@ -627,6 +671,8 @@ def apply_creative_session_to_session(
             skip_global_key = True
     except ImportError:
         pass
+    if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        skip_global_key = True
     if not skip_global_key:
         if safe_assign_display_key is not None:
             safe_assign_display_key(session, display, widget_safe=widget_safe)
@@ -659,9 +705,11 @@ def apply_creative_session_to_session(
             if not sec_name:
                 sec_name = next(iter(sess.sections.keys()), "")
             chords = sess.sections.get(sec_name) or []
-            if sec_name:
+            existing_sec = str(session.get("ii_selected_section") or "").strip()
+            existing_chord = str(session.get("ii_selected_chord") or "").strip()
+            if sec_name and not existing_sec:
                 session["ii_selected_section"] = sec_name
-            if chords:
+            if chords and not existing_chord:
                 session["ii_selected_chord"] = str(chords[0])
     elif sess.tool_type == "jam_session_generator":
         _set("improv_jam_style", sess.style)
@@ -677,14 +725,34 @@ def apply_creative_session_to_session(
         _set("improv_jam_bpm", int(sess.bpm))
         _set("improv_jam_mood", sess.mood)
         if sess.sections:
-            jam = dict(session.get("improv_jam_session") or {})
-            if not isinstance(jam, dict):
-                jam = {}
-            jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
-            session["improv_jam_session"] = jam
+            try:
+                from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+                if not sync_improv_jam_session_from_active_blob(
+                    session, writer="apply_creative_session_to_session", phase="jam_session_generator"
+                ):
+                    jam = dict(session.get("improv_jam_session") or {})
+                    if not isinstance(jam, dict):
+                        jam = {}
+                    jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
+                    from improv_jam_session_projection import set_improv_jam_session
+
+                    set_improv_jam_session(
+                        session,
+                        jam,
+                        writer="apply_creative_session_to_session",
+                        phase="no_active_blob",
+                    )
+            except ImportError:
+                jam = dict(session.get("improv_jam_session") or {})
+                if not isinstance(jam, dict):
+                    jam = {}
+                jam["sections"] = {k: list(v) for k, v in sess.sections.items()}
+                session["improv_jam_session"] = jam
     elif sess.tool_type == "song_based_improvisation":
         live_sid = ""
         stale_parent = ""
+        sync_live_sections = None
         try:
             from music_workflow_catalog_handoff import (
                 song_based_session_id_for_live_pick,
@@ -694,15 +762,18 @@ def apply_creative_session_to_session(
 
             live_sid = song_based_session_id_for_live_pick(session)
             stale_parent = stale_song_based_parent_session_id(session, creative_session=sess)
+            sync_live_sections = sync_song_based_sections_for_live_pick
         except ImportError:
             pass
         bound_sid = str(getattr(sess, "bound_song_id", "") or "").strip()
-        if stale_parent and live_sid and stale_parent != live_sid:
-            sync_song_based_sections_for_live_pick(session, source="creative_session_parent_mismatch")
-        elif bound_sid and live_sid and bound_sid != live_sid:
-            sync_song_based_sections_for_live_pick(session, source="creative_session_bound_mismatch")
-        elif sess.sections and (not bound_sid or not live_sid or bound_sid == live_sid):
+        if stale_parent and live_sid and stale_parent != live_sid and sync_live_sections:
+            sync_live_sections(session, source="creative_session_parent_mismatch")
+        elif bound_sid and live_sid and bound_sid != live_sid and sync_live_sections:
+            sync_live_sections(session, source="creative_session_bound_mismatch")
+        elif sess.sections and bound_sid and live_sid and bound_sid == live_sid:
             session["improv_song_concert_sections"] = {k: list(v) for k, v in sess.sections.items()}
+        elif sync_live_sections:
+            sync_live_sections(session, source="creative_session_unbound")
     else:
         _set("improv_style", sess.style)
         if widget_safe:
@@ -853,6 +924,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         return
     if session.pop(JAM_SESSION_GENERATE_GUARD_KEY, False):
         sync_creative_session_from_session(session)
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="post_generate_guard"
+            )
+        except ImportError:
+            pass
         session[hydrate_flag] = True
         return
     try:
@@ -884,6 +963,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
     ):
         should_apply = False
     if should_apply and sess is not None:
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="before_apply"
+            )
+        except ImportError:
+            pass
         apply_creative_session_to_session(session, sess, widget_safe=True)
         session[hydrate_flag] = True
         return
@@ -905,6 +992,14 @@ def hydrate_creative_session_for_page(session: dict[str, Any]) -> None:
         except ImportError:
             pass
     if should_apply and sess is not None:
+        try:
+            from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+            sync_improv_jam_session_from_active_blob(
+                session, writer="hydrate_creative_session_for_page", phase="before_apply"
+            )
+        except ImportError:
+            pass
         apply_creative_session_to_session(session, sess, widget_safe=True)
         session[hydrate_flag] = True
         return

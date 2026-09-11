@@ -59,6 +59,15 @@ _SELECTOR_SPECS: tuple[dict[str, Any], ...] = (
         "save_reason": SAVE_REASON_TOOL,
         "user_touch_flag": "_creative_mode_user_touched",
     },
+    # Nested SBI source tab (Active vs Custom) — distinct from top-level Custom page.
+    {
+        "canonical": "improv_song_source",
+        "widget": "improv_song_source",
+        "mirrors": ("sbi_preview_source",),
+        "normalize": "_normalize_song_source",
+        "save_reason": SAVE_REASON_TOOL,
+        "user_touch_flag": "_improv_song_source_user_touched",
+    },
 )
 
 _ANALYSIS_MODE_OPTIONS: tuple[str, ...] = (
@@ -454,10 +463,18 @@ def _normalize_analysis_mode(value: str) -> str:
     return _ANALYSIS_MODE_OPTIONS[0]
 
 
+def _normalize_song_source(value: str) -> str:
+    from studio_page_state import IMPROV_SONG_SOURCES
+
+    text = str(value or "").strip()
+    return text if text in IMPROV_SONG_SOURCES else IMPROV_SONG_SOURCES[0]
+
+
 _NORMALIZERS: dict[str, Callable[[str], str]] = {
     "_normalize_improv_tab": _normalize_improv_tab,
     "_normalize_entry_mode": _normalize_entry_mode,
     "_normalize_analysis_mode": _normalize_analysis_mode,
+    "_normalize_song_source": _normalize_song_source,
 }
 
 
@@ -590,7 +607,53 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
         if not val:
             continue
         widget = str(spec["widget"])
-        if overwrite or not str(session.get(widget) or "").strip():
+        live_widget = str(session.get(widget) or "").strip()
+        live_preview = str(session.get("sbi_preview_source") or "").strip()
+        follow_active = False
+        try:
+            from source_session_state import sbi_must_follow_global_active
+
+            follow_active = sbi_must_follow_global_active(session)
+        except ImportError:
+            follow_active = bool(session.get("_sbi_follow_active_after_explicit_catalog"))
+        if canon_key == "improv_song_source" and follow_active:
+            val = "Active song"
+        elif canon_key == "improv_song_source" and not follow_active:
+            last = str(session.get("_last_improv_song_source") or "").strip()
+            explicit = str(session.get("_explicit_sbi_source_click") or "").strip()
+            pending = str(session.get("_pending_improv_song_source") or "").strip()
+            hydrated = bool(session.get("_sbi_song_source_hydrated"))
+            live_is_click = live_widget in {
+                "Active song",
+                "Custom progression",
+                "Composition",
+            } and (
+                explicit in {"Active song", "Custom progression", "Composition"}
+                or pending in {"Active song", "Custom progression", "Composition"}
+                or (hydrated and last and last != live_widget)
+            )
+            if live_is_click:
+                for mirror in spec.get("mirrors", ()):
+                    if overwrite or not str(session.get(mirror) or "").strip():
+                        session[mirror] = live_widget
+                continue
+        keep_custom = (
+            not follow_active
+            and canon_key == "improv_song_source"
+            and val != "Custom progression"
+            and (
+                live_widget == "Custom progression"
+                or live_preview == "Custom progression"
+                or bool(session.get("_restore_sbi_custom_source"))
+            )
+        )
+        if keep_custom:
+            if not session.get("_sbi_song_source_hydrated"):
+                session[widget] = "Custom progression"
+                for mirror in spec.get("mirrors", ()):
+                    session[mirror] = "Custom progression"
+            continue
+        if overwrite or not live_widget:
             session[widget] = val
         for mirror in spec.get("mirrors", ()):
             if overwrite or not str(session.get(mirror) or "").strip():

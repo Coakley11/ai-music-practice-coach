@@ -323,21 +323,47 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
         and ptr_before.workflow_session_id == target_sid
         and not request.incoming_blob
         and not request.mutate_incoming
-        and not request.page_route
-        and not request.return_route
-        and not request.navigation_intent
     ):
-        trace["validation_result"] = "ok_unchanged"
-        trace["skipped"] = True
-        trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-        session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
-        session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
-        return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
+        existing_blob = get_workflow_blob(session, target_owner, target_sid)
+        if existing_blob is not None:
+            if request.page_route == "backing":
+                existing_blob.last_backing_route = "backing"
+                existing_blob.page_route = "backing"
+            elif request.page_route:
+                existing_blob.resumable_route = request.page_route
+            if request.return_route:
+                existing_blob.return_to_source_route = request.return_route
+                existing_blob.return_route = request.return_route
+            if request.page_route or request.return_route or request.navigation_intent:
+                save_workflow_blob(session, existing_blob, source=f"activate_route_only:{request.activation_source}")
+            trace["validation_result"] = "ok_preserve_blob"
+            trace["skipped"] = True
+            trace["route_only_update"] = bool(
+                request.page_route or request.return_route or request.navigation_intent
+            )
+            trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
+            session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
+        if not request.page_route and not request.return_route and not request.navigation_intent:
+            trace["validation_result"] = "ok_unchanged"
+            trace["skipped"] = True
+            trace["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            session[WORKFLOW_ACTIVATION_LAST_KEY] = trace
+            session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+            return ActivateWorkflowResult(ok=True, skipped=True, trace=trace)
 
     out_owner, out_sid, outgoing = capture_outgoing_blob(session)
     trace["outgoing_owner"] = out_owner
     trace["outgoing_session"] = out_sid
-    if outgoing and out_owner and out_sid:
+    skip_jam_outgoing = (
+        str(out_owner or "") == "jam_session_generator"
+        and str(target_owner or "") != "jam_session_generator"
+        and str(request.activation_source or "") == "restore_regular_song_backing"
+    )
+    if skip_jam_outgoing:
+        trace["outgoing_jam_preserved"] = True
+    elif outgoing and out_owner and out_sid:
         if out_owner != target_owner or out_sid != target_sid:
             saved = save_workflow_blob(session, outgoing, source=f"activate_out:{request.activation_source}")
             trace["outgoing_blob_captured"] = saved
@@ -472,6 +498,28 @@ def activate_workflow(session: dict[str, Any], request: ActivateWorkflowRequest)
     trace["validation_after_projection"] = commit.trace.get("validation_after_projection")
 
     if target_owner == "mission_jam":
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            deactivate_generated_jam_key_ownership(session, pre_widget=True)
+        except ImportError:
+            pass
+        try:
+            from music_workflow_song_practice import (
+                mirror_mission_keys_from_song_blob,
+                sync_session_practice_key_from_song_blob,
+            )
+
+            mirror_mission_keys_from_song_blob(session)
+            sync_session_practice_key_from_song_blob(session, source="mission_jam_activation")
+        except ImportError:
+            pass
+        try:
+            from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+            prime_sidebar_practice_key_from_identity(session)
+        except ImportError:
+            pass
         try:
             from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
@@ -685,7 +733,17 @@ def activate_workflow_simple(
 def activation_user_notice(session: dict[str, Any]) -> str:
     err = session.get(WORKFLOW_ACTIVATION_ERROR_KEY)
     if isinstance(err, dict) and err.get("message"):
-        return str(err["message"])
+        msg = str(err["message"])
+        low = msg.lower()
+        # Internal control / defer tokens — never product UI.
+        if (
+            "requires_pre_widget_activation" in low
+            or "active owner mismatch" in low
+            or str(err.get("code") or "")
+            in {"OWNER_MISMATCH", "REQUIRES_PRE_WIDGET_ACTIVATION", "CHORD_OWNER_ACTIVATE_DEFERRED"}
+        ):
+            return ""
+        return msg
     bootstrap = str(session.get("WORKFLOW_MISSION_BOOTSTRAP_USER_NOTICE") or "").strip()
     if bootstrap:
         return bootstrap

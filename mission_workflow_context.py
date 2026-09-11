@@ -81,11 +81,36 @@ def resolve_missions_section_map(
     session[MISSION_IGNORE_GENERATED_SECTIONS_KEY] = True
     mapped = _catalog_sections_from_session(session, improv_ctx)
     if mapped:
-        return mapped, "catalog_song_sections"
+        owner = "catalog_song_sections"
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if custom_owns_active_song_material(session):
+                owner = "custom_song_sections"
+        except ImportError:
+            pass
+        return mapped, owner
     gen = session.get("improv_generated_sections")
     if gen:
         return [], "entry_jam_leak_blocked"
     return [], "none"
+
+
+def _clear_jam_widget_keys(session: dict[str, Any]) -> list[str]:
+    cleared: list[str] = []
+    try:
+        from session_widget_safe import safe_session_assign
+
+        for key in ("improv_jam_key", "improv_style_key"):
+            if key in session:
+                safe_session_assign(session, key, "")
+                cleared.append(key)
+    except ImportError:
+        for key in ("improv_jam_key", "improv_style_key"):
+            if key in session:
+                session.pop(key, None)
+                cleared.append(key)
+    return cleared
 
 
 def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> list[str]:
@@ -99,6 +124,7 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
         if key in session:
             session.pop(key, None)
             cleared.append(key)
+    cleared.extend(_clear_jam_widget_keys(session))
     try:
         from backing_session_route import clear_mission_ui_suppression
 
@@ -111,6 +137,22 @@ def _deactivate_entry_jam_transient_for_missions(session: dict[str, Any]) -> lis
         on_mission_song_pick_changed(session)
     except ImportError:
         pass
+    try:
+        from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+        if deactivate_generated_jam_key_ownership(session, pre_widget=True):
+            cleared.append("_generated_jam_key_context")
+    except ImportError:
+        pass
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry in ("Style Jam Mode", "Jam Session Generator"):
+        try:
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(session, "improv_entry_mode", "Song-Based Improvisation")
+        except ImportError:
+            session["improv_entry_mode"] = "Song-Based Improvisation"
+        cleared.append("improv_entry_mode→Song-Based")
     return cleared
 
 
@@ -193,10 +235,57 @@ def reconcile_missions_workflow_context(
     cur_chord: str,
     section_label: str,
 ) -> tuple[list[tuple[str, list[str]]], MissionContextReport]:
-    cleared = _deactivate_entry_jam_transient_for_missions(session)
-    if improv_ctx.sections and isinstance(improv_ctx.sections, dict):
-        session["home_sections"] = {k: list(v) for k, v in improv_ctx.sections.items() if isinstance(v, list)}
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        widgets_locked = widgets_likely_instantiated(session)
+    except ImportError:
+        widgets_locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+
+    cleared: list[str] = []
+    if widgets_locked:
+        try:
+            from generated_jam_key_context import (
+                GENERATED_JAM_KEY_CONTEXT_KEY,
+                deactivate_generated_jam_key_ownership,
+            )
+
+            if session.get(GENERATED_JAM_KEY_CONTEXT_KEY) or session.get("_generated_jam_key_owner_active"):
+                deactivate_generated_jam_key_ownership(session, pre_widget=True)
+                cleared.append("_generated_jam_key_context")
+        except ImportError:
+            pass
+        cleared.extend(_clear_jam_widget_keys(session))
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        if entry in ("Style Jam Mode", "Jam Session Generator"):
+            try:
+                from session_widget_safe import safe_session_assign
+
+                safe_session_assign(session, "improv_entry_mode", "Song-Based Improvisation")
+            except ImportError:
+                pass
+            cleared.append("improv_entry_mode→Song-Based")
+    else:
+        cleared = _deactivate_entry_jam_transient_for_missions(session)
+    try:
+        from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+        prime_sidebar_practice_key_from_identity(session)
+    except ImportError:
+        pass
     section_map, prog_owner = resolve_missions_section_map(session, improv_ctx)
+    # home_sections must remain catalog-original pitch — never overwrite with concert maps.
+    if not session.get("home_sections"):
+        if section_map:
+            session.setdefault(
+                "home_sections",
+                {str(label): list(chs) for label, chs in section_map if isinstance(chs, list)},
+            )
+        elif improv_ctx.sections and isinstance(improv_ctx.sections, dict):
+            session.setdefault(
+                "home_sections",
+                {k: list(v) for k, v in improv_ctx.sections.items() if isinstance(v, list)},
+            )
     report = validate_missions_render_context(
         session,
         improv_ctx,

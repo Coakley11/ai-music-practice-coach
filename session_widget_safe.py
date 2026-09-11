@@ -10,6 +10,7 @@ from songs.key_state import PENDING_DISPLAY_KEY
 WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
     {
         "display_key",
+        "custom_workspace_practice_key",
         "instrument",
         "level",
         "focus",
@@ -20,6 +21,7 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "creative_lab_analysis_mode",
         "improv_style_key",
         "improv_jam_key",
+        "improv_style",
         "improv_style_bpm",
         "improv_jam_bpm",
         "improv_mood",
@@ -42,6 +44,7 @@ PENDING_IMPROV_ENTRY_MODE_KEY = "_pending_improv_entry_mode"
 PENDING_IMPROV_INTELLIGENCE_TAB_KEY = "_pending_improv_intelligence_tab"
 PENDING_CREATIVE_LAB_MODE_KEY = "_pending_creative_lab_analysis_mode"
 PENDING_IMPROV_STYLE_KEY = "_pending_improv_style_key"
+PENDING_IMPROV_STYLE_NAME_KEY = "_pending_improv_style_name"
 PENDING_IMPROV_JAM_KEY = "_pending_improv_jam_key"
 PENDING_IMPROV_STYLE_BPM_KEY = "_pending_improv_style_bpm"
 PENDING_IMPROV_JAM_BPM_KEY = "_pending_improv_jam_bpm"
@@ -55,9 +58,11 @@ PENDING_CHART_IN_INSTRUMENT_KEY = "_pending_show_chart_in_instrument_key"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 PENDING_TRANSPOSING_INSTRUMENT_KEY = "_pending_selected_transposing_instrument"
 PENDING_WIDGET_ASSIGN_DIAG_KEY = "_pending_widget_assign_diag"
+PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
 
 _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "display_key": PENDING_DISPLAY_KEY,
+    "custom_workspace_practice_key": PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY,
     "instrument": PENDING_INSTRUMENT_KEY,
     "level": PENDING_LEVEL_KEY,
     "focus": PENDING_FOCUS_KEY,
@@ -65,6 +70,7 @@ _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "improv_intelligence_tab": PENDING_IMPROV_INTELLIGENCE_TAB_KEY,
     "creative_lab_analysis_mode": PENDING_CREATIVE_LAB_MODE_KEY,
     "improv_style_key": PENDING_IMPROV_STYLE_KEY,
+    "improv_style": PENDING_IMPROV_STYLE_NAME_KEY,
     "improv_jam_key": PENDING_IMPROV_JAM_KEY,
     "improv_style_bpm": PENDING_IMPROV_STYLE_BPM_KEY,
     "improv_jam_bpm": PENDING_IMPROV_JAM_BPM_KEY,
@@ -302,6 +308,7 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
 
 __all__ = [
     "PENDING_CREATIVE_LAB_MODE_KEY",
+    "PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY",
     "PENDING_IMPROV_ENTRY_MODE_KEY",
     "PENDING_IMPROV_INTELLIGENCE_TAB_KEY",
     "PENDING_IMPROV_JAM_BPM_KEY",

@@ -1,0 +1,69 @@
+branch=feature/creative-backing-stabilization
+sha=533d60fb52e6525babac6e1cb75769566ef7008f
+url=http://127.0.0.1:8512
+streamlit=fresh local 8512 (Pass 8 working tree)
+
+RESULTS
+A_bpm_same_rerun: slider=None card=None set=None
+A_knobs_same_rerun: style=False meter=False sections=False
+A_refresh: slider=None card=None blues=False meter=False chorus=False
+A_leave_return: slider=None card=None (expect ~source 82)
+B_missions_pre: gen=True Am=True Gm_stale=False practice=True charts_E=True
+B_chord_label: opened=True Gm_stale=False Am=True guitar=True E=True
+B_bpm_same_rerun: slider=None card=96
+B_bpm_refresh: slider=None card=96
+B_practice_key: clicked=True Em=True Dm_stuck=False
+B_shape_reproject: clicked=True csharp=True example_am=False
+B_shape_refresh: csharp=True
+B_return_chord: return=True clicked=False selected_change=False
+B_generate_after: clicked=True
+C_jam_init: opened=True slider=None card=96 F#=True bpms=[96, 96, 96]
+C_jam_bpm_refresh: slider=None card=96
+C_jam_pk: clicked=True body_has_G=True
+C_jam_no_leak: leak=False practice_Dm=True F#_major=False
+C_sbi_no_leak: Dm=True F#=False
+
+MATRIX
+{"owner": "Catalog Backing enter", "song": "Shape of You", "practice_key": "Em", "instrument": "Guitar", "shape": "E", "default_bpm": "[96, 96, 96]", "current_bpm": "", "sections": "", "source": "Catalog"}
+{"owner": "Catalog Backing after leave/return", "song": "Shape of You", "practice_key": "Em", "instrument": "Guitar", "shape": "E", "default_bpm": "[96, 96, 96]", "current_bpm": "", "sections": "", "source": "Catalog"}
+{"owner": "Mission Backing", "song": "Shape of You", "practice_key": "Em", "instrument": "Guitar", "shape": "E", "default_bpm": "[96, 96, 96]", "current_bpm": "96", "sections": "", "source": "Mission"}
+{"owner": "Jam Generator Backing", "song": "Shape of You", "practice_key": "F#", "instrument": "Guitar", "shape": "C#", "default_bpm": "[96, 96, 96]", "current_bpm": "96", "sections": "Chorus", "source": "Mission"}
+{"owner": "Missions after Jam", "song": "Shape of You", "practice_key": "Dm", "instrument": "Guitar", "shape": "C#", "default_bpm": "[]", "current_bpm": "", "sections": "Chorus", "source": ""}
+{"owner": "D Catalog", "song": "Shape of You", "practice_key": "", "instrument": "Guitar", "shape": "C#", "default_bpm": "[96, 96, 96]", "current_bpm": "", "sections": "", "source": "Catalog"}
+{"owner": "D SBI Backing", "song": "Shape of You", "practice_key": "F#", "instrument": "Guitar", "shape": "C#", "default_bpm": "[96, 96]", "current_bpm": "96", "sections": "Chorus", "source": "SBI"}
+{"owner": "D Mission Backing", "song": "Shape of You", "practice_key": "", "instrument": "Guitar", "shape": "", "default_bpm": "[96, 96, 96]", "current_bpm": "96", "sections": "", "source": "Mission"}
+{"owner": "D Style Jam Backing", "song": "Shape of You", "practice_key": "", "instrument": "", "shape": "", "default_bpm": "[96, 96]", "current_bpm": "96", "sections": "Chorus", "source": "SBI"}
+{"owner": "D Jam Generator Backing", "song": "Shape of You", "practice_key": "", "instrument": "", "shape": "", "default_bpm": "[96, 96]", "current_bpm": "96", "sections": "Chorus", "source": "SBI"}
+{"owner": "D Missions", "song": "Shape of You", "practice_key": "Dm", "instrument": "", "shape": "", "default_bpm": "[]", "current_bpm": "", "sections": "Chorus", "source": "Mission"}
+{"owner": "D SBI", "song": "Shape of You", "practice_key": "Dm", "instrument": "", "shape": "", "default_bpm": "[]", "current_bpm": "", "sections": "Chorus", "source": "Mission"}
+{"owner": "D Catalog return", "song": "Shape of You", "practice_key": "", "instrument": "", "shape": "", "default_bpm": "[96, 96]", "current_bpm": "96", "sections": "Chorus", "source": "SBI"}
+
+NOTES
+branch=feature/creative-backing-stabilization
+sha=533d60fb52e6525babac6e1cb75769566ef7008f
+url=http://127.0.0.1:8512
+picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You — Ed Sheeran\n\n🎼 Songs\n\nShape of You · Pop\n\nSong Original Key: Bm\n\n'
+instrument Guitar=True
+capo enabled=True
+shape key E=True
+A enter slider=None card=None
+creative selects=['Practice / Concert Key', 'Instrument', 'Level', 'Practice focus', 'Shape Key', 'Analysis mode', 'Instrument', 'Level', 'Focus']
+instrument Guitar=True
+capo enabled=True
+shape key E=True
+mission open-backing clicked=True
+mission: on backing page
+instrument Guitar=True
+capo enabled=True
+shape key C#=True
+jam open-backing clicked=True
+jam: on backing page
+picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You — Ed Sheeran\n\n🎼 Songs\n\nShape of You · Pop\n\nSong Original Key: Bm\n\n'
+sbi open-backing clicked=True
+sbi: on backing page
+mission open-backing clicked=True
+mission: on backing page
+style open-backing clicked=True
+style: on backing page
+jamgen open-backing clicked=True
+jamgen: on backing page

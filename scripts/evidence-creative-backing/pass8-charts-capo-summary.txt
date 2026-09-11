@@ -1,0 +1,52 @@
+branch=feature/creative-backing-stabilization
+sha=533d60f
+url=http://127.0.0.1:8512
+gate_pass=False
+
+A_written: {'tenor_ok': True, 'tenor_proj_ok': False, 'first_click_on': True, 'proj_changed_on': True, 'pk_stable_on': True, 'refresh_stays_on': True, 'refresh_mode': 'written', 'refresh_charts': 'E', 'first_click_off': True, 'returned_off': True, 'pk_stable_off': True, 'pk': 'D', 'recap_off': {'concert': 'D', 'written': 'E', 'charts': 'D', 'mode': 'concert'}, 'recap_on': {'concert': 'D', 'written': 'E', 'charts': 'E', 'mode': 'written'}, 'persist_policy_observed': 'persists_on_refresh_as_player_context'}
+B_immediate: {'capo_ok': True, 'enabled': True, 'fret': '4', 'fret_is_2': False, 'shape': 'Bb', 'charts': 'Charts in Bb major', 'pk_stable': True, 'pk': 'D'}
+B_rerun: {'enabled': True, 'fret': '4', 'shape': 'missing', 'pk': 'D', 'pass': True}
+B_refresh: {'enabled': True, 'fret': '0', 'shape': 'missing', 'instrument_guitar': True, 'pk': 'D', 'pass': False}
+C_nav: {'pass': False, 'details': ['Songs: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Creative: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Backing: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Upload: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Practice: enabled=True fret=0 shape=? pk=D pk_same=True ok=False'], 'pk0': 'D'}
+C_written_nav: {'backing': True, 'creative': True, 'pass': True, 'policy': 'player/instrument context (persists across pages)'}
+D_mission: {'opened': True, 'capo_on_backing': True, 'refresh': True, 'return_clicked': True, 'capo_after_return': True, 'guitar': True, 'pk': 'C', 'pass': True}
+E_song_change: {'enabled': True, 'fret': '5', 'shape': 'missing', 'observed_policy': 'shape_persists_as_player_context_fret_rederived_from_song_key', 'pass': True}
+
+NOTES
+clicked Use catalog song instead + reload
+second catalog flip + reload
+picked Love Story dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+picked Love Story dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+picked Clocks dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+ensure_catalog ok=False still_custom=True
+picked Love Story dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+instrument -> Saxophone=True
+saxophone type -> Tenor Saxophone=True
+written-key checkbox on=True
+A {'tenor_ok': True, 'tenor_proj_ok': False, 'first_click_on': True, 'proj_changed_on': True, 'pk_stable_on': True, 'refresh_stays_on': True, 'refresh_mode': 'written', 'refresh_charts': 'E', 'first_click_off': True, 'returned_off': True, 'pk_stable_off': True, 'pk': 'D', 'recap_off': {'concert': 'D', 'written': 'E', 'charts': 'D', 'mode': 'concert'}, 'recap_on': {'concert': 'D', 'written': 'E', 'charts': 'E', 'mode': 'written'}, 'persist_policy_observed': 'persists_on_refresh_as_player_context'}
+picked Love Story dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+instrument Guitar=True
+capo enabled=True
+shape key Bb=True
+B_immediate {'capo_ok': True, 'enabled': True, 'fret': '4', 'fret_is_2': False, 'shape': 'Bb', 'charts': 'Charts in Bb major', 'pk_stable': True, 'pk': 'D'}
+B_rerun {'enabled': True, 'fret': '4', 'shape': 'missing', 'pk': 'D', 'pass': True}
+B_refresh {'enabled': True, 'fret': '0', 'shape': 'missing', 'instrument_guitar': True, 'pk': 'D', 'pass': False}
+C_nav {'pass': False, 'details': ['Songs: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Creative: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Backing: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Upload: enabled=True fret=0 shape=? pk=D pk_same=True ok=False', 'Practice: enabled=True fret=0 shape=? pk=D pk_same=True ok=False'], 'pk0': 'D'}
+instrument -> Saxophone=True
+saxophone type -> Tenor Saxophone=True
+written-key checkbox on=True
+C_written_nav {'backing': True, 'creative': True, 'pass': True, 'policy': 'player/instrument context (persists across pages)'}
+picked Love Story dropdown=False landed=False sidebar_song='SONG\n\nCUSTOM PROGRESSION\nTrial Song\n\n🎼 Songs\n\nEdit chords in Custom Progression Lab.\n\nSong'
+instrument Guitar=True
+capo enabled=True
+shape key Bb=True
+clicked Use catalog song instead + reload
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+ensure_catalog ok=True still_custom=False
+creative selects=['Practice / Concert Key', 'Instrument', 'Level', 'Practice focus', 'Shape Key', 'Analysis mode', 'Instrument', 'Level', 'Focus'] attempt=0
+mission_open clicked=True page=Backing missionish=True
+D {'opened': True, 'capo_on_backing': True, 'refresh': True, 'return_clicked': True, 'capo_after_return': True, 'guitar': True, 'pk': 'C', 'pass': True}
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+ensure_catalog ok=True still_custom=False
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+E {'enabled': True, 'fret': '5', 'shape': 'missing', 'observed_policy': 'shape_persists_as_player_context_fret_rederived_from_song_key', 'pass': True}

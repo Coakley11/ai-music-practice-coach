@@ -1,0 +1,12 @@
+URL=http://127.0.0.1:8507
+picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You — Ed Sheeran\n\n🎼 Songs\n\nShape of You · Pop\n\nSong Original Key: Bm\n\n'
+pick_song_ok=True
+BEFORE widget='Bm'
+MID_BM widget='Bm'
+set_practice_dm=True
+AFTER_SAME_RERUN widget='Dm'
+same_rerun_practice_dm_ok=True
+sbi analysis-mode switch=True
+sbi_radio_click=TimeoutError
+sbi_dm_ok=True
+REFRESH widget='' ok=False

@@ -415,6 +415,27 @@ def resolve_practice_concert_key_for_song(
 ) -> str:
     """Effective practice concert key for one song — honors fixed mode when enabled."""
     original = str(song_original_key or fallback or "C").strip() or "C"
+    try:
+        from workflow_key_identity import fixed_practice_key_projection_blocked, resolve_song_practice_key_token
+
+        if fixed_practice_key_projection_blocked(session):
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                pk = str(pick_key or "").strip()
+                saved = get_practice_concert_key(session, pk) if pk else ""
+                if saved:
+                    return saved
+            except ImportError:
+                pass
+            blob_tok = resolve_song_practice_key_token(session)
+            if blob_tok:
+                return blob_tok
+            explicit = str(fallback or original or "").strip()
+            if explicit:
+                return explicit
+    except ImportError:
+        pass
     if is_fixed_practice_key_mode(session):
         return resolve_fixed_practice_concert_key_for_session(session, original)
     try:

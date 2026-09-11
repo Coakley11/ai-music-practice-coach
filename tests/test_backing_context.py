@@ -101,7 +101,8 @@ class TestBackingContext(unittest.TestCase):
         self.assertIn("Gmaj7", ctx.progression)
         self.assertEqual(ctx.bpm, 88)
 
-    def test_signature_changes_when_bpm_changes(self) -> None:
+    def test_signature_stable_when_bpm_changes(self) -> None:
+        """Editable Current BPM is play-session state — not source identity."""
         base = BackingContext(
             source="entry_jam",
             source_label="Entry & Jam",
@@ -114,6 +115,8 @@ class TestBackingContext(unittest.TestCase):
             style="Pop",
             groove="Medium",
             bound_pick_key="say",
+            jam_id="jam-1",
+            entry_mode="Style Jam Mode",
         )
         changed = BackingContext(
             source="entry_jam",
@@ -127,10 +130,12 @@ class TestBackingContext(unittest.TestCase):
             style="Pop",
             groove="Medium",
             bound_pick_key="say",
+            jam_id="jam-1",
+            entry_mode="Style Jam Mode",
         )
-        self.assertNotEqual(compute_source_signature(base), compute_source_signature(changed))
+        self.assertEqual(compute_source_signature(base), compute_source_signature(changed))
 
-    def test_signature_changes_when_progression_changes(self) -> None:
+    def test_signature_changes_when_custom_revision_changes(self) -> None:
         a = BackingContext(
             source="custom_progression",
             source_label="Custom progression",
@@ -144,6 +149,7 @@ class TestBackingContext(unittest.TestCase):
             groove="Pop groove",
             progression=["Gmaj7", "Em7"],
             bound_pick_key="say",
+            custom_revision_id="rev-a",
         )
         b = BackingContext(
             source="custom_progression",
@@ -158,6 +164,7 @@ class TestBackingContext(unittest.TestCase):
             groove="Pop groove",
             progression=["Gmaj7", "Am7"],
             bound_pick_key="say",
+            custom_revision_id="rev-b",
         )
         self.assertNotEqual(compute_source_signature(a), compute_source_signature(b))
 

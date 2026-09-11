@@ -7291,6 +7291,9 @@ def _on_global_source_change() -> None:
             note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
             st.rerun()
     elif is_custom_progression(st.session_state):
+        from songs.music_source import begin_explicit_catalog_selection
+
+        begin_explicit_catalog_selection(st.session_state)
         set_catalog_source(st.session_state)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         st.rerun()
@@ -7303,7 +7306,10 @@ def _on_global_genre_change() -> None:
         return
     current = st.session_state.get("global_quick_song")
     if current not in opts:
+        from songs.music_source import begin_explicit_catalog_selection
+
         st.session_state["global_quick_song"] = opts[0]
+        begin_explicit_catalog_selection(st.session_state)
         set_catalog_source(st.session_state)
         apply_pick_key(st, opts[0], SONG_PICKER_CATALOG, song_library=SONG_LIBRARY)
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
@@ -7311,8 +7317,9 @@ def _on_global_genre_change() -> None:
 
 
 def _on_global_song_change() -> None:
-    set_catalog_source(st.session_state)
-    apply_pick_key(
+    from songs.state import apply_explicit_catalog_dropdown_pick
+
+    apply_explicit_catalog_dropdown_pick(
         st,
         st.session_state["global_quick_song"],
         SONG_PICKER_CATALOG,
@@ -7891,7 +7898,36 @@ def _render_active_song_card(
     )
     _original_key = _song_key_ctx.original_key
     _practice_concert_key = _song_key_ctx.practice_concert_key
+    # Catalog song card: per-source sticky is SSOT for Practice Key badges.
+    try:
+        from songs.music_source import custom_progression_is_active, cpl_session_is_active
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        if not custom_progression_is_active(st.session_state) and not cpl_session_is_active(
+            st.session_state
+        ):
+            _pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
+            _sticky = str(get_practice_concert_key(st.session_state, _pk) or "").strip() if _pk else ""
+            if _sticky:
+                try:
+                    from source_session_state import practice_key_inherits_source_mode
+
+                    if not practice_key_inherits_source_mode(_sticky, _original_key):
+                        _sticky = ""
+                except ImportError:
+                    pass
+            if _sticky:
+                _practice_concert_key = _sticky
+    except ImportError:
+        pass
     _chart_key = _song_key_ctx.chart_key
+    if _practice_concert_key and _chart_key == _song_key_ctx.practice_concert_key:
+        # Keep chart aligned when we only corrected the Practice label from sticky.
+        try:
+            if not _song_key_ctx.written_key and not _song_key_ctx.shape_key:
+                _chart_key = _practice_concert_key
+        except Exception:
+            pass
     _details_error: Exception | None = None
     try:
         details = active_song_card_details(
@@ -8033,7 +8069,19 @@ def _render_active_song_card(
             if _cpl_style:
                 _style_label = str(_cpl_style)
         if _song_key_ctx.shape_key:
-            _written_label = _format_key_label(_song_key_ctx.shape_key)
+            # Shape Key control is tonic-only; mode is inherited from Practice/Concert.
+            # Never run bare "E" through format_key_label (that invents "E major").
+            try:
+                from guitar_capo import shape_chart_label_for_concert, shape_tonic_only as _shape_tonic_only
+
+                _written_label = _shape_tonic_only(_song_key_ctx.shape_key)
+                if _practice_concert_key:
+                    _charts_badge = shape_chart_label_for_concert(
+                        _practice_concert_key,
+                        _song_key_ctx.shape_key,
+                    )
+            except ImportError:
+                _written_label = str(_song_key_ctx.shape_key or "").strip()
             _written_badge_label = "Shape Key"
         elif (
             _song_key_ctx.chart_key_mode == "written"
@@ -8041,7 +8089,11 @@ def _render_active_song_card(
             and _song_key_ctx.written_key != _practice_concert_key
         ):
             _written_label = _format_key_label(_song_key_ctx.written_key)
-        if _chart_key and _chart_key != _practice_concert_key:
+        if (
+            _chart_key
+            and _chart_key != _practice_concert_key
+            and not _song_key_ctx.shape_key
+        ):
             _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
             original_key=_orig_label if show_key_row else "",
@@ -8519,8 +8571,22 @@ def _apply_picker_catalog_filters(
     if not pick_options:
         return filtered, [], ""
 
+    from songs.state import consume_uncommitted_catalog_dropdown
+
+    consume_uncommitted_catalog_dropdown(
+        st,
+        pick_options,
+        SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
+    live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
+        pick_options.insert(0, live_pk)
+
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-    default_pk = master_pk if master_pk in pick_options else ""
+    default_pk = master_pk if master_pk in pick_options else (
+        live_pk if live_pk in pick_options else ""
+    )
     if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
         active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
         return filtered, pick_options, active_pk
@@ -8596,6 +8662,15 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         on_change=_picker_source_on_change,
     )
     mark_song_picker_source_radio_mounted(st.session_state)
+    try:
+        from songs.music_source import note_song_picker_source_presented
+
+        note_song_picker_source_presented(
+            st.session_state,
+            str(st.session_state.get("song_picker_active_source") or "").strip(),
+        )
+    except ImportError:
+        pass
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     try:
         from songs.music_source import (
@@ -9343,6 +9418,12 @@ def _render_catalog_song_picker_block(
             on_change=_library_source_on_change,
         )
         mark_song_picker_source_radio_mounted(st.session_state)
+        try:
+            from songs.music_source import note_song_picker_source_presented
+
+            note_song_picker_source_presented(st.session_state)
+        except ImportError:
+            pass
         # Live radio / empty mid-remount outrank composition_song_is_active stamps
         # (hub promote must not force Composition over Catalog/Custom leave).
         if music_picker_shows_composition_hub(st.session_state):
@@ -9579,8 +9660,21 @@ def _render_catalog_song_picker_block(
                 close_control_section()
             return
 
+        from songs.state import consume_uncommitted_catalog_dropdown
+
+        consume_uncommitted_catalog_dropdown(
+            st,
+            pick_options,
+            SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+        )
         master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-        default_pk = master_pk if master_pk in pick_options else ""
+        live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
+            pick_options.insert(0, live_pk)
+        default_pk = master_pk if master_pk in pick_options else (
+            live_pk if live_pk in pick_options else ""
+        )
         dropdown_options = list(pick_options)
         active_pick_key = sync_matching_song_dropdown_before_widget(
             st,
@@ -9989,13 +10083,38 @@ def _render_backing_return_source_action() -> None:
 
         for idx, action in enumerate(actions):
             if action.action_id == "return_creative":
-                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                # Honor both on_click and the button's returned True (Playwright).
+                # handle_return_to_creative_click is one-shot per script run.
+                clicked = st.button(
+                    action.label,
+                    key=f"backing_nav_{action.action_id}_{idx}",
+                    use_container_width=False,
+                    on_click=_go_creative,
+                )
+                if clicked:
                     _go_creative()
             elif action.action_id == "return_mission":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
                     _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    try:
+                        live_leave = str(
+                            st.session_state.get("display_key")
+                            or st.session_state.get("improv_jam_key")
+                            or ""
+                        ).strip()
+                        if live_leave:
+                            st.session_state["_specialized_practice_token_leaving"] = live_leave
+                        from backing_source_navigation import (
+                            release_specialized_backing_for_generic_navigation,
+                        )
+
+                        release_specialized_backing_for_generic_navigation(
+                            st.session_state, st_like=st
+                        )
+                    except ImportError:
+                        pass
                     navigate_to_regular_backing(st.session_state, st_like=st)
                     st.rerun()
             elif action.action_id == "return_song_catalog":
@@ -10005,7 +10124,29 @@ def _render_backing_return_source_action() -> None:
                     st.rerun()
             elif action.action_id == "return_custom_songs":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
-                    navigate_studio_page(st.session_state, "creative")
+                    save_page_snapshot(st.session_state, "backing")
+                    try:
+                        from songs.key_state import invalidate_backing_cache
+                        from songs.music_source import restore_last_custom_active_song
+
+                        restore_last_custom_active_song(
+                            st, invalidate_backing=invalidate_backing_cache
+                        )
+                    except Exception:
+                        try:
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY
+                            from custom_progression_lab import apply_cpl_session_progression
+
+                            snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
+                                apply_cpl_session_progression(
+                                    st.session_state,
+                                    dict(snap["active"]),
+                                    reset_display_key=False,
+                                )
+                        except Exception:
+                            pass
+                    navigate_studio_page(st.session_state, "custom")
                     st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
@@ -10016,6 +10157,9 @@ def _render_backing_return_source_action() -> None:
 
         nav_has_creative = any(a.action_id == "return_creative" for a in actions)
         if nav_has_creative:
+            return
+
+        if any(a.action_id == "return_custom_songs" for a in actions):
             return
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
@@ -10080,7 +10224,22 @@ def _render_backing_return_source_action() -> None:
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
-            if str(getattr(ctx, "source", "") or "") in {"entry_jam", "song_improv", "mission"}:
+            src = str(getattr(ctx, "source", "") or "")
+            if src == "custom_progression":
+                # Custom Backing → actual Custom page (not Creative).
+                try:
+                    from songs.key_state import invalidate_backing_cache
+                    from songs.music_source import restore_last_custom_active_song
+
+                    restore_last_custom_active_song(
+                        st, invalidate_backing=invalidate_backing_cache
+                    )
+                except Exception:
+                    pass
+                navigate_studio_page(st.session_state, "custom")
+                st.rerun()
+                return
+            if src in {"entry_jam", "song_improv", "mission"}:
                 save_page_snapshot(st.session_state, "creative")
             try:
                 from backing_source_navigation import consume_backing_open_provenance
@@ -10129,12 +10288,9 @@ def _render_backing_scope_controls(
         _cur_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
         if _cur_scope not in _scope_choices:
             _cur_scope = "Selected sections" if _cur_scope == "Selected sections" else "Full song"
-        st.session_state["backing_track_scope"] = _cur_scope
+            st.session_state["backing_track_scope"] = _cur_scope
         if _cur_scope == "Selected sections":
             seed_backing_multi_sections_for_widget(st.session_state, section_names)
-        else:
-            st.session_state.pop("backing_track_single_section", None)
-            st.session_state.pop("backing_track_multi_sections", None)
 
         st.markdown('<div class="ui-backing-scope-segment">', unsafe_allow_html=True)
         render_backing_field_label(
@@ -10292,7 +10448,14 @@ def _render_backing_step2_playback_action(
             default_time_signature=default_meter,
         )
     _prime_backing_quick_section_from_scope(st.session_state, section_names)
-    slider_key = backing_bpm_slider_widget_key(song_id)
+    _bpm_owner = ""
+    try:
+        from backing_practice_key_control import backing_bpm_control_owner
+
+        _bpm_owner = backing_bpm_control_owner(st.session_state)
+    except Exception:
+        _bpm_owner = ""
+    slider_key = backing_bpm_slider_widget_key(song_id, owner=_bpm_owner)
     try:
         from backing_track_state import coerce_backing_groove_for_widget, prepare_backing_bpm_for_widget
 
@@ -10305,6 +10468,7 @@ def _render_backing_step2_playback_action(
         sync_id=song_id,
         default_bpm=default_bpm,
         song_just_reset=song_just_reset,
+        owner=_bpm_owner,
     )
 
     with st.container(key="backing_playback_panel", border=False):
@@ -10327,10 +10491,19 @@ def _render_backing_step2_playback_action(
         st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
 
         def _on_bpm_slider_change() -> None:
-            sync_backing_bpm_from_slider(
-                st,
-                slider_bpm=int(st.session_state.get(slider_key, widget_bpm)),
-            )
+            live = int(st.session_state.get(slider_key, widget_bpm))
+            try:
+                from backing_play_session import trace_backing_bpm
+
+                trace_backing_bpm(
+                    st.session_state,
+                    phase="on_bpm_slider_change",
+                    extra={"slider_key": slider_key, "live": live, "widget_bpm": int(widget_bpm)},
+                )
+            except Exception:
+                pass
+            sync_backing_bpm_from_slider(st, slider_bpm=live)
+            st.session_state["_backing_bpm_changed_this_run"] = True
             _on_backing_filter_change()
 
         if slider_key not in st.session_state:
@@ -10339,13 +10512,25 @@ def _render_backing_step2_playback_action(
             "Quick BPM",
             min_value=BACKING_BPM_MIN,
             max_value=BACKING_BPM_MAX,
-            step=5,
+            step=1,
             key=slider_key,
             label_visibility="collapsed",
             help="Your tempo is kept until you change songs (20–180 BPM).",
             on_change=_on_bpm_slider_change,
         )
-        bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm))
+        try:
+            live = int(st.session_state.get(slider_key) or 0)
+        except (TypeError, ValueError):
+            live = 0
+        if live > 0:
+            bpm = live
+        changed_this_run = bool(st.session_state.pop("_backing_bpm_changed_this_run", False))
+        if not changed_this_run:
+            bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm), user_edit=False)
+        elif live > 0:
+            # Live Quick BPM is this run's user gesture. A leftover lock from the
+            # prior 128 edit must not reseal Current back to 128 after 104.
+            bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(live), user_edit=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         _render_backing_scope_controls(
@@ -10989,9 +11174,25 @@ if _studio_page_for_hydrate == "practice":
         pass
 elif _studio_page_for_hydrate == "backing":
     try:
-        from backing_source_navigation import hydrate_backing_source_for_page
+        from backing_source_navigation import (
+            commit_active_catalog_source_before_backing_hydrate,
+            hydrate_backing_source_for_page,
+        )
 
+        commit_active_catalog_source_before_backing_hydrate(
+            st.session_state,
+            st_like=st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
         hydrate_backing_source_for_page(st.session_state, st_like=st)
+        try:
+            from backing_play_session import sync_backing_play_session_on_backing_page
+
+            sync_backing_play_session_on_backing_page(st.session_state)
+        except ImportError:
+            pass
     except ImportError:
         pass
 elif _studio_page_for_hydrate == "creative":
@@ -11192,6 +11393,8 @@ try:
 except ImportError:
     pass
 
+_sbi_custom_sidebar = False
+_custom_ga_sidebar = False
 try:
     from backing_musical_state import should_skip_regular_song_defaults
     from creative_key_sync import (
@@ -11204,29 +11407,158 @@ try:
     from backing_context import active_creative_backing_context, get_backing_context
 
     _backing_ctx_for_sidebar = get_backing_context(st.session_state)
+    try:
+        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+            from source_session_state import bind_sidebar_practice_key_to_backing_owner
+
+            bind_sidebar_practice_key_to_backing_owner(st, st.session_state)
+            try:
+                from h3_live_key_trace import emit
+
+                emit(st.session_state, "after_bind_sidebar")
+            except Exception:
+                pass
+    except ImportError:
+        pass
     _catalog_regular_backing = (
         _backing_ctx_for_sidebar is not None
         and str(getattr(_backing_ctx_for_sidebar, "source", "") or "").strip() == "regular_song"
         and active_creative_backing_context(st.session_state) is None
     )
-    if is_creative_major_jam_active(st.session_state):
-        _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
-    elif _catalog_regular_backing:
-        _display_key_options = sync_display_key_before_widget(
-            st,
-            original_key,
-            _song_identity,
-        )
-    elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
-        st.session_state
-    ):
+    _generated_backing_sidebar = False
+    try:
+        from creative_key_sync import generated_backing_owns_left_panel_key as _gen_backing_owns
+
+        _generated_backing_sidebar = bool(_gen_backing_owns(st.session_state))
+    except ImportError:
+        _generated_backing_sidebar = False
+    try:
+        _page_for_jam_release = str(st.session_state.get("studio_page") or "").strip().lower()
+        if _page_for_jam_release in {"picker", "practice", "songs"}:
+            try:
+                from creative_key_sync import retire_mission_left_panel_for_catalog_surface
+
+                retire_mission_left_panel_for_catalog_surface(
+                    st.session_state, st_like=st
+                )
+            except Exception:
+                pass
+            from generated_jam_key_context import release_generated_jam_key_for_catalog_surface
+
+            release_generated_jam_key_for_catalog_surface(st.session_state)
+    except ImportError:
+        pass
+    if _generated_backing_sidebar:
         _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
-    else:
-        _display_key_options = sync_display_key_before_widget(
-            st,
-            original_key,
-            _song_identity,
+    elif str(st.session_state.get("studio_page") or "").strip().lower() == "custom":
+        from custom_progression_lab import (
+            cpl_active_from_session,
+            cpl_draft_written_key,
+            prepare_custom_workspace_sidebar_display_key,
         )
+
+        try:
+            from songs.music_source import install_last_custom_into_live_cpl
+
+            install_last_custom_into_live_cpl(
+                st.session_state, reset_practice_key_to_original=False
+            )
+        except ImportError:
+            pass
+        # Sidebar Original Key caption must follow Custom workspace, not Catalog GA.
+        try:
+            original_key = cpl_draft_written_key(cpl_active_from_session(st.session_state))
+        except Exception:
+            pass
+        _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
+    else:
+        try:
+            from songs.music_source import custom_progression_is_active
+
+            page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            if page_now == "creative" and custom_progression_is_active(st.session_state):
+                from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+
+                _display_key_options = prepare_custom_workspace_sidebar_display_key(
+                    st, st.session_state
+                )
+                _custom_ga_sidebar = True
+            elif page_now in {"picker", "songs", "practice"} and custom_progression_is_active(
+                st.session_state
+            ):
+                from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
+
+                _display_key_options = prepare_custom_workspace_sidebar_display_key(
+                    st, st.session_state
+                )
+                _custom_ga_sidebar = True
+        except ImportError:
+            _custom_ga_sidebar = False
+        if not _custom_ga_sidebar:
+            try:
+                from source_session_state import (
+                    clear_sbi_custom_sidebar_overlay_if_needed,
+                    custom_sbi_owns_sidebar_practice_key,
+                    heal_sealed_catalog_sidebar_if_needed,
+                    prepare_sbi_custom_sidebar_display_key,
+                )
+
+                page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+                # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
+                # Do not clear overlay on Open Backing — that restored Shape Dm.
+                if page_now in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(
+                    st.session_state
+                ):
+                    _display_key_options = prepare_sbi_custom_sidebar_display_key(
+                        st, st.session_state
+                    )
+                    _sbi_custom_sidebar = True
+                else:
+                    _had_sbi_overlay = bool(
+                        st.session_state.get("_sbi_custom_sidebar_overlay")
+                        or st.session_state.get("_custom_page_sidebar_overlay")
+                    )
+                    clear_sbi_custom_sidebar_overlay_if_needed(st.session_state)
+                    if _had_sbi_overlay and not st.session_state.get("_sbi_custom_sidebar_overlay"):
+                        _restored = str(
+                            st.session_state.get("display_key")
+                            or st.session_state.get("concert_key")
+                            or ""
+                        ).strip()
+                        if _restored:
+                            try:
+                                from songs.key_state import _apply_display_key_before_widget
+
+                                _apply_display_key_before_widget(
+                                    st,
+                                    _restored,
+                                    source="leave_sbi_custom_overlay",
+                                )
+                            except Exception:
+                                pass
+                    heal_sealed_catalog_sidebar_if_needed(st, st.session_state)
+            except ImportError:
+                pass
+        if _sbi_custom_sidebar or _custom_ga_sidebar:
+            pass
+        elif is_creative_major_jam_active(st.session_state):
+            _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
+        elif _catalog_regular_backing:
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
+        elif should_skip_regular_song_defaults(st.session_state) or should_use_live_practice_key_sidebar(
+            st.session_state
+        ):
+            _display_key_options = prepare_backing_context_sidebar_display_key(st, st.session_state)
+        else:
+            _display_key_options = sync_display_key_before_widget(
+                st,
+                original_key,
+                _song_identity,
+            )
 except Exception:
     _display_key_options = sync_display_key_before_widget(
         st,
@@ -11238,6 +11570,20 @@ except Exception:
     except ImportError:
         def on_sidebar_practice_concert_key_change() -> None:  # type: ignore[misc]
             mark_display_key_changed(st)
+
+try:
+    from h3_live_key_trace import emit
+
+    emit(
+        st.session_state,
+        "sidebar_path_ready",
+        generated_backing_sidebar=bool(_generated_backing_sidebar),
+        catalog_regular_backing=bool(_catalog_regular_backing),
+        original_key=str(original_key or ""),
+        options_head=list(_display_key_options or [])[:8],
+    )
+except Exception:
+    pass
 
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
@@ -11262,13 +11608,369 @@ if is_fixed_practice_key_mode(st.session_state):
         on_change=_on_sidebar_fixed_key_quick_toggle,
     )
 else:
-    st.sidebar.selectbox(
-        feature_label("practice_concert_key", "Practice / Concert Key"),
-        _display_key_options,
-        key="display_key",
-        help="Concert pitch for charts and backing audio.",
-        on_change=on_sidebar_practice_concert_key_change,
+    _custom_page_pk = (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
     )
+    try:
+        from custom_progression_lab import custom_active_owns_sidebar_practice_key
+
+        _use_custom_workspace_pk = bool(
+            _custom_page_pk or custom_active_owns_sidebar_practice_key(st.session_state)
+        )
+    except ImportError:
+        _use_custom_workspace_pk = bool(_custom_page_pk or _custom_ga_sidebar)
+    if _use_custom_workspace_pk:
+        from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
+
+        def _on_custom_workspace_practice_key_change() -> None:
+            """Custom-page Practice Key owner — Custom sticky only.
+
+            Temporary Custom PK must not overwrite Global Catalog display_key when
+            Global Active is still a catalog song.
+            """
+            tok = str(
+                st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
+            ).strip()
+            if tok:
+                try:
+                    from custom_progression_lab import (
+                        PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY,
+                        cpl_active_from_session,
+                    )
+                    from songs.music_source import (
+                        custom_pick_key_for,
+                        custom_progression_is_active,
+                        is_custom_progression,
+                    )
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    active = cpl_active_from_session(st.session_state)
+                    pick = custom_pick_key_for(active)
+                    set_practice_concert_key(st.session_state, tok, pick_key=pick)
+                    if custom_progression_is_active(st.session_state) or is_custom_progression(
+                        st.session_state
+                    ):
+                        st.session_state["display_key"] = tok
+                        st.session_state["concert_key"] = tok
+                    st.session_state.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
+                except Exception:
+                    st.session_state["display_key"] = tok
+                    st.session_state["concert_key"] = tok
+                    st.session_state.pop("_pending_custom_workspace_practice_key", None)
+            try:
+                from pathlib import Path
+                import json
+                import time
+
+                _dbg = (
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "evidence-creative-backing"
+                    / "custom-pk-onchange.jsonl"
+                )
+                _dbg.parent.mkdir(parents=True, exist_ok=True)
+                with _dbg.open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "widget": tok,
+                                "display_key": str(
+                                    st.session_state.get("display_key") or ""
+                                ),
+                                "studio_page": str(
+                                    st.session_state.get("studio_page") or ""
+                                ),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            # Only drive global sidebar sync when Custom is Global Active.
+            # Non-active Custom PK stays on the custom:: sticky (no Catalog bleed).
+            try:
+                from songs.music_source import (
+                    custom_progression_is_active,
+                    is_custom_progression,
+                )
+
+                if custom_progression_is_active(st.session_state) or is_custom_progression(
+                    st.session_state
+                ):
+                    on_sidebar_practice_concert_key_change()
+            except Exception:
+                on_sidebar_practice_concert_key_change()
+
+        st.sidebar.selectbox(
+            "Practice / Concert Key",
+            _display_key_options,
+            key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            help="Concert pitch for charts and backing audio.",
+            on_change=_on_custom_workspace_practice_key_change,
+        )
+    else:
+        _pk_widget_key = "display_key"
+        try:
+            from backing_practice_key_control import (
+                backing_practice_key_widget_id,
+                seed_backing_practice_key_widget,
+            )
+
+            if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+                seed_backing_practice_key_widget(
+                    st.session_state, options=_display_key_options
+                )
+                _pk_widget_key = backing_practice_key_widget_id(st.session_state)
+        except ImportError:
+            _pk_widget_key = "display_key"
+        if _sbi_custom_sidebar:
+            # Isolate Custom SBI PK from Catalog Shape's minor-family display_key widget
+            # (F → Fm / E → Em when the same selectbox reused Shape Bm options).
+            _pk_widget_key = "display_key_sbi_custom"
+            _live_sbi = str(
+                st.session_state.get("display_key") or st.session_state.get("concert_key") or ""
+            ).strip()
+            if _pk_widget_key not in st.session_state and _live_sbi:
+                st.session_state[_pk_widget_key] = _live_sbi
+        try:
+            from backing_context import get_backing_context
+            from creative_key_sync import (
+                MISSION_BACKING_PRACTICE_KEY_WIDGET,
+                _mode_locked_practice_key_options,
+                mission_owns_left_panel_key,
+            )
+
+            _pk_ctx = get_backing_context(st.session_state)
+            if mission_owns_left_panel_key(st.session_state):
+                _live_pk = str(
+                    st.session_state.get("improv_mission_concert_key")
+                    or st.session_state.get("display_key")
+                    or st.session_state.get("concert_key")
+                    or getattr(_pk_ctx, "key", "")
+                    or "C"
+                ).strip() or "C"
+                _display_key_options = _mode_locked_practice_key_options(
+                    st.session_state, _live_pk
+                )
+                _pk_widget_key = MISSION_BACKING_PRACTICE_KEY_WIDGET
+                _want_pk = _live_pk if _live_pk in _display_key_options else _display_key_options[0]
+                try:
+                    from creative_key_sync import (
+                        canonical_mission_practice_key,
+                        prepare_mission_backing_practice_key_widget,
+                    )
+
+                    seeded = prepare_mission_backing_practice_key_widget(
+                        st.session_state, options=_display_key_options
+                    )
+                    if seeded and seeded in _display_key_options:
+                        _want_pk = seeded
+                    _mission_canon = canonical_mission_practice_key(st.session_state)
+                    if _mission_canon and _mission_canon in _display_key_options:
+                        _want_pk = _mission_canon
+                except ImportError:
+                    pass
+                _pending_pk = str(st.session_state.get("_pending_display_key") or "").strip()
+                _widget_now = str(st.session_state.get(_pk_widget_key) or "").strip()
+                if _pk_widget_key not in st.session_state:
+                    st.session_state[_pk_widget_key] = _want_pk
+                elif _widget_now and _widget_now not in _display_key_options:
+                    st.session_state[_pk_widget_key] = _want_pk
+                elif _want_pk and _widget_now != _want_pk and _want_pk in _display_key_options:
+                    st.session_state[_pk_widget_key] = _want_pk
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
+
+                    _dbg = (
+                        Path(__file__).resolve().parent
+                        / "scripts"
+                        / "evidence-creative-backing"
+                        / "h6-mission-widget-seed.jsonl"
+                    )
+                    _dbg.parent.mkdir(parents=True, exist_ok=True)
+                    with _dbg.open("a", encoding="utf-8") as fh:
+                        fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "canonical": str(
+                                        st.session_state.get("improv_mission_concert_key") or ""
+                                    ),
+                                    "want": _want_pk,
+                                    "widget_before_selectbox": str(
+                                        st.session_state.get(_pk_widget_key) or ""
+                                    ),
+                                    "pending_display": _pending_pk,
+                                    "pending_mission": str(
+                                        st.session_state.get("_pending_mission_practice_key")
+                                        or ""
+                                    ),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+
+        def _on_mission_or_global_pk_change() -> None:
+            try:
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
+
+                    _tok_dbg = str(st.session_state.get(_pk_widget_key) or "").strip()
+                    _dbg = (
+                        Path(__file__).resolve().parent
+                        / "scripts"
+                        / "evidence-creative-backing"
+                        / "pk-widget-onchange.jsonl"
+                    )
+                    _dbg.parent.mkdir(parents=True, exist_ok=True)
+                    with _dbg.open("a", encoding="utf-8") as fh:
+                        fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "widget_key": _pk_widget_key,
+                                    "tok": _tok_dbg,
+                                    "display_key": str(st.session_state.get("display_key") or ""),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+                if _pk_widget_key != "display_key":
+                    tok = str(st.session_state.get(_pk_widget_key) or "").strip()
+                    if tok:
+                        prior = str(
+                            st.session_state.get("improv_mission_concert_key")
+                            or st.session_state.get("display_key")
+                            or st.session_state.get("concert_key")
+                            or ""
+                        ).strip()
+                        if prior and prior != tok:
+                            st.session_state["_mission_pk_transpose_from"] = prior
+                        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+                            try:
+                                from backing_practice_key_control import commit_backing_practice_key
+
+                                commit_backing_practice_key(st.session_state, tok)
+                            except ImportError:
+                                st.session_state["display_key"] = tok
+                                st.session_state["concert_key"] = tok
+                        elif _pk_widget_key == "display_key_mission_backing":
+                            try:
+                                from creative_key_sync import apply_specialized_mission_practice_key
+
+                                apply_specialized_mission_practice_key(st.session_state, tok)
+                            except Exception:
+                                st.session_state["display_key"] = tok
+                                st.session_state["concert_key"] = tok
+                                st.session_state["improv_mission_concert_key"] = tok
+                        else:
+                            st.session_state["display_key"] = tok
+                            st.session_state["concert_key"] = tok
+                            st.session_state["improv_mission_concert_key"] = tok
+                on_sidebar_practice_concert_key_change()
+            except Exception as _pk_cb_exc:
+                try:
+                    from pathlib import Path
+                    import traceback
+
+                    Path(__file__).resolve().parent.joinpath(
+                        "scripts/evidence-creative-backing/_mission_pk_cb_exc.txt"
+                    ).write_text(
+                        f"{type(_pk_cb_exc).__name__}: {_pk_cb_exc}\n{traceback.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+
+        try:
+            from h3_live_key_trace import emit
+
+            emit(
+                st.session_state,
+                "before_selectbox",
+                widget_key=_pk_widget_key,
+                options=list(_display_key_options or [])[:16],
+                generated_backing_sidebar=bool(_generated_backing_sidebar),
+            )
+        except Exception:
+            pass
+        try:
+            from source_session_state import sync_specialized_leave_catalog_widget
+
+            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+                sync_specialized_leave_catalog_widget(
+                    st.session_state, widget_key=_pk_widget_key
+                )
+        except Exception:
+            pass
+        _pending_cycle = str(st.session_state.get("_pending_display_key") or "").strip()
+        try:
+            from backing_practice_key_control import (
+                OWNER_STYLE_JAM,
+                STYLE_JAM_REMOUNT_DEFAULTS,
+                canonical_concert_key_for_owner,
+                resolve_backing_pk_control_owner,
+            )
+
+            if resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM:
+                _sj_pk = str(canonical_concert_key_for_owner(st.session_state) or "").strip()
+                _leftover_jam = str(st.session_state.get("improv_jam_key") or "").strip()
+                if (
+                    _sj_pk
+                    and _leftover_jam in STYLE_JAM_REMOUNT_DEFAULTS
+                    and _leftover_jam != _sj_pk
+                    and _sj_pk in (_display_key_options or [])
+                ):
+                    _pending_cycle = _sj_pk
+                    st.session_state.pop(_pk_widget_key, None)
+                    st.session_state[_pk_widget_key] = _sj_pk
+        except ImportError:
+            pass
+        if (
+            _pk_widget_key
+            and _pending_cycle
+            and _pending_cycle in (_display_key_options or [])
+            and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
+        ):
+            st.session_state[_pk_widget_key] = _pending_cycle
+        st.sidebar.selectbox(
+            feature_label("practice_concert_key", "Practice / Concert Key"),
+            _display_key_options,
+            key=_pk_widget_key,
+            help="Concert pitch for charts and backing audio.",
+            on_change=_on_mission_or_global_pk_change,
+        )
+        try:
+            from h3_live_key_trace import emit
+
+            emit(
+                st.session_state,
+                "after_selectbox",
+                widget_key=_pk_widget_key,
+                widget_return=str(st.session_state.get(_pk_widget_key) or ""),
+            )
+        except Exception:
+            pass
+        try:
+            from source_session_state import sync_specialized_leave_catalog_widget
+
+            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+                sync_specialized_leave_catalog_widget(
+                    st.session_state, widget_key=_pk_widget_key, allow_clear=True
+                )
+        except Exception:
+            pass
 try:
     from key_display_diagnostics import render_key_display_diagnostics
 
@@ -11297,19 +11999,28 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
+        from backing_play_session import capture_backing_play_session_overrides
+
+        capture_backing_play_session_overrides(st.session_state)
+    except Exception:
+        pass
+    try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,
             mark_backing_user_edit,
             sync_backing_scope_widgets_after_user_edit,
         )
 
-        if not st.session_state.get(BACKING_USER_EDITS_ALLOWED_KEY):
-            return
+        # Widget on_change runs at the start of the rerun — treat a real filter
+        # change as user intent even if the page gate was reset early.
+        st.session_state[BACKING_USER_EDITS_ALLOWED_KEY] = True
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
     except Exception:
-        return
+        pass
     _sync_canonical_backing_after_edit()
+    # Do not st.rerun() from this callback: Streamlit reverts the triggering
+    # slider to source/default. Card/banner are filled after the slider in this run.
 
 
 def _sync_canonical_practice_after_edit() -> None:
@@ -11660,8 +12371,21 @@ try:
     from music_persistence_trace import render_persistence_trace_sidebar
 
     render_persistence_trace_sidebar(st)
-except Exception:
-    pass
+except Exception as _persist_trace_exc:
+    if _developer_mode_enabled():
+        st.sidebar.warning(
+            f"Music persistence trace failed: {type(_persist_trace_exc).__name__}: {_persist_trace_exc}"
+        )
+
+try:
+    from music_workspace_boundary_trace import render_workspace_boundary_trace_sidebar
+
+    render_workspace_boundary_trace_sidebar(st)
+except Exception as _boundary_trace_exc:
+    if _developer_mode_enabled():
+        st.sidebar.error(
+            f"Workspace boundary trace failed: {type(_boundary_trace_exc).__name__}: {_boundary_trace_exc}"
+        )
 
 try:
     from creative_return_trace import render_creative_return_trace_panel
@@ -11763,14 +12487,31 @@ try:
     from active_song_state import rehydrate_capo_from_canonical, rehydrate_transposing_sidebar_from_canonical
 
     rehydrate_transposing_sidebar_from_canonical(st.session_state)
-    if not _skip_catalog_sidebar_rehydrate:
-        rehydrate_capo_from_canonical(st.session_state)
+    # Capo is player/instrument context — always rehydrate before Capo widgets,
+    # including Creative/Mission runs (do not skip with catalog sidebar gate).
+    rehydrate_capo_from_canonical(st.session_state)
 except ImportError:
     pass
 sync_written_key_instrument_anchor(st.session_state, instrument)
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)
+try:
+    from creative_key_sync import (
+        canonical_mission_practice_key,
+        mission_backing_owns_left_panel_key,
+    )
+
+    if mission_backing_owns_left_panel_key(st.session_state):
+        # Local recap/chart concert only. Do not write session here — assigning
+        # display_key after sidebar widgets can fight the native Mission click.
+        mission_pk = canonical_mission_practice_key(st.session_state) or str(
+            st.session_state.get("display_key") or display_key or ""
+        ).strip()
+        if mission_pk:
+            display_key = mission_pk
+except Exception:
+    pass
 if display_key not in _display_key_options:
     try:
         from creative_key_sync import is_creative_major_jam_active
@@ -11844,27 +12585,9 @@ global_display_key = practice_concert_key
 chart_key_mode = _musical_ctx.chart_key_mode
 written_key = _musical_ctx.written_key
 
-if instrument == "Guitar":
-    sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session")
-    render_guitar_capo_sidebar(
-        st.sidebar,
-        st.session_state,
-        practice_display_key=display_key,
-        persist_st=st,
-    )
-
-_guitar_capo_on = instrument == "Guitar" and bool(st.session_state.get(CAPO_ENABLED_KEY))
-_chart_bundle_transpose_key = chart_bundle_transpose_key(
-    instrument=instrument,
-    capo_enabled=_guitar_capo_on,
-    concert_key=concert_key,
-    chart_key=chart_key,
-)
-_capo_shape_cache = (
-    str(st.session_state.get(CAPO_SHAPE_KEY) or "").strip()
-    if _guitar_capo_on
-    else ""
-)
+# Capo widgets must not instantiate until workspace hydrate has finished — otherwise
+# refresh paints Capo with empty/default Shape (C / fret 0) and persist can wipe Bb.
+# Capo UI + transpose keys are applied after hydration wait below.
 
 try:
     from music_workspace_hydration import render_workspace_hydration_wait_or_stop
@@ -11887,6 +12610,35 @@ try:
             st.stop()
 except ImportError:
     pass
+
+try:
+    from active_song_state import rehydrate_capo_from_canonical
+
+    rehydrate_capo_from_canonical(st.session_state)
+except ImportError:
+    pass
+
+if instrument == "Guitar":
+    sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session")
+    render_guitar_capo_sidebar(
+        st.sidebar,
+        st.session_state,
+        practice_display_key=str(practice_concert_key or display_key or "C"),
+        persist_st=st,
+    )
+
+_guitar_capo_on = instrument == "Guitar" and bool(st.session_state.get(CAPO_ENABLED_KEY))
+_chart_bundle_transpose_key = chart_bundle_transpose_key(
+    instrument=instrument,
+    capo_enabled=_guitar_capo_on,
+    concert_key=concert_key,
+    chart_key=chart_key,
+)
+_capo_shape_cache = (
+    str(st.session_state.get(CAPO_SHAPE_KEY) or "").strip()
+    if _guitar_capo_on
+    else ""
+)
 
 try:
     from songs.chart_bundle_startup import (
@@ -12091,11 +12843,16 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
                 st.stop()
 
 if _chart_bundle is None and _chart_bundle_page_exempt:
-    _chart_bundle = minimal_chart_bundle_stub(
-        genre=_catalog_genre,
-        song=_catalog_song,
-        song_data=_catalog_song_data,
-    )
+    try:
+        from songs.chart_bundle_startup import minimal_chart_bundle_stub
+    except ImportError:
+        minimal_chart_bundle_stub = None  # type: ignore[assignment]
+    if callable(minimal_chart_bundle_stub):
+        _chart_bundle = minimal_chart_bundle_stub(
+            genre=_catalog_genre,
+            song=_catalog_song,
+            song_data=_catalog_song_data,
+        )
 elif _chart_bundle is None:
     try:
         from music_app_rerun import request_app_stop
@@ -12343,6 +13100,20 @@ if pp.show_quick_nav(st):
     except Exception:
         pass
     _render_workflow_architecture_dev_panel()
+
+try:
+    from music_workspace_boundary_trace import render_workspace_boundary_trace_main
+
+    render_workspace_boundary_trace_main(st)
+except Exception as _main_boundary_trace_exc:
+    st.markdown("## WORKSPACE SAVE / HYDRATE TRACE")
+    st.error(
+        f"workspace-boundary-main-v2 render failed: "
+        f"{type(_main_boundary_trace_exc).__name__}: {_main_boundary_trace_exc}"
+    )
+    import traceback
+
+    st.code(traceback.format_exc())
 
 try:
     from suite_analytical_question import render_pending_music_coach_insight
@@ -13682,15 +14453,48 @@ elif _studio_page == "backing":
         ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     try:
-        from backing_source_navigation import hydrate_backing_source_for_page
+        from backing_play_session import trace_backing_bpm
 
+        st.session_state["_backing_bpm_trace_phase"] = "backing_page_enter"
+        trace_backing_bpm(st.session_state, phase="backing_page_enter")
+    except Exception:
+        pass
+    try:
+        from backing_source_navigation import (
+            commit_active_catalog_source_before_backing_hydrate,
+            hydrate_backing_source_for_page,
+        )
+
+        commit_active_catalog_source_before_backing_hydrate(
+            st.session_state,
+            st_like=st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
         hydrate_backing_source_for_page(st.session_state, st_like=st)
+        try:
+            from backing_play_session import (
+                capture_backing_play_session_overrides,
+                sync_backing_play_session_on_backing_page,
+            )
+
+            sync_backing_play_session_on_backing_page(st.session_state)
+            capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
+        except ImportError:
+            pass
     except ImportError:
         pass
     try:
         from backing_context import reconcile_backing_context_on_backing_page
 
         reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
+        try:
+            from backing_play_session import capture_backing_play_session_overrides
+
+            capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
+        except ImportError:
+            pass
     except Exception:
         pass
     try:
@@ -13738,14 +14542,68 @@ elif _studio_page == "backing":
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
         _bpm_sync_id = backing_page_sync_id(st.session_state, song_sync_id=_song_bpm_sync_id)
         _td_bpm, _td_groove, _td_meter = backing_page_transport_defaults(st.session_state)
-        _backing_source_default_bpm = int(_td_bpm)
+        # Immutable catalog default for regular song Badge / Case A resets.
+        _backing_catalog_default_bpm = int(_default_bpm)
+        try:
+            from songs.music_source import catalog_transport_bpm_for_pick
+
+            _pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            _cat_bpm = catalog_transport_bpm_for_pick(st.session_state, _pick) if _pick else 0
+            if _cat_bpm > 0:
+                _backing_catalog_default_bpm = int(_cat_bpm)
+        except Exception:
+            pass
+        # Source/default BPM is source-scoped. Generated Jam must use sealed
+        # generated BPM (e.g. 98), not catalog 96 merely because a pick exists.
+        _backing_source_default_bpm = int(_backing_catalog_default_bpm)
+        _ctx_src = str(getattr(_creative_backing_ctx, "source", "") or "").strip() if _creative_backing_ctx else ""
+        if _ctx_src in {"entry_jam", "mission", "song_improv"}:
+            try:
+                from backing_play_session import get_backing_play_session
+
+                _ps = get_backing_play_session(st.session_state)
+                _bag_def = int(((_ps or {}).get("defaults") or {}).get("bpm") or 0)
+            except Exception:
+                _bag_def = 0
+            _ctx_bpm = int(getattr(_creative_backing_ctx, "bpm", 0) or 0)
+            if _ctx_src == "entry_jam":
+                try:
+                    from backing_play_session import _generated_source_bpm
+
+                    _gen = int(_generated_source_bpm(st.session_state, _creative_backing_ctx) or 0)
+                except Exception:
+                    _gen = 0
+                _backing_source_default_bpm = int(_gen or _bag_def or _ctx_bpm or _td_bpm or 0)
+            else:
+                _backing_source_default_bpm = int(_bag_def or _ctx_bpm or _td_bpm or 0)
+            if _backing_source_default_bpm > 0:
+                # Default badge for creative sources is the sealed source BPM.
+                _backing_catalog_default_bpm = int(_backing_source_default_bpm)
+        # Current session tempo (slider / play-session) — may differ from source.
+        _backing_current_bpm = int(_td_bpm) if int(_td_bpm or 0) > 0 else _backing_source_default_bpm
         _backing_source_default_groove = str(_td_groove)
         _backing_source_default_meter = str(_td_meter)
     except Exception:
         _bpm_sync_id = _song_bpm_sync_id
+        _backing_catalog_default_bpm = int(_default_bpm)
+        _backing_current_bpm = int(_default_bpm)
         _backing_source_default_bpm = int(_default_bpm)
         _backing_source_default_groove = str(_default_groove)
         _backing_source_default_meter = str(_default_meter)
+    st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id
+    st.session_state["_backing_trace_sync_id"] = _bpm_sync_id
+    st.session_state["_active_bpm_sync_id"] = _bpm_sync_id
+    st.session_state["_backing_catalog_default_bpm"] = int(_backing_catalog_default_bpm)
+    st.session_state["_backing_source_default_bpm"] = int(_backing_source_default_bpm)
+    try:
+        from backing_play_session import promote_live_slider_bpm_to_current, trace_backing_bpm
+
+        st.session_state["_backing_bpm_trace_phase"] = "before_promote"
+        trace_backing_bpm(st.session_state, phase="before_promote")
+        promote_live_slider_bpm_to_current(st.session_state, sync_id=_bpm_sync_id)
+        trace_backing_bpm(st.session_state, phase="after_promote", extra={"sync": _bpm_sync_id})
+    except Exception:
+        pass
     try:
         from backing_track_state import begin_backing_page_widget_phase
 
@@ -13799,9 +14657,32 @@ elif _studio_page == "backing":
         force_reset=_force_backing_reset,
     )
     _synced_bpm = int(_backing_canon["applied_bpm"])
+    # Prefer live current session tempo over catalog default for "Current BPM".
+    try:
+        from backing_play_session import current_backing_play_bpm
+
+        _play_bpm = int(current_backing_play_bpm(st.session_state, default=0, sync_id=_bpm_sync_id) or 0)
+        if _play_bpm > 0:
+            _synced_bpm = _play_bpm
+        elif int(st.session_state.get("backing_track_bpm") or 0) > 0 and not bool(
+            _backing_canon.get("did_reset")
+        ):
+            _synced_bpm = int(st.session_state.get("backing_track_bpm") or 0)
+        elif int(_backing_current_bpm or 0) > 0 and not bool(_backing_canon.get("did_reset")):
+            _synced_bpm = int(_backing_current_bpm)
+    except Exception:
+        try:
+            _live_session_bpm = int(st.session_state.get("backing_track_bpm") or 0)
+            if _live_session_bpm > 0 and not bool(_backing_canon.get("did_reset")):
+                _synced_bpm = _live_session_bpm
+            elif int(_backing_current_bpm or 0) > 0 and not bool(_backing_canon.get("did_reset")):
+                _synced_bpm = int(_backing_current_bpm)
+        except Exception:
+            pass
     default_groove_style = str(_backing_canon["applied_groove"])
     _backing_song_just_reset = bool(_backing_canon["did_reset"])
-
+    # Card Default badge must stay on immutable catalog BPM.
+    _card_default_bpm = int(locals().get("_backing_catalog_default_bpm") or _default_bpm)
     # Seed durable widget keys from canonical before playback widgets render.
     # Practice handoff (_apply_pending_backing_scope) runs later and may override scope/loops.
     try:
@@ -13830,6 +14711,10 @@ elif _studio_page == "backing":
     except Exception:
         pass
 
+    _backing_banner_slot = None
+    _backing_card_slot = None
+    _backing_card_kind = "song"
+    _backing_ctx_for_card = None
     if not pp.is_capture_mode(st):
         if km.is_voice_mode(st.session_state):
             _studio_page_header(
@@ -13847,12 +14732,12 @@ elif _studio_page == "backing":
             )
         try:
             from backing_context_ui import (
-                render_backing_context_banner,
                 render_backing_context_dev_diagnostics,
                 render_backing_context_reset,
             )
 
-            render_backing_context_banner(st, st.session_state)
+            # Placeholder: banner is filled after Quick BPM so same-run Current matches the slider.
+            _backing_banner_slot = st.empty()
             render_backing_context_reset(st, st.session_state)
         except Exception:
             pass
@@ -13878,6 +14763,35 @@ elif _studio_page == "backing":
 
     if _early_backing_ctx is not None and _early_backing_ctx.source == "regular_song":
         _backing_card_record = dict(song_data or _catalog_song_data or {})
+    elif (
+        _early_backing_ctx is not None
+        and str(getattr(_early_backing_ctx, "source", "") or "")
+        in {"song_improv", "entry_jam", "mission", "custom_progression"}
+    ):
+        # Specialized Backing owns the card identity — never Global Active catalog.
+        _backing_card_record = {
+            "title": str(getattr(_early_backing_ctx, "song_title", "") or song or "Backing"),
+            "artist": str(getattr(_early_backing_ctx, "source_label", "") or ""),
+            "genre": str(getattr(_early_backing_ctx, "style", "") or genre or ""),
+            "key": str(
+                getattr(_early_backing_ctx, "key", None)
+                or getattr(_early_backing_ctx, "concert_key", None)
+                or "C"
+            ),
+        }
+        if _early_backing_ctx.source == "custom_progression" and _cpl_active:
+            _backing_card_record.update(
+                {
+                    "title": str(_cpl_active.get("name") or _backing_card_record["title"]),
+                    "artist": "Custom progression",
+                    "genre": genre or "Custom",
+                    "key": str(
+                        _backing_card_record.get("key")
+                        or _cpl_active.get("original_key_center")
+                        or "C"
+                    ),
+                }
+            )
     elif cpl_session_is_active(st.session_state) and _cpl_active:
         _backing_card_record = dict(_custom_selected_song_record(_cpl_active))
         _backing_card_record.update(
@@ -13899,7 +14813,7 @@ elif _studio_page == "backing":
     _render_v2_chart_debug_pill(_backing_card_record)
     _render_backing_defaults_verification_pill(
         sync_id=_bpm_sync_id,
-        song_card_bpm=int(_default_bpm),
+        song_card_bpm=int(_card_default_bpm),
         applied_bpm=int(_synced_bpm),
         song_card_groove=str(_default_groove),
         applied_groove=str(default_groove_style),
@@ -13945,14 +14859,21 @@ elif _studio_page == "backing":
             _backing_mk.written_key if _backing_mk.chart_key_mode == "written" else ""
         )
     _backing_written_key = str(_backing_written_key or "").strip()
-    _backing_source_label = "Catalog song"
-    if _early_backing_ctx is not None and _early_backing_ctx.source == "custom_progression":
+    _src = str(getattr(_early_backing_ctx, "source", "") or "") if _early_backing_ctx is not None else ""
+    if _src == "custom_progression":
         _backing_source_label = "Custom Progression"
-    elif (
-        (_early_backing_ctx is not None and _early_backing_ctx.source == "composition_song")
-        or composition_song_is_active(st.session_state)
-    ):
+    elif _src == "composition_song" or composition_song_is_active(st.session_state):
         _backing_source_label = "Composition song"
+    elif _src == "song_improv":
+        _backing_source_label = "Song-Based Improvisation"
+    elif _src == "mission":
+        _backing_source_label = "Mission Practice"
+    elif _src == "entry_jam":
+        _backing_source_label = "Entry Style Jam"
+    elif _src in {"jam_generator", "jam_session"}:
+        _backing_source_label = "Jam Session Generator"
+    else:
+        _backing_source_label = "Catalog song"
     try:
         from backing_context import (
             active_creative_backing_context,
@@ -13999,6 +14920,27 @@ elif _studio_page == "backing":
                 _backing_written_key = (
                     _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
                 )
+            try:
+                from h3_live_key_trace import emit
+
+                emit(
+                    st.session_state,
+                    "card_inputs_resolved",
+                    practice_key=_backing_practice_key,
+                    creative_ctx_key=str(
+                        getattr(_creative_backing_ctx, "concert_key", "")
+                        or getattr(_creative_backing_ctx, "key", "")
+                        or ""
+                    ),
+                    early_ctx_key=str(
+                        getattr(_early_backing_ctx, "concert_key", "")
+                        or getattr(_early_backing_ctx, "key", "")
+                        or ""
+                    ) if _early_backing_ctx is not None else "",
+                    card_kind="creative",
+                )
+            except Exception:
+                pass
             if _backing_musical and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
             else:
@@ -14008,17 +14950,7 @@ elif _studio_page == "backing":
                 )
                 if _creative_sections_concert:
                     sections_for_backing = _creative_sections_concert
-            render_backing_creative_context_card(
-                st,
-                _creative_backing_ctx,
-                st.session_state,
-                applied_bpm=_synced_bpm,
-                applied_groove=default_groove_style,
-                applied_meter=_applied_meter_pre,
-                practice_key=_backing_practice_key,
-                written_key=_backing_written_key,
-                musical_state=_backing_musical,
-            )
+            _backing_card_kind = "creative"
         elif (
             (
                 _backing_ctx_for_card is not None
@@ -14062,21 +14994,7 @@ elif _studio_page == "backing":
                     pass
             if _backing_musical is not None and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
-            if (
-                _backing_ctx_for_card is not None
-                and _backing_ctx_for_card.source == "custom_progression"
-            ):
-                render_backing_custom_progression_context_card(
-                    st,
-                    _backing_ctx_for_card,
-                    st.session_state,
-                    applied_bpm=_synced_bpm,
-                    applied_groove=default_groove_style,
-                    applied_meter=_applied_meter_pre,
-                    practice_key=_backing_practice_key,
-                    written_key=_backing_written_key,
-                    musical_state=_backing_musical,
-                )
+            _backing_card_kind = "custom"
         elif (
             (
                 _backing_ctx_for_card is not None
@@ -14117,62 +15035,15 @@ elif _studio_page == "backing":
                     pass
             if _backing_musical is not None and _backing_musical.concert_sections:
                 sections_for_backing = _backing_musical.concert_sections
-            if _backing_ctx_for_card is not None and _backing_ctx_for_card.source == "composition_song":
-                render_backing_composition_song_context_card(
-                    st,
-                    _backing_ctx_for_card,
-                    st.session_state,
-                    applied_bpm=_synced_bpm,
-                    applied_groove=default_groove_style,
-                    applied_meter=_applied_meter_pre,
-                    practice_key=_backing_practice_key,
-                    written_key=_backing_written_key,
-                    musical_state=_backing_musical,
-                )
-            else:
-                render_backing_active_song_card(
-                    st,
-                    _backing_card_record,
-                    level=level,
-                    applied_bpm=_synced_bpm,
-                    song_default_bpm=int(_default_bpm),
-                    applied_groove=default_groove_style,
-                    applied_meter=_applied_meter_pre,
-                    original_key=_backing_orig_key,
-                    practice_key=_backing_practice_key,
-                    source_label="Composition song",
-                    written_key=_backing_written_key,
-                )
+            _backing_card_kind = "composition"
         else:
-            render_backing_active_song_card(
-                st,
-                _backing_card_record,
-                level=level,
-                applied_bpm=_synced_bpm,
-                song_default_bpm=int(_default_bpm),
-                applied_groove=default_groove_style,
-                applied_meter=_applied_meter_pre,
-                original_key=_backing_orig_key,
-                practice_key=_backing_practice_key,
-                source_label=_backing_source_label,
-                written_key=_backing_written_key,
-            )
+            _backing_card_kind = "song"
+        _backing_card_slot = st.empty()
     except Exception as _backing_card_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing card render: {_backing_card_err}")
-        render_backing_active_song_card(
-            st,
-            _backing_card_record,
-            level=level,
-            applied_bpm=_synced_bpm,
-            song_default_bpm=int(_default_bpm),
-            applied_groove=default_groove_style,
-            applied_meter=_applied_meter_pre,
-            original_key=_backing_orig_key,
-            practice_key=_backing_practice_key,
-            source_label=_backing_source_label,
-            written_key=_backing_written_key,
-            )
+        _backing_card_kind = "song"
+        _backing_card_slot = st.empty()
     try:
         from improvisation_intelligence_ui import render_mission_practice_lick_on_backing
         from improvisation_missions import mission_practice_lick_payload
@@ -14270,10 +15141,16 @@ elif _studio_page == "backing":
     form_loops = int(st.session_state.get("backing_track_loops", 2))
 
     try:
-        from backing_track_state import normalize_backing_scope, resolve_selected_section_names
+        from backing_track_state import (
+            normalize_backing_scope,
+            resolve_selected_section_names,
+            seed_backing_multi_sections_for_widget,
+        )
 
         playback_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
         if playback_scope == "Selected sections":
+            # Seed before resolve so empty multi does not silently mean "full song".
+            seed_backing_multi_sections_for_widget(st.session_state, _sec_names)
             selected_section_names = resolve_selected_section_names(st.session_state, _sec_names)
     except ImportError:
         playback_scope = st.session_state.get("backing_track_scope", "Full song")
@@ -14403,14 +15280,9 @@ elif _studio_page == "backing":
     _locked_creative_style = default_groove_style
     _locked_creative_meter = _backing_source_default_meter
     if _creative_backing_ctx is not None and _creative_backing_ctx.source == "entry_jam":
-        try:
-            from creative_key_sync import is_creative_major_jam_active
-
-            _lock_creative_style_meter = is_creative_major_jam_active(st.session_state)
-            _locked_creative_style = str(_creative_backing_ctx.style or default_groove_style)
-            _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
-        except ImportError:
-            pass
+        # Advanced Style/Meter are ephemeral play-session overrides, not generated-source locks.
+        _locked_creative_style = str(_creative_backing_ctx.style or default_groove_style)
+        _locked_creative_meter = str(_creative_backing_ctx.meter or _backing_source_default_meter)
     bpm, _play_clicked = _render_backing_step2_playback_action(
         song_id=_bpm_sync_id,
         default_bpm=_backing_source_default_bpm,
@@ -14428,6 +15300,110 @@ elif _studio_page == "backing":
         locked_style=_locked_creative_style,
         locked_meter=_locked_creative_meter,
     )
+    _status_bpm = int(bpm or 0)
+    try:
+        from backing_play_session import current_backing_play_bpm as _fill_play_bpm
+
+        _play_bpm = int(
+            _fill_play_bpm(
+                st.session_state,
+                default=int(_synced_bpm or 0),
+                sync_id=_bpm_sync_id,
+            )
+            or 0
+        )
+    except Exception:
+        _play_bpm = 0
+    if _play_bpm > 0:
+        _status_bpm = _play_bpm
+    elif _status_bpm <= 0:
+        _status_bpm = int(_synced_bpm or 0)
+    try:
+        from backing_context_ui import (
+            render_backing_context_banner,
+            render_backing_composition_song_context_card,
+            render_backing_creative_context_card,
+            render_backing_custom_progression_context_card,
+        )
+
+        if _backing_banner_slot is not None:
+            with _backing_banner_slot.container():
+                render_backing_context_banner(
+                    st, st.session_state, applied_bpm=int(_status_bpm)
+                )
+        if _backing_card_slot is not None:
+            with _backing_card_slot.container():
+                if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
+                    render_backing_creative_context_card(
+                        st,
+                        _creative_backing_ctx,
+                        st.session_state,
+                        applied_bpm=int(_status_bpm),
+                        applied_groove=default_groove_style,
+                        applied_meter=_applied_meter_pre,
+                        practice_key=_backing_practice_key,
+                        written_key=_backing_written_key,
+                        musical_state=_backing_musical,
+                    )
+                elif _backing_card_kind == "custom" and _backing_ctx_for_card is not None:
+                    render_backing_custom_progression_context_card(
+                        st,
+                        _backing_ctx_for_card,
+                        st.session_state,
+                        applied_bpm=int(_status_bpm),
+                        applied_groove=default_groove_style,
+                        applied_meter=_applied_meter_pre,
+                        practice_key=_backing_practice_key,
+                        written_key=_backing_written_key,
+                        musical_state=_backing_musical,
+                    )
+                elif _backing_card_kind == "composition":
+                    if (
+                        _backing_ctx_for_card is not None
+                        and _backing_ctx_for_card.source == "composition_song"
+                    ):
+                        render_backing_composition_song_context_card(
+                            st,
+                            _backing_ctx_for_card,
+                            st.session_state,
+                            applied_bpm=int(_status_bpm),
+                            applied_groove=default_groove_style,
+                            applied_meter=_applied_meter_pre,
+                            practice_key=_backing_practice_key,
+                            written_key=_backing_written_key,
+                            musical_state=_backing_musical,
+                        )
+                    else:
+                        render_backing_active_song_card(
+                            st,
+                            _backing_card_record,
+                            level=level,
+                            applied_bpm=int(_status_bpm),
+                            song_default_bpm=int(_card_default_bpm),
+                            applied_groove=default_groove_style,
+                            applied_meter=_applied_meter_pre,
+                            original_key=_backing_orig_key,
+                            practice_key=_backing_practice_key,
+                            source_label="Composition song",
+                            written_key=_backing_written_key,
+                        )
+                else:
+                    render_backing_active_song_card(
+                        st,
+                        _backing_card_record,
+                        level=level,
+                        applied_bpm=int(_status_bpm),
+                        song_default_bpm=int(_card_default_bpm),
+                        applied_groove=default_groove_style,
+                        applied_meter=_applied_meter_pre,
+                        original_key=_backing_orig_key,
+                        practice_key=_backing_practice_key,
+                        source_label=_backing_source_label,
+                        written_key=_backing_written_key,
+                    )
+    except Exception as _backing_status_fill_err:
+        if _developer_mode_enabled():
+            st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
     _backing_audio_ready = bool(
         st.session_state.get("_last_backing_wav")
@@ -16100,20 +17076,34 @@ elif _studio_page == "creative":
 
         sync_creative_style_jam_meta(st.session_state)
         sync_creative_session_from_session(st.session_state)
+        tab = str(st.session_state.get("improv_intelligence_tab") or "").strip()
         entry = str(st.session_state.get("improv_entry_mode") or "").strip()
         try:
-            from backing_source_navigation import _creative_handoff_entry_mode
+            from backing_source_navigation import resolve_open_backing_entry_mode
 
-            entry = _creative_handoff_entry_mode(st.session_state)
+            entry = resolve_open_backing_entry_mode(st.session_state) or entry
         except ImportError:
-            pass
-        if entry in ("Style Jam Mode", "Jam Session Generator"):
-            creative_source = "entry_jam"
-        elif str(st.session_state.get("improv_intelligence_tab") or "").strip() == "Missions":
-            creative_source = "mission"
-        elif st.session_state.pop("improv_mission_backing_handoff", False):
+            try:
+                from backing_source_navigation import _creative_handoff_entry_mode
+
+                entry = _creative_handoff_entry_mode(st.session_state) or entry
+            except ImportError:
+                pass
+        if st.session_state.pop("improv_mission_backing_handoff", False) and entry not in (
+            "Song-Based Improvisation",
+            "Style Jam Mode",
+            "Jam Session Generator",
+        ):
             creative_source = "mission"
         elif entry == "Song-Based Improvisation":
+            # Explicit SBI open wins over a stale Mission handoff/ctx.
+            st.session_state.pop("improv_mission_backing_handoff", None)
+            try:
+                from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                stamp_explicit_backing_handoff(st.session_state, "song_improv")
+            except ImportError:
+                st.session_state["_backing_explicit_handoff_source"] = "song_improv"
             source = resolve_improv_song_source(st.session_state)
             sync_improv_song_source_for_handoff(
                 st.session_state,
@@ -16122,7 +17112,26 @@ elif _studio_page == "creative":
                 set_custom_source=set_custom_source,
             )
             if source == "Custom progression":
-                creative_source = "custom_progression"
+                # SBI → Custom is song_improv preview/handoff — do not activate
+                # Global Custom ownership (H5: Songs must still show catalog Shape).
+                creative_source = "song_improv"
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "song_improv")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "song_improv"
+            elif source == "Composition":
+                # Future SBI owner — never copy Catalog/Custom sections into the handoff.
+                creative_source = "song_improv"
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "song_improv")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "song_improv"
+                st.session_state["improv_song_concert_sections"] = {}
+                st.session_state["improv_song_chart_sections"] = {}
             else:
                 creative_source = "song_improv"
                 st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)
@@ -16135,6 +17144,22 @@ elif _studio_page == "creative":
         persist_improv_intelligence_tab(st.session_state)
         save_page_snapshot(st.session_state, "creative")
 
+        try:
+            from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+            append_jam_backing_handoff_trace(
+                st.session_state,
+                "improv_open_backing_click",
+                creative_source=creative_source,
+                entry=entry,
+                tab=tab,
+                backing_entry_class_before=st.session_state.get("_backing_entry_class"),
+                backing_open_intent_before=st.session_state.get("_backing_open_intent"),
+            )
+        except ImportError:
+            pass
+
+        handoff_sealed = False
         try:
             from music_workflow_pending_backing_handoff import (
                 PENDING_BACKING_HANDOFF_USER_MESSAGE_KEY,
@@ -16196,12 +17221,98 @@ elif _studio_page == "creative":
                             st.warning(str(handoff_msg))
                 return
 
-            open_backing_from_creative(
-                st.session_state,
-                source=creative_source,
-                st_like=st,
-                skip_workflow_activation=defer_wf or not needs_activation,
-            )
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "before_open_backing_from_creative",
+                    defer_wf=defer_wf,
+                    needs_activation=needs_activation,
+                    wf_owner=wf_owner,
+                )
+            except ImportError:
+                pass
+            try:
+                open_backing_from_creative(
+                    st.session_state,
+                    source=creative_source,
+                    st_like=st,
+                    skip_workflow_activation=defer_wf or not needs_activation,
+                )
+            except Exception as handoff_exc:
+                try:
+                    from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+                    from musical_context_coherence import CreativeBackingHandoffBlocked
+
+                    append_jam_backing_handoff_trace(
+                        st.session_state,
+                        "open_backing_from_creative_exception",
+                        exc_type=type(handoff_exc).__name__,
+                        exc_msg=str(handoff_exc)[:240],
+                        creative_backing_handoff_blocked=isinstance(handoff_exc, CreativeBackingHandoffBlocked),
+                    )
+                except ImportError:
+                    CreativeBackingHandoffBlocked = type(None)  # type: ignore[misc,assignment]
+                try:
+                    from musical_context_coherence import CreativeBackingHandoffBlocked as _CBB
+
+                    if isinstance(handoff_exc, _CBB):
+                        try:
+                            from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                            integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                            if integrity_msg:
+                                st.warning(str(integrity_msg))
+                            else:
+                                st.warning("Backing handoff blocked — musical context is not coherent.")
+                        except ImportError:
+                            st.warning("Backing handoff blocked — musical context is not coherent.")
+                        return
+                except ImportError:
+                    pass
+                try:
+                    from generated_workflow_artifact import WorkflowOwnerIntegrityError
+
+                    if isinstance(handoff_exc, WorkflowOwnerIntegrityError):
+                        try:
+                            from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                            integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                            if integrity_msg:
+                                st.warning(str(integrity_msg))
+                        except ImportError:
+                            st.warning("Backing handoff blocked — workflow integrity check failed.")
+                        return
+                except ImportError:
+                    pass
+                raise
+            try:
+                from backing_context import creative_specialized_backing_handoff_ready
+
+                handoff_sealed, handoff_reason = creative_specialized_backing_handoff_ready(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                handoff_sealed = True
+                handoff_reason = "check_unavailable"
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "after_open_backing_from_creative",
+                    handoff_sealed=handoff_sealed,
+                    handoff_reason=handoff_reason,
+                    backing_context_source=str(
+                        (st.session_state.get("_backing_context") or {}).get("source")
+                        if isinstance(st.session_state.get("_backing_context"), dict)
+                        else ""
+                    ),
+                )
+            except ImportError:
+                pass
             if defer_wf and needs_activation:
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
@@ -16219,11 +17330,63 @@ elif _studio_page == "creative":
                 return
         except ImportError:
             open_backing_from_creative(st.session_state, source=creative_source, st_like=st)
+            try:
+                from backing_context import creative_specialized_backing_handoff_ready
+
+                handoff_sealed, _handoff_reason = creative_specialized_backing_handoff_ready(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                handoff_sealed = True
+
+        if not handoff_sealed:
+            try:
+                from jam_generator_live_runtime_trace import collect_backing_handoff_readiness_trace
+
+                collect_backing_handoff_readiness_trace(
+                    st.session_state,
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                pass
+            try:
+                from generated_workflow_artifact import WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY
+
+                integrity_msg = st.session_state.pop(WORKFLOW_OWNER_INTEGRITY_USER_MESSAGE_KEY, None)
+                if integrity_msg:
+                    st.warning(str(integrity_msg))
+                else:
+                    st.warning("Backing handoff could not be sealed — stay on Creative and fix the jam context.")
+            except ImportError:
+                st.warning("Backing handoff could not be sealed.")
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "handoff_navigation_blocked",
+                    creative_source=creative_source,
+                )
+            except ImportError:
+                pass
+            return
 
         try:
-            from backing_source_navigation import BACKING_INTENT_FROM_CREATIVE, set_backing_open_intent
+            from backing_source_navigation import mark_specialized_backing_handoff_entry
 
-            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_CREATIVE)
+            mark_specialized_backing_handoff_entry(st.session_state)
+            try:
+                from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
+
+                append_jam_backing_handoff_trace(
+                    st.session_state,
+                    "after_mark_specialized_backing_handoff_entry",
+                    backing_entry_class=st.session_state.get("_backing_entry_class"),
+                    backing_open_intent=st.session_state.get("_backing_open_intent"),
+                )
+            except ImportError:
+                pass
         except ImportError:
             pass
         try:
@@ -16286,6 +17449,60 @@ elif _studio_page == "creative":
         st.rerun()
 
     def _improv_go_custom_progression() -> None:
+        try:
+            from source_session_state import set_sbi_preview_source
+            from studio_page_state import PENDING_IMPROV_SONG_SOURCE
+
+            set_sbi_preview_source(st.session_state, "Custom progression")
+            st.session_state[PENDING_IMPROV_SONG_SOURCE] = "Custom progression"
+            st.session_state["_sbi_song_source_hydrated"] = False
+            st.session_state["improv_song_source"] = "Custom progression"
+            st.session_state["_restore_sbi_custom_source"] = True
+            try:
+                from source_session_state import clear_sbi_follow_active_after_explicit_catalog
+
+                clear_sbi_follow_active_after_explicit_catalog(st.session_state)
+            except ImportError:
+                st.session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                st.session_state.pop("_sbi_follow_active_widget_seen", None)
+            visit_pk = str(st.session_state.get("_sbi_custom_visit_pk") or "").strip()
+            if visit_pk:
+                st.session_state["_sbi_custom_last_visit_pk"] = visit_pk
+            # Temporary SBI Custom visit PK must not become the Custom workspace key.
+            st.session_state.pop("_sbi_custom_visit_pk", None)
+            st.session_state.pop("display_key_sbi_custom", None)
+            try:
+                from custom_progression_lab import (
+                    cpl_active_from_session,
+                    cpl_draft_written_key,
+                    sync_custom_workspace_practice_key,
+                )
+
+                active = cpl_active_from_session(st.session_state)
+                home = str(cpl_draft_written_key(active) or "C").strip() or "C"
+                # Open Custom Lab restores the Custom song's original key — never
+                # the temporary SBI Custom visit PK (F's C) and never catalog Shape.
+                restore_pk = home
+                st.session_state["_cpl_force_pk_to_home"] = restore_pk
+                sync_custom_workspace_practice_key(
+                    st.session_state,
+                    practice_key=restore_pk,
+                    active=active,
+                    source="open_custom_lab_from_sbi",
+                )
+            except Exception:
+                pass
+            try:
+                from creative_tab_tool_persistence import handle_user_creative_selector_change
+
+                handle_user_creative_selector_change(
+                    st.session_state, "improv_song_source"
+                )
+            except Exception:
+                pass
+        except Exception:
+            st.session_state["sbi_preview_source"] = "Custom progression"
+            st.session_state["_pending_improv_song_source"] = "Custom progression"
         navigate_studio_page(st.session_state, "custom")
         st.rerun()
 
@@ -16335,7 +17552,7 @@ elif _studio_page == "creative":
                 instrument=str(instrument),
                 song_data=_catalog_song_data,
             )
-            _dha_sections = _eff.sections_chart
+            _dha_sections = _eff.sections_concert
             _dha_section_order = list(song_data.get("section_order") or [])
             _dha_improv_ctx = ImprovSessionContext(
                 song_title=str(song),

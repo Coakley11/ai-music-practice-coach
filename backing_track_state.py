@@ -247,6 +247,13 @@ def _clear_spurious_backing_dirty(session: dict[str, Any]) -> None:
 
 def _should_seed_widgets_from_canonical(session: dict[str, Any]) -> bool:
     """True when canonical may hydrate widget keys (restore / first load), not mid-edit reruns."""
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            return False
+    except ImportError:
+        pass
     if is_backing_user_dirty(session):
         return False
     if session.get(BACKING_PENDING_SYNC_KEY):
@@ -650,6 +657,13 @@ def bind_backing_rendered_widgets_from_canonical(
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
     if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    try:
+        from backing_play_session import play_session_blocks_canonical_seed
+
+        if play_session_blocks_canonical_seed(session):
+            return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    except ImportError:
+        pass
 
     canonical = canonical_backing_filters(session)
     if canonical is None:
@@ -690,9 +704,18 @@ def bind_backing_rendered_widgets_from_canonical(
     slider_key = _per_song_bpm_slider_key(sync_id)
     bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"), default=default_bpm)
     if bpm is not None:
-        session[slider_key] = int(bpm)
-        session["backing_track_bpm"] = int(bpm)
-        session["bpm"] = int(bpm)
+        existing = 0
+        try:
+            existing = int(session.get(slider_key) or 0)
+        except (TypeError, ValueError):
+            existing = 0
+        if existing > 0 and int(existing) != int(bpm):
+            session["backing_track_bpm"] = int(existing)
+            session["bpm"] = int(existing)
+        else:
+            session[slider_key] = int(bpm)
+            session["backing_track_bpm"] = int(bpm)
+            session["bpm"] = int(bpm)
     groove = normalize_backing_groove(canonical.get("backing_groove_style") or default_groove)
     if groove:
         session["backing_groove_style"] = groove
@@ -988,6 +1011,16 @@ def commit_backing_transport_from_session(session: dict[str, Any], *, reason: st
 
 
 def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "groove"):
+            resolved = str(effective_backing_play_overrides(session).get("groove") or "").strip()
+            if resolved:
+                session["backing_groove_style"] = normalize_backing_groove(resolved)
+                return str(session["backing_groove_style"])
+    except ImportError:
+        pass
     if (
         not is_backing_locally_dirty(session)
         and not session.get(BACKING_PENDING_SYNC_KEY)
@@ -1010,15 +1043,44 @@ def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove:
 
 
 def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int = 100) -> int:
+    def _mirror_slider(bpm_val: int) -> None:
+        sync_id = str(
+            session.get("_active_bpm_sync_id")
+            or session.get("_backing_trace_sync_id")
+            or ""
+        ).strip()
+        if not sync_id:
+            return
+        try:
+            from songs.playback_defaults import backing_bpm_slider_widget_key
+
+            slider_key = backing_bpm_slider_widget_key(sync_id)
+            session[slider_key] = int(bpm_val)
+        except ImportError:
+            pass
+
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "bpm"):
+            resolved = int(effective_backing_play_overrides(session).get("bpm") or 0)
+            if resolved > 0:
+                session["backing_track_bpm"] = resolved
+                _mirror_slider(resolved)
+                return resolved
+    except ImportError:
+        pass
     if not is_backing_user_dirty(session) and _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
         if canon_bpm is not None:
             session["backing_track_bpm"] = int(canon_bpm)
+            _mirror_slider(int(canon_bpm))
             return int(canon_bpm)
     bpm = normalize_backing_bpm(session.get("backing_track_bpm"), default=default_bpm)
     if bpm is not None and (is_backing_user_dirty(session) or _should_seed_widgets_from_canonical(session)):
         session["backing_track_bpm"] = int(bpm)
+        _mirror_slider(int(bpm))
     return int(bpm or default_bpm)
 
 
@@ -1069,6 +1131,18 @@ def prepare_backing_scope_for_widget(session: dict[str, Any]) -> None:
 
 def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: str = "4/4") -> tuple[str, bool]:
     """Return meter for Step 2 radio; only seed widget keys on restore / first load."""
+    try:
+        from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
+
+        if backing_play_session_has_override(session, "meter"):
+            ov = effective_backing_play_overrides(session)
+            meter = normalize_backing_meter(str(ov.get("meter") or default_meter), default=default_meter)
+            session["backing_time_signature"] = meter
+            if "meter_override" in ov:
+                session["backing_time_signature_override"] = bool(ov.get("meter_override"))
+            return meter, bool(session.get("backing_time_signature_override"))
+    except ImportError:
+        pass
     if _should_seed_widgets_from_canonical(session):
         canonical = canonical_backing_filters(session) or {}
         meter_raw = str(canonical.get("backing_time_signature") or "").strip()

@@ -223,6 +223,17 @@ def project_mission_artifacts_from_canonical(session: dict[str, Any], *, overwri
                         continue
                 except ImportError:
                     pass
+            if key == "improv_motif" and isinstance(val, dict):
+                sel = str(session.get("ii_selected_chord") or "").strip()
+                m_ch = str(val.get("chord") or "").strip()
+                if sel and m_ch and sel != m_ch:
+                    # Do not resurrect "Motif on G" when the user already selected Bb.
+                    record_mission_artifact_violation(
+                        session,
+                        "STALE_MOTIF_ARTIFACT_RESTORED",
+                        detail=f"selected={sel} motif={m_ch}",
+                    )
+                    continue
             session[key] = copy.deepcopy(val)
     note_mission_artifact_projection_applied(session)
     d = _diag(session)

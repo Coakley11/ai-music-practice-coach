@@ -74,10 +74,36 @@ class TestResolveActiveMusicalKey(unittest.TestCase):
         }
         ctx = resolve_active_musical_key(session, rec={"key": "Bm"}, surface="test")
         self.assertEqual(ctx.practice_concert_key, "C#m")
-        self.assertEqual(ctx.shape_key, "Am")
+        self.assertEqual(ctx.shape_key, "A")
         self.assertEqual(ctx.chart_key, "Am")
         self.assertEqual(ctx.chart_key_mode, "shape")
         self.assertNotEqual(ctx.practice_concert_key, ctx.chart_key)
+
+    def test_guitar_shape_tonic_inherits_concert_mode(self) -> None:
+        session = {
+            "instrument": "Guitar",
+            "display_key": "C",
+            "guitar_capo_enabled": True,
+            "guitar_capo_shape_key": "D",
+        }
+        ctx = resolve_active_musical_key(session, rec={"key": "C"}, surface="test")
+        self.assertEqual(ctx.practice_concert_key, "C")
+        self.assertEqual(ctx.shape_key, "D")
+        self.assertEqual(ctx.chart_key, "D")
+
+        session["display_key"] = "F#m"
+        session["guitar_capo_shape_key"] = "D"
+        ctx = resolve_active_musical_key(session, rec={"key": "F#m"}, surface="test")
+        self.assertEqual(ctx.practice_concert_key, "F#m")
+        self.assertEqual(ctx.shape_key, "D")
+        self.assertEqual(ctx.chart_key, "Dm")
+
+        session["display_key"] = "C"
+        session["guitar_capo_shape_key"] = "Am"
+        ctx = resolve_active_musical_key(session, rec={"key": "C"}, surface="test")
+        self.assertEqual(ctx.shape_key, "A")
+        self.assertEqual(ctx.chart_key, "A")
+        self.assertEqual(ctx.practice_concert_key, "C")
 
 
 if __name__ == "__main__":

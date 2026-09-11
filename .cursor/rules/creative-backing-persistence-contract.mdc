@@ -1,0 +1,49 @@
+---
+description: Refresh/reboot must restore Creative/Backing workspace; Practice Key stays editable; refresh ≠ leave.
+alwaysApply: true
+---
+
+# Persistence contract — refresh / reboot
+
+Full contract: `cursor-prompts/plans/2026-08-23-persistence-contract-refresh-reboot.md`  
+Pass 8 plan: `cursor-prompts/plans/2026-08-18-pass8-creative-backing-stabilization.md`
+
+## Central rule
+
+**Refresh / Streamlit rerun / app reboot restores the user’s current workspace.** It is **not**:
+
+- a new song selection
+- a new Creative session
+- leaving Backing
+- resetting instrument / Written / Shape / Capo
+- resetting Mission/SBI chord/section/tab
+- resetting Practice Key
+
+**Do not treat browser refresh as evidence the user left Backing.**
+
+## Must persist (when user did not explicitly change source/workflow)
+
+1. **Creative selections** — Mission, section, chord; Live Coach / Harmony Map / Motif selections; SBI source tab; Custom progression used by SBI.
+2. **Player projection** — instrument, sax subtype, Written Charts, Guitar Shape, Shape Key, Capo.
+3. **Backing type + identity** — Catalog / Mission / SBI Active / Custom SBI / Jam Generator / Entry Style — same kind after refresh (no Catalog fallthrough).
+4. **Backing play-session settings** — Practice Key, BPM, style/groove, meter, loop/scope, sections, temporary playback settings for the **same** visit.
+5. **Creative subpage** — reopen Mission / SBI / Harmony / Motif / Live Coach where the user left off.
+
+## Practice / Concert Key
+
+Left-panel Practice Key must remain **editable** on Songs, Custom, Creative tools, and all Backing kinds (including after refresh). Changing it must update the **owning** workflow coherently (not label-only).
+
+## Refresh vs true leave
+
+| Event | Behavior |
+|-------|----------|
+| Refresh / reboot | Restore page + workflow + current play-session settings |
+| True leave (user navigates away) | May reset temporary Backing overrides on a **later new** play-session entry; source context may still restore per ownership rules |
+
+## Hot regression — Custom SBI Backing
+
+Global Active = Shape of You, LAST_CUSTOM = Trial Song, SBI = Custom, key E → open SBI Backing → refresh must stay **Custom SBI / Trial Song / E / same settings**, never Catalog Shape, SBI Active, or My Progression.
+
+## Live gates
+
+P1–P9 in the plan file. Prefer one coherent workflow snapshot on hydrate before rendering widgets.

@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-08-04 · **Branch:** `dev` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-09-02 · **Branch:** `feature/creative-backing-stabilization` (Pass 8 uncommitted; do not merge to `dev`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -55,6 +55,32 @@ We are building **core platform architecture**, not a bag of isolated features.
 | `log` | Practice Log | Live |
 | `openai` | OpenAI | Live (API key required) |
 | `composer` | Composition Studio | Live (Sprint A foundation — **guided UX pending**) |
+
+---
+
+## Current Priorities
+
+- **Pass 8 Creative/Backing stabilization** (uncommitted on `feature/creative-backing-stabilization`): generated Jam BPM, then active-source-change restore epoch (Cases E1–E5), plus **refresh/reboot persistence contract** (Creative selections, instrument/Written/Shape, Backing type+settings, Practice Key always editable; refresh ≠ leave). Plans: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md), [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md). Do not merge to `dev` until the matrix is green.
+
+## Next Features
+
+- Active-source-change Backing restore: last Backing resumes only while the same catalog/custom source remains active.
+
+- **Key Cycle Practice (FUTURE — do not implement during Creative/Backing stabilization).** Spec only; no product UI until after acceptance. Full spec: [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md). First real engine later: one ordinary Catalog Backing prototype in shared Backing transport, then other surfaces.
+
+## Long-Term Vision
+
+*See Platform architecture above.*
+
+**Key Cycle Practice** — automatic half-step / whole-step practice through keys without mutating canonical Practice Key or Global Active. Shared Backing transport layer; Off leaves current behavior unchanged. See [2026-09-02 plan](./plans/2026-09-02-key-cycle-practice.md).
+
+## Completed Features
+
+*See [music_app_completed_features.md](./music_app_completed_features.md).*
+
+## Notes
+
+Pass 8 Case A, Mission B, and Jam key isolation are locally green and frozen.
 
 ---
 

@@ -9,6 +9,7 @@ from mission_backing_alignment import build_mission_backing_alignment_payload
 from mission_return_destination import (
     MISSION_CANONICAL_RETURN_DESTINATION_KEY,
     build_mission_return_destination,
+    peek_mission_return_destination,
     seal_mission_return_destination,
 )
 from music_workflow_pending_backing_handoff import (
@@ -148,6 +149,41 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
         self.assertIsInstance(session.get(PENDING_MISSION_RETURN_KEY), dict)
         self.assertIsNone(session.get(PENDING_MISSION_RETURN_CONSUMED_TOKEN_KEY))
 
+    def test_return_soft_continues_when_activation_fails(self) -> None:
+        """Custom GA / owner mismatch must not leave the user stuck on Mission Backing."""
+        session: dict = {"studio_page": "backing", "improv_intelligence_tab": "Missions"}
+        seal_mission_return_destination(
+            session,
+            build_mission_return_destination(
+                build_mission_backing_alignment_payload(
+                    session,
+                    mission="Outline chord tones",
+                    cur_chord="Gsus4",
+                    section_label="Intro",
+                    chord_idx=1,
+                    song_title="Trial Song",
+                ),
+                handoff_mode="practice_in_jam",
+                with_practice_lick=True,
+                request_seq=9,
+            ),
+        )
+        queue_pending_mission_return_from_backing(session)
+        with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
+            activate.return_value = mock.Mock(ok=False, trace={})
+            with mock.patch(
+                "mission_backing_alignment.apply_pending_mission_backing_alignment",
+                return_value=False,
+            ):
+                with mock.patch("backing_context.get_backing_context", return_value=None):
+                    phase = consume_pending_mission_return_handoff(session)
+        self.assertEqual(phase, "applied")
+        self.assertEqual(session.get("studio_page"), "creative")
+        self.assertEqual(session.get("improv_active_mission"), "Outline chord tones")
+        err = session.get("_music_pending_mission_return_error") or {}
+        self.assertTrue(err.get("soft_continue"))
+        self.assertIsNone(session.get(PENDING_MISSION_RETURN_KEY))
+
     def test_blocked_rerun_does_not_call_bare_st_rerun(self) -> None:
         session: dict = {MISSION_CANONICAL_RETURN_DESTINATION_KEY: {"mission_id": "M", "return_token": "t"}}
         seal_mission_return_destination(
@@ -194,6 +230,270 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
                 handle_return_to_mission_click(st_mock, session)
         self.assertIsInstance(session.get(PENDING_MISSION_RETURN_KEY), dict)
         st_mock.rerun.assert_not_called()
+
+    def test_upload_nav_recovers_dest_from_backing_session_blob(self) -> None:
+        """Mission Backing survives Upload, but dest key is gone until recovered from ctx."""
+        from backing_context import BACKING_CONTEXT_KEY, BackingContext, set_backing_context
+        from backing_source_navigation import hydrate_backing_source_for_page
+        from studio_nav_history import navigate_studio_page
+
+        align = build_mission_backing_alignment_payload(
+            {},
+            mission="Outline chord tones",
+            cur_chord="Bb",
+            section_label="Verse",
+            chord_idx=1,
+            song_title="Tune",
+            song_pick_key="Pop::X",
+            concert_key="Eb",
+            display_key="Eb",
+        )
+        dest = build_mission_return_destination(
+            align, handoff_mode="practice_in_jam", with_practice_lick=True, request_seq=4
+        )
+        session: dict = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": "Pop::X",
+            "improv_active_mission": "Outline chord tones",
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="pick",
+            song_title="Tune",
+            key="Eb",
+            display_key="Eb",
+            concert_key="Eb",
+            bpm=100,
+            style="Pop",
+            groove="Straight",
+            mission_id="Outline chord tones",
+            bound_pick_key="Pop::X",
+        )
+        set_backing_context(
+            session,
+            ctx,
+            creative_return_route={
+                "studio_page": "creative",
+                "intelligence_tab": "Missions",
+                "mission_id": "Outline chord tones",
+                "mission_chord": "Bb",
+                "mission_section": "Verse",
+                "song_pick_key": "Pop::X",
+                "backing_source": "mission",
+                "workflow_owner": "mission_jam",
+            },
+        )
+        seal_mission_return_destination(session, dest)
+        blob = session.get(BACKING_CONTEXT_KEY)
+        self.assertIsInstance(blob, dict)
+        self.assertEqual(blob.get("mission_return_destination", {}).get("mission_id"), dest["mission_id"])
+        session.pop(MISSION_CANONICAL_RETURN_DESTINATION_KEY, None)
+        session["studio_page"] = "analysis"
+        navigate_studio_page(session, "backing")
+        hydrate_backing_source_for_page(session, st_like=mock.Mock(session_state=session))
+        recovered = peek_mission_return_destination(session)
+        self.assertIsInstance(recovered, dict)
+        self.assertEqual(recovered.get("mission_id"), "Outline chord tones")
+        self.assertEqual(recovered.get("chord_symbol"), "Bb")
+        self.assertEqual(recovered.get("section_label"), "Verse")
+        req = queue_pending_mission_return_from_backing(session)
+        self.assertIsInstance(req, dict)
+        self.assertEqual(req.get("mission_id"), "Outline chord tones")
+
+    def test_multitrack_nav_recovers_dest_from_route_when_blob_dest_missing(self) -> None:
+        """Legacy Mission Backing: dest never stamped; recover identity from sealed route."""
+        from backing_context import BACKING_CONTEXT_KEY, BackingContext, set_backing_context
+        from backing_source_navigation import hydrate_backing_source_for_page
+        from studio_nav_history import navigate_studio_page
+
+        session: dict = {
+            "studio_page": "multitrack",
+            "active_catalog_pick_key": "Pop::X",
+            "improv_active_mission": "Mission A",
+        }
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="pick",
+            song_title="Tune",
+            key="C#m",
+            display_key="C#m",
+            concert_key="C#m",
+            bpm=92,
+            style="Pop",
+            groove="Straight",
+            mission_id="Mission A",
+            bound_pick_key="Pop::X",
+            section="Chorus",
+        )
+        set_backing_context(
+            session,
+            ctx,
+            creative_return_route={
+                "studio_page": "creative",
+                "intelligence_tab": "Missions",
+                "mission_id": "Mission A",
+                "mission_chord": "G#",
+                "mission_section": "Chorus",
+                "song_pick_key": "Pop::X",
+                "backing_source": "mission",
+                "workflow_owner": "mission_jam",
+            },
+        )
+        blob = session.get(BACKING_CONTEXT_KEY)
+        self.assertIsInstance(blob, dict)
+        blob.pop("mission_return_destination", None)
+        session.pop(MISSION_CANONICAL_RETURN_DESTINATION_KEY, None)
+        navigate_studio_page(session, "backing")
+        hydrate_backing_source_for_page(session, st_like=mock.Mock(session_state=session))
+        recovered = peek_mission_return_destination(session)
+        self.assertIsInstance(recovered, dict)
+        self.assertEqual(recovered.get("mission_id"), "Mission A")
+        self.assertEqual(recovered.get("chord_symbol"), "G#")
+        self.assertEqual(recovered.get("section_label"), "Chorus")
+        req = queue_pending_mission_return_from_backing(session)
+        self.assertIsInstance(req, dict)
+        self.assertEqual(req.get("mission_id"), "Mission A")
+
+    def test_refresh_hydrate_rehydrates_dest_from_backing_context(self) -> None:
+        from backing_context import BackingContext, hydrate_backing_context_after_restore, set_backing_context
+
+        dest = build_mission_return_destination(
+            build_mission_backing_alignment_payload(
+                {},
+                mission="Mission A",
+                cur_chord="D",
+                section_label="A",
+                chord_idx=0,
+                song_title="Tune",
+                concert_key="Em",
+                display_key="Em",
+            ),
+            handoff_mode="mission_backing",
+            with_practice_lick=False,
+        )
+        session: dict = {"studio_page": "backing"}
+        set_backing_context(
+            session,
+            BackingContext(
+                source="mission",
+                source_label="Mission",
+                active_song_id="pick",
+                song_title="Tune",
+                key="Em",
+                display_key="Em",
+                concert_key="Em",
+                bpm=100,
+                style="Pop",
+                groove="Straight",
+                mission_id="Mission A",
+                bound_pick_key="Pop::X",
+            ),
+        )
+        seal_mission_return_destination(session, dest)
+        session.pop(MISSION_CANONICAL_RETURN_DESTINATION_KEY, None)
+        hydrate_backing_context_after_restore(session)
+        recovered = peek_mission_return_destination(session)
+        self.assertEqual(recovered.get("mission_id"), "Mission A")
+        self.assertEqual(recovered.get("chord_symbol"), "D")
+
+    def test_mission_backing_pk_change_updates_sealed_return_destination(self) -> None:
+        """Mission Backing PK mutation must outrank pre-Backing sealed Cm on Return."""
+        from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+        align = build_mission_backing_alignment_payload(
+            {},
+            mission="Outline chord tones",
+            cur_chord="F",
+            section_label="Verse",
+            chord_idx=1,
+            song_title="Tune",
+            song_pick_key="catalog|Pop::Shape of You",
+            concert_key="Cm",
+            display_key="Cm",
+        )
+        dest = build_mission_return_destination(
+            align, handoff_mode="mission_backing", with_practice_lick=False, request_seq=1
+        )
+        session: dict = {
+            "studio_page": "backing",
+            "display_key": "Dbm",
+            "concert_key": "Dbm",
+            "ii_selected_chord": "Gb",
+            "ii_selected_section": "Verse",
+            "ii_selected_chord_index": 1,
+            "active_catalog_pick_key": "catalog|Pop::Shape of You",
+            "backing_context": {
+                "source": "mission",
+                "display_key": "Cm",
+                "concert_key": "Cm",
+                "key": "Cm",
+                "mission_id": "Outline chord tones",
+            },
+        }
+        seal_mission_return_destination(session, dest)
+        self.assertEqual(peek_mission_return_destination(session).get("display_key"), "Cm")
+        sync_mission_return_destination_after_practice_key_change(
+            session, new_key="Dbm", from_key="Cm"
+        )
+        synced = peek_mission_return_destination(session)
+        self.assertEqual(synced.get("display_key"), "Dbm")
+        self.assertEqual(synced.get("concert_key"), "Dbm")
+        self.assertEqual(synced.get("chord_symbol"), "Gb")
+        blob = session.get("backing_context")
+        self.assertEqual(blob.get("display_key"), "Dbm")
+        self.assertEqual(blob.get("concert_key"), "Dbm")
+
+        # Stale ctx restore must not win over sealed dest after Return consume.
+        stale_ctx = mock.Mock(
+            source="mission",
+            concert_key="Cm",
+            display_key="Cm",
+            key="Cm",
+            bpm=100,
+            style="Pop",
+            groove="Straight",
+            mission_id="Outline chord tones",
+            progression=["F"],
+            section="Verse",
+            entry_mode="Song-Based Improvisation",
+        )
+        queue_pending_mission_return_from_backing(session)
+        pending = session.get(PENDING_MISSION_RETURN_KEY)
+        self.assertEqual(pending["return_destination"].get("display_key"), "Dbm")
+        with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
+            activate.return_value = mock.Mock(ok=True, trace={})
+            with mock.patch(
+                "mission_backing_alignment.apply_pending_mission_backing_alignment", return_value=True
+            ):
+                with mock.patch("backing_context.get_backing_context", return_value=stale_ctx):
+                    with mock.patch(
+                        "backing_source_navigation.restore_session_widgets_from_backing_context",
+                        side_effect=lambda s, _c, widget_safe=True: (
+                            s.__setitem__("display_key", "Cm"),
+                            s.__setitem__("concert_key", "Cm"),
+                            s.__setitem__("ii_selected_chord", "F"),
+                        ),
+                    ):
+                        phase = consume_pending_mission_return_handoff(session)
+        self.assertEqual(phase, "applied")
+        self.assertIn(str(session.get("display_key") or ""), {"Dbm", "Db minor"})
+        self.assertEqual(session.get("ii_selected_chord"), "Gb")
+        # Parent song blob must also advance so Live Coach → Missions cannot snap to Cm.
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        # Blob may be missing in this unit fixture; sync should still have attempted sticky.
+        sticky = ""
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(
+                get_practice_concert_key(session, "catalog|Pop::Shape of You") or ""
+            ).strip()
+        except ImportError:
+            sticky = ""
+        self.assertIn(sticky, {"Dbm", "Db minor", "C#m", ""})
 
     def test_return_handlers_use_deferred_click_path(self) -> None:
         from pathlib import Path

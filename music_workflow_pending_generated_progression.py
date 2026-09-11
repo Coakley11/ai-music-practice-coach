@@ -38,10 +38,14 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
     try:
         if owner == "style_jam":
             from improvisation_intelligence import generate_style_progression
-            from music_workflow_generated_session import commit_style_jam_generation
+            from music_workflow_generated_session import (
+                commit_style_jam_generation,
+                finalize_generated_style_jam_key_seal,
+                resolve_generated_concert_key_for_owner,
+            )
 
             style = str(session.get("improv_style") or "Jazz Swing")
-            k = str(session.get("improv_style_key") or "C")
+            k = resolve_generated_concert_key_for_owner(session, "style_jam")
             sections = generate_style_progression(
                 style=style,
                 key_center=k,
@@ -66,28 +70,44 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
             except ImportError:
                 pass
             try:
-                from creative_key_sync import apply_creative_concert_key, sync_creative_style_jam_meta
+                from creative_key_sync import apply_creative_concert_key
 
-                sync_creative_style_jam_meta(session)
+                finalize_generated_style_jam_key_seal(session, k)
                 apply_creative_concert_key(session, k, st_like=st)
             except ImportError:
                 pass
         elif owner == "jam_session_generator":
             from improvisation_intelligence import generate_jam_session
-            from music_workflow_generated_session import commit_jam_session_generation
+            from music_workflow_generated_session import (
+                commit_jam_session_generation,
+                finalize_generated_jam_session_key_seal,
+                resolve_generated_concert_key_for_owner,
+            )
 
-            ensemble = str(session.get("improv_jam_ensemble") or "Combo")
+            ensemble = str(
+                session.get("improv_ensemble") or session.get("improv_jam_ensemble") or "Jazz trio"
+            )
             style = str(session.get("improv_jam_style") or "Jazz Swing")
-            key_c = str(session.get("improv_jam_key") or "C")
+            try:
+                from jam_generator_live_runtime_trace import record_jam_pre_generate_trace
+
+                record_jam_pre_generate_trace(session, token=token)
+            except ImportError:
+                pass
+            key_c = resolve_generated_concert_key_for_owner(session, "jam_session_generator")
             jam_mood = str(session.get("improv_jam_mood") or "Mellow")
+            requested_tempo = int(session.get("improv_jam_bpm") or 110)
             jam = generate_jam_session(
                 ensemble=ensemble,
                 style=style,
                 key_center=key_c,
-                tempo=int(session.get("improv_jam_bpm") or 110),
+                tempo=requested_tempo,
                 mood=jam_mood,
             )
+            if isinstance(jam, dict):
+                jam["bpm"] = requested_tempo
             session["improv_jam_session"] = jam
+            session["improv_jam_bpm"] = requested_tempo
             commit_jam_session_generation(
                 session,
                 jam if isinstance(jam, dict) else {},
@@ -98,10 +118,38 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
             session["improv_jam_mood"] = jam_mood
             session["improv_jam_style"] = style
             session["improv_jam_key"] = key_c
+            session["improv_jam_bpm"] = requested_tempo
             try:
                 from generated_workflow_artifact import commit_generated_artifact_revision
 
                 commit_generated_artifact_revision(session, owner="jam_session_generator", generation_request_token=token)
+            except ImportError:
+                pass
+            try:
+                from creative_key_sync import apply_creative_concert_key
+
+                finalize_generated_jam_session_key_seal(session, key_c)
+                apply_creative_concert_key(session, key_c, st_like=st)
+            except ImportError:
+                pass
+            try:
+                from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
+
+                sync_improv_jam_session_from_active_blob(
+                    session, writer="post_generate_consume", phase="jam_session_generator"
+                )
+            except ImportError:
+                pass
+            try:
+                from creative_session_state import sync_creative_session_from_session
+
+                sync_creative_session_from_session(session)
+            except ImportError:
+                pass
+            try:
+                from jam_generator_live_runtime_trace import record_jam_post_generate_trace
+
+                record_jam_post_generate_trace(session, key_c=key_c, owner=owner, token=token)
             except ImportError:
                 pass
         else:

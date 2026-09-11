@@ -119,6 +119,24 @@ class TestKeyTransitionOwnership(unittest.TestCase):
         }
         self.assertFalse(should_use_live_practice_key_sidebar(session))
 
+    def test_catalog_songs_after_sbi_visit_does_not_use_live_sidebar(self) -> None:
+        session = {
+            "studio_page": "picker",
+            "active_music_source": "catalog_song",
+            "active_catalog_pick_key": "Pop\x1fShape of You — Ed Sheeran",
+            "song": "Shape of You",
+            "improv_entry_mode": "Song-Based Improvisation",
+            "sbi_preview_source": "Custom progression",
+            BACKING_CONTEXT_KEY: {
+                "source": "song_improv",
+                "bound_pick_key": "custom::trial-1",
+                "key": "E",
+                "concert_key": "E",
+                "display_key": "E",
+            },
+        }
+        self.assertFalse(should_use_live_practice_key_sidebar(session))
+
     def test_from_practice_intent_sets_song_to_backing_transition(self) -> None:
         session = self._photograph_session(practice_key="Bm")
         set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)

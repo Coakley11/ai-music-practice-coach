@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "before": {
+    "display_key": "Bm",
+    "blob": "Bm",
+    "store": "",
+    "sbi": "Bm"
+  },
+  "after_callback": {
+    "display_key": "Dm",
+    "blob": "Dm",
+    "store": "Dm"
+  },
+  "after_hydrate": {
+    "display_key": "Dm",
+    "blob": "Dm",
+    "store": "Dm",
+    "ui_identity": "Dm",
+    "sbi": "Dm",
+    "sbi_first": [
+      "Dm",
+      "Gm",
+      "Bb"
+    ]
+  },
+  "first_divergence_was": "ensure_missions_parent_practice_key_hydrated \u2192 sync_session_practice_key_from_song_blob (fixed by reconcile_catalog_practice_key_owner)"
+}

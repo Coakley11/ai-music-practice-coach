@@ -247,14 +247,96 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     current = str(session_state.get("studio_page", "practice"))
     if current == page_id:
         return False
+    if current == "backing" and page_id != "backing":
+        try:
+            from creative_key_sync import seal_mission_pk_on_leave_backing
+
+            seal_mission_pk_on_leave_backing(session_state)
+        except ImportError:
+            pass
+        try:
+            from backing_play_session import expire_backing_play_session_on_page_exit
+
+            expire_backing_play_session_on_page_exit(
+                session_state, previous_page=current, new_page=page_id
+            )
+        except ImportError:
+            pass
     if page_id == "backing":
         try:
-            from backing_source_navigation import BACKING_OPEN_INTENT_KEY, prepare_global_backing_navigation
+            from backing_source_navigation import (
+                BACKING_INTENT_FROM_PRACTICE,
+                BACKING_INTENT_RESTORE_LAST,
+                BACKING_OPEN_INTENT_KEY,
+                last_valid_backing_session_survives_ordinary_nav,
+                mark_generic_catalog_backing_entry,
+                prepare_global_backing_navigation,
+                set_backing_open_intent,
+            )
+            from backing_source_navigation import explicit_specialized_backing_handoff_pending
 
             if not session_state.get(BACKING_OPEN_INTENT_KEY):
                 prepare_global_backing_navigation(session_state, from_page=current)
+            # Creative Backing restore-last for Mission/Jam when still unset
+            if not session_state.get(BACKING_OPEN_INTENT_KEY):
+                restore_last = last_valid_backing_session_survives_ordinary_nav(session_state)
+                try:
+                    from backing_source_navigation import backing_restore_eligible
+
+                    if not backing_restore_eligible(session_state):
+                        restore_last = False
+                except ImportError:
+                    pass
+                if current == "practice":
+                    if restore_last:
+                        set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+                    else:
+                        set_backing_open_intent(session_state, BACKING_INTENT_FROM_PRACTICE)
+                elif current not in ("creative", "backing"):
+                    prefer_catalog_over_custom_sbi = False
+                    if current == "picker":
+                        try:
+                            from backing_source_navigation import (
+                                stale_custom_sbi_overlay_blocks_catalog_backing,
+                            )
+
+                            prefer_catalog_over_custom_sbi = (
+                                stale_custom_sbi_overlay_blocks_catalog_backing(session_state)
+                            )
+                        except ImportError:
+                            pass
+                    if prefer_catalog_over_custom_sbi:
+                        mark_generic_catalog_backing_entry(session_state)
+                    elif explicit_specialized_backing_handoff_pending(session_state) or restore_last:
+                        set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+                    else:
+                        mark_generic_catalog_backing_entry(session_state)
+                elif explicit_specialized_backing_handoff_pending(session_state):
+                    from backing_source_navigation import mark_specialized_backing_handoff_entry
+
+                    mark_specialized_backing_handoff_entry(session_state)
+                elif restore_last:
+                    # Creative → Backing: restore only when last session matches
+                    # the live active source (Mission/Jam/same catalog song).
+                    set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+                else:
+                    # Stale Country Roads (etc.) must not hijack Love Story PK/Capo.
+                    set_backing_open_intent(session_state, BACKING_INTENT_FROM_PRACTICE)
         except ImportError:
-            pass
+            if not session_state.get("improv_mission_backing_handoff"):
+                try:
+                    from backing_source_navigation import (
+                        BACKING_INTENT_FROM_PRACTICE,
+                        BACKING_INTENT_RESTORE_LAST,
+                        set_backing_open_intent,
+                    )
+
+                    if current == "practice":
+                        set_backing_open_intent(session_state, BACKING_INTENT_FROM_PRACTICE)
+                    else:
+                        set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
+                except ImportError:
+                    pass
     if not session_state.pop(_NAV_FROM_HISTORY, False):
         if current in STUDIO_PAGE_IDS:
             save_page_snapshot(session_state, current)
@@ -263,6 +345,22 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             if not back or _normalize_stack_entry(back[-1]).get("page") != current:
                 back.append(entry)
         session_state[NAV_FORWARD_STACK] = []
+    # Leaving Custom page: stamp LAST_CUSTOM from the live draft even when Catalog
+    # still owns Global Active (return-to-Custom must not fall back to My Progression).
+    if current == "custom" and page_id != "custom":
+        try:
+            from songs.music_source import snapshot_last_custom_state
+
+            snapshot_last_custom_state(session_state)
+        except ImportError:
+            pass
+    if current == "custom" and page_id == "picker":
+        try:
+            from songs.music_source import promote_last_custom_for_picker_entry
+
+            promote_last_custom_for_picker_entry(session_state)
+        except ImportError:
+            pass
     session_state["studio_page"] = page_id
     try:
         from pending_upload_route_precedence import release_pending_upload_resume_route

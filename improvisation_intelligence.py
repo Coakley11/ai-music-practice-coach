@@ -513,7 +513,6 @@ def generate_jam_session(
     mood: str = "Dark",
     seed: int | None = None,
 ) -> dict[str, Any]:
-    rng = random.Random(seed)
     sections = generate_style_progression(
         style=style,
         key_center=key_center,
@@ -534,7 +533,7 @@ def generate_jam_session(
         "ensemble": ensemble,
         "style": style,
         "key": key_center,
-        "bpm": tempo + rng.randint(-8, 8),
+        "bpm": int(tempo),
         "atmosphere": atmosphere,
         "sections": sections,
         "prompt": (

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 __all__ = (
     "BackingMusicalProfile",
+    "normalize_backing_play_intensity",
     "profile_cache_tuple",
     "resolve_backing_musical_profile",
     "resolve_backing_musical_profile_from_context",
@@ -228,3 +229,21 @@ def _normalize_intensity(raw: str) -> str:
         "energetic": "Heavy",
     }
     return options.get(text.lower(), text.title())
+
+
+_VALID_PLAY_INTENSITIES = frozenset({"light", "medium", "heavy"})
+
+
+def normalize_backing_play_intensity(raw: str, *, difficulty: str = "") -> str:
+    """Humanize level (Light/Medium/Heavy) — never catalog groove names like 'Jewish ballad'."""
+    text = str(raw or "").strip()
+    if text:
+        norm = _normalize_intensity(text)
+        if norm.lower() in _VALID_PLAY_INTENSITIES:
+            return norm
+    diff = str(difficulty or "").strip().lower()
+    if diff in {"beginner", "easy"}:
+        return "Light"
+    if diff in {"advanced", "pro"}:
+        return "Heavy"
+    return "Medium"

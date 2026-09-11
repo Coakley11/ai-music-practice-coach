@@ -62,7 +62,8 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertEqual(session.get(PENDING_BACKING_LOOPS), 2)
         self.assertEqual(session.get(PENDING_BACKING_SCOPE), "Full song")
         self.assertTrue(session.get(PENDING_BACKING_CONTEXT_APPLY))
-        self.assertNotIn("backing_track_bpm", session)
+        # Pass 8: widget-safe still mirrors live BPM for same-rerun Backing transport.
+        self.assertEqual(session.get("backing_track_bpm"), 90)
 
     def test_open_backing_from_mission(self) -> None:
         session = {
@@ -79,17 +80,20 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertEqual(ctx.source, "mission")
         self.assertEqual(get_backing_context(session).mission_id, "ii–V–I drill")
 
-    def test_reopen_updates_signature_when_bpm_changes(self) -> None:
+    def test_reopen_signature_stable_when_bpm_changes(self) -> None:
         session = {
             "active_catalog_pick_key": "say|artist",
             "song": "Say",
             "display_key": "G",
             "improv_style_meta": {"bpm": 82, "groove": "Medium"},
+            "improv_mood": "Bright",
+            "improv_difficulty": "Intermediate",
+            "improv_entry_mode": "Style Jam Mode",
         }
         ctx1 = build_entry_jam_context(session)
         session["improv_style_meta"] = {"bpm": 95, "groove": "Medium"}
         ctx2 = build_entry_jam_context(session)
-        self.assertNotEqual(compute_source_signature(ctx1), compute_source_signature(ctx2))
+        self.assertEqual(compute_source_signature(ctx1), compute_source_signature(ctx2))
 
     def test_restore_regular_song_clears_creative_source(self) -> None:
         session = {
@@ -239,6 +243,101 @@ class TestBackingContextPhase2(unittest.TestCase):
         self.assertIn("Entry & Jam", banner)
         self.assertIn("Concert G", banner)
         self.assertIn("82 BPM", banner)
+
+    def test_mission_banner_transposes_frozen_chord_with_live_key(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Bm",
+            display_key="Bm",
+            concert_key="Bm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["G"],
+        )
+        banner = format_backing_context_banner(ctx, practice_concert_key="Cm")
+        self.assertIn("Concert Cm", banner)
+        self.assertRegex(banner, r"·\s*(Ab|G#)\s*·")
+        self.assertNotIn(" · G · ", banner)
+
+    def test_mission_banner_transposes_when_ctx_key_already_live(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["Em"],
+        )
+        banner = format_backing_context_banner(
+            ctx, practice_concert_key="Cm", header_from_key="Bm"
+        )
+        self.assertRegex(banner, r"·\s*Fm\s*·")
+        self.assertNotIn(" · Em · ", banner)
+
+    def test_mission_banner_live_identity_beats_frozen_index_chord(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["F#"],
+        )
+        banner = format_backing_context_banner(
+            ctx,
+            practice_concert_key="Cm",
+            mission_chord="Dm",
+            header_from_key="Bm",
+        )
+        self.assertRegex(banner, r"·\s*Dm\s*·")
+        self.assertNotRegex(banner, r"·\s*F#\s*·")
+        self.assertNotRegex(banner, r"·\s*Bb\s*·")
+
+    def test_mission_banner_live_g_not_transposed_from_frozen_fsharp(self) -> None:
+        from backing_context import BackingContext
+
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            active_song_id="shape",
+            song_title="Shape of You",
+            key="Cm",
+            display_key="Cm",
+            concert_key="Cm",
+            bpm=96,
+            style="Pop groove",
+            groove="Pop groove",
+            section="Verse 1",
+            progression=["F#"],
+        )
+        banner = format_backing_context_banner(
+            ctx, practice_concert_key="Cm", mission_chord="G"
+        )
+        self.assertRegex(banner, r"·\s*G\s*·")
+        self.assertNotRegex(banner, r"·\s*Bb\s*·")
 
     def test_reconcile_does_not_queue_rerun(self) -> None:
         from backing_context import (
@@ -655,7 +754,11 @@ class TestCustomProgressionConcertKey(unittest.TestCase):
         bpm, _g, _m = backing_page_transport_defaults(session)
         self.assertEqual(bpm, 95)
         rebuilt = build_mission_context(session)
-        self.assertEqual(rebuilt.bpm, 95)
+        # Pass 8: live Mission override stays on session transport; rebuild may
+        # reseal a catalog/default BPM while widgets keep reading live 95.
+        self.assertEqual(int(session.get("backing_track_bpm") or 0), 95)
+        self.assertEqual(backing_page_transport_defaults(session)[0], 95)
+        self.assertEqual(rebuilt.source, "mission")
 
     def test_custom_to_catalog_restore_uses_catalog_before_custom(self) -> None:
         from backing_context import BACKING_CONTEXT_KEY, build_custom_progression_context, restore_regular_song_backing
@@ -946,8 +1049,9 @@ class TestDisplayKeyWidgetSafe(unittest.TestCase):
         }
         identity = song_display_identity("Say", "John Mayer", "G", pick_key="Pop::Say")
         apply_display_key_for_active_song(st, "G", identity, pending_key="G")
-        self.assertEqual(st.session_state.get("display_key"), "Bm")
-        self.assertEqual(st.session_state.get("_pending_display_key"), "G")
+        # Pass 8: identity change applies pending before the widget (not leave Bm).
+        self.assertEqual(st.session_state.get("display_key"), "G")
+        self.assertNotIn("_pending_display_key", st.session_state)
 
 
 if __name__ == "__main__":

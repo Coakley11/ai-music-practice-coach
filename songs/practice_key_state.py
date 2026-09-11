@@ -93,12 +93,43 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
     entry = str(session.get("improv_entry_mode") or "").strip()
     if page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}:
         return True
+    if page == "backing":
+        try:
+            from backing_context import (
+                BACKING_PREF_CATALOG,
+                get_backing_context,
+                get_backing_source_preference,
+            )
+
+            ctx = get_backing_context(session)
+            src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+            if src == "regular_song" or get_backing_source_preference(session) == BACKING_PREF_CATALOG:
+                return False
+            if src in {"entry_jam", "mission"}:
+                return True
+        except ImportError:
+            pass
     try:
         from creative_session_state import creative_session_is_active, get_creative_session
 
         if creative_session_is_active(session):
             sess = get_creative_session(session)
             if sess is not None and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+                page = str(session.get("studio_page") or "").strip().lower()
+                if page == "backing":
+                    try:
+                        from backing_context import (
+                            BACKING_PREF_CATALOG,
+                            get_backing_context,
+                            get_backing_source_preference,
+                        )
+
+                        ctx = get_backing_context(session)
+                        src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+                        if src == "regular_song" or get_backing_source_preference(session) == BACKING_PREF_CATALOG:
+                            return False
+                    except ImportError:
+                        pass
                 return True
     except ImportError:
         pass
@@ -125,6 +156,20 @@ def resolve_settings_pick_for_write(
     explicit = str(pick_key or "").strip()
     if explicit.startswith("custom::"):
         return explicit
+
+    # SBI Custom preview/backing: sticky Practice Key belongs to LAST_CUSTOM / CPL,
+    # never Global Active catalog (P5 / Global Active vs LAST_CUSTOM separation).
+    # Only auto-redirect when the caller did not name a destination — sealing the
+    # catalog sticky under a Custom overlay must still write the explicit catalog pick.
+    custom_sbi_pick = _custom_sbi_settings_pick(session)
+    if custom_sbi_pick and not explicit:
+        return custom_sbi_pick
+
+    if session.get("_specialized_practice_token_leaving"):
+        if explicit and is_song_source_pick(explicit) and not explicit.startswith("creative::"):
+            return explicit
+        if explicit.startswith("creative::"):
+            return ""
     if creative_jam_owns_practice_settings(session):
         if explicit.startswith("creative::"):
             return explicit
@@ -138,6 +183,81 @@ def resolve_settings_pick_for_write(
     if explicit:
         return explicit
     return resolve_practice_source_pick(session)
+
+
+def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
+    """When SBI is on Custom progression, return the custom pick_key for PK writes."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    ctx_src = ""
+    bound = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_src = str(getattr(ctx, "source", "") or "").strip()
+            bound = str(
+                getattr(ctx, "bound_pick_key", "")
+                or getattr(ctx, "active_song_id", "")
+                or ""
+            ).strip()
+    except ImportError:
+        pass
+    custom_preview = sbi_uses_custom_progression_preview(session)
+    # Custom SBI Backing may keep source=song_improv with custom:: bound pick.
+    if (
+        not custom_preview
+        and ctx_src != "custom_progression"
+        and not (ctx_src == "song_improv" and bound.startswith("custom::"))
+    ):
+        return ""
+    # Songs / Practice / picker must write the Global Active catalog pick — leftover
+    # SBI Custom entry/source flags must not redirect catalog Practice Key writes.
+    sbi_surface = page in {"creative", "backing"} or (
+        page == ""
+        and (
+            entry == "Song-Based Improvisation"
+            or ctx_src in {"song_improv", "custom_progression"}
+        )
+    )
+    picker_custom = False
+    if page in {"picker", "creative", "practice", "songs", ""}:
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            picker_custom = custom_owns_active_song_material(session)
+        except ImportError:
+            picker_custom = False
+    if not sbi_surface and not picker_custom:
+        return ""
+    if bound.startswith("custom::"):
+        return bound
+
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            active = snap.get("active")
+            if isinstance(active, dict):
+                pk = str(custom_pick_key_for(active) or "").strip()
+                if pk.startswith("custom::"):
+                    return pk
+    except ImportError:
+        pass
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        active = session.get(CPL_ACTIVE_KEY)
+        if isinstance(active, dict):
+            pk = str(custom_pick_key_for(active) or "").strip()
+            if pk.startswith("custom::"):
+                return pk
+    except ImportError:
+        pass
+    return ""
 
 
 def resolve_practice_source_pick(session: dict[str, Any]) -> str:
@@ -185,6 +305,57 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
     return ""
 
 
+def _practice_pick_aliases(pick_key: str) -> list[str]:
+    """Legacy ``Genre::Label`` and canonical ``Genre\\x1fLabel`` forms for one pick."""
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: str) -> None:
+        v = str(value or "").strip()
+        if not v or v in seen:
+            return
+        seen.add(v)
+        out.append(v)
+
+    def _expand_label_forms(genre: str, label: str) -> None:
+        g = str(genre or "").strip()
+        lab = str(label or "").strip()
+        if not g or not lab:
+            return
+        _add(f"{g}\x1f{lab}")
+        _add(f"{g}::{lab}")
+        # Title-only vs "Title — Artist" both appear in the wild.
+        for sep in (" — ", " - ", " – "):
+            if sep in lab:
+                short = lab.split(sep, 1)[0].strip()
+                if short and short != lab:
+                    _add(f"{g}\x1f{short}")
+                    _add(f"{g}::{short}")
+                break
+
+    _add(pk)
+    if "\x1f" in pk:
+        genre, _, label = pk.partition("\x1f")
+        _expand_label_forms(genre, label)
+    elif "::" in pk and not pk.startswith("custom::") and not pk.startswith("creative::"):
+        genre, _, label = pk.partition("::")
+        _expand_label_forms(genre, label)
+    try:
+        from songs.music_source import normalize_catalog_pick_key
+
+        norm = str(normalize_catalog_pick_key(pk) or "").strip()
+        _add(norm)
+        if norm and "\x1f" in norm:
+            genre, _, label = norm.partition("\x1f")
+            _expand_label_forms(genre, label)
+    except ImportError:
+        pass
+    return out
+
+
 def get_practice_concert_key(
     session: dict[str, Any],
     pick_key: str = "",
@@ -194,8 +365,19 @@ def get_practice_concert_key(
     pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
     if not pk:
         return str(default or "").strip()
-    saved = _practice_key_store(session).get(pk, "").strip()
-    return saved or str(default or "").strip()
+    store = _practice_key_store(session)
+    for alias in _practice_pick_aliases(pk):
+        saved = store.get(alias, "").strip()
+        if saved:
+            return saved
+    # Last resort: any store key that shares an alias with this pick.
+    aliases = set(_practice_pick_aliases(pk))
+    for stored_pk, saved in store.items():
+        if not saved:
+            continue
+        if aliases.intersection(_practice_pick_aliases(stored_pk)):
+            return str(saved).strip()
+    return str(default or "").strip()
 
 
 def set_practice_concert_key(
@@ -203,14 +385,314 @@ def set_practice_concert_key(
     concert_key: str,
     *,
     pick_key: str = "",
+    allow_catalog_during_sbi_custom: bool = False,
+    allow_restore_original: bool = False,
 ) -> None:
     pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
+    # Mission Practice Key is specialized on Mission Backing and Creative Missions.
+    # Gate 12 leave: leftover Mission Cm must not stamp the catalog Shape sticky.
+    if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
+        try:
+            from creative_key_sync import mission_owns_left_panel_key
+
+            if mission_owns_left_panel_key(session):
+                return
+        except ImportError:
+            try:
+                from creative_key_sync import mission_backing_owns_left_panel_key
+
+                if mission_backing_owns_left_panel_key(session):
+                    return
+            except ImportError:
+                pass
+    # Protect a recent explicit user Practice Key commit from stale remount /
+    # pending / identity writes that land 1–2s later (Bm → Dm rollback).
+    try:
+        import time as _time
+
+        commit = str(session.get("_pk_user_commit_token") or "").strip()
+        committed_at = float(session.get("_pk_user_commit_at") or 0.0)
+        if (
+            commit
+            and committed_at
+            and (_time.time() - committed_at) < 5.0
+            and key != commit
+            and not allow_restore_original
+        ):
+            return
+    except Exception:
+        pass
+    # Stale SBI/mission identity prime must not write blob Dm over a live Bm
+    # (or any live Practice Key that already differs).
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+        src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip()
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if (
+            src.startswith("sidebar_key_identity:")
+            and "catalog_sticky" not in src
+            and live
+            and live != key
+            and not session.get("_specialized_practice_token_leaving")
+            and not allow_restore_original
+        ):
+            return
+        # During an explicit sidebar commit, never write a different token than the
+        # live widget value unless this call is the allow_restore_original commit.
+        if (
+            src in {"sidebar_on_change", "sidebar", "display_key_widget", "display_key_change"}
+            and live
+            and live != key
+            and not allow_restore_original
+        ):
+            return
+        # Stale pending remount (Dm) must not overwrite a live Bm commit.
+        # Key cycle is an explicit user action (allow_restore_original).
+        if src == "pending_display_key" and live and live != key and not allow_restore_original:
+            return
+    except ImportError:
+        pass
+    # Hard isolation: while Creative/Backing SBI is on Custom progression, never
+    # write the Global Active catalog sticky (Shape Dm must not become Eb/D#m).
+    # Exception: explicit seal of catalog sticky when entering the Custom overlay.
+    if (
+        not allow_catalog_during_sbi_custom
+        and is_song_source_pick(pk)
+        and not str(pk).startswith("custom::")
+    ):
+        try:
+            page = str(session.get("studio_page") or "").strip().lower()
+            # Any active Custom overlay means catalog sticky is sealed — do not
+            # overwrite Shape with Custom live (E / Eb / C#).
+            if page in {"creative", "backing", "custom"} and (
+                session.get("_sbi_custom_sidebar_overlay")
+                or session.get("_custom_page_sidebar_overlay")
+            ):
+                return
+            if page in {"creative", "backing"} and sbi_uses_custom_progression_preview(session):
+                return
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            bound = str(
+                getattr(ctx, "bound_pick_key", "")
+                or getattr(ctx, "active_song_id", "")
+                or ""
+            ).strip() if ctx is not None else ""
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if page in {"creative", "backing"} and (
+                src == "custom_progression"
+                or (src == "song_improv" and bound.startswith("custom::"))
+            ):
+                return
+            # After leaving Custom SBI, refuse remount writes of the Custom sticky
+            # token onto the sealed catalog pick (Shape Dm must not become E).
+            sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+            sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+            if sealed and sealed_pick and key != sealed:
+                same_pick = str(pk) == sealed_pick
+                if not same_pick:
+                    try:
+                        from songs.music_source import normalize_catalog_pick_key
+
+                        same_pick = str(
+                            normalize_catalog_pick_key(pk, session_state=session) or ""
+                        ).strip() == str(
+                            normalize_catalog_pick_key(sealed_pick, session_state=session)
+                            or ""
+                        ).strip()
+                    except Exception:
+                        same_pick = False
+                if same_pick:
+                    custom_tok = ""
+                    try:
+                        custom_write = str(_custom_sbi_settings_pick(session) or "").strip()
+                        if not custom_write.startswith("custom::"):
+                            from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+                            snap = session.get(LAST_CUSTOM_STATE_KEY)
+                            if isinstance(snap, dict):
+                                active = snap.get("active")
+                                if isinstance(active, dict):
+                                    custom_write = str(
+                                        custom_pick_key_for(active) or snap.get("pick_key") or ""
+                                    ).strip()
+                        if custom_write.startswith("custom::"):
+                            custom_tok = str(
+                                get_practice_concert_key(session, custom_write) or ""
+                            ).strip()
+                    except Exception:
+                        custom_tok = ""
+                    if custom_tok and key == custom_tok:
+                        return
+        except Exception:
+            pass
+    # Generated Jam / Style Jam keys must never land in a catalog song slot.
+    if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
+        leaving_tok = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        if leaving_tok and key == leaving_tok:
+            return
+        try:
+            from songs.key_state import widget_value_is_stale_owner_transition
+
+            if widget_value_is_stale_owner_transition(session, key):
+                return
+        except ImportError:
+            pass
+        try:
+            from generated_jam_key_context import generated_jam_practice_key_tokens
+
+            if key in generated_jam_practice_key_tokens(session):
+                return
+        except ImportError:
+            pass
+        jam_widget = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
+        if jam_widget and key == jam_widget and creative_jam_owns_practice_settings(session):
+            return
+        existing = str(get_practice_concert_key(session, pk) or "").strip()
+        orig = ""
+        try:
+            from songs.music_source import _catalog_original_key_for_session
+
+            probe = dict(session)
+            probe["active_catalog_pick_key"] = pk
+            orig = str(_catalog_original_key_for_session(probe) or "").strip()
+        except Exception:
+            orig = ""
+        if existing and existing != key and orig:
+            try:
+                from music_theory import practice_key_inherits_source_mode
+
+                # Streamlit remount of leftover Custom-major options (C) onto a
+                # minor catalog sticky (Shape Dm / Original Bm) is not a user edit.
+                if practice_key_inherits_source_mode(existing, orig) and not practice_key_inherits_source_mode(
+                    key, orig
+                ):
+                    return
+            except ImportError:
+                pass
+        # Streamlit sidebar reseeds to catalog Original on page change; that must
+        # not wipe a sticky Practice Key (C#m → Bm on leave Backing→Practice, H2).
+        # Explicit user Practice Key commits (Dm → Bm return to Original) MUST write.
+        user_restore = bool(allow_restore_original)
+        if not user_restore:
+            try:
+                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+                src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip().lower()
+                if src in {
+                    "sidebar_on_change",
+                    "sidebar",
+                    "display_key_widget",
+                    "display_key_change",
+                    "user",
+                    "user_navigation",
+                }:
+                    user_restore = True
+            except ImportError:
+                pass
+        if not user_restore:
+            existing = str(get_practice_concert_key(session, pk) or "").strip()
+            if existing and existing != key:
+                orig = ""
+                try:
+                    from songs.music_source import _catalog_original_key_for_session
+
+                    probe = dict(session)
+                    probe["active_catalog_pick_key"] = pk
+                    orig = str(_catalog_original_key_for_session(probe) or "").strip()
+                except Exception:
+                    orig = ""
+                if orig and key == orig and existing != orig:
+                    try:
+                        from pathlib import Path
+                        import json
+                        import time
+
+                        _dbg = (
+                            Path(__file__).resolve().parents[1]
+                            / "scripts"
+                            / "evidence-creative-backing"
+                            / "pk-restore-refuse.jsonl"
+                        )
+                        _dbg.parent.mkdir(parents=True, exist_ok=True)
+                        with _dbg.open("a", encoding="utf-8") as fh:
+                            fh.write(
+                                json.dumps(
+                                    {
+                                        "t": time.time(),
+                                        "pk": pk,
+                                        "key": key,
+                                        "existing": existing,
+                                        "orig": orig,
+                                        "allow_restore_original": allow_restore_original,
+                                        "change_source": str(
+                                            session.get("display_key_change_source") or ""
+                                        ),
+                                        "studio_page": str(session.get("studio_page") or ""),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
+                    return
     store = _practice_key_store(session)
-    store[pk] = key
+    # Prefer canonical catalog form; drop legacy aliases for the same pick.
+    write_pk = pk
+    try:
+        from songs.music_source import normalize_catalog_pick_key
+
+        norm = str(normalize_catalog_pick_key(pk, session_state=session) or "").strip()
+        if norm:
+            write_pk = norm
+    except ImportError:
+        pass
+    for alias in _practice_pick_aliases(pk) + _practice_pick_aliases(write_pk):
+        if alias != write_pk:
+            store.pop(alias, None)
+    store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    try:
+        if key in {"Bm", "Dm", "Cm"} or str(key).endswith("m"):
+            from pathlib import Path
+            import json
+            import time
+
+            _dbg = (
+                Path(__file__).resolve().parents[1]
+                / "scripts"
+                / "evidence-creative-backing"
+                / "pk-write.jsonl"
+            )
+            _dbg.parent.mkdir(parents=True, exist_ok=True)
+            with _dbg.open("a", encoding="utf-8") as fh:
+                fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "write_pk": write_pk,
+                            "key": key,
+                            "allow_restore_original": allow_restore_original,
+                            "change_source": str(session.get("display_key_change_source") or ""),
+                            "display_key": str(session.get("display_key") or ""),
+                            "studio_page": str(session.get("studio_page") or ""),
+                        }
+                    )
+                    + "\n"
+                )
+    except Exception:
+        pass
+    # Intentional catalog write refreshes isolation seal (Shape Dm → user F, etc.).
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    if sealed_pick and not str(write_pk).startswith("custom::"):
+        sealed_aliases = set(_practice_pick_aliases(sealed_pick) + [sealed_pick])
+        if write_pk in sealed_aliases or pk in sealed_aliases:
+            session["_sbi_custom_sealed_catalog_pk"] = key
 
 
 def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
@@ -218,9 +700,13 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
     if not pk:
         return
     store = _practice_key_store(session)
-    if pk not in store:
-        return
-    store.pop(pk, None)
+    removed = False
+    for alias in _practice_pick_aliases(pk):
+        if alias in store:
+            store.pop(alias, None)
+            removed = True
+    if not removed and pk in store:
+        store.pop(pk, None)
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
 
 

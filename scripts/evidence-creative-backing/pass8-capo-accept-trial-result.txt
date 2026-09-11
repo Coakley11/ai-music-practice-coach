@@ -1,0 +1,34 @@
+url=http://127.0.0.1:8512
+with_trial_residue=True
+gate_pass=True
+
+A_immediate: {'pass': True, 'ok': True, 'enabled': True, 'pk': 'C', 'fret': '2', 'charts_bb': True}
+B_rerun: {'pass': True, 'pk': 'C', 'fret': '2', 'charts_bb': True}
+C_refresh: {'pass': True, 'pk': 'C', 'fret': '2', 'charts_bb': True, 'enabled': True}
+D_nav: {'pass': True, 'details': ['Songs: ok=True pk=C fret=2 love=True', 'Creative: ok=True pk=C fret=2 love=True', 'Backing: ok=True pk=C fret=2 love=True', 'Upload: ok=True pk=C fret=2 love=True', 'Practice: ok=True pk=C fret=2 love=True']}
+E_mission: {'pass': True, 'opened': True, 'live': True, 'refresh': True, 'returned': True, 'after_return': True}
+F_song_change: {'pass': True, 'enabled': True, 'charts_bb': True, 'pk': 'Eb', 'fret': '5'}
+
+NOTES
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+ensure_catalog ok=True still_custom=False flipped=False
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+instrument Guitar=True
+capo enabled=True
+shape key Bb=True
+A {'pass': True, 'ok': True, 'enabled': True, 'pk': 'C', 'fret': '2', 'charts_bb': True}
+B {'pass': True, 'pk': 'C', 'fret': '2', 'charts_bb': True}
+C_settle attempt=1 enabled=True pk=C fret=2
+C {'pass': True, 'pk': 'C', 'fret': '2', 'charts_bb': True, 'enabled': True}
+D {'pass': True, 'details': ['Songs: ok=True pk=C fret=2 love=True', 'Creative: ok=True pk=C fret=2 love=True', 'Backing: ok=True pk=C fret=2 love=True', 'Upload: ok=True pk=C fret=2 love=True', 'Practice: ok=True pk=C fret=2 love=True']}
+instrument Guitar=True
+capo enabled=True
+shape key Bb=True
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+ensure_catalog ok=True still_custom=False flipped=False
+mission_open clicked=True page=Backing missionish=True
+E {'pass': True, 'opened': True, 'live': True, 'refresh': True, 'returned': True, 'after_return': True}
+picked Love Story dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLove Story — Taylor Swift\n\n🎼 Songs\n\nLove Story · Country\n\nSong Original Key: C\n'
+ensure_catalog ok=True still_custom=False flipped=False
+picked Clocks dropdown=True landed=True sidebar_song='SONG\n\nSONG\nClocks — Coldplay\n\n🎼 Songs\n\nClocks · Pop\n\nSong Original Key: Eb\n\nPractice / Con'
+F {'pass': True, 'enabled': True, 'charts_bb': True, 'pk': 'Eb', 'fret': '5'}

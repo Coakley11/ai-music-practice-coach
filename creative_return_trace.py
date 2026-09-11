@@ -295,7 +295,65 @@ def trace_set_backing_context(
 
 
 def trace_return_click_before(session: dict[str, Any]) -> None:
-    emit_creative_return_trace(session, "ON_RETURN_BUTTON_CLICK_BEFORE")
+    emit_creative_return_trace(session, "ON_RETURN_BUTTON_CLICK_RECEIVED")
+
+
+def trace_return_handoff_queued(session: dict[str, Any], req: dict[str, Any]) -> None:
+    sealed = req.get("sealed_context") if isinstance(req.get("sealed_context"), dict) else {}
+    emit_creative_return_trace(
+        session,
+        "ON_RETURN_HANDOFF_QUEUED",
+        extra={
+            "request_seq": req.get("request_seq"),
+            "consume_token": req.get("consume_token"),
+            "sealed_source": str(sealed.get("source") or ""),
+            "sealed_entry_mode": str(sealed.get("entry_mode") or ""),
+            "sealed_creative_tab": str(
+                sealed.get("creative_tab")
+                or sealed.get("improv_intelligence_tab")
+                or sealed.get("creative_improv_intelligence_tab")
+                or ""
+            ),
+            "sealed_song_pick": str(sealed.get("song_pick") or ""),
+            "sealed_display_key": str(sealed.get("display_key") or ""),
+            "sealed_concert_key": str(sealed.get("concert_key") or ""),
+        },
+    )
+
+
+def trace_return_consume_phase(
+    session: dict[str, Any],
+    phase: str,
+    *,
+    sealed: dict[str, Any] | None = None,
+) -> None:
+    try:
+        from music_persistent_state import (
+            MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY,
+            current_run_user_navigated_page,
+        )
+
+        user_nav_scoped = current_run_user_navigated_page(session)
+        user_nav_raw = str(session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY) or "")
+    except ImportError:
+        user_nav_scoped = ""
+        user_nav_raw = ""
+    extra: dict[str, Any] = {
+        "consume_phase": str(phase or ""),
+        "studio_page_after_consume": str(session.get("studio_page") or ""),
+        "user_nav_marker_this_run_scoped": user_nav_scoped,
+        "user_nav_marker_raw": user_nav_raw,
+    }
+    if isinstance(sealed, dict):
+        extra["sealed_creative_tab"] = str(
+            sealed.get("creative_tab")
+            or sealed.get("improv_intelligence_tab")
+            or sealed.get("creative_improv_intelligence_tab")
+            or ""
+        )
+        extra["sealed_source"] = str(sealed.get("source") or "")
+        extra["sealed_entry_mode"] = str(sealed.get("entry_mode") or "")
+    emit_creative_return_trace(session, "ON_RETURN_CONSUME_PHASE", extra=extra)
 
 
 def trace_return_route_read(
@@ -508,6 +566,8 @@ __all__ = [
     "trace_page_transition",
     "trace_return_after_apply",
     "trace_return_click_before",
+    "trace_return_consume_phase",
+    "trace_return_handoff_queued",
     "trace_return_route_read",
     "trace_set_backing_context",
 ]

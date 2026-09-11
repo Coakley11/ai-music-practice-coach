@@ -12,24 +12,577 @@ SBI_PREVIEW_SOURCE_KEY = "sbi_preview_source"
 CATALOG_SESSION_KEY = "catalog_session"
 CUSTOM_SESSION_KEY = "custom_session"
 
-IMPROV_SONG_SOURCES = ("Active song", "Custom progression")
+SBI_SONG_SOURCE_ACTIVE = "Active song"
+SBI_SONG_SOURCE_CUSTOM = "Custom progression"
+SBI_SONG_SOURCE_COMPOSITION = "Composition"
+
+IMPROV_SONG_SOURCES = (
+    SBI_SONG_SOURCE_ACTIVE,
+    SBI_SONG_SOURCE_CUSTOM,
+    SBI_SONG_SOURCE_COMPOSITION,
+)
+
+SBI_MATERIAL_CATALOG = "catalog"
+SBI_MATERIAL_CUSTOM = "custom"
+SBI_MATERIAL_COMPOSITION = "composition"
+
+SBI_MATERIAL_TYPE_LABELS = {
+    SBI_MATERIAL_CATALOG: "Catalog song",
+    SBI_MATERIAL_CUSTOM: "Custom progression",
+    SBI_MATERIAL_COMPOSITION: "Composition",
+}
+
+SBI_WORKFLOW_LABEL = "Song-Based Improvisation"
+# Explicit Songs catalog pick outranks a leftover nested SBI Custom radio.
+SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY = "_sbi_follow_active_after_explicit_catalog"
+# Set after Creative SBI radio has rendered under the follow-Active bind.
+# Distinguishes leftover persisted Custom from a later explicit Custom click.
+SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY = "_sbi_follow_active_widget_seen"
+# One-run marker: a genuine Custom/Composition radio click this interaction.
+EXPLICIT_SBI_SOURCE_CLICK_KEY = "_explicit_sbi_source_click"
+# Durable Custom click — must survive refresh so Follow Active cannot reclaim.
+RESTORE_SBI_CUSTOM_SOURCE_KEY = "_restore_sbi_custom_source"
+_PENDING_IMPROV_SONG_SOURCE_KEY = "_pending_improv_song_source"
+_LAST_IMPROV_SONG_SOURCE_KEY = "_last_improv_song_source"
+COMPOSITION_SBI_UNAVAILABLE_TITLE = "No composition source yet"
+COMPOSITION_SBI_UNAVAILABLE_MESSAGE = (
+    "Composition is not available as an SBI source yet. "
+    "No composition progression is loaded."
+)
+
+
+def global_active_is_custom(session: dict[str, Any]) -> bool:
+    """True when GLOBAL_ACTIVE_SOURCE currently resolves to Custom.
+
+    Must not infer Custom from LAST_CUSTOM / CPL memory while Global Active
+    remains Catalog (Shape + leftover Trial).
+    """
+    try:
+        from songs.music_source import SOURCE_CUSTOM, custom_progression_is_active
+
+        return bool(
+            custom_progression_is_active(session)
+            and str(session.get("active_music_source") or "") == SOURCE_CUSTOM
+        )
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return pick.startswith("custom::") or pick.startswith("custom\x1f")
+
+
+def sbi_custom_identity_is_global_active(session: dict[str, Any]) -> bool:
+    """True when SBI Custom is the same Custom song that is Global Active (CASE A).
+
+    CASE A: Trial is Global Active → SBI Custom must use the active Custom Practice Key.
+    CASE B: Catalog is Global Active → SBI Custom uses LAST_CUSTOM original lifecycle.
+
+    A live ``custom::`` Global Active pick is enough even if ``active_music_source``
+    lagged. LAST_CUSTOM / preview pick alone must not impersonate CASE A.
+    """
+    if global_active_is_custom(session):
+        return True
+    ga_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    return ga_pick.startswith("custom::") or ga_pick.startswith("custom\x1f")
+
+
+def resolve_sbi_custom_practice_key(
+    session: dict[str, Any],
+    custom: dict[str, Any] | None = None,
+) -> str:
+    """Practice concert key for SBI Custom preview / sidebar.
+
+    CASE A (Custom is also Global Active): current active Custom Practice Key.
+    CASE B (non-active LAST_CUSTOM): Original / visit lifecycle, not Shape bleed.
+    """
+    blob = custom if isinstance(custom, dict) else (get_custom_session(session) or {})
+    home = str(blob.get("original_key") or blob.get("original_key_center") or "C").strip() or "C"
+    pick = str(blob.get("pick_key") or "").strip()
+    sticky = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        if pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+        if not sticky:
+            ga = str(session.get("active_catalog_pick_key") or "").strip()
+            if ga.startswith("custom::"):
+                sticky = str(get_practice_concert_key(session, ga, default="") or "").strip()
+    except ImportError:
+        sticky = ""
+    if sbi_custom_identity_is_global_active(session):
+        if sticky:
+            return sticky
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if live:
+            return live
+        return home
+    visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
+    if visit:
+        return visit
+    return home
+
+
+def last_custom_home_key(session: dict[str, Any]) -> str:
+    """LAST_CUSTOM / live CPL original key — Custom mode, never Global Active Shape."""
+    home = ""
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            home = str(snap.get("custom_home_key") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict) and not home:
+                home = str(
+                    active.get("original_key_center") or active.get("original_key") or ""
+                ).strip()
+    except ImportError:
+        home = ""
+    if not home:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, cpl_draft_written_key
+
+            active = session.get(CPL_ACTIVE_KEY)
+            if isinstance(active, dict):
+                home = str(cpl_draft_written_key(active) or "").strip()
+        except Exception:
+            home = ""
+    return str(home or "").strip()
+
+
+def coerce_token_to_custom_home_mode(session: dict[str, Any], token: str) -> str:
+    """Keep tonic; apply LAST_CUSTOM/Custom mode so Shape minor cannot turn C into Cm."""
+    text = str(token or "").strip()
+    if not text:
+        return text
+    home = last_custom_home_key(session)
+    if not home:
+        return text
+    try:
+        from music_theory import coerce_key_to_mode, key_mode
+
+        return coerce_key_to_mode(text, key_mode(home))
+    except Exception:
+        return text
+
+
+def sbi_custom_visit_is_local_only(session: dict[str, Any]) -> bool:
+    """Creative CASE B: SBI Custom PK is a visit overlay and must not mutate LAST_CUSTOM.
+
+    Custom SBI Backing persist is left unchanged (separate owner / 17-gate).
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    if get_sbi_preview_source(session) != SBI_SONG_SOURCE_CUSTOM:
+        return False
+    if sbi_custom_identity_is_global_active(session):
+        return False
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            return False
+    except ImportError:
+        pass
+    return True
+
+
+def composition_sbi_source_available(session: dict[str, Any]) -> bool:
+    """True when a distinct Composition progression exists for SBI.
+
+    Future source owner — never fall back to Catalog, Custom, or My Progression.
+    """
+    del session
+    return False
+
+
+def resolve_sbi_material_kind(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """Return catalog | custom | composition from SBI owner, never from title.
+
+    SBI Active Source → dereference GLOBAL_ACTIVE (catalog or custom).
+    SBI Custom Progression → LAST_CUSTOM (always custom).
+    SBI Composition → composition (future owner; currently unavailable).
+    """
+    sealed = ""
+    if ctx is not None:
+        sealed = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
+        if sealed in SBI_MATERIAL_TYPE_LABELS:
+            return sealed
+        sealed_owner = str(getattr(ctx, "sbi_source_owner", "") or "").strip()
+        if sealed_owner == SBI_SONG_SOURCE_COMPOSITION:
+            return SBI_MATERIAL_COMPOSITION
+        if sealed_owner == SBI_SONG_SOURCE_CUSTOM:
+            return SBI_MATERIAL_CUSTOM
+        if sealed_owner == SBI_SONG_SOURCE_ACTIVE:
+            bound = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+            if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+                return SBI_MATERIAL_CUSTOM
+            return SBI_MATERIAL_CATALOG
+    src = str(owner or "").strip()
+    if not src and session is not None:
+        src = get_sbi_preview_source(session)
+    if src == SBI_SONG_SOURCE_COMPOSITION:
+        return SBI_MATERIAL_COMPOSITION
+    if src == SBI_SONG_SOURCE_CUSTOM:
+        return SBI_MATERIAL_CUSTOM
+    if src == SBI_SONG_SOURCE_ACTIVE:
+        if session is not None and global_active_is_custom(session):
+            return SBI_MATERIAL_CUSTOM
+        bound = ""
+        if ctx is not None:
+            bound = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+            return SBI_MATERIAL_CUSTOM
+        return SBI_MATERIAL_CATALOG
+    if ctx is not None:
+        bound = str(
+            getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+        ).strip()
+        if bound.startswith("custom::") or bound.startswith("custom\x1f"):
+            return SBI_MATERIAL_CUSTOM
+    return SBI_MATERIAL_CATALOG
+
+
+def sbi_source_type_label(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """Musician-facing third-segment label for the SBI Backing blue card."""
+    kind = resolve_sbi_material_kind(session, ctx=ctx, owner=owner)
+    return SBI_MATERIAL_TYPE_LABELS.get(kind, SBI_MATERIAL_TYPE_LABELS[SBI_MATERIAL_CATALOG])
+
+
+def format_sbi_backing_blue_card_subtitle(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+    owner: str | None = None,
+) -> str:
+    """``Song-Based Improvisation · {source type}`` — never a repeated workflow name."""
+    return f"{SBI_WORKFLOW_LABEL} · {sbi_source_type_label(session, ctx=ctx, owner=owner)}"
+
+
+def sbi_composition_source_selected(
+    session: dict[str, Any] | None = None,
+    *,
+    ctx: Any | None = None,
+) -> bool:
+    return resolve_sbi_material_kind(session, ctx=ctx) == SBI_MATERIAL_COMPOSITION
+
+
+def resolve_composition_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
+    """Isolated Composition preview — empty until a real composition source exists."""
+    available = composition_sbi_source_available(session)
+    if available:
+        return {
+            "source": SBI_SONG_SOURCE_COMPOSITION,
+            "title": "Composition",
+            "artist": "",
+            "display_key": "",
+            "original_key": "",
+            "sections": {},
+            "pick_key": "",
+            "available": True,
+        }
+    return {
+        "source": SBI_SONG_SOURCE_COMPOSITION,
+        "title": COMPOSITION_SBI_UNAVAILABLE_TITLE,
+        "artist": "",
+        "display_key": "",
+        "original_key": "",
+        "sections": {},
+        "pick_key": "",
+        "available": False,
+        "unavailable_reason": COMPOSITION_SBI_UNAVAILABLE_MESSAGE,
+    }
+
+
+def adopt_restore_sbi_custom_stamp(session: dict[str, Any]) -> bool:
+    """Copy a persisted Custom restore stamp from the Creative blob onto session."""
+    if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        return True
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict) and blob.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        return True
+    return False
+
+
+def clear_restore_sbi_custom_source(session: dict[str, Any]) -> None:
+    """Drop a Custom restore stamp from session and the Creative blob.
+
+    An explicit later Active Source click must clear both copies. Leaving the
+    blob stamp lets ``adopt_restore_sbi_custom_stamp`` re-arm Custom on the
+    next run and seed the radio back to Custom.
+    """
+    session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+
+
+def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> None:
+    """Stamp a genuine Custom/Composition click so Follow Active cannot heal it."""
+    src = str(source or "").strip()
+    if src not in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        session.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
+        return
+    session[EXPLICIT_SBI_SOURCE_CLICK_KEY] = src
+    session[_PENDING_IMPROV_SONG_SOURCE_KEY] = src
+    session["_improv_song_source_user_touched"] = True
+    if src == SBI_SONG_SOURCE_CUSTOM:
+        session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        blob = session.get("creative_workspace_state")
+        if isinstance(blob, dict):
+            blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+            blob.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+        try:
+            from creative_workspace_persistence import mark_creative_workspace_dirty
+
+            mark_creative_workspace_dirty(session)
+        except ImportError:
+            pass
+    else:
+        session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+        blob = session.get("creative_workspace_state")
+        if isinstance(blob, dict):
+            blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    clear_sbi_follow_active_after_explicit_catalog(session)
+
+
+def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
+    """Seed ``improv_song_source`` immediately before ``st.radio`` on refresh.
+
+    Streamlit's Song Source radio defaults to Active on a new session even when
+    persist already has Custom. Flush may run hundreds of lines earlier; this
+    write is the last assignment before the widget instantiates.
+    """
+    adopt_restore_sbi_custom_stamp(session)
+    if not session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        return str(session.get("improv_song_source") or "").strip()
+    if sbi_must_follow_global_active(session):
+        return str(session.get("improv_song_source") or "").strip()
+    live = str(session.get("improv_song_source") or "").strip()
+    if live != SBI_SONG_SOURCE_CUSTOM:
+        session.pop("improv_song_source", None)
+        session["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+    session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+    return SBI_SONG_SOURCE_CUSTOM
+
+
+def apply_sbi_radio_live_against_restore_stamp(session: dict[str, Any], live_src: str) -> str:
+    """Durable Custom stamp beats a remounted Active radio; a later Active click wins.
+
+    Refresh remounts Streamlit's ``improv_song_source`` widget as Active even when
+    persist still has Custom. That remount must not pop the stamp or write Active.
+    A real later Active click (Custom was already hydrated this run) may leave.
+    """
+    src = str(live_src or "").strip() or SBI_SONG_SOURCE_ACTIVE
+    adopt_restore_sbi_custom_stamp(session)
+    restore = bool(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+    last = str(session.get(_LAST_IMPROV_SONG_SOURCE_KEY) or "").strip()
+    seen = bool(session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY))
+    leftover_a = (
+        bool(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
+        and not restore
+        and not seen
+        and last != SBI_SONG_SOURCE_ACTIVE
+        and src in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}
+    )
+    if src == SBI_SONG_SOURCE_CUSTOM:
+        if leftover_a:
+            return src
+        note_explicit_sbi_source_selection(session, src)
+        return src
+    if src == SBI_SONG_SOURCE_COMPOSITION:
+        if leftover_a:
+            return src
+        note_explicit_sbi_source_selection(session, src)
+        return src
+    if src == SBI_SONG_SOURCE_ACTIVE and restore:
+        genuine_leave = last == SBI_SONG_SOURCE_CUSTOM and seen
+        if genuine_leave:
+            session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+            blob = session.get("creative_workspace_state")
+            if isinstance(blob, dict):
+                blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+            return SBI_SONG_SOURCE_ACTIVE
+        return SBI_SONG_SOURCE_CUSTOM
+    if src == SBI_SONG_SOURCE_ACTIVE:
+        session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+        blob = session.get("creative_workspace_state")
+        if isinstance(blob, dict):
+            blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    return src
+
+
+def _explicit_sbi_source_outranks_follow(session: dict[str, Any]) -> bool:
+    """True when this run has a new Custom/Composition click, not leftover persist."""
+    pending = str(
+        session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+        or session.get("PENDING_IMPROV_SONG_SOURCE")
+        or ""
+    ).strip()
+    if pending in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return True
+    explicit = str(session.get(EXPLICIT_SBI_SOURCE_CLICK_KEY) or "").strip()
+    if explicit in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return True
+    if adopt_restore_sbi_custom_stamp(session):
+        return True
+    preview = str(session.get(SBI_PREVIEW_SOURCE_KEY) or session.get("improv_song_source") or "").strip()
+    if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY) and preview == SBI_SONG_SOURCE_CUSTOM:
+        return True
+    live = str(session.get("improv_song_source") or "").strip()
+    if live not in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}:
+        return False
+    last = str(session.get(_LAST_IMPROV_SONG_SOURCE_KEY) or "").strip()
+    # After Follow Active rendered Active, a live Custom/Composition radio is a click.
+    if session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY) or last == SBI_SONG_SOURCE_ACTIVE:
+        return True
+    return False
+
+
+def sbi_must_follow_global_active(session: dict[str, Any]) -> bool:
+    """True after an explicit catalog pick until the user chooses Custom/Composition.
+
+    Leftover persisted Custom is forced back to Active. An explicit later click
+    (pending Custom/Composition, one-run marker, or live radio after the Active
+    bind already rendered) outranks the follow flag.
+    """
+    if not session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY):
+        return False
+    if _explicit_sbi_source_outranks_follow(session):
+        return False
+    return True
+
+
+def bind_sbi_preview_to_active_after_explicit_catalog(session: dict[str, Any]) -> None:
+    """SBI Active Source follows the new Global Active catalog song.
+
+    Style Jam / SBI Custom leftover radios must not keep LAST_CUSTOM as the
+    preview after an explicit Songs pick. CASE B is a later explicit Custom click.
+    """
+    session[SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY] = True
+    session.pop(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, None)
+    session.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
+    session.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    session.pop("_pending_improv_song_source", None)
+    session["_improv_song_source_user_touched"] = True
+    session["_sbi_song_source_hydrated"] = True
+    set_sbi_preview_source(session, SBI_SONG_SOURCE_ACTIVE)
+    session["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+    session["creative_backing_song_source"] = SBI_SONG_SOURCE_ACTIVE
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+        blob["sbi_preview_source"] = SBI_SONG_SOURCE_ACTIVE
+        blob[SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY] = True
+        blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+
+
+def clear_sbi_follow_active_after_explicit_catalog(session: dict[str, Any]) -> None:
+    session.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+    session.pop(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, None)
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+
+
+def _sbi_source_click_trace(session: dict[str, Any], stage: str, **extra: Any) -> None:
+    """Append one SBI source snapshot when SBI_SOURCE_CLICK_TRACE=1."""
+    import json
+    import os
+    import time
+
+    if str(os.environ.get("SBI_SOURCE_CLICK_TRACE") or "").strip() not in {"1", "true", "True"}:
+        return
+    root = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if not root:
+        return
+    ga_title = ""
+    last_custom_title = ""
+    last_custom_key = ""
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            last_custom_title = str(snap.get("name") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict):
+                last_custom_title = last_custom_title or str(
+                    active.get("title") or active.get("name") or ""
+                ).strip()
+                last_custom_key = str(active.get("key") or active.get("original_key") or "").strip()
+    except Exception:
+        pass
+    try:
+        sel = session.get("selected_song")
+        if isinstance(sel, dict):
+            ga_title = str(sel.get("title") or "").strip()
+        ga_title = ga_title or str(session.get("song") or "").strip()
+    except Exception:
+        pass
+    row = {
+        "ts": time.time(),
+        "stage": stage,
+        "follow_active": bool(session.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY)),
+        "widget_seen": bool(session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY)),
+        "explicit_click": str(session.get(EXPLICIT_SBI_SOURCE_CLICK_KEY) or ""),
+        "pending": str(
+            session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+            or session.get("PENDING_IMPROV_SONG_SOURCE")
+            or ""
+        ),
+        "live": str(session.get("improv_song_source") or ""),
+        "preview": str(session.get(SBI_PREVIEW_SOURCE_KEY) or ""),
+        "last": str(session.get(_LAST_IMPROV_SONG_SOURCE_KEY) or ""),
+        "must_follow": sbi_must_follow_global_active(session),
+        "ga_title": ga_title,
+        "ga_source": str(session.get("active_music_source") or ""),
+        "last_custom_title": last_custom_title,
+        "last_custom_key": last_custom_key,
+    }
+    row.update(extra)
+    try:
+        path = os.path.join(root, "_sbi_source_click.jsonl")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
 
 
 def get_sbi_preview_source(session: dict[str, Any]) -> str:
-    """Read SBI preview source (never reads handoff-only keys)."""
+    """Read SBI preview source (never reads handoff-only keys).
+
+    Do **not** infer Custom from ``cpl_session_is_active``: a live CPL draft /
+    LAST_CUSTOM memory can exist while Global Active stays Catalog and the user
+    is on Creative → SBI → Active. That inference collapsed nested SBI Custom
+    into “we’re on Custom” semantics and helped reboot land on top-level Custom.
+    """
+    adopt_restore_sbi_custom_stamp(session)
+    if sbi_must_follow_global_active(session):
+        return SBI_SONG_SOURCE_ACTIVE
+    if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        return SBI_SONG_SOURCE_CUSTOM
     val = str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
     if val in IMPROV_SONG_SOURCES:
         return val
     val = str(session.get("improv_song_source") or "").strip()
     if val in IMPROV_SONG_SOURCES:
         return val
-    try:
-        from songs.music_source import cpl_session_is_active
-
-        if cpl_session_is_active(session):
-            return "Custom progression"
-    except ImportError:
-        pass
     return "Active song"
 
 
@@ -38,24 +591,44 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
     if src not in IMPROV_SONG_SOURCES:
         src = "Active song"
     session[SBI_PREVIEW_SOURCE_KEY] = src
+    # Nested SBI source tab must survive refresh/reboot with Creative page.
+    try:
+        from creative_workspace_persistence import mark_creative_workspace_dirty
+
+        mark_creative_workspace_dirty(session)
+    except ImportError:
+        pass
 
 
 def sync_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
     """Capture live catalog identity into the catalog_session bucket."""
     try:
-        from songs.music_source import _catalog_snapshot_from_session
+        from songs.music_source import _catalog_snapshot_from_session, _catalog_title_matches_live
 
         snap = _catalog_snapshot_from_session(session)
     except ImportError:
         snap = None
+        _catalog_title_matches_live = None  # type: ignore[assignment]
+    live_title = str(session.get("song") or session.get("active_song_title") or "").strip()
     if not snap:
         for fallback_key in ("_catalog_before_custom_state", "_last_catalog_song_state"):
             raw = session.get(fallback_key)
-            if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
-                fb_pick = str(raw.get("pick_key") or "").strip()
-                if not fb_pick.startswith("custom::") and not fb_pick.startswith("composition::"):
-                    snap = dict(raw)
-                    break
+            if not isinstance(raw, dict):
+                continue
+            pk = str(raw.get("pick_key") or "").strip()
+            if not pk or pk.startswith("custom::") or pk.startswith("composition::"):
+                continue
+            # Never rehydrate Say into catalog_session when Global Active title is Shape.
+            if live_title and not live_title.lower().startswith("my progression"):
+                fb_title = str((raw.get("selected_song") or {}).get("title") or "").strip()
+                if not fb_title:
+                    label = pk.split("\x1f", 1)[-1] if "\x1f" in pk else pk
+                    fb_title = label.split(" — ", 1)[0].strip()
+                if fb_title and _catalog_title_matches_live is not None:
+                    if not _catalog_title_matches_live(fb_title, live_title):
+                        continue
+            snap = dict(raw)
+            break
     if not snap:
         return None
     pick = str(snap.get("pick_key") or "").strip()
@@ -79,6 +652,24 @@ def get_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
         pick = str(raw.get("pick_key") or "").strip()
         if not pick.startswith("custom::") and not pick.startswith("composition::"):
+            live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if (
+                live_pick
+                and not live_pick.startswith("custom::")
+                and not live_pick.startswith("composition::")
+                and live_pick != pick
+            ):
+                return sync_catalog_session(session)
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                saved = get_practice_concert_key(session, pick)
+                if saved and str(raw.get("display_key") or "").strip() != saved:
+                    raw = dict(raw)
+                    raw["display_key"] = saved
+                    session[CATALOG_SESSION_KEY] = raw
+            except ImportError:
+                pass
             return raw
     return sync_catalog_session(session)
 
@@ -92,31 +683,71 @@ def sync_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
             ensure_original_structure,
             written_home_key,
         )
-        from songs.music_source import custom_pick_key_for
+        from songs.music_source import (
+            cpl_active_is_substantive,
+            custom_pick_key_for,
+            install_last_custom_into_live_cpl,
+        )
     except ImportError:
         return None
 
-    active = ensure_original_structure(
-        session.get(CPL_ACTIVE_KEY) or default_active_progression()
-    )
+    # Prefer LAST_CUSTOM over empty My Progression shell before syncing the bucket.
+    try:
+        install_last_custom_into_live_cpl(session, reset_practice_key_to_original=False)
+    except Exception:
+        pass
+
+    live = session.get(CPL_ACTIVE_KEY)
+    if not cpl_active_is_substantive(live):
+        active = ensure_original_structure(live or default_active_progression())
+    else:
+        active = ensure_original_structure(live)
     pick = custom_pick_key_for(active)
     home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
     try:
         from songs.practice_key_state import get_practice_concert_key
 
-        display_key = get_practice_concert_key(session, pick, default=home) or home
+        display_key = get_practice_concert_key(session, pick, default="") or ""
+        if not display_key:
+            display_key = home
+        else:
+            # Drop Shape Dm bleed onto Trial D-major sticky.
+            try:
+                from music_theory import split_key_center
+
+                _ht, hm = split_key_center(home)
+                _dt, dm = split_key_center(display_key)
+                if _ht and _ht == _dt and hm != dm:
+                    display_key = home
+            except Exception:
+                pass
     except ImportError:
         display_key = home
-    sections_raw = (
-        active.get("original_sections")
-        if isinstance(active.get("original_sections"), dict)
-        else {}
-    )
-    sections = {
-        str(sec): [str(c) for c in chords if str(c).strip()]
-        for sec, chords in sections_raw.items()
-        if isinstance(chords, list)
-    }
+    sections_raw = active.get("original_sections")
+    if not isinstance(sections_raw, dict) or not sections_raw:
+        sections_raw = active.get("sections") if isinstance(active.get("sections"), dict) else {}
+    # CPL stores [{chord, bars}, ...] — expand to plain symbols for SBI/Creative display.
+    try:
+        from custom_progression_lab import sections_to_chord_lists
+
+        sections = sections_to_chord_lists(sections_raw)
+    except Exception:
+        sections = {}
+        for sec, chords in (sections_raw or {}).items():
+            if not isinstance(chords, list):
+                continue
+            out: list[str] = []
+            for c in chords:
+                if isinstance(c, dict):
+                    sym = str(c.get("chord") or "").strip()
+                    bars = max(1, int(c.get("bars") or 1) or 1)
+                    if sym:
+                        out.extend([sym] * bars)
+                else:
+                    sym = str(c or "").strip()
+                    if sym and not sym.startswith("{"):
+                        out.append(sym)
+            sections[str(sec)] = out
     blob = {
         "pick_key": pick,
         "title": str(active.get("name") or "Custom progression").strip(),
@@ -137,6 +768,13 @@ def get_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
     return sync_custom_session(session)
 
 
+def practice_key_inherits_source_mode(practice: str, original: str) -> bool:
+    """Shape / catalog Practice Key must keep the song's major/minor family."""
+    from music_theory import practice_key_inherits_source_mode as _inherit
+
+    return _inherit(practice, original)
+
+
 def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> str:
     pick = str(catalog.get("pick_key") or "").strip()
     sel = catalog.get("selected_song")
@@ -145,47 +783,178 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
         original = str(sel.get("key") or catalog.get("original_key") or "C").strip() or "C"
     else:
         original = str(catalog.get("original_key") or "C").strip() or "C"
+    # Prefer live Practice/Concert Key for the active catalog pick — never catalog.original.
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    pick_active = bool(pick) and (not ctx_pick or ctx_pick == pick)
+    jam_tokens: set[str] = set()
+    try:
+        from generated_jam_key_context import generated_jam_practice_key_tokens
+
+        jam_tokens = generated_jam_practice_key_tokens(session)
+    except ImportError:
+        jam_tokens = set()
+    if jam_tokens and live in jam_tokens:
+        live = ""
+    if pick_active and live:
+        try:
+            from songs.practice_key_state import get_practice_concert_key, sbi_uses_custom_progression_preview
+
+            # SBI Active must not inherit Custom overlay live (Trial E on Shape Bm).
+            if not sbi_uses_custom_progression_preview(session):
+                sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+                saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+                if jam_tokens and sealed in jam_tokens:
+                    sealed = ""
+                if jam_tokens and saved in jam_tokens:
+                    saved = ""
+                catalog_pk = sealed or saved
+                if catalog_pk and not practice_key_inherits_source_mode(catalog_pk, original):
+                    catalog_pk = ""
+                if catalog_pk:
+                    return catalog_pk
+        except ImportError:
+            pass
+        if live and not practice_key_inherits_source_mode(live, original):
+            live = ""
+        if live:
+            return live
+        return original
     if pick:
+        # SBI "Active song" preview can resolve a catalog bucket while global ownership
+        # is Custom. Do not let the custom live key overlay that catalog snapshot.
+        if pick_active or not ctx_pick.startswith("custom::"):
+            try:
+                from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
+
+                dest = overlay_destination_practice_key(session)
+                if dest and not (jam_tokens and str(dest).strip() in jam_tokens):
+                    if practice_key_inherits_source_mode(str(dest), original):
+                        return dest
+            except ImportError:
+                pass
         try:
             from songs.practice_key_state import get_practice_concert_key
 
             saved = get_practice_concert_key(session, pick)
-            if saved:
-                return saved
+            if saved and not (jam_tokens and str(saved).strip() in jam_tokens):
+                if practice_key_inherits_source_mode(str(saved), original):
+                    return saved
         except ImportError:
             pass
+    if pick_active and live:
+        return live
     dk = str(catalog.get("display_key") or "").strip()
     return dk or original
 
 
+def _sections_overlay_pending_practice_key(
+    session: dict[str, Any],
+    sections: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    """Retranspose catalog sections toward the effective Practice Key on the same rerun."""
+    if not isinstance(sections, dict) or not sections:
+        return sections
+    try:
+        from music_workflow_pending_song_practice_key_edit import (
+            overlay_sections_with_pending_practice_key,
+        )
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        spelled = resolve_song_practice_key_token(session) or str(
+            session.get("concert_key") or ""
+        )
+        return overlay_sections_with_pending_practice_key(
+            session,
+            sections,
+            spelled_in_key=spelled,
+        )
+    except ImportError:
+        return sections
+
+
 def _catalog_sections(session: dict[str, Any], catalog: dict[str, Any]) -> dict[str, list[str]]:
     pick = str(catalog.get("pick_key") or "").strip()
-    stored = session.get("improv_song_concert_sections")
-    if isinstance(stored, dict) and stored:
-        ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if not pick or not ctx_pick or pick == ctx_pick or ctx_pick.startswith("custom::"):
-            if not ctx_pick.startswith("custom::"):
-                return {
+    ctx_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    live_is_catalog = bool(ctx_pick) and not ctx_pick.startswith("custom::")
+    if live_is_catalog and pick and ctx_pick != pick:
+        return {}
+    if live_is_catalog and (not pick or pick == ctx_pick):
+        try:
+            from workflow_musical_authority import sync_song_improv_sections_to_practice_key
+
+            synced = sync_song_improv_sections_to_practice_key(session)
+            if isinstance(synced, dict) and synced:
+                cleaned = {
                     str(name): [str(c) for c in chords if str(c).strip()]
-                    for name, chords in stored.items()
+                    for name, chords in synced.items()
                     if isinstance(chords, list)
                 }
+                return _sections_overlay_pending_practice_key(session, cleaned)
+        except ImportError:
+            pass
+    stored = session.get("improv_song_concert_sections")
+    if live_is_catalog and isinstance(stored, dict) and stored:
+        if not pick or pick == ctx_pick:
+            cleaned = {
+                str(name): [str(c) for c in chords if str(c).strip()]
+                for name, chords in stored.items()
+                if isinstance(chords, list)
+            }
+            return _sections_overlay_pending_practice_key(session, cleaned)
+    bucket = catalog.get("sections")
+    if isinstance(bucket, dict) and bucket:
+        cleaned = {
+            str(name): [str(c) for c in chords if str(c).strip()]
+            for name, chords in bucket.items()
+            if isinstance(chords, list)
+        }
+        return _sections_overlay_pending_practice_key(session, cleaned)
     return {}
+
+
+def _custom_preview_concert_sections(
+    session: dict[str, Any],
+    custom: dict[str, Any],
+) -> dict[str, list[str]]:
+    """SBI Custom card uses concert-pitch sections at the Custom Practice Key."""
+    try:
+        from workflow_musical_authority import resolve_custom_concert_sections_at_practice_key
+
+        projected = resolve_custom_concert_sections_at_practice_key(session)
+        if projected:
+            return {str(k): list(v) for k, v in projected.items()}
+    except ImportError:
+        pass
+    base = custom.get("sections") if isinstance(custom, dict) else {}
+    if not isinstance(base, dict):
+        base = {}
+    return {str(k): list(v) for k, v in base.items()}
+
+
+def _projected_custom_preview_sections(
+    session: dict[str, Any],
+    fallback: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    """Alias — SBI Custom chords in the current Custom Practice Key, not Original."""
+    return _custom_preview_concert_sections(session, {"sections": fallback or {}})
 
 
 def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     """Authoritative SBI card — title/key/progression from one source only."""
     source = get_sbi_preview_source(session)
+    if source == SBI_SONG_SOURCE_COMPOSITION:
+        return resolve_composition_sbi_preview(session)
     if source == "Custom progression":
-        custom = get_custom_session(session)
+        custom = get_custom_session(session) or sync_custom_session(session)
         if custom:
             return {
                 "source": source,
                 "title": str(custom.get("title") or "Custom progression"),
                 "artist": str(custom.get("artist") or "Custom progression"),
-                "display_key": str(custom.get("display_key") or custom.get("original_key") or "C"),
+                "display_key": resolve_sbi_custom_practice_key(session, custom),
                 "original_key": str(custom.get("original_key") or "C"),
-                "sections": dict(custom.get("sections") or {}),
+                "sections": _custom_preview_concert_sections(session, custom),
                 "pick_key": str(custom.get("pick_key") or ""),
             }
         return {
@@ -197,6 +966,28 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
             "sections": {},
             "pick_key": "",
         }
+
+    try:
+        from songs.music_source import SOURCE_CUSTOM, custom_progression_is_active
+
+        # True Custom Global Active: SBI Active is Trial, not leftover catalog Shape.
+        # Do not treat a stale custom:: pick while catalog_session is Shape as Custom GA.
+        if custom_progression_is_active(session) and str(
+            session.get("active_music_source") or ""
+        ) == SOURCE_CUSTOM:
+            custom = sync_custom_session(session)
+            if custom:
+                return {
+                    "source": source,
+                    "title": str(custom.get("title") or "Custom progression"),
+                    "artist": str(custom.get("artist") or "Custom progression"),
+                    "display_key": resolve_sbi_custom_practice_key(session, custom),
+                    "original_key": str(custom.get("original_key") or "C"),
+                    "sections": _projected_custom_preview_sections(session, custom.get("sections")),
+                    "pick_key": str(custom.get("pick_key") or ""),
+                }
+    except ImportError:
+        pass
 
     catalog = get_catalog_session(session)
     if not catalog:
@@ -248,16 +1039,688 @@ def resolve_improv_song_source_for_handoff(session: dict[str, Any]) -> str:
     return get_sbi_preview_source(session)
 
 
+def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
+    """True when Creative/Backing sidebar Practice Key must use Custom sticky/home.
+
+    Covers SBI → Custom progression preview and Custom-bound song_improv /
+    custom_progression Backing — never Global Active catalog (Shape Dm).
+    On Backing, only the active backing context may claim Custom — leftover
+  SBI preview flags must not steal Mission Backing PK after reboot.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        ctx = None
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    bound = str(
+        getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+    ).strip() if ctx is not None else ""
+    if page == "backing":
+        if sbi_composition_source_selected(session, ctx=ctx):
+            return False
+        if src == "custom_progression":
+            return True
+        if src == "song_improv" and bound.startswith("custom::"):
+            return True
+        return False
+    # Creative: SBI tab on Custom progression preview — except Missions / Live Coach /
+    # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
+    # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
+    # embargo gate 6 could not set Em.
+    if get_sbi_preview_source(session) == SBI_SONG_SOURCE_COMPOSITION:
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab in {"Missions", "Live Coach"}:
+        try:
+            from songs.music_source import custom_progression_is_active
+
+            if not custom_progression_is_active(session):
+                return False
+        except ImportError:
+            pass
+    if tab in {"Phrase / Motif", "Motif", "Harmony Map", "Harmony", "Missions"}:
+        visit_src = str(session.get("_creative_visit_source") or "").strip()
+        if visit_src in {"missions", "sbi_active"}:
+            return False
+        if get_sbi_preview_source(session) != "Custom progression":
+            try:
+                from songs.music_source import custom_progression_is_active
+
+                if not custom_progression_is_active(session):
+                    return False
+            except ImportError:
+                pass
+    if get_sbi_preview_source(session) == "Custom progression":
+        return True
+    if src == "custom_progression":
+        return True
+    if src == "song_improv" and bound.startswith("custom::"):
+        return True
+    return False
+
+
+def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> list[str]:
+    """Creative SBI → Custom progression: sidebar PK uses Trial/Custom sticky + home mode.
+
+    Seals an *existing* catalog sticky (Shape Dm) so leave can restore it, then
+    projects Custom sticky/home into ``display_key`` for the sidebar widget.
+    Never writes Custom live into the catalog pick — empty catalog sticky stays empty.
+    """
+    overlay_already = bool(session.get("_sbi_custom_sidebar_overlay"))
+    from songs.key_state import PENDING_DISPLAY_KEY, display_key_options
+
+    # Seal catalog sticky once on enter. Never copy Custom live into the catalog
+    # slot — including when that slot is empty. Empty Shape sticky is not a
+    # license to adopt Trial D / visit E; leave would then heal D major onto
+    # Catalog Shape. Only a real existing catalog sticky (Shape Dm) is sealed.
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_practice_source_pick,
+        )
+
+        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        if not session.get("_sbi_custom_sidebar_overlay"):
+            if catalog_pick and not catalog_pick.startswith("custom::"):
+                existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
+                if existing:
+                    session["_sbi_custom_sealed_catalog_pk"] = existing
+                    session["_sbi_custom_sealed_catalog_pick"] = catalog_pick
+            session["_sbi_custom_sidebar_overlay"] = True
+    except ImportError:
+        catalog_pick = ""
+
+    custom = sync_custom_session(session) or get_custom_session(session) or {}
+    # Always prefer Original Key as the Custom home (never contaminated display_key).
+    home = str(custom.get("original_key") or "C").strip() or "C"
+    pick = str(custom.get("pick_key") or "").strip()
+    sticky = ""
+    catalog_sticky = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        if catalog_pick and not catalog_pick.startswith("custom::"):
+            catalog_sticky = str(get_practice_concert_key(session, catalog_pick) or "").strip()
+        if pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+        if not sticky:
+            from songs.practice_key_state import resolve_settings_pick_for_write
+
+            write_pick = str(resolve_settings_pick_for_write(session) or "").strip()
+            if write_pick.startswith("custom::"):
+                pick = write_pick
+                sticky = str(get_practice_concert_key(session, write_pick, default="") or "").strip()
+    except ImportError:
+        sticky = ""
+    if overlay_already:
+        sbi_widget = str(session.get("display_key_sbi_custom") or "").strip()
+        if sbi_widget:
+            session["_sbi_custom_visit_pk"] = sbi_widget
+    # CASE A: Custom is also Global Active — current active Custom Practice Key.
+    # Do not reset to Original merely because the selector says Custom Progression.
+    if sbi_custom_identity_is_global_active(session):
+        case_a = sticky or str(session.get("display_key") or session.get("concert_key") or "").strip() or home
+        if not session.get("_sbi_custom_case_a_key_bound"):
+            selected = case_a
+            session["_sbi_custom_case_a_key_bound"] = True
+        else:
+            selected = str(session.get("_sbi_custom_visit_pk") or "").strip() or case_a
+        session["_sbi_custom_visit_pk"] = selected
+    else:
+        selected = str(session.get("_sbi_custom_visit_pk") or "").strip() or home
+        # Reject Shape/catalog sticky bleed onto Custom (Dm on Trial D major).
+        # Same tonic with different mode, or exact equality with catalog sticky while
+        # home differs, means contamination — fall back to Custom Original Key.
+        try:
+            from music_theory import split_key_center
+
+            _h_tonic, home_mode = split_key_center(home)
+            _s_tonic, sticky_mode = split_key_center(sticky) if sticky else ("", "")
+            contaminated = False
+            if sticky and catalog_sticky and sticky == catalog_sticky and sticky != home:
+                contaminated = True
+            elif sticky and home and sticky != home and _h_tonic and _h_tonic == _s_tonic and home_mode != sticky_mode:
+                contaminated = True
+            if contaminated:
+                selected = home
+                if pick.startswith("custom::"):
+                    try:
+                        from songs.practice_key_state import set_practice_concert_key
+
+                        set_practice_concert_key(session, home, pick_key=pick)
+                    except Exception:
+                        pass
+        except Exception:
+            if sticky and catalog_sticky and sticky == catalog_sticky and sticky != home:
+                selected = home
+    options = list(display_key_options(home) or [home])
+    if selected not in options:
+        options = [selected] + [k for k in options if k != selected]
+    session.pop(PENDING_DISPLAY_KEY, None)
+    session["display_key"] = selected
+    session["concert_key"] = selected
+    session[PENDING_DISPLAY_KEY] = selected
+    try:
+        from songs.key_state import _apply_display_key_before_widget
+
+        _apply_display_key_before_widget(st, selected, source="sbi_custom_sidebar_overlay")
+    except Exception:
+        pass
+    return options
+
+
+def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> str:
+    """After Custom SBI leave, keep sealed catalog PK in the sidebar widget.
+
+    Streamlit may remount the Practice Key widget with leftover Custom live (E);
+    refuse that as the catalog display while the isolation seal is active.
+    """
+    sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    # Only heal on non-Custom surfaces (Songs / Practice / picker) while Catalog
+    # still owns Global Active. When Custom is GA, a leftover SBI catalog seal
+    # (Perfect G) must not overwrite Embargo Trial D.
+    try:
+        from workflow_musical_authority import custom_owns_active_song_material
+
+        if custom_owns_active_song_material(session):
+            return ""
+    except ImportError:
+        pass
+    # Do not use custom_sbi_owns_sidebar_practice_key here — SBI preview can remain
+    # "Custom progression" after leave, which would skip the heal forever.
+    # Heal on Songs/Practice/picker, and on Creative/Backing when SBI Active
+    # (not Custom overlay). Skipping Creative left Shape as Trial's C-minor.
+    if not sealed or not sealed_pick or page == "custom":
+        return ""
+    if page in {"creative", "backing"}:
+        try:
+            if custom_sbi_owns_sidebar_practice_key(session):
+                return ""
+        except Exception:
+            pass
+    # Songs/Practice after Set as Active: Custom *is* Global Active. Treating
+    # its live PK as catalog-bleed (token in custom_tokens) slammed Perfect G
+    # onto Embargo Trial (gate 14). Only heal while Catalog still owns GA.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            return ""
+    except ImportError:
+        pass
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    custom_tokens: set[str] = set()
+    store = session.get("practice_key_by_source")
+    if isinstance(store, dict):
+        for pk, val in store.items():
+            if str(pk).startswith("custom::"):
+                v = str(val or "").strip()
+                if v:
+                    custom_tokens.add(v)
+    leftover = str(session.get("cpl_last_display_key") or "").strip()
+    if leftover:
+        custom_tokens.add(leftover)
+    last_visit = str(session.get("_sbi_custom_last_visit_pk") or "").strip()
+    if last_visit:
+        custom_tokens.add(last_visit)
+        try:
+            from music_theory import coerce_key_to_mode
+
+            custom_tokens.add(coerce_key_to_mode(last_visit, "minor"))
+            custom_tokens.add(coerce_key_to_mode(last_visit, "major"))
+        except Exception:
+            pass
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        custom_pick = ""
+        if isinstance(snap, dict):
+            custom_pick = str(snap.get("pick_key") or "").strip()
+            active = snap.get("active")
+            if isinstance(active, dict):
+                custom_pick = str(custom_pick_for(active) or custom_pick or "").strip()
+        if custom_pick.startswith("custom::"):
+            tok = str(get_practice_concert_key(session, custom_pick) or "").strip()
+            if tok:
+                custom_tokens.add(tok)
+    except Exception:
+        pass
+    # Force sealed whenever live still equals a Custom sticky token (bleed).
+    if live == sealed or (live and live in custom_tokens):
+        try:
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(
+                session,
+                sealed,
+                pick_key=sealed_pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+        except Exception:
+            pass
+        session["display_key"] = sealed
+        session["concert_key"] = sealed
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+            session[PENDING_DISPLAY_KEY] = sealed
+            _apply_display_key_before_widget(st, sealed, source="heal_sealed_catalog_sidebar")
+        except Exception:
+            pass
+        session["display_key"] = sealed
+        session["concert_key"] = sealed
+        return sealed
+    return ""
+
+
+def clear_sbi_custom_sidebar_overlay_if_needed(session: dict[str, Any]) -> None:
+    """Restore catalog sticky into live PK when leaving SBI Custom preview."""
+    if not session.get("_sbi_custom_sidebar_overlay") and not session.get(
+        "_custom_page_sidebar_overlay"
+    ):
+        return
+    page = str(session.get("studio_page") or "").strip().lower()
+    if session.get("_sbi_custom_sidebar_overlay"):
+        # Keep overlay on Creative *and* Custom SBI Backing — clearing on open
+        # restored Shape Dm into the sidebar while progression stayed at Trial D.
+        if page in {"creative", "backing"} and custom_sbi_owns_sidebar_practice_key(session):
+            return
+        session.pop("_sbi_custom_sidebar_overlay", None)
+        session.pop("_sbi_custom_visit_pk", None)
+        session.pop("_sbi_custom_case_a_key_bound", None)
+        session.pop("display_key_sbi_custom", None)
+    if session.get("_custom_page_sidebar_overlay"):
+        if page == "custom":
+            return
+        if page == "backing" and custom_sbi_owns_sidebar_practice_key(session):
+            return
+        try:
+            from workflow_musical_authority import custom_owns_active_song_material
+
+            if page in {"picker", "creative", "practice", "songs"} and custom_owns_active_song_material(
+                session
+            ):
+                session.pop("_custom_page_sidebar_overlay", None)
+                return
+        except ImportError:
+            pass
+        session.pop("_custom_page_sidebar_overlay", None)
+    sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    try:
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_practice_source_pick,
+            set_practice_concert_key,
+        )
+
+        pick = sealed_pick or str(resolve_practice_source_pick(session) or "").strip()
+        sticky = sealed
+        if not sticky and pick and not pick.startswith("custom::"):
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        if pick and not pick.startswith("custom::") and sticky:
+            # Heal catalog sticky if Custom live (E) poisoned it during leave.
+            # Keep the seal so a later Streamlit remount write of Custom E is refused.
+            set_practice_concert_key(
+                session,
+                sticky,
+                pick_key=pick,
+                allow_catalog_during_sbi_custom=True,
+            )
+            session["display_key"] = sticky
+            session["concert_key"] = sticky
+            try:
+                from songs.key_state import PENDING_DISPLAY_KEY
+
+                session[PENDING_DISPLAY_KEY] = sticky
+            except ImportError:
+                session["_pending_display_key"] = sticky
+    except ImportError:
+        pass
+
+
+def bind_sidebar_practice_key_to_backing_owner(st: Any, session: dict[str, Any]) -> str:
+    """Catalog / specialized Backing owner writes the live sidebar Practice Key.
+
+    Custom-page overlay D and leftover jam/catalog stickies must not remain sidebar
+    authority after ordinary Catalog Backing (or another backing owner) is current.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "backing":
+        return ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        ctx = None
+    if ctx is None:
+        return ""
+    src = str(getattr(ctx, "source", "") or "").strip()
+    rebound = ""
+    try:
+        from songs.key_state import (
+            apply_display_key_owner_transition_if_needed,
+            canonical_token_for_owner_transition,
+            note_display_key_widget_owner,
+        )
+
+        if src != "mission":
+            try:
+                from backing_practice_key_control import backing_practice_key_widget_id
+
+                # Per-owner Backing widgets are the live control. Do not remount
+                # the legacy global display_key selectbox over them.
+                _ = backing_practice_key_widget_id(session)
+            except ImportError:
+                apply_display_key_owner_transition_if_needed(session, st_like=st)
+                rebound = canonical_token_for_owner_transition(session)
+            else:
+                rebound = canonical_token_for_owner_transition(session)
+    except Exception:
+        rebound = ""
+    token = ""
+    if src == "regular_song":
+        if not custom_sbi_owns_sidebar_practice_key(session):
+            session.pop("_custom_page_sidebar_overlay", None)
+            session.pop("_sbi_custom_sidebar_overlay", None)
+            session.pop("_sbi_custom_visit_pk", None)
+            session.pop("display_key_sbi_custom", None)
+        token = str(
+            getattr(ctx, "display_key", "")
+            or getattr(ctx, "concert_key", "")
+            or getattr(ctx, "key", "")
+            or ""
+        ).strip()
+        leaving = str(session.get("_specialized_practice_token_leaving") or "").strip()
+        sealed = str(session.get("_specialized_leave_catalog_pk") or "").strip()
+        if rebound:
+            token = rebound
+        elif leaving and token == leaving:
+            token = sealed
+        if not token:
+            try:
+                from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+                pick = str(
+                    session.get("_specialized_leave_catalog_pick")
+                    or resolve_practice_source_pick(session)
+                    or ""
+                ).strip()
+                if pick and not pick.startswith("custom::"):
+                    token = str(get_practice_concert_key(session, pick) or "").strip()
+                if leaving and token == leaving:
+                    token = sealed
+            except Exception:
+                token = ""
+    elif src == "entry_jam":
+        token = ""
+        try:
+            from backing_context import build_entry_jam_context
+
+            live_ctx = build_entry_jam_context(session)
+            token = str(
+                getattr(live_ctx, "display_key", "")
+                or getattr(live_ctx, "concert_key", "")
+                or getattr(live_ctx, "key", "")
+                or ""
+            ).strip()
+        except Exception:
+            token = ""
+        try:
+            from creative_key_sync import creative_entry_concert_key
+
+            entry = str(
+                getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""
+            ).strip()
+            widget = str(creative_entry_concert_key(session) or "").strip()
+            # Entry Style Jam: leftover Jam Generator key/snapshot must not keep
+            # the sidebar on Eb after the user set Style Practice Key to F.
+            if widget and "Style Jam" in entry:
+                token = widget
+        except Exception:
+            pass
+        if not token:
+            try:
+                from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+                ident = resolve_practice_key_identity_for_ui(session)
+                if ident is not None and str(ident.practice_key_token or "").strip():
+                    token = str(ident.practice_key_token).strip()
+            except Exception:
+                token = ""
+        if not token:
+            try:
+                from backing_context import get_backing_context
+                from creative_key_sync import creative_entry_concert_key
+
+                ctx_entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+                entry = ctx_entry or str(session.get("improv_entry_mode") or "").strip()
+                token = str(creative_entry_concert_key(session) or "").strip()
+                if not token:
+                    if "Style Jam" in entry:
+                        token = str(session.get("improv_style_key") or "").strip()
+                    else:
+                        token = str(session.get("improv_jam_key") or "").strip()
+            except Exception:
+                token = str(
+                    session.get("improv_style_key")
+                    or session.get("improv_jam_key")
+                    or ""
+                ).strip()
+        if not token:
+            try:
+                from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
+
+                raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+                if isinstance(raw, dict):
+                    token = str(raw.get("practice_key_token") or "").strip()
+            except Exception:
+                token = ""
+        token = token or str(
+            getattr(ctx, "display_key", "")
+            or getattr(ctx, "concert_key", "")
+            or getattr(ctx, "key", "")
+            or ""
+        ).strip()
+    elif src == "mission":
+        token = str(
+            session.get("improv_mission_concert_key")
+            or session.get("display_key")
+            or session.get("concert_key")
+            or getattr(ctx, "display_key", "")
+            or getattr(ctx, "concert_key", "")
+            or getattr(ctx, "key", "")
+            or ""
+        ).strip()
+        rebound = ""
+    else:
+        return ""
+    if rebound:
+        try:
+            from songs.key_state import owner_transition_record, resolve_display_key_widget_owner_id
+
+            rec = owner_transition_record(session)
+            current = resolve_display_key_widget_owner_id(session)
+            style_jam_live = False
+            if src == "entry_jam":
+                entry_now = str(
+                    getattr(ctx, "entry_mode", "") or session.get("improv_entry_mode") or ""
+                ).strip()
+                style_jam_live = "Style Jam" in entry_now
+            if rec and str(rec.get("to") or "").strip() == current and not style_jam_live:
+                token = rebound
+        except Exception:
+            if src == "regular_song":
+                token = rebound
+    if not token:
+        return ""
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if src == "regular_song" or src == "entry_jam" or live != token:
+        try:
+            from h3_live_key_trace import emit_display_key_write
+
+            emit_display_key_write(
+                session, token, source=f"bind_sidebar_backing_owner_{src}"
+            )
+        except Exception:
+            pass
+        session["display_key"] = token
+        session["concert_key"] = token
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+            from session_widget_safe import widgets_likely_instantiated
+
+            session[PENDING_DISPLAY_KEY] = token
+            if st is not None and not widgets_likely_instantiated(session):
+                _apply_display_key_before_widget(
+                    st, token, source=f"bind_sidebar_backing_owner_{src}"
+                )
+        except Exception:
+            session["_pending_display_key"] = token
+    try:
+        from h3_live_key_trace import emit
+
+        emit(session, "bind_sidebar_done", bind_token=token, bind_src=src)
+    except Exception:
+        pass
+    try:
+        from songs.key_state import note_display_key_widget_owner
+
+        note_display_key_widget_owner(session)
+    except Exception:
+        pass
+    return token
+
+
+def sync_specialized_leave_catalog_widget(
+    session: dict[str, Any],
+    *,
+    widget_key: str = "display_key",
+    allow_clear: bool = False,
+) -> None:
+    """Keep Catalog PK widget from inheriting the leftover Jam/Mission token.
+
+    Do not clear the owner-transition / leave markers until the widget actually
+    returns the new owner's canonical key (after selectbox).
+
+    Mission Backing uses display_key_mission_backing as a mirror of
+    improv_mission_concert_key. Catalog leave-sync must not write that widget.
+    """
+    try:
+        from creative_key_sync import (
+            MISSION_BACKING_PRACTICE_KEY_WIDGET,
+            mission_backing_owns_left_panel_key,
+        )
+
+        if str(widget_key or "") == MISSION_BACKING_PRACTICE_KEY_WIDGET:
+            return
+        if mission_backing_owns_left_panel_key(session):
+            return
+        try:
+            from backing_practice_key_control import WIDGET_STYLE_JAM
+
+            if str(widget_key or "") == WIDGET_STYLE_JAM:
+                return
+        except ImportError:
+            if str(widget_key or "") == "display_key_style_jam_backing":
+                return
+    except Exception:
+        if str(widget_key or "").startswith("display_key_mission_backing"):
+            return
+    try:
+        from songs.key_state import (
+            apply_display_key_owner_transition_if_needed,
+            canonical_token_for_owner_transition,
+            clear_display_key_owner_transition,
+            stale_widget_token_for_owner_transition,
+        )
+
+        apply_display_key_owner_transition_if_needed(session)
+        rebound = canonical_token_for_owner_transition(session)
+        stale = stale_widget_token_for_owner_transition(session)
+    except Exception:
+        rebound = ""
+        stale = str(session.get("_specialized_practice_token_leaving") or "").strip()
+    sealed = str(session.get("_specialized_leave_catalog_pk") or rebound or "").strip()
+    leaving = str(session.get("_specialized_practice_token_leaving") or stale or "").strip()
+    if not sealed and not rebound:
+        return
+    target = rebound or sealed
+    live = str(session.get(widget_key) or session.get("display_key") or "").strip()
+    if (leaving and live == leaving) or (stale and live == stale) or (
+        target and live and live != target and (leaving or stale or rebound)
+    ):
+        session[widget_key] = target
+        session["display_key"] = target
+        session["concert_key"] = target
+        session["_pending_display_key"] = target
+        return
+    if allow_clear and target and live == target:
+        try:
+            clear_display_key_owner_transition(session)
+        except Exception:
+            session.pop("_specialized_practice_token_leaving", None)
+            session.pop("_specialized_leave_catalog_pk", None)
+            session.pop("_specialized_leave_catalog_pick", None)
+
+
 __all__ = [
     "CATALOG_SESSION_KEY",
+    "COMPOSITION_SBI_UNAVAILABLE_MESSAGE",
+    "COMPOSITION_SBI_UNAVAILABLE_TITLE",
     "CUSTOM_SESSION_KEY",
     "IMPROV_SONG_SOURCES",
+    "SBI_MATERIAL_TYPE_LABELS",
     "SBI_PREVIEW_SOURCE_KEY",
+    "SBI_SONG_SOURCE_ACTIVE",
+    "SBI_SONG_SOURCE_COMPOSITION",
+    "SBI_SONG_SOURCE_CUSTOM",
+    "SBI_WORKFLOW_LABEL",
+    "clear_sbi_custom_sidebar_overlay_if_needed",
+    "composition_sbi_source_available",
+    "custom_sbi_owns_sidebar_practice_key",
+    "format_sbi_backing_blue_card_subtitle",
     "get_catalog_session",
     "get_custom_session",
+    "EXPLICIT_SBI_SOURCE_CLICK_KEY",
+    "RESTORE_SBI_CUSTOM_SOURCE_KEY",
+    "SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY",
+    "SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY",
+    "adopt_restore_sbi_custom_stamp",
+    "clear_restore_sbi_custom_source",
+    "apply_sbi_radio_live_against_restore_stamp",
+    "seed_sbi_custom_radio_before_render",
+    "bind_sbi_preview_to_active_after_explicit_catalog",
+    "bind_sidebar_practice_key_to_backing_owner",
+    "clear_sbi_follow_active_after_explicit_catalog",
+    "note_explicit_sbi_source_selection",
     "get_sbi_preview_source",
+    "global_active_is_custom",
+    "sbi_must_follow_global_active",
+    "heal_sealed_catalog_sidebar_if_needed",
+    "prepare_sbi_custom_sidebar_display_key",
+    "resolve_sbi_custom_practice_key",
+    "sbi_custom_identity_is_global_active",
+    "resolve_composition_sbi_preview",
     "resolve_improv_song_source_for_handoff",
+    "resolve_sbi_material_kind",
     "resolve_sbi_preview",
+    "sbi_composition_source_selected",
+    "sbi_source_type_label",
     "set_sbi_preview_source",
     "sync_catalog_session",
     "sync_custom_session",

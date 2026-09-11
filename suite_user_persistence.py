@@ -9,12 +9,23 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 STATE_VERSION = 1
-DATA_DIR = Path(__file__).resolve().parent / "data"
+
+
+def _resolve_data_dir() -> Path:
+    """Allow proof/human runtimes to isolate via MUSIC_APP_DATA_DIR."""
+    override = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path(__file__).resolve().parent / "data"
+
+
+DATA_DIR = _resolve_data_dir()
 
 APP_IDS = frozenset(
     {"music", "investment", "baseball", "basketball", "nba", "future_lens"}
@@ -188,6 +199,7 @@ def clear_workspace_autosave_block(st: Any, app_id: str) -> None:
     """Call at end of script run to allow autosave on the next rerun."""
     st.session_state.pop(_autosave_block_key(app_id), None)
     st.session_state.pop("_cloud_workspace_restored_this_run", None)
+    st.session_state.pop("_music_disk_restore_this_run", None)
     st.session_state.pop("_suite_user_nav_sync_skipped", None)
 
 
@@ -919,6 +931,19 @@ def sync_workspace_protocol(
             st.session_state["_music_authoritative_cloud_apply"] = True
         if str(app_id or "").strip().lower() == "music" and isinstance(picked.state, dict):
             try:
+                from music_workspace_boundary_trace import record_hydrate_pick_boundary
+
+                record_hydrate_pick_boundary(
+                    st.session_state,
+                    source=str(picked.source or ""),
+                    pick_reason=str(picked.reason or ""),
+                    state=picked.state,
+                    cloud_ts=cloud_ts,
+                    before_apply=True,
+                )
+            except ImportError:
+                pass
+            try:
                 from music_startup_save_suppression import record_hydrated_canonical_fingerprint
 
                 record_hydrated_canonical_fingerprint(
@@ -948,6 +973,7 @@ def sync_workspace_protocol(
     st.session_state["_suite_autosave_block_reason"] = "post-restore cooldown"
     st.session_state["_cloud_workspace_restored"] = picked.source == "cloud"
     st.session_state["_cloud_workspace_restored_this_run"] = picked.source == "cloud"
+    st.session_state["_music_disk_restore_this_run"] = picked.source == "disk"
     st.session_state["_suite_persist_restore_applied"] = True
     st.session_state["_suite_persist_last_restore_at"] = _utc_now_iso()
     st.session_state["_suite_persist_last_restore_source"] = picked.source

@@ -158,6 +158,80 @@ class TestEntryJamReturnSubmodeLifecycle(unittest.TestCase):
         _simulate_return_click_and_next_creative_run(session)
         self._assert_creative_submode(session, entry_mode="Song-Based Improvisation", tab="Missions")
 
+    def test_style_jam_return_releases_backing_owner_keeps_session(self) -> None:
+        from backing_source_navigation import BACKING_ENTRY_CLASS_KEY, BACKING_ENTRY_SPECIALIZED_HANDOFF
+        from music_workflow_pending_backing_handoff import (
+            PENDING_BACKING_WORKFLOW_KEY,
+            queue_pending_backing_workflow_handoff,
+        )
+
+        session = _style_jam_like_session()
+        session["improv_style_key"] = "C#"
+        session["improv_generated_sections"] = {
+            "Style Jam": ["C#maj7", "D#m7", "F#maj7", "G#7"],
+        }
+        open_backing_from_creative(session, source="entry_jam", st_like=SimpleNamespace(session_state=session))
+        session["_backing_explicit_handoff_source"] = "entry_jam"
+        session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_SPECIALIZED_HANDOFF
+        queue_pending_backing_workflow_handoff(
+            session,
+            backing_source="entry_jam",
+            workflow_owner="style_jam",
+        )
+        _simulate_return_click_and_next_creative_run(session)
+        self._assert_creative_submode(session, entry_mode="Style Jam Mode")
+        self.assertNotEqual(session.get("_backing_explicit_handoff_source"), "entry_jam")
+        self.assertIsNone(session.get(PENDING_BACKING_WORKFLOW_KEY))
+        self.assertEqual(str(session.get("improv_style_key") or ""), "C#")
+        sections = session.get("improv_generated_sections")
+        self.assertIsInstance(sections, dict)
+        self.assertIn("Style Jam", sections)
+        ctx = get_backing_context(session)
+        self.assertIsNotNone(ctx)
+        assert ctx is not None
+        self.assertEqual(str(ctx.source or ""), "entry_jam")
+
+    def test_pending_backing_handoff_cannot_reclaim_after_return(self) -> None:
+        from music_workflow_pending_backing_handoff import (
+            PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY,
+            consume_pending_backing_workflow_handoff,
+            queue_pending_backing_workflow_handoff,
+        )
+        from music_workflow_pre_widget_bootstrap import run_pre_widget_application_consumers
+
+        session = _style_jam_like_session()
+        open_backing_from_creative(session, source="entry_jam", st_like=SimpleNamespace(session_state=session))
+        _simulate_return_click_and_next_creative_run(session)
+        self.assertEqual(str(session.get("studio_page") or ""), "creative")
+        req = queue_pending_backing_workflow_handoff(
+            session,
+            backing_source="entry_jam",
+            workflow_owner="style_jam",
+        )
+        session[PENDING_BACKING_WORKFLOW_CONSUME_ARMED_SEQ_KEY] = req["request_seq"]
+        session["_creative_restore_from_backing"] = True
+        phase = consume_pending_backing_workflow_handoff(session)
+        self.assertEqual(phase, "skipped")
+        self.assertEqual(str(session.get("studio_page") or ""), "creative")
+        run_pre_widget_application_consumers(session)
+        self.assertEqual(str(session.get("studio_page") or ""), "creative")
+
+    def test_persist_restore_cannot_overwrite_creative_return(self) -> None:
+        from studio_nav_state import resolve_studio_page_for_restore
+
+        session = _style_jam_like_session()
+        open_backing_from_creative(session, source="entry_jam", st_like=SimpleNamespace(session_state=session))
+        _simulate_return_click_and_next_creative_run(session)
+        blob = {"core": {"studio_page": "backing"}, "session": {"studio_page": "backing"}}
+        page, source = resolve_studio_page_for_restore(
+            session,
+            blob,
+            pre_restore_page="creative",
+            user_owns_page=False,
+        )
+        self.assertEqual(page, "creative")
+        self.assertEqual(source, "creative_return_from_backing")
+
 
 if __name__ == "__main__":
     unittest.main()

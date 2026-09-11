@@ -1,0 +1,64 @@
+Creative/Backing pass-5 ownership evidence
+
+## A_song_card_shape
+{
+  "original": "Bm",
+  "practice": "Dm",
+  "shape_control": "E",
+  "shape_not_major_label": true,
+  "charts": "Em",
+  "bad_format_would_say": "E major"
+}
+
+## B_sbi
+{
+  "overlay": "Dm",
+  "preview_key": "Dm",
+  "store_healed": {
+    "Pop::Shape of You \u2014 Ed Sheeran": "Dm"
+  },
+  "first_chords": {
+    "Verse": [
+      "Dm",
+      "Gm",
+      "Bb"
+    ]
+  }
+}
+
+## D_mission_am
+{
+  "example_cleared": true,
+  "keys_before": [
+    "Dm",
+    "Dm"
+  ],
+  "keys_after": [
+    "Dm",
+    "Dm"
+  ],
+  "selected": "Am"
+}
+
+## F_shape_reproject
+{
+  "concert_notes": [
+    "D",
+    "F",
+    "A"
+  ],
+  "projected_notes": [
+    "Eb",
+    "Gb",
+    "Bb"
+  ],
+  "projected_key": "Ebm",
+  "practice_key_unchanged": "Dm"
+}
+
+## I_style_meter_card
+{
+  "has_blues": true,
+  "has_34": true,
+  "snippet": "Practice concert key: <strong>D minor</strong> \u00b7 BPM: <strong>96</strong> \u00b7 Default Style: <strong>Pop groove</strong> \u00b7 Current Style: <strong>Blues</strong> \u00b7 Default Meter: <strong>4/4</strong> \u00b7 Current Meter: <stron"
+}

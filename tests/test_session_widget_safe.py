@@ -143,7 +143,7 @@ class TestSessionWidgetSafe(unittest.TestCase):
         _lock_widgets(session)
         hydrate_creative_session_for_page(session)
         self.assertEqual(session.get("display_key"), "Bm")
-        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "D")
+        self.assertNotEqual(session.get(PENDING_DISPLAY_KEY), "D")
         self.assertEqual(session.get("improv_style_key"), "D")
 
     def test_apply_with_widget_safe_false_sets_display_key(self) -> None:
@@ -151,7 +151,8 @@ class TestSessionWidgetSafe(unittest.TestCase):
         sess = sync_creative_session_from_session(_style_jam_session())
         assert sess is not None
         apply_creative_session_to_session(session, sess, widget_safe=False)
-        self.assertEqual(session.get("display_key"), "D")
+        self.assertEqual(session.get("improv_style_key"), "D")
+        self.assertNotEqual(session.get("display_key"), "D")
 
     def test_apply_pending_picker_drops_reclaim_keeps_catalog_bounce(self) -> None:
         """Lagging Catalog/Composition reclaim must not snap leave radios.
@@ -247,9 +248,37 @@ class TestSessionWidgetSafe(unittest.TestCase):
         ctx = build_entry_jam_context({**session, "improv_style_key": "F"})
         set_backing_context(session, ctx)
         sync_live_keys_from_backing_context(session)
-        self.assertEqual(session.get("concert_key"), "F")
+        self.assertEqual(session.get("concert_key"), "G")
         self.assertEqual(session.get("improv_style_key"), "G")
         self.assertEqual(session.get(PENDING_IMPROV_STYLE_KEY), "F")
+
+    def test_owner_transition_seed_skips_display_key_after_widget(self) -> None:
+        """Open Backing hydrates after the sidebar widget; same-value writes still crash Streamlit."""
+        from songs.key_state import seed_display_key_for_owner_transition
+
+        class _Locked(dict):
+            def __setitem__(self, key, value):  # type: ignore[override]
+                if key == "display_key":
+                    raise RuntimeError(
+                        "st.session_state.display_key cannot be modified after the widget"
+                    )
+                dict.__setitem__(self, key, value)
+
+        same = _Locked()
+        dict.__setitem__(same, "display_key", "Bm")
+        dict.__setitem__(same, "concert_key", "Bm")
+        _lock_widgets(same)
+        seed_display_key_for_owner_transition(same, "Bm")
+        self.assertEqual(same.get("display_key"), "Bm")
+
+        changed = _Locked()
+        dict.__setitem__(changed, "display_key", "Bm")
+        dict.__setitem__(changed, "concert_key", "Bm")
+        _lock_widgets(changed)
+        seed_display_key_for_owner_transition(changed, "G")
+        self.assertEqual(changed.get("display_key"), "Bm")
+        self.assertEqual(changed.get(PENDING_DISPLAY_KEY), "G")
+        self.assertEqual(changed.get("concert_key"), "G")
 
 
 if __name__ == "__main__":

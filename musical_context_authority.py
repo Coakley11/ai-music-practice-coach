@@ -78,6 +78,64 @@ def resolve_authoritative_practice_key(
 ) -> AuthoritativePracticeKey:
     """Current practice transposition vs catalog original — never infer major from bare tonic."""
     try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None:
+            orig_t, orig_m = ident.practice_tonic, ident.practice_mode
+            try:
+                from songs.key_state import resolve_active_musical_key
+
+                ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                orig_t = _tonic_from_key_token(str(ctx.original_key or ident.practice_key_token))
+                orig_m = _mode_from_key_token(str(ctx.original_key or ident.practice_key_token))
+            except ImportError:
+                pass
+            if ident.workflow_owner in {"song_based_improvisation", "mission_jam"}:
+                try:
+                    from songs.key_state import resolve_active_musical_key
+
+                    ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                    original_raw = str(ctx.original_key or ident.practice_key_token).strip()
+                    orig_t = _tonic_from_key_token(original_raw)
+                    orig_m = _mode_from_key_token(original_raw)
+                except ImportError:
+                    pass
+            source = ident.source
+            if source == "song_practice_blob":
+                source = "song_based_blob_practice_key"
+            return AuthoritativePracticeKey(
+                original_tonic=orig_t,
+                original_mode=orig_m,
+                practice_tonic=ident.practice_tonic,
+                practice_mode=ident.practice_mode,
+                source=source,
+            )
+    except ImportError:
+        pass
+    if song_catalog_context_owns_practice_key(session):
+        try:
+            from music_workflow_song_practice import resolve_song_practice_key_token
+
+            song_tok = resolve_song_practice_key_token(session)
+            if song_tok:
+                try:
+                    from songs.key_state import resolve_active_musical_key
+
+                    ctx = resolve_active_musical_key(session, rec=rec, surface="practice_key_authority")
+                    original_raw = str(ctx.original_key or song_tok).strip() or song_tok
+                except ImportError:
+                    original_raw = song_tok
+                return AuthoritativePracticeKey(
+                    original_tonic=_tonic_from_key_token(original_raw),
+                    original_mode=_mode_from_key_token(original_raw),
+                    practice_tonic=_tonic_from_key_token(song_tok),
+                    practice_mode=_mode_from_key_token(song_tok),
+                    source="song_based_blob_practice_key",
+                )
+        except ImportError:
+            pass
+    try:
         from creative_key_sync import resolve_creative_tab_practice_key_token
 
         jam_tok = resolve_creative_tab_practice_key_token(session)
@@ -101,7 +159,20 @@ def resolve_authoritative_practice_key(
         practice_raw = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
         original_raw = practice_raw
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if live and _mode_from_key_token(live) == "minor" and _mode_from_key_token(practice_raw) != "minor":
+    try:
+        from workflow_key_identity import song_or_mission_workflow_owns_practice_key
+
+        song_owns_live = song_or_mission_workflow_owns_practice_key(session)
+    except ImportError:
+        song_owns_live = False
+    if live and song_owns_live:
+        practice_raw = live
+    elif (
+        live
+        and _mode_from_key_token(live) == "minor"
+        and _mode_from_key_token(practice_raw) != "minor"
+        and not song_catalog_context_owns_practice_key(session)
+    ):
         practice_raw = live
     return AuthoritativePracticeKey(
         original_tonic=_tonic_from_key_token(original_raw),
@@ -127,6 +198,14 @@ def sidebar_key_list_mode(session: dict[str, Any]) -> str:
 
 def format_practice_concert_key_line(session: dict[str, Any], *, fallback: str = "") -> str:
     """Human label including mode, e.g. 'E♭ minor'."""
+    try:
+        from workflow_key_identity import resolve_practice_key_identity_for_ui
+
+        ident = resolve_practice_key_identity_for_ui(session)
+        if ident is not None and ident.practice_label:
+            return ident.practice_label
+    except ImportError:
+        pass
     pk = resolve_authoritative_practice_key(session)
     label = pk.practice_label()
     if label:
@@ -143,12 +222,35 @@ def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> boo
             return False
     except ImportError:
         pass
+    # SBI → Custom progression preview: sidebar PK belongs to LAST_CUSTOM, not Shape/catalog.
+    try:
+        from songs.practice_key_state import sbi_uses_custom_progression_preview
+
+        if sbi_uses_custom_progression_preview(session):
+            return False
+    except ImportError:
+        pass
+    try:
+        from backing_context import get_backing_context
+
+        ctx_early = get_backing_context(session)
+        if ctx_early is not None and str(getattr(ctx_early, "source", "") or "") == "custom_progression":
+            return False
+    except ImportError:
+        pass
     pick = str(session.get("active_catalog_pick_key") or session.get("song") or "").strip()
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
     page = str(session.get("studio_page") or "").strip().lower()
-    if pick and tab in {"Song-Based Improvisation", "Missions", "Phrase / Motif"}:
+    if pick and tab in {
+        "Song-Based Improvisation",
+        "Missions",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     if pick and page in {"practice", "picker"}:
         return True
@@ -203,7 +305,14 @@ def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
     tab = str(
         session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
     ).strip()
-    if tab in {"Missions", "Song-Based Improvisation", "Phrase / Motif"}:
+    if tab in {
+        "Missions",
+        "Song-Based Improvisation",
+        "Phrase / Motif",
+        "Harmony Map",
+        "Live Coach",
+        "Metrics & AI",
+    }:
         return True
     page = str(session.get("studio_page") or "").strip().lower()
     if page in {"practice", "picker"}:
@@ -231,6 +340,13 @@ def run_musical_context_consistency_checks(session: dict[str, Any]) -> dict[str,
 
         if song_catalog_context_owns_practice_key(session) and is_creative_major_jam_active(session):
             violations.append("KEY_MODE_OWNER_MISMATCH")
+    except ImportError:
+        pass
+    try:
+        from musical_context_coherence import run_musical_context_coherence_checks
+
+        coherence = run_musical_context_coherence_checks(session)
+        violations.extend(list(coherence.get("violations") or []))
     except ImportError:
         pass
     diag = {

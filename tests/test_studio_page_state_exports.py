@@ -10,8 +10,16 @@ def test_custom_progression_song_source_label_uses_pencil() -> None:
     )
 
     assert "Custom progression" in IMPROV_SONG_SOURCES
-    assert creative_song_source_display_label("Custom progression") == "✍️ Custom Progression"
+    assert "Composition" in IMPROV_SONG_SOURCES
+    from music_feature_icons import FEATURE_ICONS
+
+    assert creative_song_source_display_label("Custom progression") == (
+        f"{FEATURE_ICONS['custom']} Custom Progression"
+    )
     assert creative_song_source_display_label("Active song") == "Active song"
+    assert creative_song_source_display_label("Composition") == (
+        f"{FEATURE_ICONS['composition']} Composition"
+    )
 
 
 def test_entry_jam_song_source_radio_uses_display_label() -> None:

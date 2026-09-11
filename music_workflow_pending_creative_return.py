@@ -9,8 +9,73 @@ from typing import Any, Literal
 PENDING_CREATIVE_RETURN_KEY = "_music_pending_creative_return_handoff"
 PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY = "_music_pending_creative_return_consumed_token"
 PENDING_CREATIVE_RETURN_RERUN_SEQ_KEY = "_music_pending_creative_return_rerun_for_seq"
+CREATIVE_RETURN_CLICK_ARMED_SEQ_KEY = "_creative_return_click_armed_seq"
 
 ConsumePhase = Literal["applied", "skipped", "already_consumed"]
+
+
+def _style_jam_return_trace(session: dict[str, Any], stage: str, **extra: Any) -> None:
+    """Append one Return-pipeline snapshot when STYLE_JAM_RETURN_TRACE=1."""
+    import json
+    import os
+    import time
+
+    if str(os.environ.get("STYLE_JAM_RETURN_TRACE") or "").strip() not in {"1", "true", "True"}:
+        return
+    root = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+    if not root:
+        return
+    ctx_src = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+    except Exception:
+        pass
+    pending = session.get(PENDING_CREATIVE_RETURN_KEY)
+    pending_backing = session.get("_music_pending_backing_workflow_handoff")
+    row = {
+        "ts": time.time(),
+        "stage": stage,
+        "studio_page": str(session.get("studio_page") or ""),
+        "backing_source": ctx_src,
+        "explicit_handoff": str(session.get("_backing_explicit_handoff_source") or ""),
+        "entry_class": str(session.get("_backing_entry_class") or ""),
+        "open_intent": str(session.get("_backing_open_intent") or ""),
+        "improv_entry_mode": str(session.get("improv_entry_mode") or ""),
+        "improv_intelligence_tab": str(session.get("improv_intelligence_tab") or ""),
+        "improv_style_key": str(session.get("improv_style_key") or ""),
+        "pending_creative_return": bool(isinstance(pending, dict)),
+        "pending_backing_handoff": bool(isinstance(pending_backing, dict)),
+        "creative_restore": bool(session.get("_creative_restore_from_backing")),
+        "button_true": bool(extra.get("button_true")),
+        **{k: v for k, v in extra.items() if k != "button_true"},
+    }
+    try:
+        from pathlib import Path
+
+        path = Path(root) / "_style_jam_return.jsonl"
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def creative_return_owns_destination_page(session: dict[str, Any]) -> bool:
+    """True while Return to Creative is in-flight (pending or just consumed)."""
+    if isinstance(session.get(PENDING_CREATIVE_RETURN_KEY), dict):
+        return True
+    if bool(session.get("_creative_restore_from_backing")):
+        return True
+    try:
+        from backing_source_navigation import CREATIVE_RESTORE_FROM_BACKING_KEY
+
+        if bool(session.get(CREATIVE_RESTORE_FROM_BACKING_KEY)):
+            return True
+    except ImportError:
+        pass
+    return False
 
 
 def _consume_token(req: dict[str, Any]) -> str:
@@ -49,6 +114,12 @@ def queue_pending_creative_return_from_backing(session: dict[str, Any]) -> dict[
     }
     session[PENDING_CREATIVE_RETURN_KEY] = req
     session.pop(PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY, None)
+    try:
+        from creative_return_trace import trace_return_handoff_queued
+
+        trace_return_handoff_queued(session, req)
+    except ImportError:
+        pass
     return req
 
 
@@ -78,10 +149,23 @@ def request_pending_creative_return_rerun(st_module: Any, session: dict[str, Any
 def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any | None = None) -> ConsumePhase:
     pending = session.get(PENDING_CREATIVE_RETURN_KEY)
     if not isinstance(pending, dict):
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "skipped")
+        except ImportError:
+            pass
         return "skipped"
+    sealed = pending.get("sealed_context") if isinstance(pending.get("sealed_context"), dict) else {}
     token = _consume_token(pending)
     if session.get(PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY) == token:
         session.pop(PENDING_CREATIVE_RETURN_KEY, None)
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "already_consumed", sealed=sealed)
+        except ImportError:
+            pass
         return "already_consumed"
     try:
         from backing_source_navigation import CREATIVE_RESTORE_FROM_BACKING_KEY, prepare_return_to_backing_source
@@ -89,12 +173,33 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         prepare_return_to_backing_source(session)
         session[CREATIVE_RESTORE_FROM_BACKING_KEY] = True
         try:
+            from backing_context import get_backing_context
+            from song_improv_scope_authority import apply_song_improv_entry_defaults
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(ctx.source or "") == "song_improv":
+                apply_song_improv_entry_defaults(session, source="creative_return_consume")
+        except ImportError:
+            pass
+        try:
+            from generated_workflow_projection import project_generated_owner_from_active_blob
+
+            project_generated_owner_from_active_blob(session, writer="creative_return_consume")
+        except ImportError:
+            pass
+        try:
             from creative_return_trace import emit_creative_return_trace
 
             emit_creative_return_trace(session, "ON_RETURN_AFTER_PREPARE_BEFORE_NAV")
         except ImportError:
             pass
     except ImportError:
+        try:
+            from creative_return_trace import trace_return_consume_phase
+
+            trace_return_consume_phase(session, "skipped", sealed=sealed)
+        except ImportError:
+            pass
         return "skipped"
     try:
         from studio_nav_history import navigate_studio_page
@@ -102,6 +207,13 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         navigate_studio_page(session, "creative")
     except ImportError:
         session["studio_page"] = "creative"
+    try:
+        from backing_source_navigation import release_specialized_backing_owner_for_creative_return
+
+        release_specialized_backing_owner_for_creative_return(session)
+    except ImportError:
+        session.pop("_backing_explicit_handoff_source", None)
+        session.pop("_music_pending_backing_workflow_handoff", None)
     try:
         from music_persistent_state import mark_user_navigated_page_this_run
 
@@ -126,10 +238,35 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
             pass
     session[PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY] = token
     session.pop(PENDING_CREATIVE_RETURN_KEY, None)
+    _style_jam_return_trace(
+        session,
+        "consume_applied",
+        return_destination="creative",
+        entry_mode=str(session.get("improv_entry_mode") or ""),
+    )
+    try:
+        from creative_return_trace import trace_return_consume_phase
+
+        trace_return_consume_phase(session, "applied", sealed=sealed)
+    except ImportError:
+        pass
     return "applied"
 
 
 def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> None:
+    seq = int(session.get("_script_run_seq") or 0)
+    page_now = str(session.get("studio_page") or "").strip().lower()
+    if seq and session.get(CREATIVE_RETURN_CLICK_ARMED_SEQ_KEY) == seq:
+        if page_now == "creative":
+            _style_jam_return_trace(session, "click_duplicate_ignored", run_seq=seq)
+            return
+        if isinstance(session.get(PENDING_CREATIVE_RETURN_KEY), dict):
+            _style_jam_return_trace(session, "click_duplicate_consume_pending", run_seq=seq)
+            consume_pending_creative_return_handoff(session, st=st_module)
+            return
+    if seq:
+        session[CREATIVE_RETURN_CLICK_ARMED_SEQ_KEY] = seq
+    _style_jam_return_trace(session, "click_before", run_seq=seq)
     try:
         from creative_return_trace import trace_return_click_before
 
@@ -142,6 +279,13 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
         save_page_snapshot(session, "backing")
     except ImportError:
         pass
+    # Specialized Backing owner must not reclaim the page on the next consume.
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_music_pending_backing_workflow_handoff", None)
     req = queue_pending_creative_return_from_backing(session)
     if req is None:
         try:
@@ -149,21 +293,6 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
         except Exception:
             pass
         return
-    phase = consume_pending_creative_return_handoff(session, st=st_module)
-    if phase == "skipped":
-        try:
-            st_module.warning("Return to Creative could not apply backing context.")
-        except Exception:
-            pass
-        return
-    try:
-        from music_restore_phase import mark_page_snapshot_hydrated
-        from studio_page_persistence import save_page_snapshot
-
-        save_page_snapshot(session, "creative")
-        mark_page_snapshot_hydrated(session, "creative")
-    except ImportError:
-        pass
     try:
         from music_rerun_loop_guard import clear_rerun_loop_block
 
@@ -171,33 +300,78 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
     except ImportError:
         pass
     try:
-        from studio_page_route_trace import trace_return_before_rerun, trace_return_rerun_outcome
+        from studio_page_route_trace import trace_return_before_rerun
 
         trace_return_before_rerun(session, dispatch_local="backing")
     except ImportError:
         pass
+    # Queue-only like Mission Return: next pre-widget consume stamps user-nav
+    # on the same run as persist restore. Live ``st.rerun()`` raises and never
+    # reaches the fallback. Tests / blocked guards fall through and consume here.
     rerun_invoked = False
     fallback_rerun = False
+    fallback_consume = False
     try:
-        from music_app_rerun import request_app_rerun
-
-        rerun_invoked = bool(
-            request_app_rerun(
-                st_module,
-                session,
-                reason="creative_return_click",
-                stage="post_consume",
-            )
+        rerun_invoked = bool(request_pending_creative_return_rerun(st_module, session))
+    except ImportError:
+        rerun_invoked = False
+    if str(session.get("studio_page") or "").strip().lower() != "creative":
+        fallback_consume = True
+        phase = consume_pending_creative_return_handoff(session, st=st_module)
+        _style_jam_return_trace(
+            session,
+            "click_fallback_consume",
+            consume_phase=str(phase or ""),
+            rerun_invoked=rerun_invoked,
         )
+        try:
+            from creative_return_trace import emit_creative_return_trace
+
+            emit_creative_return_trace(
+                session,
+                "ON_RETURN_CLICK_AFTER_CONSUME",
+                extra={"consume_phase": str(phase or ""), "fallback": True},
+            )
+        except ImportError:
+            pass
+        if phase == "skipped":
+            try:
+                st_module.warning("Return to Creative could not apply backing context.")
+            except Exception:
+                pass
+            return
+        try:
+            from music_restore_phase import mark_page_snapshot_hydrated
+            from studio_page_persistence import save_page_snapshot
+
+            save_page_snapshot(session, "creative")
+            mark_page_snapshot_hydrated(session, "creative")
+        except ImportError:
+            pass
         if not rerun_invoked:
             fallback_rerun = True
-            st_module.rerun()
-    except ImportError:
-        try:
-            fallback_rerun = True
-            st_module.rerun()
-        except Exception:
-            pass
+            try:
+                from music_app_rerun import request_app_rerun
+
+                request_app_rerun(
+                    st_module,
+                    session,
+                    reason="creative_return_click",
+                    stage="fallback_consume",
+                )
+            except ImportError:
+                try:
+                    st_module.rerun()
+                except Exception:
+                    pass
+    _style_jam_return_trace(
+        session,
+        "click_after",
+        rerun_invoked=rerun_invoked,
+        fallback_rerun=fallback_rerun,
+        fallback_consume=fallback_consume,
+        studio_page_after=str(session.get("studio_page") or ""),
+    )
     try:
         from studio_page_route_trace import trace_return_rerun_outcome
 
@@ -225,11 +399,23 @@ def handle_return_to_creative_click(st_module: Any, session: dict[str, Any]) -> 
                 st_module.stop()
             except Exception:
                 pass
+    else:
+        try:
+            from music_app_rerun import request_app_stop
+
+            request_app_stop(st_module, session, reason="creative_return_force_stop")
+        except ImportError:
+            try:
+                st_module.stop()
+            except Exception:
+                pass
 
 
 __all__ = [
     "PENDING_CREATIVE_RETURN_KEY",
     "consume_pending_creative_return_handoff",
+    "creative_return_owns_destination_page",
     "handle_return_to_creative_click",
     "queue_pending_creative_return_from_backing",
+    "request_pending_creative_return_rerun",
 ]

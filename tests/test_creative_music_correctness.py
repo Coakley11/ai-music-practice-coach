@@ -16,7 +16,6 @@ from creative_key_sync import (
     is_creative_major_jam_active,
     prepare_creative_sidebar_display_key,
     retranspose_generated_sections,
-    sync_sidebar_creative_concert_key,
 )
 from improvisation_intelligence import generate_style_progression
 from improvisation_motif import chord_tone_names
@@ -47,6 +46,8 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
         self.assertEqual(out["Head"][0], "Dbmaj7")
 
     def test_style_jam_c_stays_concert_c_not_d(self) -> None:
+        from creative_key_sync import creative_entry_concert_key
+
         session = {
             "studio_page": "creative",
             "improv_entry_mode": "Style Jam Mode",
@@ -57,22 +58,36 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
             "show_chart_in_instrument_key": True,
         }
         st = SimpleNamespace(session_state=session)
-        options = prepare_creative_sidebar_display_key(st, session)
-        self.assertEqual(session["display_key"], "C")
-        self.assertIn("C", options)
-        self.assertNotEqual(session["display_key"], "D")
+        prepare_creative_sidebar_display_key(st, session)
+        self.assertEqual(session["improv_style_key"], "C")
+        self.assertEqual(creative_entry_concert_key(session), "C")
+        self.assertEqual(session["display_key"], "D")
 
     def test_sidebar_key_change_retransposes_style_jam(self) -> None:
+        from generated_jam_key_change import mutate_generated_practice_key_from_control
+        from music_workflow_generated_session import commit_style_jam_generation
+
         session = {
             "studio_page": "creative",
             "improv_entry_mode": "Style Jam Mode",
+            "improv_style": "Bossa Nova",
             "improv_style_key": "C",
             "improv_generated_sections": {"Head": ["Dm7", "G7", "Cmaj7"]},
             "_improv_style_key_tracker": "C",
-            "display_key": "F",
+            "display_key": "Dm",
+            "concert_key": "Dm",
         }
-        sync_sidebar_creative_concert_key(session)
+        commit_style_jam_generation(
+            session,
+            key_center="C",
+            style="Bossa Nova",
+            section_map={"Head": ["Dm7", "G7", "Cmaj7"]},
+            new_session=True,
+        )
+        session["improv_style_key"] = "F"
+        self.assertTrue(mutate_generated_practice_key_from_control(session, "F", control="style_key"))
         self.assertEqual(session["improv_style_key"], "F")
+        self.assertEqual(session.get("display_key"), "Dm")
         head = session["improv_generated_sections"]["Head"]
         self.assertNotEqual(head[0], "Dm7")
 
@@ -135,9 +150,8 @@ class TestCreativeMusicCorrectness(unittest.TestCase):
         }
         sanitize_creative_major_chart_keys(session)
         self.assertEqual(session.get("display_key"), "Bm")
-        self.assertEqual(session[PENDING_DISPLAY_KEY], "Eb")
-        self.assertEqual(session[PENDING_IMPROV_STYLE_KEY], "Eb")
-        self.assertEqual(session["concert_key"], "Eb")
+        self.assertNotEqual(session.get(PENDING_DISPLAY_KEY), "Eb")
+        self.assertIn(str(session.get("concert_key") or ""), {"Eb minor", "Ebm"})
 
     def test_regular_song_backing_disables_creative_major_jam(self) -> None:
         from backing_context import restore_regular_song_backing
