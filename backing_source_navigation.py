@@ -19,6 +19,10 @@ BACKING_PROVENANCE_CREATIVE = "creative"
 BACKING_PROVENANCE_SONGS = "songs"
 BACKING_PROVENANCE_COMPOSER = "composer"
 BACKING_PROVENANCE_DIRECT = "direct"
+BACKING_PROVENANCE_PRACTICE = "practice"
+PRACTICE_LOOP_BACKING_KEY = "_practice_loop_backing"
+_PRACTICE_LOOP_OWNERS = frozenset({"catalog", "custom", "composition"})
+_SPECIALIZED_STEAL_SOURCES = frozenset({"mission", "song_improv", "entry_jam"})
 BACKING_INTENT_RESTORE_LAST = "restore_last"
 BACKING_INTENT_FROM_PRACTICE = "from_practice"
 BACKING_INTENT_FROM_SONG_TO_BACKING = "from_song_or_practice_to_backing"
@@ -289,6 +293,7 @@ def set_backing_open_provenance(session: dict[str, Any], origin: str) -> None:
         BACKING_PROVENANCE_SONGS,
         BACKING_PROVENANCE_COMPOSER,
         BACKING_PROVENANCE_DIRECT,
+        BACKING_PROVENANCE_PRACTICE,
     }:
         origin_n = BACKING_PROVENANCE_DIRECT
     session[BACKING_OPEN_PROVENANCE_KEY] = origin_n
@@ -432,6 +437,7 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
         )
 
         if songs_hub_custom_backing_selected(session):
+            clear_practice_loop_backing_snapshot(session)
             session.pop("_force_composition_backing_open", None)
             session.pop("_composition_hub_backing_clicked", None)
             session.pop("_composition_hub_backing_pending", None)
@@ -439,6 +445,7 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
         if songs_hub_catalog_backing_selected(session):
+            clear_practice_loop_backing_snapshot(session)
             session.pop("_force_composition_backing_open", None)
             session.pop("_composition_hub_backing_clicked", None)
             session.pop("_composition_hub_backing_pending", None)
@@ -446,6 +453,7 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
             return
         if songs_hub_composition_backing_selected(session):
+            clear_practice_loop_backing_snapshot(session)
             session["_force_composition_backing_open"] = True
             set_backing_open_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
             set_backing_open_provenance(session, BACKING_PROVENANCE_SONGS)
@@ -575,6 +583,294 @@ def queue_backing_scope_from_practice_focus(
         session[PENDING_BACKING_SCOPE] = "Full song"
         session.pop(PENDING_BACKING_SINGLE_SECTION, None)
         session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+
+
+def practice_loop_backing_snapshot(session: dict[str, Any]) -> dict[str, Any] | None:
+    raw = session.get(PRACTICE_LOOP_BACKING_KEY)
+    if not isinstance(raw, dict):
+        return None
+    owner = str(raw.get("owner") or "").strip()
+    if owner not in _PRACTICE_LOOP_OWNERS:
+        return None
+    return raw
+
+
+def practice_loop_backing_is_active(session: dict[str, Any]) -> bool:
+    return practice_loop_backing_snapshot(session) is not None
+
+
+def clear_practice_loop_backing_snapshot(session: dict[str, Any]) -> None:
+    session.pop(PRACTICE_LOOP_BACKING_KEY, None)
+
+
+def resolve_regular_practice_backing_owner(session: dict[str, Any]) -> str:
+    """Catalog / Custom / Composition owner for a Practice → Backing loop click.
+
+    Ignores leftover Mission / Jam / SBI locks. Explicit Catalog or Custom
+    leave still outranks a stale composition pick.
+    """
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            cpl_session_is_active,
+            custom_progression_is_active,
+            explicit_music_source_choice,
+            is_custom_progression,
+            picker_composition_mode,
+            picker_custom_progression_mode,
+        )
+    except ImportError:
+        return "catalog"
+
+    explicit = explicit_music_source_choice(session)
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    meta = session.get("active_song_state")
+    meta_pick = (
+        str((meta or {}).get("pick_key") or "").strip() if isinstance(meta, dict) else ""
+    )
+    explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM} or bool(
+        session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+    )
+    try:
+        if picker_custom_progression_mode(session):
+            explicit_leave_composition = True
+    except Exception:
+        pass
+    pick_looks_composition = pick.startswith("composition::") or meta_pick.startswith(
+        "composition::"
+    )
+    if not explicit_leave_composition and (
+        explicit == SOURCE_COMPOSITION
+        or pick_looks_composition
+        or composition_song_is_active(session)
+        or picker_composition_mode(session)
+    ):
+        return "composition"
+    if (
+        explicit == SOURCE_CUSTOM
+        or picker_custom_progression_mode(session)
+        or custom_progression_is_active(session)
+        or cpl_session_is_active(session)
+        or is_custom_progression(session)
+        or pick.startswith("custom::")
+        or meta_pick.startswith("custom::")
+    ):
+        if explicit != SOURCE_CATALOG and not session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return "custom"
+    return "catalog"
+
+
+def _practice_loop_owner_ctx_source(owner: str) -> str:
+    if owner == "custom":
+        return "custom_progression"
+    if owner == "composition":
+        return "composition_song"
+    return "regular_song"
+
+
+def _release_specialized_for_practice_loop(session: dict[str, Any], *, owner: str) -> None:
+    """Drop Mission / Jam / SBI so an ordinary Practice loop opens regular Backing."""
+    try:
+        from backing_context import clear_backing_context, get_backing_context
+
+        ctx = get_backing_context(session)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        if src in _SPECIALIZED_STEAL_SOURCES:
+            clear_backing_context(session)
+        elif owner == "catalog" and src in {"custom_progression", "composition_song"}:
+            clear_backing_context(session)
+        elif owner == "custom" and src in {"regular_song", "composition_song"}:
+            clear_backing_context(session)
+        elif owner == "composition" and src in {"regular_song", "custom_progression"}:
+            clear_backing_context(session)
+    except ImportError:
+        pass
+    session["_backing_released_specialized_context"] = True
+    session.pop("_backing_explicit_handoff_source", None)
+    try:
+        session.pop(BACKING_ENTRY_CLASS_KEY, None)
+        session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
+    except NameError:
+        session.pop("_backing_entry_class", None)
+        session.pop("_backing_generic_catalog_entry", None)
+    try:
+        from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+        clear_pending_backing_workflow_handoff(session)
+    except ImportError:
+        session.pop("_music_pending_backing_workflow_handoff", None)
+        session.pop("_music_pending_backing_workflow_consume_armed_seq", None)
+    last_src = str(session.get("_last_valid_backing_source") or "").strip()
+    intended_src = _practice_loop_owner_ctx_source(owner)
+    if last_src in _SPECIALIZED_STEAL_SOURCES or not last_src:
+        session["_last_valid_backing_source"] = intended_src
+    else:
+        session["_last_valid_backing_source"] = intended_src
+
+
+def apply_practice_loop_backing_snapshot_scope(session: dict[str, Any]) -> None:
+    """Re-queue and stamp live section keys from the Practice loop snapshot."""
+    snap = practice_loop_backing_snapshot(session)
+    if snap is None:
+        return
+    sections = [str(x).strip() for x in list(snap.get("sections") or []) if str(x).strip()]
+    section = str(snap.get("section") or "").strip()
+    loops_raw = snap.get("loops")
+    loops = int(loops_raw) if loops_raw is not None else None
+    names = sections or ([section] if section else [])
+    if names:
+        queue_backing_scope_from_practice_focus(
+            session,
+            section_keys=names,
+            loops=loops,
+            force=True,
+        )
+        session["backing_track_scope"] = "Selected sections"
+        session["backing_track_multi_sections"] = list(names)
+        if len(names) == 1:
+            session["backing_track_single_section"] = names[0]
+        session["backing_quick_section"] = names[0] if len(names) == 1 else "Full song"
+    if loops is not None:
+        try:
+            session["backing_track_loops"] = int(loops)
+        except (TypeError, ValueError):
+            pass
+
+
+def apply_practice_loop_backing_transport(session: dict[str, Any]) -> None:
+    """Keep Practice Key / BPM from the loop click after owner rebuild."""
+    snap = practice_loop_backing_snapshot(session)
+    if snap is None:
+        return
+    bpm_raw = snap.get("bpm")
+    try:
+        bpm = int(bpm_raw) if bpm_raw is not None else 0
+    except (TypeError, ValueError):
+        bpm = 0
+    display_key = str(snap.get("display_key") or snap.get("concert_key") or "").strip()
+    concert_key = str(snap.get("concert_key") or display_key).strip()
+    original_key = str(snap.get("original_key") or "").strip()
+    if bpm > 0:
+        session["backing_track_bpm"] = bpm
+        session["bpm"] = bpm
+    if original_key:
+        session["original_key"] = original_key
+    if display_key:
+        session["display_key"] = display_key
+        session["concert_key"] = concert_key or display_key
+        session["_pending_display_key"] = display_key
+    try:
+        from backing_context import get_backing_context, set_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            if display_key:
+                ctx.display_key = display_key
+                ctx.concert_key = concert_key or display_key
+            if original_key and str(getattr(ctx, "source", "") or "") == "custom_progression":
+                ctx.key = original_key
+            if bpm > 0:
+                ctx.bpm = bpm
+            set_backing_context(session, ctx)
+    except Exception:
+        pass
+
+
+def begin_practice_loop_backing_handoff(
+    session: dict[str, Any],
+    *,
+    section_key: str | None = None,
+    section_keys: list[str] | None = None,
+    loops: int = 4,
+) -> dict[str, Any]:
+    """Stamp regular Catalog/Custom/Composition Backing from a Practice loop click."""
+    owner = resolve_regular_practice_backing_owner(session)
+    _release_specialized_for_practice_loop(session, owner=owner)
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            commit_explicit_music_source_choice,
+        )
+
+        if owner == "catalog":
+            session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+            session.pop("_force_composition_backing_open", None)
+            commit_explicit_music_source_choice(
+                session, SOURCE_CATALOG, clear_composition_oneshots=True
+            )
+        elif owner == "custom":
+            session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            session.pop("_force_composition_backing_open", None)
+            commit_explicit_music_source_choice(
+                session, SOURCE_CUSTOM, clear_composition_oneshots=True
+            )
+        elif owner == "composition":
+            session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            session["_force_composition_backing_open"] = True
+            commit_explicit_music_source_choice(
+                session, SOURCE_COMPOSITION, clear_composition_oneshots=False
+            )
+    except ImportError:
+        pass
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if not pick:
+        meta = session.get("active_song_state")
+        if isinstance(meta, dict):
+            pick = str(meta.get("pick_key") or "").strip()
+    display_key = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    concert_key = str(session.get("concert_key") or display_key).strip()
+    original_key = str(session.get("original_key") or "").strip()
+    if owner == "custom":
+        cpl = session.get("cpl_active_progression")
+        if isinstance(cpl, dict):
+            original_key = str(
+                cpl.get("original_key_center") or cpl.get("original_key") or original_key
+            ).strip()
+            if not pick:
+                pick = str(cpl.get("id") or cpl.get("name") or "").strip()
+    try:
+        bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+    except (TypeError, ValueError):
+        bpm = 0
+    names = [str(n).strip() for n in list(section_keys or []) if str(n).strip()]
+    section = str(section_key or "").strip()
+    if not names and section:
+        names = [section]
+    if not names:
+        names = _practice_focus_section_names(session, _backing_sections_for_practice_handoff(session))
+        if names:
+            section = names[0]
+    snap = {
+        "owner": owner,
+        "pick_key": pick,
+        "section": section or (names[0] if names else ""),
+        "sections": names,
+        "loops": int(loops),
+        "display_key": display_key,
+        "concert_key": concert_key,
+        "original_key": original_key,
+        "bpm": bpm,
+        "from_page": "practice",
+    }
+    session[PRACTICE_LOOP_BACKING_KEY] = snap
+    set_backing_open_intent(session, BACKING_INTENT_FROM_PRACTICE)
+    set_backing_open_provenance(session, BACKING_PROVENANCE_PRACTICE)
+    queue_backing_scope_from_practice_focus(
+        session,
+        section_key=section or None,
+        section_keys=names or None,
+        loops=int(loops),
+        force=True,
+    )
+    apply_practice_loop_backing_snapshot_scope(session)
+    return snap
 
 
 def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
@@ -729,6 +1025,8 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     """Open Backing Studio for the current Practice catalog/custom/composition source (Case C)."""
     snapshot_practice_source_display_key(session)
     preserve_key = _handoff_preserves_practice_key(session)
+    _loop_snap = practice_loop_backing_snapshot(session)
+    stamped_owner = str((_loop_snap or {}).get("owner") or "").strip()
     # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
@@ -742,6 +1040,10 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         )
 
         force_composition = bool(session.pop("_force_composition_backing_open", None))
+        if stamped_owner == "composition":
+            force_composition = True
+        elif stamped_owner in {"catalog", "custom"}:
+            force_composition = False
         explicit = explicit_music_source_choice(session)
         pick_now = str(session.get("active_catalog_pick_key") or "").strip()
         meta = session.get("active_song_state")
@@ -767,17 +1069,24 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             )
         except ImportError:
             explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
-        if explicit_leave_composition:
+        if explicit_leave_composition or stamped_owner in {"catalog", "custom"}:
             pick_looks_composition = False
-            force_composition = False
+            if stamped_owner in {"catalog", "custom"}:
+                force_composition = False
+            elif explicit_leave_composition:
+                force_composition = False
         if (
             force_composition
-            or explicit == SOURCE_COMPOSITION
-            or (pick_looks_composition and not explicit_leave_composition)
             or (
-                (composition_song_is_active(session) or picker_composition_mode(session))
-                and not explicit_leave_composition
+                stamped_owner == "composition"
+                or explicit == SOURCE_COMPOSITION
+                or (pick_looks_composition and not explicit_leave_composition)
+                or (
+                    (composition_song_is_active(session) or picker_composition_mode(session))
+                    and not explicit_leave_composition
+                )
             )
+            and stamped_owner not in {"catalog", "custom"}
         ):
             from backing_context import (
                 apply_backing_context_to_session,
@@ -814,6 +1123,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
         if (
             not session.get("_backing_released_specialized_context")
+            and stamped_owner not in _PRACTICE_LOOP_OWNERS
             and handoff in {"mission", "song_improv", "entry_jam"}
             and (live_src == handoff or live_src in {"", handoff})
         ):
@@ -890,7 +1200,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         # intended_practice_owner is None (intentional Creative still active).
         existing = get_backing_context(session)
         existing_src = str(getattr(existing, "source", "") or "").strip() if existing else ""
-        if existing_src in {"mission", "song_improv", "entry_jam"}:
+        if existing_src in {"mission", "song_improv", "entry_jam"} and stamped_owner not in _PRACTICE_LOOP_OWNERS:
             return existing
 
         if cpl_session_is_active(session) or is_custom_progression(session):
@@ -1638,6 +1948,7 @@ def restore_last_valid_backing_on_ordinary_nav(session: dict[str, Any], *, st_li
 
 def mark_specialized_backing_handoff_entry(session: dict[str, Any]) -> None:
     """Seal explicit specialized Backing entry (consumed once on hydrate)."""
+    clear_practice_loop_backing_snapshot(session)
     session[BACKING_ENTRY_CLASS_KEY] = BACKING_ENTRY_SPECIALIZED_HANDOFF
     session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None)
     # New explicit Creative → Backing handoff outranks a prior release latch.
@@ -2270,6 +2581,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
         )
         _align_live_catalog_pick_to_selected_song(session)
+        _practice_loop = practice_loop_backing_is_active(session)
+        if _practice_loop:
+            session["_backing_released_specialized_context"] = True
+            session.pop("_backing_explicit_handoff_source", None)
         # Reboot/refresh of nested Creative SBI/Mission Backing: do not treat a
         # stale catalog ctx as restore_last — reopen Creative specialized ownership.
         try:
@@ -2280,10 +2595,14 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
 
             ctx = get_backing_context(session)
             ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
-            if creative_nested_backing_should_override_catalog(session) and ctx_src in {
-                "",
-                "regular_song",
-            }:
+            if (
+                not _practice_loop
+                and creative_nested_backing_should_override_catalog(session)
+                and ctx_src in {
+                    "",
+                    "regular_song",
+                }
+            ):
                 open_backing_for_creative_source(session, st_like=st_like)
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
@@ -2291,6 +2610,9 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             pass
         if restore_last_valid_backing_on_ordinary_nav(session, st_like=st_like):
             # Keep specialized (and catalog) identity armed across browser refresh.
+            if _practice_loop:
+                apply_practice_loop_backing_snapshot_scope(session)
+                apply_practice_loop_backing_transport(session)
             set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
             return
         # Explicit Creative handoff must not fall through to regular song Backing.
@@ -2300,6 +2622,12 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ctx = get_backing_context(session)
             handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
             specialized = {"mission", "song_improv", "entry_jam", "custom_progression"}
+            if _practice_loop:
+                open_backing_for_practice_source(session, st_like=st_like)
+                apply_practice_loop_backing_snapshot_scope(session)
+                apply_practice_loop_backing_transport(session)
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                return
             if (
                 ctx is not None
                 and str(getattr(ctx, "source", "") or "") in specialized
@@ -2365,6 +2693,14 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         _saved_section = session.get(PENDING_BACKING_SINGLE_SECTION)
         _saved_multi = session.get(PENDING_BACKING_MULTI_SECTIONS)
         _saved_loops = session.get(PENDING_BACKING_LOOPS)
+        if intent == BACKING_INTENT_FROM_PRACTICE and not practice_loop_backing_is_active(session):
+            begin_practice_loop_backing_handoff(session)
+            _saved_scope = session.get(PENDING_BACKING_SCOPE) or _saved_scope
+            _saved_section = session.get(PENDING_BACKING_SINGLE_SECTION) or _saved_section
+            _saved_multi = session.get(PENDING_BACKING_MULTI_SECTIONS) or _saved_multi
+            _saved_loops = session.get(PENDING_BACKING_LOOPS) if session.get(PENDING_BACKING_LOOPS) is not None else _saved_loops
+        _loop_snap = practice_loop_backing_snapshot(session)
+        _loop_owner = str((_loop_snap or {}).get("owner") or "").strip()
         # Songs→Backing with Composition radio must not revive a stale Custom
         # preference even when the force one-shot was lost mid-remount.
         try:
@@ -2374,7 +2710,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 picker_composition_mode,
             )
 
-            if picker_composition_mode(session):
+            if picker_composition_mode(session) and _loop_owner not in {"catalog", "custom"}:
                 session["_force_composition_backing_open"] = True
                 commit_explicit_music_source_choice(
                     session,
@@ -2395,6 +2731,9 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 session[PENDING_BACKING_LOOPS] = int(_saved_loops)
         else:
             queue_backing_scope_from_practice_focus(session, force=True)
+        if intent == BACKING_INTENT_FROM_PRACTICE:
+            apply_practice_loop_backing_snapshot_scope(session)
+            apply_practice_loop_backing_transport(session)
         consume_key_transition_intent(session)
         return
     try:
@@ -3209,14 +3548,20 @@ def rehydrate_creative_from_backing_context(
     return True
 
 
-def target_page_for_backing_context(ctx: BackingContext | None) -> CreativeReturnPage:
+def target_page_for_backing_context(
+    ctx: BackingContext | None,
+    session: dict[str, Any] | None = None,
+) -> CreativeReturnPage:
     """Resolve studio page id for Edit-in-Creative / return-to-source.
 
     Persistence contract: Creative → SBI → Custom is a *nested* Creative workflow.
     Selecting the Custom source tab inside SBI must never become top-level ``custom``.
     Only true Custom Progression Lab backing (``custom_progression``) returns to
     the Custom page. Custom SBI Backing returns to Creative with SBI + Custom source.
+    Practice loop clicks return to Practice.
     """
+    if session is not None and practice_loop_backing_is_active(session):
+        return "practice"
     if ctx is None:
         return "practice"
     if ctx.source == "custom_progression":
@@ -3546,7 +3891,9 @@ def restore_session_widgets_from_backing_context(
 def prepare_return_to_backing_source(session: dict[str, Any]) -> CreativeReturnPage:
     """Restore Creative from launch-sealed return route + backing_context snapshot."""
     ctx = get_backing_context(session)
-    page = target_page_for_backing_context(ctx)
+    if practice_loop_backing_is_active(session):
+        return "practice"
+    page = target_page_for_backing_context(ctx, session=session)
     if ctx is None:
         return page
     route = None
@@ -3743,11 +4090,16 @@ def return_to_catalog_song_backing_label(*, custom: bool = False) -> str:
     return "🎧 Return to Regular Catalog Song Backing"
 
 
-def return_to_source_button_label(ctx: BackingContext | None) -> str:
+def return_to_source_button_label(
+    ctx: BackingContext | None,
+    session: dict[str, Any] | None = None,
+) -> str:
     """User-facing label for the return-to-source button.
 
     Custom SBI stays under Creative (nested SBI Custom source) — never top-level Custom.
     """
+    if session is not None and practice_loop_backing_is_active(session):
+        return "Return to Practice"
     if ctx is None:
         return "Return to source"
     if ctx.source == "custom_progression":
@@ -3785,7 +4137,9 @@ __all__ = [
     "BACKING_PROVENANCE_COMPOSER",
     "BACKING_PROVENANCE_CREATIVE",
     "BACKING_PROVENANCE_DIRECT",
+    "BACKING_PROVENANCE_PRACTICE",
     "BACKING_PROVENANCE_SONGS",
+    "PRACTICE_LOOP_BACKING_KEY",
     "KEY_TRANSITION_INTENT_KEY",
     "CreativeReturnPage",
     "PRACTICE_SOURCE_DISPLAY_KEY",
@@ -3806,6 +4160,11 @@ __all__ = [
     "restore_last_valid_backing_on_ordinary_nav",
     "merge_live_practice_into_creative_session",
     "open_backing_for_practice_source",
+    "begin_practice_loop_backing_handoff",
+    "practice_loop_backing_is_active",
+    "practice_loop_backing_snapshot",
+    "clear_practice_loop_backing_snapshot",
+    "resolve_regular_practice_backing_owner",
     "prepare_global_backing_navigation",
     "peek_backing_open_provenance",
     "restore_practice_backing_if_stale",

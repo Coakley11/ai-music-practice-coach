@@ -860,7 +860,7 @@ def render_backing_edit_source_action(
     """Button row under the backing card — return to the source editor."""
     from backing_source_navigation import return_to_source_button_label
 
-    label = return_to_source_button_label(ctx)
+    label = return_to_source_button_label(ctx, session=session)
     if st.button(label, key="backing_edit_source_btn", use_container_width=False):
         on_navigate()
 

@@ -7341,27 +7341,36 @@ BACKING_PLAY_FEEDBACK_KEY = "_backing_play_feedback"
 def _prepare_backing_from_practice(focus: str | None) -> None:
     """Carry Practice section focus into Backing Track (pending keys — safe for widgets)."""
     try:
-        from backing_source_navigation import (
-            BACKING_INTENT_FROM_PRACTICE,
-            queue_backing_scope_from_practice_focus,
-            set_backing_open_intent,
-        )
+        from backing_source_navigation import begin_practice_loop_backing_handoff
 
-        set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
-        queue_backing_scope_from_practice_focus(
+        begin_practice_loop_backing_handoff(
             st.session_state,
             section_key=str(focus or "").strip() or None,
             loops=4,
         )
     except ImportError:
-        if practice_is_full_song(focus):
-            st.session_state[PENDING_BACKING_SCOPE] = "Full song"
-            st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
-        else:
-            st.session_state[PENDING_BACKING_SCOPE] = "Selected sections"
-            st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
-            st.session_state[PENDING_BACKING_MULTI_SECTIONS] = [focus]
-            st.session_state[PENDING_BACKING_LOOPS] = 4
+        try:
+            from backing_source_navigation import (
+                BACKING_INTENT_FROM_PRACTICE,
+                queue_backing_scope_from_practice_focus,
+                set_backing_open_intent,
+            )
+
+            set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+            queue_backing_scope_from_practice_focus(
+                st.session_state,
+                section_key=str(focus or "").strip() or None,
+                loops=4,
+            )
+        except ImportError:
+            if practice_is_full_song(focus):
+                st.session_state[PENDING_BACKING_SCOPE] = "Full song"
+                st.session_state.pop(PENDING_BACKING_SINGLE_SECTION, None)
+            else:
+                st.session_state[PENDING_BACKING_SCOPE] = "Selected sections"
+                st.session_state[PENDING_BACKING_SINGLE_SECTION] = focus
+                st.session_state[PENDING_BACKING_MULTI_SECTIONS] = [focus]
+                st.session_state[PENDING_BACKING_LOOPS] = 4
     st.session_state[BACKING_AUTOPLAY] = True
 
 
@@ -10285,6 +10294,15 @@ def _render_backing_return_source_action() -> None:
 
         def _go_source() -> None:
             save_page_snapshot(st.session_state, "backing")
+            try:
+                from backing_source_navigation import practice_loop_backing_is_active
+
+                if practice_loop_backing_is_active(st.session_state):
+                    navigate_studio_page(st.session_state, "practice")
+                    st.rerun()
+                    return
+            except ImportError:
+                pass
             src = str(getattr(ctx, "source", "") or "")
             if src == "custom_progression":
                 # Custom Backing → actual Custom page (not Creative).
