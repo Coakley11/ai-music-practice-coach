@@ -37,6 +37,7 @@ from songs.key_state import (
 from songs.music_source import (
     LAST_CATALOG_STATE_KEY,
     CATALOG_BEFORE_CUSTOM_KEY,
+    EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
     PENDING_CUSTOM_ACTIVE_SONG_KEY,
     PENDING_CUSTOM_LIBRARY_ACTION_KEY,
     SOURCE_CATALOG,
@@ -192,7 +193,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         active["original_key_center"] = "D"
         st = SimpleNamespace(session_state={
             "active_music_source": SOURCE_CUSTOM,
-            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
             CPL_ACTIVE_KEY: active,
             SELECTED_SONG_STATE_KEY: {
                 "pick_key": "custom::draft-1",
@@ -458,6 +459,7 @@ class TestCplSetActiveSong(unittest.TestCase):
         self.assertEqual(before_custom.get("pick_key"), PK_SAY)
 
     def test_reconcile_picker_music_source_activates_custom_on_picker_page(self) -> None:
+        """Without explicit stamp, hydrate from ACTIVE — do not promote live Custom radio."""
         session = {
             "studio_page": "picker",
             "song_picker_active_source": SONG_PICKER_SOURCE_CUSTOM,
@@ -470,8 +472,10 @@ class TestCplSetActiveSong(unittest.TestCase):
             },
             ACTIVE_CATALOG_PICK_KEY: PK_SAY,
         }
-        self.assertTrue(reconcile_picker_music_source(session))
-        self.assertEqual(session["active_music_source"], SOURCE_CUSTOM)
+        reconcile_picker_music_source(session)
+        # Live Custom radio must not steal Catalog ACTIVE without an explicit stamp.
+        self.assertEqual(session["active_music_source"], SOURCE_CATALOG)
+        self.assertEqual(session["song_picker_active_source"], SONG_PICKER_SOURCE_CATALOG)
 
     def test_save_and_restore_last_catalog_snapshot(self) -> None:
         session = {

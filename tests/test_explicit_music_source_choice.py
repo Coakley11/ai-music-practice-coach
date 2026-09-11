@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from music_source_ownership import intended_practice_owner
 from songs.music_source import (
@@ -57,11 +58,31 @@ class ExplicitMusicSourceChoiceTests(unittest.TestCase):
         self.assertTrue(custom_progression_is_active(ss))
         self.assertEqual(intended_practice_owner(ss), "custom")
 
-    def test_reconcile_does_not_overwrite_custom_radio_with_composition_pick(self) -> None:
+    def test_reconcile_snaps_custom_radio_to_composition_active_without_explicit(self) -> None:
+        """Without an explicit stamp, hydrate from ACTIVE — do not promote live radio."""
         ss = {
             ACTIVE_MUSIC_SOURCE_KEY: SOURCE_COMPOSITION,
             "active_catalog_pick_key": "composition::doc1",
             SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "studio_page": "picker",
+            "page": "picker",
+        }
+        reconcile_music_picker_source_widget(ss)
+        # No explicit → sync aligns radio to ACTIVE Composition; does not invent Custom.
+        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_COMPOSITION)
+        self.assertNotEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_CUSTOM)
+        self.assertEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
+        )
+
+    def test_reconcile_snaps_composition_radio_to_custom_explicit(self) -> None:
+        """Leftover Composition radio must not steal a committed Custom leave."""
+        label = song_picker_composition_option_label()
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::mine",
+            SONG_PICKER_ACTIVE_SOURCE_KEY: label,
             "studio_page": "picker",
             "page": "picker",
         }
@@ -71,23 +92,6 @@ class ExplicitMusicSourceChoiceTests(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
         self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
         self.assertFalse(composition_song_is_active(ss))
-
-    def test_reconcile_does_not_overwrite_composition_radio_with_custom_pick(self) -> None:
-        label = song_picker_composition_option_label()
-        ss = {
-            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
-            "active_catalog_pick_key": "custom::mine",
-            SONG_PICKER_ACTIVE_SOURCE_KEY: label,
-            "studio_page": "picker",
-            "page": "picker",
-        }
-        changed = reconcile_music_picker_source_widget(ss)
-        self.assertTrue(changed)
-        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_COMPOSITION)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
-        self.assertTrue(composition_song_is_active(ss))
-        self.assertFalse(custom_progression_is_active(ss))
-        self.assertIsNone(intended_practice_owner(ss))
 
     def test_catalog_stamp_outranks_composition_pick(self) -> None:
         ss = {
@@ -140,14 +144,16 @@ class ExplicitMusicSourceChoiceTests(unittest.TestCase):
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
             EXPLICIT_MUSIC_SOURCE_SEQ_KEY: 3,
         }
-        # Radio is Composition — ownership readers must not stay on Custom.
-        self.assertTrue(composition_song_is_active(ss))
-        self.assertFalse(custom_progression_is_active(ss))
+        # Remount leftover Composition radio must not steal committed Custom.
+        # Real Composition clicks commit via on_change before reconcile.
+        self.assertFalse(composition_song_is_active(ss))
+        self.assertTrue(custom_progression_is_active(ss))
         changed = reconcile_music_picker_source_widget(ss)
         self.assertTrue(changed)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
-        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_COMPOSITION)
-        self.assertIsNone(intended_practice_owner(ss))
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
+        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_CUSTOM)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(intended_practice_owner(ss), "custom")
 
 
 
@@ -211,6 +217,174 @@ class ExplicitMusicSourceChoiceTests(unittest.TestCase):
         clear_composition_one_shot_nav_flags(ss)
         self.assertTrue(ss.get("_composition_hub_backing_pending"))
         self.assertTrue(ss.get("_force_composition_backing_open"))
+
+    def test_sync_skips_snap_when_mounted_radio_differs_from_last(self) -> None:
+        """prepare commits before sync; sync alone may snap if prepare did not run."""
+        from songs.music_source import (
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY,
+            SONGS_SOURCE_RADIO_MOUNTED_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            prepare_song_picker_source_radio,
+        )
+
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            SONGS_SOURCE_RADIO_MOUNTED_KEY: True,
+            "active_catalog_pick_key": "custom::mine",
+            "studio_page": "picker",
+        }
+        reran = {"n": 0}
+
+        class _St:
+            session_state = ss
+
+            def rerun(self) -> None:
+                reran["n"] += 1
+
+        with mock.patch(
+            "songs.music_source.switch_to_catalog_from_custom",
+            return_value=None,
+        ):
+            prepare_song_picker_source_radio(
+                _St(),
+                song_picker_catalog={},
+                song_library={},
+                invalidate_backing=lambda: None,
+            )
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertGreaterEqual(reran["n"], 1)
+
+    def test_upload_remount_snaps_stale_catalog_when_not_mounted(self) -> None:
+        """Custom→Upload→Songs: off-Songs snap keeps radio aligned; prepare no-ops."""
+        from songs.music_source import (
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            prepare_song_picker_source_radio,
+            reconcile_picker_music_source,
+        )
+
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY: SONG_PICKER_SOURCE_CUSTOM,
+            "studio_page": "upload",
+            "page": "upload",
+            "active_catalog_pick_key": "custom::mine",
+        }
+
+        class _St:
+            session_state = ss
+
+            def rerun(self) -> None:
+                raise AssertionError("aligned remount must not commit via on_change rerun")
+
+        # Off Songs aligns dormant radio + last to explicit Custom.
+        reconcile_picker_music_source(ss)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(ss[LAST_SONG_PICKER_SOURCE_CHOICE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        ss["studio_page"] = "picker"
+        ss["page"] = "picker"
+        # Aligned return: live already matches explicit — prepare must not steal.
+        prepare_song_picker_source_radio(
+            _St(),
+            song_picker_catalog={},
+            song_library={},
+            invalidate_backing=lambda: None,
+        )
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
+
+        # Leftover Catalog after off-Songs snap is treated as a Songs click
+        # (prepare cannot distinguish remount reset from a real click). Off-Songs
+        # alignment is the guard against Upload→Songs steal.
+        ss[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        with mock.patch(
+            "songs.music_source.switch_to_catalog_from_custom",
+            return_value=None,
+        ):
+            class _St2:
+                session_state = ss
+
+                def rerun(self) -> None:
+                    pass
+
+            prepare_song_picker_source_radio(
+                _St2(),
+                song_picker_catalog={},
+                song_library={},
+                invalidate_backing=lambda: None,
+            )
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+
+    def test_set_custom_source_does_not_clobber_composition_explicit(self) -> None:
+        from songs.music_source import set_custom_source
+
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_COMPOSITION,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_COMPOSITION,
+            "active_catalog_pick_key": "composition::doc1",
+        }
+        set_custom_source(ss)
+        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_CUSTOM)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+
+    def test_set_custom_source_soft_aligns_catalog_stamp(self) -> None:
+        from songs.music_source import set_custom_source
+
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CATALOG,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CATALOG,
+            USER_CATALOG_SOURCE_CHOICE_KEY: True,
+        }
+        set_custom_source(ss)
+        self.assertEqual(ss[ACTIVE_MUSIC_SOURCE_KEY], SOURCE_CUSTOM)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
+        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
+
+    def test_commit_pending_when_last_already_matches_live_catalog(self) -> None:
+        """on_change may set last=Catalog before explicit commits — still commit."""
+        from songs.music_source import (
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY,
+            SONGS_SOURCE_RADIO_MOUNTED_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            commit_pending_song_picker_radio_click,
+        )
+
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            # Poisoned last: matches live Catalog while explicit still Custom.
+            LAST_SONG_PICKER_SOURCE_CHOICE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            SONGS_SOURCE_RADIO_MOUNTED_KEY: True,
+            "active_catalog_pick_key": "custom::mine",
+            "studio_page": "picker",
+        }
+        reran = {"n": 0}
+
+        class _St:
+            session_state = ss
+
+            def rerun(self) -> None:
+                reran["n"] += 1
+
+        with mock.patch(
+            "songs.music_source.switch_to_catalog_from_custom",
+            return_value=None,
+        ):
+            ok = commit_pending_song_picker_radio_click(
+                _St(),
+                song_picker_catalog={},
+                song_library={},
+                invalidate_backing=lambda: None,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertGreaterEqual(reran["n"], 1)
 
 
 if __name__ == "__main__":

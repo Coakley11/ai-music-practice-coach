@@ -796,7 +796,7 @@ def rebuild_catalog_backing_from_canonical_pick(
 
     pick = str(pick_key or "").strip() or active_catalog_pick_key(session)
     _write_catalog_rebuild_trace(session, pick_key=pick)
-    if not pick or pick.startswith("custom::"):
+    if not pick or pick.startswith("custom::") or pick.startswith("composition::"):
         _write_catalog_rebuild_trace(
             session,
             ran=False,

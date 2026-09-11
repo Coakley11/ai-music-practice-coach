@@ -393,14 +393,15 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
         self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
 
-    def test_live_catalog_radio_outranks_lagging_composition_stamp(self) -> None:
+    def test_stale_catalog_radio_snaps_to_composition_explicit(self) -> None:
+        """Hydration snaps leftover Catalog radio to committed Composition — no promote."""
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
             SONG_PICKER_SOURCE_CATALOG,
-            SOURCE_CATALOG,
             SOURCE_COMPOSITION,
             reconcile_picker_music_source,
+            song_picker_composition_option_label,
         )
 
         ss = {
@@ -411,26 +412,19 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             "active_catalog_pick_key": "composition::still-there",
         }
         reconcile_picker_music_source(ss)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
-        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+        self.assertEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
+        )
 
-    def test_live_custom_radio_outranks_stale_user_catalog_widget_reconcile(
-        self,
-    ) -> None:
-        """Cold-start Catalog→Custom must not snap the radio back to Catalog.
-
-        First divergence (pre-fix): ``picker_custom_progression_mode`` returns
-        False while ``USER_CATALOG`` is set, so reconcile fell through to the
-        ``phase_done and USER_CATALOG`` branch and ``_assign_song_picker_source_widget``
-        forced Catalog — even though the live widget value was already Custom.
-        """
+    def test_stale_custom_radio_snaps_to_catalog_explicit(self) -> None:
+        """Hydration snaps leftover Custom radio to committed Catalog leave."""
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
             SONG_PICKER_SOURCE_CATALOG,
             SONG_PICKER_SOURCE_CUSTOM,
             SOURCE_CATALOG,
-            SOURCE_CUSTOM,
             USER_CATALOG_SOURCE_CHOICE_KEY,
             picker_custom_progression_mode,
             reconcile_music_picker_source_widget,
@@ -445,14 +439,11 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             "active_music_source": SOURCE_CATALOG,
             "active_catalog_pick_key": "catalog::Say",
         }
-        # Mode helper still vetoes under USER_CATALOG (hub/nav contract).
         self.assertFalse(picker_custom_progression_mode(ss))
         reconcile_music_picker_source_widget(ss)
-        # Live widget must win — radio stays Custom; catalog stamp cleared.
-        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
-        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
-        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
 
     def test_empty_picker_widget_does_not_reclaim_composition_mid_remount(self) -> None:
         """Empty widget key must not force Composition over an in-flight leave click."""
@@ -495,16 +486,16 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
         )
 
-    def test_live_catalog_widget_outranks_composition_explicit_in_widget_reconcile(
+    def test_stale_catalog_widget_snaps_to_composition_explicit_in_widget_reconcile(
         self,
     ) -> None:
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
             SONG_PICKER_SOURCE_CATALOG,
-            SOURCE_CATALOG,
             SOURCE_COMPOSITION,
             reconcile_music_picker_source_widget,
+            song_picker_composition_option_label,
         )
 
         ss = {
@@ -516,14 +507,16 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             "active_catalog_pick_key": "composition::still-there",
         }
         reconcile_music_picker_source_widget(ss)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
-        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
-        self.assertEqual(ss["active_music_source"], SOURCE_CATALOG)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
+        self.assertEqual(
+            ss[SONG_PICKER_ACTIVE_SOURCE_KEY], song_picker_composition_option_label()
+        )
+        self.assertEqual(ss["active_music_source"], SOURCE_COMPOSITION)
 
     def test_live_composition_radio_outranks_stale_user_catalog_widget_reconcile(
         self,
     ) -> None:
-        """Same USER_CATALOG veto must not snap a live Composition radio to Catalog."""
+        """Committed Catalog leave outranks a leftover Composition radio remount."""
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
             SONG_PICKER_ACTIVE_SOURCE_KEY,
@@ -546,10 +539,63 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             "active_catalog_pick_key": "catalog::Say",
         }
         reconcile_music_picker_source_widget(ss)
-        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], comp)
-        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
-        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_COMPOSITION)
-        self.assertNotIn(USER_CATALOG_SOURCE_CHOICE_KEY, ss)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CATALOG)
+        self.assertNotEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], comp)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CATALOG)
+        self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+
+    def test_composition_hub_hidden_when_custom_leave_outranks_radio(self) -> None:
+        """Leftover Composition radio must not show Composition hub over Custom leave."""
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_CUSTOM,
+            music_picker_shows_composition_hub,
+            reconcile_music_picker_source_widget,
+            song_picker_composition_option_label,
+            sync_song_picker_source_widget,
+        )
+
+        comp = song_picker_composition_option_label()
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            "_streamlit_widgets_locked_this_run": True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: comp,
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::My Progression",
+        }
+        self.assertFalse(music_picker_shows_composition_hub(ss))
+        sync_song_picker_source_widget(ss, force=True)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        reconcile_music_picker_source_widget(ss)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertFalse(music_picker_shows_composition_hub(ss))
+
+    def test_force_sync_snaps_stale_catalog_radio_to_custom_leave(self) -> None:
+        """Hydration must snap leftover Catalog radio to committed Custom — never promote."""
+        from songs.music_source import (
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_CUSTOM,
+            SOURCE_CUSTOM,
+            sync_song_picker_source_widget,
+        )
+
+        ss = {
+            "studio_page": "picker",
+            "_music_restore_phase_complete": True,
+            EXPLICIT_MUSIC_SOURCE_CHOICE_KEY: SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY: SONG_PICKER_SOURCE_CATALOG,
+            "active_music_source": SOURCE_CUSTOM,
+            "active_catalog_pick_key": "custom::My Progression",
+        }
+        sync_song_picker_source_widget(ss, force=True)
+        self.assertEqual(ss[SONG_PICKER_ACTIVE_SOURCE_KEY], SONG_PICKER_SOURCE_CUSTOM)
+        self.assertEqual(ss[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY], SOURCE_CUSTOM)
 
     def test_ensure_composition_refuses_live_catalog_or_custom_radio(self) -> None:
         """Hub promote must not force Composition over a live leave radio."""
@@ -593,9 +639,8 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
     def test_ensure_composition_promotes_when_live_radio_beats_lagging_custom(
         self,
     ) -> None:
-        """Live Composition radio outranks lagging explicit Custom (unit / mid-flight)."""
+        """Committed Custom leave blocks ensure; on_change commits before ensure."""
         from types import SimpleNamespace
-        from unittest.mock import patch
 
         from songs.music_source import (
             EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
@@ -614,36 +659,13 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
             "_composition_reset_practice_on_ensure": True,
         }
         st = SimpleNamespace(session_state=ss)
-        sentinel = {"id": "composition::promoted", "original_key_center": "C"}
-        with (
-            patch(
-                "composition_songs_bridge.ensure_composition_library_hydrated",
-            ),
-            patch(
-                "composition_songs_bridge.mark_composition_songs_source_ready",
-            ),
-            patch(
-                "composition_songs_bridge.set_composition_source",
-            ),
-            patch(
-                "composition_songs_bridge.ensure_generic_composition_document",
-                return_value=sentinel,
-            ),
-            patch(
-                "composition_songs_bridge.commit_composition_active_song",
-                return_value=sentinel,
-            ) as commit_mock,
-        ):
-            doc = ensure_composition_owns_active_song(
-                st, invalidate_backing=lambda _s: None
-            )
-        self.assertIs(doc, sentinel)
-        commit_mock.assert_called_once()
-        self.assertTrue(
-            commit_mock.call_args.kwargs.get("reset_practice_to_original")
+        doc = ensure_composition_owns_active_song(
+            st, invalidate_backing=lambda _s: None
         )
-        self.assertEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_COMPOSITION)
-        self.assertNotIn("_composition_ensure_skipped_explicit_leave", ss)
+        self.assertIsNone(doc)
+        self.assertEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_CUSTOM)
+        self.assertTrue(ss.get("_composition_ensure_skipped_explicit_leave"))
+        self.assertNotEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_COMPOSITION)
 
     def test_ensure_composition_refuses_catalog_leave_when_radio_unmounted(self) -> None:
         """Songs→Backing remounts drop the radio key; USER_CATALOG must still win."""
@@ -670,7 +692,10 @@ class TestExplicitSourceSwitchPriority(unittest.TestCase):
         self.assertIsNone(doc)
         self.assertTrue(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
         self.assertEqual(ss.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY), SOURCE_CATALOG)
-        self.assertTrue(ss.get("_composition_ensure_skipped_user_catalog"))
+        self.assertTrue(
+            ss.get("_composition_ensure_skipped_user_catalog")
+            or ss.get("_composition_ensure_skipped_explicit_leave")
+        )
 
     def test_picker_snapshot_does_not_restore_stale_source_radio(self) -> None:
         from songs.music_source import (

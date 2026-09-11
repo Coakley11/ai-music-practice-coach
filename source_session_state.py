@@ -52,13 +52,14 @@ def sync_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
         for fallback_key in ("_catalog_before_custom_state", "_last_catalog_song_state"):
             raw = session.get(fallback_key)
             if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
-                if not str(raw.get("pick_key") or "").strip().startswith("custom::"):
+                fb_pick = str(raw.get("pick_key") or "").strip()
+                if not fb_pick.startswith("custom::") and not fb_pick.startswith("composition::"):
                     snap = dict(raw)
                     break
     if not snap:
         return None
     pick = str(snap.get("pick_key") or "").strip()
-    if not pick or pick.startswith("custom::"):
+    if not pick or pick.startswith("custom::") or pick.startswith("composition::"):
         return None
     try:
         from songs.practice_key_state import get_practice_concert_key
@@ -77,7 +78,7 @@ def get_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
     raw = session.get(CATALOG_SESSION_KEY)
     if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip():
         pick = str(raw.get("pick_key") or "").strip()
-        if not pick.startswith("custom::"):
+        if not pick.startswith("custom::") and not pick.startswith("composition::"):
             return raw
     return sync_catalog_session(session)
 

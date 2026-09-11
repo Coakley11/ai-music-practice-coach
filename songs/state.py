@@ -1180,6 +1180,11 @@ def apply_pick_key(
                     effective_display_key = original_key
         except ImportError:
             pass
+        # Live pick must be catalog before identity/backing reset — otherwise
+        # ``build_regular_song_context`` re-binds stale composition:: ids while
+        # the title already shows the new catalog song (Gravity → My Composition).
+        st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
         on_active_song_identity_changed(
             st,
             pick_key=pick_key,
@@ -1213,6 +1218,29 @@ def apply_pick_key(
         st.session_state[PENDING_DISPLAY_KEY] = data["key"]
     st.session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
     st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick_key
+    try:
+        from songs.music_source import (
+            LAST_CATALOG_STATE_KEY,
+            _catalog_snapshot_from_session,
+            _pick_key_is_catalog,
+        )
+
+        if _pick_key_is_catalog(pick_key):
+            snap = _catalog_snapshot_from_session(st.session_state)
+            if snap:
+                st.session_state[LAST_CATALOG_STATE_KEY] = dict(snap)
+            try:
+                from songs.music_source import push_catalog_recent_pick_key
+
+                # Keep prior catalog picks for previous-song restore even when
+                # LAST is rewritten to the newly selected song.
+                if prev and prev != pick_key and _pick_key_is_catalog(str(prev)):
+                    push_catalog_recent_pick_key(st.session_state, str(prev))
+                push_catalog_recent_pick_key(st.session_state, pick_key)
+            except ImportError:
+                pass
+    except ImportError:
+        pass
     if origin_enum is not None and record_state_write_trace is not None:
         record_state_write_trace(
             st.session_state,
@@ -1482,7 +1510,11 @@ def get_song_context(
     """
     try:
         from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_CATALOG,
             SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
             composition_song_context_from_session,
             composition_song_is_active,
             custom_song_context_from_session,
@@ -1490,6 +1522,7 @@ def get_song_context(
             is_composition_song,
             is_custom_progression,
             picker_composition_mode,
+            picker_custom_progression_mode,
         )
     except ImportError:
         is_custom_progression = lambda _s: False  # type: ignore[assignment,misc]
@@ -1498,22 +1531,41 @@ def get_song_context(
         composition_song_is_active = lambda _s: False  # type: ignore[assignment,misc]
         is_composition_song = lambda _s: False  # type: ignore[assignment,misc]
         picker_composition_mode = lambda _s: False  # type: ignore[assignment,misc]
+        picker_custom_progression_mode = lambda _s: False  # type: ignore[assignment,misc]
         explicit_music_source_choice = lambda _s: ""  # type: ignore[assignment,misc]
         SOURCE_COMPOSITION = "composition_song"  # type: ignore[misc,assignment]
+        SOURCE_CATALOG = "catalog_song"  # type: ignore[misc,assignment]
+        SOURCE_CUSTOM = "custom_progression"  # type: ignore[misc,assignment]
+        USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"  # type: ignore[misc,assignment]
+        ACTIVE_MUSIC_SOURCE_KEY = "active_music_source"  # type: ignore[misc,assignment]
 
     sel = st.session_state.get(SELECTED_SONG_STATE_KEY) or {}
     pk_early = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or "").strip()
+    explicit = explicit_music_source_choice(st.session_state)
+    catalog_leave = (
+        explicit == SOURCE_CATALOG
+        or bool(st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        or str(st.session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CATALOG
+    )
+    custom_leave = explicit == SOURCE_CUSTOM or picker_custom_progression_mode(
+        st.session_state
+    )
+    # Explicit Catalog/Custom leave outranks a stale composition:: pick or a
+    # lagging Composition radio — otherwise Creative/Upload re-project My Composition.
+    leave_composition = catalog_leave or custom_leave
     # Composition ownership outranks a lingering custom:: pick / CPL blob.
-    if (
+    if not leave_composition and (
         composition_song_is_active(st.session_state)
         or is_composition_song(st.session_state)
         or picker_composition_mode(st.session_state)
-        or explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
+        or explicit == SOURCE_COMPOSITION
         or pk_early.startswith("composition::")
     ):
         if composition_song_context_from_session is not None:
             return composition_song_context_from_session(st.session_state)
-    if is_custom_progression(st.session_state) or pk_early.startswith("custom::"):
+    if not catalog_leave and (
+        is_custom_progression(st.session_state) or pk_early.startswith("custom::")
+    ):
         if custom_song_context_from_session is not None:
             return custom_song_context_from_session(st.session_state)
 

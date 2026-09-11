@@ -803,8 +803,32 @@ def _default_scope(session: dict[str, Any]) -> tuple[str, str | None, list[str]]
     return scope, section, sections
 
 
-def build_regular_song_context(session: dict[str, Any]) -> BackingContext:
-    pick_key = _current_pick_key(session)
+def build_regular_song_context(
+    session: dict[str, Any],
+    *,
+    pick_key: str = "",
+) -> BackingContext:
+    live_pick = str(pick_key or "").strip() or _current_pick_key(session)
+    try:
+        from songs.music_source import _pick_key_is_catalog
+
+        if live_pick and not _pick_key_is_catalog(live_pick):
+            # Catalog leave with a stale composition::/custom:: live pick — prefer
+            # canonical catalog identity so bound ids cannot stay on Composition.
+            canon = ""
+            try:
+                from active_song_state import canonical_active_song_context
+
+                ctx_meta = canonical_active_song_context(session)
+                if isinstance(ctx_meta, dict):
+                    canon = str(ctx_meta.get("pick_key") or "").strip()
+            except ImportError:
+                pass
+            if canon and _pick_key_is_catalog(canon):
+                live_pick = canon
+    except ImportError:
+        pass
+    pick_key = live_pick
     original_key = _original_key_for_active_song(session)
     pref = get_backing_source_preference(session)
     _, display_key, concert_key = _live_backing_concert_keys(session)
@@ -1791,7 +1815,12 @@ def reset_backing_on_active_song_change(
         ):
             set_catalog_source(session)
             set_backing_source_preference(session, BACKING_PREF_CATALOG)
-            ctx = build_regular_song_context(session)
+            # Prefer the new catalog pick for bound ids even when ASS/live pick
+            # still lags on composition:: for one frame.
+            ctx = build_regular_song_context(
+                session,
+                pick_key=pick if catalog_pick else "",
+            )
         else:
             set_custom_source(session)
             set_backing_source_preference(session, BACKING_PREF_CUSTOM)

@@ -124,4 +124,70 @@ def handoff_mission_take_to_upload_analysis(
         return True, ""
 
 
-__all__ = ["handoff_mission_take_to_upload_analysis"]
+def release_stale_mission_upload_identity_on_songs_leave(session: dict[str, Any]) -> bool:
+    """Songs Catalog/Custom/Composition selection leaves Mission recording ownership.
+
+    Clears the Upload identity lock and active Mission→Upload pending handoff so
+    Upload follows the selected song. Does **not** delete Practice Log / library
+    Mission recordings or Mission evaluation-criteria definitions (metric catalogs).
+    """
+    had_handoff = bool(session.get(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY))
+    had_envelope = False
+    try:
+        from mission_pending_upload_persistence import (
+            PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY,
+            clear_prepared_mission_upload,
+        )
+
+        had_envelope = bool(session.get(PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY))
+        cws = session.get("creative_workspace_state")
+        if isinstance(cws, dict) and cws.get(PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY):
+            had_envelope = True
+        # No ``st`` → clear session/canonical pending handoff without a cloud force-save.
+        clear_prepared_mission_upload(session, st=None)
+    except ImportError:
+        session.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)
+        session.pop("_analysis_prepared_upload", None)
+        session.pop("last_analysis_audio", None)
+
+    session.pop(MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY, None)
+    session.pop("_mission_upload_handoff_source", None)
+    session.pop("_mission_upload_is_live_take", None)
+    session.pop("_mission_upload_is_file_take", None)
+    session.pop("mission_upload_capture_mode", None)
+    # Explicit False so studio defaults do not re-bind ambient Creative mission.
+    session["analysis_sync_creative_mission"] = False
+
+    try:
+        from recording_analysis_context import (
+            ANALYSIS_IDENTITY_LOCKED_KEY,
+            RECORDING_TYPE_PRACTICE,
+            is_mission_recording_type,
+        )
+
+        session.pop(ANALYSIS_IDENTITY_LOCKED_KEY, None)
+        if is_mission_recording_type(session.get("analysis_recording_type")):
+            session["analysis_recording_type"] = RECORDING_TYPE_PRACTICE
+    except ImportError:
+        session.pop("analysis_identity_locked", None)
+        if str(session.get("analysis_recording_type") or "").strip().lower() in {
+            "mission recording",
+            "mission",
+        }:
+            session["analysis_recording_type"] = "Practice take"
+
+    try:
+        from mission_analysis_ui import ANALYSIS_CRITERIA_LOCKED
+
+        session.pop(ANALYSIS_CRITERIA_LOCKED, None)
+    except ImportError:
+        session.pop("analysis_criteria_locked", None)
+
+    return had_handoff or had_envelope
+
+
+__all__ = [
+    "MISSION_UPLOAD_ANALYSIS_HANDOFF_KEY",
+    "handoff_mission_take_to_upload_analysis",
+    "release_stale_mission_upload_identity_on_songs_leave",
+]

@@ -966,16 +966,41 @@ def load_snapshot_from_result(result: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def resolve_active_song_source(session_state: dict[str, Any]) -> dict[str, str]:
-    """Resolve the active song's source type, stable id, and display name."""
+    """Resolve the active song's source type, stable id, and display name.
+
+    Follows Songs ownership (Composition → Custom → Catalog), not the current
+    studio page. Upload must not fall back to the last Catalog song while
+    Custom or Composition owns the active song.
+    """
     source_type = SONG_SOURCE_CATALOG
     source_id = ""
     source_name = ""
     artist = ""
 
     try:
-        from songs.music_source import custom_progression_is_active
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            custom_progression_is_active,
+            explicit_music_source_choice,
+            is_composition_song,
+            picker_composition_mode,
+            picker_custom_progression_mode,
+        )
     except ImportError:
+        composition_song_is_active = lambda _s: False  # type: ignore[assignment,misc]
         custom_progression_is_active = lambda _s: False  # type: ignore[assignment,misc]
+        is_composition_song = lambda _s: False  # type: ignore[assignment,misc]
+        picker_composition_mode = lambda _s: False  # type: ignore[assignment,misc]
+        picker_custom_progression_mode = lambda _s: False  # type: ignore[assignment,misc]
+        explicit_music_source_choice = lambda _s: ""  # type: ignore[assignment,misc]
+        SOURCE_COMPOSITION = "composition_song"  # type: ignore[misc,assignment]
+        SOURCE_CATALOG = "catalog_song"  # type: ignore[misc,assignment]
+        SOURCE_CUSTOM = "custom_progression"  # type: ignore[misc,assignment]
+        USER_CATALOG_SOURCE_CHOICE_KEY = "_user_chose_catalog_music_source"  # type: ignore[misc,assignment]
 
     try:
         from composition_session_state import get_active_document
@@ -988,19 +1013,85 @@ def resolve_active_song_source(session_state: dict[str, Any]) -> dict[str, str]:
     except Exception:
         composed_doc = None
 
-    if isinstance(composed_doc, dict) and (
-        str(session_state.get("studio_page") or "") == "composition"
-        or session_state.get("analysis_prefer_composed_source")
-    ):
+    pick = str(
+        session_state.get("active_catalog_pick_key")
+        or session_state.get("pick_key")
+        or ""
+    ).strip()
+    meta = session_state.get("active_song_state")
+    meta_pick = ""
+    meta_src = ""
+    if isinstance(meta, dict):
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        meta_src = str(meta.get("music_source") or "").strip()
+
+    explicit = explicit_music_source_choice(session_state)
+    catalog_leave = (
+        explicit == SOURCE_CATALOG
+        or bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    )
+    custom_leave = (
+        explicit == SOURCE_CUSTOM
+        or custom_progression_is_active(session_state)
+        or picker_custom_progression_mode(session_state)
+    )
+    # Catalog/Custom leave outranks lagging ACTIVE=composition / composition::
+    # leftovers / composer docs so Upload does not label My Composition while
+    # Songs still owns Catalog or Custom.
+    composition_owns = False
+    if not catalog_leave and not custom_leave:
+        composition_owns = (
+            composition_song_is_active(session_state)
+            or explicit == SOURCE_COMPOSITION
+            or picker_composition_mode(session_state)
+            or (
+                # Lagging ACTIVE only when no Catalog/Custom leave stamps exist.
+                is_composition_song(session_state)
+                and explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM}
+            )
+            or (
+                meta_src == SOURCE_COMPOSITION
+                and explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM}
+            )
+            or (
+                (pick.startswith("composition::") or meta_pick.startswith("composition::"))
+                and explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM}
+            )
+            or bool(session_state.get("analysis_prefer_composed_source"))
+            or (
+                isinstance(composed_doc, dict)
+                and str(session_state.get("studio_page") or "") == "composition"
+            )
+        )
+
+    if composition_owns and isinstance(composed_doc, dict):
         source_type = SONG_SOURCE_COMPOSED
         source_id = str(composed_doc.get("id") or "").strip()
-        source_name = str(composed_doc.get("title") or composed_doc.get("name") or "").strip()
+        source_name = str(
+            composed_doc.get("title") or composed_doc.get("name") or ""
+        ).strip()
+        artist = str(composed_doc.get("artist") or "Composition").strip()
+        if source_id and not source_id.startswith("composition::"):
+            # Keep analysis id as library doc id; pick_key stays composition:: in songs.
+            pass
+    elif composition_owns:
+        source_type = SONG_SOURCE_COMPOSED
+        source_id = pick if pick.startswith("composition::") else meta_pick
+        if source_id.startswith("composition::"):
+            source_id = source_id.split("composition::", 1)[-1]
+        selected = session_state.get("selected_song")
+        if isinstance(selected, dict):
+            source_name = str(selected.get("title") or selected.get("name") or "").strip()
+            artist = str(selected.get("artist") or "Composition").strip()
+        source_name = source_name or str(session_state.get("song") or "My Composition").strip()
+        artist = artist or "Composition"
     elif custom_progression_is_active(session_state):
         source_type = SONG_SOURCE_CUSTOM
         active = session_state.get("cpl_active_progression") or session_state.get("cpl_active")
         if isinstance(active, dict):
             source_name = str(active.get("name") or active.get("title") or "").strip()
             source_id = str(active.get("id") or active.get("name") or source_name).strip()
+            artist = str(active.get("artist") or "").strip()
             if source_id and not source_id.startswith("custom::"):
                 source_id = f"custom::{source_id}"
         if not source_name:
@@ -1013,18 +1104,41 @@ def resolve_active_song_source(session_state: dict[str, Any]) -> dict[str, str]:
         if isinstance(selected, dict):
             source_name = str(selected.get("title") or selected.get("name") or "").strip()
             artist = str(selected.get("artist") or "").strip()
+        if not source_name and isinstance(meta, dict):
+            nested = meta.get("selected_song")
+            if isinstance(nested, dict):
+                source_name = str(nested.get("title") or nested.get("name") or "").strip()
+                artist = artist or str(nested.get("artist") or "").strip()
         source_name = source_name or str(session_state.get("song") or "").strip()
         source_id = str(
-            session_state.get("active_catalog_pick_key")
+            pick
+            or meta_pick
             or session_state.get("pick_key")
             or ""
         ).strip()
+        if source_id.startswith(("custom::", "composition::")):
+            # Stale non-catalog pick while Catalog owns — prefer ASS / catalog_session.
+            source_id = ""
+            try:
+                from source_session_state import get_catalog_session
 
-    # Prefer composed library only when explicitly active elsewhere didn't match catalog/custom
-    if not source_name and isinstance(composed_doc, dict):
+                cs = get_catalog_session(session_state)
+                if isinstance(cs, dict):
+                    source_id = str(cs.get("pick_key") or "").strip()
+                    if not source_name:
+                        csel = cs.get("selected_song")
+                        if isinstance(csel, dict):
+                            source_name = str(csel.get("title") or "").strip()
+                            artist = artist or str(csel.get("artist") or "").strip()
+            except ImportError:
+                pass
+
+    # Prefer composed library only when ownership didn't resolve a name yet.
+    if not source_name and isinstance(composed_doc, dict) and composition_owns:
         source_type = SONG_SOURCE_COMPOSED
         source_id = str(composed_doc.get("id") or "").strip()
         source_name = str(composed_doc.get("title") or composed_doc.get("name") or "").strip()
+        artist = artist or str(composed_doc.get("artist") or "Composition").strip()
 
     return {
         "song_source_type": source_type,
@@ -1034,8 +1148,16 @@ def resolve_active_song_source(session_state: dict[str, Any]) -> dict[str, str]:
     }
 
 
+_ANALYSIS_ACTIVE_SONG_SEED_SIG_KEY = "_analysis_active_song_seed_sig"
+
+
 def seed_session_setup_from_active(session_state: dict[str, Any], *, force: bool = False) -> None:
-    """Prefill Upload setup fields from active studio state when unset (or force=True)."""
+    """Prefill Upload setup fields from active studio state when unset (or force=True).
+
+    When the active Songs owner changes (Catalog ↔ Custom ↔ Composition, or a
+    new active pick), resync Upload song identity unless Mission handoff locked it.
+    Manual Upload overrides persist until active ownership changes again.
+    """
     try:
         from practice_setup_globals import get_active_focus, get_active_instrument, get_active_level
 
@@ -1063,14 +1185,51 @@ def seed_session_setup_from_active(session_state: dict[str, Any], *, force: bool
             session_state[ANALYSIS_EVAL_INSTRUMENT_KEY] = instruments[0]
 
     song = resolve_active_song_source(session_state)
-    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or "").strip():
+    active_sig = "|".join(
+        [
+            str(song.get("song_source_type") or ""),
+            str(song.get("song_source_id") or ""),
+            str(song.get("song_source_name") or ""),
+        ]
+    )
+    identity_locked = bool(session_state.get(ANALYSIS_IDENTITY_LOCKED_KEY))
+    try:
+        if is_genuine_mission_upload_handoff(session_state):
+            identity_locked = True
+    except Exception:
+        pass
+    prev_sig = str(session_state.get(_ANALYSIS_ACTIVE_SONG_SEED_SIG_KEY) or "")
+    sync_song = bool(
+        force
+        or (
+            not identity_locked
+            and (
+                not str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or "").strip()
+                or prev_sig != active_sig
+            )
+        )
+    )
+    if sync_song:
         session_state[ANALYSIS_SONG_SOURCE_TYPE_KEY] = song["song_source_type"]
-    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or "").strip():
         if song["song_source_name"]:
             session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = song["song_source_name"]
-    if force or not str(session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or "").strip():
         if song["song_source_id"]:
             session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = song["song_source_id"]
+        session_state[_ANALYSIS_ACTIVE_SONG_SEED_SIG_KEY] = active_sig
+    elif not identity_locked:
+        if not str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or "").strip():
+            session_state[ANALYSIS_SONG_SOURCE_TYPE_KEY] = song["song_source_type"]
+        if song["song_source_name"] and not str(
+            session_state.get(ANALYSIS_SONG_SOURCE_NAME_KEY) or ""
+        ).strip():
+            session_state[ANALYSIS_SONG_SOURCE_NAME_KEY] = song["song_source_name"]
+        if song["song_source_id"] and not str(
+            session_state.get(ANALYSIS_SONG_SOURCE_ID_KEY) or ""
+        ).strip():
+            session_state[ANALYSIS_SONG_SOURCE_ID_KEY] = song["song_source_id"]
+        if not prev_sig:
+            session_state[_ANALYSIS_ACTIVE_SONG_SEED_SIG_KEY] = active_sig
+
     if force or not str(session_state.get(ANALYSIS_PLAYER_LEVEL_KEY) or "").strip():
         if level:
             session_state[ANALYSIS_PLAYER_LEVEL_KEY] = level

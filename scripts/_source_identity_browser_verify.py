@@ -49,12 +49,51 @@ def click_nav(page: Page, label: str) -> None:
     # Prefer keyed nav cells first (stable after long suites).
     keyed = {
         "Songs": [".ui-nav-art-cell.nav-picker button", "[class*='st-key-sb_nav_picker'] button"],
+        "Practice": [
+            "[class*='st-key-sb_nav_practice'] button",
+            ".ui-nav-art-cell.nav-practice button",
+            "[class*='st-key-studio_quick_nav_btn_practice'] button",
+        ],
         "Backing": [
             ".ui-nav-art-cell.nav-backing button",
             "[class*='st-key-sb_nav_backing'] button",
             "[class*='st-key-studio_quick_nav_btn_backing'] button",
         ],
+        "Upload": [
+            "[class*='st-key-sb_nav_analysis'] button",
+            ".ui-nav-art-cell.nav-analysis button",
+            "[class*='st-key-studio_quick_nav_btn_analysis'] button",
+        ],
+        "Upload Analysis": [
+            "[class*='st-key-sb_nav_analysis'] button",
+            ".ui-nav-art-cell.nav-analysis button",
+            "[class*='st-key-studio_quick_nav_btn_analysis'] button",
+        ],
     }.get(label, [])
+    # Sidebar Pages nav defaults collapsed — expand before keyed sb_nav_* clicks.
+    if label in {"Upload", "Upload Analysis", "Practice", "Log", "Multitrack"}:
+        for expand_sel in (
+            "[class*='st-key-sidebar_nav_expand_rail'] button",
+            "[class*='st-key-main_sidebar_nav_expand'] button",
+        ):
+            exp = page.locator(expand_sel)
+            try:
+                if exp.count() and exp.first.is_visible():
+                    exp.first.click(timeout=4000)
+                    wait_streamlit(page, 1500)
+                    break
+            except Exception:
+                continue
+        # Text fallback for expand chip
+        try:
+            pages_btn = page.get_by_role("button", name=re.compile(r"Pages", re.I))
+            if pages_btn.count() and pages_btn.first.is_visible():
+                # Only click if analysis nav still missing
+                if not page.locator("[class*='st-key-sb_nav_analysis'] button").count():
+                    pages_btn.first.click(timeout=4000)
+                    wait_streamlit(page, 1500)
+        except Exception:
+            pass
     for sel in keyed:
         loc = page.locator(sel)
         try:
@@ -77,6 +116,7 @@ def click_nav(page: Page, label: str) -> None:
     icon_prefix = {
         "Songs": "🎼",
         "Backing": "🎧",
+        "Practice": "🎯",
     }.get(label, "")
     patterns: list[str] = []
     if icon_prefix:
@@ -84,6 +124,8 @@ def click_nav(page: Page, label: str) -> None:
     patterns.append(rf"^{re.escape(label)}$")
     if label == "Backing":
         patterns.extend([r"^🎧\s*Backing(\s*Track)?$", r"^Backing Track$"])
+    if label == "Practice":
+        patterns.extend([r"^🎯\s*Practice$", r"^Practice$"])
     for pat in patterns:
         candidates = [
             page.get_by_role("button", name=re.compile(pat, re.I)),
@@ -497,7 +539,46 @@ def select_music_source(page: Page, needle: str) -> None:
 
     if assert_radio_selected(page, needle):
         # Already on the desired source — still wait for hub readiness below.
-        pass
+        # Composition can look selected in the DOM while leave stamps block
+        # ownership (stuck remount). Force Catalog bounce + reselect then.
+        if needle == "Composition":
+            marker = read_composition_hub_marker(page)
+            explicit_m = str(marker.get("explicit") or "").strip()
+            if marker.get("ready") == "1" and explicit_m == _COMPOSITION_OWNER:
+                wait_composition_hub_ready(page, timeout_ms=25000)
+                return
+            # DOM says Composition but ownership leave stamps (or missing hub)
+            # mean on_change never committed. Bounce Catalog so a fresh
+            # Composition click can fire.
+            try:
+                page.evaluate(
+                    """() => {
+                      const blocks = Array.from(document.querySelectorAll('[data-testid="stRadio"]'));
+                      for (const b of blocks) {
+                        if (b.closest('[data-stale="true"]') || b.offsetParent === null) continue;
+                        for (const lab of b.querySelectorAll('label')) {
+                          const t = (lab.innerText || '').trim();
+                          if (t.includes('Song Selection') || t.includes('Catalog')) {
+                            const inp = lab.querySelector('input');
+                            if (inp) { inp.click(); return true; }
+                            lab.click();
+                            return true;
+                          }
+                        }
+                      }
+                      return false;
+                    }"""
+                )
+                wait_streamlit_idle(page)
+                wait_streamlit(page, 1000)
+            except Exception:
+                pass
+            _click_needle_once()
+            if not assert_radio_selected(page, "Composition"):
+                _js_select_needle()
+                wait_streamlit_idle(page, timeout_ms=8000)
+        else:
+            pass
     else:
         # Leaving Composition: hub chrome can swallow the first Catalog/Custom
         # Playwright click. Prefer a native input click, then settle.
@@ -547,6 +628,14 @@ def select_music_source(page: Page, needle: str) -> None:
                 wait_streamlit(page, 800)
             except Exception:
                 pass
+        # Custom → Catalog: Custom hub chrome can swallow the first click the
+        # same way Composition hub does. Prefer a native input click first.
+        if needle in {"Catalog", "Song Selection"} and assert_radio_selected(
+            page, "Custom Progression"
+        ):
+            if _js_select_needle():
+                wait_streamlit_idle(page, timeout_ms=10000)
+                wait_streamlit(page, 1200)
         # Custom → Composition after Custom Backing/refresh: bounce Catalog so the
         # Composition on_change always fires with a clean ownership promote.
         if needle == "Composition" and assert_radio_selected(page, "Custom Progression"):

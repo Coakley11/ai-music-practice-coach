@@ -8552,8 +8552,8 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
     )
     from songs.music_source import (
         on_song_picker_source_change,
-        reconcile_music_picker_source_widget,
-        sync_song_picker_source_widget,
+        prepare_song_picker_source_radio,
+        mark_song_picker_source_radio_mounted,
         music_picker_shows_composition_hub,
         music_picker_shows_custom_hub,
         song_picker_composition_option_label,
@@ -8571,23 +8571,21 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
     mark_composition_songs_source_ready(st.session_state)
     st.session_state[COMPOSITION_SONGS_SOURCE_READY_KEY] = True
 
-    if "song_picker_active_source" not in st.session_state:
-        sync_song_picker_source_widget(st.session_state)
-    reconcile_music_picker_source_widget(st.session_state)
+    # Commit genuine frontend clicks before hydrate; remount leftovers snap.
+    prepare_song_picker_source_radio(
+        st,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+        invalidate_backing=invalidate_backing_cache,
+    )
 
     def _picker_source_on_change() -> None:
-        choice_now = str(st.session_state.get("song_picker_active_source") or "")
-        st.session_state["_last_song_picker_source_choice"] = choice_now
         on_song_picker_source_change(
             st,
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
             invalidate_backing=invalidate_backing_cache,
         )
-
-    _pre = str(st.session_state.get("song_picker_active_source") or "")
-    if _pre:
-        st.session_state["_last_song_picker_source_choice"] = _pre
 
     st.radio(
         "Music source",
@@ -8597,6 +8595,7 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         label_visibility="collapsed" if polished else "visible",
         on_change=_picker_source_on_change,
     )
+    mark_song_picker_source_radio_mounted(st.session_state)
     choice = str(st.session_state.get("song_picker_active_source") or "").strip()
     try:
         from songs.music_source import (
@@ -9304,10 +9303,10 @@ def _render_catalog_song_picker_block(
             music_picker_shows_composition_hub,
             music_picker_shows_custom_hub,
             on_song_picker_source_change,
-            reconcile_music_picker_source_widget,
+            prepare_song_picker_source_radio,
+            mark_song_picker_source_radio_mounted,
             song_picker_composition_option_label,
             song_picker_custom_option_label,
-            sync_song_picker_source_widget,
             SONG_PICKER_SOURCE_CATALOG,
         )
 
@@ -9320,23 +9319,21 @@ def _render_catalog_song_picker_block(
             song_picker_composition_option_label(),
         ]
 
-        if "song_picker_active_source" not in st.session_state:
-            sync_song_picker_source_widget(st.session_state)
-        reconcile_music_picker_source_widget(st.session_state)
+        # Commit genuine frontend clicks before hydrate; remount leftovers snap.
+        prepare_song_picker_source_radio(
+            st,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+            song_library=SONG_LIBRARY,
+            invalidate_backing=invalidate_backing_cache,
+        )
 
         def _library_source_on_change() -> None:
-            choice_now = str(st.session_state.get("song_picker_active_source") or "")
-            st.session_state["_last_song_picker_source_choice"] = choice_now
             on_song_picker_source_change(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
                 invalidate_backing=invalidate_backing_cache,
             )
-
-        _pre = str(st.session_state.get("song_picker_active_source") or "")
-        if _pre:
-            st.session_state["_last_song_picker_source_choice"] = _pre
 
         st.radio(
             "Music source",
@@ -9345,6 +9342,7 @@ def _render_catalog_song_picker_block(
             key="song_picker_active_source",
             on_change=_library_source_on_change,
         )
+        mark_song_picker_source_radio_mounted(st.session_state)
         # Live radio / empty mid-remount outrank composition_song_is_active stamps
         # (hub promote must not force Composition over Catalog/Custom leave).
         if music_picker_shows_composition_hub(st.session_state):
@@ -10830,13 +10828,43 @@ if pp.show_tutorial_entry(st) and tutorial_entry_visible(st.session_state):
 
 
 def _ui_source_label() -> str:
+    try:
+        from songs.music_source import composition_song_is_active, custom_progression_is_active
+
+        if composition_song_is_active(st.session_state) or is_composition_song(st.session_state):
+            return "Composition"
+        if custom_progression_is_active(st.session_state) or is_custom_progression(st.session_state):
+            return "Custom progression"
+    except Exception:
+        pass
     if is_custom_progression(st.session_state):
         return "Custom progression"
     return "Catalog song"
 
 
 def _active_song_artist_label() -> str:
-    """Artist line for the active song (catalog metadata or custom progression)."""
+    """Artist line for the active song (catalog / custom / composition)."""
+    try:
+        from recording_analysis_context import resolve_active_song_source
+
+        resolved = resolve_active_song_source(st.session_state)
+        artist = str(resolved.get("song_artist") or "").strip()
+        if artist:
+            return artist
+        if resolved.get("song_source_type") == "Composed Song":
+            return "Composition"
+    except Exception:
+        pass
+    try:
+        from songs.music_source import composition_song_is_active, custom_progression_is_active
+
+        if composition_song_is_active(st.session_state) or is_composition_song(st.session_state):
+            return "Composition"
+        if custom_progression_is_active(st.session_state) or is_custom_progression(st.session_state):
+            cpl = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+            return str(cpl.get("artist") or "").strip()
+    except Exception:
+        pass
     if is_custom_progression(st.session_state):
         cpl = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
         return str(cpl.get("artist") or "").strip()
@@ -10865,29 +10893,40 @@ def _sidebar_open_song_selection() -> None:
 
 sidebar_goto_song_selection(on_navigate=_sidebar_open_song_selection)
 # Source-aware caption — never show Custom Lab copy or Custom genre under Composition.
-# Live Composition radio / explicit stamp must win even while ACTIVE_MUSIC_SOURCE lags.
+# Committed Catalog/Custom leave outranks a leftover Composition radio remount
+# (sidebar renders before Songs force-sync realigns the widget).
 _comp_caption = False
+_explicit_cap = ""
 try:
     from songs.music_source import (
+        SOURCE_CATALOG,
         SOURCE_COMPOSITION,
+        SOURCE_CUSTOM,
+        USER_CATALOG_SOURCE_CHOICE_KEY,
         explicit_music_source_choice,
         picker_composition_mode,
     )
 
-    _comp_caption = (
-        composition_song_is_active(st.session_state)
-        or is_composition_song(st.session_state)
-        or picker_composition_mode(st.session_state)
-        or explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
-    )
+    _explicit_cap = explicit_music_source_choice(st.session_state)
+    if (
+        _explicit_cap in {SOURCE_CATALOG, SOURCE_CUSTOM}
+        or st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+    ):
+        _comp_caption = False
+    else:
+        _comp_caption = (
+            composition_song_is_active(st.session_state)
+            or _explicit_cap == SOURCE_COMPOSITION
+            or picker_composition_mode(st.session_state)
+        )
 except Exception:
     _comp_caption = composition_song_is_active(st.session_state) or is_composition_song(
         st.session_state
     )
 if _comp_caption:
     st.sidebar.caption(f"**{_src_detail or 'My Composition'}** · Composition")
-elif custom_progression_is_active(st.session_state) or (
-    is_custom_progression(st.session_state) and not _comp_caption
+elif str(_explicit_cap or "") == "custom_progression" or (
+    not _explicit_cap and custom_progression_is_active(st.session_state)
 ):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
@@ -15084,6 +15123,25 @@ elif _studio_page == "analysis":
 
     _song_title = str(song or "Your song")
     _song_artist = _active_song_artist_label()
+    _upload_display_key = str(chart_key or display_key or "C")
+    try:
+        from recording_analysis_context import resolve_active_song_source
+
+        _resolved_upload = resolve_active_song_source(st.session_state)
+        if str(_resolved_upload.get("song_source_name") or "").strip():
+            _song_title = str(_resolved_upload["song_source_name"]).strip()
+        if str(_resolved_upload.get("song_artist") or "").strip():
+            _song_artist = str(_resolved_upload["song_artist"]).strip()
+        # Prefer live Practice/concert key so Upload agrees with Songs ownership.
+        _live_key = str(
+            st.session_state.get("display_key")
+            or st.session_state.get("concert_key")
+            or ""
+        ).strip()
+        if _live_key:
+            _upload_display_key = _live_key
+    except Exception:
+        pass
 
     with st.container(key="upload_studio_panel", border=False):
         render_upload_studio_panel_header(st, song_title=_song_title, artist=_song_artist)
@@ -15091,7 +15149,7 @@ elif _studio_page == "analysis":
             upload_session_context_html(
                 song_title=_song_title,
                 artist=_song_artist,
-                display_key=str(chart_key or display_key or "C"),
+                display_key=_upload_display_key,
                 instrument=str(instrument or "Guitar"),
             ),
             unsafe_allow_html=True,

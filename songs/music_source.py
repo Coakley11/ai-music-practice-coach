@@ -60,6 +60,12 @@ def picker_choice_is_custom(choice: str) -> bool:
 
 SONG_PICKER_ACTIVE_SOURCE_KEY = "song_picker_active_source"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
+# Last radio label acknowledged after hydrate or a real click. Used with
+# SONGS_SOURCE_RADIO_MOUNTED_KEY to distinguish frontend clicks from remount.
+LAST_SONG_PICKER_SOURCE_CHOICE_KEY = "_last_song_picker_source_choice"
+# True only while Songs has mounted the source radio this session cycle.
+# Cleared off Songs so Upload→Songs remount leftovers hydrate (not commit).
+SONGS_SOURCE_RADIO_MOUNTED_KEY = "_songs_source_radio_mounted"
 LAST_CATALOG_STATE_KEY = "_last_catalog_song_state"
 LAST_CUSTOM_STATE_KEY = "_last_custom_song_state"
 CATALOG_BEFORE_CUSTOM_KEY = "_catalog_before_custom_state"
@@ -169,6 +175,15 @@ def commit_explicit_music_source_choice(
             session_state.pop("_force_composition_backing_open", None)
             session_state.pop("_composition_hub_backing_pending", None)
             clear_composition_one_shot_nav_flags(session_state)
+    # Songs source ownership outranks a stale Mission→Upload recording lock.
+    try:
+        from mission_upload_handoff import release_stale_mission_upload_identity_on_songs_leave
+
+        release_stale_mission_upload_identity_on_songs_leave(session_state)
+    except ImportError:
+        pass
+    # Force Upload setup to resync song identity on next analysis render.
+    session_state.pop("_analysis_active_song_seed_sig", None)
 
 
 def composition_song_is_active(session_state: dict[str, Any]) -> bool:
@@ -177,15 +192,17 @@ def composition_song_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
-    # Live Songs radio wins before the explicit stamp — a stale Custom stamp
-    # must not block Composition after the radio has already moved.
-    if picker_composition_mode(session_state):
-        return True
-    if picker_custom_progression_mode(session_state):
-        return False
+    # Committed Catalog/Custom leave outranks a leftover Composition radio.
+    # Remount after Upload must not treat stale Composition widget state as a
+    # new source choice — real Composition clicks commit via on_change first.
     explicit = explicit_music_source_choice(session_state)
     if explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}:
         return False
+    if picker_custom_progression_mode(session_state):
+        return False
+    # Live Composition radio wins only when leave stamps are absent.
+    if picker_composition_mode(session_state):
+        return True
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
         return False
     if explicit == SOURCE_COMPOSITION:
@@ -216,18 +233,19 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
         return False
-    # Live Composition radio outranks a lingering Custom stamp/pick.
-    if picker_composition_mode(session_state):
-        return False
     explicit = explicit_music_source_choice(session_state)
     if explicit == SOURCE_CATALOG:
         return False
     if explicit == SOURCE_COMPOSITION:
         return False
-    if composition_song_is_active(session_state):
-        return False
+    # Committed Custom leave outranks a leftover Composition radio remount.
     if explicit == SOURCE_CUSTOM or is_custom_progression(session_state):
         return True
+    # Live Composition radio outranks a lingering Custom pick without a stamp.
+    if picker_composition_mode(session_state):
+        return False
+    if composition_song_is_active(session_state):
+        return False
     if picker_custom_progression_mode(session_state):
         return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
@@ -386,13 +404,13 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
 
 
 def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
-    """Align Songs page source radio with active song + active_music_source.
+    """Hydrate Songs radio + ACTIVE from the committed explicit selection.
 
-    Explicit radio / ``explicit_music_source_choice`` outrank a stale pick so
-    hydration cannot overwrite a newer selection in the same rerun.
+    Widget remount leftovers must never become a new source choice. Real
+    Catalog/Custom/Composition clicks commit via ``on_song_picker_source_change``
+    or ``commit_pending_song_picker_radio_click`` (frontend change while the
+    radio was already mounted) — never by promoting live radio here.
     """
-    from songs.state import ACTIVE_CATALOG_PICK_KEY
-
     try:
         from music_restore_phase import music_restore_phase_complete
 
@@ -400,134 +418,56 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     except ImportError:
         phase_done = False
 
-    # Live widget value — checked directly because ``picker_custom_progression_mode``
-    # returns False while ``USER_CATALOG`` is set (intentional for hub/nav vetoes).
-    # That veto must not reset a live Custom/Composition radio back to Catalog.
     choice_live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    # Mid-remount the widget key can be briefly empty. Do not reclaim Composition
-    # from a lagging explicit stamp in that window — it overwrites an in-flight
-    # Catalog/Custom click (authority failed_composition_to_custom / verify switch).
+    # Mid-remount empty widget: do not force-assign from stamps (overwrites an
+    # in-flight click before the radio remounts).
     if not choice_live:
         return False
-    live_custom = picker_choice_is_custom(choice_live)
-    live_composition = picker_choice_is_composition(choice_live)
-    live_catalog = choice_live == SONG_PICKER_SOURCE_CATALOG or choice_live.startswith(
-        "Song Selection"
-    )
 
-    # Trust an in-progress Songs radio selection before pick-based reclaim.
-    if live_custom or picker_custom_progression_mode(session_state):
-        changed = False
-        if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    # Do not skip hydrate for live!=explicit here — prepare commits first.
+    # Skipping without commit caused Catalog radio + Custom sidebar splits.
+
+    explicit = explicit_music_source_choice(session_state)
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    if explicit == SOURCE_COMPOSITION:
+        expected = song_picker_composition_option_label()
+        want_active = SOURCE_COMPOSITION
+    elif explicit == SOURCE_CUSTOM:
+        expected = SONG_PICKER_SOURCE_CUSTOM
+        want_active = SOURCE_CUSTOM
+    elif explicit == SOURCE_CATALOG or user_catalog:
+        expected = SONG_PICKER_SOURCE_CATALOG
+        want_active = SOURCE_CATALOG
+    elif phase_done and user_catalog:
+        expected = SONG_PICKER_SOURCE_CATALOG
+        want_active = SOURCE_CATALOG
+    else:
+        # No explicit stamp yet — do not invent a selection from a leftover radio.
+        sync_song_picker_source_widget(session_state, force=True)
+        return False
+
+    changed = False
+    if choice_live != expected:
+        _assign_song_picker_source_widget(
+            session_state, expected, widget_safe=False
+        )
+        changed = True
+    if want_active == SOURCE_CATALOG:
+        session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+            set_catalog_source(session_state)
             changed = True
-        if explicit_music_source_choice(session_state) != SOURCE_CUSTOM:
-            commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
-            changed = True
-        else:
-            clear_composition_one_shot_nav_flags(session_state)
+    elif want_active == SOURCE_CUSTOM:
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        clear_composition_one_shot_nav_flags(session_state)
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
             set_custom_source(session_state)
             changed = True
-        return changed
-    # Live Catalog outranks a lagging Composition explicit/pick (same contract as Custom).
-    if live_catalog:
-        changed = False
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
-            set_catalog_source(session_state)
-            changed = True
-        if explicit_music_source_choice(session_state) != SOURCE_CATALOG:
-            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
-            changed = True
-        pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-        if pick_key.startswith("custom::") or _pick_looks_composition(pick_key):
-            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-        return changed
-    if live_composition:
-        changed = False
-        if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-            changed = True
-        if explicit_music_source_choice(session_state) != SOURCE_COMPOSITION:
-            commit_explicit_music_source_choice(
-                session_state,
-                SOURCE_COMPOSITION,
-                clear_composition_oneshots=False,
-            )
-            changed = True
+    elif want_active == SOURCE_COMPOSITION:
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
         if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
             session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
             changed = True
-        return changed
-
-    if phase_done and session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-        expected = SONG_PICKER_SOURCE_CATALOG
-        current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-        changed = False
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
-            set_catalog_source(session_state)
-            changed = True
-        if explicit_music_source_choice(session_state) != SOURCE_CATALOG:
-            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
-            changed = True
-        if current != expected:
-            _assign_song_picker_source_widget(session_state, expected)
-            changed = True
-        return changed
-
-    explicit = explicit_music_source_choice(session_state)
-    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if explicit == SOURCE_CUSTOM:
-        composition_active = False
-        custom_active = True
-    elif explicit == SOURCE_COMPOSITION:
-        composition_active = True
-        custom_active = False
-    elif explicit == SOURCE_CATALOG:
-        composition_active = False
-        custom_active = False
-    else:
-        composition_active = composition_song_is_active(session_state)
-        custom_active = custom_progression_is_active(session_state)
-    if composition_active:
-        expected = song_picker_composition_option_label()
-    elif custom_active:
-        expected = SONG_PICKER_SOURCE_CUSTOM
-    else:
-        expected = SONG_PICKER_SOURCE_CATALOG
-    current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    changed = False
-
-    # Live Catalog radio commits Catalog ownership immediately. Defer only the
-    # catalog *song* restore when pick still looks custom/composition — never
-    # leave a full rerun with Catalog radio + Custom/Composition hub.
-    if current == SONG_PICKER_SOURCE_CATALOG:
-        if explicit_music_source_choice(session_state) != SOURCE_CATALOG:
-            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
-            changed = True
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
-            set_catalog_source(session_state)
-            changed = True
-        if pick_key.startswith("custom::") or _pick_looks_composition(pick_key):
-            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-        return changed
-
-    if composition_active:
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
-            session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
-            changed = True
-    elif custom_active:
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
-            session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
-            changed = True
-    elif pick_key and not pick_key.startswith("custom::") and not _pick_looks_composition(pick_key):
-        if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
-            set_catalog_source(session_state)
-            changed = True
-
-    if current != expected:
-        _assign_song_picker_source_widget(session_state, expected)
-        changed = True
     return changed
 
 
@@ -599,7 +539,7 @@ def restore_catalog_identity_from_snapshot(
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if pick and not pick.startswith("custom::"):
+    if _pick_key_is_catalog(pick):
         sel = session_state.get(SELECTED_SONG_STATE_KEY)
         if isinstance(sel, dict) and str(sel.get("title") or "").strip():
             return False
@@ -609,7 +549,7 @@ def restore_catalog_identity_from_snapshot(
     if not isinstance(raw, dict):
         return False
     snap_pick = str(raw.get("pick_key") or "").strip()
-    if not snap_pick or snap_pick.startswith("custom::"):
+    if not _pick_key_is_catalog(snap_pick):
         return False
     raw_sel = raw.get("selected_song")
     selected = dict(raw_sel) if isinstance(raw_sel, dict) else {}
@@ -641,7 +581,9 @@ def _catalog_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, A
     pick_key = str(
         session_state.get(ACTIVE_CATALOG_PICK_KEY) or sel.get("pick_key") or ""
     ).strip()
-    if not pick_key or pick_key.startswith("custom::"):
+    # Never treat composition:: / custom:: as a catalog restore snapshot — that
+    # poisons ``_last_catalog_song_state`` and later Catalog leave / Creative.
+    if not _pick_key_is_catalog(pick_key):
         return None
     original_key = str(sel.get("key") or "C").strip() or "C"
     display_key = str(session_state.get("display_key") or original_key).strip() or original_key
@@ -660,7 +602,18 @@ def snapshot_catalog_before_custom(session_state: dict[str, Any]) -> None:
     snap = _catalog_snapshot_from_session(session_state)
     if snap:
         session_state[CATALOG_BEFORE_CUSTOM_KEY] = snap
-        session_state[LAST_CATALOG_STATE_KEY] = dict(snap)
+        # Preserve a prior-song LAST snapshot for previous-catalog restore.
+        # Overwriting LAST with the current pick loses Perfect→Say history.
+        prev = previous_catalog_snapshot(session_state)
+        current_pick = str(snap.get("pick_key") or "").strip()
+        if (
+            isinstance(prev, dict)
+            and str(prev.get("pick_key") or "").strip()
+            and str(prev.get("pick_key") or "").strip() != current_pick
+        ):
+            session_state[LAST_CATALOG_STATE_KEY] = dict(prev)
+        else:
+            session_state[LAST_CATALOG_STATE_KEY] = dict(snap)
 
 
 def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, Any] | None:
@@ -740,7 +693,7 @@ def pin_catalog_restore_identity(
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     pick_key = str(pick_key or "").strip()
-    if not pick_key or pick_key.startswith("custom::"):
+    if not _pick_key_is_catalog(pick_key):
         return
     session_state[CATALOG_RESTORE_PIN_KEY] = pick_key
     session_state[ACTIVE_CATALOG_PICK_KEY] = pick_key
@@ -798,7 +751,7 @@ def pin_catalog_pick_aliases(session_state: dict[str, Any]) -> str:
         sel = session_state.get(SELECTED_SONG_STATE_KEY)
         if isinstance(sel, dict):
             pick = str(sel.get("pick_key") or "").strip()
-    if pick and not pick.startswith("custom::"):
+    if _pick_key_is_catalog(pick):
         session_state[PENDING_MATCHING_SONG_DROPDOWN] = pick
         session_state["matching_song_dropdown"] = pick
         session_state["_master_song_pick_key"] = pick
@@ -871,8 +824,11 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
     snapshot_catalog_before_custom(session_state)
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CUSTOM
-    if explicit_music_source_choice(session_state) != SOURCE_CUSTOM:
-        # Soft-align stamp without bumping seq when already Custom (restore).
+    explicit = explicit_music_source_choice(session_state)
+    # Never clobber an explicit Composition leave — that caused Composition
+    # radio ↔ Custom explicit rerun loops when set_custom ran mid-ensure.
+    # Catalog/empty stamps may soft-align to Custom (CPL activate / restore).
+    if explicit != SOURCE_COMPOSITION and explicit != SOURCE_CUSTOM:
         session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CUSTOM
     clear_composition_one_shot_nav_flags(session_state)
     try:
@@ -928,7 +884,12 @@ def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
         return False
     if picker_custom_progression_mode(session_state) or picker_choice_is_custom(choice):
         return False
-    if explicit_music_source_choice(session_state) == SOURCE_CATALOG:
+    # Committed Catalog/Custom leave outranks a leftover Composition radio.
+    # Hub chrome must not render while sync/reconcile snaps the widget back.
+    explicit = explicit_music_source_choice(session_state)
+    if explicit in {SOURCE_CATALOG, SOURCE_CUSTOM} or bool(
+        session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+    ):
         return False
     if picker_composition_mode(session_state):
         return True
@@ -984,38 +945,61 @@ def sync_song_picker_source_widget(
     force: bool = False,
     widget_safe: bool = True,
 ) -> None:
-    """Align Song Selection source radio with active_music_source (init or forced promotion only)."""
+    """Align Songs source radio to the committed selection (hydration only).
+
+    Never treat a live radio value as a new source choice here — that is
+    ``on_song_picker_source_change`` / ``commit_pending_song_picker_radio_click``
+    only. Remount/refresh leftover widget values must snap to
+    ``explicit_music_source_choice`` / ACTIVE, not the other way around
+    (Custom→Upload→Songs must not become Catalog).
+
+    When the Songs radio was already mounted and the live label differs from
+    ``_last_song_picker_source_choice``, skip the snap so a genuine click is
+    not eaten before commit.
+    """
+    explicit = explicit_music_source_choice(session_state)
+    active = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
     if force:
-        # Forced realign must follow ownership stamps, not the stale live radio
-        # (Custom radio + catalog active_music_source after Catalog restore).
-        active = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
-        if (
-            active in {SOURCE_CATALOG, "catalog", "regular_song"}
-            or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
-        ):
-            expected = SONG_PICKER_SOURCE_CATALOG
-        elif active == SOURCE_CUSTOM:
+        if explicit == SOURCE_COMPOSITION:
+            expected = song_picker_composition_option_label()
+        elif explicit == SOURCE_CUSTOM:
             expected = SONG_PICKER_SOURCE_CUSTOM
+        elif explicit == SOURCE_CATALOG or user_catalog:
+            expected = SONG_PICKER_SOURCE_CATALOG
         elif active == SOURCE_COMPOSITION:
             expected = song_picker_composition_option_label()
+        elif active == SOURCE_CUSTOM:
+            expected = SONG_PICKER_SOURCE_CUSTOM
+        elif active in {SOURCE_CATALOG, "catalog", "regular_song"}:
+            expected = SONG_PICKER_SOURCE_CATALOG
         else:
             expected = _expected_song_picker_source(session_state)
     else:
         expected = _expected_song_picker_source(session_state)
     current = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    # Do not skip snaps here. Songs clicks are committed in
+    # ``prepare_song_picker_source_radio`` before this runs; skipping without a
+    # successful commit leaves Catalog radio + Custom explicit (split identity).
     if not force:
         if current:
             return
         # Mid-remount can leave the key present but empty. Filling from a lagging
-        # Composition/Catalog stamp here overwrites an in-flight leave click.
-        # Only seed when the key is truly absent (first mount).
+        # stamp here overwrites an in-flight leave click.
         if SONG_PICKER_ACTIVE_SOURCE_KEY in session_state:
             return
         if current == expected:
             return
     elif current == expected:
+        if expected:
+            session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = expected
         return
-    _assign_song_picker_source_widget(session_state, expected, widget_safe=widget_safe)
+    # Forced realign must write through locked widgets so a leftover Catalog /
+    # Composition radio cannot outlive a Custom leave across Upload→Songs.
+    assign_safe = False if force else widget_safe
+    _assign_song_picker_source_widget(session_state, expected, widget_safe=assign_safe)
+    if expected:
+        session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = expected
 
 
 def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
@@ -1045,9 +1029,13 @@ def snapshot_current_catalog_state(session_state: dict[str, Any]) -> None:
 def push_catalog_recent_pick_key(session_state: dict[str, Any], pick_key: str) -> None:
     """Track recent catalog picks for Load last song / quick switch."""
     pk = str(pick_key or "").strip()
-    if not pk or pk.startswith("custom::"):
+    if not _pick_key_is_catalog(pk):
         return
-    recent = [k for k in (session_state.get(CATALOG_RECENT_PICK_KEYS) or []) if str(k).strip() != pk]
+    recent = [
+        k
+        for k in (session_state.get(CATALOG_RECENT_PICK_KEYS) or [])
+        if str(k).strip() != pk and _pick_key_is_catalog(str(k).strip())
+    ]
     recent.insert(0, pk)
     session_state[CATALOG_RECENT_PICK_KEYS] = recent[:5]
 
@@ -1060,7 +1048,7 @@ def _catalog_snapshot_for_pick_key(
 ) -> dict[str, Any] | None:
     """Build a catalog snapshot for a pick key (for recent-list fallback)."""
     pk = str(pick_key or "").strip()
-    if not pk or pk.startswith("custom::"):
+    if not _pick_key_is_catalog(pk):
         return None
     for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
         raw = session_state.get(snap_key)
@@ -1143,12 +1131,25 @@ def restore_previous_catalog_song(
     invalidate_backing,
 ) -> bool:
     """Restore the previous catalog song (browser-back style shortcut)."""
-    snap = previous_catalog_snapshot(st.session_state)
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    session = st.session_state
+    snap = previous_catalog_snapshot(session)
     if not snap:
         return False
     pick_key = str(snap.get("pick_key") or "").strip()
     if not pick_key or pick_key.startswith("custom::"):
         return False
+    # Capture the song we are leaving before activate rewrites LAST.
+    current_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    leaving = None
+    if current_pick and _pick_key_is_catalog(current_pick) and current_pick != pick_key:
+        leaving = _catalog_snapshot_from_session(session)
+        push_catalog_recent_pick_key(session, current_pick)
+    # Keep ``snap`` in LAST through activate so saved Practice Key (display_key)
+    # is applied for previous_catalog_restore.
+    if str((session.get(LAST_CATALOG_STATE_KEY) or {}).get("pick_key") or "").strip() != pick_key:
+        session[LAST_CATALOG_STATE_KEY] = dict(snap)
     ctx = activate_catalog_song_for_backing(
         st,
         pick_key,
@@ -1156,7 +1157,11 @@ def restore_previous_catalog_song(
         invalidate_backing=invalidate_backing,
         song_picker_catalog=song_picker_catalog,
     )
-    return ctx is not None
+    if ctx is None:
+        return False
+    if leaving:
+        session[LAST_CATALOG_STATE_KEY] = dict(leaving)
+    return True
 
 
 def restore_last_catalog_active_song(
@@ -1172,7 +1177,7 @@ def restore_last_catalog_active_song(
     if not isinstance(snap, dict) or not snap.get("pick_key"):
         return False
     pick_key = str(snap.get("pick_key") or "").strip()
-    if not pick_key or pick_key.startswith("custom::"):
+    if not _pick_key_is_catalog(pick_key):
         return False
     ctx = activate_catalog_song_for_backing(
         st,
@@ -1207,6 +1212,9 @@ def commit_catalog_active_song(
 
     session = st.session_state
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    # Explicit Catalog song selection must stamp ownership — otherwise a prior
+    # Composition/Custom explicit stamp survives and Upload→Songs remount steals.
+    commit_explicit_music_source_choice(session, SOURCE_CATALOG)
     set_catalog_source(session)
     pick_key = str(pick_key or "").strip()
     selected_song = dict(selected_song)
@@ -1217,8 +1225,6 @@ def commit_catalog_active_song(
         "catalog_source_switch",
         "creative_to_catalog",
         "switch_to_catalog_backing",
-        "last_catalog_restore",
-        "previous_catalog_restore",
         "song_pick",
         "catalog_pick",
     )
@@ -1264,8 +1270,6 @@ def commit_catalog_active_song(
             "catalog_source_switch",
             "creative_to_catalog",
             "switch_to_catalog_backing",
-            "last_catalog_restore",
-            "previous_catalog_restore",
             "song_pick",
             "catalog_pick",
         ),
@@ -1311,6 +1315,43 @@ def commit_catalog_active_song(
         selected_song,
         writer=reason,
     )
+    # Catalog commit must rewrite last-catalog + scrub stale composition::
+    # leftovers so Creative/Upload cannot re-project My Composition.
+    snap = _catalog_snapshot_from_session(session)
+    if snap:
+        session[LAST_CATALOG_STATE_KEY] = dict(snap)
+        session[CATALOG_BEFORE_CREATIVE_KEY] = dict(snap)
+    try:
+        mission_ctx = session.get("improv_mission_practice_context")
+        if isinstance(mission_ctx, dict):
+            mission_pick = str(mission_ctx.get("pick_key") or "").strip()
+            if mission_pick.startswith(("composition::", "custom::")):
+                updated = dict(mission_ctx)
+                updated["pick_key"] = pick_key
+                updated["song_title"] = str(selected_song.get("title") or "")
+                updated["display_key"] = str(display_key or original_key)
+                session["improv_mission_practice_context"] = updated
+    except Exception:
+        pass
+    try:
+        from music_source_ownership import rebuild_catalog_backing_from_canonical_pick
+
+        rebuild_catalog_backing_from_canonical_pick(
+            session,
+            st_like=st,
+            pick_key=pick_key,
+            practice_concert_key=str(display_key or original_key),
+            reset_to_original=reason
+            in (
+                "catalog_source_switch",
+                "creative_to_catalog",
+                "switch_to_catalog_backing",
+                "song_pick",
+                "catalog_pick",
+            ),
+        )
+    except ImportError:
+        pass
 
 
 def switch_to_catalog_from_custom(
@@ -1347,7 +1388,7 @@ def switch_to_catalog_from_custom(
 
     def _try_restore_from_snap(snap: dict[str, Any]) -> bool:
         pick_key = str(snap.get("pick_key") or "").strip()
-        if not pick_key or pick_key.startswith("custom::"):
+        if not _pick_key_is_catalog(pick_key):
             return False
         selected = dict(snap.get("selected_song") or {})
         original_key = str(snap.get("original_key") or selected.get("key") or "C").strip() or "C"
@@ -1377,14 +1418,14 @@ def switch_to_catalog_from_custom(
         )
         return True
 
-    for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+    for snap_key in (CATALOG_BEFORE_CUSTOM_KEY, LAST_CATALOG_STATE_KEY):
         snap = session.get(snap_key)
         if isinstance(snap, dict) and _try_restore_from_snap(snap):
             return True
 
     for pick_key in session.get(CATALOG_RECENT_PICK_KEYS) or []:
         pk = str(pick_key or "").strip()
-        if not pk or pk.startswith("custom::"):
+        if not _pick_key_is_catalog(pk):
             continue
         if _try_restore_from_snap({"pick_key": pk, "selected_song": {}, "original_key": "C", "display_key": "C"}):
             return True
@@ -1526,6 +1567,16 @@ def ensure_composition_owns_active_song(
     )
 
     session = st.session_state
+    # Committed Catalog/Custom leave always outranks a leftover Composition
+    # radio remount (Upload→Songs). Real Composition radio clicks commit the
+    # explicit stamp in ``on_song_picker_source_change`` *before* ensure runs.
+    explicit_leave = explicit_music_source_choice(session)
+    if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
+        session["_composition_ensure_skipped_explicit_leave"] = True
+        return None
+    if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+        session["_composition_ensure_skipped_user_catalog"] = True
+        return None
     # Live Songs radio is highest authority when the widget key is mounted.
     # Hub promote / orphan recover must never force Composition over an
     # in-flight Catalog/Custom leave (verify switch + authority leave).
@@ -1533,8 +1584,6 @@ def ensure_composition_owns_active_song(
     # *only* when Catalog/Custom leave stamps are also absent. Songs→Backing
     # remounts unmount the radio key while USER_CATALOG / explicit Catalog
     # still mark an intentional Catalog leave (stress Catalog hub open).
-    # Live Composition radio must still promote when explicit Custom/Catalog
-    # lags one rerun (Custom → Composition on_change / unit path).
     if SONG_PICKER_ACTIVE_SOURCE_KEY in session:
         choice_live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
         if not choice_live:
@@ -1547,14 +1596,6 @@ def ensure_composition_owns_active_song(
             return None
         if picker_choice_is_custom(choice_live):
             session["_composition_ensure_skipped_live_custom"] = True
-            return None
-    else:
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
-            session["_composition_ensure_skipped_user_catalog"] = True
-            return None
-        explicit_leave = explicit_music_source_choice(session)
-        if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
-            session["_composition_ensure_skipped_explicit_leave"] = True
             return None
 
     # Explicit Songs radio switch sets this oneshot. Refresh / hub promote must
@@ -1633,6 +1674,108 @@ def ensure_composition_owns_active_song(
     return doc
 
 
+def picker_label_to_music_source(choice: str) -> str:
+    """Map a Songs radio label to SOURCE_* (empty when unrecognized/empty)."""
+    text = str(choice or "").strip()
+    if not text:
+        return ""
+    if "Composition" in text:
+        return SOURCE_COMPOSITION
+    if picker_choice_is_custom(text):
+        return SOURCE_CUSTOM
+    return SOURCE_CATALOG
+
+
+def expected_song_picker_label_for_explicit(session_state: dict[str, Any]) -> str:
+    """Radio label that matches the committed explicit / catalog stamp."""
+    explicit = explicit_music_source_choice(session_state)
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    if explicit == SOURCE_COMPOSITION:
+        return song_picker_composition_option_label()
+    if explicit == SOURCE_CUSTOM:
+        return SONG_PICKER_SOURCE_CUSTOM
+    if explicit == SOURCE_CATALOG or user_catalog:
+        return SONG_PICKER_SOURCE_CATALOG
+    active = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+    if active == SOURCE_COMPOSITION:
+        return song_picker_composition_option_label()
+    if active == SOURCE_CUSTOM:
+        return SONG_PICKER_SOURCE_CUSTOM
+    if active in {SOURCE_CATALOG, "catalog", "regular_song"}:
+        return SONG_PICKER_SOURCE_CATALOG
+    return _expected_song_picker_source(session_state)
+
+
+def commit_pending_song_picker_radio_click(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> bool:
+    """Commit a frontend radio change that landed before hydrate can snap it.
+
+    Streamlit applies the new widget value before script body runs. If we
+    ``sync(..., force=True)`` first, a Custom→Catalog/Composition click is
+    overwritten. Detect intent when the live radio's source disagrees with
+    ``explicit_music_source_choice``.
+
+    Called only from ``prepare_song_picker_source_radio`` on Songs. Off Songs
+    already snaps the dormant radio to explicit so Upload→Songs should arrive
+    aligned (live_src == explicit) and this no-ops. A genuine click always
+    disagrees with explicit until commit runs.
+    """
+    session_state = st.session_state
+    live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    live_src = picker_label_to_music_source(live)
+    explicit = explicit_music_source_choice(session_state)
+    if not live_src or not explicit or live_src == explicit:
+        return False
+    session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = live
+    session_state[SONGS_SOURCE_RADIO_MOUNTED_KEY] = True
+    on_song_picker_source_change(
+        st,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+        invalidate_backing=invalidate_backing,
+    )
+    return True
+
+
+def prepare_song_picker_source_radio(
+    st: Any,
+    *,
+    song_picker_catalog: dict[str, dict[str, dict]],
+    song_library: dict[str, dict[str, dict]] | None = None,
+    invalidate_backing,
+) -> None:
+    """Before mounting the Songs source radio: commit click or hydrate.
+
+    Order is load-bearing: pending click commit must run before
+    ``sync(..., force=True)`` so hydrate cannot eat the frontend value.
+    """
+    if commit_pending_song_picker_radio_click(
+        st,
+        song_picker_catalog=song_picker_catalog,
+        song_library=song_library,
+        invalidate_backing=invalidate_backing,
+    ):
+        return
+    sync_song_picker_source_widget(st.session_state, force=True)
+    reconcile_music_picker_source_widget(st.session_state)
+    cur = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if cur:
+        st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = cur
+
+
+def mark_song_picker_source_radio_mounted(session_state: dict[str, Any]) -> None:
+    """Call immediately after ``st.radio`` for the Songs source toggle."""
+    session_state[SONGS_SOURCE_RADIO_MOUNTED_KEY] = True
+    cur = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if cur:
+        session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = cur
+
+
 def on_song_picker_source_change(
     st: Any,
     *,
@@ -1647,11 +1790,13 @@ def on_song_picker_source_change(
         # reclaim Custom from a stale custom:: pick.
         st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
         st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
+        already = explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
         commit_explicit_music_source_choice(
             st.session_state,
             SOURCE_COMPOSITION,
             clear_composition_oneshots=False,
         )
+        st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
         # Mark explicit radio switch so ensure resets Practice Key to original.
         # Hub promote / refresh must not set this flag (same-source preserve).
         prior_pick = str(st.session_state.get("active_catalog_pick_key") or "").strip()
@@ -1676,7 +1821,8 @@ def on_song_picker_source_change(
                 pass
         else:
             st.session_state.pop("_composition_radio_ensure_error", None)
-        st.rerun()
+        if not already:
+            st.rerun()
         return
     if picker_choice_is_custom(choice):
         # Intentional leave Composition — drop leftover/in-flight hub Backing
@@ -1690,6 +1836,7 @@ def on_song_picker_source_change(
         # Drop Catalog-bounce restore oneshot (Custom→Composition bounce).
         st.session_state.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
         commit_explicit_music_source_choice(st.session_state, SOURCE_CUSTOM)
+        st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
         try:
             from custom_progression_lab import cpl_active_from_session
 
@@ -1748,6 +1895,7 @@ def on_song_picker_source_change(
     st.session_state.pop("_composition_hub_backing_pending", None)
     st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
     commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+    st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
     leaving_non_catalog = (
         is_custom_progression(st.session_state)
         or custom_progression_is_active(st.session_state)
@@ -1777,135 +1925,42 @@ def reconcile_picker_music_source(session_state: dict[str, Any]) -> bool:
         session_state.get("studio_page") or session_state.get("page") or ""
     ).strip()
     if page != "picker":
-        return reconcile_music_picker_source_widget(session_state)
-
-    explicit = explicit_music_source_choice(session_state)
-    choice_live = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    # Same mid-remount contract as reconcile_music_picker_source_widget: an empty
-    # widget key must not force Composition/Custom from a lagging explicit stamp.
-    if not choice_live:
-        return False
-    live_catalog_radio = choice_live == SONG_PICKER_SOURCE_CATALOG or (
-        bool(choice_live)
-        and choice_live.startswith("Song Selection")
-        and "Composition" not in choice_live
-    )
-    live_custom_radio = picker_choice_is_custom(choice_live)
-    live_composition_radio = picker_choice_is_composition(choice_live)
-
-    # Explicit Composition/Custom stamps outrank a stale catalog radio restored
-    # from disk after reload (Composition refresh → Songs must not mount catalog hub).
-    # Never reclaim Composition when the user explicitly chose Catalog or Custom.
-    # Never overwrite a live Catalog/Custom radio while the Composition stamp still
-    # lags one rerun (Composition → Catalog / Custom switch).
-    if (
-        not live_catalog_radio
-        and not live_custom_radio
-        and live_composition_radio
-        and (
-            explicit == SOURCE_COMPOSITION
-            or (
-                composition_song_is_active(session_state)
-                and explicit not in (SOURCE_CATALOG, SOURCE_CUSTOM)
-            )
-        )
-    ):
-        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-        if not picker_composition_mode(session_state):
-            commit_explicit_music_source_choice(
-                session_state,
-                SOURCE_COMPOSITION,
-                clear_composition_oneshots=False,
-            )
-            sync_song_picker_source_widget(session_state, force=True)
-            return True
-    if (
-        not live_catalog_radio
-        and not live_composition_radio
-        and live_custom_radio
-        and (
-            explicit == SOURCE_CUSTOM
-            or (
-                custom_progression_is_active(session_state)
-                and explicit not in (SOURCE_CATALOG, SOURCE_COMPOSITION)
-            )
-        )
-    ):
-        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-        if not picker_custom_progression_mode(session_state):
-            commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
-            set_custom_source(session_state)
-            sync_song_picker_source_widget(session_state, force=True)
-            return True
-
-    # Live radio click with lagging explicit stamp — finish the switch.
-    if live_catalog_radio and explicit != SOURCE_CATALOG:
-        commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
-        set_catalog_source(session_state)
-        session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-        session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-        return True
-    if live_custom_radio and explicit != SOURCE_CUSTOM:
-        commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
-        set_custom_source(session_state)
-        sync_song_picker_source_widget(session_state, force=True)
-        return True
-    if live_composition_radio and explicit != SOURCE_COMPOSITION:
-        commit_explicit_music_source_choice(
-            session_state,
-            SOURCE_COMPOSITION,
-            clear_composition_oneshots=False,
-        )
-        session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
-        sync_song_picker_source_widget(session_state, force=True)
-        return True
-
-    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
-    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if explicit == SOURCE_CATALOG or user_catalog:
-        choice_now = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-        # Live widget outranks a stale catalog stamp (USER_CATALOG blocks mode helpers).
-        if picker_choice_is_composition(choice_now) or picker_choice_is_custom(choice_now):
+        # Off Songs the radio is not mounted. A stale Catalog radio value must
+        # never commit Catalog leave / pending Gravity restore on Upload or
+        # Creative — that steals Custom/Composition ownership every run.
+        # Realign the dormant label from ownership stamps only; also clear a
+        # lagging ACTIVE Composition/Custom when Catalog/Custom leave is live.
+        session_state.pop(SONGS_SOURCE_RADIO_MOUNTED_KEY, None)
+        explicit = explicit_music_source_choice(session_state)
+        user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        if explicit == SOURCE_COMPOSITION:
             session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
-            return reconcile_music_picker_source_widget(session_state)
-        # Live Composition/Custom radio outranks a stale catalog stamp from disk
-        # restore (reload after Composition refresh must not mount the catalog hub).
-        if picker_composition_mode(session_state) or picker_custom_progression_mode(
-            session_state
-        ):
-            return reconcile_music_picker_source_widget(session_state)
-        # Catalog Backing → Songs can leave a stale composition:: pick or
-        # Composition radio while explicit stamp is still Catalog.
-        if (
-            pick.startswith(("composition::", "custom::"))
-            or composition_song_is_active(session_state)
-            or is_composition_song(session_state)
-            or custom_progression_is_active(session_state)
-        ):
-            commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
-            set_catalog_source(session_state)
-            sync_song_picker_source_widget(session_state, force=True)
-            session_state[PENDING_CATALOG_FROM_PICKER_KEY] = True
-            return True
+            if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
+                session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
+        elif explicit == SOURCE_CUSTOM:
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
+                set_custom_source(session_state)
+        elif explicit == SOURCE_CATALOG or user_catalog:
+            session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+            if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CATALOG:
+                set_catalog_source(session_state)
+        elif composition_song_is_active(session_state):
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_COMPOSITION:
+                session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
+        elif custom_progression_is_active(session_state):
+            session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) != SOURCE_CUSTOM:
+                set_custom_source(session_state)
+        before = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        sync_song_picker_source_widget(session_state, force=True)
+        after = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        return before != after
 
-    choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    if picker_choice_is_custom(choice) and not is_custom_progression(session_state):
-        commit_explicit_music_source_choice(session_state, SOURCE_CUSTOM)
-        set_custom_source(session_state)
-        _assign_song_picker_source_widget(session_state, SONG_PICKER_SOURCE_CUSTOM)
-        return True
-    if picker_choice_is_composition(choice) and not is_composition_song(session_state):
-        commit_explicit_music_source_choice(
-            session_state,
-            SOURCE_COMPOSITION,
-            clear_composition_oneshots=False,
-        )
-        session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
-        _assign_song_picker_source_widget(
-            session_state,
-            song_picker_composition_option_label(),
-        )
-        return True
+    # On Songs: hydrate radio/ACTIVE from committed explicit only.
+    # Live radio must not commit a new source here — that is on_change only.
+    # Stale Catalog/Composition radios after Upload remount snap back to explicit.
     return reconcile_music_picker_source_widget(session_state)
 
 
@@ -2151,6 +2206,24 @@ def on_active_song_identity_changed(
     identity_changed = force_reset or (
         prev_identity is not None and prev_identity != new_identity
     )
+    if not identity_changed:
+        # First stamp (prev None) or same-identity re-entry can still leave
+        # composition::/custom:: bound ids while the live pick is already catalog
+        # (Gravity title + Composition bound → Creative/Upload).
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            bound = (
+                str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+                if ctx is not None
+                else ""
+            )
+        except ImportError:
+            bound = ""
+        new_pk = str(pick_key or "").strip()
+        if bound and new_pk and bound != new_pk:
+            identity_changed = True
 
     if identity_changed:
         try:
@@ -2279,10 +2352,20 @@ def active_source_labels(
 ) -> tuple[str, str]:
     """Return ``(source_kind, source_detail)`` for the sidebar active-source banner.
 
-    Composition detail comes from the Composition document — never a leftover
-    Custom/Catalog title such as ``My Progression``.
+    Committed ``explicit_music_source_choice`` is the sole source-kind authority.
+    Lagging ACTIVE / custom:: picks must not keep a Custom banner after Catalog
+    or Composition was explicitly selected (radio/card/sidebar must agree).
     """
-    if composition_song_is_active(session_state) or is_composition_song(session_state):
+    explicit = explicit_music_source_choice(session_state)
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+
+    if explicit == SOURCE_CATALOG or user_catalog:
+        title = str(catalog_title or "").strip()
+        artist = str(catalog_artist or "").strip()
+        detail = f"{title} — {artist}".strip(" —") if title or artist else ""
+        return "Song", detail
+
+    if explicit == SOURCE_COMPOSITION:
         title = ""
         try:
             from composition_session_state import get_active_document
@@ -2306,7 +2389,14 @@ def active_source_labels(
             if isinstance(sel, dict) and sel.get("is_composition"):
                 title = str(sel.get("title") or "").strip()
         return "Composition", title or "My Composition"
-    if is_custom_progression(session_state) or custom_progression_is_active(session_state):
+
+    if explicit == SOURCE_CUSTOM:
+        return "Custom Progression", str(custom_name or "Custom Progression")
+
+    # No explicit stamp — fall back to ACTIVE / pick heuristics.
+    if composition_song_is_active(session_state):
+        return "Composition", "My Composition"
+    if custom_progression_is_active(session_state) or is_custom_progression(session_state):
         return "Custom Progression", str(custom_name or "Custom Progression")
     title = str(catalog_title or "").strip()
     artist = str(catalog_artist or "").strip()
@@ -2370,12 +2460,16 @@ def display_key_context(
 
     # Composition must resolve before Custom/CPL leftovers — a lingering
     # custom:: pick or CPL blob must not own the Practice Key identity.
-    if (
-        composition_song_is_active(session_state)
-        or is_composition_song(session_state)
-        or picker_composition_mode(session_state)
-        or explicit_music_source_choice(session_state) == SOURCE_COMPOSITION
-    ):
+    # Committed Catalog/Custom leave outranks stale Composition radio / ACTIVE.
+    explicit = explicit_music_source_choice(session_state)
+    user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    composition_owns = False
+    if explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM} and not user_catalog:
+        composition_owns = (
+            composition_song_is_active(session_state)
+            or explicit == SOURCE_COMPOSITION
+        )
+    if composition_owns:
         from songs.key_state import song_display_identity
 
         home = "C"
@@ -2966,6 +3060,9 @@ def commit_custom_active_song(
     session[cpl_active_key] = active
     _push_recent_custom_name(session, str(active.get("name") or "My Progression"))
     snapshot_last_custom_state(session)
+    # Stamp Custom ownership so a prior Composition/Catalog explicit cannot
+    # survive Upload→Songs remount after this promote.
+    commit_explicit_music_source_choice(session, SOURCE_CUSTOM)
 
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
@@ -3840,8 +3937,6 @@ def activate_catalog_song_for_backing(
         "catalog_source_switch",
         "creative_to_catalog",
         "switch_to_catalog_backing",
-        "last_catalog_restore",
-        "previous_catalog_restore",
         "catalog_pick",
         "song_pick",
     )
@@ -3849,7 +3944,25 @@ def activate_catalog_song_for_backing(
     try:
         from songs.practice_key_state import resolve_practice_concert_key_for_pick
 
-        if reason in _reset_reasons:
+        if reason in ("previous_catalog_restore", "last_catalog_restore"):
+            # Restore the snapshot's saved Practice Key when present.
+            for snap_key in (LAST_CATALOG_STATE_KEY, CATALOG_BEFORE_CUSTOM_KEY):
+                snap = session.get(snap_key)
+                if not isinstance(snap, dict):
+                    continue
+                if str(snap.get("pick_key") or "").strip() != pick_key:
+                    continue
+                saved = str(snap.get("display_key") or "").strip()
+                if saved:
+                    display_key = saved
+                    break
+            else:
+                display_key = resolve_practice_concert_key_for_pick(
+                    session,
+                    pick_key,
+                    original_key=catalog_original,
+                )
+        elif reason in _reset_reasons:
             display_key = catalog_original
         else:
             display_key = resolve_practice_concert_key_for_pick(

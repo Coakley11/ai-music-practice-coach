@@ -379,6 +379,20 @@ def commit_composition_active_song(
     set_active_document(session, prepared)
     save_document_to_library(session, prepared)
 
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION as _SRC_COMPOSITION,
+            commit_explicit_music_source_choice,
+        )
+
+        commit_explicit_music_source_choice(
+            session,
+            _SRC_COMPOSITION,
+            clear_composition_oneshots=False,
+        )
+    except ImportError:
+        pass
+
     integration = prepared.setdefault("integration", {})
     if isinstance(integration, dict):
         integration["practice_ready"] = True
@@ -584,6 +598,23 @@ def apply_pending_composition_active_song_activation_before_widgets(st: Any) -> 
     pending = str(st.session_state.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, "") or "").strip()
     if not pending:
         return False
+    try:
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            SOURCE_CUSTOM,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            explicit_music_source_choice,
+        )
+
+        # Catalog/Custom leave must not be overwritten by a queued Composition activate
+        # after Upload→Songs remount (Composition click queued, then user left).
+        explicit = explicit_music_source_choice(st.session_state)
+        if explicit in {SOURCE_CATALOG, SOURCE_CUSTOM} or st.session_state.get(
+            USER_CATALOG_SOURCE_CHOICE_KEY
+        ):
+            return False
+    except ImportError:
+        pass
     try:
         from songs.key_state import invalidate_backing_cache
 
