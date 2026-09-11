@@ -759,6 +759,13 @@ def save_page_snapshot(session_state: dict, page_id: str) -> None:
                 sync_creative_session_before_persist(session_state)
             except ImportError:
                 pass
+    if page_id == "backing" or str(session_state.get("studio_page") or "").strip() == "backing":
+        try:
+            from backing_play_session import seal_live_backing_tempo_for_persist
+
+            seal_live_backing_tempo_for_persist(session_state)
+        except ImportError:
+            pass
     store = session_state.setdefault(_PAGE_SNAPSHOTS_KEY, {})
     store[page_id] = capture_page_snapshot(session_state, page_id)
 

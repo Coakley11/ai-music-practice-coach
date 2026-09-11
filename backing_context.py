@@ -937,7 +937,7 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
             except ImportError:
                 pass
         if live_bpm > 0 and source_bpm > 0 and live_bpm != source_bpm:
-            # Leftover catalog domain (96) must not outrank sealed generated source.
+            # Leftover catalog domain (Say 82 / Shape 96) must not outrank sealed generated source.
             try:
                 from songs.music_source import catalog_transport_bpm_for_pick
 
@@ -945,7 +945,25 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
                 cat = catalog_transport_bpm_for_pick(session, pick) if pick else 0
             except Exception:
                 cat = 0
+            leftover_widgets: set[int] = set()
+            try:
+                from backing_play_session import _foreign_catalog_leftover_bpms
+
+                leftover_widgets = _foreign_catalog_leftover_bpms(session)
+            except Exception:
+                leftover_widgets = set()
+            has_override = False
+            try:
+                from backing_play_session import backing_play_session_has_override
+
+                has_override = bool(backing_play_session_has_override(session, "bpm"))
+            except Exception:
+                has_override = False
             if cat > 0 and int(live_bpm) == int(cat) and ctx_source == "entry_jam":
+                live_bpm = 0
+            elif int(live_bpm) in leftover_widgets:
+                live_bpm = 0
+            elif ctx_source == "entry_jam" and not has_override:
                 live_bpm = 0
         if live_bpm > 0:
             return (
@@ -2796,7 +2814,21 @@ def apply_backing_context_to_session(
             )
             live_slider = int(current_backing_play_bpm(session, default=0, sync_id=str(sync_id or "")) or 0)
             if live_slider > 0 and applied_bpm > 0 and live_slider != applied_bpm:
-                preserve_live_bpm = True
+                foreign = False
+                try:
+                    from backing_play_session import _foreign_catalog_leftover_bpms
+
+                    foreign = int(live_slider) in _foreign_catalog_leftover_bpms(session)
+                except Exception:
+                    foreign = False
+                same_owner_override = bool(
+                    play_session_blocks_canonical_seed(session)
+                    or backing_play_session_has_override(session, "bpm")
+                )
+                if not foreign or same_owner_override:
+                    preserve_live_bpm = True
+                # Catalog leftover (Say 82) after Style Jam owns Backing is not a
+                # live Current — initialize from the Style Jam session tempo.
         except ImportError:
             preserve_live_bpm = False
         if apply_transport_bpm and applied_bpm > 0 and not preserve_live_bpm:
@@ -3561,6 +3593,14 @@ def open_backing_from_creative(
         trace_caller="open_backing_from_creative",
     )
     try:
+        jam_sid = str(backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")) or "").strip()
+        if jam_sid:
+            session["_backing_page_bpm_sync_id"] = jam_sid
+            session["_backing_trace_sync_id"] = jam_sid
+            session["_active_bpm_sync_id"] = jam_sid
+    except Exception:
+        pass
+    try:
         from backing_source_navigation import (
             mark_specialized_backing_handoff_entry,
             stamp_backing_restore_anchor,
@@ -3603,9 +3643,19 @@ def open_backing_from_creative(
 
             ps = get_backing_play_session(session)
             prev_default = int(((ps or {}).get("defaults") or {}).get("bpm") or 0)
-            if new_bpm > 0 and prev_default > 0 and int(new_bpm) != int(prev_default):
+            has_live_override = False
+            try:
+                has_live_override = int(((ps or {}).get("overrides") or {}).get("bpm") or 0) > 0
+            except (TypeError, ValueError):
+                has_live_override = False
+            if (
+                new_bpm > 0
+                and prev_default > 0
+                and int(new_bpm) != int(prev_default)
+                and not has_live_override
+            ):
                 source_default_bpm_changed = True
-            elif new_bpm > 0 and existing is not None:
+            elif new_bpm > 0 and existing is not None and not has_live_override:
                 prev_ctx_bpm = int(getattr(existing, "bpm", 0) or 0)
                 if prev_ctx_bpm > 0 and int(new_bpm) != int(prev_ctx_bpm):
                     source_default_bpm_changed = True

@@ -84,21 +84,98 @@ def resolve_backing_source_identity(session: dict[str, Any]) -> str:
         return ""
 
 
+def _backing_owner_family(session: dict[str, Any], identity: str = "") -> str:
+    """Catalog vs Style Jam vs Custom — launch-id churn is the same owner."""
+    ident = str(identity or "").strip()
+    if ident.startswith("pk::") or ident.startswith("pk__") or ident.startswith("catalog"):
+        return "catalog"
+    if ident.startswith("custom:") or ident.startswith("custom_") or "custom_progression" in ident:
+        return "custom"
+    if "entry_jam" in ident or ident.startswith("creative:"):
+        return "entry_jam"
+    if ident.startswith("mission") or "mission" in ident:
+        return "mission"
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            src = str(getattr(ctx, "source", "") or "").strip()
+            if src:
+                return src
+    except Exception:
+        pass
+    return ident.split(":")[0] if ident else ""
+
+
+def _bpm_widget_key_is_foreign(session: dict[str, Any], key: str) -> bool:
+    """True when a ``backing_track_bpm::*`` widget belongs to a different owner."""
+    rest = str(key or "")
+    if rest.startswith("backing_track_bpm::"):
+        rest = rest[len("backing_track_bpm::") :]
+    ctx_source = ""
+    entry = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None:
+            ctx_source = str(getattr(ctx, "source", "") or "").strip()
+            entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+    except Exception:
+        ctx_source = ""
+    if not entry:
+        entry = str(session.get("improv_entry_mode") or "").strip()
+    is_catalog = rest.startswith("pk_") or rest.startswith("pk::") or rest.startswith("pk__")
+    is_custom = rest.startswith("custom:") or rest.startswith("custom_")
+    is_style = "style_jam" in rest
+    is_jam_gen = "jam_generator" in rest or "jam_session" in rest
+    if ctx_source in {"entry_jam", "mission", "song_improv"}:
+        return bool(is_catalog or is_custom)
+    if ctx_source == "custom_progression":
+        return bool(is_catalog or is_style or is_jam_gen)
+    if ctx_source in {"", "regular_song"}:
+        return bool(is_custom or is_style or is_jam_gen or "entry_jam" in rest)
+    return False
+
+
+def _foreign_catalog_leftover_bpms(session: dict[str, Any]) -> set[int]:
+    """Other-owner widget tempos that must not initialize this Backing Current."""
+    out: set[int] = set()
+    for key, raw in list(session.items()):
+        if not str(key).startswith("backing_track_bpm::"):
+            continue
+        if not _bpm_widget_key_is_foreign(session, str(key)):
+            continue
+        try:
+            val = int(raw or 0)
+        except (TypeError, ValueError):
+            val = 0
+        if val > 0:
+            out.add(val)
+    return out
+
+
 def _generated_source_bpm(session: dict[str, Any], ctx: Any | None = None) -> int:
     """Sealed generated Jam / Style Jam source BPM (never catalog / stale bag)."""
-    if ctx is not None:
-        try:
-            ctx_bpm = int(getattr(ctx, "bpm", 0) or 0)
-        except (TypeError, ValueError):
-            ctx_bpm = 0
-        if ctx_bpm > 0:
-            return ctx_bpm
     entry_mode = ""
     if ctx is not None:
         entry_mode = str(getattr(ctx, "entry_mode", "") or "").strip()
     if not entry_mode:
         entry_mode = str(session.get("improv_entry_mode") or "").strip()
+    foreign = _foreign_catalog_leftover_bpms(session)
     candidates: list[Any] = []
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        owner = str(getattr(ptr, "workflow_owner", "") or "") if ptr else ""
+        if owner in {"style_jam", "jam_session_generator"}:
+            blob = get_workflow_blob(session, owner, str(getattr(ptr, "workflow_session_id", "") or ""))
+            if blob is not None:
+                candidates.append(getattr(blob, "tempo_bpm", None))
+    except Exception:
+        pass
     if entry_mode == "Jam Session Generator":
         candidates.extend(
             [
@@ -118,23 +195,24 @@ def _generated_source_bpm(session: dict[str, Any], ctx: Any | None = None) -> in
             ]
         )
     try:
-        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
-
-        ptr = get_active_workflow_pointer(session)
-        owner = str(getattr(ptr, "workflow_owner", "") or "") if ptr else ""
-        if owner in {"style_jam", "jam_session_generator"}:
-            blob = get_workflow_blob(session, owner, str(getattr(ptr, "workflow_session_id", "") or ""))
-            if blob is not None:
-                candidates.insert(0, getattr(blob, "tempo_bpm", None))
+        bag = get_backing_play_session(session)
+        bag_def = int(((bag or {}).get("defaults") or {}).get("bpm") or 0)
+        if bag_def > 0:
+            candidates.append(bag_def)
     except Exception:
         pass
+    if ctx is not None:
+        candidates.append(getattr(ctx, "bpm", None))
     for raw in candidates:
         try:
             val = int(raw or 0)
         except (TypeError, ValueError):
             val = 0
-        if val > 0:
-            return val
+        if val <= 0:
+            continue
+        if val in foreign:
+            continue
+        return val
     return 0
 
 
@@ -433,6 +511,7 @@ def _stale_widget_default_bpms(session: dict[str, Any], ps: dict[str, Any] | Non
                 val = 0
             if val > 0:
                 out.add(val)
+    out.update(_foreign_catalog_leftover_bpms(session))
     return out
 
 
@@ -446,12 +525,12 @@ def _lock_bpm(session: dict[str, Any]) -> int:
 def _seed_source_bpm_slider_keys(session: dict[str, Any], bpm: int) -> None:
     """On a NEW play session, leftover widget keys must not become Current.
 
-    Wipe leftover ``backing_track_bpm::*`` keys to source. Keep a live domain
-    BPM that already differs from source so a pending capture can record it.
+    Align this owner's slider keys to source. Leave other owners' tempos
+    (Catalog Say 82 vs Style Jam 60) untouched so they cannot leak either way.
     """
     if int(bpm or 0) <= 0:
         return
-    leftover = False
+    own_leftover = False
     source = int(bpm)
     try:
         domain = int(session.get("backing_track_bpm") or 0)
@@ -463,11 +542,13 @@ def _seed_source_bpm_slider_keys(session: dict[str, Any], bpm: int) -> None:
                 val = int(session.get(key) or 0)
             except (TypeError, ValueError):
                 val = 0
+            if _bpm_widget_key_is_foreign(session, str(key)):
+                continue
             if val > 0 and val != source:
-                leftover = True
+                own_leftover = True
             session[key] = source
     source_defaults = _stale_widget_default_bpms(session)
-    if leftover:
+    if own_leftover:
         keep = source
     elif domain > 0 and domain != source and domain not in source_defaults:
         keep = domain
@@ -558,6 +639,8 @@ def _live_slider_bpm(session: dict[str, Any], *, sync_id: str = "") -> int:
     by_key: dict[str, int] = {}
     for key, raw in list(session.items()):
         if not str(key).startswith("backing_track_bpm::"):
+            continue
+        if _bpm_widget_key_is_foreign(session, str(key)):
             continue
         try:
             val = int(raw or 0)
@@ -1000,6 +1083,69 @@ def capture_backing_play_session_overrides(
     return ps
 
 
+def seal_live_backing_tempo_for_persist(session: dict[str, Any]) -> int:
+    """Write visible Current tempo into the play-session bag before disk write.
+
+    First Custom 104-refresh failure: banner/card/slider were 104 while
+    ``overrides.bpm`` still held the earlier 128 edit. Refresh remounted 128.
+
+    A later persist-time capture of leftover Catalog 96 (Shape) during refresh
+    teardown then replaced 104. Seal the owner's live Current only — never a
+    foreign/catalog leftover — and do not stamp backing_context via
+    ``set_backing_context`` (that remints launch identity / expires the bag).
+    """
+    page = str(session.get("studio_page") or "").strip()
+    if page and page != "backing":
+        return 0
+    ps = get_backing_play_session(session)
+    if ps is None or ps.get("expired"):
+        return 0
+    live = int(current_backing_play_bpm(session, default=0) or 0)
+    override = _play_session_current_bpm(session)
+    stale = _stale_widget_default_bpms(session, ps)
+    foreign = _foreign_catalog_leftover_bpms(session)
+    if live <= 0:
+        return 0
+    if live in foreign or (live in stale and override > 0 and override not in foreign and override != live):
+        if override > 0 and override not in foreign:
+            live = override
+        else:
+            return 0
+    if live <= 0:
+        return 0
+    overrides = dict(ps.get("overrides") or {})
+    prev = int(overrides.get("bpm") or 0)
+    session["backing_track_bpm"] = live
+    session["bpm"] = live
+    session["_backing_current_bpm_lock"] = live
+    if prev == live:
+        return live
+    trace_bpm_write(
+        session,
+        fn="seal_live_backing_tempo_for_persist",
+        field="overrides.bpm",
+        old=prev,
+        new=live,
+        source="persist_visible_current",
+    )
+    overrides["bpm"] = live
+    ps = dict(ps)
+    ps["overrides"] = overrides
+    ps["current_bpm_lock"] = live
+    ps["expired"] = False
+    session[BACKING_PLAY_SESSION_KEY] = ps
+    session[BACKING_PLAY_SESSION_EXPIRED_KEY] = False
+    try:
+        raw = session.get("backing_context")
+        if isinstance(raw, dict) and str(raw.get("source") or "") not in {"", "regular_song"}:
+            blob = dict(raw)
+            blob["bpm"] = live
+            session["backing_context"] = blob
+    except Exception:
+        pass
+    return live
+
+
 def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
     """Project current play-session defaults+overrides onto Backing widget keys."""
     resolved = effective_backing_play_overrides(session)
@@ -1041,6 +1187,8 @@ def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
                 if not sid:
                     continue
                 key = backing_bpm_slider_widget_key(sid)
+                if _bpm_widget_key_is_foreign(session, key):
+                    continue
                 if old is None:
                     old = session.get(key)
                 session[key] = bpm
@@ -1048,6 +1196,8 @@ def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
             if override > 0:
                 for key in list(session.keys()):
                     if not str(key).startswith("backing_track_bpm::"):
+                        continue
+                    if _bpm_widget_key_is_foreign(session, str(key)):
                         continue
                     try:
                         val = int(session.get(key) or 0)
@@ -1098,15 +1248,28 @@ def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
 
 
 def _apply_defaults_to_widgets(session: dict[str, Any], defaults: dict[str, Any]) -> None:
-    session["backing_track_bpm"] = int(defaults.get("bpm") or 100)
-    session["bpm"] = int(defaults.get("bpm") or 100)
+    bpm = int(defaults.get("bpm") or 100)
+    session["backing_track_bpm"] = bpm
+    session["bpm"] = bpm
+    try:
+        from songs.bpm_state import BPM_WIDGET_KEY
+
+        session[BPM_WIDGET_KEY] = bpm
+    except ImportError:
+        pass
     try:
         from backing_context import backing_page_sync_id
         from songs.playback_defaults import backing_bpm_slider_widget_key
 
         sid = backing_page_sync_id(session, song_sync_id="")
         if sid:
-            session[backing_bpm_slider_widget_key(sid)] = int(defaults.get("bpm") or 100)
+            session[backing_bpm_slider_widget_key(sid)] = bpm
+            try:
+                from backing_practice_key_control import backing_bpm_control_owner
+
+                session[backing_bpm_slider_widget_key(sid, owner=backing_bpm_control_owner(session))] = bpm
+            except Exception:
+                pass
     except ImportError:
         pass
     if defaults.get("groove"):
@@ -1164,12 +1327,21 @@ def _new_play_session(
 def expire_backing_play_session(session: dict[str, Any]) -> None:
     """Leave-Backing: drop temporary Advanced/BPM/scope knobs; keep last source identity."""
     ps = get_backing_play_session(session) or {}
-    defaults = dict(ps.get("defaults") or _source_defaults_from_session(session))
+    live_identity = resolve_backing_source_identity(session)
+    bag_identity = str(ps.get("source_identity") or "").strip()
+    bag_family = _backing_owner_family(session, bag_identity)
+    live_family = _backing_owner_family(session, live_identity)
+    if bag_family and live_family and bag_family != live_family:
+        # Style Jam (or Custom) already owns Backing — do not reapply Catalog
+        # bag defaults (Say 82) onto the new owner's widgets.
+        defaults = _source_defaults_from_session(session)
+    else:
+        defaults = dict(ps.get("defaults") or _source_defaults_from_session(session))
     _apply_defaults_to_widgets(session, defaults)
     ps = {
         "play_session_id": str(ps.get("play_session_id") or ""),
         "launch_id": str(ps.get("launch_id") or _ctx_launch_id(session) or ""),
-        "source_identity": str(ps.get("source_identity") or resolve_backing_source_identity(session) or ""),
+        "source_identity": str(live_identity or bag_identity or ""),
         "expired": True,
         "defaults": defaults,
         "overrides": {},
@@ -1763,6 +1935,7 @@ __all__ = [
     "current_backing_play_bpm",
     "effective_backing_play_overrides",
     "promote_live_slider_bpm_to_current",
+    "seal_live_backing_tempo_for_persist",
     "trace_backing_bpm",
     "expire_backing_play_session",
     "expire_backing_play_session_on_page_exit",

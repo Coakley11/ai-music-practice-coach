@@ -3143,12 +3143,21 @@ def restore_session_widgets_from_backing_context(
                 except ImportError:
                     session["improv_style_key"] = concert
             if ctx.bpm:
+                ctx_bpm = int(ctx.bpm)
+                skip_catalog_bpm = False
                 try:
-                    from session_widget_safe import safe_session_assign
+                    from backing_play_session import _foreign_catalog_leftover_bpms
 
-                    safe_session_assign(session, "improv_style_bpm", int(ctx.bpm), widget_safe=widget_safe)
-                except ImportError:
-                    session["improv_style_bpm"] = int(ctx.bpm)
+                    skip_catalog_bpm = ctx_bpm in _foreign_catalog_leftover_bpms(session)
+                except Exception:
+                    skip_catalog_bpm = False
+                if not skip_catalog_bpm:
+                    try:
+                        from session_widget_safe import safe_session_assign
+
+                        safe_session_assign(session, "improv_style_bpm", ctx_bpm, widget_safe=widget_safe)
+                    except ImportError:
+                        session["improv_style_bpm"] = ctx_bpm
             if ctx.mood:
                 session["improv_mood"] = ctx.mood
             if ctx.groove_intensity:
@@ -3161,10 +3170,18 @@ def restore_session_widgets_from_backing_context(
                 label = str(ctx.progression_label or ctx.style or "Style Jam").strip() or "Style Jam"
                 session["improv_generated_sections"] = {label: list(ctx.progression)}
         meta = dict(session.get("improv_style_meta") or {})
+        meta_bpm = int(ctx.bpm or meta.get("bpm") or 100)
+        try:
+            from backing_play_session import _foreign_catalog_leftover_bpms
+
+            if int(ctx.bpm or 0) in _foreign_catalog_leftover_bpms(session):
+                meta_bpm = int(meta.get("bpm") or session.get("improv_style_bpm") or 100)
+        except Exception:
+            pass
         meta.update(
             {
                 "style": str(ctx.style or meta.get("style") or ""),
-                "bpm": int(ctx.bpm or meta.get("bpm") or 100),
+                "bpm": meta_bpm,
                 "groove": str(ctx.groove or meta.get("groove") or "Medium"),
                 "groove_intensity": str(ctx.groove_intensity or meta.get("groove_intensity") or "Medium"),
                 "key": concert or str(meta.get("key") or ""),
@@ -3207,7 +3224,16 @@ def restore_session_widgets_from_backing_context(
             if ctx.style:
                 sess.style = str(ctx.style).strip()
             if ctx.bpm:
-                sess.bpm = int(ctx.bpm)
+                ctx_bpm = int(ctx.bpm)
+                skip_catalog_bpm = False
+                try:
+                    from backing_play_session import _foreign_catalog_leftover_bpms
+
+                    skip_catalog_bpm = ctx_bpm in _foreign_catalog_leftover_bpms(session)
+                except Exception:
+                    skip_catalog_bpm = False
+                if not skip_catalog_bpm:
+                    sess.bpm = ctx_bpm
             if ctx.mood:
                 sess.mood = str(ctx.mood).strip()
             if ctx.groove_intensity:

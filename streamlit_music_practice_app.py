@@ -9533,15 +9533,13 @@ def _render_backing_step2_playback_action(
             live = 0
         if live > 0:
             bpm = live
-        if not st.session_state.pop("_backing_bpm_changed_this_run", False):
+        changed_this_run = bool(st.session_state.pop("_backing_bpm_changed_this_run", False))
+        if not changed_this_run:
             bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(bpm), user_edit=False)
-        else:
-            try:
-                lock = int(st.session_state.get("_backing_current_bpm_lock") or 0)
-            except (TypeError, ValueError):
-                lock = 0
-            if lock > 0:
-                bpm = lock
+        elif live > 0:
+            # Live Quick BPM is this run's user gesture. A leftover lock from the
+            # prior 128 edit must not reseal Current back to 128 after 104.
+            bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(live), user_edit=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         _render_backing_scope_controls(
