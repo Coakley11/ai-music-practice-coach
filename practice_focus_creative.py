@@ -32,10 +32,60 @@ def _session_map(session: Any) -> Any:
 
 
 def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str, str]:
-    """Current Creative owner/workflow identity for Focus consumers."""
+    """Current page's coaching owner — not a leftover preview or Global Active Songs pick."""
     ss = _session_map(session)
     entry = str(ss.get("improv_entry_mode") or "").strip()
     tab = str(ss.get("improv_intelligence_tab") or "").strip()
+    page = str(ss.get("studio_page") or "").strip().lower()
+
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            bctx = get_backing_context(ss)
+        except ImportError:
+            bctx = None
+        src = str(getattr(bctx, "source", "") or "").strip() if bctx is not None else ""
+        if src == "entry_jam":
+            jam_entry = str(getattr(bctx, "entry_mode", "") or entry).strip()
+            if jam_entry == "Jam Session Generator":
+                return {
+                    "kind": "jam_generator",
+                    "workflow": "Jam Generator Backing",
+                    "identity": "Jam Session Generator",
+                }
+            return {
+                "kind": "entry_jam",
+                "workflow": "Style Jam Backing",
+                "identity": "Entry Style Jam",
+            }
+        if src == "song_improv":
+            kind = "catalog"
+            try:
+                from source_session_state import resolve_sbi_material_kind
+
+                kind = str(resolve_sbi_material_kind(ss, ctx=bctx) or "catalog").strip().lower()
+            except ImportError:
+                kind = str(getattr(bctx, "sbi_material_kind", "") or "catalog").strip().lower()
+            identity = str(getattr(bctx, "song_title", "") or "").strip()
+            if kind == "custom":
+                identity = identity or _custom_identity(ss)
+                return {"kind": "custom", "workflow": "SBI Custom Backing", "identity": identity}
+            if kind == "composition":
+                identity = identity or _composition_identity(ss)
+                return {
+                    "kind": "composition",
+                    "workflow": "SBI Composition Backing",
+                    "identity": identity,
+                }
+            identity = identity or _catalog_identity(ss)
+            return {"kind": "catalog", "workflow": "SBI Catalog Backing", "identity": identity}
+        if src == "mission":
+            return {
+                "kind": "mission",
+                "workflow": "Mission Backing",
+                "identity": str(getattr(bctx, "song_title", "") or "Mission").strip(),
+            }
 
     if entry == "Style Jam Mode":
         identity = str(ss.get("improv_style") or "Style Jam").strip() or "Style Jam"
@@ -55,20 +105,22 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         }
 
     kind = "catalog"
+    preview = ""
     try:
-        from source_session_state import resolve_sbi_material_kind
+        from source_session_state import get_sbi_preview_source, resolve_sbi_material_kind
 
-        kind = str(resolve_sbi_material_kind(ss) or "catalog").strip().lower() or "catalog"
+        preview = str(get_sbi_preview_source(ss) or "").strip()
+        kind = str(resolve_sbi_material_kind(ss, owner=preview) or "catalog").strip().lower() or "catalog"
     except ImportError:
         kind = "catalog"
 
-    if kind == "custom":
+    if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)
         workflow = "SBI Custom" if entry == "Song-Based Improvisation" else "Custom"
         if tab == "Missions":
             workflow = "Missions · Custom"
         return {"kind": "custom", "workflow": workflow, "identity": identity}
-    if kind == "composition":
+    if kind == "composition" and preview == "Composition":
         identity = _composition_identity(ss)
         workflow = "SBI Composition" if entry == "Song-Based Improvisation" else "Composition"
         if tab == "Missions":
@@ -80,7 +132,7 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     if tab == "Missions":
         workflow = "Missions · Catalog"
     elif tab == "Harmony Map":
-        workflow = "Harmony Map · Catalog" if kind == "catalog" else f"Harmony Map · {kind}"
+        workflow = "Harmony Map · Catalog"
     return {"kind": "catalog", "workflow": workflow, "identity": identity}
 
 
@@ -119,12 +171,15 @@ def _catalog_identity(session: dict[str, Any]) -> str:
 
 
 def resolve_creative_practice_focus(session: dict[str, Any] | None) -> dict[str, Any]:
-    """Global Focus + current source binding. Coaching only."""
+    """Global Focus + current source binding. Coaching only — never source identity."""
     ss = _session_map(session)
     pf: PracticeFocusContext = resolve_practice_focus_context(ss)
     bind = resolve_creative_source_binding(ss)
     emphasis = list(pf.profile.creative_emphasis[:3]) if pf.profile.creative_emphasis else []
-    suggestions = list(pf.profile.practice_suggestions[:2]) if pf.profile.practice_suggestions else []
+    suggestions = list(pf.profile.practice_suggestions[:3]) if pf.profile.practice_suggestions else []
+    backing = list(pf.profile.backing_ideas[:2]) if pf.profile.backing_ideas else []
+    success = list(pf.profile.evaluation_dimensions[:3]) if pf.profile.evaluation_dimensions else []
+    feedback = list(pf.profile.terminology[:4]) if pf.profile.terminology else []
     return {
         "focus": pf.focus or get_active_focus(ss),
         "instrument": pf.instrument_display or pf.instrument,
@@ -134,8 +189,46 @@ def resolve_creative_practice_focus(session: dict[str, Any] | None) -> dict[str,
         "identity": bind["identity"],
         "emphasis": emphasis,
         "suggestions": suggestions,
+        "backing_ideas": backing,
+        "success_criteria": success,
+        "feedback_language": feedback,
         "prompt_block": pf.ami_prompt_block,
     }
+
+
+def format_focus_surface_guidance(session: Any, surface: str) -> str:
+    """Surface-specific Practice Focus coaching. Does not change musical identity."""
+    ctx = resolve_creative_practice_focus(session)
+    focus = str(ctx.get("focus") or "").strip()
+    surface_l = str(surface or "").strip().lower()
+    if surface_l in {"live_coach", "live"}:
+        bits = list(ctx.get("suggestions") or [])[:2]
+        extra = list(ctx.get("emphasis") or [])[:1]
+        detail = " ".join(str(x) for x in (bits + extra) if str(x).strip())
+        return f"{focus} — {detail}".strip(" —") if focus else detail
+    if surface_l in {"missions", "mission"}:
+        steps = list(ctx.get("suggestions") or [])[:2]
+        success = list(ctx.get("success_criteria") or [])[:2]
+        line = " ".join(str(x) for x in steps if str(x).strip())
+        if success:
+            line = f"{line} Success: {', '.join(str(s) for s in success)}.".strip()
+        return f"{focus} — {line}".strip(" —") if focus else line
+    if surface_l in {"harmony", "harmony_map", "deep_harmony"}:
+        bits = list(ctx.get("emphasis") or ctx.get("suggestions") or [])[:2]
+        detail = " ".join(str(x) for x in bits if str(x).strip())
+        return f"{focus} — {detail}".strip(" —") if focus else detail
+    if surface_l in {"motif", "phrase", "phrase / motif"}:
+        bits = list(ctx.get("emphasis") or ctx.get("suggestions") or [])[:2]
+        detail = " ".join(str(x) for x in bits if str(x).strip())
+        return f"{focus} — apply this to the motif without changing key or pitches unless the focus is a designed musical transform.".strip() if not detail else f"{focus} — {detail}"
+    if surface_l in {"backing", "backing_suggestions"}:
+        bits = list(ctx.get("backing_ideas") or ctx.get("suggestions") or [])[:2]
+        detail = " ".join(str(x) for x in bits if str(x).strip())
+        return f"{focus} — {detail}".strip(" —") if focus else detail
+    if surface_l in {"feedback", "feedback_language"}:
+        terms = list(ctx.get("feedback_language") or [])[:4]
+        return f"{focus} language: " + ", ".join(str(t) for t in terms if str(t).strip())
+    return format_practice_focus_coaching_line(session)
 
 
 def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> str:

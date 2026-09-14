@@ -542,6 +542,34 @@ _PROFILES: dict[str, FocusProfile] = {
         backing=("Ride a crescendo into the chorus against the track.",),
         terms=("crescendo", "decrescendo", "accent", "balance"),
     ),
+    "Voicings": _profile(
+        "Voicings",
+        CATEGORY_HARMONY,
+        priorities=(
+            "inversion choice",
+            "close vs open spacing",
+            "smooth inner-voice motion",
+            "avoiding muddy low intervals",
+        ),
+        evaluation=("voicing_clarity", "voice_leading", "register_balance"),
+        metrics=_METRICS_HARMONY,
+        scores=("musicality", "pitch"),
+        exercises=("inversions", "drop_2", "guide_tone_shells"),
+        practice=(
+            "Play each chord as a compact voicing, then as an open voicing, without changing the progression.",
+            "Keep common tones and move other voices by step between changes.",
+            "Name the inversion (root, first, second) of each voicing you use.",
+        ),
+        creative=(
+            "Keep the motif pitches; change only how the accompaniment is voiced.",
+            "Use shell voicings (3rd and 7th) under a simple motif.",
+        ),
+        backing=(
+            "Comp with two-note shells, then add one color tone against the track.",
+            "Hold each voicing for a full bar and listen for smoothness into the next chord.",
+        ),
+        terms=("inversion", "shell voicing", "drop-2", "inner voice"),
+    ),
     "Ear Training": _profile(
         "Ear Training",
         CATEGORY_EAR_TRAINING,
@@ -567,7 +595,6 @@ _LABEL_ALIASES: dict[str, str] = {
     "double stops": "Melody",
     "lead guitar": "Melody",
     "soloing": "Improvisation",
-    "voicings": "Harmony",
     "left-hand patterns": "Technique",
     "comping": "Rhythm",
     "voice leading": "Harmony",
