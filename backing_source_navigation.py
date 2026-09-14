@@ -3426,6 +3426,7 @@ def _activate_workflow_for_creative_return(session: dict[str, Any], ctx: Backing
         from music_workflow_activation import activate_workflow_simple
 
         if owner == "song_based_improvisation":
+            restore_sbi_song_source_from_backing_context(session, ctx)
             activate_workflow_simple(
                 session,
                 "song_based_improvisation",
@@ -3581,11 +3582,7 @@ def return_to_source_button_label(ctx: BackingContext | None) -> str:
     if ctx.source == "custom_progression":
         return "✏️ Return to Custom Page"
     if ctx.source == "song_improv":
-        custom_sbi = bool(
-            getattr(ctx, "custom_revision_id", None)
-            or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
-        )
-        if custom_sbi:
+        if backing_context_is_sbi_custom(ctx):
             return "🎨 Return to Creative · SBI Custom"
         return "🎨 Return to Creative · SBI"
     if ctx.source == "regular_song":
@@ -3593,6 +3590,59 @@ def return_to_source_button_label(ctx: BackingContext | None) -> str:
     if ctx.source == "composition_song":
         return feature_label("composition", "Return to Composition")
     return "🎨 Return to Creative Page"
+
+
+def backing_context_is_sbi_custom(ctx: Any) -> bool:
+    """True when BackingContext is Song-Based Improvisation over a Custom progression."""
+    if ctx is None:
+        return False
+    if str(getattr(ctx, "source", "") or "") != "song_improv":
+        return False
+    return bool(
+        getattr(ctx, "custom_revision_id", None)
+        or str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() == "custom"
+        or str(getattr(ctx, "sbi_source_owner", "") or "") == "Custom progression"
+        or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
+        or str(getattr(ctx, "bound_pick_key", "") or "").startswith("custom::")
+    )
+
+
+def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: Any) -> None:
+    """Restore SBI Custom/Catalog/Composition preview *before* workflow activation."""
+    if ctx is None or str(getattr(ctx, "source", "") or "") != "song_improv":
+        return
+    if backing_context_is_sbi_custom(ctx):
+        session["improv_song_source"] = "Custom progression"
+        try:
+            from studio_page_state import CREATIVE_BACKING_SONG_SOURCE_KEY
+
+            session[CREATIVE_BACKING_SONG_SOURCE_KEY] = "Custom progression"
+        except ImportError:
+            pass
+        try:
+            from source_session_state import note_explicit_sbi_source_selection, set_sbi_preview_source
+
+            set_sbi_preview_source(session, "Custom progression")
+            note_explicit_sbi_source_selection(session, "Custom progression")
+        except ImportError:
+            pass
+        return
+    if str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() == "composition":
+        session["improv_song_source"] = "Composition"
+        try:
+            from source_session_state import set_sbi_preview_source
+
+            set_sbi_preview_source(session, "Composition")
+        except ImportError:
+            pass
+        return
+    session["improv_song_source"] = "Active song"
+    try:
+        from source_session_state import set_sbi_preview_source
+
+        set_sbi_preview_source(session, "Active song")
+    except ImportError:
+        pass
 
 
 def restore_session_widgets_from_backing_context(
@@ -3696,34 +3746,7 @@ def restore_session_widgets_from_backing_context(
             apply_song_improv_entry_defaults(session, source="restore_from_song_improv_ctx")
         except ImportError:
             pass
-        custom_improv = bool(
-            ctx.custom_revision_id
-            or str(ctx.active_song_id or "").startswith("custom::")
-        )
-        if custom_improv:
-            # SBI Custom is preview/handoff only — never promote LAST_CUSTOM to
-            # Global Active Source (H5: Songs must still show catalog Shape).
-            session["improv_song_source"] = "Custom progression"
-            try:
-                from studio_page_state import CREATIVE_BACKING_SONG_SOURCE_KEY
-
-                session[CREATIVE_BACKING_SONG_SOURCE_KEY] = "Custom progression"
-            except ImportError:
-                pass
-            try:
-                from source_session_state import set_sbi_preview_source
-
-                set_sbi_preview_source(session, "Custom progression")
-            except ImportError:
-                pass
-        else:
-            session["improv_song_source"] = "Active song"
-            try:
-                from source_session_state import set_sbi_preview_source
-
-                set_sbi_preview_source(session, "Active song")
-            except ImportError:
-                pass
+        restore_sbi_song_source_from_backing_context(session, ctx)
     elif ctx.source == "entry_jam":
         entry = resolve_entry_jam_entry_mode(session, ctx=ctx)
         tab = "Entry & Jam"
@@ -4105,11 +4128,7 @@ def return_to_source_button_label(
     if ctx.source == "custom_progression":
         return feature_label("custom", "Return to Custom Page")
     if ctx.source == "song_improv":
-        custom_sbi = bool(
-            getattr(ctx, "custom_revision_id", None)
-            or str(getattr(ctx, "active_song_id", "") or "").startswith("custom::")
-        )
-        if custom_sbi:
+        if backing_context_is_sbi_custom(ctx):
             return "🎨 Return to Creative · SBI Custom"
         return "🎨 Return to Creative · SBI"
     if ctx.source == "regular_song":
@@ -4182,6 +4201,8 @@ __all__ = [
     "source_ownership_diagnostics_enabled",
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
+    "restore_sbi_song_source_from_backing_context",
+    "backing_context_is_sbi_custom",
     "return_to_catalog_song_backing_label",
     "return_to_source_button_label",
     "seal_creative_return_context_from_backing",

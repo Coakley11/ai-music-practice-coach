@@ -65,6 +65,7 @@ from improvisation_missions import (
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
+    _practice_steps,
     load_mission_example,
     mission_example_fingerprint,
     mission_example_for_display,
@@ -1746,7 +1747,8 @@ def _tab_motif(
             use_container_width=True,
         ):
             motif = generate_musical_phrase(
-                gen_chord, key_center=motif_key, level=level, kind="creative"
+                gen_chord, key_center=motif_key, level=level, kind="creative",
+                session_state=session_state,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_chord
@@ -1778,6 +1780,7 @@ def _tab_motif(
                 level=level,
                 kind="creative",
                 variant="harder",
+                session_state=session_state,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_chord
@@ -1793,6 +1796,7 @@ def _tab_motif(
                 level=level,
                 kind="creative",
                 variant="easier",
+                session_state=session_state,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_chord
@@ -1821,6 +1825,7 @@ def _tab_motif(
             key_center=motif_key,
             level=level,
             kind="creative",
+            session_state=session_state,
         )
         if isinstance(motif, dict):
             motif["chord"] = gen_chord
@@ -1861,12 +1866,25 @@ def _tab_motif(
     motif_chord_label = gen_chord
     title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
     display_text = _motif_display_text(motif)
+    coaching = ""
+    try:
+        from practice_focus_creative import format_practice_focus_coaching_line
+
+        coaching = str(format_practice_focus_coaching_line(session_state) or "").strip()
+    except Exception:
+        coaching = str(motif.get("practice_focus_coaching") or "").strip()
     st.markdown(
         f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
         f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
         f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
         f'{html.escape(display_text)}</p>'
-        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
+        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p>'
+        + (
+            f'<p class="ui-card-sub">{html.escape(coaching)}</p>'
+            if coaching
+            else ""
+        )
+        + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -2511,6 +2529,7 @@ def _render_section_chord_map(
                 key_center=key_center,
                 level=motif_level,
                 kind="creative",
+                session_state=ss,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_ch
@@ -3806,7 +3825,6 @@ def _tab_missions(
         f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
         f"({html.escape(improv_ctx.artist)})"
     )
-    _render_creative_practice_focus_caption(st, session_state)
 
     live_inst, live_level, live_focus = render_setup_quick_controls(
         st,
@@ -3816,6 +3834,7 @@ def _tab_missions(
         label="Instrument · level · focus",
         show_sync_caption=False,
     )
+    _render_creative_practice_focus_caption(st, session_state)
 
     mission_options = list(PRACTICE_MISSIONS)
     default_mission = session_state.get("improv_active_mission") or mission_options[0]
@@ -4357,7 +4376,16 @@ def _tab_missions(
             f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
         )
         st.markdown(f"**Why it works:** {example.why}")
-        for step in example.practice_steps:
+        steps = list(example.practice_steps or [])
+        live_steps = _practice_steps(
+            str(example.mission or ""),
+            str(live_level or example.level or ""),
+            str(live_inst or example.instrument or ""),
+            focus=str(live_focus or session_state.get("focus") or example.focus or ""),
+        )
+        if live_steps:
+            steps = live_steps
+        for step in steps:
             st.markdown(f"- {step}")
 
         st.markdown("**Transform idea**")

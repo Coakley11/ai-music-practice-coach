@@ -77,6 +77,14 @@ def build_key_authority_from_legacy(session: dict[str, Any], *, owner: str) -> K
 def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
     record_compat_fallback(session, "legacy_session_id", owner)
     if owner == "song_based_improvisation":
+        try:
+            from music_workflow_song_practice import song_based_blob_session_id
+
+            sid = str(song_based_blob_session_id(session) or "").strip()
+            if sid:
+                return sid
+        except ImportError:
+            pass
         record_legacy_field_read(session, "active_catalog_pick_key", adapter="session_id")
         return str(session.get("active_catalog_pick_key") or session.get("song") or "song").strip() or "song"
     if owner == "mission_jam":

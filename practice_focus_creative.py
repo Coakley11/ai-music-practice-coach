@@ -8,15 +8,32 @@ identity. They must not reuse a previous owner's song-card prose.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from practice_focus_context import PracticeFocusContext, resolve_practice_focus_context
 from practice_setup_globals import get_active_focus
 
 
+def _session_map(session: Any) -> Any:
+    """Accept Streamlit SessionState as well as plain dicts.
+
+    ``isinstance(st.session_state, dict)`` is False. Treating that as empty
+    made Creative captions fall back to Piano / Voicings / Catalog song
+    while the Focus widgets still showed the live selector.
+    """
+    if session is None:
+        return {}
+    if isinstance(session, Mapping):
+        return session
+    if hasattr(session, "get") and hasattr(session, "__getitem__"):
+        return session
+    return {}
+
+
 def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str, str]:
     """Current Creative owner/workflow identity for Focus consumers."""
-    ss = session if isinstance(session, dict) else {}
+    ss = _session_map(session)
     entry = str(ss.get("improv_entry_mode") or "").strip()
     tab = str(ss.get("improv_intelligence_tab") or "").strip()
 
@@ -103,7 +120,7 @@ def _catalog_identity(session: dict[str, Any]) -> str:
 
 def resolve_creative_practice_focus(session: dict[str, Any] | None) -> dict[str, Any]:
     """Global Focus + current source binding. Coaching only."""
-    ss = session if isinstance(session, dict) else {}
+    ss = _session_map(session)
     pf: PracticeFocusContext = resolve_practice_focus_context(ss)
     bind = resolve_creative_source_binding(ss)
     emphasis = list(pf.profile.creative_emphasis[:3]) if pf.profile.creative_emphasis else []
@@ -143,6 +160,44 @@ def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> st
     if emphasis:
         extra = " — " + "; ".join(str(x) for x in emphasis[:2])
     return f"{line}{extra}"
+
+
+def format_practice_focus_coaching_line(session: Any) -> str:
+    """One-line coaching overlay for generated Motif / Mission examples."""
+    ctx = resolve_creative_practice_focus(session)
+    focus = str(ctx.get("focus") or "").strip()
+    suggestions = [str(x).strip() for x in (ctx.get("suggestions") or []) if str(x).strip()]
+    emphasis = [str(x).strip() for x in (ctx.get("emphasis") or []) if str(x).strip()]
+    detail = (suggestions[0] if suggestions else "") or (emphasis[0] if emphasis else "")
+    if focus and detail:
+        return f"{focus} — {detail}"
+    return focus or detail
+
+
+def apply_practice_focus_to_generated_motif(motif: dict[str, Any] | None, session: Any) -> dict[str, Any]:
+    """Stamp current Practice Focus onto a generated motif without changing identity."""
+    out = dict(motif or {})
+    ss = _session_map(session)
+    if session is None or not ss:
+        return out
+    try:
+        live = str(ss.get("focus") or "").strip()
+    except Exception:
+        return out
+    if not live:
+        return out
+    ctx = resolve_creative_practice_focus(session)
+    focus = str(ctx.get("focus") or live).strip()
+    if not focus:
+        return out
+    out["practice_focus"] = focus
+    line = format_practice_focus_coaching_line(session)
+    if line:
+        prompt = str(out.get("variation_prompt") or "").strip()
+        if line not in prompt:
+            out["variation_prompt"] = f"{prompt} {line}".strip() if prompt else line
+        out["practice_focus_coaching"] = line
+    return out
 
 
 def creative_focus_matches_source(

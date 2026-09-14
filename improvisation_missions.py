@@ -319,11 +319,20 @@ def mission_brief_for_practice(mission: str) -> str:
     return "Focus on the mission goal while improvising freely over the selected chord."
 
 
-def _practice_steps(mission: str, level: str, instrument: str) -> list[str]:
+def _practice_steps(mission: str, level: str, instrument: str, focus: str = "") -> list[str]:
     steps = [
         "Optional: use the example idea for inspiration — invent your own notes and phrases.",
         "Loop your idea on one chord before moving to the next change.",
     ]
+    try:
+        from practice_focus_policy import resolve_focus_profile
+
+        profile = resolve_focus_profile(instrument, focus)
+        extra = str((profile.practice_suggestions[0] if profile.practice_suggestions else "") or "").strip()
+        if extra and extra not in steps:
+            steps.insert(0, f"Practice Focus ({profile.label}): {extra}")
+    except Exception:
+        pass
     low = mission.lower()
     if "motif" in low and "solo" in low:
         steps.append("Carry the same contour into the next section — only change the starting note to match the chord.")
@@ -831,6 +840,13 @@ def generate_mission_example(
         idea_variant=(nonce if variant == "new" else (seed % 1000)),
     )
     motif = sync_motif_midi(motif)
+    if session_state is not None:
+        try:
+            from practice_focus_creative import apply_practice_focus_to_generated_motif
+
+            motif = apply_practice_focus_to_generated_motif(motif, session_state)
+        except Exception:
+            pass
     if isinstance(motif, dict):
         motif = dict(motif)
         motif["_concert_notes"] = list(motif.get("notes") or [])
@@ -877,7 +893,7 @@ def generate_mission_example(
         tab=tab,
         piano_html=piano_html,
         why=_why_it_works(mission, chord, improv_ctx=improv_ctx, section=section, insight=insight),
-        practice_steps=_practice_steps(mission, level, instrument),
+        practice_steps=_practice_steps(mission, level, instrument, focus=focus),
         insight=insight,
         show_tab=family == "guitar",
         show_piano=family == "piano",
@@ -1266,7 +1282,13 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         tab=str(raw.get("tab", "")),
         piano_html=str(raw.get("piano_html", "")),
         why=why,
-        practice_steps=list(raw.get("practice_steps") or []),
+        practice_steps=_practice_steps(
+            str(raw.get("mission", "")),
+            str(session_state.get("level", improv_ctx.level)),
+            str(session_state.get("instrument", improv_ctx.instrument)),
+            focus=str(session_state.get("focus", improv_ctx.focus)),
+        )
+        or list(raw.get("practice_steps") or []),
         insight=insight,
         show_tab=bool(raw.get("show_tab")),
         show_piano=bool(raw.get("show_piano")),
