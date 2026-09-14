@@ -866,6 +866,7 @@ def _tab_entry_modes(
         '<p class="ui-creative-section-label">Improvisation entry mode</p>',
         unsafe_allow_html=True,
     )
+    _render_creative_practice_focus_caption(st, session_state)
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
@@ -1271,6 +1272,7 @@ def _tab_entry_modes(
             f'<p class="ui-creative-section-label">{html.escape(creative_tool_display_label("Style Jam Mode"))}</p>',
             unsafe_allow_html=True,
         )
+        _render_creative_practice_focus_caption(st, session_state)
         c1, c2, c3 = st.columns(3)
         with c1:
             st.selectbox(
@@ -1386,6 +1388,7 @@ def _tab_entry_modes(
         except ImportError:
             pass
         st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
+        _render_creative_practice_focus_caption(st, session_state)
         e1, e2 = st.columns(2)
         with e1:
             ensemble = st.selectbox(
@@ -1511,6 +1514,16 @@ def _render_open_practice_backing_row(
                 on_open_practice()
 
 
+def _render_creative_practice_focus_caption(st: Any, session_state: dict) -> None:
+    """Show global Practice Focus bound to the current Creative source."""
+    try:
+        from practice_focus_creative import format_creative_practice_focus_caption
+
+        st.caption(format_creative_practice_focus_caption(session_state))
+    except Exception:
+        pass
+
+
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
     try:
         from song_creative_focus import hydrate_creative_pages_from_song_focus
@@ -1536,6 +1549,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
     st.caption(
         f"**{live_level}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
     )
+    _render_creative_practice_focus_caption(st, session_state)
     try:
         from instrument_transposition import is_transposing_instrument
 
@@ -1647,6 +1661,24 @@ def _tab_motif(
         pass
     st.markdown(creative_tool_heading_markdown("Phrase / Motif"))
     st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_motif_setup",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+    _render_creative_practice_focus_caption(st, session_state)
+    if live_level:
+        level = live_level
+    if live_inst:
+        instrument = live_inst
 
     try:
         from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
@@ -3774,6 +3806,7 @@ def _tab_missions(
         f"Interactive coach for **{html.escape(improv_ctx.song_title)}** "
         f"({html.escape(improv_ctx.artist)})"
     )
+    _render_creative_practice_focus_caption(st, session_state)
 
     live_inst, live_level, live_focus = render_setup_quick_controls(
         st,
@@ -4569,6 +4602,7 @@ def _tab_harmony_map(
         label="Instrument · level · focus",
         show_sync_caption=False,
     )
+    _render_creative_practice_focus_caption(st, session_state)
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
@@ -4756,6 +4790,7 @@ def _tab_deep_harmony(
         hydrate_creative_pages_from_song_focus(session_state, tab="Deep Harmony")
     except ImportError:
         pass
+    _render_creative_practice_focus_caption(st, session_state)
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
     _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}

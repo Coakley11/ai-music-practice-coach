@@ -1,13 +1,28 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-02 (Key Cycle Practice documented as future-only; product UI deferred) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-14 (`feature/creative-practice-focus-icons` — Creative Practice Focus + source-branded Backing cards; not merged to `dev`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
 
-### P0 — Pass 8 Creative / Backing stabilization (uncommitted, active)
+### P0 — Practice Focus on Creative + source-branded Backing cards (local feature branch)
+
+**Branch:** `feature/creative-practice-focus-icons` (from `dev` @ `cee2092`). Do not merge/push until Daniel approves.
+
+- [x] Bring parked Practice Focus policy/context/snapshot SSOT onto Creative-stabilized `dev`
+- [x] Bind Creative captions to the current Catalog/Custom/Composition/Mission/Jam identity (no previous-owner leak)
+- [x] Source-brand SBI Custom/Composition/Catalog Backing cards (green ✍️ / black 🪶 / blue 🎼) + canonical Style/Key/Section/BPM/Meter icons
+- [ ] Daniel visual review of SBI Custom green card vs screenshot
+- [ ] Optional Backing “practice this track with my Focus” card (still deferred)
+- [ ] Motif Sequence staff expand (still deferred)
+
+Practice Focus remains **global** (`session["focus"]`); Creative consumers follow the **current** source. Key cycling remains deferred.
+
+`origin/dev` now includes Practice → Backing routing @ `cee20920ddef9ee4d7c0188a4256489afd2b488e`.
+
+### P0 — Pass 8 Creative / Backing stabilization (merged to `dev`)
 
 **Plan:** [plans/2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md)  
 **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) (rule: `.cursor/rules/creative-backing-persistence-contract.mdc`)

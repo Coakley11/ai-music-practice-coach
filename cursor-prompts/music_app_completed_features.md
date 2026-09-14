@@ -1,6 +1,6 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-14
 
 ---
 
@@ -176,6 +176,7 @@
 
 - [x] Practice Control Center (groove, session length, instrument/level/focus)
 - [x] Section Focus jump bar + handoff to Backing
+- [x] Practice Loop [section] opens regular Catalog / Custom / Composition Backing (`cee2092` on `origin/dev`)
 - [x] **Coach** tab: section focus, scale suggestions, coach exercise, chord coach overlay
 - [x] **Timing** tab: metronome (full song / section loop), rhythm guide
 - [x] **Chart / TAB** tab: chord chart, notation/TAB generation (`practice_notation.py`)
