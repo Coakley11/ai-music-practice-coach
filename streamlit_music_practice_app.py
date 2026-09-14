@@ -10708,12 +10708,21 @@ def _render_backing_step2_playback_action(
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
 
-            try:
-                from backing_key_cycle import render_backing_key_cycle_controls
+        # Key Cycle must mount outside the expander. Forcing Advanced closed while
+        # OFF can drop the Start-cycle button event before the session activates.
+        try:
+            from backing_key_cycle import render_backing_key_cycle_controls
 
-                render_backing_key_cycle_controls(st, st.session_state)
-            except Exception as _key_cycle_ui_exc:
-                st.caption(f"Key Cycle controls unavailable: {_key_cycle_ui_exc}")
+            render_backing_key_cycle_controls(st, st.session_state)
+        except Exception as _key_cycle_ui_exc:
+            st.caption(f"Key Cycle controls unavailable: {_key_cycle_ui_exc}")
+
+        try:
+            from backing_key_cycle import render_backing_key_cycle_pass_bridge
+
+            render_backing_key_cycle_pass_bridge(st, st.session_state)
+        except Exception:
+            pass
 
         backing_ready = bool(
             st.session_state.get("_last_backing_wav")
@@ -10728,7 +10737,7 @@ def _render_backing_step2_playback_action(
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
 
         st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        _btn1, _btn2 = st.columns(2)
+        _btn1, _btn2, _btn3 = st.columns(3)
         with _btn1:
             _play_clicked = st.button(
                 "▶ Play Backing Track",
@@ -10746,6 +10755,36 @@ def _render_backing_step2_playback_action(
             ):
                 _stop_backing_playback()
                 st.rerun()
+        with _btn3:
+            # Off/On mirror — selecting On starts; Off alone must NOT auto-stop
+            # (that fought Start and cleared the session on the next run).
+            try:
+                from backing_key_cycle import (
+                    is_cycle_active as _kc_active_toolbar,
+                    start_key_cycle as _kc_start_toolbar,
+                )
+
+                _kc_on = bool(_kc_active_toolbar(st.session_state))
+                _kc_opts = ["Off", "On"]
+                if "backing_key_cycle_transport_mode" not in st.session_state:
+                    st.session_state["backing_key_cycle_transport_mode"] = (
+                        "On" if _kc_on else "Off"
+                    )
+                # When a cycle is already running, keep the toolbar mirror on On.
+                if _kc_on:
+                    st.session_state["backing_key_cycle_transport_mode"] = "On"
+                _kc_choice = st.selectbox(
+                    "Key Cycle",
+                    _kc_opts,
+                    key="backing_key_cycle_transport_mode",
+                    label_visibility="collapsed",
+                    help="Temporary Key Cycle Practice (does not change Saved Practice Key).",
+                )
+                if str(_kc_choice) == "On" and not _kc_on:
+                    _kc_start_toolbar(st.session_state)
+                    st.rerun()
+            except Exception:
+                pass
         st.markdown("</div>", unsafe_allow_html=True)
 
         if backing_ready:
@@ -15762,6 +15801,15 @@ elif _studio_page == "backing":
             _karaoke_auto_gen = True
 
     _play_needs_generate = bool(_play_clicked and not _backing_audio_ready)
+    _cycle_continue_play = False
+    try:
+        from backing_key_cycle import consume_cycle_continue_play
+
+        _cycle_continue_play = bool(consume_cycle_continue_play(st.session_state))
+    except Exception:
+        _cycle_continue_play = False
+    if _cycle_continue_play and backing_chords and not _backing_audio_ready:
+        _play_needs_generate = True
 
     if _play_needs_generate or _karaoke_auto_gen:
         try:
@@ -15931,8 +15979,10 @@ elif _studio_page == "backing":
             st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
             st.session_state["backing_time_signature_applied"] = backing_time_signature
             st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-            st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen or _play_needs_generate)
-            if _karaoke_auto_gen or _play_needs_generate:
+            st.session_state[BACKING_AUTOPLAY] = bool(
+                _karaoke_auto_gen or _play_needs_generate or _cycle_continue_play
+            )
+            if _karaoke_auto_gen or _play_needs_generate or _cycle_continue_play:
                 st.session_state["_backing_play_request"] = True
             st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
             set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
@@ -15941,6 +15991,10 @@ elif _studio_page == "backing":
                     "Karaoke backing generated — press Play to start."
                     if km.is_voice_mode(st.session_state)
                     else "Backing generated — press Play to start."
+                )
+            elif _cycle_continue_play:
+                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                    "Key Cycle advanced — starting next pass."
                 )
             elif _play_needs_generate:
                 st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Backing ready — starting playback."
@@ -15952,7 +16006,7 @@ elif _studio_page == "backing":
             except ImportError:
                 pass
             clear_backing_needs_regen(st)
-            if _play_needs_generate or _karaoke_auto_gen:
+            if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:
                 st.rerun()
 
     if _play_clicked:

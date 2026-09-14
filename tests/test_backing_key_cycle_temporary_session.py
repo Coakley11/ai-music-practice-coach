@@ -103,6 +103,42 @@ class TestShapeOfYouTemporaryCycle(unittest.TestCase):
         self.assertEqual(effective_backing_playback_key(session, "Bm"), "Bm")
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
+    def test_late_audio_end_after_stop_does_not_advance(self) -> None:
+        from backing_key_cycle import BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = {
+            **default_spelling_prefs(),
+            "C#/Db": "C#",
+        }
+        start_key_cycle(session, start_key="Bm")
+        self.assertTrue(note_backing_pass_finished(session, pass_signature="p1"))
+        self.assertEqual(temporary_playback_key(session), "Cm")
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        stop_key_cycle(session)
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        session["_last_backing_signature"] = ("late", "Bm", 1)
+        self.assertFalse(note_backing_pass_finished(session, pass_signature="audio_ended::late"))
+        self.assertFalse(is_cycle_active(session))
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+        self.assertEqual(effective_backing_playback_key(session, "Bm"), "Bm")
+
+    def test_pass_finished_sets_continue_play_flag(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            consume_cycle_continue_play,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm")
+        self.assertFalse(consume_cycle_continue_play(session))
+        self.assertTrue(note_backing_pass_finished(session, pass_signature="cont-1"))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(consume_cycle_continue_play(session))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        # One-shot
+        self.assertFalse(consume_cycle_continue_play(session))
+
     def test_duplicate_pass_signature_and_wav_sig_do_not_double_advance(self) -> None:
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Bm")

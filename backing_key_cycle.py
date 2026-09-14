@@ -28,6 +28,11 @@ BACKING_KEY_CYCLE_DIRECTION_KEY = "backing_key_cycle_direction"
 BACKING_KEY_SPELLING_PREFS_KEY = "backing_key_spelling_prefs"
 BACKING_KEY_CYCLE_START_KEY = "backing_key_cycle_start_key"
 BACKING_KEY_CYCLE_UI_OWNER_KEY = "_backing_key_cycle_ui_owner"
+# One-shot: after a completed pass, regenerate + autoplay the next sounding key.
+BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY = "_backing_key_cycle_continue_play"
+# Hidden Streamlit bridge (karaoke-style parent button click from the audio iframe).
+BACKING_KEY_CYCLE_PASS_FINISHED_LABEL = "Key cycle pass finished"
+BACKING_KEY_CYCLE_PASS_FINISHED_KEY = "backing_key_cycle_pass_finished_bridge"
 
 # Status values
 STATUS_OFF = "off"
@@ -465,6 +470,7 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     _put_owner_cycle_session(session, owner, data)
     session.pop("_last_backing_wav", None)
     session.pop("_last_backing_signature", None)
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     return data
 
 
@@ -527,14 +533,18 @@ def note_backing_pass_finished(session: dict[str, Any], *, pass_signature: str =
     before = str(data.get("current_playback_key") or "")
     after_data = _advance_owner_cycle(session, force=False)
     after = str((after_data or {}).get("current_playback_key") or "")
-    return bool(after and after != before)
+    advanced = bool(after and after != before)
+    if advanced:
+        # Next pass should regenerate and autoplay in the new sounding key.
+        session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
+    return advanced
 
 
 BACKING_KEY_CYCLE_PASS_QUERY = "backing_key_cycle_pass"
 
 
 def maybe_consume_cycle_pass_from_query(st: Any, session: dict[str, Any]) -> bool:
-    """Consume an audio-ended pass signal from the URL (one advance max per token)."""
+    """Legacy URL-token path (kept as fallback). Prefer the parent-button bridge."""
     if not is_cycle_active(session):
         return False
     try:
@@ -555,25 +565,86 @@ def maybe_consume_cycle_pass_from_query(st: Any, session: dict[str, Any]) -> boo
     return note_backing_pass_finished(session, pass_signature=f"audio_ended::{token}")
 
 
+def consume_cycle_continue_play(session: dict[str, Any]) -> bool:
+    """Consume one-shot autoplay-after-advance flag. False when cycle is not running."""
+    if not bool(session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, False)):
+        return False
+    if not is_cycle_active(session):
+        return False
+    data = get_owner_cycle_session(session)
+    if not data or str(data.get("status") or "") != STATUS_RUNNING:
+        return False
+    return True
+
+
 def cycle_pass_ended_js_snippet(*, pass_token: str = "") -> str:
     """Inject into the live audio ``ended`` handler to signal Python once per play.
 
-    Uses a stable ``pass_token`` (backing signature) so duplicate ``ended`` events
-    cannot advance the cycle twice for the same generated pass.
+    Uses the same parent-document button-click bridge as karaoke auto-advance
+    (reliable inside ``components.html`` iframes). ``pass_token`` dedupes duplicate
+    ``ended`` events in the iframe before the click.
     """
     token = str(pass_token or "").strip() or "pass"
-    # Escape for JS string literal
     safe = token.replace("\\", "\\\\").replace("'", "\\'")
+    label = BACKING_KEY_CYCLE_PASS_FINISHED_LABEL.replace("\\", "\\\\").replace("'", "\\'")
     return (
         "try {"
         f"  const token = '{safe}';"
         "  if (window.__backingKeyCyclePassConsumed === token) { return; }"
         "  window.__backingKeyCyclePassConsumed = token;"
-        f"  const u = new URL(window.parent.location.href);"
-        f"  u.searchParams.set('{BACKING_KEY_CYCLE_PASS_QUERY}', token);"
-        "  window.parent.location.href = u.toString();"
+        "  if (typeof detailEl !== 'undefined' && detailEl) {"
+        "    detailEl.textContent = 'Pass complete — advancing Key Cycle…';"
+        "  }"
+        "  window.setTimeout(() => {"
+        "    try {"
+        "      const parentDoc = window.parent.document;"
+        "      const buttons = parentDoc.querySelectorAll('button');"
+        f"      const want = '{label}';"
+        "      for (const b of buttons) {"
+        "        if ((b.textContent || '').trim() === want) { b.click(); break; }"
+        "      }"
+        "    } catch (err) { console.warn('key-cycle pass bridge failed', err); }"
+        "  }, 40);"
         "} catch (e) {}"
     )
+
+
+def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> None:
+    """Hidden Streamlit button clicked from the audio iframe when a pass ends."""
+    if not is_cycle_active(session):
+        return
+    data = get_owner_cycle_session(session)
+    if not data or str(data.get("status") or "") != STATUS_RUNNING:
+        return
+    # Visually hide; iframe JS still finds the button by exact label text.
+    st.markdown(
+        f"""
+<style>
+div[class*="st-key-{BACKING_KEY_CYCLE_PASS_FINISHED_KEY}"] {{
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+}}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        BACKING_KEY_CYCLE_PASS_FINISHED_LABEL,
+        key=BACKING_KEY_CYCLE_PASS_FINISHED_KEY,
+        type="secondary",
+    ):
+        wav_sig = str(session.get("_last_backing_signature") or "").strip() or "pass"
+        token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
+        note_backing_pass_finished(session, pass_signature=f"audio_ended::{token}")
+        st.rerun()
 
 
 def cycle_status_lines(session: dict[str, Any]) -> list[str]:
@@ -656,6 +727,29 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     for line in cycle_status_lines(session):
         st.markdown(f"- {line}")
 
+    # Start FIRST so the click is processed before Interval/Direction/spelling widgets.
+    if not (data and data.get("enabled")):
+        if st.button(
+            "Start cycle",
+            key="backing_key_cycle_panel_start_btn",
+            type="primary",
+            use_container_width=True,
+        ):
+            start_key_cycle(
+                session,
+                start_key=str(
+                    session.get(BACKING_KEY_CYCLE_START_KEY)
+                    or session.get(f"backing_key_cycle_start__{owner}")
+                    or base
+                ),
+                spelling_prefs=spelling_prefs_from_session(session),
+            )
+            try:
+                st.session_state["backing_key_cycle_transport_mode"] = "On"
+            except Exception:
+                session["backing_key_cycle_transport_mode"] = "On"
+            st.rerun()
+
     try:
         from music_theory import display_key_options
 
@@ -734,49 +828,36 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             prefs[pair] = str(choice)
     session[BACKING_KEY_SPELLING_PREFS_KEY] = prefs
 
-    b1, b2, b3, b4, b5 = st.columns(5)
-    with b1:
-        if st.button("Start cycle", key=f"backing_key_cycle_start_btn__{owner}", use_container_width=True):
-            start_key_cycle(
-                session,
-                start_key=str(session.get(start_key) or base),
-                spelling_prefs=prefs,
-            )
-            st.rerun()
-    with b2:
-        held = bool(data and str(data.get("status")) == STATUS_HELD)
-        label = "Resume" if held else "Pause / Hold"
-        if st.button(label, key=f"backing_key_cycle_pause_btn__{owner}", use_container_width=True):
+    held = bool(data and str(data.get("status")) == STATUS_HELD)
+    pause_label = "Resume" if held else "Pause / Hold"
+    c_pause, c_adv, c_stop = st.columns(3)
+    with c_pause:
+        if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):
             if held:
                 resume_key_cycle(session)
             else:
                 pause_key_cycle(session)
             st.rerun()
-    with b3:
-        if st.button("Advance", key=f"backing_key_cycle_advance_btn__{owner}", use_container_width=True):
+    with c_adv:
+        if st.button("Advance", key="backing_key_cycle_advance_btn", use_container_width=True):
             if data and data.get("enabled"):
                 advance_key_cycle_now(session)
             st.rerun()
-    with b4:
-        if st.button(
-            "Complete pass",
-            key=f"backing_key_cycle_complete_pass_btn__{owner}",
-            use_container_width=True,
-            help="Marks the current scope+loop pass finished (same advance path as audio end).",
-        ):
-            note_backing_pass_finished(
-                session,
-                pass_signature=f"ui_complete_pass::{owner}::{int(data.get('passes_completed') or 0) if data else 0}",
-            )
-            st.rerun()
-    with b5:
-        if st.button("Stop / Reset", key=f"backing_key_cycle_stop_btn__{owner}", use_container_width=True):
+    with c_stop:
+        if st.button("Stop / Reset", key="backing_key_cycle_stop_btn", use_container_width=True):
             stop_key_cycle(session)
+            try:
+                st.session_state["backing_key_cycle_transport_mode"] = "Off"
+            except Exception:
+                session["backing_key_cycle_transport_mode"] = "Off"
             st.rerun()
 
 
 __all__ = [
+    "BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY",
     "BACKING_KEY_CYCLE_DIRECTION_KEY",
+    "BACKING_KEY_CYCLE_PASS_FINISHED_KEY",
+    "BACKING_KEY_CYCLE_PASS_FINISHED_LABEL",
     "BACKING_KEY_CYCLE_SESSIONS_KEY",
     "BACKING_KEY_CYCLE_START_KEY",
     "BACKING_KEY_CYCLE_STEP_KEY",
@@ -799,6 +880,7 @@ __all__ = [
     "advance_key_cycle_now",
     "apply_backing_key_cycle",
     "assert_practice_key_unchanged",
+    "consume_cycle_continue_play",
     "current_backing_owner_practice_key",
     "cycle_concert_practice_key",
     "cycle_pass_ended_js_snippet",
@@ -812,6 +894,7 @@ __all__ = [
     "note_backing_pass_finished",
     "pause_key_cycle",
     "render_backing_key_cycle_controls",
+    "render_backing_key_cycle_pass_bridge",
     "render_backing_key_cycle_status_banner",
     "resolve_cycle_owner",
     "resume_key_cycle",
