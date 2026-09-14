@@ -38,6 +38,21 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     tab = str(ss.get("improv_intelligence_tab") or "").strip()
     page = str(ss.get("studio_page") or "").strip().lower()
 
+    _SBI_SURFACES = {
+        "Phrase / Motif",
+        "Motif",
+        "Live Coach",
+        "Harmony Map",
+        "Harmony",
+        "Deep Harmony",
+        "Missions",
+    }
+    leftover_jam_entry = entry in {"Style Jam Mode", "Jam Session Generator"}
+    # Phrase/Motif and other SBI surfaces own Catalog/Custom/Composition.
+    # Leftover Jam Generator entry must not replace Shape of You.
+    if page != "backing" and tab in _SBI_SURFACES:
+        leftover_jam_entry = False
+
     if page == "backing":
         try:
             from backing_context import get_backing_context
@@ -87,14 +102,14 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
                 "identity": str(getattr(bctx, "song_title", "") or "Mission").strip(),
             }
 
-    if entry == "Style Jam Mode":
+    if leftover_jam_entry and entry == "Style Jam Mode":
         identity = str(ss.get("improv_style") or "Style Jam").strip() or "Style Jam"
         return {
             "kind": "entry_jam",
             "workflow": "Style Jam",
             "identity": identity,
         }
-    if entry == "Jam Session Generator":
+    if leftover_jam_entry and entry == "Jam Session Generator":
         identity = str(
             ss.get("improv_jam_style") or ss.get("improv_ensemble") or "Jam"
         ).strip() or "Jam"
@@ -128,7 +143,11 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         return {"kind": "composition", "workflow": workflow, "identity": identity}
 
     identity = _catalog_identity(ss)
-    workflow = "SBI Catalog" if entry == "Song-Based Improvisation" else "Catalog"
+    workflow = (
+        "SBI Catalog"
+        if entry == "Song-Based Improvisation" or tab in _SBI_SURFACES
+        else "Catalog"
+    )
     if tab == "Missions":
         workflow = "Missions · Catalog"
     elif tab == "Harmony Map":
@@ -142,6 +161,18 @@ def _custom_identity(session: dict[str, Any]) -> str:
 
         active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
         name = str(active.get("name") or "").strip()
+        generic = {"", "My Progression", "My progression", "Custom", "Custom Progression"}
+        if name and name not in generic:
+            return name
+        try:
+            from creative_source_ownership_contract import resolve_last_custom_snapshot
+
+            snap = resolve_last_custom_snapshot(session)
+            remembered = str(getattr(snap, "title", "") or "").strip()
+            if remembered and remembered not in generic:
+                return remembered
+        except Exception:
+            pass
         if name:
             return name
     except Exception:

@@ -75,6 +75,29 @@ def resolve_last_custom_snapshot(session: dict[str, Any]) -> CreativeSourceSnaps
     return None
 
 
+GENERIC_CUSTOM_TITLES = frozenset(
+    {"", "My Progression", "My progression", "Custom", "Custom Progression"}
+)
+
+
+def resolve_custom_song_display_title(
+    session: dict[str, Any] | None,
+    *,
+    fallback: str = "My Progression",
+) -> str:
+    """Saved Custom song title. 'My Progression' only when there is no real name."""
+    ss = session if isinstance(session, dict) else {}
+    live = _snapshot_from_custom(ss, owner="custom_display_live")
+    live_title = str(getattr(live, "title", "") or "").strip()
+    if live_title and live_title not in GENERIC_CUSTOM_TITLES:
+        return live_title
+    remembered = resolve_last_custom_snapshot(ss)
+    remembered_title = str(getattr(remembered, "title", "") or "").strip()
+    if remembered_title and remembered_title not in GENERIC_CUSTOM_TITLES:
+        return remembered_title
+    return live_title or str(fallback or "My Progression").strip() or "My Progression"
+
+
 def _custom_snapshot_is_substantive(snap: CreativeSourceSnapshot) -> bool:
     title = str(snap.title or "").strip()
     if not title or title in {"My Progression", "My progression"}:

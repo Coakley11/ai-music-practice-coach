@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from backing_key_cycle import (
@@ -159,6 +160,48 @@ class TestChangeRhythmPerCell(unittest.TestCase):
         out = cycle_motif_rhythm(motif, meter="4/4")
         self.assertEqual(len(out.get("cell_rhythm_symbols") or []), 4)
         self.assertLessEqual(len(str(out.get("rhythm") or "").split()), 4)
+
+    def test_abc_one_cell_per_complete_measure(self) -> None:
+        from improvisation_motif import abc_body_measures, abc_measure_beats, build_motif_abc
+
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"] * 4,
+            "cells": [["Ab", "Bb", "C", "Eb"]] * 4,
+            "is_pattern": True,
+            "meter": "4/4",
+            "cell_rhythm_symbols": ["♩", "♩", "♩", "♩"],
+            "rhythm_symbols": ["♩"] * 16,
+            "midi": [68, 70, 72, 75] * 4,
+        }
+        abc = build_motif_abc(motif, key_center="Ab")
+        measures = abc_body_measures(abc)
+        self.assertEqual(len(measures), 4)
+        for measure in measures:
+            self.assertAlmostEqual(abc_measure_beats(measure), 4.0, places=2)
+            self.assertEqual(len(re.findall(r"[_^=]?[A-Ga-g]", measure)), 4)
+
+    def test_change_rhythm_abc_repeats_the_same_measure(self) -> None:
+        from improvisation_motif import abc_body_measures, abc_measure_beats, build_motif_abc
+
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"] * 4,
+            "cells": [["Ab", "Bb", "C", "Eb"]] * 4,
+            "is_pattern": True,
+            "base_motif_notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75] * 4,
+            "meter": "4/4",
+        }
+        out = cycle_motif_rhythm(motif, meter="4/4")
+        abc = build_motif_abc(out, key_center="Ab")
+        measures = abc_body_measures(abc)
+        self.assertGreaterEqual(len(measures), 4)
+        for measure in measures:
+            self.assertAlmostEqual(abc_measure_beats(measure), 4.0, places=2)
+        # Same rhythmic skeleton in every measure (pitch names may sequence).
+        lens = [len(re.findall(r"[_^=]?[A-Ga-gzZ][,']*(?:[0-9]+)?(?:/[0-9]+)?", m)) for m in measures]
+        self.assertTrue(all(n == lens[0] for n in lens), lens)
 
 
 class TestOctavePolicy(unittest.TestCase):

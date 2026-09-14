@@ -231,5 +231,154 @@ class TestCanonicalIcons(unittest.TestCase):
         self.assertNotEqual(semantic_field_icon("shape_key"), semantic_field_icon("written_key"))
 
 
+PERFECT_PICK = format_pick_key("Pop", "Perfect — Ed Sheeran")
+
+
+class TestPerfectSbiActiveOneKey(unittest.TestCase):
+    def test_leftover_c_and_d_cannot_replace_perfect_original_g(self) -> None:
+        from improvisation_intelligence_ui import (
+            _authoritative_practice_chart_key,
+            _reclaim_sbi_active_catalog_keys,
+            _sbi_active_canonical_practice_key,
+        )
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        session = _shape_catalog_session(
+            studio_page="creative",
+            song="Perfect",
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "genre": "Pop",
+                "key": "G",
+                "pick_key": PERFECT_PICK,
+            },
+            active_catalog_pick_key=PERFECT_PICK,
+            display_key="D",
+            concert_key="D",
+            improv_jam_key="C",
+            improv_style_key="C",
+            _creative_visit_practice_key="C",
+            _creative_visit_source="sbi_active",
+            improv_entry_mode="Song-Based Improvisation",
+            sbi_preview_source="Active song",
+            improv_song_source="Active song",
+            improv_intelligence_tab="Entry & Jam",
+        )
+        session[PRACTICE_KEY_BY_SOURCE_KEY] = {
+            SHAPE_PICK: "D",
+            "custom::trial-song": "C",
+        }
+        token = _sbi_active_canonical_practice_key(session, "C")
+        self.assertTrue(str(token).startswith("G"), token)
+        chart = _authoritative_practice_chart_key(session, "C")
+        self.assertTrue(str(chart).startswith("G"), chart)
+        _reclaim_sbi_active_catalog_keys(session, token)
+        self.assertTrue(str(session.get("display_key") or "").startswith("G"))
+        self.assertTrue(str(session.get("concert_key") or "").startswith("G"))
+        self.assertNotEqual(str(session.get("display_key") or ""), "D")
+        self.assertNotEqual(str(session.get("_creative_visit_practice_key") or ""), "C")
+
+
+class TestJamDoesNotInheritCatalogShape(unittest.TestCase):
+    def test_c_major_jam_disables_inherited_shape_d(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from backing_musical_state import resolve_current_backing_musical_state
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+
+        session = _shape_catalog_session(
+            improv_entry_mode="Jam Session Generator",
+            improv_jam_key="C",
+            display_key="D",
+            concert_key="D",
+            studio_page="backing",
+            instrument="Guitar",
+            guitar_capo_enabled=True,
+            guitar_capo_shape_key="D",
+        )
+        ctx = BackingContext(
+            source="entry_jam",
+            source_label="Entry Style Jam",
+            active_song_id="generated::Jam Session Generator::cmaj",
+            song_title="Jam Session Generator",
+            key="C",
+            display_key="C",
+            concert_key="C",
+            bpm=110,
+            style="Jazz Swing",
+            groove="Jazz Swing",
+            meter="4/4",
+            progression=["C", "Am", "F", "G"],
+            entry_mode="Jam Session Generator",
+            mode_label="Jam Session",
+        )
+        set_backing_context(session, ctx)
+        isolate_jam_from_catalog_guitar_shape(session)
+        self.assertFalse(bool(session.get("guitar_capo_enabled")))
+        state = resolve_current_backing_musical_state(session, rec=None, applied_bpm=110)
+        self.assertTrue(str(state.practice_concert_key).startswith("C"))
+        self.assertFalse(state.guitar_shape_on)
+        self.assertEqual(state.chart_display_key, state.practice_concert_key)
+
+
+class TestMotifFocusDropsLeftoverJam(unittest.TestCase):
+    def test_shape_phrase_motif_does_not_caption_jam_generator(self) -> None:
+        from practice_focus_creative import format_creative_practice_focus_caption
+
+        session = _shape_catalog_session(
+            studio_page="creative",
+            improv_entry_mode="Jam Session Generator",
+            improv_jam_style="Pop groove",
+            improv_jam_key="C",
+            improv_intelligence_tab="Phrase / Motif",
+            sbi_preview_source="Active song",
+            improv_song_source="Active song",
+            focus="Strumming",
+        )
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Shape of You", caption)
+        self.assertNotIn("Jam Generator", caption)
+        self.assertNotIn("Pop groove", caption)
+
+
+class TestCustomBackingUsesSavedTitle(unittest.TestCase):
+    def test_trial_song_not_my_progression(self) -> None:
+        from backing_context import build_song_improv_context, owned_backing_chart_identity
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        trial = {
+            "id": "trial-title-1",
+            "name": "Trial Song",
+            "original_key_center": "E",
+            "bpm": 120,
+            "progression_style": "Blues",
+            "original_sections": {
+                "A": [{"chord": "Em/D", "bars": 2}, {"chord": "D", "bars": 2}],
+            },
+        }
+        session = _shape_catalog_session(
+            improv_song_source="Custom progression",
+            sbi_preview_source="Custom progression",
+            cpl_active_progression={
+                "name": "My Progression",
+                "id": "shell",
+                "original_key_center": "C",
+                "original_sections": {},
+            },
+        )
+        session[LAST_CUSTOM_STATE_KEY] = {
+            "name": "Trial Song",
+            "pick_key": "custom::trial-title-1",
+            "custom_home_key": "E",
+            "active": trial,
+        }
+        ctx = build_song_improv_context(session)
+        ident = owned_backing_chart_identity(session, ctx)
+        self.assertIsNotNone(ident)
+        self.assertEqual(ident["song_name"], "Trial Song")
+        self.assertNotIn("My Progression", ident["song_name"])
+        self.assertNotIn("Shape of You", ident["song_name"])
+
+
 if __name__ == "__main__":
     unittest.main()

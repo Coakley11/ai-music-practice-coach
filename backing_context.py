@@ -1355,6 +1355,16 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
 
             active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
             name = str(active.get("name") or "My Progression").strip()
+            try:
+                from creative_source_ownership_contract import (
+                    GENERIC_CUSTOM_TITLES,
+                    resolve_custom_song_display_title,
+                )
+
+                if name in GENERIC_CUSTOM_TITLES:
+                    name = str(resolve_custom_song_display_title(session, fallback=name) or name).strip()
+            except ImportError:
+                pass
             revision = str(active.get("id") or active.get("revision") or "").strip()
             try:
                 from songs.music_source import custom_pick_key_for
@@ -3340,10 +3350,30 @@ def owned_backing_chart_identity(
         if kind == "custom":
             name = str(getattr(ctx, "song_title", "") or "").strip()
             try:
+                from creative_source_ownership_contract import (
+                    GENERIC_CUSTOM_TITLES,
+                    resolve_custom_song_display_title,
+                )
+
+                owned = str(resolve_custom_song_display_title(session, fallback=name) or "").strip()
+                if owned and (name in GENERIC_CUSTOM_TITLES or not name):
+                    name = owned
+            except ImportError:
+                pass
+            try:
                 from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
 
                 active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
-                name = str(active.get("name") or name).strip() or name
+                live_name = str(active.get("name") or name).strip() or name
+                try:
+                    from creative_source_ownership_contract import GENERIC_CUSTOM_TITLES as _GEN
+
+                    if live_name and live_name not in _GEN:
+                        name = live_name
+                    elif name in _GEN or not name:
+                        name = live_name if live_name not in _GEN else name
+                except ImportError:
+                    name = live_name
                 home = str(active.get("original_key_center") or original_key).strip()
                 if home:
                     original_key = home

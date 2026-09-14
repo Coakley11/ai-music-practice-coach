@@ -40,6 +40,8 @@ _RHYTHM_TO_ABC_LEN: dict[str, str] = {
     "Z": "",
 }
 
+_RHYTHM_TO_ABC_LEN["\U0001d15e"] = "2"
+
 _RHYTHM_BEATS: dict[str, float] = {
     "♩": 1.0,
     "♪": 0.5,
@@ -49,6 +51,7 @@ _RHYTHM_BEATS: dict[str, float] = {
     "z": 1.0,
     "Z": 1.0,
 }
+_RHYTHM_BEATS["\U0001d15e"] = 2.0
 
 RHYTHM_PATTERN_KEYS: tuple[str, ...] = tuple(_RHYTHM_PATTERNS.keys())
 
@@ -1375,6 +1378,9 @@ def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
         while len(cell_syms) < cell_len:
             cell_syms = cell_syms + cell_syms
         cell_syms = cell_syms[:cell_len]
+        meter_beats = _beats_per_bar(str(motif.get("meter") or "4/4"))
+        if abs(_rhythm_symbol_beats(cell_syms) - meter_beats) > 0.05:
+            cell_syms = _fill_measure_rhythm(cell_len, meter_beats)
         n_cells = len([c for c in cells if c])
         syms = (cell_syms * n_cells)[: len(notes)]
         updated = dict(motif)
@@ -1541,6 +1547,62 @@ def cycle_motif_rhythm(motif: dict[str, Any], *, meter: str = "") -> dict[str, A
     return sync_motif_midi(updated)
 
 
+def motif_measure_cells(motif: dict[str, Any]) -> list[tuple[list[str], list[str]]]:
+    """One cell per measure: notes + rhythm symbols that fill the meter exactly."""
+    notes = list(motif.get("notes") or [])
+    meter_token = str(motif.get("meter") or "4/4").strip() or "4/4"
+    beats = _beats_per_bar(meter_token)
+    cells = motif.get("cells")
+    stored_cell = list(motif.get("cell_rhythm_symbols") or [])
+    all_syms = motif_rhythm_symbols(motif)
+    if motif.get("is_pattern") and isinstance(cells, list) and cells:
+        cell_list = [list(c) for c in cells if c]
+    elif stored_cell:
+        cell_len = max(1, len(stored_cell))
+        cell_list = [notes[i : i + cell_len] for i in range(0, len(notes), cell_len)] or [[]]
+    else:
+        cell_list = [notes] if notes else []
+    out: list[tuple[list[str], list[str]]] = []
+    offset = 0
+    for cell in cell_list:
+        n = len(cell)
+        chunk = list(all_syms[offset : offset + n]) if n else []
+        offset += n
+        if stored_cell and len(stored_cell) == n:
+            chunk = list(stored_cell)
+        if not chunk or abs(_rhythm_symbol_beats(chunk) - beats) > 0.05:
+            chunk = _fill_measure_rhythm(n or 1, beats)[: max(1, n or 1)]
+            if n and len(chunk) != n:
+                chunk = _fill_measure_rhythm(n, beats)
+        out.append((list(cell), list(chunk)))
+    return out
+
+
+def abc_body_measures(abc: str) -> list[str]:
+    """ABC music body split on barlines (empty trailing bars dropped)."""
+    text = str(abc or "")
+    after_k = text.split("\nK:", 1)[-1] if "\nK:" in text else text.split("K:", 1)[-1]
+    body = after_k.split("\n", 1)[-1].strip() if "\n" in after_k else after_k.strip()
+    return [m.strip() for m in body.split("|") if m.strip()]
+
+
+def abc_measure_beats(measure: str, *, beat_unit: float = 1.0) -> float:
+    """Sum of note/rest durations in one ABC measure (L:1/4 → beat_unit=1)."""
+    tokens = re.findall(r"[_^=]?[A-Ga-gzZ][,']*(?:[0-9]+)?(?:/[0-9]+)?", str(measure or ""))
+    total = 0.0
+    for tok in tokens:
+        m = re.search(r"([0-9]+)?(/[0-9]+)?$", tok)
+        num = 1.0
+        den = 1.0
+        if m:
+            if m.group(1):
+                num = float(m.group(1))
+            if m.group(2):
+                den = float(m.group(2).lstrip("/") or "1")
+        total += beat_unit * num / den
+    return total
+
+
 def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     """Ensure midi[], display, and rhythm_symbols match notes[] after any edit.
 
@@ -1592,7 +1654,7 @@ def build_motif_abc(
     bpm: int = 100,
     title: str = "Motif",
 ) -> str:
-    """ABC for the full motif — every note and rhythm symbol from the motif dict."""
+    """ABC for the full motif — one cell per measure, barline after each complete cell."""
     notes = list(motif.get("notes") or [])
     midis = list(motif.get("midi") or [])
     if len(midis) < len(notes):
@@ -1601,29 +1663,21 @@ def build_motif_abc(
         midis = [_midi_from_note(n, 4) for n in notes]
     else:
         midis = [int(m) for m in midis[: len(notes)]]
-    syms = motif_rhythm_symbols(motif)
-
+    meter_token = str(motif.get("meter") or "4/4").strip() or "4/4"
+    measures = motif_measure_cells(motif)
     abc_tokens: list[str] = []
-    beats_in_bar = 0.0
     note_idx = 0
-    for sym in syms:
-        length = _RHYTHM_TO_ABC_LEN.get(sym, "")
-        if sym in ("z", "Z"):
-            abc_tokens.append(f"z{length}")
-        else:
-            if note_idx >= len(notes):
-                break
-            # Scientific octave from MIDI so sheet music follows register-aware patterns.
-            sci_oct = int(midis[note_idx]) // 12 - 1
-            pitch = _note_name_to_abc_pitch(str(notes[note_idx]), octave=sci_oct)
-            abc_tokens.append(f"{pitch}{length}")
-            note_idx += 1
-        beats_in_bar += _RHYTHM_BEATS.get(sym, 1.0)
-        if beats_in_bar >= 4.0 - 1e-6:
-            abc_tokens.append("|")
-            beats_in_bar = 0.0
-
-    if beats_in_bar > 0 and abc_tokens and abc_tokens[-1] != "|":
+    for cell_notes, cell_syms in measures:
+        for i, sym in enumerate(cell_syms):
+            length = _RHYTHM_TO_ABC_LEN.get(sym, _RHYTHM_TO_ABC_LEN.get(str(sym), ""))
+            if sym in ("z", "Z"):
+                abc_tokens.append(f"z{length}")
+                continue
+            if i < len(cell_notes) and note_idx < len(notes):
+                sci_oct = int(midis[note_idx]) // 12 - 1
+                pitch = _note_name_to_abc_pitch(str(cell_notes[i]), octave=sci_oct)
+                abc_tokens.append(f"{pitch}{length}")
+                note_idx += 1
         abc_tokens.append("|")
 
     music = " ".join(abc_tokens)
@@ -1632,7 +1686,7 @@ def build_motif_abc(
 
     return f"""X:1
 T:{title}
-M:4/4
+M:{meter_token}
 L:1/4
 Q:1/4={bpm}
 K:{k}
