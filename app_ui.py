@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any, Optional
 
-from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon
+from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
 
 __all__ = [
     "STUDIO_PAGES",
@@ -1472,10 +1472,20 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-transform: uppercase;
   opacity: 0.9;
 }
-/* Source identity color: left art only — never recolor the whole Backing card. */
+/* Source-branded Backing shells: Catalog blue, Custom green, Composition black. */
 .ui-backing-active-song.mode-custom-progression-backing,
-.ui-backing-active-song.mode-composition-song-backing {
-  /* Keep the standard blue Backing card shell from .ui-backing-active-song */
+.ui-backing-active-song.mode-source-custom-backing {
+  background: linear-gradient(135deg, #064e3b 0%, #047857 36%, #059669 68%, #065f46 100%);
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #ecfdf5;
+}
+.ui-backing-active-song.mode-composition-song-backing,
+.ui-backing-active-song.mode-source-composition-backing {
+  background: linear-gradient(135deg, #020617 0%, #0f172a 42%, #1e293b 100%);
+  border-color: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+}
+.ui-backing-active-song.mode-source-catalog-backing {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 38%, #1e40af 72%, #172554 100%);
   border-color: rgba(30, 64, 175, 0.45);
   color: #f8fafc;
@@ -7264,7 +7274,7 @@ def studio_song_meta_badges_html(
                 "Original Key",
                 original_key,
                 tone="key",
-                icon=FEATURE_ICONS["original_key"],
+                icon=semantic_field_icon("original_key"),
             )
         )
     if display_key:
@@ -7279,32 +7289,48 @@ def studio_song_meta_badges_html(
                 display_label,
                 display_key,
                 tone="display",
-                icon=FEATURE_ICONS["practice_concert_key"],
+                icon=semantic_field_icon("concert_key"),
             )
         )
     if written_key and written_key != display_key:
         badges.append(
-            studio_meta_badge(written_key_label, written_key, tone="written", icon="🎷")
+            studio_meta_badge(
+                written_key_label,
+                written_key,
+                tone="written",
+                icon=semantic_field_icon("written_key"),
+            )
         )
     if charts_key and charts_key != display_key:
         badges.append(
-            studio_meta_badge("Charts shown in", charts_key, tone="written", icon="📊")
+            studio_meta_badge(
+                "Charts shown in",
+                charts_key,
+                tone="written",
+                icon=semantic_field_icon("charts"),
+            )
         )
     if bpm is not None:
-        badges.append(studio_meta_badge("BPM", str(int(bpm)), tone="tempo", icon="⏱"))
+        badges.append(
+            studio_meta_badge("BPM", str(int(bpm)), tone="tempo", icon=semantic_field_icon("bpm"))
+        )
     if meter:
-        badges.append(studio_meta_badge("Meter", meter, tone="meter", icon="🥁"))
+        badges.append(
+            studio_meta_badge("Meter", meter, tone="meter", icon=semantic_field_icon("meter"))
+        )
     if style:
-        badges.append(studio_meta_badge("Style", style, tone="style", icon="✨"))
+        badges.append(
+            studio_meta_badge("Style", style, tone="style", icon=semantic_field_icon("style"))
+        )
     if source:
         source_text = str(source or "").strip()
         source_l = source_text.lower()
         # Canonical Source badge chrome for every owner — feature icons (✍️/🪶)
         # belong on the left identity art, not as a replacement Source badge.
         if "catalog" in source_l or "song selection" in source_l:
-            source_icon = FEATURE_ICONS.get("songs", "🎼")
+            source_icon = semantic_field_icon("source_catalog")
         else:
-            source_icon = "📀"
+            source_icon = semantic_field_icon("source_other")
         badges.append(studio_meta_badge("Source", source_text, tone="source", icon=source_icon))
     if not badges:
         return ""
@@ -7543,23 +7569,23 @@ def render_backing_setup_context_strip(
     if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-ctx-badge key-written" title="Written chart key">'
-            f'<span class="ui-backing-ctx-ico">🎷</span> Written <strong>{_written}</strong></span>'
+            f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("written_key"))}</span> Written <strong>{_written}</strong></span>'
         )
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
         f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("concert_key"))}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
-        f'<span class="ui-backing-ctx-ico">🥁</span> <strong>{_meter}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
         f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'
-        f'<span class="ui-backing-ctx-ico">✨</span> <strong>{_groove}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
         f'<span class="ui-backing-ctx-badge range" title="Playback range &amp; loops">'
-        f'<span class="ui-backing-ctx-ico">🔁</span> {_range}</span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_range}</span>'
         f'<span class="ui-backing-ctx-badge bpm" title="Song default tempo — adjust in Quick Playback">'
-        f'<span class="ui-backing-ctx-ico">⏱</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
+        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("bpm"))}</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
         f"</div>",
         unsafe_allow_html=True,
     )

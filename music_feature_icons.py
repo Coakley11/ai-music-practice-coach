@@ -43,6 +43,28 @@ FEATURE_ICONS: dict[str, str] = {
     "session": "⏱️",
 }
 
+# Semantic meta-badge fields — Songs / Custom / Composition / Karaoke / Backing.
+# Same field → same glyph everywhere. Source logos (✍️/🪶/🎼) stay on left art.
+SEMANTIC_FIELD_ICONS: dict[str, str] = {
+    "style": "✨",
+    "concert_key": FEATURE_ICONS["practice_concert_key"],
+    "original_key": FEATURE_ICONS["original_key"],
+    "written_key": "🎷",
+    "charts": "📊",
+    "bpm": "⏱",
+    "meter": "🥁",
+    "section": FEATURE_ICONS["section_focus"],
+    "groove": "✨",
+    "source_catalog": FEATURE_ICONS["songs"],
+    "source_other": "📀",
+    "practice_focus": FEATURE_ICONS["practice_focus"],
+}
+
+
+def semantic_field_icon(field: str) -> str:
+    return SEMANTIC_FIELD_ICONS.get(str(field or "").strip(), "")
+
+
 # Studio page id → concept key (nav, headers, compact buttons).
 PAGE_FEATURE_KEYS: dict[str, str] = {
     "practice": "practice",
@@ -87,9 +109,11 @@ def page_feature_label(page_id: str, text: str) -> str:
 
 __all__ = (
     "FEATURE_ICONS",
+    "SEMANTIC_FIELD_ICONS",
     "PAGE_FEATURE_KEYS",
     "feature_icon",
     "feature_label",
+    "semantic_field_icon",
     "page_feature_icon",
     "page_feature_label",
 )
