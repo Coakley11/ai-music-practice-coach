@@ -204,9 +204,13 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
             return tok
     if kind == OWNER_JAM_GENERATOR:
         tok = str(session.get("improv_jam_key") or "").strip()
+        widget_tok = str(session.get(WIDGET_JAM_GENERATOR) or "").strip()
         ctx_tok = _ctx_concert_if_owner(session, kind)
-        if (not tok or tok in {"G", "Eb", "G major", "Eb major"}) and ctx_tok:
-            return ctx_tok
+        catalog = _catalog_concert_key_token(session)
+        commit = str(session.get("_pk_user_commit_token") or "").strip()
+        for candidate in (commit, widget_tok, tok, ctx_tok):
+            if candidate and candidate != catalog:
+                return candidate
         if tok:
             return tok
     if kind == OWNER_CUSTOM:
@@ -288,6 +292,8 @@ def seed_backing_practice_key_widget(
             live_widget = ""
     want = canonical
     remount_defaults = set(STYLE_JAM_REMOUNT_DEFAULTS)
+    if owner == OWNER_JAM_GENERATOR:
+        remount_defaults = frozenset({""})
     if owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if canonical and (not live_widget or live_widget in remount_defaults) and live_widget != canonical:
             want = canonical
@@ -299,7 +305,7 @@ def seed_backing_practice_key_widget(
             session.pop(WIDGET_JAM_GENERATOR, None)
             leftover_jam = str(session.get("improv_jam_key") or "").strip()
             if (
-                leftover_jam in remount_defaults
+                leftover_jam in STYLE_JAM_REMOUNT_DEFAULTS
                 and canonical
                 and leftover_jam != canonical
             ):

@@ -1282,6 +1282,14 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
 
     song_source = str(resolve_improv_song_source(session) or "Active song").strip()
     try:
+        from source_session_state import get_sbi_preview_source
+
+        preview = str(get_sbi_preview_source(session) or "").strip()
+        if preview in {"Custom progression", "Composition", "Active song"}:
+            song_source = preview
+    except ImportError:
+        pass
+    try:
         from source_session_state import resolve_sbi_material_kind
 
         sbi_kind = resolve_sbi_material_kind(session, owner=song_source)
@@ -1550,7 +1558,11 @@ def _entry_jam_context_from_owner_snapshot(
     scope = str(snap.selected_scope or "Full song")
     section = None
     selected_sections = list(snap.selected_section_ids or section_labels)
-    jam_title = style or mode_label or "Style jam"
+    jam_title = (
+        "Jam Session Generator"
+        if entry_mode == "Jam Session Generator"
+        else "Entry Style Jam"
+    )
     gen_song_id = f"generated::{entry_mode}::{snap.artifact_id or jam_id}"
     if "Style Jam" in entry_mode:
         try:
@@ -1864,7 +1876,11 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             except ImportError:
                 progression = [c for chs in sections_dict.values() for c in chs]
 
-    jam_title = style or mode_label or "Style jam"
+    jam_title = (
+        "Jam Session Generator"
+        if entry_mode == "Jam Session Generator"
+        else "Entry Style Jam"
+    )
     gen_song_id = f"generated::{entry_mode}::{jam_id}"
     if (
         entry_mode in {"Style Jam Mode", "Jam Session Generator"}
@@ -3270,9 +3286,119 @@ def active_creative_backing_context(session: dict[str, Any]) -> BackingContext |
     return ctx
 
 
-def creative_backing_card_context(session: dict[str, Any]) -> BackingContext | None:
-    """Return backing_context when the visible card should use the Creative template."""
-    return active_creative_backing_context(session)
+def owned_backing_chart_identity(
+    session: dict[str, Any] | None,
+    ctx: BackingContext | None = None,
+) -> dict[str, Any] | None:
+    """Chart/coaching identity for the current Backing owner — never Global Active Catalog.
+
+    Catalog Shape of You may remain the Songs Global Active pick while SBI Custom
+    or a Jam is only being previewed. Title, artist, original key, BPM, meter,
+    style, and coaching copy must come from that owner.
+    """
+    session = session if isinstance(session, dict) else {}
+    ctx = ctx or active_creative_backing_context(session) or get_backing_context(session)
+    if ctx is None:
+        return None
+    source = str(getattr(ctx, "source", "") or "").strip()
+    if source not in {"entry_jam", "song_improv", "mission"}:
+        return None
+
+    artist = ""
+    genre = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "").strip()
+    original_key = str(getattr(ctx, "key", "") or getattr(ctx, "concert_key", "") or "C").strip() or "C"
+    bpm = int(getattr(ctx, "bpm", 0) or 0) or 100
+    meter = str(getattr(ctx, "meter", "") or "4/4").strip() or "4/4"
+    coaching = ""
+
+    if source == "entry_jam":
+        entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+        song_name = (
+            "Jam Session Generator"
+            if entry == "Jam Session Generator"
+            else "Entry Style Jam"
+        )
+        artist = str(getattr(ctx, "style", "") or "").strip() or "Jam"
+        genre = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "Jam").strip()
+        coaching = (
+            f"Practice this {song_name} in {original_key} at {bpm} BPM"
+            f" ({meter}). Stay with the generated form — not a catalog song."
+        )
+    elif source == "mission":
+        song_name = str(getattr(ctx, "song_title", "") or "Mission").strip() or "Mission"
+        artist = "Mission"
+        genre = str(getattr(ctx, "style", "") or "Mission").strip()
+        coaching = f"Mission backing in {original_key} — complete the selected mission over this form."
+    else:
+        kind = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
+        try:
+            from source_session_state import resolve_sbi_material_kind
+
+            kind = str(resolve_sbi_material_kind(session, ctx=ctx) or kind).strip().lower()
+        except ImportError:
+            pass
+        if kind == "custom":
+            name = str(getattr(ctx, "song_title", "") or "").strip()
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+                active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                name = str(active.get("name") or name).strip() or name
+                home = str(active.get("original_key_center") or original_key).strip()
+                if home:
+                    original_key = home
+                bpm = int(active.get("bpm") or bpm or 100)
+                meter = str(active.get("time_signature") or meter or "4/4")
+                genre = str(
+                    active.get("progression_style")
+                    or active.get("groove_style")
+                    or genre
+                    or "Custom"
+                ).strip()
+            except Exception:
+                pass
+            song_name = name or "Custom"
+            artist = "Custom"
+            genre = genre or "Custom"
+            coaching = (
+                f"Practice {song_name} in {original_key} at {bpm} BPM. "
+                "This is your Custom progression — not the Catalog song."
+            )
+        elif kind == "composition":
+            title = str(getattr(ctx, "song_title", "") or "").strip()
+            try:
+                from composition_songs_bridge import read_active_composition_title
+
+                title = str(read_active_composition_title(session) or title).strip() or title
+            except Exception:
+                title = title or str(session.get("composition_active_title") or "").strip()
+            song_name = title or "Composition"
+            artist = "Composition"
+            genre = genre or "Composition"
+            coaching = f"Practice {song_name} in {original_key} at {bpm} BPM from your Composition."
+        else:
+            song_name = str(getattr(ctx, "song_title", "") or "").strip() or "Active song"
+            artist = str(getattr(ctx, "source_label", "") or "Song-Based Improvisation")
+            coaching = f"Practice {song_name} in {original_key} at {bpm} BPM."
+
+    song_data = {
+        "title": song_name,
+        "artist": artist,
+        "genre": genre,
+        "key": original_key,
+        "bpm": bpm,
+        "time_signature": meter,
+        "id": str(getattr(ctx, "source_signature", "") or getattr(ctx, "active_song_id", "") or source),
+        "extensions": {"arrangement_notes": coaching},
+    }
+    return {
+        "song_name": song_name,
+        "song_data": song_data,
+        "original_key": original_key,
+        "bpm": bpm,
+        "meter": meter,
+        "coaching": coaching,
+    }
 
 
 def _retranspose_sections_to_practice_key(
@@ -5660,6 +5786,7 @@ __all__ = [
     "refresh_backing_context_timestamps",
     "apply_backing_context_to_session",
     "active_creative_backing_context",
+    "owned_backing_chart_identity",
     "creative_backing_card_context",
     "sections_dict_from_backing_context",
     "sections_dict_for_chart_display",

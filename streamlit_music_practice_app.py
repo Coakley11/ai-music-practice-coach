@@ -15030,6 +15030,20 @@ elif _studio_page == "backing":
                 if _creative_sections_concert:
                     sections_for_backing = _creative_sections_concert
             _backing_card_kind = "creative"
+            try:
+                from backing_context import owned_backing_chart_identity
+
+                _owned_chart = owned_backing_chart_identity(
+                    st.session_state, _creative_backing_ctx
+                )
+                if isinstance(_owned_chart, dict) and _owned_chart.get("song_name"):
+                    song = str(_owned_chart["song_name"])
+                    song_data = dict(_owned_chart.get("song_data") or {})
+                    original_key = str(_owned_chart.get("original_key") or original_key)
+                    _backing_orig_key = original_key
+                    _backing_card_record = dict(song_data)
+            except Exception:
+                pass
         elif (
             (
                 _backing_ctx_for_card is not None
@@ -15274,7 +15288,10 @@ elif _studio_page == "backing":
     _humanize_song_data = song_data
     if _creative_backing_ctx is not None:
         _humanize_song_data = {
-            "title": str(_creative_backing_ctx.style or _creative_backing_ctx.song_title or "Creative"),
+            "title": str(song or _creative_backing_ctx.song_title or "Creative"),
+            "artist": str((song_data or {}).get("artist") or ""),
+            "genre": str((song_data or {}).get("genre") or _creative_backing_ctx.style or ""),
+            "key": str(original_key or _creative_backing_ctx.key or "C"),
             "id": str(_creative_backing_ctx.source_signature or "creative"),
         }
     if not _preserve_exact_timing:
