@@ -1249,13 +1249,143 @@ def rebuild_motif_pattern(
     return _apply_rhythm_key(rebuilt, preserved_rk)
 
 
+def _beats_per_bar(meter: str) -> float:
+    text = str(meter or "4/4").strip() or "4/4"
+    if "/" not in text:
+        return 4.0
+    num, den = text.split("/", 1)
+    try:
+        return float(num) * (4.0 / float(den))
+    except (TypeError, ValueError):
+        return 4.0
+
+
+def _rhythm_symbol_beats(syms: list[str]) -> float:
+    return float(sum(_RHYTHM_BEATS.get(str(s), 1.0) for s in syms))
+
+
+def _fill_measure_rhythm(n_notes: int, beats: float) -> list[str]:
+    """One valid measure of ``n_notes`` symbols totaling ``beats``."""
+    n = max(1, int(n_notes))
+    target = float(beats or 4.0)
+    half = "\U0001d15e"
+    if n == 1:
+        if abs(target - 2.0) < 0.01:
+            return [half]
+        if abs(target - 1.5) < 0.01:
+            return ["♩."]
+        return ["♩"]
+    if n == 2:
+        if abs(target - 4.0) < 0.01:
+            return [half, half]
+        return ["♩", "♩"]
+    if n == 3:
+        if abs(target - 4.0) < 0.01:
+            return ["♩", "♩", half]
+        return ["♩", "♩", "♩"]
+    if n == 4 and abs(target - 4.0) < 0.01:
+        return ["♩", "♩", "♩", "♩"]
+    unit = target / n if n else 1.0
+    if abs(unit - 0.25) < 0.01:
+        return ["♬"] * n
+    if abs(unit - 0.5) < 0.01:
+        return ["♪"] * n
+    if abs(unit - 1.5) < 0.01:
+        return ["♩."] * n
+    if abs(unit - 2.0) < 0.01:
+        return [half] * n
+    return ["♩"] * n
+
+
+def _measure_rhythm_candidates(n_notes: int, beats: float) -> list[list[str]]:
+    """Distinct one-measure rhythms for ``n_notes`` filling ``beats``."""
+    n = max(1, int(n_notes))
+    target = float(beats or 4.0)
+    half = "\U0001d15e"
+    found: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    def _add(syms: list[str]) -> None:
+        if len(syms) != n:
+            return
+        if abs(_rhythm_symbol_beats(syms) - target) > 0.05:
+            return
+        key = tuple(syms)
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(list(syms))
+
+    _add(_fill_measure_rhythm(n, target))
+    if n == 4 and abs(target - 4.0) < 0.01:
+        for cand in (
+            ["♩", "♩", "♩", "♩"],
+            ["♩", "♩", "♩.", "♪"],
+            ["♩.", "♪", "♩", "♩"],
+            ["♪", "♪", "♩", half],
+            ["♩", "♪", "♪", half],
+            ["♪", "♩", "♪", "♩"],
+            ["♩.", "♪", "♪", "♪"],
+        ):
+            _add(list(cand))
+    if n == 3 and abs(target - 4.0) < 0.01:
+        for cand in (
+            ["♩", "♩", half],
+            ["♩.", "♪", half],
+            ["♪", "♪", half],
+            ["♩", "♩.", "♩."],
+        ):
+            _add(list(cand))
+    for name, pattern in _RHYTHM_PATTERNS.items():
+        if str(name).startswith("harder-"):
+            continue
+        if len(pattern) == n:
+            _add(list(pattern))
+    if not found:
+        found.append(_fill_measure_rhythm(n, target))
+    return found
+
+
+def _next_measure_rhythm(n_notes: int, beats: float, current: list[str] | None) -> list[str]:
+    cands = _measure_rhythm_candidates(n_notes, beats)
+    cur = tuple(str(s) for s in (current or [])[: max(1, int(n_notes))])
+    if not cands:
+        return _fill_measure_rhythm(n_notes, beats)
+    idx = 0
+    for i, cand in enumerate(cands):
+        if tuple(cand) == cur:
+            idx = (i + 1) % len(cands)
+            break
+    else:
+        idx = 1 % len(cands) if cur else 0
+    return list(cands[idx])
+
+
 def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
     notes = list(motif.get("notes") or [])
+    cells = motif.get("cells")
     rk = str(rhythm_key or "quarter-quarter-quarter")
-    syms = list(_RHYTHM_PATTERNS.get(rk, _RHYTHM_PATTERNS["quarter-quarter-quarter"]))
-    while len(syms) < len(notes):
-        syms = syms + syms
-    syms = syms[: len(notes)]
+    stored_cell = list(motif.get("cell_rhythm_symbols") or [])
+    if rk == "measure-cell" and stored_cell:
+        cell_syms = list(stored_cell)
+    else:
+        cell_syms = list(_RHYTHM_PATTERNS.get(rk, _RHYTHM_PATTERNS["quarter-quarter-quarter"]))
+    if motif.get("is_pattern") and isinstance(cells, list) and cells:
+        cell_len = max(1, len(cells[0]))
+        while len(cell_syms) < cell_len:
+            cell_syms = cell_syms + cell_syms
+        cell_syms = cell_syms[:cell_len]
+        n_cells = len([c for c in cells if c])
+        syms = (cell_syms * n_cells)[: len(notes)]
+        updated = dict(motif)
+        updated["rhythm_key"] = rk
+        updated["rhythm"] = " ".join(cell_syms)
+        updated["rhythm_symbols"] = syms
+        updated["cell_rhythm_symbols"] = list(cell_syms)
+        return sync_motif_midi(updated)
+    while len(cell_syms) < len(notes):
+        cell_syms = cell_syms + cell_syms
+    syms = cell_syms[: len(notes)]
     updated = dict(motif)
     updated["rhythm_key"] = rk
     updated["rhythm"] = " ".join(syms)
@@ -1364,31 +1494,43 @@ def transform_motif(
     return sync_motif_midi(updated)
 
 
-def cycle_motif_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
-    """Keep the same pitches; change only rhythm (sheet music / display update)."""
+def cycle_motif_rhythm(motif: dict[str, Any], *, meter: str = "") -> dict[str, Any]:
+    """Keep pitches; apply one new one-measure rhythm to every cell."""
     notes = list(motif.get("notes") or [])
-    rk = str(motif.get("rhythm_key") or "quarter-quarter-quarter")
-    order = list(RHYTHM_PATTERN_KEYS)
-    try:
-        idx = order.index(rk)
-    except ValueError:
-        idx = 0
-    new_rk = order[(idx + 1) % len(order)]
-    syms = _RHYTHM_PATTERNS[new_rk]
-    while len(syms) < len(notes):
-        syms = syms + syms
-    syms = syms[: len(notes)]
+    cells = motif.get("cells")
+    pattern = bool(motif.get("is_pattern")) and isinstance(cells, list) and bool(cells)
+    if pattern:
+        cell_notes = [list(cell) for cell in cells if cell]
+        cell_len = max(1, len(cell_notes[0]))
+        n_cells = len(cell_notes)
+    else:
+        cell_len = max(1, len(notes) or 1)
+        n_cells = 1
+        cell_notes = [list(notes)]
+    meter_token = str(meter or motif.get("meter") or "4/4").strip() or "4/4"
+    beats = _beats_per_bar(meter_token)
+    stored = list(motif.get("cell_rhythm_symbols") or motif.get("rhythm_symbols") or [])
+    current_cell = stored[:cell_len] if stored else []
+    new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
+    while len(new_cell) < cell_len:
+        new_cell.extend(new_cell)
+    new_cell = new_cell[:cell_len]
+    if abs(_rhythm_symbol_beats(new_cell) - beats) > 0.05:
+        new_cell = _fill_measure_rhythm(cell_len, beats)
+    expected = cell_len * n_cells if pattern else len(notes)
+    syms = (new_cell * max(1, n_cells))[:expected]
     updated = dict(motif)
     updated["notes"] = notes
-    cells = updated.get("cells")
-    if updated.get("is_pattern") and isinstance(cells, list) and cells:
-        updated["display"] = _format_pattern_display(cells)
+    if pattern:
+        updated["cells"] = cell_notes
+        updated["display"] = _format_pattern_display(cell_notes)
     else:
         updated["display"] = " – ".join(notes)
-    updated["rhythm_key"] = new_rk
-    updated["rhythm"] = " ".join(syms)
-    updated["rhythm_symbols"] = syms[: len(notes)]
-    # Durations only — never flatten register to octave 4.
+    updated["meter"] = meter_token
+    updated["rhythm_key"] = "measure-cell"
+    updated["rhythm"] = " ".join(new_cell)
+    updated["rhythm_symbols"] = list(syms)
+    updated["cell_rhythm_symbols"] = list(new_cell)
     existing = list(motif.get("midi") or [])
     if len(existing) >= len(notes):
         updated["midi"] = [int(m) for m in existing[: len(notes)]]
@@ -1435,7 +1577,11 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
         return motif
     syms = motif_rhythm_symbols(motif)
     motif["rhythm_symbols"] = syms
-    motif["rhythm"] = " ".join(syms)
+    cell_syms = motif.get("cell_rhythm_symbols")
+    if isinstance(cell_syms, list) and cell_syms:
+        motif["rhythm"] = " ".join(str(s) for s in cell_syms)
+    else:
+        motif["rhythm"] = " ".join(syms)
     return motif
 
 
