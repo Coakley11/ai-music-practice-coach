@@ -160,6 +160,12 @@ def consume_pending_workflow_activation(session: dict[str, Any]) -> ActivationPh
         owner = str(pending.get("target_owner") or "").strip()
         sid = str(pending.get("target_session_id") or "").strip() or legacy_session_id_for_owner(session, owner)
         if owner == "song_based_improvisation":
+            try:
+                from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+                ensure_sbi_source_before_song_workflow(session)
+            except ImportError:
+                pass
             sid = legacy_session_id_for_owner(session, owner)
             try:
                 from music_workflow_state_store import get_active_workflow_pointer

@@ -1655,6 +1655,12 @@ def _tab_motif(
     bpm: int,
 ) -> None:
     try:
+        from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+        ensure_sbi_source_before_song_workflow(session_state)
+    except ImportError:
+        pass
+    try:
         from song_creative_focus import hydrate_creative_pages_from_song_focus
 
         hydrate_creative_pages_from_song_focus(session_state, tab="Phrase / Motif")

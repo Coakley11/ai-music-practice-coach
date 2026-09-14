@@ -90,6 +90,13 @@ def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = No
     view = _TAB_TO_VIEW.get(tab_name, tab_name)
     session[ACTIVE_CREATIVE_VIEW_KEY] = view
     owner = _owner_for_tab_and_entry(session, tab_name)
+    if owner == "song_based_improvisation":
+        try:
+            from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+            ensure_sbi_source_before_song_workflow(session)
+        except ImportError:
+            pass
     if not owner:
         return "skipped"
     try:
@@ -136,6 +143,13 @@ def ensure_creative_tab_workflow_before_widgets(session: dict[str, Any]) -> str:
         return "skipped"
     view = _TAB_TO_VIEW.get(tab_name, tab_name)
     owner = _owner_for_tab_and_entry(session, tab_name)
+    if owner == "song_based_improvisation":
+        try:
+            from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+            ensure_sbi_source_before_song_workflow(session)
+        except ImportError:
+            pass
     if not owner:
         return "skipped"
     try:

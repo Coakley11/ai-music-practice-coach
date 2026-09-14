@@ -3427,6 +3427,12 @@ def _activate_workflow_for_creative_return(session: dict[str, Any], ctx: Backing
 
         if owner == "song_based_improvisation":
             restore_sbi_song_source_from_backing_context(session, ctx)
+            try:
+                from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+                clear_pending_backing_workflow_handoff(session)
+            except ImportError:
+                pass
             activate_workflow_simple(
                 session,
                 "song_based_improvisation",
@@ -3641,6 +3647,24 @@ def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: A
         from source_session_state import set_sbi_preview_source
 
         set_sbi_preview_source(session, "Active song")
+    except ImportError:
+        pass
+
+
+def ensure_sbi_source_before_song_workflow(session: dict[str, Any]) -> None:
+    """Keep Custom SBI identity before Phrase/Motif or other song-based activation."""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except ImportError:
+        ctx = None
+    if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+        restore_sbi_song_source_from_backing_context(session, ctx)
+    try:
+        from source_session_state import seed_sbi_custom_radio_before_render
+
+        seed_sbi_custom_radio_before_render(session)
     except ImportError:
         pass
 
@@ -4202,6 +4226,7 @@ __all__ = [
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
     "restore_sbi_song_source_from_backing_context",
+    "ensure_sbi_source_before_song_workflow",
     "backing_context_is_sbi_custom",
     "return_to_catalog_song_backing_label",
     "return_to_source_button_label",

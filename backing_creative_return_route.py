@@ -137,6 +137,12 @@ def apply_creative_return_route(
                     restore_sbi_song_source_from_backing_context(session, ctx)
                 except ImportError:
                     pass
+            try:
+                from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
+
+                clear_pending_backing_workflow_handoff(session)
+            except ImportError:
+                pass
             activate_workflow_simple(
                 session,
                 "song_based_improvisation",

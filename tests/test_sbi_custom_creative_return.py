@@ -121,3 +121,49 @@ class TestSbiCustomCreativeReturn(unittest.TestCase):
         self.assertEqual(get_sbi_preview_source(session), "Custom progression")
         self.assertEqual(session.get("focus"), "Dynamics")
         self.assertEqual(session.get("display_key"), "C")
+
+    def test_follow_active_cannot_conflict_phrase_motif_after_custom_return(self) -> None:
+        session = _sbi_custom_session()
+        ctx = _custom_ctx()
+        restore_sbi_song_source_from_backing_context(session, ctx)
+        custom_sid = legacy_session_id_for_owner(session, "song_based_improvisation")
+        blob = WorkflowStateBlob(
+            workflow_owner="song_based_improvisation",
+            workflow_session_id=custom_sid,
+            keys=KeyAuthority(practice_tonic="C", practice_mode="major"),
+        )
+        save_workflow_blob(session, blob, source="t")
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id=custom_sid,
+            ),
+            source="t",
+        )
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        from backing_context import BACKING_CONTEXT_KEY
+
+        session[BACKING_CONTEXT_KEY] = ctx.to_dict() if hasattr(ctx, "to_dict") else {
+            "source": "song_improv",
+            "sbi_material_kind": "custom",
+            "sbi_source_owner": "Custom progression",
+            "song_title": "My Progression",
+            "active_song_id": "My Progression",
+        }
+        from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+        ensure_sbi_source_before_song_workflow(session)
+        result = activate_workflow_simple(
+            session,
+            "song_based_improvisation",
+            activation_source="creative_tab_change",
+            return_route="creative",
+        )
+        self.assertTrue(result.ok)
+        self.assertFalse(activation_user_notice(session))
+        status = sync_workflow_for_creative_tab(session, "Phrase / Motif")
+        self.assertIn(status, {"skipped", "done", "queued"})
+        self.assertFalse(activation_user_notice(session))
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
