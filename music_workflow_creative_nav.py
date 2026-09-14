@@ -21,6 +21,20 @@ _TAB_TO_VIEW: dict[str, str] = {
 }
 
 
+def _song_based_pointer_matches_live(session: dict[str, Any], ptr: Any, owner: str) -> bool:
+    """True when the song-based pointer is already bound to the live Custom/catalog sid."""
+    if str(owner or "") != "song_based_improvisation" or ptr is None:
+        return False
+    ptr_sid = str(ptr.workflow_session_id or "")
+    try:
+        from music_workflow_compatibility import legacy_session_id_for_owner
+
+        live_sid = str(legacy_session_id_for_owner(session, owner) or "")
+    except ImportError:
+        live_sid = ""
+    return bool(live_sid and ptr_sid == live_sid)
+
+
 def _owner_for_tab_and_entry(session: dict[str, Any], tab: str) -> str | None:
     tab = str(tab or "").strip()
     if tab == "Missions":
@@ -105,22 +119,16 @@ def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = No
         ptr = get_active_workflow_pointer(session)
         if ptr and str(ptr.workflow_owner or "") == owner:
             if owner == "song_based_improvisation":
-                try:
-                    from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
-
-                    ptr_sid = str(ptr.workflow_session_id or "")
-                    live_sid = ""
+                if _song_based_pointer_matches_live(session, ptr, owner):
                     try:
-                        from music_workflow_compatibility import legacy_session_id_for_owner
+                        from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
 
-                        live_sid = legacy_session_id_for_owner(session, owner)
-                    except ImportError:
-                        live_sid = ""
-                    if ptr_sid.startswith("custom|") or (live_sid and ptr_sid == live_sid):
                         session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
-                except ImportError:
-                    pass
-            return "skipped"
+                    except ImportError:
+                        pass
+                    return "skipped"
+            else:
+                return "skipped"
     except ImportError:
         pass
     try:
@@ -173,8 +181,9 @@ def ensure_creative_tab_workflow_before_widgets(session: dict[str, Any]) -> str:
 
         ptr = get_active_workflow_pointer(session)
         if ptr and str(ptr.workflow_owner or "") == owner:
-            session[ACTIVE_CREATIVE_VIEW_KEY] = view
-            return "skipped"
+            if owner != "song_based_improvisation" or _song_based_pointer_matches_live(session, ptr, owner):
+                session[ACTIVE_CREATIVE_VIEW_KEY] = view
+                return "skipped"
     except ImportError:
         pass
     try:

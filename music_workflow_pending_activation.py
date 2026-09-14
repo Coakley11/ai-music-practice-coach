@@ -161,9 +161,13 @@ def consume_pending_workflow_activation(session: dict[str, Any]) -> ActivationPh
         sid = str(pending.get("target_session_id") or "").strip() or legacy_session_id_for_owner(session, owner)
         if owner == "song_based_improvisation":
             try:
-                from backing_source_navigation import ensure_sbi_source_before_song_workflow
+                from backing_source_navigation import (
+                    align_legacy_workflow_owner_to_pointer,
+                    ensure_sbi_source_before_song_workflow,
+                )
 
                 ensure_sbi_source_before_song_workflow(session)
+                align_legacy_workflow_owner_to_pointer(session)
             except ImportError:
                 pass
             sid = legacy_session_id_for_owner(session, owner)
@@ -176,7 +180,9 @@ def consume_pending_workflow_activation(session: dict[str, Any]) -> ActivationPh
         if ptr and str(ptr.workflow_owner or "") == owner:
             ptr_sid = str(ptr.workflow_session_id or "")
             already = ptr_sid == sid or (
-                owner == "song_based_improvisation" and ptr_sid.startswith("custom|")
+                owner == "song_based_improvisation"
+                and ptr_sid.startswith("custom|")
+                and sid.startswith("custom|")
             )
             if already:
                 clear_pending_workflow_activation(session)

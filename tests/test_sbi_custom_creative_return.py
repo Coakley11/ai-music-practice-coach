@@ -167,3 +167,59 @@ class TestSbiCustomCreativeReturn(unittest.TestCase):
         self.assertIn(status, {"skipped", "done", "queued"})
         self.assertFalse(activation_user_notice(session))
         self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+    def test_stale_mission_legacy_owner_does_not_abort_sbi_custom_return(self) -> None:
+        """Leftover Missions owner vs song-based pointer must not abort Custom return."""
+        from backing_context import BACKING_CONTEXT_KEY
+        from backing_creative_return_route import apply_creative_return_route
+        from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+
+        session = _sbi_custom_session()
+        catalog_sid = str(session["active_catalog_pick_key"])
+        catalog_blob = WorkflowStateBlob(
+            workflow_owner="song_based_improvisation",
+            workflow_session_id=catalog_sid,
+            keys=KeyAuthority(practice_tonic="C", practice_mode="major"),
+        )
+        save_workflow_blob(session, catalog_blob, source="t")
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(
+                workflow_owner="song_based_improvisation",
+                workflow_session_id=catalog_sid,
+            ),
+            source="t",
+        )
+        session[ACTIVE_WORKFLOW_OWNER_KEY] = "mission_jam"
+        ctx = _custom_ctx()
+        session[BACKING_CONTEXT_KEY] = {
+            "source": "song_improv",
+            "sbi_material_kind": "custom",
+            "sbi_source_owner": "Custom progression",
+            "song_title": "My Progression",
+            "active_song_id": "My Progression",
+        }
+        apply_creative_return_route(
+            session,
+            {
+                "intelligence_tab": "Entry & Jam",
+                "entry_mode": "Song-Based Improvisation",
+                "workflow_owner": "song_based_improvisation",
+                "backing_source": "song_improv",
+            },
+            ctx=ctx,
+        )
+        self.assertFalse(activation_user_notice(session))
+        self.assertEqual(session.get(ACTIVE_WORKFLOW_OWNER_KEY), "song_based_improvisation")
+        ptr = get_active_workflow_pointer(session)
+        assert ptr is not None
+        self.assertEqual(ptr.workflow_owner, "song_based_improvisation")
+        self.assertTrue(str(ptr.workflow_session_id).startswith("custom|"))
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+
+        status = sync_workflow_for_creative_tab(session, "Phrase / Motif")
+        self.assertIn(status, {"skipped", "done", "queued"})
+        self.assertFalse(activation_user_notice(session))
+        ptr_after = get_active_workflow_pointer(session)
+        assert ptr_after is not None
+        self.assertTrue(str(ptr_after.workflow_session_id).startswith("custom|"))

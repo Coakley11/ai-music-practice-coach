@@ -3427,6 +3427,7 @@ def _activate_workflow_for_creative_return(session: dict[str, Any], ctx: Backing
 
         if owner == "song_based_improvisation":
             restore_sbi_song_source_from_backing_context(session, ctx)
+            align_legacy_workflow_owner_to_pointer(session)
             try:
                 from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
 
@@ -3613,6 +3614,28 @@ def backing_context_is_sbi_custom(ctx: Any) -> bool:
     )
 
 
+def align_legacy_workflow_owner_to_pointer(session: dict[str, Any]) -> None:
+    """Make leftover ``_active_workflow_owner`` match the canonical pointer.
+
+    Return from SBI Custom Backing used to abort with a Canonical identity
+    conflict when a prior Missions visit left ``mission_jam`` in the legacy
+    owner key while the pointer stayed ``song_based_improvisation``. Pointer
+    is canonical; the leftover key is not a second owner.
+    """
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer
+        from workflow_musical_authority import ACTIVE_WORKFLOW_OWNER_KEY
+    except ImportError:
+        return
+    ptr = get_active_workflow_pointer(session)
+    pointer_owner = str(ptr.workflow_owner or "").strip() if ptr else ""
+    if not pointer_owner:
+        return
+    legacy = str(session.get(ACTIVE_WORKFLOW_OWNER_KEY) or "").strip()
+    if legacy != pointer_owner:
+        session[ACTIVE_WORKFLOW_OWNER_KEY] = pointer_owner
+
+
 def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: Any) -> None:
     """Restore SBI Custom/Catalog/Composition preview *before* workflow activation."""
     if ctx is None or str(getattr(ctx, "source", "") or "") != "song_improv":
@@ -3661,6 +3684,7 @@ def ensure_sbi_source_before_song_workflow(session: dict[str, Any]) -> None:
         ctx = None
     if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
         restore_sbi_song_source_from_backing_context(session, ctx)
+    align_legacy_workflow_owner_to_pointer(session)
     try:
         from source_session_state import seed_sbi_custom_radio_before_render
 
@@ -4226,6 +4250,7 @@ __all__ = [
     "restore_practice_source_display_key",
     "restore_session_widgets_from_backing_context",
     "restore_sbi_song_source_from_backing_context",
+    "align_legacy_workflow_owner_to_pointer",
     "ensure_sbi_source_before_song_workflow",
     "backing_context_is_sbi_custom",
     "return_to_catalog_song_backing_label",

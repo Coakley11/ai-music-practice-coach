@@ -130,13 +130,17 @@ def apply_creative_return_route(
         from music_workflow_activation import activate_workflow_simple
 
         if owner == "song_based_improvisation" or src == "song_improv":
-            if ctx is not None:
-                try:
-                    from backing_source_navigation import restore_sbi_song_source_from_backing_context
+            try:
+                from backing_source_navigation import (
+                    align_legacy_workflow_owner_to_pointer,
+                    restore_sbi_song_source_from_backing_context,
+                )
 
+                if ctx is not None:
                     restore_sbi_song_source_from_backing_context(session, ctx)
-                except ImportError:
-                    pass
+                align_legacy_workflow_owner_to_pointer(session)
+            except ImportError:
+                pass
             try:
                 from music_workflow_pending_backing_handoff import clear_pending_backing_workflow_handoff
 
