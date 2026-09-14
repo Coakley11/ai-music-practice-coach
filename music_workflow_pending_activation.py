@@ -167,14 +167,29 @@ def consume_pending_workflow_activation(session: dict[str, Any]) -> ActivationPh
             except ImportError:
                 pass
             sid = legacy_session_id_for_owner(session, owner)
-            try:
-                from music_workflow_state_store import get_active_workflow_pointer
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
 
-                ptr = get_active_workflow_pointer(session)
-                if ptr and str(ptr.workflow_session_id or "") != sid:
-                    session.pop(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY, None)
-            except ImportError:
-                pass
+            ptr = get_active_workflow_pointer(session)
+        except ImportError:
+            ptr = None
+        if ptr and str(ptr.workflow_owner or "") == owner:
+            ptr_sid = str(ptr.workflow_session_id or "")
+            already = ptr_sid == sid or (
+                owner == "song_based_improvisation" and ptr_sid.startswith("custom|")
+            )
+            if already:
+                clear_pending_workflow_activation(session)
+                try:
+                    from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+                    session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+                except ImportError:
+                    pass
+                return "skipped"
+        if owner == "song_based_improvisation":
+            if ptr and str(ptr.workflow_session_id or "") != sid:
+                session.pop(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY, None)
         if session.get(PENDING_WORKFLOW_ACTIVATION_CONSUMED_KEY) == pending.get("request_seq"):
             clear_pending_workflow_activation(session)
             return "skipped"

@@ -104,6 +104,22 @@ def sync_workflow_for_creative_tab(session: dict[str, Any], tab: str | None = No
 
         ptr = get_active_workflow_pointer(session)
         if ptr and str(ptr.workflow_owner or "") == owner:
+            if owner == "song_based_improvisation":
+                try:
+                    from music_workflow_activation import WORKFLOW_ACTIVATION_ERROR_KEY
+
+                    ptr_sid = str(ptr.workflow_session_id or "")
+                    live_sid = ""
+                    try:
+                        from music_workflow_compatibility import legacy_session_id_for_owner
+
+                        live_sid = legacy_session_id_for_owner(session, owner)
+                    except ImportError:
+                        live_sid = ""
+                    if ptr_sid.startswith("custom|") or (live_sid and ptr_sid == live_sid):
+                        session.pop(WORKFLOW_ACTIVATION_ERROR_KEY, None)
+                except ImportError:
+                    pass
             return "skipped"
     except ImportError:
         pass
