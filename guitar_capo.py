@@ -32,6 +32,7 @@ CAPO_PERSIST_KEYS: tuple[str, ...] = (
 # Last source identity the Shape Key control was seeded or committed for.
 # Distinguishes a live same-source user pick from a new-source / restore reset.
 CAPO_SHAPE_SEED_SOURCE_KEY = "_capo_shape_seed_source_id"
+PARKED_CATALOG_GUITAR_SHAPE_KEY = "_parked_catalog_guitar_shape"
 
 _SHAPE_TONIC_CANDIDATES: tuple[str, ...] = (
     "G",
@@ -80,6 +81,20 @@ def valid_live_shape_widget_tonic(session_state: dict) -> str:
 
 def live_capo_shape_source_id(session_state: dict) -> str:
     """Stable source identity for Shape Key seed vs live-user authority."""
+    page = str(session_state.get("studio_page") or "").strip().lower()
+    entry = str(session_state.get("improv_entry_mode") or "").strip()
+    tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session_state)
+        if page == "backing" and ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+            jam_entry = str(getattr(ctx, "entry_mode", "") or entry or "entry_jam").strip()
+            return f"generated::jam::{jam_entry or 'entry_jam'}"
+    except Exception:
+        pass
+    if entry in {"Style Jam Mode", "Jam Session Generator"} and tab in {"", "Entry & Jam"}:
+        return f"generated::jam::{entry}"
     try:
         from active_song_state import gather_active_song_context
 
@@ -96,6 +111,43 @@ def live_capo_shape_source_id(session_state: dict) -> str:
     return str(
         session_state.get("active_catalog_pick_key") or session_state.get("song") or ""
     ).strip()
+
+
+def isolate_jam_from_catalog_guitar_shape(session_state: dict) -> None:
+    """Jam sessions do not inherit Catalog Capo Shape Mode / Shape Key."""
+    live = str(live_capo_shape_source_id(session_state) or "").strip()
+    seed = str(session_state.get(CAPO_SHAPE_SEED_SOURCE_KEY) or "").strip()
+    jam_live = live.startswith("generated::jam")
+    if not jam_live:
+        parked = session_state.get(PARKED_CATALOG_GUITAR_SHAPE_KEY)
+        if isinstance(parked, dict) and live and live == str(parked.get("pick") or "").strip():
+            session_state[CAPO_ENABLED_KEY] = bool(parked.get("enabled"))
+            if parked.get("shape"):
+                session_state[CAPO_SHAPE_KEY] = parked.get("shape")
+            if parked.get("seed"):
+                session_state[CAPO_SHAPE_SEED_SOURCE_KEY] = parked.get("seed")
+            session_state.pop(PARKED_CATALOG_GUITAR_SHAPE_KEY, None)
+        return
+    jam_bound = bool(
+        seed.startswith("generated::")
+        or seed.startswith("creative::")
+        or "entry_jam" in seed
+        or "jam" in seed.lower()
+    )
+    if jam_bound:
+        return
+    session_state[PARKED_CATALOG_GUITAR_SHAPE_KEY] = {
+        "pick": seed,
+        "enabled": bool(session_state.get(CAPO_ENABLED_KEY)),
+        "shape": str(session_state.get(CAPO_SHAPE_KEY) or "").strip(),
+        "seed": seed,
+    }
+    session_state[CAPO_ENABLED_KEY] = False
+    session_state.pop(CAPO_ENABLED_WIDGET_KEY, None)
+    session_state.pop(CAPO_SHAPE_WIDGET_KEY, None)
+    session_state.pop("_pending_capo_enabled_widget", None)
+    session_state.pop("_pending_capo_shape_key", None)
+    session_state[CAPO_SHAPE_SEED_SOURCE_KEY] = live
 
 
 def capo_shape_authoritative_reset(session_state: dict) -> bool:
@@ -564,7 +616,25 @@ def render_guitar_capo_sidebar(
     persist_st: Any,
 ) -> None:
     """Compact capo controls in the sidebar (guitar only)."""
-    sounding = sync_capo_from_practice_display_key(session_state, practice_display_key)
+    isolate_jam_from_catalog_guitar_shape(session_state)
+    sounding_src = str(practice_display_key or "C").strip() or "C"
+    try:
+        live_id = live_capo_shape_source_id(session_state)
+        if str(live_id).startswith("generated::jam"):
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session_state)
+            jam_tok = str(
+                getattr(ctx, "concert_key", "")
+                or session_state.get("improv_jam_key")
+                or session_state.get("improv_style_key")
+                or sounding_src
+            ).strip()
+            if jam_tok:
+                sounding_src = jam_tok
+    except Exception:
+        pass
+    sounding = sync_capo_from_practice_display_key(session_state, sounding_src)
     ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
         f"{html.escape(sounding)}</p>",
@@ -607,7 +677,8 @@ def render_guitar_capo_sidebar(
             and bool(meta.get(CAPO_ENABLED_KEY))
             and str(meta.get(CAPO_SHAPE_KEY) or "").strip()
         )
-        if meta_on:
+        jam_live = str(live_capo_shape_source_id(session_state) or "").startswith("generated::jam")
+        if meta_on and not jam_live:
             try:
                 from capo_refresh_trace import note_capo_refresh
 

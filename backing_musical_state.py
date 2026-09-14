@@ -586,6 +586,12 @@ def resolve_current_backing_musical_state(
         CAPO_SHAPE_KEY = "guitar_capo_shape_key"
 
     instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+
+        isolate_jam_from_catalog_guitar_shape(session)
+    except ImportError:
+        pass
     written_on = bool(is_transposing_instrument(instrument) and chart_in_instrument_key(session))
     shape_on = bool(instrument == "Guitar" and session.get(CAPO_ENABLED_KEY))
     if source_type == "entry_jam" and shape_on:
